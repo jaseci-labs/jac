@@ -1,48 +1,40 @@
-"""Prompt caching example — ReAct agent on an Anthropic model."""
+"""Prompt caching example — ReAct agent on an Anthropic model.
 
-glob COUNTRY_DB: dict = {
-    "France":    {"population": "68M",   "capital": "Paris",       "language": "French",         "currency": "EUR", "gdp": "$3.05T"},
-    "Japan":     {"population": "125M",  "capital": "Tokyo",       "language": "Japanese",       "currency": "JPY", "gdp": "$4.23T"},
-    "Brazil":    {"population": "216M",  "capital": "Brasilia",    "language": "Portuguese",     "currency": "BRL", "gdp": "$2.13T"},
-    "India":     {"population": "1.4B",  "capital": "New Delhi",   "language": "Hindi, English", "currency": "INR", "gdp": "$3.94T"},
-    "Germany":   {"population": "84M",   "capital": "Berlin",      "language": "German",         "currency": "EUR", "gdp": "$4.46T"},
-    "Nigeria":   {"population": "224M",  "capital": "Abuja",       "language": "English",        "currency": "NGN", "gdp": "$477B"},
-    "Australia": {"population": "26M",   "capital": "Canberra",    "language": "English",        "currency": "AUD", "gdp": "$1.68T"},
-    "Mexico":    {"population": "129M",  "capital": "Mexico City", "language": "Spanish",        "currency": "MXN", "gdp": "$1.32T"}
+Prompt caching is automatic for Claude models. The system prompt and tool
+schemas are cached after the first LLM call. Check cached tokens in the output.
+"""
+
+glob COUNTRIES: dict = {
+    "France":  {"pop": "68M",  "capital": "Paris",     "gdp": "$3.05T"},
+    "Japan":   {"pop": "125M", "capital": "Tokyo",     "gdp": "$4.23T"},
+    "Brazil":  {"pop": "216M", "capital": "Brasilia",  "gdp": "$2.13T"},
+    "India":   {"pop": "1.4B", "capital": "New Delhi", "gdp": "$3.94T"},
+    "Germany": {"pop": "84M",  "capital": "Berlin",    "gdp": "$4.46T"},
+    "Nigeria": {"pop": "224M", "capital": "Abuja",     "gdp": "$477B"},
+    "Mexico":  {"pop": "129M", "capital": "Mexico City","gdp": "$1.32T"}
 };
 
-
-def get_country_facts(country: str, fact_type: str) -> str {
-    entry = COUNTRY_DB.get(country);
-    if entry is None {
-        return f"No data for {country}";
-    }
-    fact = entry.get(fact_type);
-    if fact is None {
-        return f"Unknown fact '{fact_type}'. Available: {', '.join(entry.keys())}";
-    }
-    return f"{country} {fact_type}: {fact}";
+"""Look up a fact about a country. fact_type: pop, capital, or gdp."""
+def lookup(country: str, fact_type: str) -> str {
+    entry = COUNTRIES.get(country);
+    if entry is None { return f"No data for {country}"; }
+    return entry.get(fact_type, f"Unknown: {fact_type}");
 }
 
-sem get_country_facts = "Look up a single fact about a country. Call once per country per fact.";
-sem get_country_facts.country = "Country name (e.g. 'France')";
-sem get_country_facts.fact_type = "One of: population, capital, language, currency, gdp";
+sem lookup = "Look up a single fact about a country.";
+sem lookup.country = "Country name";
+sem lookup.fact_type = "One of: pop, capital, gdp";
 
-
-def research_countries(question: str) -> str
-    by llm(tools=[get_country_facts], stream=True, logging=True);
-
+def research(question: str) -> str
+    by llm(tools=[lookup], stream=True, logging=True);
 
 with entry {
     response = "";
-    for event in research_countries(
-        "Research France, Japan, Brazil, India, Germany, Nigeria, Australia, and Mexico. "
-        "For each country look up population, capital, language, currency, and gdp. "
-        "Then rank all 8 by GDP highest to lowest."
+    for event in research(
+        "Look up pop, capital, and gdp for France, Japan, Brazil, India, "
+        "Germany, Nigeria, and Mexico. Rank by GDP."
     ) {
-        if event.event_type == "tool_call" {
-            print(f"  -> {event.data.get('tool', '')}({event.data.get('args', {})})");
-        } elif event.event_type == "chunk" {
+        if event.event_type == "chunk" {
             response += event.data.get("content", "");
         } elif event.event_type == "usage" {
             total = event.data.get("total", {});
@@ -55,14 +47,10 @@ with entry {
                     or 0
                 );
             }
-            input_tokens = int(total.get("prompt_tokens", 0));
+            input_t = int(total.get("prompt_tokens", 0));
             print(f"\n--- Usage ({len(per_call)} LLM calls) ---");
-            print(f"Input tokens:  {input_tokens}");
-            print(f"Output tokens: {total.get('completion_tokens', 0)}");
-            print(f"Cached tokens: {cached}");
-            if input_tokens > 0 {
-                print(f"Cache hit rate: {round(cached / input_tokens * 100, 1)}%");
-            }
+            print(f"Input:  {input_t}  Output: {total.get('completion_tokens', 0)}  Cached: {cached}");
+            if input_t > 0 { print(f"Cache hit rate: {round(cached / input_t * 100, 1)}%"); }
         }
     }
     print("\n--- Response ---");
