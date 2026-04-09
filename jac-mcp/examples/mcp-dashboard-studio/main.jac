@@ -317,10 +317,10 @@ walker:pub get_resource {
 
 # Frontend entry
 cl {
-    import from ".frontend.Dashboard" { DashboardPage }
+    import from ".frontend.AppRoot" { AppRoot }
 
     def:pub app -> JsxElement {
         return
-            <DashboardPage/>;
+            <AppRoot/>;
     }
 }

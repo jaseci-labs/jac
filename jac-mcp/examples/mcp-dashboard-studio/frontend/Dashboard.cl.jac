@@ -23,7 +23,7 @@ sv import from ..main {
     execute_command
 }
 
-def:pub DashboardPage -> JsxElement {
+def:pub DashboardPage(onBack: Any = None) -> JsxElement {
     DEFAULT_URL = "http://127.0.0.1:3001/mcp/";
 
     has current_result: dict = {},
@@ -101,6 +101,18 @@ def:pub DashboardPage -> JsxElement {
                     className="flex items-center justify-between pb-4 border-b border-white/[0.05]"
                 >
                     <div className="flex items-center gap-3">
+                        {onBack
+                        and <button
+                            onClick={onBack}
+                            className="flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-zinc-300 transition-colors mr-1"
+                        >
+                            <span>
+                                ←
+                            </span>
+                            <span>
+                                Home
+                            </span>
+                        </button>}
                         <div>
                             <h1
                                 className="text-base font-semibold tracking-tight text-white"
