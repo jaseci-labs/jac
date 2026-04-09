@@ -721,6 +721,13 @@ impl ConditionalNode.postinit -> None {
     UniCFGNode.postinit(self);
 }
 
+"""Initialize CfgExpr (expression-level CFG wrapper)."""
+impl CfgExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+    ConditionalNode.postinit(self);
+}
+
 
 """Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head -> UniCFGNode {
@@ -751,7 +758,9 @@ impl UniCFGNode.get_tail -> UniCFGNode {
         and not isinstance(
             nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
-        and not isinstance(nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
+        and not isinstance(
+            nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
     ) {
@@ -1810,7 +1819,6 @@ impl CompareExpr.postinit -> None {
 impl BoolExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
-    ConditionalNode.postinit(self);
 }
 
 
