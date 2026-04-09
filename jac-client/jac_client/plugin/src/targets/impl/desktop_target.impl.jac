@@ -987,6 +987,8 @@ notifications = false
 jac_scale = true   # FastAPI server, auth, scaling features
 byllm = true       # LLM providers integration (litellm)
 jac_coder = true   # AI coding assistant
+jac_mcp = true     # MCP server integration
+jac_client = true  # Web client bundling
 ''';
 
     # Append the section
@@ -2713,7 +2715,13 @@ def _generate_pyinstaller_spec(
 ) -> str {
     # Default plugins config - all enabled
     if plugins_config is None {
-        plugins_config = {'jac_scale': True, 'byllm': True, 'jac_coder': True};
+        plugins_config = {
+            'jac_scale': True,
+            'byllm': True,
+            'jac_coder': True,
+            'jac_mcp': True,
+            'jac_client': True
+        };
     }
 
     # Convert plugins config to Python code string for the spec file
@@ -2773,6 +2781,22 @@ if PLUGINS_CONFIG.get('jac_coder', True):
         print("  jac_coder: not installed")
 else:
     print("  jac_coder: disabled in config")
+
+if PLUGINS_CONFIG.get('jac_mcp', True):
+    try:
+        import jac_mcp
+        print("  jac_mcp: available")
+    except ImportError:
+        print("  jac_mcp: not installed")
+else:
+    print("  jac_mcp: disabled in config")
+
+# jac_client is always bundled (core dependency for sidecar entry point)
+try:
+    import jac_client
+    print("  jac_client: available (core)")
+except ImportError:
+    print("  jac_client: NOT INSTALLED - sidecar will fail!")
 
 # Use collect_all() for comprehensive package bundling (scalable approach)
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
@@ -2859,6 +2883,15 @@ if PLUGINS_CONFIG.get('jac_coder', True):
     datas += d
     binaries += b
     all_hiddenimports += h
+
+if PLUGINS_CONFIG.get('jac_mcp', True):
+    d, b, h = collect_with_deps('jac_mcp', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+# jac_client is always bundled as a core package (sidecar entry point depends on it)
+# No need to gate it behind PLUGINS_CONFIG
 
 # Merge collected imports with manual hiddenimports
 hiddenimports.extend(all_hiddenimports)
