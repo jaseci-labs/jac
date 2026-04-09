@@ -9,7 +9,9 @@ sv import from ..main {
     explain_error,
     list_examples,
     get_example,
-    search_docs
+    search_docs,
+    understand_jac_and_jaseci,
+    get_resource
 }
 
 def:pub DashboardPage -> JsxElement {
@@ -20,6 +22,7 @@ def:pub DashboardPage -> JsxElement {
         python_input: str = "",
         query: str = "",
         example_name: str = "",
+        resource_uri: str = "",
         error_message: str = "",
         server_url: str = "",
         connected: bool = False,
@@ -44,6 +47,8 @@ def:pub DashboardPage -> JsxElement {
     # Output renderers
     def renderErr -> JsxElement;
     def renderEmpty -> JsxElement;
+    def renderUnderstandOutput -> JsxElement;
+    def renderResourceOutput -> JsxElement;
     def renderValidationOutput -> JsxElement;
     def renderFormatOutput -> JsxElement;
     def renderAstOutput -> JsxElement;
@@ -400,6 +405,53 @@ def:pub DashboardPage -> JsxElement {
                             >
                                 {"Running..." if busy("explain_error") else "Explain"}
                             </button>
+                        </div>
+                        <div className={panelCls}>
+                            <div className={sectionLabel}>
+                                Jac & Jaseci Guide
+                            </div>
+                            <button
+                                onClick={lambda { runTool(
+                                    "understand_jac_and_jaseci", {}
+                                );}}
+                                disabled={loading != "" or not connected}
+                                className={ghostBtn + (
+                                    " animate-pulse"
+                                        if busy("understand_jac_and_jaseci")
+                                        else ""
+                                )}
+                            >
+                                {"Loading..."
+                                    if busy("understand_jac_and_jaseci")
+                                    else "Load Guide"}
+                            </button>
+                        </div>
+                        <div className={panelCls}>
+                            <div className={sectionLabel}>
+                                Resource
+                            </div>
+                            <div className="flex gap-2">
+                                <input
+                                    type="text"
+                                    value={resource_uri}
+                                    onChange={lambda e: Any { resource_uri = e.target.value;}}
+                                    placeholder="jac://docs/osp"
+                                    className={inputCls + " flex-1 font-mono"}
+                                />
+                                <button
+                                    onClick={lambda { runTool(
+                                        "get_resource", {"uri": resource_uri}
+                                    );}}
+                                    disabled={loading != "" or not connected}
+                                    className={ghostBtn + " whitespace-nowrap" + (
+                                        " animate-pulse"
+                                            if busy("get_resource")
+                                            else ""
+                                    )}
+                                >
+                                    {"Loading..." if busy("get_resource") else "Fetch"}
+                                </button>
+                            </div>
                         </div>
                         <div className={panelCls}>
                             <div className={sectionLabel}>

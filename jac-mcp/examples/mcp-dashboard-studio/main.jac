@@ -10,7 +10,9 @@ import from backend.service {
     explain_error_service,
     list_examples_service,
     get_example_service,
-    search_docs_service
+    search_docs_service,
+    understand_jac_and_jaseci_service,
+    get_resource_service
 }
 
 import from backend.utils {
@@ -162,6 +164,32 @@ walker:pub search_docs {
             disengage;
         }
         report search_docs_service(self.query);
+    }
+}
+
+walker:pub understand_jac_and_jaseci {
+    has output: dict = {};
+
+    can run with Root entry {
+        report understand_jac_and_jaseci_service();
+    }
+}
+
+walker:pub get_resource {
+    has uri: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.uri.strip() {
+            report {
+                "ok": False,
+                "tool": "get_resource",
+                "data": {},
+                "error": {"message": "URI is required"}
+            };
+            disengage;
+        }
+        report get_resource_service(self.uri);
     }
 }
 

@@ -67,6 +67,10 @@ impl DashboardPage.start_notice(tool: str) -> str {
         return "Loading example...";
     } elif tool == "search_docs" {
         return "Searching documentation...";
+    } elif tool == "understand_jac_and_jaseci" {
+        return "Loading Jac & Jaseci guide...";
+    } elif tool == "get_resource" {
+        return "Fetching resource...";
     }
     return "Running...";
 }
@@ -109,6 +113,14 @@ impl DashboardPage.success_notice(tool: str, res: dict) -> str {
         return str(len(results)) + " result(s) found."
             if len(results) > 0
             else "No results found.";
+    } elif tool == "understand_jac_and_jaseci" {
+        km: str = str(data["knowledge_map"]) if "knowledge_map" in data else "";
+        return "Guide loaded (" + str(len(km.split("\n"))) + " lines)."
+            if km
+            else "Guide loaded.";
+    } elif tool == "get_resource" {
+        uri: str = str(data["uri"]) if "uri" in data else "";
+        return "Loaded: " + uri if uri else "Resource loaded.";
     }
     return "Done.";
 }
@@ -151,6 +163,10 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn get_example(name=args["name"]);
         } elif tool == "search_docs" {
             spawn_res = await root spawn search_docs(query=args["query"]);
+        } elif tool == "understand_jac_and_jaseci" {
+            spawn_res = await root spawn understand_jac_and_jaseci();
+        } elif tool == "get_resource" {
+            spawn_res = await root spawn get_resource(uri=args["uri"]);
         }
         if spawn_res {
             res = get_first_report(spawn_res);
@@ -559,11 +575,80 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
                     >
                         {m["snippet"]}
                     </p>}
-                    <p className="text-[10px] font-mono text-orange-400/70">
+                    <button
+                        onClick={lambda { resource_uri = str(m["uri"])
+                            if "uri" in m
+                            else "";runTool(
+                            "get_resource",
+                            {"uri": str(m["uri"]) if "uri" in m else ""}
+                        );}}
+                        disabled={loading != "" or not connected}
+                        className="text-[10px] font-mono text-orange-400/70 hover:text-orange-300 hover:underline disabled:opacity-50 disabled:cursor-not-allowed text-left transition"
+                    >
                         {m["uri"] if "uri" in m else ""}
-                    </p>
+                    </button>
                 </div> for m in matches
             ]}
+        </div>;
+}
+
+impl DashboardPage.renderUnderstandOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    content: str = str(data["knowledge_map"]) if "knowledge_map" in data else "";
+    if not content {
+        return
+            <div className="text-xs text-zinc-500">
+                No content returned.
+            </div>;
+    }
+    return
+        <pre
+            className="text-[11px] leading-5 text-zinc-300 max-h-[520px] overflow-auto bg-[#0d0e10] p-4 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
+        >
+            {content}
+        </pre>;
+}
+
+impl DashboardPage.renderResourceOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    content: str = str(data["content"]) if "content" in data else "";
+    uri: str = str(data["uri"]) if "uri" in data else "";
+    if not content {
+        return
+            <div className="text-xs text-zinc-500">
+                No content returned.
+            </div>;
+    }
+    return
+        <div className="space-y-3">
+            {uri
+            and <div className="flex items-center gap-2">
+                <span
+                    className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-orange-400 bg-orange-500/10 border-orange-500/20"
+                >
+                    RESOURCE
+                </span>
+                <span className="text-[11px] font-mono text-zinc-400">
+                    {uri}
+                </span>
+            </div>}
+            <pre
+                className="text-[11px] leading-5 text-zinc-300 max-h-[480px] overflow-auto bg-[#0d0e10] p-4 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
+            >
+                {content}
+            </pre>
         </div>;
 }
 
@@ -582,6 +667,10 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         return renderGetExampleOutput();
     } elif active_tool == "search_docs" {
         return renderSearchDocsOutput();
+    } elif active_tool == "understand_jac_and_jaseci" {
+        return renderUnderstandOutput();
+    } elif active_tool == "get_resource" {
+        return renderResourceOutput();
     }
     return
         <div className="text-xs text-zinc-600">

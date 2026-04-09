@@ -185,3 +185,11 @@ def:pub get_example_service(name: str) -> dict {
 def:pub search_docs_service(query: str) -> dict {
     return call_mcp_tool("search_docs", {"query": query});
 }
+
+def:pub understand_jac_and_jaseci_service -> dict {
+    return call_mcp_tool("understand_jac_and_jaseci", {});
+}
+
+def:pub get_resource_service(uri: str) -> dict {
+    return call_mcp_tool("get_resource", {"uri": uri});
+}
