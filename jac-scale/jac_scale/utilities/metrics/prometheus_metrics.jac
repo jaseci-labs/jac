@@ -5,7 +5,7 @@ walker execution timing using the prometheus-client library.
 """
 import from typing { Any, Callable }
 import from jac_scale.abstractions.metrics { MetricsCollector }
-import from jac_scale._optdeps.optional_imports {
+import from jac_scale._optdeps.prometheus {
     Counter,
     Histogram,
     Gauge,

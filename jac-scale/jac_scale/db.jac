@@ -1,6 +1,6 @@
 """Direct Database Access Module."""
 import from jac_scale._optdeps.optional_deps { require_optional }
-import from jac_scale._optdeps.optional_imports {
+import from jac_scale._optdeps.pymongo {
     MongoClient,
     PyMongoInsertOneResult,
     PyMongoInsertManyResult,
@@ -8,9 +8,9 @@ import from jac_scale._optdeps.optional_imports {
     PyMongoDeleteResult,
     Cursor,
     Collection,
-    Redis,
     ObjectId
 }
+import from jac_scale._optdeps.redis { Redis }
 import from jac_scale.factories.database_factory {
     DatabaseProviderFactory,
     DatabaseType,

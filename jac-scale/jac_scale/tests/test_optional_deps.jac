@@ -1,7 +1,7 @@
 """Tests for optional dependency guards and install groups.
 
 These tests verify that:
-- The compat module (optional_imports) re-exports symbols correctly
+- Per-package compat modules re-export symbols correctly
 - require_optional() raises clear errors for missing packages
 - is_optional_available() reports correctly for installed packages
 - Factories gracefully handle missing optional deps
@@ -10,20 +10,12 @@ These tests verify that:
 
 import unittest.mock;
 import from jac_scale._optdeps.optional_deps { require_optional, is_optional_available }
-import from jac_scale._optdeps.optional_imports {
-    HAS_PYMONGO,
-    HAS_REDIS,
-    HAS_PROMETHEUS,
-    HAS_APSCHEDULER,
-    HAS_KUBERNETES,
-    HAS_DOCKER,
-    MongoClient,
-    Redis,
-    Counter,
-    BackgroundScheduler,
-    k8s_client,
-    docker_module
-}
+import from jac_scale._optdeps.pymongo { HAS_PYMONGO, MongoClient }
+import from jac_scale._optdeps.redis { HAS_REDIS, Redis }
+import from jac_scale._optdeps.prometheus { HAS_PROMETHEUS, Counter }
+import from jac_scale._optdeps.apscheduler { HAS_APSCHEDULER, BackgroundScheduler }
+import from jac_scale._optdeps.kubernetes { HAS_KUBERNETES, client as k8s_client }
+import from jac_scale._optdeps.docker { HAS_DOCKER, docker_module }
 
 # =============================================================================
 # require_optional — happy path (installed packages)
@@ -259,15 +251,20 @@ test "is_optional_available with empty string returns False" {
     assert is_optional_available("") is False;
 }
 
-test "optional_imports module itself is always importable" {
-    # The compat module must never fail to import regardless of what's installed
-    import jac_scale._optdeps.optional_imports;
-    assert hasattr(jac_scale._optdeps.optional_imports, "HAS_PYMONGO");
-    assert hasattr(jac_scale._optdeps.optional_imports, "HAS_REDIS");
-    assert hasattr(jac_scale._optdeps.optional_imports, "HAS_PROMETHEUS");
-    assert hasattr(jac_scale._optdeps.optional_imports, "HAS_APSCHEDULER");
-    assert hasattr(jac_scale._optdeps.optional_imports, "HAS_KUBERNETES");
-    assert hasattr(jac_scale._optdeps.optional_imports, "HAS_DOCKER");
+test "compat modules are always importable" {
+    # Per-package compat modules must never fail to import regardless of what's installed
+    import jac_scale._optdeps.pymongo;
+    import jac_scale._optdeps.redis;
+    import jac_scale._optdeps.prometheus;
+    import jac_scale._optdeps.apscheduler;
+    import jac_scale._optdeps.kubernetes;
+    import jac_scale._optdeps.docker;
+    assert hasattr(jac_scale._optdeps.pymongo, "HAS_PYMONGO");
+    assert hasattr(jac_scale._optdeps.redis, "HAS_REDIS");
+    assert hasattr(jac_scale._optdeps.prometheus, "HAS_PROMETHEUS");
+    assert hasattr(jac_scale._optdeps.apscheduler, "HAS_APSCHEDULER");
+    assert hasattr(jac_scale._optdeps.kubernetes, "HAS_KUBERNETES");
+    assert hasattr(jac_scale._optdeps.docker, "HAS_DOCKER");
 }
 
 test "multiple require_optional calls do not conflict" {

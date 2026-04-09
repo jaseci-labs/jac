@@ -15,12 +15,8 @@ import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from typing { Any, cast }
 import from uuid { UUID }
-import from jac_scale._optdeps.optional_imports {
-    redis_module as redis,
-    MongoClient,
-    UpdateOne,
-    ConnectionFailure
-}
+import from jac_scale._optdeps.redis { redis_module as redis }
+import from jac_scale._optdeps.pymongo { MongoClient, UpdateOne, ConnectionFailure }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.memory {
     CacheMemory,

@@ -1,7 +1,7 @@
 import os;
 import pathlib;
 import from jaclang.cli.console { console }
-import from jac_scale._optdeps.optional_imports { k8s_client as client }
+import from jac_scale._optdeps.kubernetes { client }
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();

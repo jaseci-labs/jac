@@ -3,10 +3,7 @@ import time;
 import subprocess;
 import bcrypt;
 import from typing { Any }
-import from jac_scale._optdeps.optional_imports {
-    k8s_client as client,
-    K8sApiException as ApiException
-}
+import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils { delete_if_exists }

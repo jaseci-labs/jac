@@ -1,11 +1,11 @@
-import from jac_scale._optdeps.optional_imports {
+import from jac_scale._optdeps.kubernetes {
     AutoscalingV2Api,
     V2CrossVersionObjectReference,
     V2HorizontalPodAutoscaler,
     V2HorizontalPodAutoscalerSpec,
     V2MetricSpec,
     V2ResourceMetricSource,
-    K8sApiException as ApiException
+    ApiException
 }
 def create_hpa(
     namespace: str,

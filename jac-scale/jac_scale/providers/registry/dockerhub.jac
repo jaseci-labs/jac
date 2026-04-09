@@ -1,10 +1,6 @@
 """DockerHub registry implementation."""
 import from typing { Any }
-import from jac_scale._optdeps.optional_imports {
-    docker_module as docker,
-    DockerAPIError as APIError,
-    DockerBuildError as BuildError
-}
+import from jac_scale._optdeps.docker { docker_module as docker, APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
 
 """DockerHub image registry implementation."""
