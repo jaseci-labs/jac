@@ -186,6 +186,10 @@ def:pub search_docs_service(query: str) -> dict {
     return call_mcp_tool("search_docs", {"query": query});
 }
 
+def:pub lint_jac_service(code: str, auto_fix: bool = False) -> dict {
+    return call_mcp_tool("lint_jac", {"code": code, "auto_fix": auto_fix});
+}
+
 def:pub graph_visualize_service(code: str) -> dict {
     return call_mcp_tool("graph_visualize", {"code": code});
 }

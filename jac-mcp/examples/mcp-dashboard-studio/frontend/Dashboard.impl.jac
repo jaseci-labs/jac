@@ -67,6 +67,8 @@ impl DashboardPage.start_notice(tool: str) -> str {
         return "Loading example...";
     } elif tool == "search_docs" {
         return "Searching documentation...";
+    } elif tool == "lint_jac" {
+        return "Linting Jac code...";
     } elif tool == "graph_visualize" {
         return "Generating graph...";
     } elif tool == "list_commands" {
@@ -121,6 +123,11 @@ impl DashboardPage.success_notice(tool: str, res: dict) -> str {
         return str(len(results)) + " result(s) found."
             if len(results) > 0
             else "No results found.";
+    } elif tool == "lint_jac" {
+        violations: list = data["violations"] if "violations" in data else [];
+        return "No violations found."
+            if len(violations) == 0
+            else (str(len(violations)) + " violation(s) found.");
     } elif tool == "graph_visualize" {
         graph: str = str(data["graph"]) if "graph" in data else "";
         return "Graph generated." if graph else "No graph output.";
@@ -191,6 +198,10 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn get_example(name=args["name"]);
         } elif tool == "search_docs" {
             spawn_res = await root spawn search_docs(query=args["query"]);
+        } elif tool == "lint_jac" {
+            spawn_res = await root spawn lint_jac(
+                code=args["code"], auto_fix=args["auto_fix"]
+            );
         } elif tool == "graph_visualize" {
             spawn_res = await root spawn graph_visualize(code=args["code"]);
         } elif tool == "list_commands" {
@@ -638,6 +649,87 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
         </div>;
 }
 
+impl DashboardPage.renderLintOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    violations: list = data["violations"] if "violations" in data else [];
+    fixed_code: str = str(data["fixed_code"])
+        if "fixed_code" in data and data["fixed_code"]
+        else "";
+    changed: bool = data["changed"] if "changed" in data else False;
+    if len(violations) == 0 and not fixed_code {
+        return
+            <div
+                className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 border border-green-500/20 p-3 rounded-lg"
+            >
+                <span>
+                    ✓
+                </span>
+                <span>
+                    No lint violations found.
+                </span>
+            </div>;
+    }
+    return
+        <div className="space-y-3">
+            {len(violations) > 0
+            and <div className="space-y-1.5">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-yellow-600 font-semibold"
+                >
+                    {str(len(violations)) + " violation(s)"}
+                </div>
+                {[
+                    <div
+                        key={str(v)}
+                        className="text-xs font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg"
+                    >
+                        {(
+                            "[" + str(v["line"]) + ":" + str(v["col"]) + "] " + str(
+                                v["message"]
+                            )
+                        )
+                            if ("line" in v and "col" in v and "message" in v)
+                            else (str(v["message"]) if "message" in v else str(v))}
+                    </div> for v in violations
+                ]}
+            </div>}{fixed_code
+            and <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div
+                            className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
+                        >
+                            Fixed Code
+                        </div>
+                        {changed
+                        and <span
+                            className="text-[9px] font-mono text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded"
+                        >
+                            modified
+                        </span>}
+                    </div>
+                    <button
+                        onClick={lambda { code = fixed_code;}}
+                        className="px-2 py-1 text-[9px] rounded-md border transition bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30 text-orange-400"
+                    >
+                        Apply to Editor
+                    </button>
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-green-400 max-h-[300px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
+                >
+                    {fixed_code}
+                </pre>
+            </div>}
+        </div>;
+}
+
 impl DashboardPage.renderGraphVisualizeOutput -> JsxElement {
     if not current_result {
         return renderEmpty();
@@ -962,6 +1054,8 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         return renderGetExampleOutput();
     } elif active_tool == "search_docs" {
         return renderSearchDocsOutput();
+    } elif active_tool == "lint_jac" {
+        return renderLintOutput();
     } elif active_tool == "graph_visualize" {
         return renderGraphVisualizeOutput();
     } elif active_tool == "list_commands" {

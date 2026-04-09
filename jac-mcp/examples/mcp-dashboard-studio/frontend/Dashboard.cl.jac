@@ -11,6 +11,7 @@ sv import from ..main {
     list_examples,
     get_example,
     search_docs,
+    lint_jac,
     understand_jac_and_jaseci,
     get_resource,
     graph_visualize,
@@ -41,7 +42,8 @@ def:pub DashboardPage -> JsxElement {
         output_copied: bool = False,
         ast_copied: bool = False,
         code_scroll: int = 0,
-        graph_svg: str = "";
+        graph_svg: str = "",
+        lint_auto_fix: bool = False;
     #  Method declarations -- bodies are in Dashboard.impl.jac
     def get_first_report(spawn_res: Any) -> dict;
     def busy(tool: str) -> bool;
@@ -58,6 +60,7 @@ def:pub DashboardPage -> JsxElement {
     def renderEmpty -> JsxElement;
     def renderUnderstandOutput -> JsxElement;
     def renderResourceOutput -> JsxElement;
+    def renderLintOutput -> JsxElement;
     def renderGraphVisualizeOutput -> JsxElement;
     def renderListCommandsOutput -> JsxElement;
     def renderGetCommandOutput -> JsxElement;
@@ -290,6 +293,32 @@ def:pub DashboardPage -> JsxElement {
                                         {"Graphing..."
                                             if busy("graph_visualize")
                                             else "Graph"}
+                                    </button>
+                                    <span className="w-px h-3.5 bg-white/10 mx-0.5"/>
+                                    <label
+                                        className="flex items-center gap-1 text-[10px] text-zinc-500 cursor-pointer select-none"
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={lint_auto_fix}
+                                            onChange={lambda e: Any { lint_auto_fix = e.target.checked;}}
+                                            className="h-2.5 w-2.5 accent-orange-500"
+                                        />
+                                        fix
+                                    </label>
+                                    <button
+                                        onClick={lambda { runTool(
+                                            "lint_jac",
+                                            {"code": code, "auto_fix": lint_auto_fix}
+                                        );}}
+                                        disabled={loading != "" or not connected}
+                                        className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
+                                            "bg-white/20 animate-pulse"
+                                                if busy("lint_jac")
+                                                else "bg-white/5 hover:bg-white/10"
+                                        )}
+                                    >
+                                        {"Linting..." if busy("lint_jac") else "Lint"}
                                     </button>
                                 </div>
                             </div>
