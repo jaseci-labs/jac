@@ -432,6 +432,7 @@ obj TypeEvaluator {
         expr: uni.FuncCall, method_type: TypeBase
     ) -> types.FunctionType | None;
 
+    def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
