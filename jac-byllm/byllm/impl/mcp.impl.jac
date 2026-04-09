@@ -37,7 +37,13 @@ impl _McpState.run(coro: object) -> str {
 }
 
 impl _McpState.stop -> None {
+    # Clean shutdown: exit contexts before stopping loop to avoid killing MCP subprocess.
     if self.loop and self.loop.is_running() {
+        try {
+            self.run(_async_cleanup(self));
+        } except Exception as e {
+            logger.debug(f"MCP cleanup failed: {e}");
+        }
         self.loop.call_soon_threadsafe(self.loop.stop);
     }
     if self.thread and self.thread.is_alive() {
@@ -53,6 +59,23 @@ impl _McpState.stop -> None {
     self.transport_ctx = None;
     self.tools_cache = [];
     self.connected = False;
+}
+
+async def _async_cleanup(state: _McpState) {
+    if state.session_ctx is not None {
+        try {
+            await state.session_ctx.__aexit__(None, None, None);
+        } except Exception as e {
+            logger.debug(f"Session __aexit__ error: {e}");
+        }
+    }
+    if state.transport_ctx is not None {
+        try {
+            await state.transport_ctx.__aexit__(None, None, None);
+        } except Exception as e {
+            logger.debug(f"Transport __aexit__ error: {e}");
+        }
+    }
 }
 
 # Module-level dict mapping McpClient id -> _McpState.
@@ -103,7 +126,7 @@ async def _do_connect(client: McpClient, transport_type: str) {
 
 async def _do_call_tool(client: McpClient, name: str, arguments: dict[str, Any]) -> str {
     state = _get_state(client);
-    logger.info(f"[MCP] → call_tool {name}({arguments})");
+    logger.debug(f"[MCP] call_tool {name}({arguments})");
     result = await state.session.call_tool(name, arguments);
     parts: list[str] = [];
     for item in (result.content or []) {
@@ -117,19 +140,21 @@ async def _do_call_tool(client: McpClient, name: str, arguments: dict[str, Any])
 }
 
 async def _open_transport(client: McpClient, transport_type: str) -> tuple {
+    import from mcp.client.stdio { StdioServerParameters, stdio_client }
+    import from mcp.client.sse { sse_client }
+    import from mcp.client.streamable_http { streamablehttp_client }
+
     if transport_type == "stdio" {
-        import from mcp.client.stdio { StdioServerParameters, stdio_client }
-        env = client.env;
         ctx = stdio_client(
-            StdioServerParameters(command=client.command, args=client.args, env=env)
+            StdioServerParameters(
+                command=client.command, args=client.args, env=client.env or None
+            )
         );
     } elif transport_type == "sse" {
-        import from mcp.client.sse { sse_client }
         ctx = sse_client(
             client.url, headers=client.headers or None, timeout=float(client.timeout)
         );
     } elif transport_type == "streamable-http" {
-        import from mcp.client.streamable_http { streamablehttp_client }
         ctx = streamablehttp_client(client.url, headers=client.headers or None);
     } else {
         raise McpError(
@@ -176,10 +201,8 @@ impl McpClient.connect -> None {
         state.stop();
         raise;
     } except Exception as e {
-        import traceback;
-        tb = traceback.format_exc();
         state.stop();
-        raise McpError(message=f"Failed to connect to MCP server: {e}\n{tb}");
+        raise McpError(message=f"Failed to connect to MCP server: {e}") from e;
     }
 }
 
@@ -187,7 +210,6 @@ impl McpClient.get_tools(names: list[str] | None = None) -> list {
     state = _get_state(self);
     if not state.connected {
         self.connect();
-        state = _get_state(self);
     }
     if names is None {
         return list(state.tools_cache);
@@ -204,14 +226,13 @@ impl McpClient.call_tool(name: str, arguments: dict[str, Any]) -> str {
     state = _get_state(self);
     if not state.connected {
         self.connect();
-        state = _get_state(self);
     }
     try {
         return state.run(_do_call_tool(self, name, arguments));
     } except McpError {
         raise;
     } except Exception as e {
-        raise McpError(message=f"MCP tool '{name}' call failed: {e}");
+        raise McpError(message=f"MCP tool '{name}' call failed: {e}") from e;
     }
 }
 
