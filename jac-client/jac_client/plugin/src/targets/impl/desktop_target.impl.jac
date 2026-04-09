@@ -988,7 +988,7 @@ jac_scale = true   # FastAPI server, auth, scaling features
 byllm = true       # LLM providers integration (litellm)
 jac_coder = true   # AI coding assistant
 jac_mcp = true     # MCP server integration
-jac_client = true  # Web client bundling
+# jac_client is always bundled (core sidecar dependency)
 ''';
 
     # Append the section
@@ -2719,8 +2719,7 @@ def _generate_pyinstaller_spec(
             'jac_scale': True,
             'byllm': True,
             'jac_coder': True,
-            'jac_mcp': True,
-            'jac_client': True
+            'jac_mcp': True
         };
     }
 
