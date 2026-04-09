@@ -43,7 +43,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.8
 
-- 1 small changes.
+- **Performance: Batch MongoDB Fetch via `$in`**: `MongoBackend.find()` now issues a single `collection.find({'_id': {'$in': [...]}})` query instead of individual `get()` calls per ID, reducing round-trips for bulk anchor lookups.
+- **Performance: Redis Pipeline Batch Operations**: Added `RedisBackend.bulk_exists()` and `RedisBackend.bulk_put()` methods that use Redis pipelines to check existence and store multiple anchors in a single round-trip, enabling efficient cache warming for TTG prefetching.
 
 ## jac-scale 0.2.7
 

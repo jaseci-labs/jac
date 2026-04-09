@@ -120,6 +120,11 @@ impl VolatileMemory.get_mem -> dict[UUID, Anchor] {
     return self.__mem__;
 }
 
+"""Prefetch - no-op for volatile memory (everything is already in L1)."""
+impl VolatileMemory.prefetch(ids: Iterable[UUID]) -> None {
+    ;
+}
+
 """Commit - no-op for volatile memory."""
 impl VolatileMemory.commit(anchor: (Anchor | None) = None) -> None {
 # No persistence, nothing to commit
@@ -147,6 +152,22 @@ impl LocalCacheMemory.put_if_exists(anchor: Anchor) -> bool {
 """Invalidate a cache entry by ID."""
 impl LocalCacheMemory.invalidate(id: UUID) -> None {
     self.__mem__.pop(id, None);
+}
+
+"""Batch check existence — returns set of IDs present in cache."""
+impl LocalCacheMemory.bulk_exists(ids: Iterable[UUID]) -> set[UUID] {
+    return {
+        uid
+        for uid in ids
+        if uid in self.__mem__
+    };
+}
+
+"""Batch store multiple anchors."""
+impl LocalCacheMemory.bulk_put(anchors: Iterable[Anchor]) -> None {
+    for anchor in anchors {
+        self.__mem__[anchor.id] = anchor;
+    }
 }
 
 # =============================================================================
@@ -336,6 +357,15 @@ impl SqliteMemory.find_one(
     return None;
 }
 
+"""Prefetch anchors from DB into in-memory cache."""
+impl SqliteMemory.prefetch(ids: Iterable[UUID]) -> None {
+    for uid in ids {
+        if uid not in self.__mem__ {
+            self.get(uid);
+        }
+    }
+}
+
 """Sync memory to database with access control checks."""
 impl SqliteMemory.sync -> None {
     import from jaclang { JacRuntimeInterface as Jac }
@@ -404,6 +434,15 @@ impl SqliteMemory.sync -> None {
                     if archetype_changed {
                         stored.archetype = anchor.archetype;
                     }
+                    changed = True;
+                }
+                # Handle topology_index_data updates for NodeAnchors
+                if (
+                    isinstance(stored, NodeAnchor)
+                    and isinstance(anchor, NodeAnchor)
+                    and stored.topology_index_data != anchor.topology_index_data
+                ) {
+                    stored.topology_index_data = anchor.topology_index_data;
                     changed = True;
                 }
                 # Only write to database if something actually changed
@@ -594,6 +633,53 @@ impl TieredMemory.reset_l3_fetch_count -> None {
     import from jaclang.runtimelib.memory { SqliteMemory }
     if isinstance(self.l3, SqliteMemory) {
         self.l3.l3_fetch_count = 0;
+    }
+}
+
+"""Prefetch: batch-load anchors from L3 (DB) into L2 (cache).
+
+Uses bulk_exists (1 Redis pipeline) to find missing IDs, l3.find() (1 MongoDB
+$in query) to batch-fetch from L3, and bulk_put (1 Redis pipeline) to store.
+Total: 3 round-trips regardless of ID count. No-op if L2 is unavailable.
+
+When find_raw/bulk_put_raw are available (jac-scale), uses fast path that
+skips deserialization from L3 and re-serialization to L2.
+"""
+impl TieredMemory.prefetch(ids: Iterable[UUID]) -> None {
+    if self.l3 is None or self.l2 is None {
+        return;
+    }
+    id_list = list(ids);
+    if not id_list {
+        return;
+    }
+    # 1 round-trip: batch EXISTS via pipeline
+    existing = self.l2.bulk_exists(id_list);
+    missing_ids = [
+        uid
+        for uid in id_list
+        if uid not in existing
+    ];
+    if not missing_ids {
+        return;
+    }
+    # Check if fast path (skip ser/deser) is available
+    has_find_raw = hasattr(self.l3, 'find_raw')
+    and callable(getattr(self.l3, 'find_raw', None));
+    has_bulk_put_raw = hasattr(self.l2, 'bulk_put_raw')
+    and callable(getattr(self.l2, 'bulk_put_raw', None));
+    if has_find_raw and has_bulk_put_raw {
+        # Fast path: skip deserialization and re-serialization
+        raw_items = list(self.l3.find_raw(missing_ids));
+        if raw_items {
+            self.l2.bulk_put_raw(raw_items);
+        }
+    } else {
+        # Standard path: deserialize from L3, re-serialize to L2
+        fetched = list(self.l3.find(missing_ids));
+        if fetched {
+            self.l2.bulk_put(fetched);
+        }
     }
 }
 

@@ -464,6 +464,30 @@ impl JacWalker.spawn_call(
         call_state = ctx.call_state.get();
         owns_call_state = True;
     }
+    # TTG prefetch: predict traversal and warm the cache before walking.
+    if isinstance(nd, NodeAnchor) {
+        try {
+            import from jaclang.project.config { get_config }
+            cfg = get_config();
+            if (cfg is not None and cfg.run.prefetching == "ttg") {
+                import from jaclang.jac0core.ttg { JacTTGGenerator }
+                import from jaclang.runtimelib.topo_utils { _get_root_anchor }
+                root_anchor = _get_root_anchor(nd);
+                if root_anchor is not None {
+                    topo_idx = root_anchor.get_topology_index();
+                    prefetch_ids = JacTTGGenerator.get_ttg_prefetch_list(
+                        warch, nd.id, topo_idx,
+                        max_length=cfg.run.prefetch_limit
+                    );
+                    if prefetch_ids {
+                        ctx.mem.prefetch(prefetch_ids);
+                    }
+                }
+            }
+        } except Exception {
+            ;  # Prefetch is best-effort; do not break walker execution.
+        }
+    }
     try {
         for i in warch._jac_entry_funcs_ {
             if not i.trigger {
@@ -677,6 +701,30 @@ impl JacWalker.async_spawn_call(
         call_token = ctx.call_state.set(CallState());
         call_state = ctx.call_state.get();
         owns_call_state = True;
+    }
+    # TTG prefetch: predict traversal and warm the cache before walking.
+    if isinstance(nd, NodeAnchor) {
+        try {
+            import from jaclang.project.config { get_config }
+            cfg = get_config();
+            if (cfg is not None and cfg.run.prefetching == "ttg") {
+                import from jaclang.jac0core.ttg { JacTTGGenerator }
+                import from jaclang.runtimelib.topo_utils { _get_root_anchor }
+                root_anchor = _get_root_anchor(nd);
+                if root_anchor is not None {
+                    topo_idx = root_anchor.get_topology_index();
+                    prefetch_ids = JacTTGGenerator.get_ttg_prefetch_list(
+                        warch, nd.id, topo_idx,
+                        max_length=cfg.run.prefetch_limit
+                    );
+                    if prefetch_ids {
+                        ctx.mem.prefetch(prefetch_ids);
+                    }
+                }
+            }
+        } except Exception {
+            ;  # Prefetch is best-effort; do not break walker execution.
+        }
     }
     try {
         for i in warch._jac_entry_funcs_ {

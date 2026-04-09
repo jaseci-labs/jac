@@ -440,6 +440,8 @@ glob MICRO_JAC_FILES: list[str] = [
          "tests/language/fixtures/lambda_self.jac",
          "tests/language/fixtures/needs_import.jac",
          "tests/language/fixtures/simple_archs.jac",
+         "tests/language/fixtures/ttg_basic.jac",
+         "tests/language/fixtures/ttg_large_graph.jac",
          "tests/language/fixtures/visit_order.jac",
          "tests/runtimelib/fixtures/client_app.jac",
          "tests/runtimelib/fixtures/client_app_with_import.jac",

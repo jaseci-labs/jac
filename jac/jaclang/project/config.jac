@@ -31,6 +31,8 @@ obj RunConfig {
         cache: bool = True,
         autonative: bool = False,
         topology_index: bool = True,
+        prefetching: str = "",
+        prefetch_limit: int = 200;
         diagnostics: str = "error";  # "error" | "all" | "none"
 }
 

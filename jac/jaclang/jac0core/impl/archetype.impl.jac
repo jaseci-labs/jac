@@ -169,6 +169,8 @@ impl Anchor.__getstate__ -> dict[(str, Any)] {
 """Deserialize Anchor."""
 impl Anchor.__setstate__(state: dict[(str, Any)]) -> None {
     self.__dict__.update(state);
+    # Initialize is_updated to False since loaded data hasn't been modified yet
+    self.is_updated = False;
     if (self.is_populated() and self.archetype) {
         self.archetype.__jac__ = self;
         self.hash = hash(dumps(self));
@@ -252,6 +254,7 @@ impl NodeAnchor.get_topology_index -> Any {
 """Set topology index from TopologyIndex object (encodes to blob)."""
 impl NodeAnchor.set_topology_index(index: Any) -> None {
     self.topology_index_data = index.encode();
+    self.is_updated = True;
 }
 
 """Serialize Edge Anchor."""

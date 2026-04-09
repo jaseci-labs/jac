@@ -74,6 +74,10 @@ obj RedisBackend(CacheMemory) {
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
+    def bulk_exists(ids: Iterable[UUID]) -> set[UUID];
+    def bulk_put(anchors: Iterable[Anchor]) -> None;
+    """Batch store raw serialized data directly (skip serialization)."""
+    def bulk_put_raw(items: Iterable[tuple[UUID, dict]]) -> None;
 }
 
 """
@@ -118,6 +122,8 @@ obj MongoBackend(PersistentMemory) {
     # PersistentMemory-specific
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
+    """Batch fetch raw serialized data (skip deserialization). Returns (UUID, dict) pairs."""
+    def find_raw(ids: Iterable[UUID]) -> Generator[tuple[UUID, dict], None, None];
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
 }

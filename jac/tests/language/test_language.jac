@@ -836,3 +836,17 @@ test "escape sequences in strings and fstrings" {
     # Test 9: unicode \u001b → ESC (third distinct escape syntax)
     assert "unicode_escape_first_ord:27" in output , f"Unicode escape failed: {output}";
 }
+
+test "TTG basic graph topology" {
+    output = run_jac(os.path.join(FIXTURES, "ttg_basic.jac"));
+    # Verify walker traversal along BasicEdge from TypeA nodes
+    assert "visited [1, 2]" in output , f"Walker visited incorrect nodes: {output}";
+}
+
+test "TTG large graph with multiple walkers" {
+    output = run_jac(os.path.join(FIXTURES, "ttg_large_graph.jac"));
+    # Verify walkers executed and collected visited nodes
+    assert "w1_visited" in output , f"HttpCrawler walker not executed: {output}";
+    assert "w2_visited" in output , f"ServiceDbCrawler walker not executed: {output}";
+    assert "w3_visited" in output , f"FullCrawler walker not executed: {output}";
+}

@@ -204,3 +204,87 @@ impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
 impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
 }
+
+"""Batch check existence using Redis pipeline — single round-trip."""
+impl RedisBackend.bulk_exists(ids: Iterable[UUID]) -> set[UUID] {
+    if self.redis_client is None {
+        return set();
+    }
+    id_list = list(ids);
+    if not id_list {
+        return set();
+    }
+    try {
+        pipe = self.redis_client.pipeline(transaction=False);
+        keys = [storage_key(to_uuid(uid)) for uid in id_list];
+        for key in keys {
+            pipe.exists(key);
+        }
+        results = pipe.execute();
+        return {
+            uid
+            for (uid, exists) in zip(id_list, results)
+            if exists
+        };
+    } except Exception as e {
+        logger.debug(f"Redis bulk_exists pipeline failed: {e}");
+        return set();
+    }
+}
+
+"""Batch store multiple anchors using Redis pipeline — single round-trip."""
+impl RedisBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
+    if self.redis_client is None {
+        return;
+    }
+    anchor_list = list(anchors);
+    if not anchor_list {
+        return;
+    }
+    try {
+        db_config = _get_db_config();
+        ttl = db_config.get('redis_default_ttl', 0);
+        pipe = self.redis_client.pipeline(transaction=False);
+        for anchor in anchor_list {
+            data = Serializer.serialize(anchor, include_type=True);
+            key = storage_key(anchor.id);
+            payload = json.dumps(data);
+            if ttl > 0 {
+                pipe.setex(key, ttl, payload);
+            } else {
+                pipe.set(key, payload);
+            }
+        }
+        pipe.execute();
+    } except Exception as e {
+        logger.debug(f"Redis bulk_put pipeline failed: {e}");
+    }
+}
+
+"""Batch store raw serialized data directly (skip serialization) — single round-trip."""
+impl RedisBackend.bulk_put_raw(items: Iterable[tuple[UUID, dict]]) -> None {
+    if self.redis_client is None {
+        return;
+    }
+    item_list = list(items);
+    if not item_list {
+        return;
+    }
+    try {
+        db_config = _get_db_config();
+        ttl = db_config.get('redis_default_ttl', 0);
+        pipe = self.redis_client.pipeline(transaction=False);
+        for (uid, data) in item_list {
+            key = storage_key(uid);
+            payload = json.dumps(data);
+            if ttl > 0 {
+                pipe.setex(key, ttl, payload);
+            } else {
+                pipe.set(key, payload);
+            }
+        }
+        pipe.execute();
+    } except Exception as e {
+        logger.debug(f"Redis bulk_put_raw pipeline failed: {e}");
+    }
+}

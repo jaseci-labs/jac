@@ -167,6 +167,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Request-Scoped Execution Context**:Introduced request-scoped execution contexts using `ContextVar` in `JacRuntime.get_context()`, enabling isolated per-request state and L1 caches in web environments while preserving global context behavior for CLI and tests.
 - **Type Checker: Warn on Return Value in Event-Driven Abilities (W2014)**: The type checker now emits warning W2014 when an event-driven ability (`can X with Y entry`) uses `return <value>`. Since walker-triggered abilities ignore return values, the warning guides developers to update node or walker fields directly instead. Plain `return;` (no value) and `return None;` are not flagged.
 - **Fix: `jac py2jac` Performance on Large Files**: Fixed exponential slowdown when converting large Python files to Jac. A 10k-line file now converts in ~10s instead of 37s (3.9x faster), and a 20k-line file in ~16s instead of ~3 minutes (11x faster).
+- **TTG (Temporal Trace Graph) System**: Added runtime-based walker traversal prediction and node prefetching infrastructure. The TTG generator analyzes walker visit patterns from `__jac_ttg_visits__` metadata and uses the existing TopologyIndex to perform BFS traversal, producing a prefetch list of UUIDs. Includes `JacTTGGenerator` and `VisitType` class for type-aware edge filtering.
 
 ## jaclang 0.12.2
 

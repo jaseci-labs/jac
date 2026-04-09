@@ -154,17 +154,29 @@ impl MongoBackend.get_roots -> Generator[Root, None, None] {
     }
 }
 
-"""Find anchors by IDs with optional filter."""
+"""Find anchors by IDs with optional filter — uses $in for batch fetch."""
 impl MongoBackend.find(
     ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
 ) -> Generator[Anchor, None, None] {
+    if self.client is None {
+        return;
+    }
     id_list = [ids] if isinstance(ids, UUID) else list(ids);
-    for id in id_list {
-        if (anchor := self.get(id)) {
-            if filter is None or filter(anchor) {
-                yield anchor;
+    if not id_list {
+        return;
+    }
+    try {
+        str_ids = [str(to_uuid(uid)) for uid in id_list];
+        for doc in self.collection.find({'_id': {'$in': str_ids}}) {
+            if (anchor := self._load_anchor(doc)) {
+                anchor.is_updated = False;
+                if filter is None or filter(anchor) {
+                    yield anchor;
+                }
             }
         }
+    } except Exception as e {
+        logger.debug(f"MongoDB batch find failed: {e}");
     }
 }
 
@@ -243,6 +255,29 @@ impl MongoBackend.bulk_put(anchors: Iterable[Anchor]) -> None {
     }
 }
 
+"""Batch fetch raw serialized data (skip deserialization). Returns (UUID, dict) pairs."""
+impl MongoBackend.find_raw(
+    ids: Iterable[UUID]
+) -> Generator[tuple[UUID, dict], None, None] {
+    if self.client is None {
+        return;
+    }
+    id_list = list(ids);
+    if not id_list {
+        return;
+    }
+    try {
+        str_ids = [str(to_uuid(uid)) for uid in id_list];
+        docs = list(self.collection.find({'_id': {'$in': str_ids}}));
+        for doc in docs {
+            if 'data' in doc {
+                uid = UUID(doc['_id']);
+                yield (uid, doc['data']);
+            }
+        }
+    } except Exception as e {
+        logger.debug(f"MongoDB find_raw failed: {e}");
+    }
 """Batch get multiple anchors by ID using MongoDB $in query."""
 impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     result: dict[UUID, Anchor] = {};
