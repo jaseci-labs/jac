@@ -1970,6 +1970,54 @@ test "assignment_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+"""Parenthesized BoolExpr conditions wire the short-circuit CFG."""
+test "parenthesized_bool_cond" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_parenthesized_bool_cond.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Assignment barrier: strict narrowing, widening reset, in-branch re-narrow."""
+test "assignment_barrier" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_assignment_barrier.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # The widening reassignment in `widen_via_reassign` resets `x` to
+    # `int | None`, so `return x` against the `int` return type is the
+    # only expected error.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot return int | NoneType' in msg , f"Expected widening-reset error, got: {msg}";
+}
+
+"""Match-case narrowing is killed by a later assignment to the subject."""
+test "match_case_reassign_reset" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_match_case_reassign_reset.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 4 , f"Expected 4 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    assert 'Cannot assign int to Shape' in program.errors_had[0].pretty_print();
+    for i in [1, 2, 3] {
+        msg = program.errors_had[i].pretty_print();
+        assert 'has no attribute "sides"' in msg , f"Expected attribute error at index {i}, got: {msg}";
+    }
+}
+
 """Test truthiness guard narrowing for member access."""
 test "guard_narrowing" {
     program = JacProgram();
