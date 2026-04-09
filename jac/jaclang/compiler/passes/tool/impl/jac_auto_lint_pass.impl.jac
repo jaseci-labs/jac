@@ -821,7 +821,16 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
     obj_expr = nd.params[0];
     attr_expr = nd.params[1];
     attr_name = self._extract_string_literal_value(attr_expr);
+    # Since BoolExpr operands and IfElseExpr branches are now CfgExpr nodes,
+    # the FuncCall's direct parent is the CfgExpr wrapper, not the enclosing
+    # BoolExpr/IfElseExpr. Step through the wrapper to reach the semantic
+    # parent so the hasattr→obj?.attr rewrite still fires.
+    cfg_wrapper: uni.CfgExpr | None = None;
     parent = nd.parent;
+    if isinstance(parent, uni.CfgExpr) {
+        cfg_wrapper = parent;
+        parent = parent.parent;
+    }
     if parent is None {
         return;
     }
@@ -841,6 +850,19 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     if not self.emit(W3007, node_override=nd) {
+        return;
+    }
+    if cfg_wrapper is not None {
+        replacement.parent = cfg_wrapper;
+        cfg_wrapper.expr = replacement;
+        cfg_wrapper.kid = [replacement];
+        if isinstance(parent, uni.IfElseExpr)
+        and parent.condition is cfg_wrapper
+        and attr_name is not None
+        and isinstance(parent.value.expr, uni.AtomTrailer)
+        and self._is_matching_attr_access(parent.value.expr, obj_expr, attr_name) {
+            self._make_null_ok(parent.value.expr);
+        }
         return;
     }
     replacement.parent = parent;
@@ -1034,7 +1056,9 @@ This only applies when the value and condition are identical expressions.
 This implementation avoids calling normalize() to preserve comment associations.
 """
 impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool {
-    if not self._exprs_are_identical(if_else_node.value, if_else_node.condition) {
+    if not self._exprs_are_identical(
+        if_else_node.value.expr, if_else_node.condition.expr
+    ) {
         return False;
     }
     parent = if_else_node.parent;
@@ -1044,8 +1068,8 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
     if not self.emit(W3008, node_override=if_else_node) {
         return False;
     }
-    if isinstance(if_else_node.else_value, uni.Null) {
-        replacement = if_else_node.value;
+    if isinstance(if_else_node.else_value.expr, uni.Null) {
+        replacement: uni.Expr = if_else_node.value.expr;
         replacement.parent = parent;
     } else {
         or_token = uni.Token(
@@ -1059,10 +1083,14 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
             pos_start=0,
             pos_end=2
         );
+        cfg_val = uni.CfgExpr(
+            expr=if_else_node.value.expr, kid=[if_else_node.value.expr]
+        );
+        cfg_else = uni.CfgExpr(
+            expr=if_else_node.else_value.expr, kid=[if_else_node.else_value.expr]
+        );
         replacement = uni.BoolExpr(
-            op=or_token,
-            values=[if_else_node.value, if_else_node.else_value],
-            kid=[if_else_node.value, or_token, if_else_node.else_value]
+            op=or_token, values=[cfg_val, cfg_else], kid=[cfg_val, or_token, cfg_else]
         );
         replacement.parent = parent;
     }
@@ -1082,18 +1110,18 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
             parent.value = replacement;
         }
     } elif isinstance(parent, uni.IfElseExpr) {
-        if parent.value is if_else_node {
-            parent.value = replacement;
-        } elif parent.condition is if_else_node {
-            parent.condition = replacement;
-        } elif parent.else_value is if_else_node {
-            parent.else_value = replacement;
+        if parent.value.expr is if_else_node {
+            parent.value = uni.CfgExpr(expr=replacement, kid=[replacement]);
+        } elif parent.condition.expr is if_else_node {
+            parent.condition = uni.CfgExpr(expr=replacement, kid=[replacement]);
+        } elif parent.else_value.expr is if_else_node {
+            parent.else_value = uni.CfgExpr(expr=replacement, kid=[replacement]);
         }
     } elif isinstance(parent, uni.BoolExpr) {
-        new_values: list[uni.Expr] = [];
+        new_values: list[uni.CfgExpr] = [];
         for val in parent.values {
-            if val is if_else_node {
-                new_values.append(replacement);
+            if val.expr is if_else_node {
+                new_values.append(uni.CfgExpr(expr=replacement, kid=[replacement]));
             } else {
                 new_values.append(val);
             }

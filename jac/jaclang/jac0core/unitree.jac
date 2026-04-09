@@ -271,7 +271,7 @@ obj UniCFGNode(UniNode) {
 }
 
 """A CFG node that branches on a condition with true/false targets.
-Used by BoolExpr (short-circuit) and IfElseExpr (ternary)."""
+Used by CfgExpr wrappers inside BoolExpr operands and IfElseExpr branches."""
 obj ConditionalNode(UniCFGNode) {
     has sc_true_target: (UniCFGNode | None) = None,
         sc_false_target: (UniCFGNode | None) = None;
@@ -324,6 +324,15 @@ obj Expr(UniNode) {
     def type_sym_tab(type_sym_tab: UniScopeNode) {
         self._type_sym_tab = type_sym_tab;
     }
+}
+
+"""Wrapper that promotes an expression to a CFG-participating conditional node.
+Used for each BoolExpr operand and each IfElseExpr branch so that type
+narrowing can be resolved with a single backward CFG walk."""
+obj CfgExpr(Expr, ConditionalNode) {
+    has expr: Expr;
+
+    def postinit -> None;
 }
 
 """AtomExpr node type for Jac Ast."""
@@ -970,10 +979,12 @@ obj CompareExpr(Expr) {
     def postinit -> None;
 }
 
-"""BoolExpr node type for Jac Ast."""
-obj BoolExpr(Expr, ConditionalNode) {
+"""BoolExpr node type for Jac Ast.
+Each operand is wrapped in a CfgExpr so that short-circuit evaluation
+is modeled at the expression level in the CFG."""
+obj BoolExpr(Expr) {
     has op: Token,
-        values: list[Expr];
+        values: list[CfgExpr];
 
     def postinit -> None;
 }
@@ -994,11 +1005,13 @@ obj UnaryExpr(Expr) {
     def postinit -> None;
 }
 
-"""IfElseExpr node type for Jac Ast."""
+"""IfElseExpr node type for Jac Ast.
+Each branch is wrapped in a CfgExpr so that conditional evaluation
+is modeled at the expression level in the CFG."""
 obj IfElseExpr(Expr) {
-    has condition: Expr,
-        value: Expr,
-        else_value: Expr;
+    has condition: CfgExpr,
+        value: CfgExpr,
+        else_value: CfgExpr;
 
     def postinit -> None;
 }

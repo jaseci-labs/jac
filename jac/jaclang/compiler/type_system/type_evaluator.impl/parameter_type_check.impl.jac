@@ -498,12 +498,19 @@ impl TypeEvaluator.match_args_to_params(
         }
         # For class types with explicit self, keep it in params_to_match (don't pop)
     } else {
-        # Bound call: pop self/cls as usual
-        if (
-            len(func_type.parameters) >= 1
-            and (func_type.parameters[0].is_self or func_type.parameters[0].is_cls)
-        ) {
-            params_to_match.pop(0);
+        # Bound call: pop self/cls as usual.
+        # For is_cls, only pop when the function is a classmethod (cls is auto-bound).
+        # __new__ is a staticmethod in CPython — its cls param has is_cls=True for
+        # constructor resolution but should NOT be auto-stripped in direct calls.
+        if len(func_type.parameters) >= 1 {
+            first = func_type.parameters[0];
+            if first.is_self
+            or (
+                first.is_cls
+                and func_type.function_flags & types.FunctionTypeFlags.ClassMethod
+            ) {
+                params_to_match.pop(0);
+            }
         }
     }
     param_tracker = type_utils.ParamAssignmentTracker(params_to_match);
@@ -575,7 +582,12 @@ impl TypeEvaluator._validate_constructor_method(
             has_params = len(method_type.parameters) > 1;
         }
         if has_params {
-            arg_param_match = self.match_args_to_params(expr.params, expr, method_type);
+            # During construction, self/cls is implicitly provided by the metacall.
+            # Strip it before arg matching so user args match the remaining params.
+            # This is necessary because __new__ is a staticmethod — its cls param
+            # won't be auto-stripped by match_args_to_params (no ClassMethod flag).
+            ctor_type = self._strip_implicit_self_cls(method_type);
+            arg_param_match = self.match_args_to_params(expr.params, expr, ctor_type);
             if not arg_param_match.argument_errors {
                 self.validate_arg_types(arg_param_match);
             }
@@ -586,8 +598,9 @@ impl TypeEvaluator._validate_constructor_method(
     if isinstance(method_type, types.OverloadedType) {
         matched_overload: types.FunctionType | None = None;
         for overload in method_type.overloads {
+            ctor_overload = self._strip_implicit_self_cls(overload);
             arg_param_match = self.match_args_to_params(
-                expr.params, expr, overload, checking_overload=True
+                expr.params, expr, ctor_overload, checking_overload=True
             );
 
             if not arg_param_match.argument_errors {
@@ -598,13 +611,38 @@ impl TypeEvaluator._validate_constructor_method(
             }
         }
         if matched_overload is None and method_type.overloads {
+            ctor_first = self._strip_implicit_self_cls(method_type.overloads[0]);
             self.match_args_to_params(
-                expr.params, expr, method_type.overloads[0], checking_overload=False
+                expr.params, expr, ctor_first, checking_overload=False
             );
         }
         return matched_overload;
     }
     return None;
+}
+
+"""
+Strip the implicit self/cls parameter from a method type for constructor matching.
+
+During construction (MyClass(...)), the metacall provides self/cls implicitly.
+Returns a new FunctionType with the first parameter removed if it is self or cls.
+"""
+impl TypeEvaluator._strip_implicit_self_cls(
+    method: types.FunctionType
+) -> types.FunctionType {
+    if (
+        method.parameters
+        and (method.parameters[0].is_self or method.parameters[0].is_cls)
+    ) {
+        return types.FunctionType(
+            func_name=method.func_name,
+            return_type=method.return_type,
+            parameters=method.parameters[1:],
+            function_flags=method.function_flags,
+            type_params=method.type_params,
+        );
+    }
+    return method;
 }
 
 """

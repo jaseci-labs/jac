@@ -315,6 +315,7 @@ variables
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def translate_jac_bin_op(nd: uni.BinaryExpr) -> list[ast3.AST];
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
+    def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def _remove_lambda_param_annotations(signature: uni.FuncSignature) -> None;

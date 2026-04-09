@@ -27,6 +27,10 @@ import signal
 import socket
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from pluggy import PluginManager
 from types import FrameType
 
 
@@ -41,7 +45,12 @@ def _signal_handler(signum: int, frame: FrameType | None) -> None:
 
 
 # Register signal handlers early
-for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+# Note: SIGHUP doesn't exist on Windows, so we check for availability
+_signals_to_handle = [signal.SIGTERM, signal.SIGINT]
+if hasattr(signal, "SIGHUP"):
+    _signals_to_handle.append(signal.SIGHUP)
+
+for sig in _signals_to_handle:
     with contextlib.suppress(OSError, ValueError):
         signal.signal(sig, _signal_handler)
 
@@ -58,8 +67,81 @@ def _find_free_port(host: str = "127.0.0.1") -> int:
         return s.getsockname()[1]
 
 
+def _register_frozen_plugins(plugin_manager: PluginManager) -> None:
+    """Register all Jac plugins manually for PyInstaller frozen apps.
+
+    Entry point discovery fails in frozen apps, so we register each plugin
+    explicitly. jac_client, jac_scale, and byllm all have __init__.py at
+    every directory level (like standard Python packages), so
+    importlib.import_module works normally with JacMetaImporter handling
+    individual .jac files.
+    """
+    plugins = [
+        ("jac_scale.plugin", "JacCmd", "scale"),
+        ("jac_client.plugin.client", "JacClient", "client"),
+        ("byllm.plugin", "JacRuntime", "byllm"),
+    ]
+    for module_path, class_name, name in plugins:
+        try:
+            import importlib
+
+            mod = importlib.import_module(module_path)
+            cls = getattr(mod, class_name)
+            if not plugin_manager.is_registered(cls):
+                plugin_manager.register(cls, name=name)
+                sys.stderr.write(f"[sidecar] Registered {name} plugin\n")
+        except ImportError as e:
+            import traceback
+
+            sys.stderr.write(f"[sidecar] {name} not bundled: {e}\n")
+            traceback.print_exc(file=sys.stderr)
+        except Exception as e:
+            import traceback
+
+            sys.stderr.write(f"[sidecar] {name} registration error: {e}\n")
+            traceback.print_exc(file=sys.stderr)
+
+
+def _run_jac_cli():
+    """Run jaclang CLI commands in-process (multi-mode sidecar support).
+
+    When the sidecar is invoked with --jac-cli, it acts as a jac CLI proxy,
+    routing commands to jaclang directly. This avoids needing a separate jac.exe.
+
+    Usage: sidecar.exe --jac-cli create myproject --use template.jacpack --force
+           sidecar.exe --jac-cli install
+           sidecar.exe --jac-cli lsp
+    """
+    os.environ["NO_COLOR"] = "1"
+    os.environ["PYTHONUTF8"] = "1"
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+
+    # Register plugins manually for frozen apps (entry point discovery fails)
+    if getattr(sys, "frozen", False):
+        try:
+            from jaclang.jac0core.runtime import plugin_manager
+
+            _register_frozen_plugins(plugin_manager)
+        except Exception:
+            pass
+
+    from jaclang.jac0core.cli_boot import start_cli
+
+    # Remove --jac-cli from argv so jaclang sees clean args
+    sys.argv = ["jac"] + sys.argv[2:]  # skip [sidecar.exe, --jac-cli, ...]
+    start_cli()
+
+
 def main():
     """Main entry point for the sidecar."""
+    # Multi-mode: if --jac-cli is first arg, route to jaclang CLI
+    if len(sys.argv) > 1 and sys.argv[1] == "--jac-cli":
+        _run_jac_cli()
+        return
+
     parser = argparse.ArgumentParser(
         description="Jac Backend Sidecar - Runs Jac API server in a bundled executable"
     )
@@ -137,19 +219,10 @@ def main():
         sys.stderr.write("  Make sure jaclang is installed: pip install jaclang\n")
         sys.exit(1)
 
-    # Register jac-scale plugin manually for PyInstaller bundles.
+    # Register plugins manually for PyInstaller bundles.
     # Entry point discovery fails in frozen apps, so we register explicitly.
     if getattr(sys, "frozen", False):
-        try:
-            from jac_scale.plugin import JacCmd
-
-            if not plugin_manager.is_registered(JacCmd):
-                plugin_manager.register(JacCmd, name="scale")
-                sys.stderr.write("[sidecar] Registered jac-scale plugin\n")
-        except ImportError:
-            sys.stderr.write("[sidecar] jac-scale not bundled\n")
-        except Exception as e:
-            sys.stderr.write(f"[sidecar] Plugin registration error: {e}\n")
+        _register_frozen_plugins(plugin_manager)
 
     # Get the console now that jaclang is available
     from jaclang.cli.console import console
@@ -159,17 +232,29 @@ def main():
     if args.data_path:
         data_path = Path(args.data_path).resolve()
     else:
-        # Default: ~/.local/share/jac-app (Linux)
-        # This ensures we have a writable location even if base_path is read-only (e.g., AppImage)
-        data_path = Path.home() / ".local" / "share" / "jac-app"
+        # Platform-specific default paths
+        if sys.platform == "win32":
+            # Windows: Use LOCALAPPDATA or fallback to USERPROFILE
+            local_app_data = os.environ.get("LOCALAPPDATA")
+            if local_app_data:
+                data_path = Path(local_app_data) / "jac-app"
+            else:
+                data_path = Path.home() / "AppData" / "Local" / "jac-app"
+        else:
+            # Linux/macOS: ~/.local/share/jac-app
+            data_path = Path.home() / ".local" / "share" / "jac-app"
 
     # Try to create data path with fallbacks
     fallback_paths = [
         data_path,
         Path.home() / ".jac-app",  # Fallback to home directory
     ]
-    # Add /tmp fallback only on Unix (os.getuid() doesn't exist on Windows)
-    if hasattr(os, "getuid"):
+    # Add platform-specific temp fallback
+    if sys.platform == "win32":
+        temp_dir = os.environ.get("TEMP") or os.environ.get("TMP")
+        if temp_dir:
+            fallback_paths.append(Path(temp_dir) / "jac-app")
+    elif hasattr(os, "getuid"):
         fallback_paths.append(Path("/tmp") / f"jac-app-{os.getuid()}")
 
     data_path_created = False
@@ -193,6 +278,28 @@ def main():
         sys.exit(1)
 
     os.environ["JAC_DATA_PATH"] = str(data_path)
+
+    # Load .env from bundled location (PyInstaller _MEIPASS) before changing CWD
+    _meipass = getattr(sys, "_MEIPASS", None)
+    if _meipass:
+        bundled_env = Path(_meipass) / ".env"
+        if bundled_env.is_file():
+            try:
+                from dotenv import load_dotenv
+
+                load_dotenv(str(bundled_env), override=False)
+                sys.stderr.write("[sidecar] Loaded .env from bundle\n")
+            except ImportError:
+                # dotenv not available, copy .env vars manually
+                with open(bundled_env, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if line and not line.startswith("#") and "=" in line:
+                            key, _, val = line.partition("=")
+                            key = key.strip()
+                            val = val.strip().strip('"').strip("'")
+                            if key and key not in os.environ:
+                                os.environ[key] = val
 
     # Change working directory to writable data path
     # This ensures relative paths like .jac/ work in read-only AppImage environments
