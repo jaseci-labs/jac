@@ -1947,6 +1947,31 @@ test "assignment_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+"""Regression: assignment is a narrowing barrier (widening edge).
+
+Pins down the three shapes of the barrier: strict narrowing succeeds,
+valid widening resets to the declared type, and a narrowed re-assignment
+inside a branch stays narrowed. The widening case is what catches
+regressions of the barrier discipline — it's the one place where the
+fix's behavior is visible without an upstream type error.
+"""
+test "assignment_barrier" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_assignment_barrier.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Exactly one error: the widening reassignment inside
+    # `widen_via_reassign` must reset `x` back to `int | None` so that
+    # `return x` fails against the `int` return type.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot return int | NoneType' in msg , f"Expected widening-reset error, got: {msg}";
+}
+
 """Regression: assignment is a narrowing barrier.
 
 An assignment that targets a reference must terminate the narrowing chain
