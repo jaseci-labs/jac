@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.13.6 (Unreleased)
 
+- **Fix: ES Codegen Method Dispatch on `.cl.jac` Files**: Operator-side primitive dispatch now walks the receiver's MRO, so `"a" in name.lower()` lowers to `.includes()` instead of a runtime-crashing JS `in`. When the receiver's static type isn't a JS-native primitive, Python method idioms (`lower`, `upper`, `strip`, `lstrip`, `rstrip`, `append`, `extend`, `pop`) now route through `_jac.poly.*` runtime helpers that `typeof`-dispatch to the native JS operation, instead of leaking Python identifiers into the JS output.
 - **Fix: Console BrokenPipeError in Sidecar Mode**: Console `print()` and `flush()` now catch `BrokenPipeError`/`OSError`, preventing crashes when stdout is closed (e.g., Tauri sidecar after port discovery).
 - **Fix: Scheduler Null Safety**: `stop()` and `wait()` now guard against `None` on `_stop_event`, `_done_event`, and `_thread`, preventing `AttributeError` during early shutdown.
 - **Fix: `JAC_DATA_PATH` Environment Variable for Read-Only Deployments**: `UserManager` and `get_db_path()` now honor the `JAC_DATA_PATH` env var, redirecting writable runtime data (database, `.jac/data/`) to a specified path. Enables deployments where the base path is read-only (e.g., AppImage).
