@@ -42,6 +42,72 @@ impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
+"""Type an LHS Name receives from its enclosing assignment, or None.
+
+Flat `x = e` returns the type of `e`. Destructure `(x, _) = e` (and
+nested) descends the RHS tuple's `type_args` by positional path.
+
+None is returned — callers keep the declared type — for the declaration
+site itself (its cached `.type` doubles as the declared-type lookup for
+`_get_type_of_symbol`), augmented assignments, member assignments,
+starred slots, and RHS shapes that aren't a concrete positional tuple.
+"""
+impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None {
+    import from jaclang.compiler.symbol_utils { find_destructure_index_path }
+    # Declaration site: leave the cached declared type intact.
+    if expr.sym is not None and expr.sym.decl is expr {
+        return None;
+    }
+    # Peel destructure / paren wrappers to find the enclosing Assignment.
+    parent = expr.parent;
+    lhs_root: uni.UniNode = expr;
+    while isinstance(parent, (uni.TupleVal, uni.ListVal, uni.AtomUnit)) {
+        lhs_root = parent;
+        parent = parent.parent;
+    }
+    if not isinstance(parent, uni.Assignment) or parent.value is None {
+        return None;
+    }
+    assignment = parent;
+    # `x += e` evaluates to `x <op> e` — defer to the declared type.
+    if assignment.aug_op is not None {
+        return None;
+    }
+    # Identity check — a TupleVal can appear on both sides, `in` uses equality.
+    target_hit = False;
+    for t in assignment.target {
+        if t is lhs_root {
+            target_hit = True;
+            break;
+        }
+    }
+    if not target_hit {
+        return None;
+    }
+    # Flat: the Name is the target.
+    if lhs_root is expr {
+        return self.get_type_of_expression(assignment.value);
+    }
+    # Destructure: descend `type_args` by positional path.
+    path = find_destructure_index_path(lhs_root, expr.value);
+    if path is None or len(path) == 0 {
+        return None;
+    }
+    cursor: TypeBase | None = self.get_type_of_expression(assignment.value);
+    for idx in path {
+        if (
+            isinstance(cursor, types.ClassType)
+            and cursor.private.type_args
+            and idx < len(cursor.private.type_args)
+        ) {
+            cursor = self._convert_to_instance(cursor.private.type_args[idx]);
+        } else {
+            return None;
+        }
+    }
+    return cursor;
+}
+
 """Return the effective type of the float."""
 impl TypeEvaluator.get_type_of_float(nd: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
