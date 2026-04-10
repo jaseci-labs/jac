@@ -801,6 +801,74 @@ impl DashboardPage.renderJacToPyOutput -> JsxElement {
         </div>;
 }
 
+impl DashboardPage.renderPyToJacOutput -> JsxElement {
+    if not current_result {
+        return renderEmpty();
+    }
+    if not current_result["ok"] {
+        return renderErr();
+    }
+    data = current_result["data"] if "data" in current_result else {};
+    jac_code: str = str(data["jac_code"]) if "jac_code" in data else "";
+    warnings: list = data["warnings"] if "warnings" in data else [];
+    if not jac_code and len(warnings) == 0 {
+        return
+            <div className="text-xs text-zinc-500">
+                No output returned.
+            </div>;
+    }
+    return
+        <div className="space-y-3">
+            {jac_code
+            and <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <span
+                            className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-orange-400 bg-orange-500/10 border-orange-500/20"
+                        >
+                            JAC
+                        </span>
+                        <span className="text-[10px] text-zinc-600 font-mono">
+                            {str(len(jac_code.split("\n"))) + " lines"}
+                        </span>
+                    </div>
+                    <button
+                        onClick={lambda { navigator.clipboard.writeText(jac_code);jac_copied = True;setTimeout(
+                            lambda { jac_copied = False;}, 2000
+                        );}}
+                        className={"px-2 py-1 text-[9px] rounded-md border transition " + (
+                            "bg-green-500/20 border-green-500/40 text-green-400"
+                                if jac_copied
+                                else "bg-white/5 hover:bg-white/10 border-white/10"
+                        )}
+                    >
+                        {"Copied!" if jac_copied else "Copy"}
+                    </button>
+                </div>
+                <pre
+                    className="text-[11px] leading-5 text-orange-300/80 max-h-[420px] overflow-auto bg-[#070809] p-3 rounded-lg border border-orange-900/30 whitespace-pre-wrap break-words font-mono"
+                >
+                    {jac_code}
+                </pre>
+            </div>}{len(warnings) > 0
+            and <div className="space-y-1">
+                <div
+                    className="text-[9px] uppercase tracking-[0.15em] text-yellow-600 font-semibold"
+                >
+                    {str(len(warnings)) + " warning(s)"}
+                </div>
+                {[
+                    <div
+                        key={str(w)}
+                        className="text-[11px] font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg"
+                    >
+                        {str(w)}
+                    </div> for w in warnings
+                ]}
+            </div>}
+        </div>;
+}
+
 impl DashboardPage.renderRunOutput -> JsxElement {
     if not current_result {
         return renderEmpty();
@@ -1263,6 +1331,7 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         "search_docs": renderSearchDocsOutput,
         "jac_to_js": renderJacToJsOutput,
         "jac_to_py": renderJacToPyOutput,
+        "py_to_jac": renderPyToJacOutput,
         "run_jac": renderRunOutput,
         "lint_jac": renderLintOutput,
         "graph_visualize": renderGraphVisualizeOutput,
@@ -1278,5 +1347,541 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
     return
         <div className="text-xs text-zinc-600">
             Run a tool to see output here.
+        </div>;
+}
+
+impl DashboardPage.renderDock -> JsxElement {
+    is_ok: bool = (
+        "ok" in current_result and current_result["ok"]
+    )
+        if current_result
+        else False;
+    dot_cls: str = (
+        "bg-orange-400 animate-pulse"
+            if loading != ""
+            else ("bg-green-400" if is_ok else "bg-red-400")
+    )
+        if active_tool != ""
+        else "bg-zinc-700";
+    return
+        <div
+            className="w-[420px] flex-shrink-0 flex flex-col rounded-2xl border border-white/[0.06] bg-zinc-900/60 overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] min-h-0"
+        >
+            <div
+                className="flex-shrink-0 flex items-center justify-between border-b border-white/[0.05] bg-zinc-900/40 px-4 h-10"
+            >
+                <div className="flex items-center gap-2 min-w-0">
+                    <span
+                        className={"h-1.5 w-1.5 rounded-full flex-shrink-0 " + dot_cls}
+                    />
+                    <span className="text-[11px] text-zinc-500 truncate">
+                        {notice}
+                    </span>
+                </div>
+                <span
+                    className="text-[9px] uppercase tracking-[0.18em] text-zinc-700 flex-shrink-0 ml-3"
+                >
+                    Output
+                </span>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5 min-h-0">
+                {active_tool == ""
+                and <div className="flex flex-col items-center justify-center h-full">
+                    <p
+                        className="text-[11px] text-zinc-700 text-center leading-relaxed"
+                    >
+                        Run a tool to see output here.
+                    </p>
+                </div>}{active_tool != "" and renderActiveOutput()}
+            </div>
+        </div>;
+}
+
+impl DashboardPage.renderPalette -> JsxElement {
+    all_categories: list = [
+        {
+            "label": "Analysis",
+            "tools": [
+                {"key": "validate_jac", "label": "Validate Jac", "kind": "code"},
+                {"key": "check_syntax", "label": "Check Syntax", "kind": "code"},
+                {"key": "lint_jac", "label": "Lint Jac", "kind": "code+opts"},
+                {"key": "get_ast_tree", "label": "Get AST Tree", "kind": "code"},
+                {"key": "get_ast_json", "label": "Get AST JSON", "kind": "code"},
+                {"key": "explain_error", "label": "Explain Error", "kind": "input"}
+            ]
+        },
+        {
+            "label": "Transform",
+            "tools": [
+                {"key": "format_jac", "label": "Format Jac", "kind": "code"},
+                {"key": "py_to_jac", "label": "Python to Jac", "kind": "input"},
+                {"key": "jac_to_py", "label": "Jac to Python", "kind": "code"},
+                {"key": "jac_to_js", "label": "Jac to JavaScript", "kind": "code"}
+            ]
+        },
+        {
+            "label": "Execution",
+            "tools": [
+                {"key": "run_jac", "label": "Run Jac", "kind": "code+opts"},
+                {"key": "graph_visualize", "label": "Visualize Graph", "kind": "code"}
+            ]
+        },
+        {
+            "label": "Documentation",
+            "tools": [
+                {"key": "search_docs", "label": "Search Docs", "kind": "input"},
+                {
+                    "key": "understand_jac_and_jaseci",
+                    "label": "Jac and Jaseci Guide",
+                    "kind": "instant"
+                },
+                {"key": "get_resource", "label": "Get Resource", "kind": "input"},
+                {"key": "list_examples", "label": "List Examples", "kind": "instant"},
+                {"key": "get_example", "label": "Get Example", "kind": "input"}
+            ]
+        },
+        {
+            "label": "Commands",
+            "tools": [
+                {"key": "list_commands", "label": "List Commands", "kind": "instant"},
+                {"key": "get_command", "label": "Get Command", "kind": "input"},
+                {"key": "execute_command", "label": "Execute Command", "kind": "input"}
+            ]
+        }
+    ];
+
+    q: str = palette_query.lower();
+
+    visible_categories: list = [];
+    for cat in all_categories {
+        filtered: list = [
+            t
+            for t in cat["tools"]
+            if q == "" or q in t["label"].lower() or q in t["key"].lower()
+        ];
+        if len(filtered) > 0 {
+            visible_categories = visible_categories + [
+                {"label": cat["label"], "tools": filtered}
+            ];
+        }
+    }
+
+    # Micro-form view (shown when a tool needing extra input is selected)
+    if palette_extra != "" {
+        tool_labels: dict = {
+            "explain_error": "Explain Error",
+            "py_to_jac": "Python to Jac",
+            "search_docs": "Search Docs",
+            "get_resource": "Get Resource",
+            "get_example": "Get Example",
+            "get_command": "Get Command",
+            "execute_command": "Execute Command",
+            "lint_jac": "Lint Jac",
+            "run_jac": "Run Jac"
+        };
+        tool_label: str = (
+            tool_labels[palette_extra]
+                if palette_extra in tool_labels
+                else palette_extra
+        );
+        pal_input_cls = "w-full bg-[#0a0a0b] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-orange-500/40 focus:bg-zinc-900/60 transition";
+        return
+            <div
+                className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/70 backdrop-blur-md"
+                onClick={lambda { palette_open = False;palette_extra = "";}}
+            >
+                <div
+                    className="relative w-full max-w-[480px] mx-4 rounded-2xl border border-white/[0.1] bg-[#0f1012] shadow-[0_30px_80px_rgba(0,0,0,0.9)] overflow-hidden"
+                    onClick={lambda e: Any { e.stopPropagation();}}
+                >
+                    <div
+                        className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.06]"
+                    >
+                        <div className="flex items-center gap-2.5">
+                            <button
+                                onClick={lambda { palette_extra = "";palette_query = "";}}
+                                className="text-zinc-600 hover:text-zinc-300 transition text-sm leading-none"
+                            >
+                                back
+                            </button>
+                            <span className="text-zinc-800">
+                                /
+                            </span>
+                            <span className="text-sm font-medium text-zinc-200">
+                                {tool_label}
+                            </span>
+                        </div>
+                        <kbd
+                            className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-white/[0.1] text-zinc-600"
+                        >
+                            Esc
+                        </kbd>
+                    </div>
+                    <div className="px-4 py-4 space-y-3">
+                        {palette_extra == "explain_error"
+                        and <textarea
+                            autoFocus={True}
+                            value={error_message}
+                            onChange={lambda e: Any { error_message = e.target.value;}}
+                            rows={4}
+                            placeholder="Paste the error message here..."
+                            className={pal_input_cls + " resize-y"}
+                        />}{palette_extra == "py_to_jac"
+                        and <textarea
+                            autoFocus={True}
+                            value={python_input}
+                            onChange={lambda e: Any { python_input = e.target.value;}}
+                            rows={6}
+                            placeholder="# Paste Python code to convert..."
+                            className={pal_input_cls + " resize-y"}
+                        />}{palette_extra == "search_docs"
+                        and <input
+                            autoFocus={True}
+                            type="text"
+                            value={query}
+                            onChange={lambda e: Any { query = e.target.value;}}
+                            onKeyDown={lambda e: Any { if e.key == "Enter" {
+                                palette_open = False;
+                                palette_extra = "";
+                                runTool("search_docs", {"query": query});
+                            }}}
+                            placeholder="Search Jac documentation..."
+                            className={pal_input_cls}
+                        />}{palette_extra == "get_resource"
+                        and <input
+                            autoFocus={True}
+                            type="text"
+                            value={resource_uri}
+                            onChange={lambda e: Any { resource_uri = e.target.value;}}
+                            onKeyDown={lambda e: Any { if e.key == "Enter" {
+                                palette_open = False;
+                                palette_extra = "";
+                                runTool("get_resource", {"uri": resource_uri});
+                            }}}
+                            placeholder="jac://docs/osp"
+                            className={pal_input_cls}
+                        />}{palette_extra == "get_example"
+                        and <input
+                            autoFocus={True}
+                            type="text"
+                            value={example_name}
+                            onChange={lambda e: Any { example_name = e.target.value;}}
+                            onKeyDown={lambda e: Any { if e.key == "Enter" {
+                                palette_open = False;
+                                palette_extra = "";
+                                runTool("get_example", {"name": example_name});
+                            }}}
+                            placeholder="Category name..."
+                            className={pal_input_cls}
+                        />}{palette_extra == "get_command"
+                        and <input
+                            autoFocus={True}
+                            type="text"
+                            value={command_name}
+                            onChange={lambda e: Any { command_name = e.target.value;}}
+                            onKeyDown={lambda e: Any { if e.key == "Enter" {
+                                palette_open = False;
+                                palette_extra = "";
+                                runTool("get_command", {"name": command_name});
+                            }}}
+                            placeholder="Command name..."
+                            className={pal_input_cls}
+                        />}{palette_extra == "execute_command"
+                        and <div className="space-y-2.5">
+                            <input
+                                autoFocus={True}
+                                type="text"
+                                value={command_name}
+                                onChange={lambda e: Any { command_name = e.target.value;}}
+                                placeholder="Command name..."
+                                className={pal_input_cls}
+                            />
+                            <input
+                                type="text"
+                                value={command_target}
+                                onChange={lambda e: Any { command_target = e.target.value;}}
+                                placeholder="Target file (e.g. /path/to/main.jac)"
+                                className={pal_input_cls}
+                            />
+                            <input
+                                type="text"
+                                value={command_args}
+                                onChange={lambda e: Any { command_args = e.target.value;}}
+                                placeholder="Extra flags (e.g. --verbose)"
+                                className={pal_input_cls}
+                            />
+                        </div>}{palette_extra == "lint_jac"
+                        and <label
+                            className="flex items-center gap-3 px-1 py-1 text-sm text-zinc-400 cursor-pointer select-none"
+                        >
+                            <input
+                                type="checkbox"
+                                checked={lint_auto_fix}
+                                onChange={lambda e: Any { lint_auto_fix = e.target.checked;}}
+                                className="h-3.5 w-3.5 accent-orange-500"
+                            />
+                            Auto-fix violations
+                        </label>}{palette_extra == "run_jac"
+                        and <div className="space-y-2.5">
+                            <input
+                                autoFocus={True}
+                                type="text"
+                                value={run_entrypoint}
+                                onChange={lambda e: Any { run_entrypoint = e.target.value;}}
+                                onKeyDown={lambda e: Any { if e.key == "Enter" {
+                                    palette_open = False;
+                                    palette_extra = "";
+                                    runTool(
+                                        "run_jac",
+                                        {
+                                            "code": code,
+                                            "entrypoint": run_entrypoint,
+                                            "timeout": run_timeout
+                                        }
+                                    );
+                                }}}
+                                placeholder="Entrypoint function (optional)"
+                                className={pal_input_cls}
+                            />
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs text-zinc-600 flex-shrink-0">
+                                    Timeout (s)
+                                </span>
+                                <input
+                                    type="number"
+                                    value={run_timeout}
+                                    onChange={lambda e: Any { run_timeout = int(
+                                        e.target.value
+                                    )
+                                        if e.target.value
+                                        else 30;}}
+                                    min={1}
+                                    max={120}
+                                    className={pal_input_cls + " w-28"}
+                                />
+                            </div>
+                        </div>}
+                    </div>
+                    <div className="px-4 pb-4 pt-1">
+                        {palette_extra == "explain_error"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "explain_error", {"error_message": error_message}
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Explain Error"}
+                        </button>}{palette_extra == "py_to_jac"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "py_to_jac", {"code": python_input}
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Convert to Jac"}
+                        </button>}{palette_extra == "search_docs"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "search_docs", {"query": query}
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Search Docs"}
+                        </button>}{palette_extra == "get_resource"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "get_resource", {"uri": resource_uri}
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Fetch Resource"}
+                        </button>}{palette_extra == "get_example"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "get_example", {"name": example_name}
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Get Example"}
+                        </button>}{palette_extra == "get_command"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "get_command", {"name": command_name}
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Get Command Details"}
+                        </button>}{palette_extra == "execute_command"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "execute_command",
+                                {
+                                    "command": command_name,
+                                    "args": (
+                                        [command_target] + [
+                                            a
+                                            for a in command_args.split(" ")
+                                            if a.strip()
+                                        ]
+                                    )
+                                        if command_target.strip()
+                                        else [
+                                            a
+                                            for a in command_args.split(" ")
+                                            if a.strip()
+                                        ]
+                                }
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Execute Command"}
+                        </button>}{palette_extra == "lint_jac"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "lint_jac", {"code": code, "auto_fix": lint_auto_fix}
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Lint Jac"}
+                        </button>}{palette_extra == "run_jac"
+                        and <button
+                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
+                                "run_jac",
+                                {
+                                    "code": code,
+                                    "entrypoint": run_entrypoint,
+                                    "timeout": run_timeout
+                                }
+                            );}}
+                            disabled={loading != ""}
+                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-green-500 hover:bg-green-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(74,222,128,0.2)]"
+                        >
+                            {"Running..." if loading != "" else "Run Jac"}
+                        </button>}
+                    </div>
+                </div>
+            </div>;
+    }
+
+    # Main search-list view
+    return
+        <div
+            className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/70 backdrop-blur-md"
+            onClick={lambda { palette_open = False;palette_extra = "";}}
+        >
+            <div
+                className="relative w-full max-w-[560px] mx-4 rounded-2xl border border-white/[0.1] bg-[#0f1012] shadow-[0_30px_80px_rgba(0,0,0,0.9)] overflow-hidden"
+                onClick={lambda e: Any { e.stopPropagation();}}
+            >
+                <div
+                    className="flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.06]"
+                >
+                    <span className="text-zinc-700 text-sm flex-shrink-0 font-mono">
+                        K
+                    </span>
+                    <input
+                        autoFocus={True}
+                        type="text"
+                        value={palette_query}
+                        onChange={lambda e: Any { palette_query = e.target.value;}}
+                        onKeyDown={lambda e: Any { if e.key == "Escape" {
+                            palette_open = False;
+                            palette_extra = "";
+                        }}}
+                        placeholder="Search tools..."
+                        className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-600 outline-none"
+                    />
+                    <kbd
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-white/[0.1] text-zinc-600 flex-shrink-0"
+                    >
+                        Esc
+                    </kbd>
+                </div>
+                <div className="overflow-y-auto max-h-[60vh] py-1">
+                    {len(visible_categories) == 0
+                    and <div className="px-4 py-10 text-center text-sm text-zinc-600">
+                        No tools match that query.
+                    </div>}{[
+                        <div key={cat["label"]}>
+                            <div
+                                className="px-4 pt-3 pb-1 text-[9px] uppercase tracking-[0.2em] text-zinc-700 font-semibold"
+                            >
+                                {cat["label"]}
+                            </div>
+                            {[
+                                <button
+                                    key={t["key"]}
+                                    onClick={lambda { if t["kind"] == "code" {
+                                        palette_open = False;
+                                        palette_extra = "";
+                                        runTool(t["key"], {"code": code});
+                                    } elif t["kind"] == "instant" {
+                                        palette_open = False;
+                                        palette_extra = "";
+                                        runTool(t["key"], {});
+                                    } else {
+                                        palette_extra = t["key"];
+                                    }  }}
+                                    disabled={loading != ""}
+                                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.04] text-left transition group disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    <span
+                                        className="text-sm text-zinc-300 group-hover:text-white transition"
+                                    >
+                                        {t["label"]}
+                                    </span>
+                                    <span
+                                        className={"text-[10px] font-mono transition " + (
+                                            "text-orange-500/60 group-hover:text-orange-400"
+                                                if t["kind"] in [
+                                                    "input",
+                                                    "code+opts"
+                                                ]
+                                                else "text-zinc-700 group-hover:text-zinc-500"
+                                        )}
+                                    >
+                                        {(
+                                            "input required"
+                                                if t["kind"] == "input"
+                                                else (
+                                                    "options"
+                                                        if t["kind"] == "code+opts"
+                                                        else "runs on code"
+                                                )
+                                        )}
+                                    </span>
+                                </button> for t in cat["tools"]
+                            ]}
+                        </div> for cat in visible_categories
+                    ]}
+                </div>
+                <div
+                    className="px-4 py-2.5 border-t border-white/[0.05] flex items-center gap-2"
+                >
+                    <span className="text-[10px] text-zinc-700">
+                        19 tools
+                    </span>
+                    <span className="text-zinc-800">
+                        ·
+                    </span>
+                    <span className="text-[10px] text-zinc-700">
+                        Enter to select
+                    </span>
+                    <span className="text-zinc-800">
+                        ·
+                    </span>
+                    <span className="text-[10px] text-zinc-700">
+                        Esc to close
+                    </span>
+                </div>
+            </div>
         </div>;
 }
