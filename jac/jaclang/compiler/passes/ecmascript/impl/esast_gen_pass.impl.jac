@@ -1198,26 +1198,10 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         } except Exception {
             _obj_type = None;
         }
-        self._ensure_emitters();
-        _type_name = "";
-        if isinstance(_obj_type, jtypes.ClassType) and _obj_type.shared {
-            # Direct match (e.g. str, list, dict).
-            if _obj_type.shared.class_name in self._primitive_type_names {
-                _type_name = _obj_type.shared.class_name;
-            } else {
-                # Walk the MRO to catch subtypes like LiteralString → str.
-                for _base in _obj_type.shared.mro {
-                    if _base.shared
-                    and _base.shared.class_name in self._primitive_type_names {
-                        _type_name = _base.shared.class_name;
-                        break;
-                    }
-                }
-            }
-        }
+        _type_name = self._resolve_primitive_type_name(_obj_type);
+        _method_name = callee.property.name;
         if _type_name {
             _emitter = self._primitive_emitters.get(_type_name);
-            _method_name = callee.property.name;
             _emit_fn_name = "emit_" + _method_name;
             _emit_fn = getattr(_emitter, _emit_fn_name, None) if _emitter else None;
             if _emit_fn {
@@ -1249,6 +1233,39 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                 nd.gen.es_ast = self.sync_loc(es.Identifier(name=_result), jac_node=nd);
                 return;
             }
+        }
+        # --- Polymorphic fallback (issue #5508 / #5453) ---
+        # When the static type of the receiver is not provably a JS-native
+        # primitive (e.g. props of type `dict`, results of `or` widening,
+        # comprehension over an untyped list), the typed dispatch above
+        # cannot pick an emitter, so without a fallback we would otherwise
+        # leak the Python method name verbatim into the JavaScript output
+        # and crash at runtime. Route through `_jac.poly.<method>(target,
+        # ...args)`, which dispatches at runtime based on the JS type.
+        if _method_name in POLYMORPHIC_METHODS {
+            _poly_args: list[(es.Expression | es.SpreadElement)] = [
+                cast(es.Expression, callee.object)
+            ];
+            for _a in args {
+                _poly_args.append(_a);
+            }
+            _poly_callee = es.MemberExpression(
+                object=es.MemberExpression(
+                    object=es.Identifier(name='_jac'),
+                    property=es.Identifier(name='poly'),
+                    computed=False
+                ),
+                property=es.Identifier(name=_method_name),
+                computed=False
+            );
+            self.needs_jac_runtime = True;
+            nd.gen.es_ast = self.sync_loc(
+                es.CallExpression(
+                    callee=cast(es.Expression, _poly_callee), arguments=_poly_args
+                ),
+                jac_node=nd
+            );
+            return;
         }
     }
     # --- Primitive emitter dispatch for builtin function calls ---
@@ -1623,6 +1640,31 @@ impl EsastGenPass._ensure_emitters -> None {
     self._builtin_emitter = _pes.ESBuiltinEmitter();
 }
 
+"""Resolve a Jac type to a primitive type name (e.g. ``str``, ``list``).
+
+Returns the matching primitive name if ``_obj_type`` is a ``ClassType`` whose
+``class_name`` (or any base in its MRO) is registered as a primitive, otherwise
+``""``. Used by both method-call and operator dispatch so that subtypes like
+``LiteralString`` resolve to ``str`` consistently.
+"""
+impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
+    import from jaclang.compiler.type_system { types as jtypes }
+    self._ensure_emitters();
+    if not (isinstance(_obj_type, jtypes.ClassType) and _obj_type.shared) {
+        return "";
+    }
+    if _obj_type.shared.class_name in self._primitive_type_names {
+        return _obj_type.shared.class_name;
+    }
+    # Walk the MRO to catch subtypes like LiteralString → str.
+    for _base in _obj_type.shared.mro {
+        if _base.shared and _base.shared.class_name in self._primitive_type_names {
+            return _base.shared.class_name;
+        }
+    }
+    return "";
+}
+
 """Try to dispatch an operator through the primitive emitter system.
 
 Returns an es.Expression (raw Identifier wrapping emitted JS) on success, or None
@@ -1635,7 +1677,6 @@ impl EsastGenPass._try_primitive_op(
     right_es: (es.Expression | None),
     jac_node: uni.UniNode
 ) -> (es.Expression | None) {
-    import from jaclang.compiler.type_system { types as jtypes }
     import from jaclang.compiler.passes.ecmascript.es_unparse { JSCodeGenerator }
     _obj_type = None;
     try {
@@ -1646,15 +1687,10 @@ impl EsastGenPass._try_primitive_op(
     } except Exception {
         _obj_type = None;
     }
-    self._ensure_emitters();
-    if not (
-        isinstance(_obj_type, jtypes.ClassType)
-        and _obj_type.shared
-        and _obj_type.shared.class_name in self._primitive_type_names
-    ) {
+    _type_name = self._resolve_primitive_type_name(_obj_type);
+    if not _type_name {
         return None;
     }
-    _type_name = _obj_type.shared.class_name;
     _emitter = self._primitive_emitters.get(_type_name);
     _emit_fn = getattr(_emitter, emit_method, None) if _emitter else None;
     if not _emit_fn {

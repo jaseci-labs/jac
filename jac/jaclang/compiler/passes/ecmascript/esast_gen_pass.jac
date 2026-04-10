@@ -122,6 +122,11 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.BW_AND_EQ: "emit_op_iand",
          Tok.BW_XOR_EQ: "emit_op_ixor"
      },
+     # Python-only method names that have no JS equivalent. When the static
+     # type of the receiver cannot be proven (issue #5508 / #5453), the
+     # codegen routes these calls through `_jac.poly.<method>(target, ...)`,
+     # which dispatches to the native JS operation at runtime.
+     POLYMORPHIC_METHODS: set[str] = {"lower","upper","strip","lstrip","rstrip","append","extend","pop"},
      LiteralValue = str | bool | int | float | None;
 
 """Track declarations within a lexical scope."""
@@ -263,6 +268,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_switch_stmt(nd: uni.SwitchStmt) -> None;
     def exit_switch_case(nd: uni.SwitchCase) -> None;
     def _ensure_emitters -> None;
+    def _resolve_primitive_type_name(_obj_type: object) -> str;
     def _try_primitive_op(
         expr_node: uni.UniNode,
         emit_method: str,
