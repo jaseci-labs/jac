@@ -11,13 +11,12 @@ Falls back to jaclang's SqliteMemory when MongoDB is unavailable.
 """
 import json;
 import logging;
-import redis;
 import from collections.abc { Callable, Generator, Iterable }
 import from pickle { dumps, loads }
 import from typing { Any, cast }
 import from uuid { UUID }
-import from pymongo { MongoClient, UpdateOne }
-import from pymongo.errors { ConnectionFailure }
+import from jac_scale._optdeps.redis { redis_module as redis }
+import from jac_scale._optdeps.pymongo { MongoClient, UpdateOne, ConnectionFailure }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.memory {
     CacheMemory,

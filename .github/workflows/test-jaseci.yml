@@ -164,7 +164,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        pip install -e jac-scale
+        pip install -e "jac-scale[all]"
         pip install pytest
         pip install pytest-asyncio
         pip install -e jac-client
@@ -230,7 +230,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e jac
-          pip install -e jac-scale
+          pip install -e "jac-scale[all]"
           pip install -e jac-client
           pip install pytest
           pip install pytest-xdist
@@ -298,7 +298,7 @@ jobs:
     - name: Pre-build admin dashboard UI
       run: |
         pip install -e jac-client
-        pip install -e jac-scale
+        pip install -e "jac-scale[all]"
         cd jac-scale && jac run scripts/build_admin_ui.jac
 
     - name: Uninstall editable packages
@@ -320,7 +320,7 @@ jobs:
         python -m build jac-byllm --wheel
         pip install jac/dist/jaclang-*.whl
         pip install jac-client/dist/jac_client-*.whl
-        pip install jac-scale/dist/jac_scale-*.whl
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
         pip install pytest-asyncio

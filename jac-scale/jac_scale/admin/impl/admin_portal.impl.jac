@@ -993,7 +993,7 @@ impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
     import re;
-    import from prometheus_client { generate_latest, REGISTRY }
+    import from jac_scale._optdeps.prometheus { generate_latest, REGISTRY }
     error = self.require_admin(Authorization);
     if error {
         return error;
