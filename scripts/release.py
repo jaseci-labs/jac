@@ -13,7 +13,6 @@ Each package flag accepts: skip (default), patch, minor, major.
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
 
 import tomlkit

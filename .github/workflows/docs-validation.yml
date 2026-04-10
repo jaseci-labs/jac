@@ -79,4 +79,3 @@ jobs:
         env:
           CI: "true"
         run: bash scripts/check-release-notes.sh
-

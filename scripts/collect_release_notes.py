@@ -150,8 +150,12 @@ def main() -> None:
     """Standalone entry point for testing."""
     parser = argparse.ArgumentParser(description="Collect release note fragments")
     parser.add_argument("--package", required=True, help="Package key (e.g., jaclang)")
-    parser.add_argument("--version", required=True, help="Version string (e.g., 0.13.6)")
-    parser.add_argument("--dry-run", action="store_true", help="Print without modifying")
+    parser.add_argument(
+        "--version", required=True, help="Version string (e.g., 0.13.6)"
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print without modifying"
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parent.parent
