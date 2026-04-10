@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang jac-scale
+RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang "jac-scale[all]"
 
 COPY sandbox_proxy.jac /app/sandbox_proxy.jac
 WORKDIR /app

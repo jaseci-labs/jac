@@ -5,8 +5,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jac-scale 0.2.14 (Unreleased)
 
 - **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
-
 - **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
+- **Fix: Spurious "write access" warnings on system root during sync**: Skip `check_write_access()` for unchanged anchors in MongoDB sync, eliminating noisy `Current root doesn't have write access to NodeAnchor Root` log spam on every authenticated request.
+
+- **Optional Install Groups**: Heavy dependencies (pymongo, redis, prometheus-client, apscheduler, kubernetes, docker) are no longer required by default. Install only what you need via extras: `pip install jac-scale[data]` (MongoDB + Redis), `[monitoring]` (Prometheus), `[scheduler]` (APScheduler), `[deploy]` (Kubernetes + Docker), or `[all]` for everything. Groups are combinable: `pip install jac-scale[data,monitoring]`. Missing dependencies produce clear error messages with install instructions. Existing users should use `pip install jac-scale[all]` to keep current behavior.
 
 ## jac-scale 0.2.13 (Latest Release)
 
