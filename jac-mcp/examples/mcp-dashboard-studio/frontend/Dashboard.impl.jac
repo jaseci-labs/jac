@@ -49,46 +49,29 @@ impl DashboardPage.disconnect -> None {
 }
 
 impl DashboardPage.start_notice(tool: str) -> str {
-    if tool == "validate_jac" {
-        return "Validating Jac code...";
-    } elif tool == "check_syntax" {
-        return "Checking syntax...";
-    } elif tool == "format_jac" {
-        return "Formatting code...";
-    } elif tool == "py_to_jac" {
-        return "Converting Python to Jac...";
-    } elif tool in ["get_ast_tree", "get_ast_json"] {
-        return "Generating AST...";
-    } elif tool == "explain_error" {
-        return "Explaining error...";
-    } elif tool == "list_examples" {
-        return "Fetching example list...";
-    } elif tool == "get_example" {
-        return "Loading example...";
-    } elif tool == "search_docs" {
-        return "Searching documentation...";
-    } elif tool == "jac_to_js" {
-        return "Transpiling Jac to JavaScript...";
-    } elif tool == "jac_to_py" {
-        return "Transpiling Jac to Python...";
-    } elif tool == "run_jac" {
-        return "Running Jac code...";
-    } elif tool == "lint_jac" {
-        return "Linting Jac code...";
-    } elif tool == "graph_visualize" {
-        return "Generating graph...";
-    } elif tool == "list_commands" {
-        return "Fetching command list...";
-    } elif tool == "get_command" {
-        return "Loading command details...";
-    } elif tool == "execute_command" {
-        return "Executing command...";
-    } elif tool == "understand_jac_and_jaseci" {
-        return "Loading Jac & Jaseci guide...";
-    } elif tool == "get_resource" {
-        return "Fetching resource...";
-    }
-    return "Running...";
+    notices: dict = {
+        "validate_jac": "Validating Jac code...",
+        "check_syntax": "Checking syntax...",
+        "format_jac": "Formatting code...",
+        "py_to_jac": "Converting Python to Jac...",
+        "get_ast_tree": "Generating AST...",
+        "get_ast_json": "Generating AST...",
+        "explain_error": "Explaining error...",
+        "list_examples": "Fetching example list...",
+        "get_example": "Loading example...",
+        "search_docs": "Searching documentation...",
+        "jac_to_js": "Transpiling Jac to JavaScript...",
+        "jac_to_py": "Transpiling Jac to Python...",
+        "run_jac": "Running Jac code...",
+        "lint_jac": "Linting Jac code...",
+        "graph_visualize": "Generating graph...",
+        "list_commands": "Fetching command list...",
+        "get_command": "Loading command details...",
+        "execute_command": "Executing command...",
+        "understand_jac_and_jaseci": "Loading Jac & Jaseci guide...",
+        "get_resource": "Fetching resource..."
+    };
+    return notices[tool] if tool in notices else "Running...";
 }
 
 impl DashboardPage.success_notice(tool: str, res: dict) -> str {
@@ -247,6 +230,8 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn understand_jac_and_jaseci();
         } elif tool == "get_resource" {
             spawn_res = await root spawn get_resource(uri=args["uri"]);
+        } else {
+            notice = "Unknown tool: " + tool;
         }
         if spawn_res {
             res = get_first_report(spawn_res);
@@ -1266,40 +1251,29 @@ impl DashboardPage.renderResourceOutput -> JsxElement {
 }
 
 impl DashboardPage.renderActiveOutput -> JsxElement {
-    if active_tool in ["validate_jac", "check_syntax"] {
-        return renderValidationOutput();
-    } elif active_tool == "format_jac" {
-        return renderFormatOutput();
-    } elif active_tool in ["get_ast_tree", "get_ast_json"] {
-        return renderAstOutput();
-    } elif active_tool == "explain_error" {
-        return renderExplainOutput();
-    } elif active_tool == "list_examples" {
-        return renderExamplesOutput();
-    } elif active_tool == "get_example" {
-        return renderGetExampleOutput();
-    } elif active_tool == "search_docs" {
-        return renderSearchDocsOutput();
-    } elif active_tool == "jac_to_js" {
-        return renderJacToJsOutput();
-    } elif active_tool == "jac_to_py" {
-        return renderJacToPyOutput();
-    } elif active_tool == "run_jac" {
-        return renderRunOutput();
-    } elif active_tool == "lint_jac" {
-        return renderLintOutput();
-    } elif active_tool == "graph_visualize" {
-        return renderGraphVisualizeOutput();
-    } elif active_tool == "list_commands" {
-        return renderListCommandsOutput();
-    } elif active_tool == "get_command" {
-        return renderGetCommandOutput();
-    } elif active_tool == "execute_command" {
-        return renderExecuteCommandOutput();
-    } elif active_tool == "understand_jac_and_jaseci" {
-        return renderUnderstandOutput();
-    } elif active_tool == "get_resource" {
-        return renderResourceOutput();
+    renderers: dict = {
+        "validate_jac": renderValidationOutput,
+        "check_syntax": renderValidationOutput,
+        "format_jac": renderFormatOutput,
+        "get_ast_tree": renderAstOutput,
+        "get_ast_json": renderAstOutput,
+        "explain_error": renderExplainOutput,
+        "list_examples": renderExamplesOutput,
+        "get_example": renderGetExampleOutput,
+        "search_docs": renderSearchDocsOutput,
+        "jac_to_js": renderJacToJsOutput,
+        "jac_to_py": renderJacToPyOutput,
+        "run_jac": renderRunOutput,
+        "lint_jac": renderLintOutput,
+        "graph_visualize": renderGraphVisualizeOutput,
+        "list_commands": renderListCommandsOutput,
+        "get_command": renderGetCommandOutput,
+        "execute_command": renderExecuteCommandOutput,
+        "understand_jac_and_jaseci": renderUnderstandOutput,
+        "get_resource": renderResourceOutput
+    };
+    if active_tool in renderers {
+        return renderers[active_tool]();
     }
     return
         <div className="text-xs text-zinc-600">
