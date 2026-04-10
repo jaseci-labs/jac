@@ -22,6 +22,6 @@ test "jac0 fullbody with impl does not duplicate" {
     assert result.count("def make") == 1 , "Expected exactly one def make";
     assert result.count("def clone") == 1 , "Expected exactly one def clone";
     assert "ghost_method" not in result , "Orphan ghost_method should not be emitted";
-    assert "x=1" in result , "Stub make should be replaced by impl version";
+    assert "x = 1" in result , "Stub make should be replaced by impl version";
     assert "self.x + 100" not in result , "Fullbody clone should not be replaced by impl version";
 }
