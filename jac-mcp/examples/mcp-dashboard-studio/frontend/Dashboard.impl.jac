@@ -243,7 +243,7 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
                     dot: str = str(gdata["graph"]) if "graph" in gdata else "";
                     if dot {
                         _viz_inst: Any = await instance();
-                        graph_svg = str(_viz_inst.renderString(dot));
+                        graph_svg = str(_viz_inst.renderString(dot, {"format": "svg"}));
                     }
                 }
             } else {
@@ -1365,7 +1365,7 @@ impl DashboardPage.renderDock -> JsxElement {
         else "bg-zinc-700";
     return
         <div
-            className="w-[420px] flex-shrink-0 flex flex-col rounded-2xl border border-white/[0.06] bg-zinc-900/60 overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] min-h-0"
+            className="w-1/2 flex flex-col rounded-2xl border border-white/[0.06] bg-zinc-900/60 overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] min-h-0"
         >
             <div
                 className="flex-shrink-0 flex items-center justify-between border-b border-white/[0.05] bg-zinc-900/40 px-4 h-10"

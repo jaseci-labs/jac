@@ -1,5 +1,6 @@
 import "../styles/main.css";
 import from "@viz-js/viz" { instance }
+import from "@monaco-editor/react" { Editor as MonacoEditor }
 sv import from ..main {
     set_mcp_server,
     validate_jac,
@@ -27,7 +28,18 @@ def:pub DashboardPage(onBack: Any = None) -> JsxElement {
     DEFAULT_URL = "http://127.0.0.1:3001/mcp/";
 
     has current_result: dict = {},
-        code: str = "obj Foo { has x: int = 5; }",
+        code: str = """obj Greeter {
+    has name: str = 'World';
+
+    def greet -> str {
+        return 'Hello, ' + self.name + '!';
+    }
+}
+
+with entry {
+    g = Greeter(name='Jac');
+    print(g.greet());
+}""",
         python_input: str = "",
         query: str = "",
         example_name: str = "",
@@ -44,7 +56,6 @@ def:pub DashboardPage(onBack: Any = None) -> JsxElement {
         output_copied: bool = False,
         ast_copied: bool = False,
         jac_copied: bool = False,
-        code_scroll: int = 0,
         graph_svg: str = "",
         lint_auto_fix: bool = False,
         run_entrypoint: str = "",
@@ -175,7 +186,7 @@ def:pub DashboardPage(onBack: Any = None) -> JsxElement {
                 className="relative flex-1 mx-auto w-full max-w-[1600px] px-6 pt-5 pb-5 flex gap-5 min-h-0"
             >
                 <div
-                    className="flex-1 flex flex-col rounded-2xl border border-white/[0.08] bg-zinc-900/90 shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden min-h-0"
+                    className="w-1/2 flex flex-col rounded-2xl border border-white/[0.08] bg-zinc-900/90 shadow-[0_20px_60px_rgba(0,0,0,0.5)] overflow-hidden min-h-0"
                 >
                     <div
                         className="flex-shrink-0 flex items-center justify-between border-b border-white/[0.06] px-4 py-2.5 bg-zinc-900/50"
@@ -268,13 +279,10 @@ def:pub DashboardPage(onBack: Any = None) -> JsxElement {
                         </div>
                     </div>
                     <div
-                        className="flex-shrink-0 flex items-center gap-1.5 px-4 py-1.5 border-b border-white/[0.03] bg-zinc-900/30"
+                        className="flex-shrink-0 px-4 py-1.5 border-b border-white/[0.03] bg-zinc-900/30 truncate"
                     >
                         <span className="text-[10px] text-zinc-600 leading-none">
-                            Jac Editor — write or paste Jac code here. Most tools operate on this code.
-                        </span>
-                        <span className="text-[10px] text-zinc-600 leading-none">
-                            For Python → Jac, open
+                            Jac Editor — most tools use this code. For Python → Jac, open{" "}
                         </span>
                         <span
                             className="text-[10px] text-orange-500/60 font-medium leading-none"
@@ -282,46 +290,38 @@ def:pub DashboardPage(onBack: Any = None) -> JsxElement {
                             Tools ▾ → Python to Jac
                         </span>
                         <span className="text-[10px] text-zinc-600 leading-none">
-                            to get a dedicated input.
+                            {" "}for a dedicated input.
                         </span>
                     </div>
-                    <div className="flex flex-1 min-h-[440px] bg-[#0d0e10]">
-                        <div
-                            className="overflow-hidden select-none flex-shrink-0 border-r border-white/[0.04] w-10"
-                        >
-                            <div
-                                style={{
-                                    "transform": "translateY(-" + str(code_scroll) + "px)",
-                                    "paddingTop": "1rem"
-                                }}
-                            >
-                                {[
-                                    <div
-                                        key={n}
-                                        className="text-[11px] leading-6 font-mono text-right pr-2 text-zinc-700"
-                                    >
-                                        {n}
-                                    </div> for n in range(1, code.count('\n') + 3)
-                                ]}
-                            </div>
-                        </div>
-                        <textarea
+                    <div className="flex flex-1 min-h-[440px]">
+                        <MonacoEditor
+                            height="100%"
+                            width="100%"
+                            language="javascript"
+                            theme="vs-dark"
                             value={code}
-                            onChange={lambda e: Any { code = e.target.value;}}
-                            onScroll={lambda e: Any { code_scroll = e.target.scrollTop;}}
-                            onKeyDown={lambda e: Any { if (
-                                e.metaKey or e.ctrlKey
-                            )
-                            and e.key == "k"
-                            and connected {
-                                palette_open = True;
-                                palette_query = "";
-                                palette_extra = "";
-                                e.preventDefault();
-                            }}}
-                            spellCheck={False}
-                            className="flex-1 resize-none bg-[#0d0e10] pl-3 pr-4 py-4 font-mono text-[12px] leading-6 text-zinc-100 outline-none placeholder-zinc-700"
-                            placeholder="# Write or paste your Jac code here..."
+                            onChange={lambda val: Any { code = val or "";}}
+                            options={{
+                                "fontSize": 12,
+                                "fontFamily": "ui-monospace, 'JetBrains Mono', 'Fira Code', monospace",
+                                "lineHeight": 22,
+                                "minimap": {"enabled": False},
+                                "scrollBeyondLastLine": False,
+                                "lineNumbers": "on",
+                                "renderLineHighlight": "line",
+                                "tabSize": 4,
+                                "insertSpaces": True,
+                                "wordWrap": "off",
+                                "padding": {"top": 16, "bottom": 16},
+                                "overviewRulerBorder": False,
+                                "hideCursorInOverviewRuler": True,
+                                "scrollbar": {
+                                    "verticalScrollbarSize": 6,
+                                    "horizontalScrollbarSize": 6
+                                },
+                                "bracketPairColorization": {"enabled": True},
+                                "guides": {"bracketPairs": True}
+                            }}
                         />
                     </div>
                 </div>
