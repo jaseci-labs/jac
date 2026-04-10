@@ -43,23 +43,6 @@ class SymTabBuildPass(UniPass) {
         self: SymTabBuildPass, nd: uni.UniNode
     ) -> (UniScopeNode | None);
 
-    """Check if a symbol's declaration has an explicit type annotation."""
-    static def _outer_has_type_annotation(sym: uni.Symbol) -> bool {
-        decl = sym.decl;
-        if (decl is None) {
-            return False;
-        }
-        name_of = decl?.name_of;
-        if (name_of is None) {
-            return False;
-        }
-        parent = name_of?.parent;
-        return (
-            (isinstance(parent, uni.Assignment) and (parent.type_tag is not None))
-            or isinstance(name_of, (uni.HasVar, uni.ParamVar))
-        );
-    }
-
     """Create symbols for Name nodes in a module path."""
     def _bind_import_path_symbols(
         self: SymTabBuildPass, module_path: uni.ModulePath
@@ -117,7 +100,10 @@ class SymTabBuildPass(UniPass) {
     def exit_iter_for_stmt(self: SymTabBuildPass, nd: uni.IterForStmt) -> None;
     """Recursively define symbols in unpacking expressions."""
     def _def_insert_unpacking(
-        self: SymTabBuildPass, nd: uni.Expr, sym_tab: UniScopeNode
+        self: SymTabBuildPass,
+        nd: uni.Expr,
+        sym_tab: UniScopeNode,
+        rebind_in_python_scope: bool = False
     ) -> None;
 
     def enter_in_for_stmt(self: SymTabBuildPass, nd: uni.InForStmt) -> None;

@@ -48,6 +48,8 @@ nav:
               - Project Setup: "tutorials/fullstack/setup.md"
               - Components: "tutorials/fullstack/components.md"
               - State Management: "tutorials/fullstack/state.md"
+              - NPM Packages & UI Libraries: "tutorials/fullstack/npm-and-libraries.md"
+              - Advanced Patterns & JS Interop: "tutorials/fullstack/advanced-patterns.md"
               - Backend Integration: "tutorials/fullstack/backend.md"
               - Authentication: "tutorials/fullstack/auth.md"
               - Routing: "tutorials/fullstack/routing.md"

@@ -85,7 +85,7 @@ impl create(
     console.print("  📁 Setting up project structure", style="muted");
     # Generate jac.toml from config dict
     toml_content = _render_config_to_toml(tmpl.config, project_name);
-    with open(toml_path, "w") as f {
+    with open(toml_path, "w", encoding="utf-8") as f {
         f.write(toml_content);
     }
     console.print(f"  ✔ jac.toml", style="success");
@@ -104,7 +104,7 @@ impl create(
             } else {
                 # Text file - apply template substitution and write as text
                 rendered = content.replace("{{name}}", project_name);
-                with open(full_path, "w") as f {
+                with open(full_path, "w", encoding="utf-8") as f {
                     f.write(rendered);
                 }
             }
@@ -277,7 +277,7 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
         }
     }
 
-    def render_section(section_name: str, section_data: dict, indent: str = "") -> None {
+    def render_section(section_name: str, section_data: dict, indent: str = "") {
         # Separate simple values from nested dicts
         simple_values: dict = {};
         nested_sections: dict = {};
@@ -332,9 +332,9 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
 }
 
 """Create project-root .gitignore with entries."""
-def _create_root_gitignore(project_path: Path, entries: list[str]) -> None {
+def _create_root_gitignore(project_path: Path, entries: list[str]) {
     gitignore_path = project_path / ".gitignore";
-    with open(gitignore_path, "w") as f {
+    with open(gitignore_path, "w", encoding="utf-8") as f {
         f.write("\n".join(entries) + "\n");
     }
     console.print(f"  ✔ .gitignore", style="success");

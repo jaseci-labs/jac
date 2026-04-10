@@ -130,7 +130,7 @@ impl initialize_template_registry -> None {
 }
 
 """Register the default Jac project template."""
-def _register_default_template(registry: TemplateRegistry) -> None {
+def _register_default_template(registry: TemplateRegistry) {
     registry.register(
         {
             "name": "default",

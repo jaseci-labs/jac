@@ -245,7 +245,7 @@ RIGHT:
 
 ```jac
 self.name = "Alice";
-root ++> node;
+root() ++> node;
 def init() { }
 ```
 
@@ -415,13 +415,13 @@ a +>:MyEdge(weight=2.0):+> b;  # typed edge
 
 # Traverse
 visit [-->];           # visit all connected nodes
-visit [-->](`?B);      # visit only B-type nodes
+visit [-->][?:B];      # visit only B-type nodes
 ```
 
 ### 21. Walker spawn syntax
 
 ```jac
-root spawn MyWalker();
+root() spawn MyWalker();
 ```
 
 ## File Organization
@@ -475,4 +475,641 @@ Use `glob` for module-level variables:
 ```jac
 glob MAX_SIZE = 100;
 glob config: dict = {};
+```
+
+## Client-Side & Full-Stack Gotchas
+
+### 26. Client components use `def:pub` inside `cl {}` blocks
+
+Client-side components must be inside `cl { }` blocks (or in `.cl.jac` files). They return `JsxElement`, not Python objects.
+
+WRONG (Python/React style):
+
+```
+function Greeting(props) {
+    return <h1>Hello, {props.name}!</h1>;
+}
+```
+
+WRONG (missing `cl` block -- this creates a SERVER function, not a client component):
+
+```
+def:pub Greeting(props: dict) -> JsxElement {
+    return <h1>Hello, {props.name}!</h1>;
+}
+```
+
+RIGHT:
+
+```jac
+cl {
+    def:pub Greeting(props: dict) -> JsxElement {
+        return <h1>Hello, {props.name}!</h1>;
+    }
+}
+```
+
+In `.cl.jac` files, the `cl { }` wrapper is not needed -- the entire file is already in client mode:
+
+```jac
+# In a .cl.jac file:
+def:pub Greeting(props: dict) -> JsxElement {
+    return <h1>Hello, {props.name}!</h1>;
+}
+```
+
+### 27. Reactive state uses `has` inside component functions (NOT `useState`)
+
+In client components, `has` compiles to React's `useState`. Do NOT import or call `useState` directly.
+
+WRONG (React style):
+
+```
+import from react { useState }
+
+cl {
+    def:pub Counter() -> JsxElement {
+        (count, setCount) = useState(0);
+        return <button onClick={lambda -> None { setCount(count + 1); }}>
+            {count}
+        </button>;
+    }
+}
+```
+
+RIGHT:
+
+```jac
+cl {
+    def:pub Counter() -> JsxElement {
+        has count: int = 0;
+
+        return <button onClick={lambda -> None { count = count + 1; }}>
+            {count}
+        </button>;
+    }
+}
+```
+
+Assignment to a `has` variable (`count = count + 1;`) automatically triggers re-render.
+
+### 28. Lists and dicts MUST be replaced immutably to trigger re-render
+
+Mutating a list or dict in place (e.g., `.append()`, `.pop()`, `dict[key] = val`) will NOT trigger a re-render. You must create a new reference.
+
+WRONG (mutation -- UI will not update):
+
+```
+cl {
+    def:pub TodoApp() -> JsxElement {
+        has todos: list = [];
+
+        def add_todo() -> None {
+            todos.append({"text": "new item"});  # WRONG: mutates in place, no re-render
+        }
+    }
+}
+```
+
+RIGHT (immutable update -- creates new list):
+
+```jac
+cl {
+    def:pub TodoApp() -> JsxElement {
+        has todos: list = [];
+
+        def add_todo() -> None {
+            todos = todos + [{"text": "new item"}];  # New list reference triggers re-render
+        }
+
+        def remove_todo(id: int) -> None {
+            todos = [t for t in todos if t["id"] != id];  # Filter to new list
+        }
+    }
+}
+```
+
+### 29. Dict spread uses `{**dict}`, NOT JavaScript `{...dict}`
+
+Jac uses Python-style double-star unpacking for dict spread, not JavaScript's triple-dot syntax.
+
+WRONG (JavaScript spread):
+
+```
+state = {...state, "field": new_value};
+merged = {...dict1, ...dict2};
+```
+
+RIGHT:
+
+```jac
+state = {**state, "field": new_value};
+merged = {**dict1, **dict2};
+```
+
+### 30. Event handlers REQUIRE type annotations on lambda parameters
+
+Lambda event handlers must have type annotations. Use ambient DOM types (`ChangeEvent`, `KeyboardEvent`, `FormEvent`, etc.) which are available without import. Omitting the type on the event parameter causes compilation errors.
+
+WRONG (missing type annotation):
+
+```
+<input onChange={lambda e { name = e.target.value; }} />
+```
+
+RIGHT (use ambient DOM types -- no import needed):
+
+```jac
+<input onChange={lambda e: ChangeEvent { name = e.target.value; }} />
+<input onKeyDown={lambda e: KeyboardEvent { if e.key == "Enter" { submit(); } }} />
+<form onSubmit={lambda e: FormEvent { e.preventDefault(); handle(); }} />
+```
+
+For click handlers with no event parameter:
+
+```jac
+<button onClick={lambda -> None { handle_click(); }}>Click</button>
+```
+
+### 31. Prefer `can with entry/exit` over manual `useEffect`
+
+Jac has built-in syntax for React lifecycle effects. Prefer `can with entry` (mount) and `can with exit` (cleanup) over importing `useEffect` manually. Manual `useEffect` from React IS valid but not idiomatic Jac.
+
+NOT IDIOMATIC (manual useEffect -- valid but not preferred):
+
+```jac
+cl {
+    import from react { useEffect }
+
+    def:pub DataLoader() -> JsxElement {
+        has data: list = [];
+
+        useEffect(lambda -> None {
+            fetch_data();
+        }, []);
+
+        return <div>...</div>;
+    }
+}
+```
+
+PREFERRED (on mount -- empty dependency array):
+
+```jac
+cl {
+    def:pub DataLoader() -> JsxElement {
+        has data: list = [];
+        has loading: bool = True;
+
+        async can with entry {
+            result = await fetch_data();
+            data = result;
+            loading = False;
+        }
+
+        if loading {
+            return <p>Loading...</p>;
+        }
+
+        return <ul>
+            {[<li key={item.id}>{item.name}</li> for item in data]}
+        </ul>;
+    }
+}
+```
+
+RIGHT (with dependency array -- runs when `query` changes):
+
+```jac
+cl {
+    def:pub SearchResults() -> JsxElement {
+        has query: str = "";
+        has results: list = [];
+
+        async can with [query] entry {
+            if query {
+                results = await search_api(query);
+            }
+        }
+
+        return <div>
+            <input
+                value={query}
+                onChange={lambda e: ChangeEvent { query = e.target.value; }}
+            />
+        </div>;
+    }
+}
+```
+
+RIGHT (cleanup on unmount):
+
+```jac
+cl {
+    def:pub Timer() -> JsxElement {
+        has seconds: int = 0;
+
+        can with entry {
+            intervalId = setInterval(lambda -> None {
+                seconds = seconds + 1;
+            }, 1000);
+        }
+
+        can with exit {
+            clearInterval(intervalId);
+        }
+
+        return <p>Seconds: {seconds}</p>;
+    }
+}
+```
+
+### 32. Use `className`, not `class`, for CSS classes in JSX
+
+Like React, Jac JSX uses `className` instead of the HTML `class` attribute.
+
+WRONG:
+
+```
+<div class="container">Hello</div>
+```
+
+RIGHT:
+
+```jac
+<div className="container">Hello</div>
+```
+
+### 33. List rendering needs `key` prop and comprehension syntax
+
+WRONG (React `.map()` style):
+
+```
+{items.map(item => <Item key={item.id} item={item} />)}
+```
+
+RIGHT (Jac list comprehension):
+
+```jac
+{[<Item key={item.id} item={item} /> for item in items]}
+```
+
+## Server-Client Communication Gotchas
+
+### 34. Importing server code into client uses `sv import`
+
+To call server-side walkers or functions from client code, you must use `sv import`. Regular `import` will not work across the server-client boundary.
+
+WRONG (regular import):
+
+```
+import from ..main { get_tasks }
+```
+
+RIGHT:
+
+```jac
+sv import from ...main { get_tasks, add_task }
+```
+
+The `sv` prefix tells the compiler this is a server-side import to be called over HTTP.
+
+### 35. Calling walkers from client uses `root() spawn`, NOT `await func()`
+
+Server walkers are called by spawning them on `root()`. The result contains `.reports` with the walker's reported values.
+
+WRONG (function-call style):
+
+```
+cl {
+    async can with entry {
+        tasks = await get_tasks();
+    }
+}
+```
+
+RIGHT:
+
+```jac
+sv import from ...main { get_tasks }
+
+cl {
+    def:pub TaskList() -> JsxElement {
+        has tasks: list = [];
+
+        async can with entry {
+            result = root() spawn get_tasks();
+            if result.reports and result.reports.length > 0 {
+                tasks = result.reports[0];
+            }
+        }
+
+        return <ul>
+            {[<li key={task.id}>{task.title}</li> for task in tasks]}
+        </ul>;
+    }
+}
+```
+
+Walker `has` fields become the request body:
+
+```jac
+sv import from ...main { add_task }
+
+cl {
+    async def handle_add() -> None {
+        result = root() spawn add_task(title="New task");
+        if result.reports and result.reports.length > 0 {
+            new_task = result.reports[0];
+            tasks = tasks + [new_task];
+        }
+    }
+}
+```
+
+### 36. Walker reports are in `result.reports[0]`, NOT `result.data`
+
+The response from `root() spawn` has a `.reports` array containing values from the walker's `report` statements. The first report is at index `[0]`.
+
+WRONG:
+
+```
+result = root() spawn get_tasks();
+tasks = result.data;          # WRONG: no .data property
+tasks = result;               # WRONG: result is a response object, not the data
+tasks = result.reports;       # PARTIAL: this is the full array, usually you want [0]
+```
+
+RIGHT:
+
+```jac
+result = root() spawn get_tasks();
+if result.reports and result.reports.length > 0 {
+    tasks = result.reports[0];
+}
+```
+
+## API Endpoint & Auth Gotchas
+
+### 37. Public endpoints use `walker:pub` or `def:pub`, private use `:priv`
+
+To expose a walker or function as an HTTP endpoint, use the `:pub` (public, no auth) or `:priv` (private, JWT auth required) access modifier. Without these modifiers, walkers and functions are internal only.
+
+WRONG (no access modifier -- not exposed as endpoint):
+
+```
+walker get_tasks {
+    can fetch with Root entry {
+        report [-->][?:Task];
+    }
+}
+```
+
+RIGHT (public endpoint, no auth required):
+
+```jac
+walker:pub get_tasks {
+    can fetch with Root entry {
+        report [-->][?:Task];
+    }
+}
+```
+
+RIGHT (private endpoint, JWT auth required, per-user data isolation):
+
+```jac
+walker:priv create_task {
+    has title: str;
+
+    can create with Root entry {
+        new_task = here ++> Task(title=self.title);
+        report new_task;
+    }
+}
+```
+
+The same applies to functions:
+
+```jac
+def:pub get_status() -> dict {
+    return {"status": "ok"};
+}
+
+def:priv get_user_data() -> dict {
+    # Each user sees their own data automatically
+    return {"user": "data"};
+}
+```
+
+### 38. Walker `has` fields = request body, `report` = response body
+
+When a walker is exposed as an endpoint, its `has` fields automatically become the HTTP request body, and its `report` values become the response body. Do NOT try to manually parse request/response.
+
+WRONG (manual request handling):
+
+```
+walker:pub create_task {
+    can create with Root entry {
+        body = parse_request_body();  # WRONG: not how Jac works
+        title = body["title"];
+    }
+}
+```
+
+RIGHT:
+
+```jac
+walker:pub create_task {
+    has title: str;  # Automatically populated from request body
+
+    can create with Root entry {
+        new_task = here ++> Task(title=self.title);
+        report new_task;  # Automatically becomes response body
+    }
+}
+```
+
+### 39. `:priv` gives per-user data isolation automatically
+
+With `walker:priv` or `def:priv`, each authenticated user gets their own isolated graph `root`. You do NOT need to filter data by user ID -- the runtime handles isolation.
+
+WRONG (manual user filtering):
+
+```
+walker:priv get_my_tasks {
+    has user_id: str;
+
+    can fetch with Root entry {
+        all_tasks = [-->][?:Task];
+        report [t for t in all_tasks if t.owner == self.user_id];  # Unnecessary
+    }
+}
+```
+
+RIGHT (isolation is automatic):
+
+```jac
+walker:priv get_my_tasks {
+    can fetch with Root entry {
+        report [-->][?:Task];  # Only returns THIS user's tasks automatically
+    }
+}
+```
+
+### 40. Auth functions are imported from `@jac/runtime`
+
+Do NOT try to implement login/signup manually. Jac provides built-in auth functions.
+
+WRONG (manual auth):
+
+```
+cl {
+    async def login(user: str, pass: str) -> None {
+        response = await fetch("/api/login", ...);  # WRONG
+    }
+}
+```
+
+RIGHT:
+
+```jac
+cl import from "@jac/runtime" { jacLogin, jacSignup, jacLogout, jacIsLoggedIn, useNavigate }
+
+cl {
+    def:pub LoginPage() -> JsxElement {
+        has username: str = "";
+        has password: str = "";
+        has error: str = "";
+
+        navigate = useNavigate();
+
+        async def handleLogin() -> None {
+            success = await jacLogin(username, password);
+            if success {
+                navigate("/");
+            } else {
+                error = "Invalid credentials";
+            }
+        }
+
+        return <form>
+            <input
+                value={username}
+                onChange={lambda e: ChangeEvent { username = e.target.value; }}
+                placeholder="Username"
+            />
+            <input
+                type="password"
+                value={password}
+                onChange={lambda e: ChangeEvent { password = e.target.value; }}
+                placeholder="Password"
+            />
+            <button type="button" onClick={lambda -> None { handleLogin(); }}>
+                Login
+            </button>
+            {error and <p style={{"color": "red"}}>{error}</p>}
+        </form>;
+    }
+}
+```
+
+### 41. Routing uses file-based conventions or `@jac/runtime` components
+
+WRONG (React Router npm import):
+
+```
+import from "react-router-dom" { BrowserRouter, Routes, Route }
+```
+
+RIGHT (file-based routing -- recommended):
+
+```
+pages/
+├── layout.jac            # Root layout wrapping all pages
+├── index.jac             # / (home)
+├── about.jac             # /about
+├── users/
+│   └── [id].jac          # /users/:id (dynamic)
+├── (public)/             # Route group (no auth)
+│   └── login.jac         # /login
+└── (auth)/               # Route group (auth required)
+    └── dashboard.jac     # /dashboard
+```
+
+Each page file exports a `page` function:
+
+```jac
+# pages/about.jac
+cl {
+    def:pub page() -> JsxElement {
+        return <div>
+            <h1>About Us</h1>
+        </div>;
+    }
+}
+```
+
+RIGHT (manual routing from `@jac/runtime`):
+
+```jac
+cl import from "@jac/runtime" { Router, Routes, Route, Link, useNavigate, useParams }
+```
+
+### 42. Dynamic route parameters use `useParams()` from `@jac/runtime`
+
+WRONG (accessing params directly):
+
+```
+# pages/users/[id].jac
+cl {
+    def:pub page(id: str) -> JsxElement {  # WRONG: params are not function args
+        return <h1>User {id}</h1>;
+    }
+}
+```
+
+RIGHT:
+
+```jac
+# pages/users/[id].jac
+cl import from "@jac/runtime" { useParams }
+
+cl {
+    def:pub page() -> JsxElement {
+        params = useParams();
+        userId = params.id;
+
+        return <h1>User {userId}</h1>;
+    }
+}
+```
+
+### 43. Layout files use `Outlet` for child page rendering
+
+WRONG (trying to pass children manually):
+
+```
+cl {
+    def:pub layout(props: dict) -> JsxElement {
+        return <div>
+            <nav>...</nav>
+            {props.children}
+        </div>;
+    }
+}
+```
+
+RIGHT:
+
+```jac
+cl import from "@jac/runtime" { Outlet }
+
+cl {
+    def:pub layout() -> JsxElement {
+        return <div>
+            <nav>...</nav>
+            <Outlet />
+        </div>;
+    }
+}
 ```

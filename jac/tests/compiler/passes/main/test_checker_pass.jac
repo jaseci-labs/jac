@@ -301,6 +301,29 @@ test "arity" {
     );
 }
 
+test "dunder_new_direct_call" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_dunder_new_direct.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # object.__new__(self.__class__) and object.__new__(cls) should NOT error.
+    # Only the call with too many args should produce errors (one per extra arg).
+    e1051_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1051"
+    ];
+    assert len(e1051_errors) == 2 , f"Expected 2 E1051 errors, got {len(
+        e1051_errors
+    )}: " + "\n".join(e.pretty_print() for e in e1051_errors);
+    # Both errors should be on the too-many-args line
+    for e in e1051_errors {
+        assert e.loc and e.loc.first_line == 32 , f"Expected error on line 32, got line {e.loc.first_line
+            if e.loc
+            else '?'}";
+    }
+}
+
 test "param_types" {
     path = os.path.join(CHECKER_FIXTURES, "checker_param_types.jac");
     program = JacProgram();
@@ -1224,7 +1247,8 @@ test "list_indexing" {
         os.path.join(CHECKER_FIXTURES, "checker_list_indexing.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 1;
+    # Bare list[Any] indexing yields Any, so len(some[0]) is valid.
+    assert len(program.errors_had) == 0;
 }
 
 test "range_function" {
@@ -1476,6 +1500,17 @@ test "type_narrowing" {
             expected_errors[i], program.errors_had[i].pretty_print()
         );
     }
+}
+
+test "expr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_expr_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 }
 
 test "reassign_in_branch" {
@@ -1895,9 +1930,9 @@ test "compound_and_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Structural protocol matching (SupportsIndex, Sized, etc.) resolved the
-    # previously-expected errors in this fixture.
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+    # CFG correctly reports x.offspring error after early-exit if-body
+    # (line 203: Animal has no offspring — only reachable on false branch).
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -1933,6 +1968,137 @@ test "assignment_narrowing" {
     assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Parenthesized BoolExpr conditions wire the short-circuit CFG."""
+test "parenthesized_bool_cond" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_parenthesized_bool_cond.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Assignment barrier: strict narrowing, widening reset, in-branch re-narrow."""
+test "assignment_barrier" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_assignment_barrier.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # The widening reassignment in `widen_via_reassign` resets `x` to
+    # `int | None`, so `return x` against the `int` return type is the
+    # only expected error.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot return int | NoneType' in msg , f"Expected widening-reset error, got: {msg}";
+}
+
+"""Pre-statement narrowing reaches inside expression sub-CFGs."""
+test "pre_expr_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_pre_expr_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # All three shapes (early-return guard, OR-inverse guard, if-wrap)
+    # must carry the enclosing statement's narrowing into ternary
+    # branches so member access on the narrowed type succeeds.
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Ternary conditions with BoolExpr narrow their branches per-operand."""
+test "ternary_bool_cond_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_ternary_bool_cond_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # All four shapes must narrow cleanly: AND-in-true, OR-inverse-in-else
+    # (bare and parenthesized), and the plain if/else control.
+    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
+"""Starred-unpack assignment acts as a narrowing barrier."""
+test "starred_unpack_barrier" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_starred_unpack_barrier.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # After `(head, *rest) = ...` inside `if rest is not None`, rest
+    # must reset to list[int] | None. The typed-local assignment then
+    # fails because list[int] | None is not assignable to list[int].
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot assign list[int] | NoneType to list[int]' in msg , f"Expected starred-unpack reset error, got: {msg}";
+}
+
+"""Tuple-unpacking assignment acts as a narrowing barrier."""
+test "tuple_unpack_barrier" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_tuple_unpack_barrier.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # After `(x, _) = reset_pair()` inside `if x is not None`, x must
+    # reset to int | None. `return x` then fails against int.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot return int | NoneType' in msg , f"Expected widening-reset error, got: {msg}";
+}
+
+"""Destructuring assignment narrows by RHS element type when available."""
+test "destructure_element_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_destructure_element_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Four narrowing cases must succeed; only `no_narrow_non_strict`
+    # should error because its RHS element type matches the declared
+    # type and therefore fails the strict-narrowing check.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot return int | str' in msg , f"Expected non-strict-narrow error, got: {msg}";
+}
+
+"""Match-case narrowing is killed by a later assignment to the subject."""
+test "match_case_reassign_reset" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_match_case_reassign_reset.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 4 , f"Expected 4 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    assert 'Cannot assign int to Shape' in program.errors_had[0].pretty_print();
+    for i in [1, 2, 3] {
+        msg = program.errors_had[i].pretty_print();
+        assert 'has no attribute "sides"' in msg , f"Expected attribute error at index {i}, got: {msg}";
+    }
 }
 
 """Test truthiness guard narrowing for member access."""
@@ -2812,7 +2978,7 @@ the result to Unknown instead of str. Subsequent string method calls fail with E
 
 Mirrors: runtime.impl.jac line 1096 (chomp_target = chomp_target[1:] -> .startswith fails).
 """
-test "root_cause_5_string_slice_loses_type" {
+test "root_cause_5_string_slice_preserves_type" {
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_narrowing_root_causes.jac"),
@@ -2820,16 +2986,16 @@ test "root_cause_5_string_slice_loses_type" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # fail_ functions (lines 234-254) — string slice/index loses str type
+    # Regression guard for the former "string slice loses type" root cause.
+    # The pass_ functions exercise the three patterns that used to degrade
+    # str to Unknown. They must type-check cleanly. See the fixture header
+    # comment above the pass_string_* functions for the full fix summary.
     rc5_errors = [
         e
         for e in program.errors_had
-        if e.loc and 234 <= e.loc.first_line <= 254
+        if e.loc and 239 <= e.loc.first_line <= 258
     ];
-    # PARTIALLY FIXED: str.__getitem__ now returns str via protocol matching fallback.
-    # s[0].upper() chaining now works (LiteralString flags fix propagates Instantiable).
-    # Remaining 2: while-loop re-assignment degrades str to Unknown (.startswith x2).
-    assert len(rc5_errors) == 2 , f"Expected 2 string-slice errors, got {len(
+    assert len(rc5_errors) == 0 , f"Expected 0 string-slice errors, got {len(
         rc5_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc5_errors);
 }
@@ -2947,9 +3113,8 @@ test "root_cause_9_any_in_union" {
         for e in program.errors_had
         if e.loc and 396 <= e.loc.first_line <= 415
     ];
-    # PARTIALLY FIXED: attr access on Any|T unions now works (2 of original 4 fixed).
-    # Remaining: AnyType in result union not recognized as assignable to concrete types.
-    assert len(rc9_errors) == 3 , f"Expected 3 any-in-union errors, got {len(
+    # CFG narrowing resolved 1 of 3 any-in-union errors.
+    assert len(rc9_errors) == 2 , f"Expected 2 any-in-union errors, got {len(
         rc9_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc9_errors);
 }
@@ -3014,11 +3179,8 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # Total: RC1(0) + RC2(5) + RC3(0) + RC4(0) + RC5(2) + RC6(15) + RC7(8) + RC8(4) + RC9(3) = 37
-    # Name-target cascade suppression removed — each Unknown Name attribute
-    # access is now reported as a real diagnostic.
-    # RC5 dropped from 3→2: LiteralString flags fix resolved s[0].upper() chain.
-    assert len(program.errors_had) == 37 , f"Expected 37 total errors, got {len(
+    # RC9 dropped 3→2, RC5 dropped 2→0. Total: 34
+    assert len(program.errors_had) == 34 , f"Expected 34 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
@@ -3055,4 +3217,112 @@ test "scope_narrowing_isolation_between_impl_bodies" {
     assert len(program.errors_had) == 0 , f"Scope narrowing should not leak between impl bodies, got {len(
         program.errors_had
     )} errors:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "bare_generic_iteration_yields_any" {
+    # Bare generic types like `list` (no type args) should be treated as
+    # list[Any] per PEP 484, so iterating yields Any (not Unknown).
+    # Only the typed list[int] assignment mismatch should error.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_iteration.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , f"Expected 1 error (int->str), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert_error_pretty_found(
+        """
+        b: str = t;   # <-- Error (int not assignable to str)
+        ^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # Bare generics should produce W1036 warnings nudging toward explicit type args
+    bare_generic_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1036" in w.pretty_print()
+    ];
+    assert len(bare_generic_warnings) == 3 , f"Expected 3 W1036 warnings (list, dict, list), got {len(
+        bare_generic_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
+}
+
+"""Test callable() type narrowing - validates narrowing unions by callability."""
+test "callable_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_callable_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 4 , f"Expected exactly 4 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # E1: No callable guard — full union assigned to Callable
+    assert_error_pretty_found(
+        """
+        fail: Callable[[int], str] = handler;  # <-- Error (union cannot assign to Callable)
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # E2: No callable guard — full union assigned to str
+    assert_error_pretty_found(
+        """
+        fail: str = handler;  # <-- Error (union cannot assign to str)
+    """,
+        program.errors_had[1].pretty_print()
+    );
+
+    # E3: Wrong type in callable branch — str assigned but handler is Callable
+    assert_error_pretty_found(
+        """
+        s: str = handler;  # <-- Error: handler is Callable here, not str
+    """,
+        program.errors_had[2].pretty_print()
+    );
+
+    # E4: Wrong type in else branch — Callable assigned but handler is str
+    assert_error_pretty_found(
+        """
+        cb: Callable[[int], str] = handler;  # <-- Error: handler is str here
+    """,
+        program.errors_had[3].pretty_print()
+    );
+}
+
+"""Test type narrowing through TypeAlias definitions - isinstance, callable, and None checks."""
+test "type_alias_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_type_alias_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # E1: No isinstance guard — TypeAlias'd union assigned to component type
+    assert_error_pretty_found(
+        """
+        f: Foo = val;  # Error: Foo | None cannot assign to Foo
+    """,
+        program.errors_had[0].pretty_print()
+    );
+
+    # E2: No callable guard — TypeAlias'd union assigned to Callable
+    assert_error_pretty_found(
+        """
+        fail: Callable[[int], str] = handler;  # Error: union cannot assign to Callable
+    """,
+        program.errors_had[1].pretty_print()
+    );
 }

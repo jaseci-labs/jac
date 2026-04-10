@@ -14,7 +14,7 @@ cl {
             newRole: str = "user",
             createError: str = "";
 
-        async def handleSubmit(e: Any) -> None {
+        async def handleSubmit(e: Any) {
             e.preventDefault();
             createError = "";
             result = await onCreate(newUsername, newPassword, newRole);
@@ -28,7 +28,7 @@ cl {
             }
         }
 
-        def handleClose -> None {
+        def handleClose {
             newUsername = "";
             newPassword = "";
             newRole = "user";
@@ -44,20 +44,20 @@ cl {
                         label="Username"
                         type="text"
                         value={newUsername}
-                        onChange={lambda e: Any  -> None { newUsername = e.target.value;}}
+                        onChange={lambda e: Any { newUsername = e.target.value;}}
                         className="mb-3"
                     />
                     <Input
                         label="Password"
                         type="password"
                         value={newPassword}
-                        onChange={lambda e: Any  -> None { newPassword = e.target.value;}}
+                        onChange={lambda e: Any { newPassword = e.target.value;}}
                         className="mb-3"
                     />
                     <Select
                         label="Role"
                         value={newRole}
-                        onChange={lambda e: Any  -> None { newRole = e.target.value;}}
+                        onChange={lambda e: Any { newRole = e.target.value;}}
                         options={ROLE_OPTIONS}
                         className="mb-4"
                     />

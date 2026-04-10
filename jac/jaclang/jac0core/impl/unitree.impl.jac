@@ -579,7 +579,7 @@ impl UniScopeNode.chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None {
 impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
     nd.name_spec.py_ctx_func = ast3.Store;
     if (isinstance(nd, (TupleVal, ListVal)) and nd.values) {
-        def fix(item: TupleVal | ListVal | UnaryExpr) -> None {
+        def fix(item: TupleVal | ListVal | UnaryExpr) {
             if isinstance(item, UnaryExpr) {
                 if isinstance(item.operand, AstSymbolNode) {
                     item.operand.name_spec.py_ctx_func = ast3.Store;
@@ -721,6 +721,13 @@ impl ConditionalNode.postinit -> None {
     UniCFGNode.postinit(self);
 }
 
+"""Initialize CfgExpr (expression-level CFG wrapper)."""
+impl CfgExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+    ConditionalNode.postinit(self);
+}
+
 
 """Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head -> UniCFGNode {
@@ -751,7 +758,9 @@ impl UniCFGNode.get_tail -> UniCFGNode {
         and not isinstance(
             nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
-        and not isinstance(nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
+        and not isinstance(
+            nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+        )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
     ) {
@@ -1810,7 +1819,6 @@ impl CompareExpr.postinit -> None {
 impl BoolExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
-    ConditionalNode.postinit(self);
 }
 
 

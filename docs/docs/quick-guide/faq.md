@@ -121,7 +121,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         Another process is using the port (default 8000). Either stop the other process or use a different port: `jac start main.jac --port 3000`.
 
     ??? question "My frontend shows data but fields are empty or undefined."
-        When returning node objects directly from `def:pub` endpoints, the serialized JSON uses internal field names like `_jac_id` instead of `id`. For reliable client-side access, return explicit dictionaries from your endpoints:
+        When returning node objects directly from `def:pub` endpoints, use `jid(node)` to access the node's unique identity. For reliable client-side access, return explicit dictionaries from your endpoints:
         ```jac
         # Instead of: return task;
         # Use:

@@ -25,7 +25,7 @@ def _get_cache_dir -> Path {
 }
 
 """Handle the 'jac purge' command."""
-def _handle_purge -> None {
+def _handle_purge {
     if "-h" in sys.argv or "--help" in sys.argv {
         print("usage: jac purge [-h]\n");
         print(

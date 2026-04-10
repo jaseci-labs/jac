@@ -101,20 +101,47 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
     for i in nd.target {
         if isinstance(i, uni.AstSymbolNode) {
             if isinstance(i, (uni.ListVal, uni.TupleVal)) {
-                self._def_insert_unpacking(i, i.sym_tab);
+                self._def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
             } elif ((sym := i.sym_tab.lookup(i.sym_name, deep=False)) is not None) {
                 sym.add_use(i.name_spec);
+            } elif (
+                (nd.type_tag is None)
+                and (
+                    (outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
+                )
+                and outer_has.sym_type == SymbolType.HAS_VAR
+                and isinstance(outer_has.parent_tab, uni.Ability)
+            ) {
+                # In cl def components, has variables are reactive state owned by
+                # the enclosing ability (not an archetype). Assignments to these
+                # names in nested abilities are state mutations, not new locals.
+                outer_has.add_use(i.name_spec);
             } elif (
                 (nd.type_tag is None)
                 and not isinstance(
                     i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
                 )
-                and (
-                    (outer := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
-                )
-                and self._outer_has_type_annotation(outer)
             ) {
-                outer.add_use(i.name_spec);
+                # Python semantics: an unannotated assignment inside a non-scoping
+                # block (try/except/finally, if/else, for/while, match) binds in
+                # the nearest enclosing Python scope, not in the inner block.
+                # Without this, two assignments to the same name in sibling
+                # branches would create separate "shadow" symbols in each faux
+                # scope, fragmenting symbol resolution and producing spurious
+                # "defined but never used" warnings. This mirrors the walrus
+                # handling in exit_binary_expr.
+                py_scope = self.find_python_scope_node_of(i);
+                if py_scope is not None {
+                    if (
+                        (outer := py_scope.lookup(i.sym_name, deep=False)) is not None
+                    ) {
+                        outer.add_use(i.name_spec);
+                    } else {
+                        py_scope.def_insert(i, single_decl='local var');
+                    }
+                } else {
+                    i.sym_tab.def_insert(i, single_decl='local var');
+                }
             } else {
                 # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {
@@ -532,20 +559,53 @@ impl SymTabBuildPass.exit_iter_for_stmt(
     self.pop_scope();
 }
 
-"""Recursively define symbols in unpacking expressions."""
+"""Recursively define symbols in unpacking expressions.
+
+The two call sites want different scoping:
+
+- `for (x, y) in items:` binds `x` and `y` in the for-loop's own
+  scope. This is Jac-specific (Python has no loop scopes) but the
+  symbol table and test suite depend on it.
+- `(x, y) = f()` as a statement must rebind an existing local
+  when one is in scope, otherwise bind in the nearest Python
+  scope — same Python-semantics path that plain assignments use.
+  Without this, unpack targets shadow the parameter they should
+  be writing, and the narrowing engine can't see the assignment
+  as a barrier.
+
+`rebind_in_python_scope=True` selects the second behavior.
+"""
 impl SymTabBuildPass._def_insert_unpacking(
-    self: SymTabBuildPass, nd: uni.Expr, sym_tab: UniScopeNode
+    self: SymTabBuildPass,
+    nd: uni.Expr,
+    sym_tab: UniScopeNode,
+    rebind_in_python_scope: bool = False
 ) -> None {
     if isinstance(nd, uni.Name) {
+        if rebind_in_python_scope {
+            if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
+                existing.add_use(nd.name_spec);
+                return;
+            }
+            py_scope = self.find_python_scope_node_of(nd);
+            if py_scope is not None {
+                if ((outer := py_scope.lookup(nd.sym_name, deep=False)) is not None) {
+                    outer.add_use(nd.name_spec);
+                } else {
+                    py_scope.def_insert(nd, single_decl='local var');
+                }
+                return;
+            }
+        }
         sym_tab.def_insert(nd, single_decl='iterator');
     } elif isinstance(nd, (uni.TupleVal, uni.ListVal)) {
         for target_var in nd.values {
             if isinstance(target_var, uni.Expr) {
-                self._def_insert_unpacking(target_var, sym_tab);
+                self._def_insert_unpacking(target_var, sym_tab, rebind_in_python_scope);
             }
         }
     } elif (isinstance(nd, uni.UnaryExpr) and (nd.op.name == Tokens.STAR_MUL)) {
-        self._def_insert_unpacking(nd.operand, sym_tab);
+        self._def_insert_unpacking(nd.operand, sym_tab, rebind_in_python_scope);
     }
 }
 

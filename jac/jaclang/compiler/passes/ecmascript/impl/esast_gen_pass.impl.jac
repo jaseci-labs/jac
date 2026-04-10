@@ -1298,7 +1298,9 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     callee_expr = cast(es.Expression, callee);
     call_args: list[(es.Expression | es.SpreadElement)] = [args_obj] if props else args;
     if (
-        isinstance(callee_type, jtypes.ClassType) and isinstance(callee, es.Expression)
+        isinstance(callee_type, jtypes.ClassType)
+        and callee_type.is_instantiable()
+        and isinstance(callee, es.Expression)
     ) {
         nd.gen.es_ast = self.sync_loc(
             es.NewExpression(callee=callee_expr, arguments=call_args), jac_node=nd
@@ -1794,6 +1796,11 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         }
         nd.gen.es_ast = result;
     }
+}
+
+"""CfgExpr: propagate inner expression's generated ES AST."""
+impl EsastGenPass.exit_cfg_expr(nd: uni.CfgExpr) -> None {
+    nd.gen.es_ast = nd.expr.gen.es_ast;
 }
 
 """Process boolean expression (and/or)."""
@@ -4270,7 +4277,7 @@ impl EsastGenPass._analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> di
     is_writer = False;
     touches: set[str] = set();
     """Recursively scan a node and its descendants for effects.""";
-    def _scan(nd: uni.UniNode) -> None {
+    def _scan(nd: uni.UniNode) {
         nonlocal is_writer;
 
         # Edge creation: BinaryExpr with ConnectOp operator (++>, <++, <++>)

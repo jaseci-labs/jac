@@ -2,14 +2,38 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.10 (Unreleased)
+## jac-scale 0.2.14 (Unreleased)
+
+- **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
+- **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
+- **Fix: Spurious "write access" warnings on system root during sync**: Skip `check_write_access()` for unchanged anchors in MongoDB sync, eliminating noisy `Current root doesn't have write access to NodeAnchor Root` log spam on every authenticated request.
+
+- **Optional Install Groups**: Heavy dependencies (pymongo, redis, prometheus-client, apscheduler, kubernetes, docker) are no longer required by default. Install only what you need via extras: `pip install jac-scale[data]` (MongoDB + Redis), `[monitoring]` (Prometheus), `[scheduler]` (APScheduler), `[deploy]` (Kubernetes + Docker), or `[all]` for everything. Groups are combinable: `pip install jac-scale[data,monitoring]`. Missing dependencies produce clear error messages with install instructions. Existing users should use `pip install jac-scale[all]` to keep current behavior.
+
+## jac-scale 0.2.13 (Latest Release)
+
+- **jac-mcp included by default**: Added to the default Kubernetes package set in jac-scale.
+
+## jac-scale 0.2.12
+
+- **Pre-built Admin Dashboard**: The admin dashboard UI is now pre-built during the release process and shipped as static assets in the package. Previously, navigating to `/admin/` on first load triggered a full Vite build from source, causing significant lag. The server now copies bundled assets instantly, falling back to source build only in dev mode.
+- **Dev Mode: Named endpoints in Swagger docs**: Dev mode (`jac start --dev`) now registers individual named endpoints (e.g. `/walker/read_todos`) instead of generic catch-all routes (`/walker/{walker_name}`), so Swagger UI shows all walker/function names. HMR still works - routes are refreshed automatically on file changes.
+- **API docs enabled by default**: `/docs`, `/redoc`, and `/openapi.json` are now available in all modes (not just dev). Disable with `docs_enabled = false` in `[plugins.scale.server]`.
+- 2 small refactors/changes.
+
+## jac-scale 0.2.11
+
+- **Fix: Sandbox status returns stale RUNNING for dead pods**: `KubernetesSandbox.status()` was returning the cached registry state (often `RUNNING`) when `read_namespaced_pod_status()` threw an exception (pod deleted or unreachable). This caused callers to believe the sandbox was still alive, preventing recovery. Now returns `STOPPED` when the pod query fails so dead pods are detected immediately.
+- **Fix: Admin portal build fails from PyPI install**: `jac.toml` and `styles/*.css` were excluded from the wheel because `pyproject.toml` package-data only included `*.jac` files. The admin portal's `jac build` command needs these files to discover the project config and generate Tailwind CSS output.
+
+## jac-scale 0.2.10
 
 - **Dev Mode: API Docs accessible from client URL**: In dev mode (`jac start --dev`), the FastAPI Swagger UI (`/docs`) and OpenAPI spec (`/openapi.json`) are now proxied through the Vite dev server, so you can browse your API docs at the same URL as your app without switching ports.
-- **Security: FastAPI docs disabled in production**: `/docs`, `/redoc`, and `/openapi.json` are no longer exposed in production. They are only available in dev mode.
+- **Configurable API docs**: `/docs`, `/redoc`, and `/openapi.json` are controlled by the `docs_enabled` setting in `[plugins.scale.server]` (defaults to `true`). Set `docs_enabled = false` to hide them in production.
 - **Health check endpoint**: Added `GET /healthz` for liveness checks. Returns `{"status": "ok"}` with no authentication required. Useful for Kubernetes probes and monitoring.
 - **Warm Pool TTL**: Added `warm_pool_ttl` config to control warm pod lifetime independently from sandbox `ttl_seconds`. Default `0` means warm pods live indefinitely until claimed, preventing the pool from emptying after the sandbox TTL expires.
 
-## jac-scale 0.2.9 (Latest Release)
+## jac-scale 0.2.9
 
 - **Ingress Rate Limiting (DDoS Protection)**: Added configurable NGINX rate limiting to the Kubernetes ingress. Limits sustained requests per second, burst headroom, and concurrent connections per client IP using the leaky bucket algorithm. Returns `429 Too Many Requests` when limits are exceeded. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`: `ingress_limit_rps` (default: 20), `ingress_limit_burst_multiplier` (default: 5), `ingress_limit_connections` (default: 20).
 - **Cookie-Based Sticky Sessions (optional)**: Added opt-in session affinity via NGINX cookie (`route`). When enabled, every user is pinned to the same pod regardless of IP changes (mobile, NAT, proxies). Cookie never expires in the browser. On pod failure NGINX automatically re-routes and rewrites the cookie. Enabled by default. Disable via `ingress_session_affinity = false` in `[plugins.scale.kubernetes]`.

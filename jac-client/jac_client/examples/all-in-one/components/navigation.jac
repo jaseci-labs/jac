@@ -25,7 +25,7 @@ cl {
             };
         }
 
-        def handleLogout(e: Any) -> None {
+        def handleLogout(e: Any) {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -121,6 +121,22 @@ cl {
                             "alignItems": "center"
                         }}
                     >
+                        <Link
+                            to="/debug"
+                            style={{
+                                "padding": "0.5rem 1rem",
+                                "textDecoration": "none",
+                                "color": "#dc2626",
+                                "fontWeight": "bold",
+                                "backgroundColor": "#fef2f2",
+                                "borderRadius": "4px",
+                                "display": "inline-block",
+                                "border": "1px solid #fca5a5",
+                                "fontSize": "0.85rem"
+                            }}
+                        >
+                            Debug
+                        </Link>
                         {authButtons}
                     </div>
                 </div>

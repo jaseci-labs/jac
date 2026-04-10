@@ -14,7 +14,7 @@ obj PetRecord {
     }
 
     # Protected method - for vets and staff
-    def:protect add_medical_record(record: str) -> None {
+    def:protect add_medical_record(record: str) {
         self.medical_history.append(record);
         print(f"Medical record added for {self.name}");
     }
@@ -36,7 +36,7 @@ obj PetRecord {
 obj VetRecord(PetRecord) {
     has:protect vet_notes: str = "";
 
-    def:pub add_vet_note(note: str) -> None {
+    def:pub add_vet_note(note: str) {
         # Can access protected members from parent
         self.add_medical_record(f"Vet note: {note}");
         self.vet_notes = note;

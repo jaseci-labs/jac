@@ -162,7 +162,7 @@ def _copy_pwa_icons_to_dist(dist_dir: Path, project_dir: Path) -> None {
 }
 
 """Generate manifest.json for PWA."""
-def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) -> None {
+def _generate_manifest(dist_dir: Path, project_name: str, pwa_config: dict) {
     manifest = _get_default_manifest(project_name, pwa_config);
 
     user_manifest = pwa_config.get("manifest", {});
@@ -252,7 +252,7 @@ self.addEventListener('fetch', (event) => {{
 }
 
 """Generate service worker for offline support."""
-def _generate_service_worker(dist_dir: Path, pwa_config: dict) -> None {
+def _generate_service_worker(dist_dir: Path, pwa_config: dict) {
     cache_name = pwa_config.get("cache_name", PWA_DEFAULT_CACHE_NAME);
     precache_files = _get_precache_files(dist_dir);
     sw_content = _build_service_worker_content(cache_name, precache_files);
@@ -598,7 +598,7 @@ impl PWATarget.setup(project_dir: Path) -> None {
 }
 
 """Generate PWA icons to project directory."""
-def _copy_pwa_icons_to_project(dest_dir: Path) -> None {
+def _copy_pwa_icons_to_project(dest_dir: Path) {
     try {
         generated = _generate_default_pwa_icons(dest_dir);
         if generated == 0 {

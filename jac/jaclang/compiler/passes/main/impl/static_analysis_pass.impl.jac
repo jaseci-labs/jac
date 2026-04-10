@@ -64,9 +64,9 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
         if name in ("self", "super", "init", "postinit") {
             continue;
         }
-        # Skip parameters of abstract abilities (no body to use them in)
+        # Skip parameters of abstract abilities and by-llm abilities
         if sym.sym_type == SymbolType.VAR and isinstance(scope, uni.Ability) {
-            if scope.needs_impl {
+            if scope.needs_impl or scope.is_genai_ability {
                 continue;
             }
         }
@@ -92,10 +92,9 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd._py_ctx_func != ast3.Load {
             continue;
         }
-        # Skip well-known builtins and special names
+        # Skip well-known Python builtins and special names
         import builtins;
-        if name_nd.value in dir(builtins)
-        or name_nd.value in ("self", "super", "almostEqual") {
+        if name_nd.value in dir(builtins) or name_nd.value in ("self", "super") {
             continue;
         }
         # root is a Jac ambient builtin — warn if used bare (not as root() call)
@@ -244,15 +243,6 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
                 if isinstance(right, uni.Bool) {
                     self.emit(W2075, node_override=nd);
                 }
-            }
-        }
-    }
-
-    # W2052: overly broad except (catching Exception or BaseException)
-    for nd in mod.get_all_sub_nodes(typ=uni.Except, brute_force=True) {
-        if nd.ex_type is not None and isinstance(nd.ex_type, uni.Name) {
-            if nd.ex_type.value in ("Exception", "BaseException") {
-                self.emit(W2052, node_override=nd.ex_type, type=nd.ex_type.value);
             }
         }
     }

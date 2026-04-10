@@ -4,14 +4,14 @@ Storage configuration comes from environment variables or jac.toml.
 """
 
 """Initialize ScaleTieredMemory with distributed backends."""
-impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
+impl ScaleTieredMemory.postinit -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
     self.__mem__ = {};
     self.__gc__ = set();
     # L2: Try to initialize Redis cache (replaces LocalCacheMemory)
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
-    if self._cache_available and use_cache {
+    if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
     } else {
@@ -80,8 +80,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     mem_anchor
                     for (_, mem_anchor) in list(self.__mem__.items())
                     if mem_anchor.persistent
-                    and Jac.check_write_access(mem_anchor)
                     and Serializer._compute_hash(mem_anchor) != mem_anchor.hash
+                    and Jac.check_write_access(mem_anchor)
                 ];
             }
             self.l3.sync();

@@ -7,6 +7,7 @@ import from typing { Any, Callable }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.abstractions.config.base_config { BaseConfig }
 import from jac_scale.abstractions.logger { Logger }
+import from jac_scale._optdeps.optional_deps { require_optional }
 
 """Type alias for target factory callables.""" type TargetFactory = Callable[
     [dict[str, Any], Logger | None],
@@ -39,7 +40,7 @@ class DeploymentTargetFactory {
         factory: Callable that accepts (config: dict, logger: Logger | None)
                  and returns a DeploymentTarget instance
     """
-    static def register(target_type: str, factory: TargetFactory) -> None {
+    static def register(target_type: str, factory: TargetFactory) {
         DeploymentTargetFactory._registry[target_type] = factory;
     }
 
@@ -69,6 +70,7 @@ class DeploymentTargetFactory {
         }
         # Built-in targets
         if target_type == 'kubernetes' {
+            require_optional("kubernetes", "deploy");
             import from jac_scale.targets.kubernetes.kubernetes_target {
                 KubernetesTarget
             }

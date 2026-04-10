@@ -285,6 +285,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E1035 = _err(
          "E1035", Category.TYPE, "Type \"{src}\" is not assignable to type \"{dest}\""
      ),
+     # Bare generic warning
+     W1036 = _warn(
+         "W1036",
+         Category.TYPE,
+         "Generic type \"{type}\" used without type arguments, defaulting to"
+         " \"{type}[Any]\"; consider adding explicit type arguments"
+     ),
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
@@ -449,11 +456,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2008", Category.SEMANTIC, "Invalid target for context update: {target}"
      ),
      # New semantic warnings
-     W2052 = _warn(
-         "W2052",
-         Category.SEMANTIC,
-         "Catching overly broad exception type '{type}' — catch a more specific exception"
-     ),
      W2058 = _warn(
          "W2058",
          Category.SEMANTIC,
@@ -621,6 +623,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "Mutable default argument '{type}' — use None and assign inside the function [mutable-default]"
      ),
+     W3037 = _warn(
+         "W3037",
+         Category.LINT,
+         "Unnecessary '-> None' return type annotation on '{name}'; "
+         "functions without a return statement implicitly return None "
+         "[unnecessary-none-return]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -643,7 +652,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "identical-branches": "W3025",
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
-         "mutable-default": "W3036"
+         "mutable-default": "W3036",
+         "unnecessary-none-return": "W3037"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

@@ -250,6 +250,8 @@ test "tool names" {
     assert "list_commands" in names;
     assert "get_command" in names;
     assert "execute_command" in names;
+    assert "understand_jac_and_jaseci" in names;
+    assert "get_resource" in names;
 }
 
 test "explain error unexpected token" {
@@ -974,4 +976,28 @@ test "get command missing name returns error" {
     tp = ToolProvider();
     result = tp.call_tool("get_command", {});
     assert "error" in result;
+}
+
+test "understand returns knowledge map with key sections and size hints" {
+    tp = ToolProvider();
+    result = tp.call_tool("understand_jac_and_jaseci", {});
+    assert "knowledge_map" in result;
+    km = result["knowledge_map"];
+    assert "Language Syntax" in km
+    and "Object-Spatial Programming" in km
+    and "Full-Stack Development" in km;
+    assert "jac://guide/pitfalls" in km and "jac://docs/osp" in km;
+    assert "[S]" in km and "[M]" in km and "[L]" in km;
+}
+
+test "get resource fetches valid URIs and rejects invalid ones" {
+    tp = ToolProvider();
+    pitfalls = tp.call_tool("get_resource", {"uri": "jac://guide/pitfalls"});
+    assert "content" in pitfalls and "WRONG" in pitfalls["content"];
+    osp = tp.call_tool("get_resource", {"uri": "jac://docs/osp"});
+    assert "content" in osp and osp["uri"] == "jac://docs/osp";
+    bad = tp.call_tool("get_resource", {"uri": "jac://nonexistent/fake"});
+    assert "error" in bad;
+    empty = tp.call_tool("get_resource", {});
+    assert "error" in empty;
 }

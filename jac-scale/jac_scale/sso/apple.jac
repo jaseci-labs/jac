@@ -21,7 +21,7 @@ obj AppleSSOProvider(SSOProvider) {
         _apple_sso: (AppleSSO | None) = None;
 
     """Initialize the Apple SSO provider."""
-    def postinit -> None {
+    def postinit {
         self._apple_sso = AppleSSO(
             client_id=self.client_id,
             client_secret=self.client_secret,

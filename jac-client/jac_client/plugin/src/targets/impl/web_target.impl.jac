@@ -216,7 +216,7 @@ def _generate_index_html(
     bundler: ViteBundler,
     loaded_mod: types.ModuleType,
     project_dir: Path
-) -> None {
+) {
     import html;
     import json;
     import from jac_client.plugin.client { HeaderBuilder }
@@ -238,7 +238,8 @@ def _generate_index_html(
         "argOrder": [],
         "globals": {}
     };
-    init_json = json.dumps(init_payload);
+    # Escape </ to prevent closing script tag early (don't use html.escape - breaks JSON)
+    init_json = json.dumps(init_payload).replace('</', '<\\/');
     bundle_filename = bundle_path.name;
 
     html_content = f'''<!DOCTYPE html>
@@ -248,9 +249,7 @@ def _generate_index_html(
   </head>
   <body>
     <div id="root"></div>
-    <script id="__jac_init__" type="application/json">{html.escape(
-        init_json
-    )}</script>
+    <script id="__jac_init__" type="application/json">{init_json}</script>
     <script type="module" src="{bundle_filename}"></script>
   </body>
 </html>''';

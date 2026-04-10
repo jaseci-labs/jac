@@ -569,7 +569,6 @@ impl JacCompiler.parse_str(
     } else {
         import from jaclang.jac0core.parser { parse as rd_parse }
         (mod, had_error) = rd_parse(source_str, file_path, prog=target_program);
-        _recalculate_parents(mod);
         if file_path.endswith('.cl.jac') {
             _coerce_client_module(mod);
         } elif file_path.endswith('.sv.jac') {
@@ -717,7 +716,6 @@ impl JacCompiler._prepare_tool_program(
     import from jaclang.jac0core.parser { parse as rd_parse }
     prog = JacProgram();
     (current_mod, had_error) = rd_parse(source_str, file_path, prog=prog);
-    _recalculate_parents(current_mod);
     if had_error {
         prog.mod = uni.ProgramModule(main_mod=current_mod);
         return (prog, None);
@@ -733,7 +731,6 @@ impl JacCompiler._prepare_tool_program(
                 try {
                     annex_src = read_file_with_encoding(annex_path);
                     (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    _recalculate_parents(annex_mod);
                     current_mod.impl_mod.append(annex_mod);
                 } except Exception {
                     ;
@@ -745,7 +742,6 @@ impl JacCompiler._prepare_tool_program(
                 try {
                     annex_src = read_file_with_encoding(annex_path);
                     (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    _recalculate_parents(annex_mod);
                     current_mod.test_mod.append(annex_mod);
                 } except Exception {
                     ;

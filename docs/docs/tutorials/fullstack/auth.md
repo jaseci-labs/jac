@@ -47,7 +47,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleLogin(e: any) -> None {
+        async def handleLogin(e: FormEvent) -> None {
             e.preventDefault();
             error = "";
 
@@ -75,7 +75,7 @@ cl {
                 <input
                     type="text"
                     value={username}
-                    onChange={lambda e: any -> None { username = e.target.value; }}
+                    onChange={lambda e: ChangeEvent { username = e.target.value; }}
                     placeholder="Username"
                     style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
                 />
@@ -83,7 +83,7 @@ cl {
                 <input
                     type="password"
                     value={password}
-                    onChange={lambda e: any -> None { password = e.target.value; }}
+                    onChange={lambda e: ChangeEvent { password = e.target.value; }}
                     placeholder="Password"
                     style={{"width": "100%", "padding": "0.5rem", "marginBottom": "1rem"}}
                 />
@@ -221,7 +221,7 @@ cl {
             }
         }
 
-        async def handleLogin(e: any) -> None {
+        async def handleLogin(e: FormEvent) -> None {
             e.preventDefault();
             error = "";
 
@@ -250,7 +250,7 @@ cl {
                     <input
                         type="text"
                         value={username}
-                        onChange={lambda e: any -> None { username = e.target.value; }}
+                        onChange={lambda e: ChangeEvent { username = e.target.value; }}
                         placeholder="Username"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -260,7 +260,7 @@ cl {
                     <input
                         type="password"
                         value={password}
-                        onChange={lambda e: any -> None { password = e.target.value; }}
+                        onChange={lambda e: ChangeEvent { password = e.target.value; }}
                         placeholder="Password"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -299,7 +299,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleSignup(e: any) -> None {
+        async def handleSignup(e: FormEvent) -> None {
             e.preventDefault();
             error = "";
 
@@ -338,7 +338,7 @@ cl {
                     <input
                         type="text"
                         value={username}
-                        onChange={lambda e: any -> None { username = e.target.value; }}
+                        onChange={lambda e: ChangeEvent { username = e.target.value; }}
                         placeholder="Username"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -348,7 +348,7 @@ cl {
                     <input
                         type="password"
                         value={password}
-                        onChange={lambda e: any -> None { password = e.target.value; }}
+                        onChange={lambda e: ChangeEvent { password = e.target.value; }}
                         placeholder="Password"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -358,7 +358,7 @@ cl {
                     <input
                         type="password"
                         value={confirmPassword}
-                        onChange={lambda e: any -> None { confirmPassword = e.target.value; }}
+                        onChange={lambda e: ChangeEvent { confirmPassword = e.target.value; }}
                         placeholder="Confirm Password"
                         style={{"width": "100%", "padding": "0.75rem", "border": "1px solid #ddd", "borderRadius": "4px"}}
                     />
@@ -518,7 +518,7 @@ cl {
         </AuthContext.Provider>;
     }
 
-    def useAuth() -> any {
+    def useAuth() -> dict {
         return useContext(AuthContext);
     }
 }

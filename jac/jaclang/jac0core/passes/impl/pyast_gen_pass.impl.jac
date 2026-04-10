@@ -1354,6 +1354,8 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
                         posonlyargs=[],
                         args=[self.sync(ast3.arg(arg='self', annotation=None))]
                             if nd.is_method
+                            and not nd.is_static
+                            and not nd.is_classmethod
                             else [],
                         vararg=None,
                         kwonlyargs=[],
@@ -1976,19 +1978,6 @@ impl PyastGenPass.assert_helper(nd: uni.AssertStmt) -> None {
             assert_args_list = [res.inst, res.clss];
         }
     }
-    if (
-        isinstance(nd.condition, uni.FuncCall)
-        and isinstance(self.py_ast_val(nd.condition), ast3.Call)
-    ) {
-        func = nd.condition.target;
-        if (isinstance(func, uni.Name) and (func.value == 'almostEqual')) {
-            assert_func_name = 'assertAlmostEqual';
-            assert_args_list = [];
-            for param in nd.condition.params {
-                assert_args_list.append(self.py_ast_val(param));
-            }
-        }
-    }
     assert_func_expr: ast3.Attribute = self.sync(
         ast3.Attribute(
             value=self.sync(ast3.Name(id=Con.JAC_CHECK.value, ctx=ast3.Load())),
@@ -2453,6 +2442,11 @@ impl PyastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             )
         )
     ];
+}
+
+"""CfgExpr: propagate inner expression's generated Python AST."""
+impl PyastGenPass.exit_cfg_expr(nd: uni.CfgExpr) -> None {
+    nd.gen.py_ast = nd.expr.gen.py_ast;
 }
 
 impl PyastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {

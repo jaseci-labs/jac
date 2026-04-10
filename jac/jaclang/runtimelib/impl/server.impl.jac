@@ -1,4 +1,3 @@
-import logging;
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
@@ -7,11 +6,12 @@ import from jaclang.runtimelib.client_bundle {
     _ensure_js_generated
 }
 
-glob _client_error_logger = logging.getLogger("jaclang.client_errors");
-
 impl UserManager.postinit -> None {
     import sqlite3;
-    data_dir = os.path.join(self.base_path, ".jac", "data");
+    # Check for data path override (JAC_DATA_PATH env var for read-only deployments like AppImage)
+    data_path_override = os.environ.get('JAC_DATA_PATH');
+    effective_data_path = data_path_override or self.base_path;
+    data_dir = os.path.join(effective_data_path, ".jac", "data");
     os.makedirs(data_dir, exist_ok=True);
     self._db_path = os.path.join(data_dir, "main.db");
     self._conn = None;
@@ -1282,7 +1282,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         """
         def _send_response(
             self: JacRequestHandler, response: (Response | TransportResponse)
-        ) -> None {
+        ) {
             # Handle legacy Response objects for backward compatibility
             if isinstance(response, Response) {
                 Jac.send_json(self, response.status, response.body);
@@ -1293,9 +1293,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         """Authenticate and render a page, sending HTML response."""
-        def _render_page(
-            self: JacRequestHandler, func_name: str, args: dict = {}
-        ) -> None {
+        def _render_page(self: JacRequestHandler, func_name: str, args: dict = {}) {
             username = self._authenticate();
             if not username {
                 username = Con.GUEST.value;
@@ -1316,7 +1314,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         """Handle OPTIONS requests (CORS preflight)."""
-        def do_OPTIONS(self: JacRequestHandler) -> None {
+        def do_OPTIONS(self: JacRequestHandler) {
             self.send_response(200);
             ResponseBuilder._add_cors_headers(self);
             ResponseBuilder._add_custom_headers(self);
@@ -1728,7 +1726,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         """Log HTTP requests."""
-        def log_message(self: JacRequestHandler, format: str, *args: object) -> None {
+        def log_message(self: JacRequestHandler, format: str, *args: object) {
             console.print(f"{self.address_string()} - {(format % args)}");
         }
     }
@@ -1902,44 +1900,6 @@ impl JacAPIServer.start(
     }
 }
 
-"""Handle a client-side error report posted to /cl/__error__.
-
-Logs the error via the client_errors logger and prints to console.
-Requires at least a 'message' field in the JSON payload.
-"""
-def _handle_client_error(handler: Any, data: dict[str, Any]) -> None {
-    message = data.get('message', '');
-    if not message {
-        Jac.send_json(handler, 400, {'error': 'Missing required field: message'});
-        return;
-    }
-    stack = data.get('stack', '');
-    url = data.get('url', '');
-    source = data.get('source', '');
-    timestamp = data.get('timestamp', '');
-    # Log to the client_errors logger
-    log_parts = [f"[Client] {message}"];
-    if stack {
-        log_parts.append(f"  Stack: {stack}");
-    }
-    if url {
-        log_parts.append(f"  URL: {url}");
-    }
-    if source {
-        log_parts.append(f"  Source: {source}");
-    }
-    log_message = '\n'.join(log_parts);
-    _client_error_logger.error(log_message);
-    # Also print to console for dev visibility
-    console.error(f"[Client] {message}");
-    if stack {
-        for line in stack.split('\n') {
-            console.print(f"    {line}");
-        }
-    }
-    Jac.send_json(handler, 200, {'ok': True});
-}
-
 """Print comprehensive documentation for all endpoints that would be generated."""
 impl print_endpoint_docs(server: JacAPIServer) -> None {
     server.introspector.load();
@@ -1947,11 +1907,11 @@ impl print_endpoint_docs(server: JacAPIServer) -> None {
     walkers = server.introspector.get_walkers();
     client_exports = server.introspector._client_manifest.get('exports', []);
     """Print section header.""";
-    def section(title: str, auth: str = '') -> None {
+    def section(title: str, auth: str = '') {
         console.print(f"{title}{f' ({auth})' if auth else ''}{('-' * 80)}");
     }
     """Print endpoint with description.""";
-    def endpoint(method: str, path: str, desc: str, details: str = '') -> None {
+    def endpoint(method: str, path: str, desc: str, details: str = '') {
         console.print(f"{method:6} {path}");
         console.print(f"       {desc}");
         if details {

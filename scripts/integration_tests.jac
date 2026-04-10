@@ -233,6 +233,180 @@ def run_cli_tests(runner: IntegrationTestRunner) {
     );
 }
 
+"""Test that pre-built admin UI assets are bundled and served correctly."""
+def run_admin_prebuild_tests(runner: IntegrationTestRunner) {
+    import tempfile;
+    import time;
+    import shutil;
+
+    # --- Package-level checks ---
+
+    # Verify _dist directory exists with index.html in the installed package
+    runner.run(
+        [
+            sys.executable, "-c",
+            "from pathlib import Path;"
+            "import jac_scale;"
+            "d = Path(jac_scale.__file__).parent / 'admin' / '_dist';"
+            "idx = d / 'index.html';"
+            "assert d.exists(), f'_dist not found at {d}';"
+            "assert idx.exists(), f'index.html not found at {idx}';"
+            "files = list(d.rglob('*'));"
+            "count = len([f for f in files if f.is_file()]);"
+            "print(f'Pre-built admin UI: {count} files bundled at {d}');"
+            "print(f'index.html size: {idx.stat().st_size} bytes')",
+        ],
+        check_contains=["Pre-built admin UI"],
+        description="jac-scale package includes pre-built admin UI assets",
+    );
+
+    # Verify index.html is a real Vite build output (not a placeholder)
+    runner.run(
+        [
+            sys.executable, "-c",
+            "from pathlib import Path;"
+            "import jac_scale;"
+            "idx = Path(jac_scale.__file__).parent / 'admin' / '_dist' / 'index.html';"
+            "html = idx.read_text();"
+            "assert '<html' in html.lower(), 'Not valid HTML';"
+            "assert 'script' in html.lower(), 'No script tags (not a Vite build)';"
+            "print('index.html is valid Vite build output')",
+        ],
+        check_contains=["valid Vite build output"],
+        description="Pre-built admin index.html is valid Vite output",
+    );
+
+    # --- E2E server test ---
+
+    # Create a minimal jac project in a temp directory
+    tmpdir = tempfile.mkdtemp(prefix="admin-e2e-");
+    main_jac = os.path.join(tmpdir, "main.jac");
+    open(main_jac, "w").write(
+        'walker:pub Health {\n'
+        '    can check with `root entry {\n'
+        '        report {"status": "healthy"};\n'
+        '    }\n'
+        '}\n'
+    );
+    jac_toml = os.path.join(tmpdir, "jac.toml");
+    open(jac_toml, "w").write(
+        '[project]\n'
+        'name = "admin-e2e-test"\n'
+        'version = "0.0.1"\n'
+    );
+    log_file = os.path.join(tmpdir, "server.log");
+    port = 18899;
+    server_proc: subprocess.Popen | None = None;
+    desc = "Admin E2E";
+
+    try {
+        # Start server in background
+        print(f"\n{'=' * 60}");
+        print(f"TEST: {desc} - start jac-scale server");
+        print(f"CMD:  jac start main.jac --port {port}");
+        print("-" * 60);
+
+        log_fh = open(log_file, "w");
+        server_proc = subprocess.Popen(
+            ["jac", "start", "main.jac", "--port", str(port)],
+            cwd=tmpdir,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT
+        );
+
+        # Wait for server readiness via /healthz
+        for _i in range(30) {
+            if server_proc.poll() is not None {
+                print(f"FAIL: Server exited with code {server_proc.returncode}");
+                log_fh.flush();
+                print(f"LOG:\n{open(log_file).read()[-500:]}");
+                runner.failed += 1;
+                runner.errors.append(f"{desc}: server died during startup");
+                return;
+            }
+            probe = subprocess.run(
+                [sys.executable, "-c",
+                 f"import urllib.request; urllib.request.urlopen('http://localhost:{port}/healthz', timeout=3)"],
+                capture_output=True
+            );
+            if probe.returncode == 0 {
+                break;
+            }
+            time.sleep(2);
+        } else {
+            print("FAIL: Server did not become ready in 60s");
+            log_fh.flush();
+            print(f"LOG:\n{open(log_file).read()[-500:]}");
+            runner.failed += 1;
+            runner.errors.append(f"{desc}: server not ready after 60s");
+            return;
+        }
+        print("PASS");
+        runner.passed += 1;
+
+        # Hit /admin/ and verify response
+        print(f"\n{'=' * 60}");
+        print(f"TEST: {desc} - /admin/ serves pre-built dashboard");
+        print(f"CMD:  GET http://localhost:{port}/admin/");
+        print("-" * 60);
+
+        check_script = (
+            "import urllib.request, time, sys;"
+            "start = time.monotonic();"
+            "resp = urllib.request.urlopen('http://localhost:" + str(port) + "/admin/', timeout=15);"
+            "elapsed = int((time.monotonic() - start) * 1000);"
+            "body = resp.read().decode();"
+            "code = resp.status;"
+            "assert code == 200, f'HTTP {code}';"
+            "assert '<html' in body.lower(), 'Not HTML';"
+            "print(f'HTTP {code} in {elapsed}ms');"
+            "print(f'body_length={len(body)}')"
+        );
+
+        result = subprocess.run(
+            [sys.executable, "-c", check_script],
+            capture_output=True, text=True, timeout=30
+        );
+
+        if result.returncode != 0 {
+            print(f"FAIL: /admin/ request failed");
+            print(f"STDERR: {result.stderr}");
+            runner.failed += 1;
+            runner.errors.append(f"{desc}: /admin/ request failed");
+            return;
+        }
+
+        # Check server logs for build path
+        log_fh.flush();
+        log_content = open(log_file).read();
+        if "Building admin client from source" in log_content {
+            print("FAIL: Server built from source instead of using pre-built assets");
+            runner.failed += 1;
+            runner.errors.append(f"{desc}: built from source, pre-built assets not used");
+            return;
+        }
+
+        used_prebuilt = "Using pre-built admin client from package" in log_content;
+        print(f"{result.stdout.strip()}, pre-built path: {used_prebuilt}");
+        print("PASS");
+        runner.passed += 1;
+
+    } finally {
+        # Cleanup server process
+        if server_proc is not None and server_proc.poll() is None {
+            server_proc.terminate();
+            try {
+                server_proc.wait(timeout=5);
+            } except subprocess.TimeoutExpired {
+                server_proc.kill();
+                server_proc.wait();
+            }
+        }
+        # Cleanup temp files
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
 with entry {
     print("=" * 60);
     print("JAC INTEGRATION TESTS");
@@ -250,5 +424,6 @@ with entry {
     run_plugin_tests(runner);
     run_pth_tests(runner);
     run_cli_tests(runner);
+    run_admin_prebuild_tests(runner);
     sys.exit(runner.summary());
 }

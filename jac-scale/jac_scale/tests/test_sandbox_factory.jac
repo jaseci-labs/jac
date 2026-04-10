@@ -490,3 +490,29 @@ test "regular pod spec still uses sandbox ttl_seconds" {
     # Regular pod should use ttl_seconds
     assert pod.spec.active_deadline_seconds == 1800;
 }
+
+# ---- Sandbox status returns STOPPED for missing pods ----
+test "k8s sandbox status returns STOPPED when pod query fails" {
+    config = SandboxConfig();
+    sandbox = KubernetesSandbox(config=config);
+
+    # Manually inject a fake registry entry with RUNNING state
+    sandbox._registry["dead-sandbox-123"] = {
+        "sandbox_id": "dead-sandbox-123",
+        "user_id": "user1",
+        "project_id": "proj1",
+        "pod_name": "dead-sandbox-123",
+        "namespace": "jac-sandboxes",
+        "status": SandboxState.RUNNING,
+        "url": "http://dead-sandbox.example.com",
+        "port": 8000,
+        "created_at": 1000.0
+    };
+
+    # status() will try to query K8s which will fail (no cluster),
+    # and should return STOPPED instead of cached RUNNING
+    status = sandbox.status("dead-sandbox-123");
+    assert status.state == SandboxState.STOPPED;
+    assert status.sandbox_id == "dead-sandbox-123";
+    assert status.uptime_seconds == 0.0;
+}
