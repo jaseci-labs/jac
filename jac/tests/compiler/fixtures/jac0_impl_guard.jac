@@ -3,7 +3,9 @@ obj Foo {
 
     class def make() -> Self;
 
-    def clone() -> Self;
+    def clone() -> Self {
+        return Self(x=self.x);
+    }
 }
 
 with entry {
