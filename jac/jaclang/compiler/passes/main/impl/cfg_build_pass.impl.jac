@@ -492,10 +492,30 @@ IfElseExpr/BoolExpr so narrowing propagates through nested ternaries."""
 impl CFGBuildPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
     nd.condition.affected_symbols.update(collect_narrowing_symbols(nd.condition.expr));
-    nd.condition.sc_true_target = nd.value;
-    nd.condition.sc_false_target = nd.else_value;
-    self.link_bbs(nd.condition, nd.value);
-    self.link_bbs(nd.condition, nd.else_value);
+
+    # If the condition is a BoolExpr, wire the operand short-circuit chain
+    # through to the branches the same way `exit_if_stmt` does. This lets
+    # the backward walker traverse operands individually, so per-operand
+    # narrowings accumulate on the edge into the branch (critical for
+    # patterns like `0 if s is None or not isinstance(s, T) else s.m()`
+    # where the else branch needs s narrowed to T via double negation).
+    unwrapped_cond = _unwrap_parens(nd.condition.expr);
+    if isinstance(unwrapped_cond, uni.BoolExpr) and len(unwrapped_cond.values) >= 2 {
+        op_is_and = _bool_is_and(unwrapped_cond);
+        entry = self._wire_bool_operands(
+            unwrapped_cond.values, op_is_and, nd.value, nd.else_value
+        );
+        if entry {
+            self.link_bbs(nd.condition, entry);
+        }
+    } else {
+        # Simple condition: the outer CfgExpr is the branch point.
+        nd.condition.sc_true_target = nd.value;
+        nd.condition.sc_false_target = nd.else_value;
+        self.link_bbs(nd.condition, nd.value);
+        self.link_bbs(nd.condition, nd.else_value);
+    }
+
     for branch in [nd.value, nd.else_value] {
         inner = _unwrap_parens(branch.expr);
         if isinstance(inner, uni.IfElseExpr) {
