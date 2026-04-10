@@ -150,6 +150,17 @@ impl DeclImplMatchPass.connect_impls(
                 f"Expected AstImplNeedingNode, got {valid_decl.__class__.__name__}. Not possible."
             );
         }
+        if not valid_decl.needs_impl and valid_decl.body {
+            if isinstance(valid_decl.body, uni.ImplDef) {
+                if valid_decl.body is sym.decl.name_of {
+                    continue;
+                }
+                self.emit(E2017, node_override=sym.decl.name_of);
+            } else {
+                self.emit(E2016, node_override=sym.decl.name_of);
+            }
+            continue;
+        }
         self.validate_params_match(sym, decl_node.name_of);
         valid_decl.body = sym.decl.name_of;
         sym.decl.name_of.decl_link = valid_decl;
