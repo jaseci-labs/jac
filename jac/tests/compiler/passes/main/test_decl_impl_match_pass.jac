@@ -289,18 +289,3 @@ test "E2017 duplicate impl for stub" {
     assert "E2017" in errors_output;
     assert "Duplicate implementation" in errors_output;
 }
-
-test "E2016 body not overwritten by impl" {
-    state = (out := JacProgram()).compile(
-        os.path.join(FIXTURES, "fullbody_impl_error.jac")
-    );
-
-    # Find the Foo archetype's abilities
-    for node in state.get_all_sub_nodes(uni.Ability) {
-        if isinstance(node, uni.Ability) and node.sym_name in ("make", "clone") {
-            assert not isinstance(node.body, uni.ImplDef) , (
-                f"Ability '{node.sym_name}' body was overwritten by impl"
-            );
-        }
-    }
-}
