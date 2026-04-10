@@ -47,11 +47,9 @@ for folder in "${!FOLDER_TO_FRAGMENTS[@]}"; do
 
     while IFS= read -r file; do
         [ -z "$file" ] && continue
-        # Check if code in this folder was modified (excluding tests)
         if [[ "$file" == "${folder}"* ]] && [[ "$file" != */tests/* ]]; then
             folder_changed=true
         fi
-        # Check if a fragment file was added in the corresponding unreleased dir
         if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" == *.md ]]; then
             fragment_added=true
         fi
