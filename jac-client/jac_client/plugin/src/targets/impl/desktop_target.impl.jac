@@ -987,6 +987,8 @@ notifications = false
 jac_scale = true   # FastAPI server, auth, scaling features
 byllm = true       # LLM providers integration (litellm)
 jac_coder = true   # AI coding assistant
+jac_mcp = true     # MCP server integration
+# jac_client is always bundled (core sidecar dependency)
 ''';
 
     # Append the section
@@ -2713,7 +2715,12 @@ def _generate_pyinstaller_spec(
 ) -> str {
     # Default plugins config - all enabled
     if plugins_config is None {
-        plugins_config = {'jac_scale': True, 'byllm': True, 'jac_coder': True};
+        plugins_config = {
+            'jac_scale': True,
+            'byllm': True,
+            'jac_coder': True,
+            'jac_mcp': True
+        };
     }
 
     # Convert plugins config to Python code string for the spec file
@@ -2773,6 +2780,22 @@ if PLUGINS_CONFIG.get('jac_coder', True):
         print("  jac_coder: not installed")
 else:
     print("  jac_coder: disabled in config")
+
+if PLUGINS_CONFIG.get('jac_mcp', True):
+    try:
+        import jac_mcp
+        print("  jac_mcp: available")
+    except ImportError:
+        print("  jac_mcp: not installed")
+else:
+    print("  jac_mcp: disabled in config")
+
+# jac_client is always bundled (core dependency for sidecar entry point)
+try:
+    import jac_client
+    print("  jac_client: available (core)")
+except ImportError:
+    print("  jac_client: NOT INSTALLED - sidecar will fail!")
 
 # Use collect_all() for comprehensive package bundling (scalable approach)
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
@@ -2860,12 +2883,25 @@ if PLUGINS_CONFIG.get('jac_coder', True):
     binaries += b
     all_hiddenimports += h
 
+if PLUGINS_CONFIG.get('jac_mcp', True):
+    d, b, h = collect_with_deps('jac_mcp', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+# jac_client is always bundled as a core package (sidecar entry point depends on it)
+# No need to gate it behind PLUGINS_CONFIG
+
 # Merge collected imports with manual hiddenimports
 hiddenimports.extend(all_hiddenimports)
 
-# Add project .jac files
+# Add project .jac files (exclude build artifacts to avoid recursive nesting)
 project_dir = Path(r'{project_dir}')
+EXCLUDE_DIRS = ['src-tauri', 'node_modules', '__pycache__', '.git', 'dist', '__jac_gen__', '.jac']
 for jac_file in project_dir.rglob('*.jac'):
+    # Skip files inside excluded directories
+    if any(part in EXCLUDE_DIRS for part in jac_file.relative_to(project_dir).parts):
+        continue
     rel_path = jac_file.relative_to(project_dir)
     datas.append((str(jac_file), str(rel_path.parent) or '.'))
 
