@@ -3,6 +3,8 @@ site_url: https://docs.jaseci.org
 repo_url: https://github.com/Jaseci-Labs/jaseci
 edit_uri: edit/main/docs/docs
 use_directory_urls: true
+exclude_docs: |
+  community/release_notes/unreleased/
 nav:
   # ============================================
   # FOUR-TAB DOCUMENTATION STRUCTURE
