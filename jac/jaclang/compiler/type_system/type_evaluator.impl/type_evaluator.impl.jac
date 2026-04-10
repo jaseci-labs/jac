@@ -3210,20 +3210,22 @@ impl TypeEvaluator._get_type_from_flow_node(
 
         # Assignment predecessor: barrier. An assignment whose target writes
         # the reference key kills any pre-assignment narrowing on this edge.
-        # On a strict narrowing from a flat target (e.g. `int | None` = `int`)
-        # the assigned type becomes the edge's contribution; otherwise the
-        # edge resets to the declared type. Either way, we never fall through.
+        # Flat targets try strict narrowing from the RHS type; destructuring
+        # targets attempt element-type extraction against a concrete tuple
+        # RHS (`(x, _) = (5, "ok")` narrows `x` to `int`); otherwise the edge
+        # resets to the declared type. Either way, we never fall through.
         if isinstance(pred, uni.Assignment) and pred.value {
-            import from jaclang.compiler.symbol_utils { collect_assignment_target_keys }
+            import from jaclang.compiler.symbol_utils {
+                collect_assignment_target_keys,
+                find_destructure_index_path,
+            }
             target_key_matched = False;
             flat_target_matched = False;
+            destructure_path: list[int] | None = None;
             for t in pred.target {
                 written_keys = collect_assignment_target_keys(t);
                 if key in written_keys {
                     target_key_matched = True;
-                    # Strict narrowing is only sound for flat Name/AtomTrailer
-                    # targets. For destructuring (`(x, _) = ...`) we'd need
-                    # element-type inference; conservatively reset instead.
                     if (
                         (isinstance(t, uni.Name) and t.value == key)
                         or (
@@ -3233,25 +3235,48 @@ impl TypeEvaluator._get_type_from_flow_node(
                         )
                     ) {
                         flat_target_matched = True;
+                    } else {
+                        destructure_path = find_destructure_index_path(t, key);
                     }
                     break;
                 }
             }
             if target_key_matched {
                 narrowed_from_assignment: TypeBase | None = None;
+                assigned_type: TypeBase | None = None;
                 if flat_target_matched {
                     assigned_type = self.get_type_of_expression(pred.value);
-                    if (
-                        assigned_type
-                        and not isinstance(assigned_type, types.UnknownType)
-                    ) {
-                        declared_type = target.declared_type;
+                } elif destructure_path is not None and len(destructure_path) > 0 {
+                    # Descend `type_args` along the positional path to pull
+                    # the element type out of a concrete tuple RHS. Mirrors
+                    # the declaration-time tuple-unpack logic.
+                    cursor: TypeBase | None = self.get_type_of_expression(pred.value);
+                    for idx in destructure_path {
                         if (
-                            self.assign_type(assigned_type, declared_type)
-                            and not self.assign_type(declared_type, assigned_type)
+                            isinstance(cursor, types.ClassType)
+                            and cursor.private.type_args
+                            and idx < len(cursor.private.type_args)
                         ) {
-                            narrowed_from_assignment = assigned_type;
+                            cursor = self._convert_to_instance(
+                                cursor.private.type_args[idx]
+                            );
+                        } else {
+                            cursor = None;
+                            break;
                         }
+                    }
+                    assigned_type = cursor;
+                }
+                if (
+                    assigned_type is not None
+                    and not isinstance(assigned_type, types.UnknownType)
+                ) {
+                    declared_type = target.declared_type;
+                    if (
+                        self.assign_type(assigned_type, declared_type)
+                        and not self.assign_type(declared_type, assigned_type)
+                    ) {
+                        narrowed_from_assignment = assigned_type;
                     }
                 }
                 if narrowed_from_assignment is not None {

@@ -240,6 +240,51 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     return symbols;
 }
 
+"""Find the positional index path of a reference key inside a single
+destructuring target, or `None` if the key isn't written there.
+
+For `(x, _) = ...` with key `"x"` the result is `[0]`; for
+`((a, b), c) = ...` with key `"b"` it's `[0, 1]`. The starred slot in
+`(a, *rest) = ...` is intentionally excluded because its type is the
+list of the tail, not a single element at a fixed index — callers that
+want to narrow `rest` need different logic.
+
+Only the first occurrence wins; a well-formed destructuring target
+binds each key at most once anyway.
+"""
+def find_destructure_index_path(target: uni.UniNode, key: str) -> list[int] | None {
+    if isinstance(target, uni.Name) {
+        return [] if target.value == key else None;
+    }
+    if isinstance(target, uni.AtomTrailer) and target.is_attr {
+        matched_key = get_expr_key(target);
+        return [] if matched_key == key else None;
+    }
+    if isinstance(target, uni.AtomUnit) and isinstance(target.value, uni.UniNode) {
+        return find_destructure_index_path(target.value, key);
+    }
+    if isinstance(target, (uni.TupleVal, uni.ListVal)) and target.values {
+        for (i, sub) in enumerate(target.values) {
+            if not isinstance(sub, uni.UniNode) {
+                continue;
+            }
+            # Skip starred slots — their type isn't a single element.
+            if (
+                isinstance(sub, uni.UnaryExpr)
+                and isinstance(sub.op, uni.Token)
+                and sub.op.name == Tok.STAR_MUL
+            ) {
+                continue;
+            }
+            sub_path = find_destructure_index_path(sub, key);
+            if sub_path is not None {
+                return [i] + sub_path;
+            }
+        }
+    }
+    return None;
+}
+
 """Collect every reference key bound by a single assignment target.
 
 Walks one element of `Assignment.target`, extracting the reference keys

@@ -2065,6 +2065,24 @@ test "tuple_unpack_barrier" {
     assert 'Cannot return int | NoneType' in msg , f"Expected widening-reset error, got: {msg}";
 }
 
+"""Destructuring assignment narrows by RHS element type when available."""
+test "destructure_element_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_destructure_element_narrowing.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Four narrowing cases must succeed; only `no_narrow_non_strict`
+    # should error because its RHS element type matches the declared
+    # type and therefore fails the strict-narrowing check.
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot return int | str' in msg , f"Expected non-strict-narrow error, got: {msg}";
+}
+
 """Match-case narrowing is killed by a later assignment to the subject."""
 test "match_case_reassign_reset" {
     program = JacProgram();
