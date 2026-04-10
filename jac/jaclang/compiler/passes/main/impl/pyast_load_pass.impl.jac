@@ -2699,7 +2699,9 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     }
     doc = body[0].expr
         if (
-            isinstance(body[0], uni.ExprStmt) and isinstance(body[0].expr, uni.String)
+            body
+            and isinstance(body[0], uni.ExprStmt)
+            and isinstance(body[0].expr, uni.String)
         )
         else None;
     self.convert_to_doc(doc) if doc else None;
