@@ -357,7 +357,6 @@ obj TypeEvaluator {
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
-
     def _extract_tuple_element_type_path(
         tuple_type: TypeBase, path: list[int]
     ) -> TypeBase | None;
