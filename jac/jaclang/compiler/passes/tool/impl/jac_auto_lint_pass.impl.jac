@@ -2110,6 +2110,7 @@ impl JacAutoLintPass._is_usestate_assignment(
 
 Maps common literal types to their Jac equivalents.
 Falls back to 'any' for complex expressions.
+TODO: this is ad-hoc, need to do proper type inference.
 """
 impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -> str {
     if value is None {
