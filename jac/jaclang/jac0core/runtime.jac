@@ -32,6 +32,7 @@ import from typing {
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
     GenericEdge,
+    ObjectAnchor,
     ObjectSpatialDestination,
     ObjectSpatialFunction,
     ObjectSpatialPath,
