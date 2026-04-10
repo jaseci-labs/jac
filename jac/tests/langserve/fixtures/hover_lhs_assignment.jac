@@ -1,5 +1,13 @@
 """Fixture: hover on an LHS assignment target shows the post-write
 effective type, matching pyright/pylance."""
+import from typing { NamedTuple }
+
+
+class Point(NamedTuple) {
+    has x: int,
+        y: int;
+}
+
 
 def flat_narrow(x: int | None) -> int {
     x = 90;
@@ -35,5 +43,11 @@ def aug_op(x: int | None) -> int | None {
     if x is not None {
         x += 1;
     }
+    return x;
+}
+
+
+def destructure_named_tuple(x: int | None, p: Point) -> int {
+    (x, _) = p;
     return x;
 }
