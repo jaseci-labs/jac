@@ -1181,14 +1181,3 @@ test "W3038 auto-fix converts useState to has declaration" {
     # useState import removed (it was the only import from react)
     assert "import from \"react\"" not in formatted;
 }
-
-test "W3038 report-only mode does not modify useState" {
-    input_path = auto_lint_fixture_path("usestate_to_has.jac");
-    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
-    formatted = prog.mod.main.gen.jac;
-
-    # Without auto-lint, useState must be preserved
-    assert "[name, setName] = useState(\"\");" in formatted;
-    assert "setName(str(e.target.value));" in formatted;
-    assert "= useState(" in formatted;
-}

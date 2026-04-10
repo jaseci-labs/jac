@@ -144,7 +144,10 @@ obj JacAutoLintPass(UniPass) {
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def _body_to_key(body: list) -> str;
     # useState-to-has conversion (W3038)
-    def _is_usestate_assignment(stmt: uni.UniNode) -> (tuple | None);
+    def _is_usestate_assignment(
+        stmt: uni.UniNode
+    ) -> (tuple[str, str, uni.Expr | None] | None);
+
     def _infer_type_from_usestate_value(value: (uni.Expr | None)) -> str;
     def _create_has_from_usestate(
         ref_node: uni.UniNode,
@@ -153,8 +156,11 @@ obj JacAutoLintPass(UniPass) {
         init_value: (uni.Expr | None)
     ) -> uni.ArchHas;
 
-    def _sync_body_to_kids(nd: uni.UniNode, old_body: list, new_body: list) -> None;
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
+    def _resolve_setter_call(
+        call_node: uni.FuncCall
+    ) -> (tuple[str, uni.Assignment] | None);
+
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
 }

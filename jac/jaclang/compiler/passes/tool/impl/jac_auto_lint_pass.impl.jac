@@ -34,7 +34,8 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
     if not self.lint_enabled {
         return;
     }
-    # Pop setter map pushed by _convert_usestate_vars for this ability
+    # Pop setter map pushed by _convert_usestate_vars.
+    # Only pops when not report_only — matches the push guard in enter_ability.
     if not self.report_only and self._pending_setters {
         self._pending_setters.pop();
     }
@@ -819,6 +820,23 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     self._check_no_print(nd);
+    # W3038: replace setterName(expr) when it appears as a lambda body expression
+    # (ExprStmt-based setter calls are handled in exit_expr_stmt)
+    if (
+        not self.report_only
+        and self._pending_setters
+        and isinstance(nd.parent, uni.LambdaExpr)
+        and nd.parent.body is nd
+    ) {
+        result = self._resolve_setter_call(nd);
+        if result is not None {
+            (_, assign) = result;
+            lambda_node = nd.parent;
+            assign.parent = lambda_node;
+            lambda_node.body = assign;
+            lambda_node.kid = [assign if k is nd else k for k in lambda_node.kid];
+        }
+    }
     if self.report_only or self._is_suppressed(W3007) {
         return;
     }
@@ -2048,7 +2066,9 @@ Matches: [varName, setterName] = useState(initialValue)
 
 Returns (var_name, setter_name, initial_value_node) tuple if matched, else None.
 """
-impl JacAutoLintPass._is_usestate_assignment(stmt: uni.UniNode) -> (tuple | None) {
+impl JacAutoLintPass._is_usestate_assignment(
+    stmt: uni.UniNode
+) -> (tuple[str, str, uni.Expr | None] | None) {
     if not isinstance(stmt, uni.Assignment) {
         return None;
     }
@@ -2093,7 +2113,7 @@ Falls back to 'any' for complex expressions.
 """
 impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -> str {
     if value is None {
-        return "any";
+        return "Any";
     }
     if isinstance(value, (uni.String, uni.MultiString)) {
         return "str";
@@ -2116,7 +2136,7 @@ impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -
     if isinstance(value, uni.DictVal) {
         return "dict";
     }
-    return "any";
+    return "Any";
 }
 
 """Create an ArchHas (has declaration) node from useState info.
@@ -2185,28 +2205,6 @@ impl JacAutoLintPass._create_has_from_usestate(
     return arch_has;
 }
 
-"""Sync a node's kid list after its body has been rewritten.
-
-When body statements are replaced, the kid list must be updated too since
-the unparser reads nd.kid, not nd.body. This swaps only the changed nodes.
-"""
-impl JacAutoLintPass._sync_body_to_kids(
-    nd: uni.UniNode, old_body: list, new_body: list
-) -> None {
-    swapped: dict[int, uni.UniNode] = {
-        id(o): n
-        for (o, n) in zip(old_body, new_body)
-        if o is not n
-    };
-    if swapped {
-        nd.kid = [swapped.get(id(k), k) for k in nd.kid];
-        for k in nd.kid {
-            if k is not None {
-                k.parent = nd;
-            }
-        }
-    }
-}
 
 """Convert useState hooks inside an ability to has declarations.
 
@@ -2252,14 +2250,79 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         setters[setter_name] = var_name;
         self._did_convert_usestate = True;
     }
-    if not setters {
-        return;
+    if replaced {
+        ability_node.body = new_body;
+        self.recalculate_parents(ability_node);
+        ability_node.kid = [replaced.get(id(k), k) for k in ability_node.kid];
     }
-    ability_node.body = new_body;
-    self.recalculate_parents(ability_node);
-    ability_node.kid = [replaced.get(id(k), k) for k in ability_node.kid];
-    # Push setter map so exit_expr_stmt can replace calls as the visitor walks children
+
+    if not replaced {
+        for stmt in ability_node.body {
+            if isinstance(stmt, uni.ArchHas) {
+                for has_var in stmt.vars {
+                    if isinstance(has_var.name, uni.Name) {
+                        var_name = has_var.name.value;
+                        setter_name = "set" + var_name[0].upper() + var_name[1:];
+                        setters[setter_name] = var_name;
+                    }
+                }
+            }
+        }
+    }
+    # Always push (even if empty) so exit_ability can always pop safely.
+    # Without this, a nested def exiting would pop the outer ability's map.
     self._pending_setters.append(setters);
+}
+
+"""Look up call_node in _pending_setters and, if matched, return a ready-to-wire Assignment.
+
+Returns (var_name, Assignment) when call_node is a single-argument call to a
+known setter, None otherwise.  The caller must set .parent and swap the node
+into the tree — this helper only builds the replacement node.
+"""
+impl JacAutoLintPass._resolve_setter_call(
+    call_node: uni.FuncCall
+) -> (tuple[str, uni.Assignment] | None) {
+    if (
+        not isinstance(call_node.target, uni.Name)
+        or call_node.params is None
+        or len(call_node.params) != 1
+    ) {
+        return None;
+    }
+    var_name: (str | None) = None;
+    for setter_map in self._pending_setters {
+        if call_node.target.value in setter_map {
+            var_name = setter_map[call_node.target.value];
+            break;
+        }
+    }
+    if var_name is None {
+        return None;
+    }
+    value_expr = call_node.params[0];
+    lhs_name = uni.Name(
+        orig_src=call_node.loc.orig_src,
+        name=Tok.NAME.value,
+        value=var_name,
+        line=call_node.loc.first_line,
+        end_line=call_node.loc.last_line,
+        col_start=call_node.loc.col_start,
+        col_end=call_node.loc.col_start + len(var_name),
+        pos_start=call_node.loc.pos_start,
+        pos_end=call_node.loc.pos_end,
+        is_kwesc=False
+    );
+    eq_tok = call_node.gen_token(Tok.EQ);
+    semi_tok = call_node.gen_token(Tok.SEMI);
+    assign = uni.Assignment(
+        target=[lhs_name],
+        value=value_expr,
+        mutable=True,
+        aug_op=None,
+        kid=[lhs_name, eq_tok, value_expr, semi_tok]
+    );
+    return (var_name, assign);
 }
 
 """Replace setterName(expr) with varName = expr as the visitor exits each ExprStmt.
@@ -2276,49 +2339,15 @@ impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     if not isinstance(nd.expr, uni.FuncCall) {
         return;
     }
-    call = nd.expr;
-    if not isinstance(call.target, uni.Name)
-    or call.params is None
-    or len(call.params) != 1 {
+    result = self._resolve_setter_call(nd.expr);
+    if result is None {
         return;
     }
-    # Check all active setter maps (handles closures over outer abilities)
-    var_name: (str | None) = None;
-    for setter_map in self._pending_setters {
-        if call.target.value in setter_map {
-            var_name = setter_map[call.target.value];
-            break;
-        }
-    }
-    if var_name is None {
-        return;
-    }
-    value_expr = call.params[0];
+    (_, assign) = result;
     parent = nd.parent;
     if parent is None {
         return;
     }
-    lhs_name = uni.Name(
-        orig_src=nd.loc.orig_src,
-        name=Tok.NAME.value,
-        value=var_name,
-        line=nd.loc.first_line,
-        end_line=nd.loc.last_line,
-        col_start=nd.loc.col_start,
-        col_end=nd.loc.col_start + len(var_name),
-        pos_start=nd.loc.pos_start,
-        pos_end=nd.loc.pos_end,
-        is_kwesc=False
-    );
-    eq_tok = nd.gen_token(Tok.EQ);
-    semi_tok = nd.gen_token(Tok.SEMI);
-    assign = uni.Assignment(
-        target=[lhs_name],
-        value=value_expr,
-        mutable=True,
-        aug_op=None,
-        kid=[lhs_name, eq_tok, value_expr, semi_tok]
-    );
     assign.parent = parent;
     # Swap nd -> assign in parent.body and parent.kid
     if isinstance(parent?.body, list) {
