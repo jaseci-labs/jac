@@ -93,17 +93,55 @@ impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | Non
     if path is None or len(path) == 0 {
         return None;
     }
-    cursor: TypeBase | None = self.get_type_of_expression(assignment.value);
-    for idx in path {
-        if (
-            isinstance(cursor, types.ClassType)
-            and cursor.private.type_args
-            and idx < len(cursor.private.type_args)
-        ) {
-            cursor = self._convert_to_instance(cursor.private.type_args[idx]);
-        } else {
+    return self._extract_tuple_element_type_path(
+        self.get_type_of_expression(assignment.value), path
+    );
+}
+
+"""Extract the element type at `idx` from a concrete tuple-like class.
+
+Handles regular `tuple[T1, T2, ...]` via `private.type_args` and
+NamedTuple via `is_namedtuple()` + `get_has_vars()`. Returns the
+element as an instance, or None when `tuple_type` isn't a concrete
+tuple with a valid slot at `idx`.
+"""
+impl TypeEvaluator._extract_tuple_element_type(
+    tuple_type: TypeBase, idx: int
+) -> TypeBase | None {
+    if not isinstance(tuple_type, types.ClassType) or idx < 0 {
+        return None;
+    }
+    cls: types.ClassType = tuple_type;
+    if cls.is_namedtuple() {
+        has_vars = cls.shared.symbol_table.get_has_vars();
+        if idx >= len(has_vars) {
             return None;
         }
+        field = has_vars[idx];
+        if field.type_tag is None {
+            return None;
+        }
+        return self._convert_to_instance(
+            self.get_type_of_expression(field.type_tag.tag)
+        );
+    }
+    if cls.private.type_args and idx < len(cls.private.type_args) {
+        return self._convert_to_instance(cls.private.type_args[idx]);
+    }
+    return None;
+}
+
+"""Walk `tuple_type` through a positional index path and return the
+element type at the leaf, or None if any step fails."""
+impl TypeEvaluator._extract_tuple_element_type_path(
+    tuple_type: TypeBase, path: list[int]
+) -> TypeBase | None {
+    cursor: TypeBase | None = tuple_type;
+    for idx in path {
+        if cursor is None {
+            return None;
+        }
+        cursor = self._extract_tuple_element_type(cursor, idx);
     }
     return cursor;
 }

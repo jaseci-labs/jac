@@ -1762,35 +1762,17 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     isinstance(unpack_assignment, uni.Assignment)
                     and unpack_assignment.value is not None
                 ) {
-                    rhs_type = self.get_type_of_expression(unpack_assignment.value);
-                    if isinstance(rhs_type, types.ClassType) {
-                        idx = -1;
-                        for (vi, v) in enumerate(unpack_container.values) {
-                            if v is node_ {
-                                idx = vi;
-                                break;
-                            }
+                    idx = -1;
+                    for (vi, v) in enumerate(unpack_container.values) {
+                        if v is node_ {
+                            idx = vi;
+                            break;
                         }
-                        if idx >= 0 {
-                            # NamedTuple: get field types from has vars
-                            if rhs_type.is_namedtuple() {
-                                has_vars = rhs_type.shared.symbol_table.get_has_vars();
-                                if idx < len(has_vars) {
-                                    field = has_vars[idx];
-                                    if field.type_tag {
-                                        field_type = self.get_type_of_expression(
-                                            field.type_tag.tag
-                                        );
-                                        return self._convert_to_instance(field_type);
-                                    }
-                                }
-                                # Regular tuple with type_args
-                            } elif rhs_type.private.type_args
-                            and idx < len(rhs_type.private.type_args) {
-                                return self._convert_to_instance(
-                                    rhs_type.private.type_args[idx]
-                                );
-                            }
+                    }
+                    if idx >= 0 {
+                        rhs_type = self.get_type_of_expression(unpack_assignment.value);
+                        if elem := self._extract_tuple_element_type(rhs_type, idx) {
+                            return elem;
                         }
                     }
                 }
@@ -1832,7 +1814,7 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                         }
                     }
                     # Now extract the tuple element at the correct index
-                    if isinstance(elem_type, types.ClassType) {
+                    if elem_type is not None {
                         idx = -1;
                         for (vi, v) in enumerate(unpack_container.values) {
                             if v is node_ {
@@ -1841,24 +1823,10 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                             }
                         }
                         if idx >= 0 {
-                            # NamedTuple: get field types from has vars
-                            if elem_type.is_namedtuple() {
-                                has_vars = elem_type.shared.symbol_table.get_has_vars();
-                                if idx < len(has_vars) {
-                                    field = has_vars[idx];
-                                    if field.type_tag {
-                                        field_type = self.get_type_of_expression(
-                                            field.type_tag.tag
-                                        );
-                                        return self._convert_to_instance(field_type);
-                                    }
-                                }
-                                # Regular tuple with type_args
-                            } elif elem_type.private.type_args
-                            and idx < len(elem_type.private.type_args) {
-                                return self._convert_to_instance(
-                                    elem_type.private.type_args[idx]
-                                );
+                            if elem := self._extract_tuple_element_type(
+                                elem_type, idx
+                            ) {
+                                return elem;
                             }
                         }
                     }
@@ -3253,25 +3221,10 @@ impl TypeEvaluator._get_type_from_flow_node(
                 if flat_target_matched {
                     assigned_type = self.get_type_of_expression(pred.value);
                 } elif destructure_path is not None and len(destructure_path) > 0 {
-                    # Descend `type_args` along the positional path to pull
-                    # the element type out of a concrete tuple RHS. Mirrors
-                    # the declaration-time tuple-unpack logic.
-                    cursor: TypeBase | None = self.get_type_of_expression(pred.value);
-                    for idx in destructure_path {
-                        if (
-                            isinstance(cursor, types.ClassType)
-                            and cursor.private.type_args
-                            and idx < len(cursor.private.type_args)
-                        ) {
-                            cursor = self._convert_to_instance(
-                                cursor.private.type_args[idx]
-                            );
-                        } else {
-                            cursor = None;
-                            break;
-                        }
-                    }
-                    assigned_type = cursor;
+                    # Pull the element type out of a concrete tuple RHS.
+                    assigned_type = self._extract_tuple_element_type_path(
+                        self.get_type_of_expression(pred.value), destructure_path
+                    );
                 }
                 if (
                     assigned_type is not None
