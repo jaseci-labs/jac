@@ -2,6 +2,8 @@
 
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, HookContext }
+import from typing { Any }
+import from pathlib { Path }
 
 impl JacShadcnPlugin.create_cmd -> None {
     registry = get_registry();
@@ -112,5 +114,39 @@ impl _handle_shadcn_remove(ctx: HookContext) -> None {
         console.error("Failed to remove components: " + str(e));
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
+    }
+}
+
+impl JacShadcnPlugin.register_project_template -> dict[str, Any] | None {
+    import from jaclang.project.template_loader { load_template_from_directory }
+    import from jaclang.cli.console { console }
+
+    # Find template directory relative to this module
+    # plugin.impl.jac is in jac_shadcn/impl/, so .parent.parent = jac_shadcn/
+    module_dir = Path(__file__).parent.parent;  # jac_shadcn directory
+    template_dir = module_dir / "templates" / "jac-shadcn";
+
+    if not template_dir.exists() {
+        # Fallback: look in installed package location
+        import from importlib.resources { files }
+        try {
+            package_root = str(files("jac_shadcn"));
+            template_dir = Path(package_root) / "templates" / "jac-shadcn";
+        } except (TypeError, ModuleNotFoundError) as e {
+            console.warning(f"Failed to locate jac-shadcn template directory: {e}");
+            return None;
+        }
+    }
+
+    if not template_dir.exists() or not template_dir.is_dir() {
+        return None;
+    }
+
+    try {
+        template = load_template_from_directory(template_dir);
+        return template.to_dict();
+    } except Exception as e {
+        console.warning(f"Could not load jac-shadcn template: {e}");
+        return None;
     }
 }

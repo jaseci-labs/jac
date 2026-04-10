@@ -2,8 +2,7 @@ import logging;
 import datetime;
 import from typing { Any }
 import from uuid { uuid4 }
-import from apscheduler.schedulers.background { BackgroundScheduler }
-import from apscheduler.executors.pool { ThreadPoolExecutor }
+import from jac_scale._optdeps.apscheduler { BackgroundScheduler, ThreadPoolExecutor }
 import from jac_scale.config_loader { get_scale_config }
 import from jaclang.runtimelib.scheduler { Scheduler, ScheduleTrigger }
 import from jac_scale.db { Db, get_mongo_client }
