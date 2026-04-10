@@ -135,8 +135,14 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         # variable's declared type determines what can be assigned to it.
         if isinstance(target, uni.Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
-            # Cache the type on the Name node for hover info
-            target.type = left_type;
+            # `target.type` is the hover cache — show the post-write type
+            # for re-assignments, declared type otherwise. `left_type`
+            # stays declared for the compat check and bare-generic warnings.
+            if hover_type := self.evaluator._get_type_of_lhs_assignment(target) {
+                target.type = self.evaluator._convert_to_instance(hover_type);
+            } else {
+                target.type = left_type;
+            }
             # Warn on bare generic type annotations (e.g. x: list = [])
             if (
                 nd.type_tag
@@ -983,7 +989,8 @@ impl TypeCheckPass.exit_sub_tag(self: TypeCheckPass, nd: uni.SubTag[uni.T]) -> N
     }
 }
 
-"""Evaluate types for each Name in a tuple/list unpacking pattern."""
+"""Evaluate types for each Name leaf in a destructure pattern, recursing
+into nested containers."""
 impl TypeCheckPass._eval_unpacking_names(
     self: TypeCheckPass, container: uni.Expr
 ) -> None {
@@ -991,6 +998,8 @@ impl TypeCheckPass._eval_unpacking_names(
         for val in container.values {
             if isinstance(val, uni.Name) {
                 self.evaluator.get_type_of_expression(val);
+            } elif isinstance(val, (uni.TupleVal, uni.ListVal)) {
+                self._eval_unpacking_names(val);
             }
         }
     }

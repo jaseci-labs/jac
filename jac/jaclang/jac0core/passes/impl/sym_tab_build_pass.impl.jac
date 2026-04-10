@@ -101,7 +101,7 @@ impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) 
     for i in nd.target {
         if isinstance(i, uni.AstSymbolNode) {
             if isinstance(i, (uni.ListVal, uni.TupleVal)) {
-                self._def_insert_unpacking(i, i.sym_tab);
+                self._def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
             } elif ((sym := i.sym_tab.lookup(i.sym_name, deep=False)) is not None) {
                 sym.add_use(i.name_spec);
             } elif (
@@ -559,20 +559,53 @@ impl SymTabBuildPass.exit_iter_for_stmt(
     self.pop_scope();
 }
 
-"""Recursively define symbols in unpacking expressions."""
+"""Recursively define symbols in unpacking expressions.
+
+The two call sites want different scoping:
+
+- `for (x, y) in items:` binds `x` and `y` in the for-loop's own
+  scope. This is Jac-specific (Python has no loop scopes) but the
+  symbol table and test suite depend on it.
+- `(x, y) = f()` as a statement must rebind an existing local
+  when one is in scope, otherwise bind in the nearest Python
+  scope — same Python-semantics path that plain assignments use.
+  Without this, unpack targets shadow the parameter they should
+  be writing, and the narrowing engine can't see the assignment
+  as a barrier.
+
+`rebind_in_python_scope=True` selects the second behavior.
+"""
 impl SymTabBuildPass._def_insert_unpacking(
-    self: SymTabBuildPass, nd: uni.Expr, sym_tab: UniScopeNode
+    self: SymTabBuildPass,
+    nd: uni.Expr,
+    sym_tab: UniScopeNode,
+    rebind_in_python_scope: bool = False
 ) -> None {
     if isinstance(nd, uni.Name) {
+        if rebind_in_python_scope {
+            if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
+                existing.add_use(nd.name_spec);
+                return;
+            }
+            py_scope = self.find_python_scope_node_of(nd);
+            if py_scope is not None {
+                if ((outer := py_scope.lookup(nd.sym_name, deep=False)) is not None) {
+                    outer.add_use(nd.name_spec);
+                } else {
+                    py_scope.def_insert(nd, single_decl='local var');
+                }
+                return;
+            }
+        }
         sym_tab.def_insert(nd, single_decl='iterator');
     } elif isinstance(nd, (uni.TupleVal, uni.ListVal)) {
         for target_var in nd.values {
             if isinstance(target_var, uni.Expr) {
-                self._def_insert_unpacking(target_var, sym_tab);
+                self._def_insert_unpacking(target_var, sym_tab, rebind_in_python_scope);
             }
         }
     } elif (isinstance(nd, uni.UnaryExpr) and (nd.op.name == Tokens.STAR_MUL)) {
-        self._def_insert_unpacking(nd.operand, sym_tab);
+        self._def_insert_unpacking(nd.operand, sym_tab, rebind_in_python_scope);
     }
 }
 

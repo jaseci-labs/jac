@@ -773,11 +773,49 @@ test "test_hover_types" {
             (47, 4, "result1", "Dog"),
             (48, 4, "result2", "Cat"),
             (51, 4, "ok_swap", "tuple"),
+
         ];
         for (line, col, var_name, expected_type) in typevar_cases {
             hover = lsp.get_hover_info(typevar_file, lspt.Position(line, col));
             assert hover is not None , f"Hover should exist for {var_name}";
             assert expected_type in hover.contents.value , f"{var_name} should contain {expected_type}, got: {hover.contents.value}";
+        }
+    } finally {
+        teardown_test();
+    }
+}
+
+"""Hover on an LHS assignment target shows the post-write effective type."""
+test "test_hover_lhs_assignment" {
+    setup_test();
+    try {
+        lsp = create_server("");
+        lhs_file = uris.from_fs_path(fixture_path("hover_lhs_assignment.jac"));
+        lsp.type_check_file(lhs_file);
+
+        # (line, col, desc, expected, should_not_contain)
+        cases: list[tuple] = [
+            (5, 5, "flat_narrow LHS x", "int", "None"),
+            (6, 12, "flat_narrow read x", "int", "None"),
+            (11, 5, "flat_to_none LHS x", "None", "int"),
+            (12, 12, "flat_to_none read x", "None", "int"),
+            (17, 5, "flat_to_union LHS x", "int | NoneType", None),
+            (18, 12, "flat_to_union read x", "int | NoneType", None),
+            (23, 6, "destructure_narrow LHS x", "int", "None"),
+            (24, 12, "destructure_narrow read x", "int", "None"),
+            (29, 10, "destructure_nested LHS b", "int", "None"),
+            (30, 12, "destructure_nested read b", "int", "None"),
+            # aug_op: `x += 1` must not leak the bare RHS type.
+            (36, 9, "aug_op LHS x", "int | NoneType", None),
+        ];
+        for case in cases {
+            (line, col, desc, expected, should_not_contain) = case;
+            hover = lsp.get_hover_info(lhs_file, lspt.Position(line - 1, col - 1));
+            assert hover is not None , f"Hover should exist for {desc} at line {line}";
+            assert expected in hover.contents.value , f"{desc}: expected '{expected}' in hover, got: {hover.contents.value}";
+            if should_not_contain {
+                assert should_not_contain not in hover.contents.value , f"{desc}: should NOT contain '{should_not_contain}', got: {hover.contents.value}";
+            }
         }
     } finally {
         teardown_test();

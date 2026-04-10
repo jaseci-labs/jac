@@ -9,18 +9,36 @@ dependencies = [
     "rich>=13.0.0",
     "jaclang>=0.13.5",
     "python-dotenv>=1.2.1,<2.0.0",
-    "docker>=7.1.0,<8.0.0",
-    "kubernetes>=34.1.0,<35.0.0",
-    "pymongo>=4.15.4,<5.0.0",
-    "redis>=7.1.0,<8.0.0",
     "fastapi>=0.121.3,<0.122.0",
     "uvicorn>=0.38.0,<0.39.0",
     "pyjwt>=2.10.1,<2.11.0",
     "fastapi-sso>=0.21.0,<1.0.0",
     "python-multipart>=0.0.21,<1.0.0",
-    "apscheduler>=3.11.2,<4.0.0",
+    "bcrypt>=4.0.0,<5.0.0",
+]
+
+[project.optional-dependencies]
+data = [
+    "pymongo>=4.15.4,<5.0.0",
+    "redis>=7.1.0,<8.0.0",
+]
+monitoring = [
     "prometheus-client>=0.21.0,<1.0.0",
-    "bcrypt>=4.0.0,<5.0.0"
+]
+scheduler = [
+    "apscheduler>=3.11.2,<4.0.0",
+]
+deploy = [
+    "kubernetes>=34.1.0,<35.0.0",
+    "docker>=7.1.0,<8.0.0",
+]
+all = [
+    "jac-scale[data,monitoring,scheduler,deploy]",
+]
+test = [
+    "jac-scale[all]",
+    "testcontainers[mongodb,redis]",
+    "requests",
 ]
 
 [project.urls]
