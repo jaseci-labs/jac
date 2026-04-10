@@ -28,14 +28,18 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
 import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
+import from jac_scale._optdeps.optional_deps { require_optional }
+import from jac_scale._optdeps.kubernetes {
+    client,
+    config as k8s_cluster_config,
+    ApiException
+}
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 import time;
-import from kubernetes { client, config as k8s_cluster_config }
-import from kubernetes.client.exceptions { ApiException }
 
 """Kubernetes deployment target implementation."""
 obj KubernetesTarget(DeploymentTarget) {
@@ -200,7 +204,7 @@ obj KubernetesTarget(DeploymentTarget) {
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
-            commands.append('pip install -e ./jac-scale');
+            commands.append('pip install -e "./jac-scale[all]"');
             commands.append('pip install -e ./jac-client');
             commands.append('pip install -e ./jac-byllm');
             commands.append('pip install -e ./jac-mcp');
@@ -218,9 +222,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 commands.append(f'pip install jaclang=={jaclang_v}');
             }
             if scale_v == 'latest' {
-                commands.append('pip install jac-scale');
+                commands.append('pip install "jac-scale[all]"');
             } else {
-                commands.append(f'pip install jac-scale=={scale_v}');
+                commands.append(f'pip install "jac-scale[all]=={scale_v}"');
             }
             if client_v == 'latest' {
                 commands.append('pip install jac-client');

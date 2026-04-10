@@ -2,14 +2,13 @@
 import re;
 import hashlib;
 import from typing { Any }
-import from kubernetes { client }
+import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     delete_if_exists,
     delete_k8s_secret
 }
-import from kubernetes.client.exceptions { ApiException }
 
 """Deploys and destroys a Prometheus + Grafana monitoring stack scoped to an app namespace.
 

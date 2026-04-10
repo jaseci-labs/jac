@@ -196,16 +196,21 @@ impl MongoBackend.sync -> None {
         return;
     }
     for (_, anchor) in list(self._mem_ref.items()) {
-        if not anchor.persistent or not Jac.check_write_access(anchor) {
+        if not anchor.persistent {
             continue;
         }
+        # Check hash first — skip unchanged anchors without access check
         current_hash = Serializer._compute_hash(anchor);
-        if current_hash != anchor.hash {
-            try {
-                self.put(anchor);
-            } except Exception as e {
-                logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
-            }
+        if current_hash == anchor.hash {
+            continue;
+        }
+        if not Jac.check_write_access(anchor) {
+            continue;
+        }
+        try {
+            self.put(anchor);
+        } except Exception as e {
+            logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
     }
 }

@@ -987,6 +987,8 @@ notifications = false
 jac_scale = true   # FastAPI server, auth, scaling features
 byllm = true       # LLM providers integration (litellm)
 jac_coder = true   # AI coding assistant
+jac_mcp = true     # MCP server integration
+# jac_client is always bundled (core sidecar dependency)
 ''';
 
     # Append the section
@@ -1812,48 +1814,65 @@ impl DesktopTarget.build(
     }
     # Step 1: Build web bundle first using inherited WebTarget.build() via super()
     console.print("  Step 1: Building web bundle...", style="muted");
+    os.environ["JAC_BUILD"] = "1";
     try {
         web_bundle_path = super.build(entry_file, project_dir, platform);
     } finally {
         os.environ.pop(API_BASE_URL_ENV_VAR, None);
+        os.environ.pop("JAC_BUILD", None);
     }
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
     # Step 1.1: Copy assets to dist for desktop builds (Tauri serves from dist directly)
     _copy_assets_to_dist(project_dir, web_bundle_path.parent);
     # Regenerate main.rs with latest TOML config (base_url may have changed since setup)
     _generate_main_rs(tauri_dir, api_base_url=toml_base_url);
-    # Step 1.5: Bundle sidecar (optional - can be skipped if not needed)
-    # This bundles the Jac backend as an executable for local use
+    # Load desktop config
+    import from jac_client.plugin.src.desktop_config { DesktopConfig }
+    desktop_config = DesktopConfig(project_dir=project_dir);
+    is_client_only = desktop_config.is_client_only();
+    # Step 1.5: Bundle sidecar (skipped in client_only mode)
     sidecar_bundled = False;
-    try {
-        console.print("  Step 1.5: Bundling sidecar (Jac backend)...", style="muted");
-        # Load desktop config to get plugins configuration
-        import from jac_client.plugin.src.desktop_config { DesktopConfig }
-        plugins_config = None;
-        try {
-            desktop_config = DesktopConfig(project_dir=project_dir);
-            plugins_config = desktop_config.get_plugins_config();
-            if plugins_config {
-                console.print(f"  Plugins config: {plugins_config}", style="muted");
-            }
-        } except Exception as config_err {
-            console.warning(
-                f"  Could not load plugins config: {config_err}, using defaults"
+    if is_client_only {
+        if not toml_base_url {
+            raise RuntimeError(
+                "client_only mode requires [plugins.client.api] base_url in jac.toml. "
+                "Set it to your remote server URL."
             );
         }
-        sidecar_path = _bundle_sidecar(
-            entry_file, project_dir, tauri_dir, platform, plugins_config
-        );
-        if sidecar_path and sidecar_path.exists() {
-            console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
-            sidecar_bundled = True;
-        }
-    } except Exception as e {
-        console.warning(f"  Sidecar bundling skipped: {e}");
         console.print(
-            "  Note: Desktop app will need external API server", style="muted"
+            "  Step 1.5: Sidecar bundling skipped (client_only mode)", style="muted"
         );
-        sidecar_bundled = False;
+        console.print(f"  Using remote backend: {toml_base_url}", style="muted");
+    } else {
+        try {
+            console.print(
+                "  Step 1.5: Bundling sidecar (Jac backend)...", style="muted"
+            );
+            plugins_config = None;
+            try {
+                plugins_config = desktop_config.get_plugins_config();
+                if plugins_config {
+                    console.print(f"  Plugins config: {plugins_config}", style="muted");
+                }
+            } except Exception as config_err {
+                console.warning(
+                    f"  Could not load plugins config: {config_err}, using defaults"
+                );
+            }
+            sidecar_path = _bundle_sidecar(
+                entry_file, project_dir, tauri_dir, platform, plugins_config
+            );
+            if sidecar_path and sidecar_path.exists() {
+                console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
+                sidecar_bundled = True;
+            }
+        } except Exception as e {
+            console.warning(f"  Sidecar bundling skipped: {e}");
+            console.print(
+                "  Note: Desktop app will need external API server", style="muted"
+            );
+            sidecar_bundled = False;
+        }
     }
     # Step 1.5: Check and regenerate icon if needed (AppImage requires square icons)
     icon_path = tauri_dir / "icons" / "icon.png";
@@ -2713,7 +2732,12 @@ def _generate_pyinstaller_spec(
 ) -> str {
     # Default plugins config - all enabled
     if plugins_config is None {
-        plugins_config = {'jac_scale': True, 'byllm': True, 'jac_coder': True};
+        plugins_config = {
+            'jac_scale': True,
+            'byllm': True,
+            'jac_coder': True,
+            'jac_mcp': True
+        };
     }
 
     # Convert plugins config to Python code string for the spec file
@@ -2773,6 +2797,22 @@ if PLUGINS_CONFIG.get('jac_coder', True):
         print("  jac_coder: not installed")
 else:
     print("  jac_coder: disabled in config")
+
+if PLUGINS_CONFIG.get('jac_mcp', True):
+    try:
+        import jac_mcp
+        print("  jac_mcp: available")
+    except ImportError:
+        print("  jac_mcp: not installed")
+else:
+    print("  jac_mcp: disabled in config")
+
+# jac_client is always bundled (core dependency for sidecar entry point)
+try:
+    import jac_client
+    print("  jac_client: available (core)")
+except ImportError:
+    print("  jac_client: NOT INSTALLED - sidecar will fail!")
 
 # Use collect_all() for comprehensive package bundling (scalable approach)
 from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
@@ -2860,12 +2900,25 @@ if PLUGINS_CONFIG.get('jac_coder', True):
     binaries += b
     all_hiddenimports += h
 
+if PLUGINS_CONFIG.get('jac_mcp', True):
+    d, b, h = collect_with_deps('jac_mcp', collected_packages)
+    datas += d
+    binaries += b
+    all_hiddenimports += h
+
+# jac_client is always bundled as a core package (sidecar entry point depends on it)
+# No need to gate it behind PLUGINS_CONFIG
+
 # Merge collected imports with manual hiddenimports
 hiddenimports.extend(all_hiddenimports)
 
-# Add project .jac files
+# Add project .jac files (exclude build artifacts to avoid recursive nesting)
 project_dir = Path(r'{project_dir}')
+EXCLUDE_DIRS = ['src-tauri', 'node_modules', '__pycache__', '.git', 'dist', '__jac_gen__', '.jac']
 for jac_file in project_dir.rglob('*.jac'):
+    # Skip files inside excluded directories
+    if any(part in EXCLUDE_DIRS for part in jac_file.relative_to(project_dir).parts):
+        continue
     rel_path = jac_file.relative_to(project_dir)
     datas.append((str(jac_file), str(rel_path.parent) or '.'))
 
