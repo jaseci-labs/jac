@@ -2000,6 +2000,24 @@ test "assignment_barrier" {
     assert 'Cannot return int | NoneType' in msg , f"Expected widening-reset error, got: {msg}";
 }
 
+"""Starred-unpack assignment acts as a narrowing barrier."""
+test "starred_unpack_barrier" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_starred_unpack_barrier.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # After `(head, *rest) = ...` inside `if rest is not None`, rest
+    # must reset to list[int] | None. The typed-local assignment then
+    # fails because list[int] | None is not assignable to list[int].
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    msg = program.errors_had[0].pretty_print();
+    assert 'Cannot assign list[int] | NoneType to list[int]' in msg , f"Expected starred-unpack reset error, got: {msg}";
+}
+
 """Tuple-unpacking assignment acts as a narrowing barrier."""
 test "tuple_unpack_barrier" {
     program = JacProgram();

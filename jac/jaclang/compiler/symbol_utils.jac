@@ -243,8 +243,9 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
 """Collect every reference key bound by a single assignment target.
 
 Walks one element of `Assignment.target`, extracting the reference keys
-it writes. Handles flat names, dotted attribute paths, and recursive
-tuple/list destructuring (e.g. `(a, (b, c)) = ...`).
+it writes. Handles flat names, dotted attribute paths, recursive
+tuple/list destructuring (e.g. `(a, (b, c)) = ...`), and starred
+unpack slots (`(a, *rest) = ...`).
 """
 def collect_assignment_target_keys(target: uni.UniNode) -> set[str] {
     keys: set[str] = set();
@@ -262,6 +263,13 @@ def collect_assignment_target_keys(target: uni.UniNode) -> set[str] {
                 }
             }
         }
+    } elif (
+        isinstance(target, uni.UnaryExpr)
+        and isinstance(target.op, uni.Token)
+        and target.op.name == Tok.STAR_MUL
+    ) {
+        # Starred unpack slot: `*rest` inside (a, *rest) = ...
+        keys.update(collect_assignment_target_keys(target.operand));
     } elif isinstance(target, uni.AtomUnit) and isinstance(target.value, uni.UniNode) {
         # Parenthesized target: `(x) = ...` or `((x, y)) = ...`.
         keys.update(collect_assignment_target_keys(target.value));
