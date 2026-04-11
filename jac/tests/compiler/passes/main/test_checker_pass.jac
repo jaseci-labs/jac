@@ -2590,6 +2590,38 @@ test "generic_self_member_type_propagation" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+"""Attribute access on a `Self`-typed value resolves via the enclosing class.
+
+Regression for the E1031 raised on `unloaded.id = self.id;` in
+jac/jaclang/jac0core/impl/archetype.impl.jac, where
+`object.__new__(self.__class__)` returns Self and the checker treated Self as an
+unbounded TypeVar with no member access. After the fix, attribute access on a
+Self-typed value resolves via the enclosing class — Pyright behavior.
+"""
+test "self_typevar_attr_access_via_enclosing_class" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_self_type_attr_access.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+    assert len(user_errors) == 0 , f"Expected 0 user errors, got {len(user_errors)}:\n" + "\n".join(
+        e.pretty_print() for e in user_errors
+    );
+    # Defensive: even any vendor-side errors must not still claim "type Self"
+    # for the user fixture's positions — that would mean the fix didn't take.
+    for err in program.errors_had {
+        if "checker_self_type_attr_access" in err.loc.mod_path {
+            assert "type \"Self\"" not in err.pretty_print() , f"Error should not refer to opaque Self type, got:\n{err.pretty_print()}";
+        }
+    }
+}
+
 # ============================================================================
 # Narrowing gap exposure tests
 #

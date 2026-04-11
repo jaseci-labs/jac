@@ -480,7 +480,10 @@ obj TypeEvaluator {
 
     def _has_meaningful_params(method: types.FunctionType) -> bool;
     def _collect_type_var_bindings(
-        method: types.FunctionType, expr: uni.FuncCall
+        method: types.FunctionType,
+        expr: uni.FuncCall,
+        is_unbound_call: bool = False,
+        is_constructor_call: bool = False
     ) -> dict[str, TypeBase];
 
     # -------------------------------------------------------------------------

@@ -53,6 +53,7 @@ nav:
               - Backend Integration: "tutorials/fullstack/backend.md"
               - Authentication: "tutorials/fullstack/auth.md"
               - Routing: "tutorials/fullstack/routing.md"
+              - Desktop App: "tutorials/fullstack/desktop.md"
       - Deployment & Scaling:
           - jac-scale Reference: "reference/plugins/jac-scale.md"
           - Learn by Doing:
