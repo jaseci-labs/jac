@@ -434,6 +434,90 @@ test "if statement outside lambda still breaks" {
     );
 }
 
+"""Regression: JSX elements make two independent flat/break decisions —
+one for the opening tag (attributes) and one for the children. There are
+three buckets this test locks in:
+
+    bucket A (fully inline): total flat form fits in the print width,
+             so the whole element stays on one line.
+    bucket B (opening tag inline, children broken): total doesn't fit
+             but opening tag alone does, so the opening tag stays flat
+             while the children indent onto their own lines.
+    bucket C (fully broken): the opening tag itself doesn't fit, so
+             attributes break one-per-line, `break_contiguous` forces
+             the children to also break (no children inlined onto the
+             same line as the closing `>` of the opening tag)."""
+test "jsx attributes and children group independently" {
+    source = (
+        'cl def app -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            <h2 style={{color: "#dc2626"}}>Short</h2>\n'
+        '            <p style={{color: "#374151", marginBottom: "16px"}}>An unexpected error occurred.</p>\n'
+        '            <div\n'
+        '                class="tweet-header"\n'
+        '                style={{"fontWeight": "bold", "marginBottom": "8px"}}\n'
+        '            >@{tweet.username}</div>\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+
+    # Bucket A: short h2 fits flat in total.
+    bucket_a = '<h2 style={{color: "#dc2626"}}>Short</h2>';
+    assert bucket_a in formatted , (
+        "bucket A: short JSX element did not stay fully inline:\n" + str(formatted)
+    );
+
+    # Bucket B: opening tag of <p> fits inline even though total doesn't.
+    # The opening tag must be on one line; the child text must be on an
+    # indented line on its own; the closing tag on its own line.
+    bucket_b_open = '<p style={{color: "#374151", marginBottom: "16px"}}>';
+    assert bucket_b_open in formatted , (
+        "bucket B: <p> opening tag was broken even though it fits:\n" + str(formatted)
+    );
+    assert "An unexpected error occurred." in formatted;
+    # Child must NOT be glued to the opening `>` — confirm by checking the
+    # child text is not on the same line as `<p style=...>`.
+    for ln in formatted.splitlines() {
+        if bucket_b_open in ln {
+            assert "An unexpected" not in ln , (
+                "bucket B: children were inlined on the opening-tag line "
+                "instead of breaking:\n" + str(formatted)
+            );
+        }
+    }
+
+    # Bucket C: the tweet-header <div> has two attributes that together
+    # push the opening tag past the print width, so attributes must break
+    # one-per-line. `break_contiguous=True` on the children group then
+    # forces the children onto their own indented line — the @{...} text
+    # must NOT be inlined on the same line as the closing `>` of the
+    # broken opening tag.
+    for ln in formatted.splitlines() {
+        # The closing `>` of the broken opening tag sits on its own line
+        # (just whitespace + `>`) after a multi-line attribute list.
+        if ln.strip() == ">" {
+            continue;
+        }
+        assert not (ln.rstrip().endswith(">@{tweet.username}</div>")) , (
+            "bucket C: children were inlined on the closing `>` of a "
+            "multi-line opening tag:\n" + str(formatted)
+        );
+    }
+    # Positive assertion: bucket C children land on their own line.
+    assert "@{tweet.username}" in formatted;
+
+    # Idempotency: all three shapes must round-trip.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        "JSX attribute/children grouping is not idempotent"
+    );
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {

@@ -75,14 +75,26 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         if name_node {
             parts.append(name_node.gen.doc_ir);
         }
-        # Use soft lines for attributes - formatter decides based on line length
+        # Attributes live in their own Group so the opening-tag flat/break
+        # decision is independent of the children flat/break decision. This
+        # mirrors Prettier-JSX: when the whole element doesn't fit as one
+        # line but the opening tag alone does, we keep the opening tag flat
+        # and only break the children region.
         if attr_docs {
-            # Indent attributes with soft line breaks
             attr_content: list[doc.DocType] = [self.line()];
             attr_content.extend(self.intersperse(attr_docs, self.line()));
-            parts.append(self.indent(self.concat(attr_content), ast_node=nd));
-            # When broken: newline before closing bracket; when flat: nothing
-            parts.append(self.if_break(self.line(), self.concat([])));
+            attr_group = self.group(
+                self.concat(
+                    [
+                        self.indent(self.concat(attr_content), ast_node=nd),
+                        # When broken: newline before closing bracket;
+                        # when flat: nothing.
+                        self.if_break(self.line(), self.concat([]))
+                    ]
+                ),
+                ast_node=nd
+            );
+            parts.append(attr_group);
         }
         is_self_closing = end_token.name == Tok.JSX_SELF_CLOSE;
         if (not is_self_closing and nd.children) {
@@ -97,6 +109,14 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                 nd.children
                 and all(isinstance(child, inline_child_types) for child in nd.children)
             );
+            # Children live in their own Group so the attributes-group budget
+            # isn't charged for the children's flat width when computing
+            # whether the opening tag can stay inline. _flat_first_line_width
+            # stops at Group boundaries, so wrapping here makes the attribute
+            # and children decisions truly independent. `break_contiguous=True`
+            # also forces the children to break whenever the outer element
+            # breaks — this prevents the ugly "opening tag on 3 lines, then
+            # children inlined on the closing `>` line" case.
             if all_inline_children {
                 # Prettier-style rule: for JSX with only inline children
                 # (text / expression) keep the element flat when it fits the
@@ -105,18 +125,36 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                 # Group decides rather than forcing a break.
                 inline_doc = self.concat([child.gen.doc_ir for child in nd.children]);
                 parts.append(
-                    self.indent(
-                        self.concat([self.tight_line(), inline_doc]), ast_node=nd
+                    self.group(
+                        self.concat(
+                            [
+                                self.indent(
+                                    self.concat([self.tight_line(), inline_doc]),
+                                    ast_node=nd
+                                ),
+                                self.tight_line()
+                            ]
+                        ),
+                        break_contiguous=True,
+                        ast_node=nd
                     )
                 );
-                parts.append(self.tight_line());
             } elif child_parts {
                 parts.append(
-                    self.indent(
-                        self.concat([self.hard_line(), *child_parts]), ast_node=nd
+                    self.group(
+                        self.concat(
+                            [
+                                self.indent(
+                                    self.concat([self.hard_line(), *child_parts]),
+                                    ast_node=nd
+                                ),
+                                self.hard_line()
+                            ]
+                        ),
+                        break_contiguous=True,
+                        ast_node=nd
                     )
                 );
-                parts.append(self.hard_line());
             }
         }
         if is_self_closing {
@@ -147,19 +185,47 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         and all(isinstance(child, inline_child_types) for child in nd.children)
     );
     parts = [opening_doc];
+    # Children live in their own Group so _flat_first_line_width stops at
+    # the children-group boundary when computing budgets for the opening
+    # tag's sub-groups (e.g. attribute groups). This is what enables
+    # prettier-JSX's "keep opening tag inline, break children independently"
+    # behavior on wrapper elements like `<p attr>text</p>`. The
+    # `break_contiguous=True` flag also forces the children to break
+    # whenever the outer wrapper element breaks, preventing children from
+    # being inlined on the same line as a multi-line opening tag's `>`.
     if all_inline_children {
         # Same prettier-style rule as above: tight lines let the enclosing
         # Group decide flat vs broken based on print width.
         inline_doc = self.concat([child.gen.doc_ir for child in nd.children]);
         parts.append(
-            self.indent(self.concat([self.tight_line(), inline_doc]), ast_node=nd)
+            self.group(
+                self.concat(
+                    [
+                        self.indent(
+                            self.concat([self.tight_line(), inline_doc]), ast_node=nd
+                        ),
+                        self.tight_line()
+                    ]
+                ),
+                break_contiguous=True,
+                ast_node=nd
+            )
         );
-        parts.append(self.tight_line());
     } elif child_parts {
         parts.append(
-            self.indent(self.concat([self.hard_line(), *child_parts]), ast_node=nd)
+            self.group(
+                self.concat(
+                    [
+                        self.indent(
+                            self.concat([self.hard_line(), *child_parts]), ast_node=nd
+                        ),
+                        self.hard_line()
+                    ]
+                ),
+                break_contiguous=True,
+                ast_node=nd
+            )
         );
-        parts.append(self.hard_line());
     }
     parts.append(closing_doc);
     nd.gen.doc_ir = self.group(self.concat(parts), ast_node=nd);

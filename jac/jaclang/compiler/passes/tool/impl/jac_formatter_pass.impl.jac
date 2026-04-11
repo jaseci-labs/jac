@@ -31,6 +31,14 @@ impl JacFormatPass.format_doc_ir(
             indent_level=indent_level,
             width_remaining=width_remaining
         );
+        # break_contiguous=True: when the enclosing group has already
+        # broken (is_broken=True), this group breaks unconditionally
+        # regardless of whether its own contents would fit flat. Used by
+        # JSX children groups to force children onto their own lines
+        # whenever the parent element has broken.
+        if (doc_node.break_contiguous and is_broken) {
+            fits_flat = False;
+        }
         return self.format_doc_ir(
             doc_node.contents,
             indent_level,
