@@ -26,17 +26,11 @@ cl {
         return
             <div style={styles.container}>
                 <div style={styles.card}>
-                    <h1 style={styles.title}>
-                        Counter Application
-                    </h1>
+                    <h1 style={styles.title}>Counter Application</h1>
                     <div style={styles.divider}></div>
                     <div style={styles.counterSection}>
-                        <div style={styles.label}>
-                            Current Count
-                        </div>
-                        <div style={countStyle}>
-                            {count}
-                        </div>
+                        <div style={styles.label}>Current Count</div>
+                        <div style={countStyle}>{count}</div>
                     </div>
                     <div style={styles.divider}></div>
                     <div style={styles.buttonGroup}>
@@ -46,10 +40,7 @@ cl {
                         <button style={styles.buttonReset} onClick={handleReset}>
                             ↻
                         </button>
-                        <button
-                            style={styles.buttonIncrement}
-                            onClick={handleIncrement}
-                        >
+                        <button style={styles.buttonIncrement} onClick={handleIncrement}>
                             +
                         </button>
                     </div>

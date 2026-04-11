@@ -51,9 +51,7 @@ cl {
 
         return
             <div style={{"padding": "2rem", "maxWidth": "600px"}}>
-                <h1>
-                    Search
-                </h1>
+                <h1>Search</h1>
                 <p style={{"color": "#6b7280", "marginBottom": "1.5rem"}}>
                     Demonstrates query parameter handling with URLSearchParams
                 </p>
@@ -95,9 +93,7 @@ cl {
                         "fontSize": "0.875rem"
                     }}
                 >
-                    <strong>
-                        Current URL params:
-                    </strong>
+                    <strong>Current URL params:</strong>
                     <br/>
                     q = "
                     {query}
@@ -123,9 +119,7 @@ cl {
                                 "justifyContent": "space-between"
                             }}
                         >
-                            <span>
-                                {item["title"]}
-                            </span>
+                            <span>{item["title"]}</span>
                             <span
                                 style={{
                                     "background": (
@@ -162,9 +156,7 @@ cl {
                     >
                         Previous
                     </button>
-                    <span style={{"padding": "0.5rem 1rem"}}>
-                        Page{page}
-                    </span>
+                    <span style={{"padding": "0.5rem 1rem"}}>Page{page}</span>
                     <button
                         onClick={lambda { goToPage(page + 1);}}
                         style={{
@@ -178,9 +170,7 @@ cl {
                     </button>
                 </div>
                 <div style={{"marginTop": "2rem"}}>
-                    <Link to="/" style={{"color": "#3b82f6"}}>
-                        ← Back to Home
-                    </Link>
+                    <Link to="/" style={{"color": "#3b82f6"}}>← Back to Home</Link>
                 </div>
             </div>;
     }

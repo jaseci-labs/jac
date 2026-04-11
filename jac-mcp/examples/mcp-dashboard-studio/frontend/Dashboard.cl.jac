@@ -298,9 +298,7 @@ def:pub DashboardPage -> JsxElement {
                     >
                         <div className={panelCls}>
                             <div className="flex items-center justify-between">
-                                <div className={sectionLabel}>
-                                    Python to Jac
-                                </div>
+                                <div className={sectionLabel}>Python to Jac</div>
                                 <button
                                     onClick={lambda { runTool(
                                         "py_to_jac", {"code": python_input}
@@ -378,9 +376,7 @@ def:pub DashboardPage -> JsxElement {
                         </div>
                         <div className={panelCls}>
                             <div className="flex items-center justify-between">
-                                <div className={sectionLabel}>
-                                    Explain Error
-                                </div>
+                                <div className={sectionLabel}>Explain Error</div>
                             </div>
                             <input
                                 type="text"
@@ -402,9 +398,7 @@ def:pub DashboardPage -> JsxElement {
                             </button>
                         </div>
                         <div className={panelCls}>
-                            <div className={sectionLabel}>
-                                Examples
-                            </div>
+                            <div className={sectionLabel}>Examples</div>
                             <button
                                 onClick={lambda { runTool("list_examples", {});}}
                                 disabled={loading != "" or not connected}
@@ -443,9 +437,7 @@ def:pub DashboardPage -> JsxElement {
                     <div className="space-y-4 xl:sticky xl:top-6">
                         <div className={panelCls}>
                             <div className="flex items-center justify-between">
-                                <div className={sectionLabel}>
-                                    Output
-                                </div>
+                                <div className={sectionLabel}>Output</div>
                                 <div className="flex items-center gap-2">
                                     {loading != ""
                                     and <span

@@ -60,12 +60,8 @@ def:pub OAuthCallback -> JsxElement {
             }}
         >
             <div style={{textAlign: 'center'}}>
-                <h2>
-                    Processing authentication...
-                </h2>
-                <p>
-                    Please wait while we complete your login.
-                </p>
+                <h2>Processing authentication...</h2>
+                <p>Please wait while we complete your login.</p>
             </div>
         </div>
     );

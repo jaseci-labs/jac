@@ -25,15 +25,9 @@ cl {
         if not user {
             return
                 <div style={{"padding": "2rem", "textAlign": "center"}}>
-                    <h1>
-                        User Not Found
-                    </h1>
-                    <p>
-                        No user exists with ID:{userId}
-                    </p>
-                    <Link to="/users">
-                        Back to Users
-                    </Link>
+                    <h1>User Not Found</h1>
+                    <p>No user exists with ID:{userId}</p>
+                    <Link to="/users">Back to Users</Link>
                 </div>;
         }
 
@@ -42,9 +36,7 @@ cl {
                 <Link to="/users" style={{"color": "#3b82f6", "textDecoration": "none"}}>
                     ← Back to Users
                 </Link>
-                <h1 style={{"marginTop": "1rem"}}>
-                    User Profile
-                </h1>
+                <h1 style={{"marginTop": "1rem"}}>User Profile</h1>
                 <div
                     style={{
                         "background": "#f9fafb",
@@ -54,27 +46,19 @@ cl {
                     }}
                 >
                     <p>
-                        <strong>
-                            ID:
-                        </strong>
+                        <strong>ID:</strong>
                         {userId}
                     </p>
                     <p>
-                        <strong>
-                            Name:
-                        </strong>
+                        <strong>Name:</strong>
                         {user["name"]}
                     </p>
                     <p>
-                        <strong>
-                            Email:
-                        </strong>
+                        <strong>Email:</strong>
                         {user["email"]}
                     </p>
                     <p>
-                        <strong>
-                            Role:
-                        </strong>
+                        <strong>Role:</strong>
                         {user["role"]}
                     </p>
                 </div>

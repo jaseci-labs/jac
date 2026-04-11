@@ -723,9 +723,7 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
 
     return (
         <>
-            <style>
-                {__getPwaStyles()}
-            </style>
+            <style>{__getPwaStyles()}</style>
             <div className={bannerClass} style={style}>
                 {showIcon
                 and pwa.appIcon
@@ -738,12 +736,8 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
                     />
                 )}
                 <div className="jac-pwa-banner__content">
-                    <div className="jac-pwa-banner__title">
-                        {title}
-                    </div>
-                    <div className="jac-pwa-banner__description">
-                        {description}
-                    </div>
+                    <div className="jac-pwa-banner__title">{title}</div>
+                    <div className="jac-pwa-banner__description">{description}</div>
                 </div>
                 <div className="jac-pwa-banner__actions">
                     <button
@@ -792,9 +786,7 @@ impl PwaInstallButton(props: dict) -> JsxElement {
 
     return (
         <>
-            <style>
-                {__getPwaStyles()}
-            </style>
+            <style>{__getPwaStyles()}</style>
             <button
                 className={className}
                 style={style}
@@ -829,62 +821,40 @@ impl IosInstallGuide(props: dict) -> JsxElement {
 
     return (
         <>
-            <style>
-                {__getPwaStyles()}
-            </style>
+            <style>{__getPwaStyles()}</style>
             <div className="jac-pwa-ios-overlay" onClick={onClose}>
                 <div
                     className={"jac-pwa-ios-guide " + className}
                     onClick={lambda e: Any { e.stopPropagation();}}
                 >
-                    <div className="jac-pwa-ios-guide__title">
-                        {title}
-                    </div>
+                    <div className="jac-pwa-ios-guide__title">{title}</div>
                     <div className="jac-pwa-ios-guide__subtitle">
                         Add to your home screen
                     </div>
                     <div className="jac-pwa-ios-guide__steps">
                         <div className="jac-pwa-ios-guide__step">
-                            <span className="jac-pwa-ios-guide__step-num">
-                                1
-                            </span>
-                            <span className="jac-pwa-ios-guide__step-icon">
-                                ↑
-                            </span>
+                            <span className="jac-pwa-ios-guide__step-num">1</span>
+                            <span className="jac-pwa-ios-guide__step-icon">↑</span>
                             <span className="jac-pwa-ios-guide__step-text">
                                 Tap the
-                                <strong>
-                                    Share
-                                </strong>
+                                <strong>Share</strong>
                                 button
                             </span>
                         </div>
                         <div className="jac-pwa-ios-guide__step">
-                            <span className="jac-pwa-ios-guide__step-num">
-                                2
-                            </span>
-                            <span className="jac-pwa-ios-guide__step-icon">
-                                +
-                            </span>
+                            <span className="jac-pwa-ios-guide__step-num">2</span>
+                            <span className="jac-pwa-ios-guide__step-icon">+</span>
                             <span className="jac-pwa-ios-guide__step-text">
                                 Tap
-                                <strong>
-                                    Add to Home Screen
-                                </strong>
+                                <strong>Add to Home Screen</strong>
                             </span>
                         </div>
                         <div className="jac-pwa-ios-guide__step">
-                            <span className="jac-pwa-ios-guide__step-num">
-                                3
-                            </span>
-                            <span className="jac-pwa-ios-guide__step-icon">
-                                ✓
-                            </span>
+                            <span className="jac-pwa-ios-guide__step-num">3</span>
+                            <span className="jac-pwa-ios-guide__step-icon">✓</span>
                             <span className="jac-pwa-ios-guide__step-text">
                                 Tap
-                                <strong>
-                                    Add
-                                </strong>
+                                <strong>Add</strong>
                                 to confirm
                             </span>
                         </div>

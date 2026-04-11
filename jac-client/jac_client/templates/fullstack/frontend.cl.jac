@@ -76,9 +76,7 @@ def:pub app -> any {
                         "marginBottom": "1.5rem"
                     }}
                 >
-                    <h1 style={{"margin": "0", "color": "#1a1a2e"}}>
-                        My Todos
-                    </h1>
+                    <h1 style={{"margin": "0", "color": "#1a1a2e"}}>My Todos</h1>
                     <button
                         onClick={handleLogout}
                         style={{

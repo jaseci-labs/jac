@@ -34,9 +34,7 @@ cl {
                             Sign in to continue
                         </p>
                     </div>
-                    <div
-                        className="bg-slate-900 border border-slate-800 rounded-lg p-6"
-                    >
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
                         <InlineAlert message={loginError} type="error"/>
                         <form onSubmit={handleLogin}>
                             <Input
@@ -55,9 +53,7 @@ cl {
                                 placeholder="Enter password"
                                 className="mb-5"
                             />
-                            <Button type="submit" className="w-full">
-                                Sign In
-                            </Button>
+                            <Button type="submit" className="w-full">Sign In</Button>
                         </form>
                     </div>
                 </div>

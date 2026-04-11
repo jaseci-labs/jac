@@ -48,9 +48,7 @@ cl {
                             Create a new password to continue
                         </p>
                     </div>
-                    <div
-                        className="bg-slate-900 border border-slate-800 rounded-lg p-6"
-                    >
+                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-6">
                         <InlineAlert message={resetError} type="error"/>
                         <form onSubmit={handleResetPassword}>
                             <Input
