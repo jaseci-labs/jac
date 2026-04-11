@@ -260,10 +260,7 @@ impl DocIRGenPass.exit_string(nd: uni.String) -> None {
     );
     if is_escaped_curly {
         nd.gen.doc_ir = self.concat(
-            [
-                self.text(nd.value, source_token=nd),
-                self.text(nd.value, source_token=nd)
-            ]
+            [self.text(nd.value, source_token=nd), self.text(nd.value, source_token=nd)]
         );
         return;
     }
@@ -361,8 +358,7 @@ impl DocIRGenPass.exit_impl_def(nd: uni.ImplDef) -> None {
         ) {
             parts.append(i.gen.doc_ir);
         } elif (
-            in_body
-            or (isinstance(nd.body, Sequence) and nd.body and (i == nd.body[0]))
+            in_body or (isinstance(nd.body, Sequence) and nd.body and (i == nd.body[0]))
         ) {
             if not in_body {
                 parts.pop();
@@ -1225,7 +1221,46 @@ impl DocIRGenPass.exit_edge_ref_trailer(nd: uni.EdgeRefTrailer) -> None {
 """Generate DocIR for lambda expressions."""
 impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     parts: list[doc.DocType] = [];
+    # Multi-statement code-block lambdas need a function-body-style layout:
+    # hard break after `{`, indented body with hard breaks between
+    # statements, hard break before `}`. Without this the lambda body
+    # concatenates onto a single logical line and the formatter produces
+    # jammed output like `}timer = setTimeout(...)`.
+    body_stmts = list(nd.body) if isinstance(nd.body, Sequence) else [];
+    has_multi_stmt_body = len(body_stmts) > 1;
+    body_parts: list[doc.DocType] = [];
+    in_body = False;
     for i in nd.kid {
+        if (
+            has_multi_stmt_body and isinstance(i, uni.Token) and (i.name == Tok.LBRACE)
+        ) {
+            parts.append(i.gen.doc_ir);
+            in_body = True;
+            continue;
+        }
+        if (
+            has_multi_stmt_body and isinstance(i, uni.Token) and (i.name == Tok.RBRACE)
+        ) {
+            in_body = False;
+            self.trim_trailing_line(body_parts);
+            parts.append(self.indent(self.concat(body_parts), ast_node=nd));
+            if body_parts {
+                parts.append(self.hard_line());
+            } else {
+                parts.append(self.space());
+            }
+            parts.append(i.gen.doc_ir);
+            continue;
+        }
+        if in_body {
+            if (i in body_stmts) {
+                body_parts.append(self.hard_line());
+                body_parts.append(i.gen.doc_ir);
+            } else {
+                body_parts.append(i.gen.doc_ir);
+            }
+            continue;
+        }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             # Don't add trailing space after closing brace of code block lambda
             parts.append(i.gen.doc_ir);
@@ -1566,7 +1601,9 @@ impl DocIRGenPass.exit_has_var(nd: uni.HasVar) -> None {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
-        } elif (isinstance(i, uni.Token) and (i.name in [Tok.KW_BY, Tok.KW_POST_INIT])) {
+        } elif (
+            isinstance(i, uni.Token) and (i.name in [Tok.KW_BY, Tok.KW_POST_INIT])
+        ) {
             parts.append(self.space());
             parts.append(i.gen.doc_ir);
         } else {
@@ -1971,7 +2008,9 @@ impl DocIRGenPass.exit_func_signature(nd: uni.FuncSignature) -> None {
         if (isinstance(i, uni.Token) and (i.name == Tok.LPAREN) and has_any_params) {
             in_params = True;
             parts.append(i.gen.doc_ir);
-        } elif (isinstance(i, uni.Token) and (i.name == Tok.RPAREN) and has_any_params) {
+        } elif (
+            isinstance(i, uni.Token) and (i.name == Tok.RPAREN) and has_any_params
+        ) {
             in_params = False;
             has_parens = True;
             if isinstance(indent_parts[-1], doc.Line) {
@@ -2049,7 +2088,9 @@ impl DocIRGenPass.exit_ability(nd: uni.Ability) -> None {
         } elif in_body {
             self.add_body_stmt_with_spacing(body_parts, i, prev_body_item);
             prev_body_item = i;
-        } elif (not in_body and isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
+        } elif (
+            not in_body and isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)
+        ) {
             parts.append(i.gen.doc_ir);
         } elif (isinstance(i, uni.Token) and (i.name == Tok.SEMI)) {
             parts.pop();
@@ -2127,7 +2168,9 @@ impl DocIRGenPass.exit_archetype(nd: uni.Archetype) -> None {
             parts.pop();
             parts.append(i.gen.doc_ir);
             parts.append(self.space());
-        } elif (not in_body and isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)) {
+        } elif (
+            not in_body and isinstance(i, uni.Token) and (i.name == Tok.DECOR_OP)
+        ) {
             parts.append(i.gen.doc_ir);
         } elif isinstance(i, uni.SubTag) {
             parts.pop();
@@ -2281,10 +2324,7 @@ impl DocIRGenPass.exit_module(nd: uni.Module) -> None {
         if (
             (isinstance(i, uni.Import) and isinstance(prev_kid, uni.Import))
             or (
-                (
-                    isinstance(i, uni.GlobalVars)
-                    and isinstance(prev_kid, uni.GlobalVars)
-                )
+                (isinstance(i, uni.GlobalVars) and isinstance(prev_kid, uni.GlobalVars))
                 or (prev_kid == nd.doc)
             )
         ) {
@@ -2418,9 +2458,7 @@ impl DocIRGenPass.is_within(
     (start, end, kid) = (block[0].loc, block[-1].loc, kid_node.loc);
     first = (
         (start.first_line < kid.first_line)
-        or (
-            (start.first_line == kid.first_line) and (start.col_start <= kid.col_start)
-        )
+        or ((start.first_line == kid.first_line) and (start.col_start <= kid.col_start))
     );
     last = (
         (end.last_line > kid.last_line)
