@@ -23,6 +23,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Debug Diagnostic Page**: Added a debug page to the all-in-one example app for diagnosing sidecar/API connectivity issues. Displays API base URL status, Tauri runtime detection, `get_api_url` invoke results, and interactive buttons to test walker spawning and direct HTTP fetch.
 - **Plugin Reference Docs**: Added `reference/plugins/jac-client.md` documenting jac-client CLI commands and configuration options.
 - 1 small refactor/change.
+- **Style: Apply Updated JSX Formatter Across Examples, Templates, and Runtime**: Downstream reformat from the jaclang JSX formatter fixes. Compact JSX elements (`<Button>Click</Button>`, `<p>{x}</p>`) now stay on one line when they fit the print width, and `<tag attr>long text</tag>` keeps its opening tag flat while breaking the children onto their own indented line. 53 files touched across all-in-one example, asset-serving / css-styling / full-stack / google-auth / little-x / nested-folders / ts-support / with-router example apps, plugin runtimes (`client_runtime`, `pwa_runtime`), and the `client` + `fullstack` templates. No semantic changes.
 
 ## jac-client 0.3.11 (Latest Release)
 
