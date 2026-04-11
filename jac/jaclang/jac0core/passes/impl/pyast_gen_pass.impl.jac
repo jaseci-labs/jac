@@ -161,7 +161,14 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
         return False;
     }
     boundary_types = manifest.boundary_types;
-    parts: list[str] = ["from jaclang.runtimelib import sv_client as __jac_sv_client"];
+    # Also record this consumer -> provider edge at import time so the
+    # consumer's server startup can discover every provider it needs
+    # before serving traffic (see sv_client._consumer_providers and
+    # JacAPIServer._ensure_sv_siblings).
+    parts: list[str] = [
+        "from jaclang.runtimelib import sv_client as __jac_sv_client",
+        "__jac_sv_client._declare_consumer_provider(__name__, '" + module_name + "')"
+    ];
     for item in nd.items {
         if not isinstance(item, uni.ModuleItem) {
             continue;

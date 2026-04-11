@@ -160,6 +160,7 @@ impl JacAPIServerCore.start(
     on_ready: Callable[..., None] | None = None
 ) -> None {
     self.introspector.load();
+    self._ensure_sv_siblings();
     # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
     if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);

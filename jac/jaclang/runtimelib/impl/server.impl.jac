@@ -1784,6 +1784,57 @@ impl JacAPIServer.print_endpoint_docs -> None {
     print_endpoint_docs(self);
 }
 
+"""Eagerly spawn every sv-to-sv provider this consumer imports.
+
+Walks the consumer's compile-time-recorded provider list (populated by
+PyastGenPass in every `sv import` stub) and dispatches them through
+sv_client.ensure_all. Siblings spawned via ensure_sv_service skip this
+step (is_sv_sibling=True) so only the root consumer drives the spawn.
+
+Performs a BFS over the loaded sibling modules' provider lists to pick
+up transitive providers. If A imports B and B imports C, A's first
+pass spawns B; the BFS then reads B's just-loaded _consumer_providers
+entry and spawns C in a second wave. Terminates when no new providers
+are discovered.
+
+Idempotent: anything already in sv_client._registry or _test_clients
+is skipped by ensure_all without submitting a task.
+
+Fail-fast: ensure_all re-raises the first spawn failure, which
+propagates out of this method and crashes the consumer startup.
+"""
+impl JacAPIServer._ensure_sv_siblings -> None {
+    if self.is_sv_sibling {
+        return;
+    }
+    import from jaclang.runtimelib { sv_client }
+    visited: set[str] = set();
+    frontier: list[str] = sv_client.get_consumer_providers(self.module_name);
+    while frontier {
+        wave: list[str] = [
+            p
+            for p in frontier
+            if p not in visited
+        ];
+        if not wave {
+            break;
+        }
+        for p in wave {
+            visited.add(p);
+        }
+        sv_client.ensure_all(wave);
+        next_frontier: list[str] = [];
+        for provider in wave {
+            for transitive in sv_client.get_consumer_providers(provider) {
+                if transitive not in visited {
+                    next_frontier.append(transitive);
+                }
+            }
+        }
+        frontier = next_frontier;
+    }
+}
+
 """Start the HTTP server."""
 impl JacAPIServer.start(
     dev: bool = False,
@@ -1792,6 +1843,7 @@ impl JacAPIServer.start(
 ) -> None {
     import from pathlib { Path }
     self.introspector.load();
+    self._ensure_sv_siblings();
     # Register scheduled walkers and functions, start scheduler only if needed
     for (name, walker_cls) in self.introspector._walkers.items() {
         if walker_cls?.schedule_spec {

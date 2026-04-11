@@ -1750,7 +1750,12 @@ impl JacAPIServer.ensure_sv_service(module_name: str, base_path: str) -> None {
     if not bind_ok {
         raise RuntimeError(f"Could not find free port near {base_port}");
     }
-    srv = CoreJacAPIServer(module_name=module_name, port=0, base_path=base_path);
+    # is_sv_sibling=True tells the spawned sibling to skip its own
+    # eager-spawn pass (_ensure_sv_siblings), so the parent is the sole
+    # source of provider spawns and we don't race on cold start.
+    srv = CoreJacAPIServer(
+        module_name=module_name, port=0, base_path=base_path, is_sv_sibling=True
+    );
     srv.port = port;
     srv.load_module();
     handler_class = srv.create_handler();

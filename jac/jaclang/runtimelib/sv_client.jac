@@ -16,7 +16,13 @@ import from typing { Any }
 # Module name -> base URL (set by jac start orchestration or test code)
 glob _registry: dict[str, str] = {},
      # Module name -> TestClient instance (set by tests for in-process routing)
-     _test_clients: dict[str, Any] = {};
+     _test_clients: dict[str, Any] = {},
+     # Consumer module name -> list of provider module names it sv-imports.
+     # Populated at consumer module import time by compile-time-emitted
+     # _declare_consumer_provider() calls in the generated stubs. Read at
+     # consumer server startup by JacAPIServer._ensure_sv_siblings() to
+     # eager-spawn every provider before serving traffic.
+     _consumer_providers: dict[str, list[str]] = {};
 
 """Register a service URL for sv-to-sv resolution."""
 def register(module_name: str, url: str) {
@@ -45,6 +51,36 @@ def unregister_test_client(module_name: str) {
 """Clear all TestClient registrations (between tests)."""
 def clear_test_clients {
     _test_clients.clear();
+}
+
+"""Record that a consumer module sv-imports a given provider module.
+
+Called from the compile-time-generated stub preamble in every consumer
+that has at least one `sv import from <provider>` statement. Idempotent;
+safe to call multiple times for the same (consumer, provider) pair.
+"""
+def _declare_consumer_provider(consumer_name: str, provider_name: str) {
+    if consumer_name not in _consumer_providers {
+        _consumer_providers[consumer_name] = [];
+    }
+    if provider_name not in _consumer_providers[consumer_name] {
+        _consumer_providers[consumer_name].append(provider_name);
+    }
+}
+
+"""Return the list of provider module names a given consumer sv-imports.
+
+Returns an empty list if the consumer has no recorded sv-import providers
+(i.e. it has no `sv import` statements, or its module-level code has not
+yet executed). Used by the eager-spawn pass at consumer server startup.
+"""
+def get_consumer_providers(consumer_name: str) -> list[str] {
+    return list(_consumer_providers.get(consumer_name, []));
+}
+
+"""Clear all consumer-provider declarations (between tests)."""
+def clear_consumer_providers {
+    _consumer_providers.clear();
 }
 
 """Resolve a service URL via registry or environment."""
@@ -128,4 +164,67 @@ def call(module_name: str, func_name: str, args: dict) -> Any {
     raise RuntimeError(
         f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
     );
+}
+
+"""Eagerly resolve every named provider before serving traffic.
+
+Walks providers in parallel through a bounded ThreadPoolExecutor (max 8
+workers), routing each through the existing _ensure_available resolution
+chain (test client, registry, env var, ensure_sv_service plugin hook).
+Idempotent: providers already in _registry / _test_clients are skipped
+without ever submitting a task.
+
+Fail-fast: if any provider fails to resolve, the first failure cancels
+all in-flight spawns and the exception is re-raised at the caller. The
+intent is for the consumer to crash at startup, not at first request, so
+operators discover misconfiguration at deploy time.
+
+Called by JacAPIServer._ensure_sv_siblings() during consumer server
+startup. The bound of 8 caps worst-case startup latency at
+ceil(N/8) * spawn_time; for typical N < 8 every provider spawns in
+parallel and the bound is irrelevant.
+"""
+def ensure_all(module_names: list[str]) -> None {
+    pending: list[str] = [
+        n
+        for n in module_names
+        if n not in _registry and n not in _test_clients
+    ];
+    if not pending {
+        return;
+    }
+    # Typeshed re-exports for `concurrent.futures` do not flow through
+    # Jac's type checker, so bind the names as Any locally and trust the
+    # runtime contract.
+    import from concurrent.futures { ThreadPoolExecutor, as_completed }
+    executor: Any = ThreadPoolExecutor(max_workers=8);
+    futures: dict[Any, str] = {};
+    for name in pending {
+        futures[executor.submit(_ensure_available, name)] = name;
+    }
+    first_error: (Exception | None) = None;
+    try {
+        for future in as_completed(futures) {
+            fut: Any = future;
+            if first_error is not None {
+                continue;
+            }
+            try {
+                fut.result();
+            } except Exception as e {
+                first_error = e;
+                for f in futures {
+                    f_any: Any = f;
+                    if not f_any.done() {
+                        f_any.cancel();
+                    }
+                }
+            }
+        }
+    } finally {
+        executor.shutdown(wait=True);
+    }
+    if first_error is not None {
+        raise first_error;
+    }
 }
