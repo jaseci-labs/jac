@@ -551,70 +551,43 @@ jobs:
           kill -9 ${{ env.FULLSTACK_PID }} 2>/dev/null || true
         fi
 
-    - name: Eject fullstack project
+    # Structural / codegen correctness of `jac eject` is covered by
+    # jac/tests/project/test_eject.jac (21 in-process unit tests, ~0.5s).
+    # The steps below are deliberately end-to-end: they exist to validate
+    # what the unit tests cannot — that the ejected backend imports cleanly
+    # against the wheel-installed jaclang runtime and actually serves HTTP.
+    - name: Eject fullstack project and start ejected backend
       run: |
         jac eject fs-smoke
-        test -f fs-smoke-ejected/backend/serve.py
-        test -f fs-smoke-ejected/backend/main.py
-        test -f fs-smoke-ejected/backend/endpoints.py
-        test -f fs-smoke-ejected/backend/requirements.txt
-        test -f fs-smoke-ejected/frontend/package.json
-        test -f fs-smoke-ejected/frontend/vite.config.js
-        # Confirm zero .jac files leaked into the ejected output.
-        if find fs-smoke-ejected -name "*.jac" | grep -q .; then
-          echo "Ejected output still contains .jac files:"
-          find fs-smoke-ejected -name "*.jac"
-          exit 1
-        fi
-
-    - name: Install ejected backend dependencies
-      working-directory: fs-smoke-ejected
-      run: pip install -r backend/requirements.txt
-
-    - name: Start ejected fullstack backend in background
-      working-directory: fs-smoke-ejected
-      run: |
+        cd fs-smoke-ejected
+        pip install -r backend/requirements.txt
         PORT=8000 timeout 600 python backend/serve.py > /tmp/fullstack-ejected.log 2>&1 &
-        SERVER_PID=$!
-        echo "EJECTED_PID=$SERVER_PID" >> $GITHUB_ENV
-        echo "ejected fullstack server starting with PID $SERVER_PID..."
+        EJECTED_PID=$!
+        echo "EJECTED_PID=$EJECTED_PID" >> $GITHUB_ENV
         sleep 5
-        if ! kill -0 $SERVER_PID 2>/dev/null; then
-          echo "Server process died during startup"
+        if ! kill -0 $EJECTED_PID 2>/dev/null; then
+          echo "Ejected backend died during startup"
           cat /tmp/fullstack-ejected.log
           exit 1
         fi
 
-    - name: Wait for ejected fullstack server to be ready
+    - name: Verify ejected fullstack backend responds
       run: |
-        echo "Waiting for ejected fullstack server on port 8000..."
-        for i in $(seq 1 24); do
+        for i in $(seq 1 12); do
           if ! kill -0 ${{ env.EJECTED_PID }} 2>/dev/null; then
-            echo "Server process exited unexpectedly"
-            cat /tmp/fullstack-ejected.log
+            echo "Ejected backend exited unexpectedly"
+            tail -100 /tmp/fullstack-ejected.log
             exit 1
           fi
-          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-            echo "ejected fullstack server is ready (attempt $i)"
+          if curl -sf --max-time 5 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "Ejected backend responding (attempt $i)"
             exit 0
           fi
-          echo "Attempt $i/24: not ready, waiting 15s..."
-          sleep 15
+          sleep 5
         done
-        echo "Server failed to respond after 24 attempts"
+        echo "Ejected backend failed to respond"
         tail -100 /tmp/fullstack-ejected.log
         exit 1
-
-    - name: Verify ejected fullstack HTTP response
-      run: |
-        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-        echo "ejected fullstack root endpoint: HTTP $HTTP_CODE"
-        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-          echo "ejected fullstack server responding correctly"
-        else
-          echo "Unexpected HTTP $HTTP_CODE"
-          exit 1
-        fi
 
     - name: Stop ejected fullstack server
       if: always()
