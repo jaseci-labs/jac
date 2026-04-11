@@ -26,33 +26,53 @@ glob _SV_SUFFIX: str = ".sv.jac",
      _SKIP_DIRS: set = {".jac",".git",".venv","venv","node_modules","__pycache__",".mypy_cache",".pytest_cache","dist","build"};
 
 
-"""Eject a Jac project to standalone Python + JavaScript."""
-impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
-    src = Path(source).resolve();
-    if not src.exists() or not src.is_dir() {
-        console.error(f"Source directory does not exist: {src}");
-        return 1;
+"""Resolve the output directory for `jac eject`.
+
+Encodes the same fallback logic the eject command applies internally:
+when `output` is empty, drop a sibling `<source>-ejected` directory next
+to `src`. Plugins extending eject (pre or post hooks) should call this
+helper so the directory they read or write to stays in sync with whatever
+the default eject command would have produced, even if the resolution
+logic changes in the future.
+"""
+def resolve_eject_output(src: Path, output: str) -> Path {
+    if output {
+        return Path(output).resolve();
     }
+    return (src.parent / f"{src.name}-ejected").resolve();
+}
+
+
+"""Read jac.toml and return resolved project metadata for `jac eject`.
+
+Returns a dict with the keys eject needs to drive its emit pipeline:
+
+- `project_name`: the resolved project name (falls back to the source
+  directory name when jac.toml has no name or still contains the
+  unrendered `{{name}}` template placeholder).
+- `entry_point`: the raw entry-point filename from jac.toml (default
+  `"main.jac"`).
+- `entry_module`: the entry-point stem with `.sv.jac` / `.cl.jac` / `.jac`
+  suffixes stripped (e.g. `"main"`), suitable for use as a Python module
+  name in the generated `serve.py`.
+- `toml_data`: the raw parsed jac.toml so plugins can read other sections
+  (e.g. `[plugins.scale]`, `[dependencies.npm]`) without re-parsing.
+
+Raises `FileNotFoundError` if `src/jac.toml` does not exist, or
+`RuntimeError` if it cannot be parsed.
+"""
+def load_eject_project_metadata(src: Path) -> dict {
     toml_path = src / "jac.toml";
     if not toml_path.exists() {
-        console.error(f"No jac.toml found in {src}");
-        console.print(
-            "  Eject requires a Jac project (a directory containing jac.toml).",
-            style="muted"
-        );
-        return 1;
+        raise FileNotFoundError(f"No jac.toml found in {src}");
     }
-
-    # Parse jac.toml directly with tomllib to keep raw access to all sections.
     try {
         with open(toml_path, "rb") as f {
             toml_data = tomllib.load(f);
         }
     } except Exception as e {
-        console.error(f"Failed to parse {toml_path}: {e}");
-        return 1;
+        raise RuntimeError(f"Failed to parse {toml_path}: {e}");
     }
-
     project_section = toml_data.get("project", {});
     raw_name = project_section.get("name", "") or "";
     # Fall back to the source directory name if jac.toml has the unrendered
@@ -63,18 +83,51 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         project_name = raw_name;
     }
     entry_point = project_section.get("entry-point", "main.jac");
+    entry_module = _strip_jac_suffix(Path(entry_point).name);
+    return {
+        "project_name": project_name,
+        "entry_point": entry_point,
+        "entry_module": entry_module,
+        "toml_data": toml_data,
+
+    };
+}
+
+
+"""Eject a Jac project to standalone Python + JavaScript."""
+impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
+    src = Path(source).resolve();
+    if not src.exists() or not src.is_dir() {
+        console.error(f"Source directory does not exist: {src}");
+        return 1;
+    }
+
+    try {
+        metadata = load_eject_project_metadata(src);
+    } except FileNotFoundError as e {
+        console.error(str(e));
+        console.print(
+            "  Eject requires a Jac project (a directory containing jac.toml).",
+            style="muted"
+        );
+        return 1;
+    } except RuntimeError as e {
+        console.error(str(e));
+        return 1;
+    }
+    project_name: str = metadata["project_name"];
+    entry_point: str = metadata["entry_point"];
+    entry_module: str = metadata["entry_module"];
+    toml_data: dict = metadata["toml_data"];
+
     entry_path = src / entry_point;
     if not entry_path.exists() {
         console.warning(
             f"Entry point '{entry_point}' not found; serve.py will need manual editing."
         );
     }
-    entry_module = _strip_jac_suffix(Path(entry_point).name);
 
-    # Determine output directory.
-    out = Path(output).resolve()
-        if output
-        else (src.parent / f"{src.name}-ejected").resolve();
+    out = resolve_eject_output(src, output);
     if out == src {
         console.error("Output directory cannot be the same as the source directory.");
         return 1;
