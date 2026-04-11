@@ -269,6 +269,12 @@ def _collect_jac_files(src: Path) -> list[Path] {
     all_files = list(src.rglob("*.jac"));
     all_files.sort();
     for path in all_files {
+        # rglob("*.jac") matches both files AND directories whose name ends
+        # in `.jac` (e.g. the `.jac/` build cache dir). Skip non-files so the
+        # compile step never receives a directory path.
+        if not path.is_file() {
+            continue;
+        }
         rel = path.relative_to(src);
         rel_parts = list(rel.parts);
         excluded = False;

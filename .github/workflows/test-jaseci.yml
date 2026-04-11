@@ -489,6 +489,142 @@ jobs:
           kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
         fi
 
+    # ========== fullstack template test ==========
+    - name: Create fullstack project from template
+      run: |
+        jac create --use fullstack fs-smoke
+        test -f fs-smoke/main.jac
+        test -f fs-smoke/endpoints.sv.jac
+        test -f fs-smoke/frontend.cl.jac
+
+    - name: Start fullstack server in background
+      working-directory: fs-smoke
+      run: |
+        timeout 600 jac start main.jac > /tmp/fullstack-server.log 2>&1 &
+        SERVER_PID=$!
+        echo "FULLSTACK_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "fullstack server starting with PID $SERVER_PID..."
+        sleep 10
+        if ! kill -0 $SERVER_PID 2>/dev/null; then
+          echo "Server process died during startup"
+          cat /tmp/fullstack-server.log
+          exit 1
+        fi
+
+    - name: Wait for fullstack server to be ready
+      run: |
+        echo "Waiting for fullstack server on port 8000..."
+        for i in $(seq 1 24); do
+          if ! kill -0 ${{ env.FULLSTACK_PID }} 2>/dev/null; then
+            echo "Server process exited unexpectedly"
+            cat /tmp/fullstack-server.log
+            exit 1
+          fi
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "fullstack server is ready (attempt $i)"
+            exit 0
+          fi
+          echo "Attempt $i/24: not ready, waiting 15s..."
+          sleep 15
+        done
+        echo "Server failed to respond after 24 attempts"
+        tail -100 /tmp/fullstack-server.log
+        exit 1
+
+    - name: Verify fullstack HTTP response
+      run: |
+        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
+        echo "fullstack root endpoint: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          echo "fullstack server responding correctly"
+        else
+          echo "Unexpected HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+    - name: Stop fullstack server
+      if: always()
+      run: |
+        if [ -n "${{ env.FULLSTACK_PID }}" ]; then
+          kill ${{ env.FULLSTACK_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.FULLSTACK_PID }} 2>/dev/null || true
+        fi
+
+    - name: Eject fullstack project
+      run: |
+        jac eject fs-smoke
+        test -f fs-smoke-ejected/backend/serve.py
+        test -f fs-smoke-ejected/backend/main.py
+        test -f fs-smoke-ejected/backend/endpoints.py
+        test -f fs-smoke-ejected/backend/requirements.txt
+        test -f fs-smoke-ejected/frontend/package.json
+        test -f fs-smoke-ejected/frontend/vite.config.js
+        # Confirm zero .jac files leaked into the ejected output.
+        if find fs-smoke-ejected -name "*.jac" | grep -q .; then
+          echo "Ejected output still contains .jac files:"
+          find fs-smoke-ejected -name "*.jac"
+          exit 1
+        fi
+
+    - name: Install ejected backend dependencies
+      working-directory: fs-smoke-ejected
+      run: pip install -r backend/requirements.txt
+
+    - name: Start ejected fullstack backend in background
+      working-directory: fs-smoke-ejected
+      run: |
+        PORT=8000 timeout 600 python backend/serve.py > /tmp/fullstack-ejected.log 2>&1 &
+        SERVER_PID=$!
+        echo "EJECTED_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "ejected fullstack server starting with PID $SERVER_PID..."
+        sleep 5
+        if ! kill -0 $SERVER_PID 2>/dev/null; then
+          echo "Server process died during startup"
+          cat /tmp/fullstack-ejected.log
+          exit 1
+        fi
+
+    - name: Wait for ejected fullstack server to be ready
+      run: |
+        echo "Waiting for ejected fullstack server on port 8000..."
+        for i in $(seq 1 24); do
+          if ! kill -0 ${{ env.EJECTED_PID }} 2>/dev/null; then
+            echo "Server process exited unexpectedly"
+            cat /tmp/fullstack-ejected.log
+            exit 1
+          fi
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "ejected fullstack server is ready (attempt $i)"
+            exit 0
+          fi
+          echo "Attempt $i/24: not ready, waiting 15s..."
+          sleep 15
+        done
+        echo "Server failed to respond after 24 attempts"
+        tail -100 /tmp/fullstack-ejected.log
+        exit 1
+
+    - name: Verify ejected fullstack HTTP response
+      run: |
+        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
+        echo "ejected fullstack root endpoint: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          echo "ejected fullstack server responding correctly"
+        else
+          echo "Unexpected HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+    - name: Stop ejected fullstack server
+      if: always()
+      run: |
+        if [ -n "${{ env.EJECTED_PID }}" ]; then
+          kill ${{ env.EJECTED_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
+        fi
+
     - name: Upload jac-gpt server logs
       if: always()
       uses: actions/upload-artifact@v4
@@ -505,6 +641,16 @@ jobs:
         path: /tmp/algo-server.log
         retention-days: 7
 
+    - name: Upload fullstack server logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fullstack-test-logs
+        path: |
+          /tmp/fullstack-server.log
+          /tmp/fullstack-ejected.log
+        retention-days: 7
+
     - name: Jac pack test summary
       if: always()
       run: |
@@ -514,5 +660,7 @@ jobs:
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| fullstack (jac start) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
