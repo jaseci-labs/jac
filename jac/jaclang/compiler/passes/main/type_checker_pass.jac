@@ -15,6 +15,7 @@ import from jaclang.jac0core.diagnostics {
     E1002,
     E1003,
     E1004,
+    E1005,
     E1010,
     E1011,
     E1020,

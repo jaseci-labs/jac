@@ -244,6 +244,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Function '{name}' declared return type {ret_type} but may implicitly return None"
      ),
+     E1005 = _err(
+         "E1005",
+         Category.TYPE,
+         "Cannot assign to read-only property '{name}' (no setter defined)"
+     ),
      # Operator errors
      E1010 = _err(
          "E1010", Category.TYPE, "Operator \"{op}\" not supported for type \"{type}\""

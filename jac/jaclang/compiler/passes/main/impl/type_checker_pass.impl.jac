@@ -214,9 +214,26 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 # for the assignment check instead of the narrowed type.
                 if isinstance(target, uni.AtomTrailer) and target.is_attr {
                     if isinstance(target.right, uni.Name) and target.right.sym {
-                        declared = self.evaluator.get_type_of_symbol(target.right.sym);
-                        if declared {
-                            left_type = declared;
+                        import from jaclang.compiler.type_system.type_utils {
+                            PropertyWriteKind
+                        }
+                        target_sym = target.right.sym;
+                        prop_result = self.evaluator.get_property_write_type(
+                            target_sym
+                        );
+                        if prop_result.kind == PropertyWriteKind.WRITABLE {
+                            left_type = prop_result.write_type;
+                        } elif prop_result.kind == PropertyWriteKind.READ_ONLY {
+                            self.emit(
+                                E1005, node_override=target, name=target.right.value
+                            );
+                            return;
+                        } else {
+                            # NOT_PROPERTY — use the declared symbol type.
+                            declared = self.evaluator.get_type_of_symbol(target_sym);
+                            if declared {
+                                left_type = declared;
+                            }
                         }
                     }
                 }

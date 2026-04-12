@@ -685,31 +685,138 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
-"""Check if a symbol represents a property (@property or @cached_property)."""
-impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
+"""Classify a symbol as @property, @cached_property, or not a property.
+
+Single decorator walk shared by both the read path (get_getter_type_from_property)
+and the write path (get_property_write_type).
+
+Returns:
+  WRITABLE      — @cached_property (non-data descriptor, assignment is legal)
+  READ_ONLY     — @property (data descriptor, needs setter check by caller)
+  NOT_PROPERTY  — not decorated with @property or @cached_property
+"""
+impl TypeEvaluator._classify_property_symbol(
+    symbol: uni.Symbol
+) -> type_utils.PropertyWriteKind {
+    import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
     node_ = symbol.decl.name_of;
     if not isinstance(node_, uni.Ability) {
-        return False;
+        return PropertyWriteKind.NOT_PROPERTY;
     }
     ability = node_;
     if not ability.decorators {
-        return False;
+        return PropertyWriteKind.NOT_PROPERTY;
     }
     for decorator in ability.decorators {
         decorator_type = self.get_type_of_expression(decorator);
-        if properties.is_property_decorator_type(decorator_type) {
-            return True;
-        }
         if properties.is_cached_property_decorator_type(decorator_type) {
-            return True;
+            return PropertyWriteKind.WRITABLE;
+        }
+        if properties.is_property_decorator_type(decorator_type) {
+            return PropertyWriteKind.READ_ONLY;
         }
     }
-    return False;
+    return PropertyWriteKind.NOT_PROPERTY;
 }
 
-"""Get the return type of a property's getter."""
+"""Get the return type of a property's getter (read path).
+
+Used by atom-trailer evaluation to unwrap @property / @cached_property
+into the getter's return type. Returns None for non-property symbols.
+"""
 impl TypeEvaluator.get_getter_type_from_property(
     symbol: uni.Symbol
+) -> (TypeBase | None) {
+    import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
+    kind = self._classify_property_symbol(symbol);
+    if kind == PropertyWriteKind.NOT_PROPERTY {
+        return None;
+    }
+    node_ = symbol.decl.name_of;
+    if not isinstance(node_, uni.Ability) {
+        return None;
+    }
+    func_type = self.get_type_of_ability(node_);
+    if not isinstance(func_type, types.FunctionType) {
+        return None;
+    }
+    return func_type.return_type;
+}
+
+"""Classify a symbol's writability for property-aware assignment checking.
+
+Delegates to _classify_property_symbol for the decorator walk, then
+determines the concrete write type:
+
+  NOT_PROPERTY  — not @property / @cached_property; use the normal
+                  declared-type path.
+  READ_ONLY     — @property with no setter; the assignment is illegal.
+  WRITABLE      — @cached_property or @property with a @name.setter
+                  sibling; `write_type` holds the type values must match.
+"""
+impl TypeEvaluator.get_property_write_type(
+    symbol: uni.Symbol
+) -> type_utils.PropertyWriteResult {
+    import from jaclang.compiler.type_system.type_utils {
+        PropertyWriteKind,
+        PropertyWriteResult
+    }
+    kind = self._classify_property_symbol(symbol);
+    if kind == PropertyWriteKind.NOT_PROPERTY {
+        return PropertyWriteResult(kind=PropertyWriteKind.NOT_PROPERTY);
+    }
+
+    # @cached_property (WRITABLE from classifier): write type = getter return type.
+    if kind == PropertyWriteKind.WRITABLE {
+        node_ = symbol.decl.name_of;
+        if isinstance(node_, uni.Ability) {
+            func_type = self.get_type_of_ability(node_);
+            if isinstance(func_type, types.FunctionType)
+            and func_type.return_type is not None {
+                return PropertyWriteResult(
+                    kind=PropertyWriteKind.WRITABLE, write_type=func_type.return_type
+                );
+            }
+        }
+        # Getter return type couldn't be resolved — treat as writable
+        # with unknown type to avoid a false "read-only" diagnostic.
+        return PropertyWriteResult(
+            kind=PropertyWriteKind.WRITABLE, write_type=types.UnknownType()
+        );
+    }
+
+    # @property (READ_ONLY from classifier): look for a @<name>.setter
+    # sibling in the enclosing class scope. The symbol_table of a method
+    # points to the Ability's own scope; the overloads live one level up
+    # in the parent (Archetype/class) scope.
+    prop_name = symbol.sym_name;
+    method_scope = symbol.symbol_table;
+    class_scope = method_scope.parent_scope if method_scope is not None else None;
+    if class_scope is not None {
+        overload_syms = class_scope.names_in_scope_overload.get(prop_name);
+        if overload_syms {
+            for overload_sym in overload_syms {
+                setter_type = self._get_setter_value_type(overload_sym, prop_name);
+                if setter_type is not None {
+                    return PropertyWriteResult(
+                        kind=PropertyWriteKind.WRITABLE, write_type=setter_type
+                    );
+                }
+            }
+        }
+    }
+    # No setter found — read-only.
+    return PropertyWriteResult(kind=PropertyWriteKind.READ_ONLY);
+}
+
+"""Extract the value-parameter type from a @name.setter decorated method.
+
+Given a symbol that may be decorated with `@<prop_name>.setter`, inspect
+its decorators. If a matching setter decorator is found, return the type
+of the setter's first non-self/cls parameter (i.e., the value type).
+"""
+impl TypeEvaluator._get_setter_value_type(
+    symbol: uni.Symbol, prop_name: str
 ) -> (TypeBase | None) {
     node_ = symbol.decl.name_of;
     if not isinstance(node_, uni.Ability) {
@@ -719,23 +826,30 @@ impl TypeEvaluator.get_getter_type_from_property(
     if not ability.decorators {
         return None;
     }
-    is_property_decorated = False;
     for decorator in ability.decorators {
-        decorator_type = self.get_type_of_expression(decorator);
-        if properties.is_property_decorator_type(decorator_type)
-        or properties.is_cached_property_decorator_type(decorator_type) {
-            is_property_decorated = True;
-            break;
+        # @<prop_name>.setter is an AtomTrailer: target=Name(prop_name), right=Name("setter")
+        if isinstance(decorator, uni.AtomTrailer) and decorator.is_attr {
+            if (
+                isinstance(decorator.right, uni.Name)
+                and decorator.right.value == "setter"
+                and isinstance(decorator.target, uni.Name)
+                and decorator.target.value == prop_name
+            ) {
+                func_type = self.get_type_of_ability(ability);
+                if isinstance(func_type, types.FunctionType) and func_type.parameters {
+                    # The setter signature is (self, value). FunctionType
+                    # parameters include self for methods, so skip it.
+                    for param in func_type.parameters {
+                        if not param.is_self and not param.is_cls {
+                            return param.param_type;
+                        }
+                    }
+                }
+                return None;
+            }
         }
     }
-    if not is_property_decorated {
-        return None;
-    }
-    func_type = self.get_type_of_ability(ability);
-    if not isinstance(func_type, types.FunctionType) {
-        return None;
-    }
-    return func_type.return_type;
+    return None;
 }
 
 """

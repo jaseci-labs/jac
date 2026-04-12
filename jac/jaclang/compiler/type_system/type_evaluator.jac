@@ -307,9 +307,21 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
-    def _is_symbol_property(symbol: uni.Symbol) -> bool;
-    # Property type utilities
+    # Shared classifier: single decorator walk, returns the property kind.
+    def _classify_property_symbol(symbol: uni.Symbol) -> type_utils.PropertyWriteKind;
+    # Property type utilities — both delegate to _classify_property_symbol.
     def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
+    # Classifies a property symbol's writability for assignment checking.
+    # Returns a PropertyWriteResult with kind:
+    #   NOT_PROPERTY → normal field, caller should fall through
+    #   READ_ONLY    → @property with no setter, assignment is illegal
+    #   WRITABLE     → @cached_property or @property+setter, write_type set
+    def get_property_write_type(symbol: uni.Symbol) -> type_utils.PropertyWriteResult;
+    # Extract setter value-param type from a @name.setter overload symbol.
+    def _get_setter_value_type(
+        symbol: uni.Symbol, prop_name: str
+    ) -> (TypeBase | None);
+
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol

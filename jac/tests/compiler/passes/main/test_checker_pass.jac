@@ -895,8 +895,7 @@ test "inherit_method_lookup" {
 test "inherit_init_params" {
     program = JacProgram();
     mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_inherit_init_params.jac"),
-        options=NO_TC
+        os.path.join(CHECKER_FIXTURES, "checker_inherit_init_params.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 2;
@@ -1114,8 +1113,7 @@ test "overload_decorator" {
         """
         foo + "hello";  # <-- Error
         ^^^^^^^^^^^^^
-    """,
-        add_error
+    """, add_error
     );
 }
 
@@ -1225,8 +1223,7 @@ test "union_type_annotation" {
 test "union_member_access" {
     program = JacProgram();
     mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac"),
-        options=NO_TC
+        os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
@@ -1398,6 +1395,72 @@ test "property_type_checking" {
     """,
         program.errors_had[5].pretty_print()
     );
+}
+
+test "property_assignment_type_checking" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_property_assignment.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Expected errors (5 total):
+    #   1. b.cached_val = 99            — int to str  (@cached_property wrong type)
+    #   2. b.cached_num = "not_an_int"  — str to int  (@cached_property wrong type)
+    #   3. b.readonly_val = 1           — read-only   (@property no setter)
+    #   4. h.base.cached_num = "wrong"  — str to int  (chained @cached_property)
+    #   5. h.base.readonly_val = 2      — read-only   (chained @property no setter)
+    assert len(program.errors_had) == 5 , f"Expected 5 errors, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+
+    # --- @cached_property wrong-type assignments ---
+    # LHS must resolve to the getter return type (str / int), NOT a function type.
+    assert_error_pretty_found(
+        """
+        b.cached_val = 99;                         # <-- Error (int to str)
+    """,
+        program.errors_had[0].pretty_print()
+    );
+    assert "str" in program.errors_had[0].pretty_print();
+    assert "<function" not in program.errors_had[0].msg;
+
+    assert_error_pretty_found(
+        """
+        b.cached_num = "not_an_int";               # <-- Error (str to int)
+    """,
+        program.errors_had[1].pretty_print()
+    );
+    assert "int" in program.errors_had[1].pretty_print();
+    assert "<function" not in program.errors_had[1].msg;
+
+    # --- @property (no setter): dedicated read-only diagnostic (E1005) ---
+    assert_error_pretty_found(
+        """
+        b.readonly_val = 1;                        # <-- Error (read-only)
+    """,
+        program.errors_had[2].pretty_print()
+    );
+    assert "read-only" in program.errors_had[2].pretty_print();
+    assert "readonly_val" in program.errors_had[2].pretty_print();
+
+    # --- Chained @cached_property wrong-type ---
+    assert_error_pretty_found(
+        """
+        h.base.cached_num = "wrong";               # <-- Error (str to int)
+    """,
+        program.errors_had[3].pretty_print()
+    );
+    assert "int" in program.errors_had[3].pretty_print();
+    assert "<function" not in program.errors_had[3].msg;
+
+    # --- Chained read-only @property ---
+    assert_error_pretty_found(
+        """
+        h.base.readonly_val = 2;                   # <-- Error (read-only)
+    """,
+        program.errors_had[4].pretty_print()
+    );
+    assert "read-only" in program.errors_had[4].pretty_print();
 }
 
 test "property_self_return_type_resolution" {
@@ -1848,8 +1911,7 @@ test "bare_dot_relative_import" {
 test "type_narrowing_none_assignment_errors" {
     program = JacProgram();
     mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_type_narrowing_none.jac"),
-        options=NO_TC
+        os.path.join(CHECKER_FIXTURES, "checker_type_narrowing_none.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
@@ -2581,8 +2643,7 @@ test "enum_static_method" {
 test "generic_self_member_type_propagation" {
     program = JacProgram();
     mod = program.compile(
-        os.path.join(CHECKER_FIXTURES, "checker_generic_self_member.jac"),
-        options=NO_TC
+        os.path.join(CHECKER_FIXTURES, "checker_generic_self_member.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0 , f"Expected 0 type errors, got {len(
@@ -2610,9 +2671,9 @@ test "self_typevar_attr_access_via_enclosing_class" {
         for err in program.errors_had
         if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
     ];
-    assert len(user_errors) == 0 , f"Expected 0 user errors, got {len(user_errors)}:\n" + "\n".join(
-        e.pretty_print() for e in user_errors
-    );
+    assert len(user_errors) == 0 , f"Expected 0 user errors, got {len(
+        user_errors
+    )}:\n" + "\n".join(e.pretty_print() for e in user_errors);
     # Defensive: even any vendor-side errors must not still claim "type Self"
     # for the user fixture's positions — that would mean the fix didn't take.
     for err in program.errors_had {
