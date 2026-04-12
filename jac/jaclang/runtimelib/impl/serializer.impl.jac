@@ -382,7 +382,7 @@ impl Serializer._deserialize_permission(data: object) -> Permission {
         return Permission();
     }
     perm = Permission();
-    perm.all = AccessLevel(data.get('all', -1));
+    perm.all = access_level_cast(data.get('all', -1));
     if (roots := data.get('roots')) {
         perm.roots = Serializer._deserialize_access(roots);
     }
@@ -396,7 +396,7 @@ impl Serializer._deserialize_access(data: object) -> Access {
     }
     access = Access();
     if (anchors := data.get('anchors')) {
-        access.anchors = {k: AccessLevel(v) for (k, v) in anchors.items()};
+        access.anchors = {k: access_level_cast(v) for (k, v) in anchors.items()};
     }
     return access;
 }

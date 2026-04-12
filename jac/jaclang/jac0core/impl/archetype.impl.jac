@@ -1,5 +1,26 @@
 """Implementation for archetype constructs."""
 
+"""Cast an int, str, or AccessLevel to AccessLevel."""
+impl access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
+    if isinstance(val, AccessLevel) {
+        return val;
+    }
+    if isinstance(val, str) {
+        val = val.upper();
+    }
+    _map: dict = {
+        -1: AccessLevel.NO_ACCESS,
+        0: AccessLevel.READ,
+        1: AccessLevel.CONNECT,
+        2: AccessLevel.WRITE,
+        "NO_ACCESS": AccessLevel.NO_ACCESS,
+        "READ": AccessLevel.READ,
+        "CONNECT": AccessLevel.CONNECT,
+        "WRITE": AccessLevel.WRITE
+    };
+    return _map[val];
+}
+
 """Validate access."""
 impl Access.check(anchor: str) -> (AccessLevel | None) {
     return self.anchors.get(anchor);

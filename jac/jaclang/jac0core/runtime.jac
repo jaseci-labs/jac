@@ -41,6 +41,7 @@ import from jaclang.jac0core.archetype {
 import from jaclang.jac0core.constant { EdgeDir, colors }
 import from jaclang.jac0core.constructs {
     AccessLevel,
+    access_level_cast,
     Anchor,
     Archetype,
     EdgeAnchor,
