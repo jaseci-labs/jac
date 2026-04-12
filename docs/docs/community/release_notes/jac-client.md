@@ -23,7 +23,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Standalone Sidecar Bundling via PyInstaller**: Desktop builds now bundle the Jac sidecar as a standalone executable using PyInstaller by default. The bundled sidecar includes Python, jaclang, jac-client, and configured plugins (jac-scale, byllm, jac-coder via `[desktop.plugins]` in `jac.toml`), eliminating the requirement for end users to have Python installed. Auto-installs Python dependencies from `jac.toml` before bundling. Set `JAC_SIDECAR_STANDALONE=0` to fall back to wrapper script mode.
 - **Debug Diagnostic Page**: Added a debug page to the all-in-one example app for diagnosing sidecar/API connectivity issues. Displays API base URL status, Tauri runtime detection, `get_api_url` invoke results, and interactive buttons to test walker spawning and direct HTTP fetch.
 - **Plugin Reference Docs**: Added `reference/plugins/jac-client.md` documenting jac-client CLI commands and configuration options.
-- 3 small refactors/changes.
+- 4 small refactors/changes.
 
 ## jac-client 0.3.11 (Latest Release)
 
