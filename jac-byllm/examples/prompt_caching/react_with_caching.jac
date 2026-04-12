@@ -45,9 +45,7 @@ with entry {
             for call in per_call {
                 cached += int(
                     call.get("cache_read_input_tokens", 0)
-                    or (call.get("prompt_tokens_details") or {}).get(
-                        "cached_tokens", 0
-                    )
+                    or (call.get("prompt_tokens_details") or {}).get("cached_tokens", 0)
                     or 0
                 );
             }
