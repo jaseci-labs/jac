@@ -2,7 +2,7 @@
 
 def:pub Button(
     label: str, onClick: any, variant: str = "primary", disabled: bool = False
-) -> any {
+) -> JsxElement {
     base_styles = {
         "padding": "0.75rem 1.5rem",
         "fontSize": "1rem",
