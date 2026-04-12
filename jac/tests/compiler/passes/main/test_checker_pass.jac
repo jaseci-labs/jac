@@ -962,6 +962,32 @@ test "union_reassignment" {
     );
 }
 
+test "unannotated_reassignment_widens" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_none_sentinel_reassignment.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    assert_error_pretty_found(
+        """
+        typed_binding = 99;  # <-- Error
+        ^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+    assert_error_pretty_found(
+        """
+        strict = 7;  # <-- Error
+        ^^^^^^^^^^^
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}
+
 test "protocol" {
     program = JacProgram();
     mod = program.compile(

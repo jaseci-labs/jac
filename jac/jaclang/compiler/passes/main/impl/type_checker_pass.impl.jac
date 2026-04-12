@@ -137,11 +137,28 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
     import from jaclang.compiler.type_system { types }
     if ((len(nd.target) == 1) and (nd.value is not None)) {
         target = nd.target[0];
+        # Track whether this is a reassignment of a variable whose
+        # declaration has no type annotation.  For such variables the
+        # declared type is *inferred* from the first assignment, so
+        # later reassignments should be allowed to widen the inferred
+        # type — matching Pyright's behaviour for patterns like
+        # `x = None; …; x = value` or `x = 0; …; x = "str"`.
+        is_unannotated_reassign = False;
         # For assignment targets, use the declared symbol type (not the
         # narrowed type). Narrowing reflects the *current* value; the
         # variable's declared type determines what can be assigned to it.
         if isinstance(target, uni.Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
+            # Detect unannotated reassignment: the current target is not
+            # the declaration site and the declaration has no type
+            # annotation (plain `x = expr` form).
+            if (
+                target.sym.decl.name_of is not target
+                and isinstance(target.sym.decl.name_of.parent, uni.Assignment)
+                and target.sym.decl.name_of.parent.type_tag is None
+            ) {
+                is_unannotated_reassign = True;
+            }
             # `target.type` is the hover cache — show the post-write type
             # for re-assignments, declared type otherwise. `left_type`
             # stays declared for the compat check and bare-generic warnings.
@@ -331,7 +348,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                     E1010, node_override=nd, op=nd.aug_op.name, type=left_type.name
                 );
             }
-        } elif not self.evaluator.assign_type(right_type, left_type) {
+        } elif (
+            not is_unannotated_reassign
+            and not self.evaluator.assign_type(right_type, left_type)
+        ) {
             self.emit(E1001, actual=str(right_type), expected=str(left_type));
         }
         # Validate augmented assignment operator (+=, -=, etc.)
