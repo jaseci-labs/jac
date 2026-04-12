@@ -237,6 +237,20 @@ test "jsx comprehensive fixture" {
     }
 }
 
+test "jsx star_pow spread attribute" {
+    source = 'with entry { x = <div {**props} title="hi"/>; }';
+    (module, had_error) = rd_parse(source, "test_spread.jac");
+    assert not had_error , "Parser rejected {**props} spread syntax";
+    tree_repr = module.pp();
+    assert "JsxSpreadAttribute" in tree_repr , "Missing JsxSpreadAttribute node";
+    assert "Token - **" in tree_repr , "Missing ** token in spread";
+    # Ellipsis form should warn but still parse
+    source2 = 'with entry { x = <div {...props}/>; }';
+    (module2, had_error2) = rd_parse(source2, "test_spread2.jac");
+    assert not had_error2 , "Parser rejected {...props} spread syntax";
+    assert "Ellipsis" in module2.pp() , "Missing Ellipsis node for ... spread";
+}
+
 test "client keyword tagging" {
     # Test 1: Mixed single and block client markers
     source = """

@@ -230,7 +230,10 @@ jsx_element ::=
       ("/>" | JSX_TAG_END jsx_children "</" JSX_NAME ("." JSX_NAME)* JSX_TAG_END)
 
 jsx_attributes ::=
-    (JSX_NAME ("=" (STRING | "{" expression "}")?)? | "{" ELLIPSIS? expression "}")*
+    (
+        JSX_NAME ("=" (STRING | "{" expression "}")?)?
+        | "{" ("**" | ELLIPSIS)? expression "}"
+    )*
 
 jsx_children ::= jsx_child*
 
