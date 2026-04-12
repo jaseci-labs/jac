@@ -1,6 +1,10 @@
 """Todo item component for displaying a single todo."""
 
-def:pub TodoItem(todo: dict, onToggle: any, onDelete: any) -> JsxElement {
+def:pub TodoItem(
+    todo: dict[str, Any],
+    onToggle: Callable[([str], None)],
+    onDelete: Callable[([str], None)]
+) -> JsxElement {
     return
         <div
             style={{
@@ -17,7 +21,7 @@ def:pub TodoItem(todo: dict, onToggle: any, onDelete: any) -> JsxElement {
             <input
                 type="checkbox"
                 checked={todo["completed"]}
-                onChange={lambda { onToggle(todo["id"]);}}
+                onChange={lambda _e: ChangeEvent { onToggle(todo["id"]);}}
                 style={{"width": "20px", "height": "20px", "cursor": "pointer"}}
             />
             <span
@@ -30,7 +34,7 @@ def:pub TodoItem(todo: dict, onToggle: any, onDelete: any) -> JsxElement {
                 {todo["title"]}
             </span>
             <button
-                onClick={lambda { onDelete(todo["id"]);}}
+                onClick={lambda _e: MouseEvent { onDelete(todo["id"]);}}
                 style={{
                     "padding": "0.5rem",
                     "backgroundColor": "transparent",

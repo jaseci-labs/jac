@@ -492,6 +492,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if isinstance(return_type, types.UnknownType) {
                     return_type = body_type;
                 }
+            } elif isinstance(return_type, types.UnknownType) {
+                # Block-body lambda: infer return type from return statements,
+                # defaulting to NoneType when no return-with-value is present.
+                return_type = self._infer_lambda_block_return_type(expr.body);
             }
             return types.FunctionType(
                 func_name="<lambda>", return_type=return_type, parameters=parameters,

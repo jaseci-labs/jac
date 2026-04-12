@@ -78,7 +78,7 @@ def:pub app -> JsxElement {
                 >
                     <h1 style={{"margin": "0", "color": "#1a1a2e"}}>My Todos</h1>
                     <button
-                        onClick={handleLogout}
+                        onClick={lambda _e: MouseEvent { handleLogout();}}
                         style={{
                             "padding": "0.5rem 1rem",
                             "fontSize": "0.9rem",
@@ -115,7 +115,7 @@ def:pub app -> JsxElement {
                         }}
                     />
                     <button
-                        onClick={lambda { addTodo();}}
+                        onClick={lambda _e: MouseEvent { addTodo();}}
                         style={{
                             "padding": "0.75rem 1.5rem",
                             "fontSize": "1rem",

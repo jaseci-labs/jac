@@ -1526,3 +1526,175 @@ impl TypeEvaluator._is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool
     }
     return has_ellipsis;
 }
+
+"""Infer return type for a block-body lambda from its return statements.
+
+Walks the body collecting ReturnStmt nodes (without descending into nested
+Ability or LambdaExpr scopes). Accounts for implicit None on fall-through
+paths: if not every code path returns a value, NoneType is included in the
+result. If no return-with-value is found at all, returns NoneType."""
+impl TypeEvaluator._infer_lambda_block_return_type(
+    body: list[uni.CodeBlockStmt]
+) -> TypeBase {
+    import from jaclang.compiler.type_system { types }
+
+    none_type = self._convert_to_instance(self.get_none_type());
+    return_types: list[TypeBase] = [];
+    always_returns = self._collect_return_types(body, return_types);
+
+    if not return_types {
+        # No return-with-value found → implicit None return.
+        return none_type;
+    }
+
+    # If not all code paths return a value, the function can fall through
+    # to an implicit None return.
+    if not always_returns {
+        return_types.append(none_type);
+    }
+
+    # Deduplicate: remove NoneType duplicates and collapse single-type results.
+    seen: list[TypeBase] = [];
+    for rt in return_types {
+        is_dup = False;
+        for s in seen {
+            if str(rt) == str(s) {
+                is_dup = True;
+                break;
+            }
+        }
+        if not is_dup {
+            seen.append(rt);
+        }
+    }
+
+    if len(seen) == 1 {
+        return seen[0];
+    }
+
+    return types.UnionType(types=seen);
+}
+
+"""Collect return-expression types from a statement block, returning whether
+all code paths return a value. Stops at nested Ability/LambdaExpr boundaries."""
+impl TypeEvaluator._collect_return_types(
+    stmts: list[uni.CodeBlockStmt], out: list[TypeBase]
+) -> bool {
+    for stmt in stmts {
+        # Nested scopes own their own returns.
+        if isinstance(stmt, (uni.Ability, uni.LambdaExpr)) {
+            continue;
+        }
+
+        if isinstance(stmt, uni.ReturnStmt) {
+            if stmt.expr and not isinstance(stmt.expr, uni.Null) {
+                out.append(self.get_type_of_expression(stmt.expr));
+            }
+            # Any return (bare or with value) means this path terminates.
+            return True;
+        }
+
+        if isinstance(stmt, uni.RaiseStmt) {
+            return True;
+        }
+
+        # --- Compound statements: recurse into their specific body fields ---
+        if isinstance(stmt, uni.IfStmt) {
+            if_returns = self._collect_return_types(list(stmt.body), out);
+            else_returns = self._collect_if_else_returns(stmt.else_body, out);
+            if if_returns and else_returns {
+                return True;
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.MatchStmt) {
+            if stmt.cases {
+                all_return = True;
+                for case in stmt.cases {
+                    mc: uni.MatchCase = case;
+                    if not self._collect_return_types(list(mc.body), out) {
+                        all_return = False;
+                    }
+                }
+                if all_return {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.SwitchStmt) {
+            if stmt.cases {
+                has_default = False;
+                all_return = True;
+                for case in stmt.cases {
+                    sc: uni.SwitchCase = case;
+                    if sc.pattern is None {
+                        has_default = True;
+                    }
+                    if not self._collect_return_types(list(sc.body), out) {
+                        all_return = False;
+                    }
+                }
+                if has_default and all_return {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.TryStmt) {
+            try_returns = self._collect_return_types(list(stmt.body), out);
+            if try_returns {
+                if not stmt.excepts or len(stmt.excepts) == 0 {
+                    return True;
+                }
+                all_except = True;
+                for exc in stmt.excepts {
+                    ex: uni.Except = exc;
+                    if not self._collect_return_types(list(ex.body), out) {
+                        all_except = False;
+                    }
+                }
+                if all_except {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.WithStmt) {
+            if self._collect_return_types(list(stmt.body), out) {
+                return True;
+            }
+            continue;
+        }
+
+        # For/while loops: collect returns inside but a loop never guarantees
+        # all paths return (it might iterate zero times).
+        if isinstance(stmt, (uni.IterForStmt, uni.InForStmt, uni.WhileStmt)) {
+            self._collect_return_types(list(stmt.body), out);
+            continue;
+        }
+    }
+    return False;
+}
+
+"""Helper: collect return types from the else branch of an IfStmt."""
+impl TypeEvaluator._collect_if_else_returns(
+    else_body: uni.ElseIf | uni.ElseStmt | None, out: list[TypeBase]
+) -> bool {
+    if else_body is None {
+        return False;
+    }
+    if isinstance(else_body, uni.ElseStmt) {
+        return self._collect_return_types(list(else_body.body), out);
+    }
+    if isinstance(else_body, uni.ElseIf) {
+        if_returns = self._collect_return_types(list(else_body.body), out);
+        else_returns = self._collect_if_else_returns(else_body.else_body, out);
+        return if_returns and else_returns;
+    }
+    return False;
+}

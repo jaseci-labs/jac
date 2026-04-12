@@ -17,7 +17,7 @@ impl JacAccessValidation._resolve_anchor(
 impl JacAccessValidation._check_access(
     `to: Anchor, min_level: AccessLevel, operation: str
 ) -> bool {
-    access_level = JacRuntimeInterface.check_access_level(`to) > min_level;
+    access_level = JacRuntimeInterface.check_access_level(`to).value > min_level.value;
     if not access_level {
         logger.info(
             "Current root doesn't have " + operation + " access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
@@ -35,7 +35,7 @@ impl JacAccessValidation.allow_root(
     if (level is None) {
         level = AccessLevel.READ;
     }
-    level = AccessLevel.cast(level);
+    level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
     access = anchor.access.roots;
     _root_id = str(root_id);
@@ -52,7 +52,7 @@ impl JacAccessValidation.disallow_root(
     if (level is None) {
         level = AccessLevel.READ;
     }
-    level = AccessLevel.cast(level);
+    level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
     access = anchor.access.roots;
     access.anchors.pop(str(root_id), None);
@@ -66,7 +66,7 @@ impl JacAccessValidation.perm_grant(
     if (level is None) {
         level = AccessLevel.READ;
     }
-    level = AccessLevel.cast(level);
+    level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
     if (level != anchor.access.all) {
         anchor.access.all = level;
@@ -77,7 +77,7 @@ impl JacAccessValidation.perm_grant(
 """Disallow others to access current Archetype."""
 impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if (anchor.access.all > AccessLevel.NO_ACCESS) {
+    if (anchor.access.all.value > AccessLevel.NO_ACCESS.value) {
         anchor.access.all = AccessLevel.NO_ACCESS;
         jctx.mem.put(anchor);
     }
@@ -117,14 +117,14 @@ impl JacAccessValidation.check_access_level(
     if (
         not no_custom and ((custom_level := `to.archetype.__jac_access__()) is not None)
     ) {
-        return AccessLevel.cast(custom_level);
+        return access_level_cast(custom_level);
     }
     access_level = AccessLevel.NO_ACCESS;
-    if ((to_access := `to.access).all > AccessLevel.NO_ACCESS) {
+    if ((to_access := `to.access).all.value > AccessLevel.NO_ACCESS.value) {
         access_level = to_access.all;
     }
     if (`to.root and isinstance((to_root := jctx.mem.get(`to.root)), Anchor)) {
-        if (to_root.access.all > access_level) {
+        if (to_root.access.all.value > access_level.value) {
             access_level = to_root.access.all;
         }
         if ((level := to_root.access.roots.check(str(jroot.id))) is not None) {

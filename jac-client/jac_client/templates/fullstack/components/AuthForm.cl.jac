@@ -6,10 +6,10 @@ def:pub AuthForm(
     password: str,
     error: str,
     loading: bool,
-    onUsernameChange: any,
-    onPasswordChange: any,
-    onSubmit: any,
-    onToggleMode: any
+    onUsernameChange: ChangeEventHandler,
+    onPasswordChange: ChangeEventHandler,
+    onSubmit: FormEventHandler,
+    onToggleMode: MouseEventHandler
 ) -> JsxElement {
     return
         <div

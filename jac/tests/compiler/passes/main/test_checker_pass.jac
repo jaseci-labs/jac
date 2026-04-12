@@ -3590,3 +3590,24 @@ test "jsx_step6_spread_props" {
         for err in program.errors_had
     );
 }
+
+test "lambda_block_body_return_type_inference" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_lambda_block_body_return.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    all_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code.startswith("E")
+    ];
+    # Cases 1-5 should produce NO errors.
+    # Case 6 should produce exactly 1 error (return type mismatch).
+    assert len(all_errors) == 1 , f"Expected exactly 1 type error (Case 6: int vs str mismatch), got {len(
+        all_errors
+    )} errors:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in all_errors
+    );
+}

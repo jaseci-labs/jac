@@ -12,7 +12,8 @@ import from jaclang.jac0core.archetype {
     ObjectAnchor,
     Permission,
     Access,
-    AccessLevel
+    AccessLevel,
+    access_level_cast
 }
 import from jaclang.jac0core.constructs {
     Archetype,

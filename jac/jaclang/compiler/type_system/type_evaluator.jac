@@ -370,6 +370,15 @@ obj TypeEvaluator {
         scope: uni.Ability | uni.LambdaExpr
     ) -> TypeBase | None;
 
+    def _infer_lambda_block_return_type(body: list[uni.CodeBlockStmt]) -> TypeBase;
+    def _collect_return_types(
+        stmts: list[uni.CodeBlockStmt], out: list[TypeBase]
+    ) -> bool;
+
+    def _collect_if_else_returns(
+        else_body: uni.ElseIf | uni.ElseStmt | None, out: list[TypeBase]
+    ) -> bool;
+
     def _get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None;
     def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
