@@ -47,7 +47,8 @@ import from jaclang.jac0core.diagnostics {
     E0051,
     W0060,
     W0061,
-    W0063
+    W0063,
+    W0064
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {

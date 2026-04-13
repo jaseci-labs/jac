@@ -3371,8 +3371,80 @@ impl Parser.parse_element_stmt{
     if self.at_end() {
         return None;
     }
+    # Handle section headers: 'to cl:' / 'to sv:' / 'to na:' collect all
+    # following element statements (until the next header or EOF) into an
+    # implicit ClientBlock / ServerBlock / NativeBlock. Reusing the existing
+    # block AST nodes keeps downstream passes (codegen, interop, etc.)
+    # unchanged — implicit=True is the discriminator that flips the formatter
+    # into 'to X:' section-header emission.
+    if self.check(TokenKind.KW_TO)
+    and self.check_peek_any(
+        TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
+    )
+    and self.peek(2).kind == TokenKind.COLON {
+        to_tok = self.advance();  # consume 'to'
+        to_uni = self.make_uni_token(to_tok);
+        ctx_tok = self.advance();  # consume cl/sv/na
+        ctx_uni = self.make_uni_token(ctx_tok);
+        colon_tok = self.advance();  # consume ':'
+        colon_uni = self.make_uni_token(colon_tok);
+        section_ctx: CodeContext;
+        if ctx_tok.kind == TokenKind.KW_CLIENT {
+            section_ctx = CodeContext.CLIENT;
+        } elif ctx_tok.kind == TokenKind.KW_SERVER {
+            section_ctx = CodeContext.SERVER;
+        } else {
+            section_ctx = CodeContext.NATIVE;
+        }
+        body: list = [];
+        kid: list = [to_uni, ctx_uni, colon_uni];
+        while not self.at_end() {
+            # Stop at the next 'to X:' header — it's a sibling, not part of
+            # this section's body.
+            if self.check(TokenKind.KW_TO)
+            and self.check_peek_any(
+                TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
+            )
+            and self.peek(2).kind == TokenKind.COLON {
+                break;
+            }
+            before = self.pos;
+            stmt = self.parse_element_stmt();
+            if stmt is not None {
+                # Tag with the section's context only if the stmt does not
+                # already carry an explicit cl/sv/na prefix. Detect the prefix
+                # by checking the stmt's first kid for the context keyword.
+                has_explicit_prefix = (
+                    len(stmt.kid) > 0
+                    and isinstance(stmt.kid[0], UniToken)
+                    and (
+                        stmt.kid[0].name == Tok.KW_CLIENT
+                        or stmt.kid[0].name == Tok.KW_SERVER
+                        or stmt.kid[0].name == Tok.KW_NATIVE
+                    )
+                );
+                if stmt?.code_context and not has_explicit_prefix {
+                    stmt.code_context = section_ctx;
+                }
+                body.append(stmt);
+                kid.append(stmt);
+            }
+            # Guard: ensure forward progress to prevent infinite loops
+            if self.pos == before and not self.at_end() {
+                self.advance();
+            }
+        }
+        if section_ctx == CodeContext.CLIENT {
+            return ClientBlock(body=body, implicit=True, kid=kid);
+        } elif section_ctx == CodeContext.SERVER {
+            return ServerBlock(body=body, implicit=True, kid=kid);
+        } else {
+            return NativeBlock(body=body, implicit=True, kid=kid);
+        }
+    }
     # Handle client/server/native context blocks: cl { ... } or cl stmt
     if self.check(TokenKind.KW_CLIENT) {
+        self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_client_block();
         } else {
@@ -3390,6 +3462,7 @@ impl Parser.parse_element_stmt{
         }
     }
     if self.check(TokenKind.KW_SERVER) {
+        self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_server_block();
         } else {
@@ -3406,6 +3479,7 @@ impl Parser.parse_element_stmt{
         }
     }
     if self.check(TokenKind.KW_NATIVE) {
+        self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_native_block();
         } else {
@@ -3638,10 +3712,12 @@ impl Parser.parse_docstring_target{
 
 """Parse client block: cl { stmts } or cl stmt"""
 impl Parser.parse_client_block -> ClientBlock {
+    cl_sloc = self.current().loc;
     cl_tok = self.consume_uni(TokenKind.KW_CLIENT);
     kid: list = [cl_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
+        self.emit_warn(W0064, loc=cl_sloc, keyword="cl");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3669,10 +3745,12 @@ impl Parser.parse_client_block -> ClientBlock {
 
 """Parse server block: sv { stmts } or sv stmt"""
 impl Parser.parse_server_block -> ServerBlock {
+    sv_sloc = self.current().loc;
     sv_tok = self.consume_uni(TokenKind.KW_SERVER);
     kid: list = [sv_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
+        self.emit_warn(W0064, loc=sv_sloc, keyword="sv");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3699,10 +3777,12 @@ impl Parser.parse_server_block -> ServerBlock {
 
 """Parse native block: na { stmts } or na stmt"""
 impl Parser.parse_native_block -> NativeBlock {
+    na_sloc = self.current().loc;
     na_tok = self.consume_uni(TokenKind.KW_NATIVE);
     kid: list = [na_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
+        self.emit_warn(W0064, loc=na_sloc, keyword="na");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
