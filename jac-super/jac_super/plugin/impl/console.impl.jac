@@ -76,7 +76,7 @@ obj JacSuperConsole(BaseJacConsole) {
     """Override warning to use Rich styling."""
     def warning(message: str, emoji: bool = True) {
         prefix = '⚠' if (emoji and self.use_emoji) else '[WARNING]';
-        self._console.print(f"{prefix} {message}", style='warning');
+        self._console_stderr.print(f"{prefix} {message}", style='warning');
     }
 
     """Override info to use Rich styling."""

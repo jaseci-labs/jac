@@ -117,9 +117,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0022", Category.SYNTAX, "Expected ':' or '{{' after lambda parameters"
      ),
      E0023 = _err(
-         "E0023",
-         Category.SYNTAX,
-         "Expected augmented assignment in for...to...by step"
+         "E0023", Category.SYNTAX, "Expected augmented assignment in for...to...by step"
      ),
      E0024 = _err(
          "E0024",
@@ -216,6 +214,18 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Bare 'root' is deprecated. Use 'root()' instead.",
          "'root' is now a builtin function — call it explicitly as 'root()'"
      ),
+     W0063 = _warn(
+         "W0063",
+         Category.SYNTAX,
+         "JSX spread '{{...expr}}' is JS-idiomatic. Prefer '{{**expr}}' in Jac.",
+         "Jac uses ** for dict unpacking — use {**expr} instead of {...expr} in JSX attributes."
+     ),
+     W0064 = _warn(
+         "W0064",
+         Category.SYNTAX,
+         "'{keyword} {{ ... }}' block syntax is deprecated. Use the 'to {keyword}:' section header instead.",
+         "Replace 'cl {{ ... }}' / 'sv {{ ... }}' / 'na {{ ... }}' with 'to cl:' / 'to sv:' / 'to na:' at module level. The section applies until the next 'to X:' header or end of file."
+     ),
      # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
@@ -245,6 +255,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E1004",
          Category.TYPE,
          "Function '{name}' declared return type {ret_type} but may implicitly return None"
+     ),
+     E1005 = _err(
+         "E1005",
+         Category.TYPE,
+         "Cannot assign to read-only property '{name}' (no setter defined)"
      ),
      # Operator errors
      E1010 = _err(
@@ -421,6 +436,28 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot access attribute \"{attr}\" for type \"{type}\"; attribute is missing from {missing}"
      ),
+     # JSX type errors
+     E1100 = _err(
+         "E1100",
+         Category.TYPE,
+         "Cannot assign {actual} to JSX prop '{name}' of type {expected}"
+     ),
+     E1101 = _err(
+         "E1101", Category.TYPE, "Component '{component}' has no prop '{name}'"
+     ),
+     E1102 = _err(
+         "E1102", Category.TYPE, "Component '{component}' requires prop '{name}'"
+     ),
+     E1103 = _err(
+         "E1103",
+         Category.TYPE,
+         "Cannot assign {actual} to intrinsic prop '{name}' of type {expected}"
+     ),
+     E1104 = _err(
+         "E1104",
+         Category.TYPE,
+         "Cannot spread type {actual} into '{component}' (expected dict)"
+     ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -456,11 +493,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2008", Category.SEMANTIC, "Invalid target for context update: {target}"
      ),
      # New semantic warnings
-     W2052 = _warn(
-         "W2052",
-         Category.SEMANTIC,
-         "Catching overly broad exception type '{type}' — catch a more specific exception"
-     ),
      W2058 = _warn(
          "W2058",
          Category.SEMANTIC,
@@ -488,9 +520,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'return' inside a 'finally' block silences exceptions"
      ),
      E2083 = _err(
-         "E2083",
-         Category.SEMANTIC,
-         "'disengage' is only valid inside a walker ability"
+         "E2083", Category.SEMANTIC, "'disengage' is only valid inside a walker ability"
      ),
      # Def-impl match errors
      E2009 = _err(
@@ -525,6 +555,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Explicit 'self' parameter is not allowed in {arch_type} method '{name}' — "
          "'self' is implicit in obj, node, edge, and walker methods."
      ),
+     E2016 = _err(
+         "E2016",
+         Category.SEMANTIC,
+         "Cannot provide implementation for a method that already has a body."
+     ),
+     E2017 = _err(
+         "E2017",
+         Category.SEMANTIC,
+         "Duplicate implementation — an earlier impl already provides the body for this method."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -552,9 +592,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Empty parentheses can be removed [remove-empty-parens]"
      ),
      W3006 = _warn(
-         "W3006",
-         Category.LINT,
-         "Unnecessary keyword escape on '{name}' [remove-kwesc]"
+         "W3006", Category.LINT, "Unnecessary keyword escape on '{name}' [remove-kwesc]"
      ),
      W3007 = _warn(
          "W3007",

@@ -1,3 +1,37 @@
+"""Check if the model is eligible for Anthropic prompt caching."""
+def _is_prompt_caching_eligible(model_name: str) -> bool {
+    pc_config = _byllm_config.get_prompt_caching_config();
+    if not pc_config.get("enabled", True) {
+        return False;
+    }
+    name = model_name.lower();
+    return name.startswith("anthropic/") or name.startswith("claude-");
+}
+
+
+"""Add cache_control markers to the last system message and last tool."""
+def _apply_prompt_caching(messages: list, tools: list | None) {
+    last_sys_idx = -1;
+    for (i, msg) in enumerate(messages) {
+        if isinstance(msg, dict) and msg.get("role") == "system" {
+            last_sys_idx = i;
+        }
+    }
+    if last_sys_idx >= 0 {
+        msg = messages[last_sys_idx];
+        content = msg.get("content");
+        if isinstance(content, str) {
+            msg["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+        } elif isinstance(content, list) and len(content) > 0 {
+            content[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+        }
+    }
+    if tools {
+        tools[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+    }
+}
+
+
 """Construct the call parameters and return self (factory pattern).
 
 Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
@@ -149,6 +183,13 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
         logger.debug(f"agent_metadata build failed: {e}");
     }
 
+    messages = mt_run.get_msg_list();
+    tools = mt_run.get_tool_list() or None;
+
+    if _is_prompt_caching_eligible(self.model_name) {
+        _apply_prompt_caching(messages, tools);
+    }
+
     params = {
         "model": self.model_name,
         "api_key": self.api_key or None,
@@ -158,8 +199,8 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
             or self.config.get("api_base")
             or _model_config.get("base_url")
         ),
-        "messages": mt_run.get_msg_list(),
-        "tools": mt_run.get_tool_list() or None,
+        "messages": messages,
+        "tools": tools,
         "response_format": mt_run.get_output_schema(),
         "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),

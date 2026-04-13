@@ -5,12 +5,8 @@ cl {
         return
             <div className="landing-container">
                 <section className="hero-section">
-                    <h1 className="brand-name">
-                        Ledgerly
-                    </h1>
-                    <p className="tagline">
-                        Know your real income
-                    </p>
+                    <h1 className="brand-name">Ledgerly</h1>
+                    <p className="tagline">Know your real income</p>
                     <h2 className="headline">
                         Track Business & Personal Finances Separately
                     </h2>
@@ -25,9 +21,7 @@ cl {
                         }}
                     >
                         <Link to="/budget">
-                            <button className="cta-button">
-                                Let's Plan
-                            </button>
+                            <button className="cta-button">Let's Plan</button>
                         </Link>
                         <Link to="/features">
                             <button
@@ -43,39 +37,25 @@ cl {
                     </div>
                 </section>
                 <section className="features-section">
-                    <h2 className="features-title">
-                        Built for Freelancers
-                    </h2>
+                    <h2 className="features-title">Built for Freelancers</h2>
                     <div className="features-grid">
                         <div className="feature-card">
-                            <div className="feature-icon">
-                                💼
-                            </div>
-                            <h3 className="feature-title">
-                                Business vs Personal
-                            </h3>
+                            <div className="feature-icon">💼</div>
+                            <h3 className="feature-title">Business vs Personal</h3>
                             <p className="feature-description">
                                 Tag every transaction as business or personal.See your income streams separately and understand where your money really comes from.
                             </p>
                         </div>
                         <div className="feature-card">
-                            <div className="feature-icon">
-                                📊
-                            </div>
-                            <h3 className="feature-title">
-                                Auto Tax Reserve
-                            </h3>
+                            <div className="feature-icon">📊</div>
+                            <h3 className="feature-title">Auto Tax Reserve</h3>
                             <p className="feature-description">
                                 Automatically calculate 20% tax reserve on business income.Know your true net profit after taxes without surprises.
                             </p>
                         </div>
                         <div className="feature-card">
-                            <div className="feature-icon">
-                                🏷️
-                            </div>
-                            <h3 className="feature-title">
-                                Client Tagging
-                            </h3>
+                            <div className="feature-icon">🏷️</div>
+                            <h3 className="feature-title">Client Tagging</h3>
                             <p className="feature-description">
                                 Tag business income by client name. Track which clientsare generating the most revenue for your business.
                             </p>
@@ -97,9 +77,7 @@ cl {
                         }}
                     >
                         <Link to="/budget">
-                            <button className="cta-button">
-                                Get Started Free
-                            </button>
+                            <button className="cta-button">Get Started Free</button>
                         </Link>
                         <Link to="/features">
                             <button

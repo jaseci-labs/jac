@@ -117,9 +117,7 @@ cl {
                     >
                         Have an account?
                         {" "}
-                        <Link to="/login">
-                            Login
-                        </Link>
+                        <Link to="/login">Login</Link>
                     </p>
                 </div>
             </div>;

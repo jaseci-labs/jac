@@ -49,29 +49,26 @@ impl DashboardPage.disconnect -> None {
 }
 
 impl DashboardPage.start_notice(tool: str) -> str {
-    notices: dict = {
-        "validate_jac": "Validating Jac code...",
-        "check_syntax": "Checking syntax...",
-        "format_jac": "Formatting code...",
-        "py_to_jac": "Converting Python to Jac...",
-        "get_ast_tree": "Generating AST...",
-        "get_ast_json": "Generating AST...",
-        "explain_error": "Explaining error...",
-        "list_examples": "Fetching example list...",
-        "get_example": "Loading example...",
-        "search_docs": "Searching documentation...",
-        "jac_to_js": "Transpiling Jac to JavaScript...",
-        "jac_to_py": "Transpiling Jac to Python...",
-        "run_jac": "Running Jac code...",
-        "lint_jac": "Linting Jac code...",
-        "graph_visualize": "Generating graph...",
-        "list_commands": "Fetching command list...",
-        "get_command": "Loading command details...",
-        "execute_command": "Executing command...",
-        "understand_jac_and_jaseci": "Loading Jac & Jaseci guide...",
-        "get_resource": "Fetching resource..."
-    };
-    return notices[tool] if tool in notices else "Running...";
+    if tool == "validate_jac" {
+        return "Validating Jac code...";
+    } elif tool == "check_syntax" {
+        return "Checking syntax...";
+    } elif tool == "format_jac" {
+        return "Formatting code...";
+    } elif tool == "py_to_jac" {
+        return "Converting Python to Jac...";
+    } elif tool in ["get_ast_tree", "get_ast_json"] {
+        return "Generating AST...";
+    } elif tool == "explain_error" {
+        return "Explaining error...";
+    } elif tool == "list_examples" {
+        return "Fetching example list...";
+    } elif tool == "get_example" {
+        return "Loading example...";
+    } elif tool == "search_docs" {
+        return "Searching documentation...";
+    }
+    return "Running...";
 }
 
 impl DashboardPage.success_notice(tool: str, res: dict) -> str {
@@ -112,51 +109,6 @@ impl DashboardPage.success_notice(tool: str, res: dict) -> str {
         return str(len(results)) + " result(s) found."
             if len(results) > 0
             else "No results found.";
-    } elif tool == "jac_to_js" {
-        warnings_js: list = data["warnings"] if "warnings" in data else [];
-        return "Transpiled successfully."
-            if len(warnings_js) == 0
-            else (str(len(warnings_js)) + " warning(s).");
-    } elif tool == "jac_to_py" {
-        warnings: list = data["warnings"] if "warnings" in data else [];
-        return "Transpiled successfully."
-            if len(warnings) == 0
-            else (str(len(warnings)) + " warning(s).");
-    } elif tool == "run_jac" {
-        exit_code: int = data["exit_code"] if "exit_code" in data else -1;
-        return "Exited " + str(exit_code) + (
-            " — success." if exit_code == 0 else " — failed."
-        );
-    } elif tool == "lint_jac" {
-        violations: list = data["violations"] if "violations" in data else [];
-        return "No violations found."
-            if len(violations) == 0
-            else (str(len(violations)) + " violation(s) found.");
-    } elif tool == "graph_visualize" {
-        graph: str = str(data["graph"]) if "graph" in data else "";
-        return "Graph generated." if graph else "No graph output.";
-    } elif tool == "list_commands" {
-        total: int = data["total"] if "total" in data else 0;
-        return str(total) + " commands available.";
-    } elif tool == "get_command" {
-        cmd_name: str = str(data["name"]) if "name" in data else "";
-        return "Details loaded: " + cmd_name
-            if cmd_name
-            else "Command details loaded.";
-    } elif tool == "execute_command" {
-        success: bool = data["success"] if "success" in data else False;
-        exit_code: int = data["exit_code"] if "exit_code" in data else -1;
-        return "Exited " + str(exit_code) + (
-            " — success." if success else " — failed."
-        );
-    } elif tool == "understand_jac_and_jaseci" {
-        km: str = str(data["knowledge_map"]) if "knowledge_map" in data else "";
-        return "Guide loaded (" + str(len(km.split("\n"))) + " lines)."
-            if km
-            else "Guide loaded.";
-    } elif tool == "get_resource" {
-        uri: str = str(data["uri"]) if "uri" in data else "";
-        return "Loaded: " + uri if uri else "Resource loaded.";
     }
     return "Done.";
 }
@@ -175,9 +127,6 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
     loading = tool;
     active_tool = tool;
     notice = start_notice(tool);
-    if tool != "graph_visualize" {
-        graph_svg = "";
-    }
     try {
         spawn_res: Any = None;
         if tool == "validate_jac" {
@@ -202,50 +151,12 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
             spawn_res = await root spawn get_example(name=args["name"]);
         } elif tool == "search_docs" {
             spawn_res = await root spawn search_docs(query=args["query"]);
-        } elif tool == "jac_to_js" {
-            spawn_res = await root spawn jac_to_js(code=args["code"]);
-        } elif tool == "jac_to_py" {
-            spawn_res = await root spawn jac_to_py(code=args["code"]);
-        } elif tool == "run_jac" {
-            spawn_res = await root spawn run_jac(
-                code=args["code"],
-                entrypoint=args["entrypoint"],
-                timeout=args["timeout"]
-            );
-        } elif tool == "lint_jac" {
-            spawn_res = await root spawn lint_jac(
-                code=args["code"], auto_fix=args["auto_fix"]
-            );
-        } elif tool == "graph_visualize" {
-            spawn_res = await root spawn graph_visualize(code=args["code"]);
-        } elif tool == "list_commands" {
-            spawn_res = await root spawn list_commands();
-        } elif tool == "get_command" {
-            spawn_res = await root spawn get_command(name=args["name"]);
-        } elif tool == "execute_command" {
-            spawn_res = await root spawn execute_command(
-                command=args["command"], args=args["args"]
-            );
-        } elif tool == "understand_jac_and_jaseci" {
-            spawn_res = await root spawn understand_jac_and_jaseci();
-        } elif tool == "get_resource" {
-            spawn_res = await root spawn get_resource(uri=args["uri"]);
-        } else {
-            notice = "Unknown tool: " + tool;
         }
         if spawn_res {
             res = get_first_report(spawn_res);
             current_result = res;
             if res["ok"] {
                 notice = success_notice(tool, res);
-                if tool == "graph_visualize" {
-                    gdata: dict = res["data"] if "data" in res else {};
-                    dot: str = str(gdata["graph"]) if "graph" in gdata else "";
-                    if dot {
-                        _viz_inst: Any = await instance();
-                        graph_svg = str(_viz_inst.renderString(dot, {"format": "svg"}));
-                    }
-                }
             } else {
                 err = res["error"] if "error" in res else {};
                 err_msg: str = str(err["message"]) if "message" in err else "unknown";
@@ -291,9 +202,7 @@ impl DashboardPage.renderErr -> JsxElement {
 
 impl DashboardPage.renderEmpty -> JsxElement {
     return
-        <div className="text-xs text-zinc-600">
-            No result yet.
-        </div>;
+        <div className="text-xs text-zinc-600">No result yet.</div>;
 }
 
 impl DashboardPage.renderValidationOutput -> JsxElement {
@@ -310,12 +219,8 @@ impl DashboardPage.renderValidationOutput -> JsxElement {
             <div
                 className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 border border-green-500/20 p-3 rounded-lg"
             >
-                <span>
-                    ✓
-                </span>
-                <span>
-                    No errors found.
-                </span>
+                <span>✓</span>
+                <span>No errors found.</span>
             </div>;
     }
     return
@@ -349,9 +254,7 @@ impl DashboardPage.renderFormatOutput -> JsxElement {
     changed: bool = data["changed"] if "changed" in data else False;
     if not formatted {
         return
-            <div className="text-xs text-zinc-600">
-                No output returned.
-            </div>;
+            <div className="text-xs text-zinc-600">No output returned.</div>;
     }
     return
         <div className="space-y-1">
@@ -364,9 +267,11 @@ impl DashboardPage.renderFormatOutput -> JsxElement {
                     {("Modified" if changed else "No changes")}
                 </span>
                 <button
-                    onClick={lambda { navigator.clipboard.writeText(formatted);output_copied = True;setTimeout(
-                        lambda { output_copied = False;}, 2000
-                    );}}
+                    onClick={lambda {
+                        navigator.clipboard.writeText(formatted);
+                        output_copied = True;
+                        setTimeout(lambda { output_copied = False;}, 2000);
+                    }}
                     className={"px-2 py-1 text-[9px] rounded-md border transition " + (
                         "bg-green-500/20 border-green-500/40 text-green-400"
                             if output_copied
@@ -399,48 +304,36 @@ impl DashboardPage.renderAstOutput -> JsxElement {
     badge_cls = "text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border " + (
         "text-teal-400 bg-teal-500/10 border-teal-500/20"
             if is_tree
-            else "text-violet-400 bg-violet-500/10 border-violet-500/20"
+            else "text-indigo-400 bg-indigo-500/10 border-indigo-500/20"
     );
-    accent_border = "border-teal-900/40" if is_tree else "border-violet-900/40";
-    accent_header = "bg-teal-950/50 border-teal-900/30"
-        if is_tree
-        else "bg-violet-950/50 border-violet-900/30";
-    accent_dot = "bg-teal-400" if is_tree else "bg-violet-400";
+    pre_cls = "text-[11px] leading-5 max-h-[420px] overflow-auto bg-[#070809] rounded-b-lg border-x border-b whitespace-pre-wrap break-words font-mono " + (
+        "text-teal-300/80 border-teal-900/40"
+            if is_tree
+            else "text-indigo-300/80 border-indigo-900/40"
+    );
     return
-        <div
-            className={"rounded-xl overflow-hidden border flex flex-col " + accent_border}
-            style={{"height": "460px"}}
-        >
+        <div className="rounded-lg overflow-hidden border border-white/[0.06]">
             <div
-                className={"flex-shrink-0 flex items-center justify-between px-3 py-2 border-b " + accent_header}
+                className={"flex items-center justify-between px-3 py-2 border-b " + (
+                    "bg-teal-950/40 border-teal-900/30"
+                        if is_tree
+                        else "bg-indigo-950/40 border-indigo-900/30"
+                )}
             >
                 <div className="flex items-center gap-2.5">
-                    <div
-                        className={"h-1.5 w-1.5 rounded-full flex-shrink-0 " + accent_dot}
-                    />
                     <span className={badge_cls}>
                         {"AST TREE" if is_tree else "AST JSON"}
                     </span>
                     <span className="text-[10px] text-zinc-600 font-mono">
                         {str(len(lines)) + " lines"}
                     </span>
-                    <span className="text-[10px] text-zinc-700">
-                        ·
-                    </span>
-                    <span className="text-[10px] text-zinc-600 font-mono">
-                        {str(len(json_str)) + " chars"}
-                    </span>
-                    {not is_tree
-                    and <span
-                        className="text-[9px] text-zinc-700 ml-1 font-mono italic"
-                    >
-                        fold with › / collapse with ‹
-                    </span>}
                 </div>
                 <button
-                    onClick={lambda { navigator.clipboard.writeText(json_str);ast_copied = True;setTimeout(
-                        lambda { ast_copied = False;}, 2000
-                    );}}
+                    onClick={lambda {
+                        navigator.clipboard.writeText(json_str);
+                        ast_copied = True;
+                        setTimeout(lambda { ast_copied = False;}, 2000);
+                    }}
                     className={"px-2 py-0.5 text-[9px] rounded border transition " + (
                         "bg-green-500/20 border-green-500/30 text-green-400"
                             if ast_copied
@@ -450,44 +343,26 @@ impl DashboardPage.renderAstOutput -> JsxElement {
                     {"Copied!" if ast_copied else "Copy"}
                 </button>
             </div>
-            <div className="flex-1 min-h-0">
-                <MonacoEditor
-                    height="100%"
-                    width="100%"
-                    language={"plaintext" if is_tree else "json"}
-                    theme="vs-dark"
-                    value={json_str}
-                    options={{
-                        "readOnly": True,
-                        "fontSize": 11,
-                        "fontFamily": "ui-monospace, 'JetBrains Mono', 'Fira Code', monospace",
-                        "lineHeight": 18,
-                        "minimap": {
-                            "enabled": True,
-                            "scale": 1,
-                            "showSlider": "always"
-                        },
-                        "scrollBeyondLastLine": False,
-                        "lineNumbers": "on",
-                        "renderLineHighlight": "line",
-                        "wordWrap": "off",
-                        "padding": {"top": 8, "bottom": 8},
-                        "folding": True,
-                        "foldingHighlight": True,
-                        "showFoldingControls": "always",
-                        "scrollbar": {
-                            "verticalScrollbarSize": 5,
-                            "horizontalScrollbarSize": 5
-                        },
-                        "overviewRulerBorder": False,
-                        "bracketPairColorization": {"enabled": True},
-                        "guides": {"bracketPairs": True, "indentation": True},
-                        "renderWhitespace": "none",
-                        "domReadOnly": True,
-                        "cursorStyle": "line",
-                        "cursorWidth": 1
-                    }}
-                />
+            <div className="flex max-h-[420px] overflow-hidden bg-[#070809]">
+                <div
+                    className={"flex-shrink-0 select-none border-r px-2 py-3 text-right " + (
+                        "border-teal-900/30 bg-teal-950/20"
+                            if is_tree
+                            else "border-indigo-900/30 bg-indigo-950/20"
+                    )}
+                >
+                    {[
+                        <div
+                            key={str(i)}
+                            className={"text-[10px] leading-5 font-mono " + (
+                                "text-teal-900" if is_tree else "text-indigo-900"
+                            )}
+                        >
+                            {str(i + 1)}
+                        </div> for i in range(len(lines))
+                    ]}
+                </div>
+                <pre className={pre_cls + " flex-1 px-4 py-3"}>{json_str}</pre>
             </div>
         </div>;
 }
@@ -505,13 +380,8 @@ impl DashboardPage.renderExplainOutput -> JsxElement {
     example = data["example"] if "example" in data else "";
     return
         <div className="space-y-3">
-            {title
-            and <p className="text-sm font-semibold text-white">
-                {title}
-            </p>}{explanation
-            and <p className="text-xs text-zinc-400 leading-relaxed">
-                {explanation}
-            </p>}{example
+            {title and <p className="text-sm font-semibold text-white">{title}</p>}{explanation
+            and <p className="text-xs text-zinc-400 leading-relaxed">{explanation}</p>}{example
             and <pre
                 className="text-[11px] text-zinc-300 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5"
             >
@@ -537,18 +407,17 @@ impl DashboardPage.renderExamplesOutput -> JsxElement {
         );
     if len(cats) == 0 {
         return
-            <div className="text-xs text-zinc-500">
-                No categories found.
-            </div>;
+            <div className="text-xs text-zinc-500">No categories found.</div>;
     }
     return
         <div className="flex flex-wrap gap-1.5">
             {[
                 <button
                     key={c["name"]}
-                    onClick={lambda { example_name = str(c["name"]);runTool(
-                        "get_example", {"name": str(c["name"])}
-                    );}}
+                    onClick={lambda {
+                        example_name = str(c["name"]);
+                        runTool("get_example", {"name": str(c["name"])});
+                    }}
                     className="px-2 py-0.5 text-[11px] rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300 hover:bg-orange-500/30 transition cursor-pointer"
                 >
                     {c["name"]}
@@ -568,9 +437,7 @@ impl DashboardPage.renderGetExampleOutput -> JsxElement {
     content: str = str(data["content"]) if "content" in data else "";
     if not content {
         return
-            <div className="text-xs text-zinc-500">
-                No content found.
-            </div>;
+            <div className="text-xs text-zinc-500">No content found.</div>;
     }
     sections: list = [
         s
@@ -587,9 +454,7 @@ impl DashboardPage.renderGetExampleOutput -> JsxElement {
                 >
                     EXAMPLE
                 </span>
-                <span className="text-[11px] font-mono text-zinc-300">
-                    {ex_name}
-                </span>
+                <span className="text-[11px] font-mono text-zinc-300">{ex_name}</span>
                 <span className="text-[10px] text-zinc-600">
                     {str(len(sections)) + " file(s)"}
                 </span>
@@ -648,9 +513,7 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
         else (data["results"] if "results" in data else []);
     if len(matches) == 0 {
         return
-            <div className="text-xs text-zinc-500">
-                No results found.
-            </div>;
+            <div className="text-xs text-zinc-500">No results found.</div>;
     }
     return
         <div className="space-y-3">
@@ -669,1249 +532,37 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
                         </span>}
                     </div>
                     {("description" in m)
-                    and <p className="text-[10px] text-zinc-500">
-                        {m["description"]}
-                    </p>}
+                    and <p className="text-[10px] text-zinc-500">{m["description"]}</p>}
                     {("snippet" in m)
                     and <p
                         className="text-[11px] text-zinc-400 font-mono leading-5 whitespace-pre-wrap"
                     >
                         {m["snippet"]}
                     </p>}
-                    <button
-                        onClick={lambda { resource_uri = str(m["uri"])
-                            if "uri" in m
-                            else "";runTool(
-                            "get_resource",
-                            {"uri": str(m["uri"]) if "uri" in m else ""}
-                        );}}
-                        disabled={loading != "" or not connected}
-                        className="text-[10px] font-mono text-orange-400/70 hover:text-orange-300 hover:underline disabled:opacity-50 disabled:cursor-not-allowed text-left transition"
-                    >
+                    <p className="text-[10px] font-mono text-orange-400/70">
                         {m["uri"] if "uri" in m else ""}
-                    </button>
+                    </p>
                 </div> for m in matches
             ]}
         </div>;
 }
 
-impl DashboardPage.renderJacToJsOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    js_code: str = str(data["js_code"]) if "js_code" in data else "";
-    warnings: list = data["warnings"] if "warnings" in data else [];
-    if not js_code and len(warnings) == 0 {
-        return
-            <div className="text-xs text-zinc-500">
-                No output returned.
-            </div>;
-    }
-    return
-        <div className="space-y-3">
-            {js_code
-            and <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <span
-                            className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-amber-400 bg-amber-500/10 border-amber-500/20"
-                        >
-                            JAVASCRIPT
-                        </span>
-                        <span className="text-[10px] text-zinc-600 font-mono">
-                            {str(len(js_code.split("\n"))) + " lines"}
-                        </span>
-                    </div>
-                    <button
-                        onClick={lambda { navigator.clipboard.writeText(js_code);output_copied = True;setTimeout(
-                            lambda { output_copied = False;}, 2000
-                        );}}
-                        className={"px-2 py-1 text-[9px] rounded-md border transition " + (
-                            "bg-green-500/20 border-green-500/40 text-green-400"
-                                if output_copied
-                                else "bg-white/5 hover:bg-white/10 border-white/10"
-                        )}
-                    >
-                        {"Copied!" if output_copied else "Copy"}
-                    </button>
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-amber-300/80 max-h-[420px] overflow-auto bg-[#070809] p-3 rounded-lg border border-amber-900/30 whitespace-pre-wrap break-words font-mono"
-                >
-                    {js_code}
-                </pre>
-            </div>}{len(warnings) > 0
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-yellow-600 font-semibold"
-                >
-                    {str(len(warnings)) + " warning(s)"}
-                </div>
-                {[
-                    <div
-                        key={str(w)}
-                        className="text-[11px] font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg"
-                    >
-                        {str(w)}
-                    </div> for w in warnings
-                ]}
-            </div>}
-        </div>;
-}
-
-impl DashboardPage.renderJacToPyOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    python_code: str = str(data["python_code"]) if "python_code" in data else "";
-    warnings: list = data["warnings"] if "warnings" in data else [];
-    if not python_code and len(warnings) == 0 {
-        return
-            <div className="text-xs text-zinc-500">
-                No output returned.
-            </div>;
-    }
-    return
-        <div className="space-y-3">
-            <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <span
-                            className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-blue-400 bg-blue-500/10 border-blue-500/20"
-                        >
-                            PYTHON
-                        </span>
-                        <span className="text-[10px] text-zinc-600 font-mono">
-                            {str(len(python_code.split("\n"))) + " lines"}
-                        </span>
-                    </div>
-                    <button
-                        onClick={lambda { navigator.clipboard.writeText(python_code);output_copied = True;setTimeout(
-                            lambda { output_copied = False;}, 2000
-                        );}}
-                        className={"px-2 py-1 text-[9px] rounded-md border transition " + (
-                            "bg-green-500/20 border-green-500/40 text-green-400"
-                                if output_copied
-                                else "bg-white/5 hover:bg-white/10 border-white/10"
-                        )}
-                    >
-                        {"Copied!" if output_copied else "Copy"}
-                    </button>
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-blue-300/80 max-h-[420px] overflow-auto bg-[#070809] p-3 rounded-lg border border-blue-900/30 whitespace-pre-wrap break-words font-mono"
-                >
-                    {python_code}
-                </pre>
-            </div>
-            {len(warnings) > 0
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-yellow-600 font-semibold"
-                >
-                    {str(len(warnings)) + " warning(s)"}
-                </div>
-                {[
-                    <div
-                        key={str(w)}
-                        className="text-[11px] font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg"
-                    >
-                        {str(w)}
-                    </div> for w in warnings
-                ]}
-            </div>}
-        </div>;
-}
-
-impl DashboardPage.renderPyToJacOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    jac_code: str = str(data["jac_code"]) if "jac_code" in data else "";
-    warnings: list = data["warnings"] if "warnings" in data else [];
-    if not jac_code and len(warnings) == 0 {
-        return
-            <div className="text-xs text-zinc-500">
-                No output returned.
-            </div>;
-    }
-    return
-        <div className="space-y-3">
-            {jac_code
-            and <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <span
-                            className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-orange-400 bg-orange-500/10 border-orange-500/20"
-                        >
-                            JAC
-                        </span>
-                        <span className="text-[10px] text-zinc-600 font-mono">
-                            {str(len(jac_code.split("\n"))) + " lines"}
-                        </span>
-                    </div>
-                    <button
-                        onClick={lambda { navigator.clipboard.writeText(jac_code);jac_copied = True;setTimeout(
-                            lambda { jac_copied = False;}, 2000
-                        );}}
-                        className={"px-2 py-1 text-[9px] rounded-md border transition " + (
-                            "bg-green-500/20 border-green-500/40 text-green-400"
-                                if jac_copied
-                                else "bg-white/5 hover:bg-white/10 border-white/10"
-                        )}
-                    >
-                        {"Copied!" if jac_copied else "Copy"}
-                    </button>
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-orange-300/80 max-h-[420px] overflow-auto bg-[#070809] p-3 rounded-lg border border-orange-900/30 whitespace-pre-wrap break-words font-mono"
-                >
-                    {jac_code}
-                </pre>
-            </div>}{len(warnings) > 0
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-yellow-600 font-semibold"
-                >
-                    {str(len(warnings)) + " warning(s)"}
-                </div>
-                {[
-                    <div
-                        key={str(w)}
-                        className="text-[11px] font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg"
-                    >
-                        {str(w)}
-                    </div> for w in warnings
-                ]}
-            </div>}
-        </div>;
-}
-
-impl DashboardPage.renderRunOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    exit_code: int = data["exit_code"] if "exit_code" in data else -1;
-    stdout: str = str(data["stdout"]) if "stdout" in data else "";
-    stderr: str = str(data["stderr"]) if "stderr" in data else "";
-    error: str = str(data["error"]) if "error" in data and data["error"] else "";
-    success: bool = exit_code == 0;
-    return
-        <div className="space-y-3">
-            <div className="flex items-center gap-2">
-                <span
-                    className={"text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border " + (
-                        "text-green-400 bg-green-500/10 border-green-500/20"
-                            if success
-                            else "text-red-400 bg-red-500/10 border-red-500/20"
-                    )}
-                >
-                    {"exit " + str(exit_code)}
-                </span>
-                {error
-                and <span className="text-[10px] text-red-400 font-mono">
-                    {error}
-                </span>}
-            </div>
-            {stdout
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
-                >
-                    stdout
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-green-300/80 max-h-[340px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
-                >
-                    {stdout}
-                </pre>
-            </div>}
-            {stderr
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-red-600 font-semibold"
-                >
-                    stderr
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-red-300/80 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-red-500/10 whitespace-pre-wrap break-words font-mono"
-                >
-                    {stderr}
-                </pre>
-            </div>}
-        </div>;
-}
-
-impl DashboardPage.renderLintOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    violations: list = data["violations"] if "violations" in data else [];
-    fixed_code: str = str(data["fixed_code"])
-        if "fixed_code" in data and data["fixed_code"]
-        else "";
-    changed: bool = data["changed"] if "changed" in data else False;
-    if len(violations) == 0 and not fixed_code {
-        return
-            <div
-                className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 border border-green-500/20 p-3 rounded-lg"
-            >
-                <span>
-                    ✓
-                </span>
-                <span>
-                    No lint violations found.
-                </span>
-            </div>;
-    }
-    return
-        <div className="space-y-3">
-            {len(violations) > 0
-            and <div className="space-y-1.5">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-yellow-600 font-semibold"
-                >
-                    {str(len(violations)) + " violation(s)"}
-                </div>
-                {[
-                    <div
-                        key={str(v)}
-                        className="text-xs font-mono text-yellow-400 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg"
-                    >
-                        {(
-                            "[" + str(v["line"]) + ":" + str(v["col"]) + "] " + str(
-                                v["message"]
-                            )
-                        )
-                            if ("line" in v and "col" in v and "message" in v)
-                            else (str(v["message"]) if "message" in v else str(v))}
-                    </div> for v in violations
-                ]}
-            </div>}{fixed_code
-            and <div className="space-y-1">
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                        <div
-                            className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
-                        >
-                            Fixed Code
-                        </div>
-                        {changed
-                        and <span
-                            className="text-[9px] font-mono text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded"
-                        >
-                            modified
-                        </span>}
-                    </div>
-                    <button
-                        onClick={lambda { code = fixed_code;}}
-                        className="px-2 py-1 text-[9px] rounded-md border transition bg-orange-500/10 hover:bg-orange-500/20 border-orange-500/30 text-orange-400"
-                    >
-                        Apply to Editor
-                    </button>
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-green-400 max-h-[300px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
-                >
-                    {fixed_code}
-                </pre>
-            </div>}
-        </div>;
-}
-
-impl DashboardPage.renderGraphVisualizeOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    graph: str = str(data["graph"]) if "graph" in data else "";
-    program_output: str = str(data["program_output"])
-        if "program_output" in data
-        else "";
-    if not graph {
-        return
-            <div className="text-xs text-zinc-500">
-                No graph output returned.
-            </div>;
-    }
-    return
-        <div className="space-y-3">
-            {graph_svg
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
-                >
-                    Graph
-                </div>
-                <div
-                    className="overflow-auto max-h-[400px] bg-white rounded-lg p-3 border border-white/10"
-                    dangerouslySetInnerHTML={{"__html": graph_svg}}
-                />
-            </div>}
-            <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
-                >
-                    DOT Source
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-teal-300/80 max-h-[200px] overflow-auto bg-[#070809] p-3 rounded-lg border border-teal-900/30 whitespace-pre-wrap break-words font-mono"
-                >
-                    {graph}
-                </pre>
-            </div>
-            {program_output
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
-                >
-                    Program Output
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-zinc-300 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
-                >
-                    {program_output}
-                </pre>
-            </div>}
-        </div>;
-}
-
-impl DashboardPage.renderListCommandsOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    total: int = data["total"] if "total" in data else 0;
-    commands: list = data["commands"] if "commands" in data else [];
-    if len(commands) == 0 {
-        return
-            <div className="text-xs text-zinc-500">
-                No commands found.
-            </div>;
-    }
-    groups: list = data["groups"] if "groups" in data else [];
-    return
-        <div className="space-y-3">
-            <div className="flex items-center gap-2">
-                <span
-                    className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-zinc-400 bg-zinc-500/10 border-zinc-500/20"
-                >
-                    {str(total) + " COMMANDS"}
-                </span>
-            </div>
-            {[
-                <div key={g} className="space-y-1">
-                    <div
-                        className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold pt-1"
-                    >
-                        {g}
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                        {[
-                            <button
-                                key={str(cmd["name"]) if "name" in cmd else str(cmd)}
-                                onClick={lambda { command_name = str(cmd["name"])
-                                    if "name" in cmd
-                                    else "";runTool(
-                                    "get_command",
-                                    {"name": str(cmd["name"]) if "name" in cmd else ""}
-                                );}}
-                                disabled={loading != "" or not connected}
-                                className="px-2 py-0.5 text-[11px] rounded-md bg-zinc-800 hover:bg-zinc-700 border border-white/[0.08] text-zinc-300 hover:text-white disabled:opacity-30 transition font-mono"
-                            >
-                                {str(cmd["name"]) if "name" in cmd else ""}
-                            </button>
-                            for cmd in commands
-                            if ("group" in cmd and cmd["group"] == g)
-                        ]}
-                    </div>
-                </div> for g in groups
-            ]}
-        </div>;
-}
-
-impl DashboardPage.renderGetCommandOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    cmd_name: str = str(data["name"]) if "name" in data else "";
-    help_text: str = str(data["help"]) if "help" in data else "";
-    group: str = str(data["group"]) if "group" in data else "";
-    source: str = str(data["source"]) if "source" in data else "";
-    args: list = data["args"] if "args" in data else [];
-    return
-        <div className="space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-                <span
-                    className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-orange-400 bg-orange-500/10 border-orange-500/20"
-                >
-                    {cmd_name}
-                </span>
-                <span
-                    className="text-[9px] font-mono px-2 py-0.5 rounded-md border text-zinc-500 bg-zinc-800/50 border-white/[0.06]"
-                >
-                    {group}
-                </span>
-                <span
-                    className="text-[9px] font-mono px-2 py-0.5 rounded-md border text-zinc-600 bg-zinc-800/30 border-white/[0.04]"
-                >
-                    {source}
-                </span>
-            </div>
-            {help_text
-            and <p className="text-xs text-zinc-400 leading-relaxed">
-                {help_text}
-            </p>}
-            {len(args) > 0
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
-                >
-                    Arguments
-                </div>
-                {[
-                    <div
-                        key={str(a["name"]) if "name" in a else str(a)}
-                        className="flex items-start gap-2 text-[11px] py-1 border-b border-white/[0.04]"
-                    >
-                        <span className="font-mono text-orange-300/80 flex-shrink-0">
-                            {str(a["name"]) if "name" in a else ""}
-                        </span>
-                        <span className="text-zinc-500">
-                            {str(a["help"]) if "help" in a else ""}
-                        </span>
-                    </div> for a in args
-                ]}
-            </div>}
-            <button
-                onClick={lambda { runTool(
-                    "execute_command", {"command": cmd_name, "args": []}
-                );}}
-                disabled={loading != "" or not connected}
-                className={ghostBtn + (
-                    " animate-pulse" if busy("execute_command") else ""
-                )}
-            >
-                {"Running..." if busy("execute_command") else "Execute " + cmd_name}
-            </button>
-        </div>;
-}
-
-impl DashboardPage.renderExecuteCommandOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    success: bool = data["success"] if "success" in data else False;
-    exit_code: int = data["exit_code"] if "exit_code" in data else -1;
-    stdout: str = str(data["stdout"]) if "stdout" in data else "";
-    stderr: str = str(data["stderr"]) if "stderr" in data else "";
-    cmd: str = str(data["command"]) if "command" in data else "";
-    return
-        <div className="space-y-3">
-            <div className="flex items-center gap-2 flex-wrap">
-                {cmd
-                and <span
-                    className="text-[9px] font-mono text-zinc-500 bg-zinc-800/50 border border-white/[0.06] px-2 py-0.5 rounded-md"
-                >
-                    {cmd}
-                </span>}
-                <span
-                    className={"text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border " + (
-                        "text-green-400 bg-green-500/10 border-green-500/20"
-                            if success
-                            else "text-red-400 bg-red-500/10 border-red-500/20"
-                    )}
-                >
-                    {"exit " + str(exit_code)}
-                </span>
-            </div>
-            {stdout
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-zinc-600 font-semibold"
-                >
-                    stdout
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-green-300/80 max-h-[280px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
-                >
-                    {stdout}
-                </pre>
-            </div>}
-            {stderr
-            and <div className="space-y-1">
-                <div
-                    className="text-[9px] uppercase tracking-[0.15em] text-red-600 font-semibold"
-                >
-                    stderr
-                </div>
-                <pre
-                    className="text-[11px] leading-5 text-red-300/80 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-red-500/10 whitespace-pre-wrap break-words font-mono"
-                >
-                    {stderr}
-                </pre>
-            </div>}
-        </div>;
-}
-
-impl DashboardPage.renderUnderstandOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    content: str = str(data["knowledge_map"]) if "knowledge_map" in data else "";
-    if not content {
-        return
-            <div className="text-xs text-zinc-500">
-                No content returned.
-            </div>;
-    }
-    return
-        <pre
-            className="text-[11px] leading-5 text-zinc-300 max-h-[520px] overflow-auto bg-[#0d0e10] p-4 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
-        >
-            {content}
-        </pre>;
-}
-
-impl DashboardPage.renderResourceOutput -> JsxElement {
-    if not current_result {
-        return renderEmpty();
-    }
-    if not current_result["ok"] {
-        return renderErr();
-    }
-    data = current_result["data"] if "data" in current_result else {};
-    content: str = str(data["content"]) if "content" in data else "";
-    uri: str = str(data["uri"]) if "uri" in data else "";
-    if not content {
-        return
-            <div className="text-xs text-zinc-500">
-                No content returned.
-            </div>;
-    }
-    return
-        <div className="space-y-3">
-            {uri
-            and <div className="flex items-center gap-2">
-                <span
-                    className="text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border text-orange-400 bg-orange-500/10 border-orange-500/20"
-                >
-                    RESOURCE
-                </span>
-                <span className="text-[11px] font-mono text-zinc-400">
-                    {uri}
-                </span>
-            </div>}
-            <pre
-                className="text-[11px] leading-5 text-zinc-300 max-h-[480px] overflow-auto bg-[#0d0e10] p-4 rounded-lg border border-white/5 whitespace-pre-wrap break-words font-mono"
-            >
-                {content}
-            </pre>
-        </div>;
-}
-
 impl DashboardPage.renderActiveOutput -> JsxElement {
-    renderers: dict = {
-        "validate_jac": renderValidationOutput,
-        "check_syntax": renderValidationOutput,
-        "format_jac": renderFormatOutput,
-        "get_ast_tree": renderAstOutput,
-        "get_ast_json": renderAstOutput,
-        "explain_error": renderExplainOutput,
-        "list_examples": renderExamplesOutput,
-        "get_example": renderGetExampleOutput,
-        "search_docs": renderSearchDocsOutput,
-        "jac_to_js": renderJacToJsOutput,
-        "jac_to_py": renderJacToPyOutput,
-        "py_to_jac": renderPyToJacOutput,
-        "run_jac": renderRunOutput,
-        "lint_jac": renderLintOutput,
-        "graph_visualize": renderGraphVisualizeOutput,
-        "list_commands": renderListCommandsOutput,
-        "get_command": renderGetCommandOutput,
-        "execute_command": renderExecuteCommandOutput,
-        "understand_jac_and_jaseci": renderUnderstandOutput,
-        "get_resource": renderResourceOutput
-    };
-    if active_tool in renderers {
-        return renderers[active_tool]();
+    if active_tool in ["validate_jac", "check_syntax"] {
+        return renderValidationOutput();
+    } elif active_tool == "format_jac" {
+        return renderFormatOutput();
+    } elif active_tool in ["get_ast_tree", "get_ast_json"] {
+        return renderAstOutput();
+    } elif active_tool == "explain_error" {
+        return renderExplainOutput();
+    } elif active_tool == "list_examples" {
+        return renderExamplesOutput();
+    } elif active_tool == "get_example" {
+        return renderGetExampleOutput();
+    } elif active_tool == "search_docs" {
+        return renderSearchDocsOutput();
     }
     return
-        <div className="text-xs text-zinc-600">
-            Run a tool to see output here.
-        </div>;
-}
-
-impl DashboardPage.renderDock -> JsxElement {
-    is_ok: bool = (
-        "ok" in current_result and current_result["ok"]
-    )
-        if current_result
-        else False;
-    dot_cls: str = (
-        "bg-orange-400 animate-pulse"
-            if loading != ""
-            else ("bg-green-400" if is_ok else "bg-red-400")
-    )
-        if active_tool != ""
-        else "bg-zinc-700";
-    return
-        <div
-            className="w-1/2 flex flex-col rounded-2xl border border-white/[0.06] bg-zinc-900/60 overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.4)] min-h-0"
-        >
-            <div
-                className="flex-shrink-0 flex items-center justify-between border-b border-white/[0.05] bg-zinc-900/40 px-4 h-10"
-            >
-                <div className="flex items-center gap-2 min-w-0">
-                    <span
-                        className={"h-1.5 w-1.5 rounded-full flex-shrink-0 " + dot_cls}
-                    />
-                    <span className="text-[11px] text-zinc-500 truncate">
-                        {notice}
-                    </span>
-                </div>
-                <span
-                    className="text-[9px] uppercase tracking-[0.18em] text-zinc-700 flex-shrink-0 ml-3"
-                >
-                    Output
-                </span>
-            </div>
-            <div className="flex-1 overflow-y-auto p-5 min-h-0">
-                {active_tool == ""
-                and <div className="flex flex-col items-center justify-center h-full">
-                    <p
-                        className="text-[11px] text-zinc-700 text-center leading-relaxed"
-                    >
-                        Run a tool to see output here.
-                    </p>
-                </div>}{active_tool != "" and renderActiveOutput()}
-            </div>
-        </div>;
-}
-
-impl DashboardPage.renderPalette -> JsxElement {
-    all_categories: list = [
-        {
-            "label": "Analysis",
-            "tools": [
-                {"key": "validate_jac", "label": "Validate Jac", "kind": "code"},
-                {"key": "check_syntax", "label": "Check Syntax", "kind": "code"},
-                {"key": "lint_jac", "label": "Lint Jac", "kind": "code+opts"},
-                {"key": "get_ast_tree", "label": "Get AST Tree", "kind": "code"},
-                {"key": "get_ast_json", "label": "Get AST JSON", "kind": "code"},
-                {"key": "explain_error", "label": "Explain Error", "kind": "input"}
-            ]
-        },
-        {
-            "label": "Transform",
-            "tools": [
-                {"key": "format_jac", "label": "Format Jac", "kind": "code"},
-                {"key": "py_to_jac", "label": "Python to Jac", "kind": "input"},
-                {"key": "jac_to_py", "label": "Jac to Python", "kind": "code"},
-                {"key": "jac_to_js", "label": "Jac to JavaScript", "kind": "code"}
-            ]
-        },
-        {
-            "label": "Execution",
-            "tools": [
-                {"key": "run_jac", "label": "Run Jac", "kind": "code+opts"},
-                {"key": "graph_visualize", "label": "Visualize Graph", "kind": "code"}
-            ]
-        },
-        {
-            "label": "Documentation",
-            "tools": [
-                {"key": "search_docs", "label": "Search Docs", "kind": "input"},
-                {
-                    "key": "understand_jac_and_jaseci",
-                    "label": "Jac and Jaseci Guide",
-                    "kind": "instant"
-                },
-                {"key": "get_resource", "label": "Get Resource", "kind": "input"},
-                {"key": "list_examples", "label": "List Examples", "kind": "instant"},
-                {"key": "get_example", "label": "Get Example", "kind": "input"}
-            ]
-        },
-        {
-            "label": "Commands",
-            "tools": [
-                {"key": "list_commands", "label": "List Commands", "kind": "instant"},
-                {"key": "get_command", "label": "Get Command", "kind": "input"},
-                {"key": "execute_command", "label": "Execute Command", "kind": "input"}
-            ]
-        }
-    ];
-
-    q: str = palette_query.lower();
-
-    visible_categories: list = [];
-    for cat in all_categories {
-        filtered: list = [
-            t
-            for t in cat["tools"]
-            if q == "" or q in t["label"].lower() or q in t["key"].lower()
-        ];
-        if len(filtered) > 0 {
-            visible_categories = visible_categories + [
-                {"label": cat["label"], "tools": filtered}
-            ];
-        }
-    }
-
-    # Micro-form view (shown when a tool needing extra input is selected)
-    if palette_extra != "" {
-        tool_labels: dict = {
-            "explain_error": "Explain Error",
-            "py_to_jac": "Python to Jac",
-            "search_docs": "Search Docs",
-            "get_resource": "Get Resource",
-            "get_example": "Get Example",
-            "get_command": "Get Command",
-            "execute_command": "Execute Command",
-            "lint_jac": "Lint Jac",
-            "run_jac": "Run Jac"
-        };
-        tool_label: str = (
-            tool_labels[palette_extra]
-                if palette_extra in tool_labels
-                else palette_extra
-        );
-        pal_input_cls = "w-full bg-[#0a0a0b] border border-white/[0.08] rounded-xl px-4 py-3 text-sm text-zinc-200 placeholder-zinc-700 font-mono focus:outline-none focus:border-orange-500/40 focus:bg-zinc-900/60 transition";
-        return
-            <div
-                className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/70 backdrop-blur-md"
-                onClick={lambda { palette_open = False;palette_extra = "";}}
-            >
-                <div
-                    className="relative w-full max-w-[480px] mx-4 rounded-2xl border border-white/[0.1] bg-[#0f1012] shadow-[0_30px_80px_rgba(0,0,0,0.9)] overflow-hidden"
-                    onClick={lambda e: Any { e.stopPropagation();}}
-                >
-                    <div
-                        className="flex items-center justify-between px-4 py-3.5 border-b border-white/[0.06]"
-                    >
-                        <div className="flex items-center gap-2.5">
-                            <button
-                                onClick={lambda { palette_extra = "";palette_query = "";}}
-                                className="text-zinc-600 hover:text-zinc-300 transition text-sm leading-none"
-                            >
-                                back
-                            </button>
-                            <span className="text-zinc-800">
-                                /
-                            </span>
-                            <span className="text-sm font-medium text-zinc-200">
-                                {tool_label}
-                            </span>
-                        </div>
-                        <kbd
-                            className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-white/[0.1] text-zinc-600"
-                        >
-                            Esc
-                        </kbd>
-                    </div>
-                    <div className="px-4 py-4 space-y-3">
-                        {palette_extra == "explain_error"
-                        and <textarea
-                            autoFocus={True}
-                            value={error_message}
-                            onChange={lambda e: Any { error_message = e.target.value;}}
-                            rows={4}
-                            placeholder="Paste the error message here..."
-                            className={pal_input_cls + " resize-y"}
-                        />}{palette_extra == "py_to_jac"
-                        and <textarea
-                            autoFocus={True}
-                            value={python_input}
-                            onChange={lambda e: Any { python_input = e.target.value;}}
-                            rows={6}
-                            placeholder="# Paste Python code to convert..."
-                            className={pal_input_cls + " resize-y"}
-                        />}{palette_extra == "search_docs"
-                        and <input
-                            autoFocus={True}
-                            type="text"
-                            value={query}
-                            onChange={lambda e: Any { query = e.target.value;}}
-                            onKeyDown={lambda e: Any { if e.key == "Enter" {
-                                palette_open = False;
-                                palette_extra = "";
-                                runTool("search_docs", {"query": query});
-                            }}}
-                            placeholder="Search Jac documentation..."
-                            className={pal_input_cls}
-                        />}{palette_extra == "get_resource"
-                        and <input
-                            autoFocus={True}
-                            type="text"
-                            value={resource_uri}
-                            onChange={lambda e: Any { resource_uri = e.target.value;}}
-                            onKeyDown={lambda e: Any { if e.key == "Enter" {
-                                palette_open = False;
-                                palette_extra = "";
-                                runTool("get_resource", {"uri": resource_uri});
-                            }}}
-                            placeholder="jac://docs/osp"
-                            className={pal_input_cls}
-                        />}{palette_extra == "get_example"
-                        and <input
-                            autoFocus={True}
-                            type="text"
-                            value={example_name}
-                            onChange={lambda e: Any { example_name = e.target.value;}}
-                            onKeyDown={lambda e: Any { if e.key == "Enter" {
-                                palette_open = False;
-                                palette_extra = "";
-                                runTool("get_example", {"name": example_name});
-                            }}}
-                            placeholder="Category name..."
-                            className={pal_input_cls}
-                        />}{palette_extra == "get_command"
-                        and <input
-                            autoFocus={True}
-                            type="text"
-                            value={command_name}
-                            onChange={lambda e: Any { command_name = e.target.value;}}
-                            onKeyDown={lambda e: Any { if e.key == "Enter" {
-                                palette_open = False;
-                                palette_extra = "";
-                                runTool("get_command", {"name": command_name});
-                            }}}
-                            placeholder="Command name..."
-                            className={pal_input_cls}
-                        />}{palette_extra == "execute_command"
-                        and <div className="space-y-2.5">
-                            <input
-                                autoFocus={True}
-                                type="text"
-                                value={command_name}
-                                onChange={lambda e: Any { command_name = e.target.value;}}
-                                placeholder="Command name..."
-                                className={pal_input_cls}
-                            />
-                            <input
-                                type="text"
-                                value={command_target}
-                                onChange={lambda e: Any { command_target = e.target.value;}}
-                                placeholder="Target file (e.g. /path/to/main.jac)"
-                                className={pal_input_cls}
-                            />
-                            <input
-                                type="text"
-                                value={command_args}
-                                onChange={lambda e: Any { command_args = e.target.value;}}
-                                placeholder="Extra flags (e.g. --verbose)"
-                                className={pal_input_cls}
-                            />
-                        </div>}{palette_extra == "lint_jac"
-                        and <label
-                            className="flex items-center gap-3 px-1 py-1 text-sm text-zinc-400 cursor-pointer select-none"
-                        >
-                            <input
-                                type="checkbox"
-                                checked={lint_auto_fix}
-                                onChange={lambda e: Any { lint_auto_fix = e.target.checked;}}
-                                className="h-3.5 w-3.5 accent-orange-500"
-                            />
-                            Auto-fix violations
-                        </label>}{palette_extra == "run_jac"
-                        and <div className="space-y-2.5">
-                            <input
-                                autoFocus={True}
-                                type="text"
-                                value={run_entrypoint}
-                                onChange={lambda e: Any { run_entrypoint = e.target.value;}}
-                                onKeyDown={lambda e: Any { if e.key == "Enter" {
-                                    palette_open = False;
-                                    palette_extra = "";
-                                    runTool(
-                                        "run_jac",
-                                        {
-                                            "code": code,
-                                            "entrypoint": run_entrypoint,
-                                            "timeout": run_timeout
-                                        }
-                                    );
-                                }}}
-                                placeholder="Entrypoint function (optional)"
-                                className={pal_input_cls}
-                            />
-                            <div className="flex items-center gap-3">
-                                <span className="text-xs text-zinc-600 flex-shrink-0">
-                                    Timeout (s)
-                                </span>
-                                <input
-                                    type="number"
-                                    value={run_timeout}
-                                    onChange={lambda e: Any { run_timeout = int(
-                                        e.target.value
-                                    )
-                                        if e.target.value
-                                        else 30;}}
-                                    min={1}
-                                    max={120}
-                                    className={pal_input_cls + " w-28"}
-                                />
-                            </div>
-                        </div>}
-                    </div>
-                    <div className="px-4 pb-4 pt-1">
-                        {palette_extra == "explain_error"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "explain_error", {"error_message": error_message}
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Explain Error"}
-                        </button>}{palette_extra == "py_to_jac"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "py_to_jac", {"code": python_input}
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Convert to Jac"}
-                        </button>}{palette_extra == "search_docs"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "search_docs", {"query": query}
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Search Docs"}
-                        </button>}{palette_extra == "get_resource"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "get_resource", {"uri": resource_uri}
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Fetch Resource"}
-                        </button>}{palette_extra == "get_example"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "get_example", {"name": example_name}
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Get Example"}
-                        </button>}{palette_extra == "get_command"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "get_command", {"name": command_name}
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Get Command Details"}
-                        </button>}{palette_extra == "execute_command"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "execute_command",
-                                {
-                                    "command": command_name,
-                                    "args": (
-                                        [command_target] + [
-                                            a
-                                            for a in command_args.split(" ")
-                                            if a.strip()
-                                        ]
-                                    )
-                                        if command_target.strip()
-                                        else [
-                                            a
-                                            for a in command_args.split(" ")
-                                            if a.strip()
-                                        ]
-                                }
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Execute Command"}
-                        </button>}{palette_extra == "lint_jac"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "lint_jac", {"code": code, "auto_fix": lint_auto_fix}
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-orange-500 hover:bg-orange-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(255,122,24,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Lint Jac"}
-                        </button>}{palette_extra == "run_jac"
-                        and <button
-                            onClick={lambda { palette_open = False;palette_extra = "";runTool(
-                                "run_jac",
-                                {
-                                    "code": code,
-                                    "entrypoint": run_entrypoint,
-                                    "timeout": run_timeout
-                                }
-                            );}}
-                            disabled={loading != ""}
-                            className="w-full py-2.5 text-sm font-medium rounded-xl bg-green-500 hover:bg-green-400 text-white transition disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(74,222,128,0.2)]"
-                        >
-                            {"Running..." if loading != "" else "Run Jac"}
-                        </button>}
-                    </div>
-                </div>
-            </div>;
-    }
-
-    # Main search-list view
-    return
-        <div
-            className="fixed inset-0 z-50 flex items-start justify-center pt-[14vh] bg-black/70 backdrop-blur-md"
-            onClick={lambda { palette_open = False;palette_extra = "";}}
-        >
-            <div
-                className="relative w-full max-w-[560px] mx-4 rounded-2xl border border-white/[0.1] bg-[#0f1012] shadow-[0_30px_80px_rgba(0,0,0,0.9)] overflow-hidden"
-                onClick={lambda e: Any { e.stopPropagation();}}
-            >
-                <div
-                    className="flex items-center gap-3 px-4 py-3.5 border-b border-white/[0.06]"
-                >
-                    <span className="text-zinc-700 text-sm flex-shrink-0 font-mono">
-                        K
-                    </span>
-                    <input
-                        autoFocus={True}
-                        type="text"
-                        value={palette_query}
-                        onChange={lambda e: Any { palette_query = e.target.value;}}
-                        onKeyDown={lambda e: Any { if e.key == "Escape" {
-                            palette_open = False;
-                            palette_extra = "";
-                        }}}
-                        placeholder="Search tools..."
-                        className="flex-1 bg-transparent text-sm text-zinc-100 placeholder-zinc-600 outline-none"
-                    />
-                    <kbd
-                        className="text-[9px] font-mono px-1.5 py-0.5 rounded border border-white/[0.1] text-zinc-600 flex-shrink-0"
-                    >
-                        Esc
-                    </kbd>
-                </div>
-                <div className="overflow-y-auto max-h-[60vh] py-1">
-                    {len(visible_categories) == 0
-                    and <div className="px-4 py-10 text-center text-sm text-zinc-600">
-                        No tools match that query.
-                    </div>}{[
-                        <div key={cat["label"]}>
-                            <div
-                                className="px-4 pt-3 pb-1 text-[9px] uppercase tracking-[0.2em] text-zinc-700 font-semibold"
-                            >
-                                {cat["label"]}
-                            </div>
-                            {[
-                                <button
-                                    key={t["key"]}
-                                    onClick={lambda { if t["kind"] == "code" {
-                                        palette_open = False;
-                                        palette_extra = "";
-                                        runTool(t["key"], {"code": code});
-                                    } elif t["kind"] == "instant" {
-                                        palette_open = False;
-                                        palette_extra = "";
-                                        runTool(t["key"], {});
-                                    } else {
-                                        palette_extra = t["key"];
-                                    }  }}
-                                    disabled={loading != ""}
-                                    className="w-full flex items-center justify-between px-4 py-2.5 hover:bg-white/[0.04] text-left transition group disabled:opacity-40 disabled:cursor-not-allowed"
-                                >
-                                    <span
-                                        className="text-sm text-zinc-300 group-hover:text-white transition"
-                                    >
-                                        {t["label"]}
-                                    </span>
-                                    <span
-                                        className={"text-[10px] font-mono transition " + (
-                                            "text-orange-500/60 group-hover:text-orange-400"
-                                                if t["kind"] in [
-                                                    "input",
-                                                    "code+opts"
-                                                ]
-                                                else "text-zinc-700 group-hover:text-zinc-500"
-                                        )}
-                                    >
-                                        {(
-                                            "input required"
-                                                if t["kind"] == "input"
-                                                else (
-                                                    "options"
-                                                        if t["kind"] == "code+opts"
-                                                        else "runs on code"
-                                                )
-                                        )}
-                                    </span>
-                                </button> for t in cat["tools"]
-                            ]}
-                        </div> for cat in visible_categories
-                    ]}
-                </div>
-                <div
-                    className="px-4 py-2.5 border-t border-white/[0.05] flex items-center gap-2"
-                >
-                    <span className="text-[10px] text-zinc-700">
-                        19 tools
-                    </span>
-                    <span className="text-zinc-800">
-                        ·
-                    </span>
-                    <span className="text-[10px] text-zinc-700">
-                        Enter to select
-                    </span>
-                    <span className="text-zinc-800">
-                        ·
-                    </span>
-                    <span className="text-[10px] text-zinc-700">
-                        Esc to close
-                    </span>
-                </div>
-            </div>
-        </div>;
+        <div className="text-xs text-zinc-600">Run a tool to see output here.</div>;
 }

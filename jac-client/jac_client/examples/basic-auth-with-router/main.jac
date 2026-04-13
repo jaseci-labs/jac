@@ -222,9 +222,7 @@ cl {
                         }}
                     >
                         Need an account?
-                        <Link to="/signup">
-                            Sign up
-                        </Link>
+                        <Link to="/signup">Sign up</Link>
                     </p>
                 </div>
             </div>;
@@ -346,9 +344,7 @@ cl {
                         }}
                     >
                         Have an account?
-                        <Link to="/login">
-                            Login
-                        </Link>
+                        <Link to="/login">Login</Link>
                     </p>
                 </div>
             </div>;

@@ -773,10 +773,7 @@ This determines whether hasattr is being used as a guard before accessing the at
 (safe to convert) vs a standalone existence check (not safe to convert).
 """
 impl JacAutoLintPass._bool_expr_has_matching_access(
-    parent: uni.BoolExpr,
-    hasattr_node: uni.FuncCall,
-    obj_expr: uni.Expr,
-    attr_name: str
+    parent: uni.BoolExpr, hasattr_node: uni.FuncCall, obj_expr: uni.Expr, attr_name: str
 ) -> bool {
     for val in parent.values {
         if val is hasattr_node {
@@ -821,7 +818,16 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
     obj_expr = nd.params[0];
     attr_expr = nd.params[1];
     attr_name = self._extract_string_literal_value(attr_expr);
+    # Since BoolExpr operands and IfElseExpr branches are now CfgExpr nodes,
+    # the FuncCall's direct parent is the CfgExpr wrapper, not the enclosing
+    # BoolExpr/IfElseExpr. Step through the wrapper to reach the semantic
+    # parent so the hasattr→obj?.attr rewrite still fires.
+    cfg_wrapper: uni.CfgExpr | None = None;
     parent = nd.parent;
+    if isinstance(parent, uni.CfgExpr) {
+        cfg_wrapper = parent;
+        parent = parent.parent;
+    }
     if parent is None {
         return;
     }
@@ -841,6 +847,19 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     if not self.emit(W3007, node_override=nd) {
+        return;
+    }
+    if cfg_wrapper is not None {
+        replacement.parent = cfg_wrapper;
+        cfg_wrapper.expr = replacement;
+        cfg_wrapper.kid = [replacement];
+        if isinstance(parent, uni.IfElseExpr)
+        and parent.condition is cfg_wrapper
+        and attr_name is not None
+        and isinstance(parent.value.expr, uni.AtomTrailer)
+        and self._is_matching_attr_access(parent.value.expr, obj_expr, attr_name) {
+            self._make_null_ok(parent.value.expr);
+        }
         return;
     }
     replacement.parent = parent;
@@ -1034,7 +1053,9 @@ This only applies when the value and condition are identical expressions.
 This implementation avoids calling normalize() to preserve comment associations.
 """
 impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> bool {
-    if not self._exprs_are_identical(if_else_node.value, if_else_node.condition) {
+    if not self._exprs_are_identical(
+        if_else_node.value.expr, if_else_node.condition.expr
+    ) {
         return False;
     }
     parent = if_else_node.parent;
@@ -1044,8 +1065,8 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
     if not self.emit(W3008, node_override=if_else_node) {
         return False;
     }
-    if isinstance(if_else_node.else_value, uni.Null) {
-        replacement = if_else_node.value;
+    if isinstance(if_else_node.else_value.expr, uni.Null) {
+        replacement: uni.Expr = if_else_node.value.expr;
         replacement.parent = parent;
     } else {
         or_token = uni.Token(
@@ -1059,10 +1080,14 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
             pos_start=0,
             pos_end=2
         );
+        cfg_val = uni.CfgExpr(
+            expr=if_else_node.value.expr, kid=[if_else_node.value.expr]
+        );
+        cfg_else = uni.CfgExpr(
+            expr=if_else_node.else_value.expr, kid=[if_else_node.else_value.expr]
+        );
         replacement = uni.BoolExpr(
-            op=or_token,
-            values=[if_else_node.value, if_else_node.else_value],
-            kid=[if_else_node.value, or_token, if_else_node.else_value]
+            op=or_token, values=[cfg_val, cfg_else], kid=[cfg_val, or_token, cfg_else]
         );
         replacement.parent = parent;
     }
@@ -1082,18 +1107,18 @@ impl JacAutoLintPass._convert_ternary_to_or(if_else_node: uni.IfElseExpr) -> boo
             parent.value = replacement;
         }
     } elif isinstance(parent, uni.IfElseExpr) {
-        if parent.value is if_else_node {
-            parent.value = replacement;
-        } elif parent.condition is if_else_node {
-            parent.condition = replacement;
-        } elif parent.else_value is if_else_node {
-            parent.else_value = replacement;
+        if parent.value.expr is if_else_node {
+            parent.value = uni.CfgExpr(expr=replacement, kid=[replacement]);
+        } elif parent.condition.expr is if_else_node {
+            parent.condition = uni.CfgExpr(expr=replacement, kid=[replacement]);
+        } elif parent.else_value.expr is if_else_node {
+            parent.else_value = uni.CfgExpr(expr=replacement, kid=[replacement]);
         }
     } elif isinstance(parent, uni.BoolExpr) {
-        new_values: list[uni.Expr] = [];
+        new_values: list[uni.CfgExpr] = [];
         for val in parent.values {
-            if val is if_else_node {
-                new_values.append(replacement);
+            if val.expr is if_else_node {
+                new_values.append(uni.CfgExpr(expr=replacement, kid=[replacement]));
             } else {
                 new_values.append(val);
             }
@@ -1535,51 +1560,6 @@ impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | Non
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # New lint checks (W3020-W3036)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""Build a structural key from a body for comparison (identical branch check)."""
-impl JacAutoLintPass._body_to_key(body: list) -> str {
-    parts: list[str] = [];
-    for stmt in body {
-        if isinstance(stmt, uni.Semi) {
-            continue;
-        }
-        parts.append(type(stmt).__name__);
-        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.FuncCall) {
-            if isinstance(stmt.expr.target, uni.Name) {
-                parts.append(stmt.expr.target.value);
-            }
-            if stmt.expr.params {
-                for p in stmt.expr.params {
-                    if isinstance(p, uni.String) {
-                        parts.append(p.value);
-                    } elif isinstance(p, uni.Name) {
-                        parts.append(p.value);
-                    } elif isinstance(p, uni.Int) {
-                        parts.append(p.value);
-                    }
-                }
-            }
-        } elif isinstance(stmt, uni.Assignment) {
-            for t in stmt.target {
-                if isinstance(t, uni.Name) {
-                    parts.append(t.value);
-                }
-            }
-            if stmt.value and isinstance(stmt.value, uni.Name) {
-                parts.append(stmt.value.value);
-            }
-        } elif isinstance(stmt, uni.ReturnStmt) {
-            if stmt.expr {
-                if isinstance(stmt.expr, uni.Bool) {
-                    parts.append(stmt.expr.value);
-                } elif isinstance(stmt.expr, uni.Name) {
-                    parts.append(stmt.expr.value);
-                }
-            }
-        }
-    }
-    return "|".join(parts);
-}
-
 """W3020: Warn on unnecessary 'pass' in a body that has other statements."""
 impl JacAutoLintPass._check_unnecessary_pass(body: list, `node: uni.UniNode) -> None {
     if self._is_suppressed(W3020) {
@@ -1727,9 +1707,29 @@ impl JacAutoLintPass._check_identical_branches(nd: uni.IfStmt) -> None {
     if nd.else_body is None or not isinstance(nd.else_body, uni.ElseStmt) {
         return;
     }
-    if_key = self._body_to_key(list(nd.body));
-    else_key = self._body_to_key(list(nd.else_body.body));
-    if if_key and else_key and if_key == else_key {
+    if_body = [
+        s
+        for s in nd.body
+        if not isinstance(s, uni.Semi)
+    ];
+    else_body = [
+        s
+        for s in nd.else_body.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if not if_body or len(if_body) != len(else_body) {
+        return;
+    }
+    # Cheap guard: bail if top-level statement kinds differ.
+    for (a, b) in zip(if_body, else_body) {
+        if type(a) is not type(b) {
+            return;
+        }
+    }
+    # Definitive comparison: canonical unparse of each branch must match.
+    if_src = "".join(s.unparse() for s in if_body);
+    else_src = "".join(s.unparse() for s in else_body);
+    if if_src == else_src {
         self.emit(W3025, node_override=nd);
     }
 }

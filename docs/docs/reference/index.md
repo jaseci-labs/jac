@@ -86,7 +86,7 @@ The `jac` command is your primary interface to the Jac toolchain. For the full r
 |---------|-------------|
 | `jac py2jac <file>` | Convert Python to Jac |
 | `jac jac2py <file>` | Convert Jac to Python |
-| `jac js <file>` | Compile to JavaScript |
+| `jac jac2js <file>` | Compile to JavaScript |
 
 ### Project Commands
 

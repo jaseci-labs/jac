@@ -10,43 +10,47 @@ def:pub OAuthCallback -> JsxElement {
 
     useEffect(
         lambda() {
-        # Async function to handle SSO callback
-        async def handleSSOCallback -> None {
-            print("Handling SSO Callback...", window.location.href);
+            # Async function to handle SSO callback
+            async def handleSSOCallback -> None {
+                print("Handling SSO Callback...", window.location.href);
 
-            # Parse query parameters for token (backend redirects here after OAuth)
-            searchParams = Reflect.construct(URLSearchParams, [window.location.search]);
-            print("OAuth Callback Params:", searchParams);
-            token = searchParams.get("token") or "";
-            errorParam = searchParams.get("error") or "";
+                # Parse query parameters for token (backend redirects here after OAuth)
+                searchParams = Reflect.construct(
+                    URLSearchParams, [window.location.search]
+                );
+                print("OAuth Callback Params:", searchParams);
+                token = searchParams.get("token") or "";
+                errorParam = searchParams.get("error") or "";
 
-            if errorParam {
-                print('OAuth error:', errorParam);
-                # Redirect to login with error message
-                navigate('/login?error=' + encodeURIComponent(errorParam));
-                return;
-            }
-
-            if token {
-                # Store the token
-                localStorage.setItem('auth_token', token);
-                # Decode token to get user info for logging
-                try {
-                    payload = JSON.parse(atob(token.split('.')[1]));
-                    print('Login successful for user:', payload.username);
-                } except e {
-                    print('Failed to decode token:', e);
+                if errorParam {
+                    print('OAuth error:', errorParam);
+                    # Redirect to login with error message
+                    navigate('/login?error=' + encodeURIComponent(errorParam));
+                    return;
                 }
-                # Full page reload to /dashboard so AuthProvider validates token before Protected route checks
-                # This ensures user state is loaded before the Protected component renders
-                window.location.href = '/dashboard';
-            } else {
-                # No token, something went wrong
-                navigate('/login?error=no_token');
+
+                if token {
+                    # Store the token
+                    localStorage.setItem('auth_token', token);
+                    # Decode token to get user info for logging
+                    try {
+                        payload = JSON.parse(atob(token.split('.')[1]));
+                        print('Login successful for user:', payload.username);
+                    } except e {
+                        print('Failed to decode token:', e);
+                    }
+                    # Full page reload to /dashboard so AuthProvider validates token before Protected route checks
+                    # This ensures user state is loaded before the Protected component renders
+                    window.location.href = '/dashboard';
+                } else {
+                    # No token, something went wrong
+                    navigate('/login?error=no_token');
+                }
             }
-        } ;
-        # Call the async function
-        handleSSOCallback();},
+            ;
+            # Call the async function
+            handleSSOCallback();
+        },
         [navigate]
     );
 
@@ -60,12 +64,8 @@ def:pub OAuthCallback -> JsxElement {
             }}
         >
             <div style={{textAlign: 'center'}}>
-                <h2>
-                    Processing authentication...
-                </h2>
-                <p>
-                    Please wait while we complete your login.
-                </p>
+                <h2>Processing authentication...</h2>
+                <p>Please wait while we complete your login.</p>
             </div>
         </div>
     );

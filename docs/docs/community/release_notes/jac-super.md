@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-super 0.1.10 (Unreleased)
 
+- **Fix: `JacSuperConsole.warning` Now Writes to Stderr**: `warning()` was incorrectly using `self._console` (stdout) while `error()` already used `_console_stderr`. Warnings now go to stderr as intended, so they no longer corrupt piped command output.
+
 ## jac-super 0.1.9 (Latest Release)
 
 - 1 small refactor/change.

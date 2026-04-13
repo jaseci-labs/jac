@@ -42,6 +42,110 @@ impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
+"""Type an LHS Name receives from its enclosing assignment, or None.
+
+Flat `x = e` returns the type of `e`. Destructure `(x, _) = e` (and
+nested) descends the RHS tuple's `type_args` by positional path.
+
+None is returned — callers keep the declared type — for the declaration
+site itself (its cached `.type` doubles as the declared-type lookup for
+`_get_type_of_symbol`), augmented assignments, member assignments,
+starred slots, and RHS shapes that aren't a concrete positional tuple.
+"""
+impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None {
+    import from jaclang.compiler.symbol_utils { find_destructure_index_path }
+    # Declaration site: leave the cached declared type intact.
+    if expr.sym is not None and expr.sym.decl is expr {
+        return None;
+    }
+    # Peel destructure / paren wrappers to find the enclosing Assignment.
+    parent = expr.parent;
+    lhs_root: uni.UniNode = expr;
+    while isinstance(parent, (uni.TupleVal, uni.ListVal, uni.AtomUnit)) {
+        lhs_root = parent;
+        parent = parent.parent;
+    }
+    if not isinstance(parent, uni.Assignment) or parent.value is None {
+        return None;
+    }
+    assignment = parent;
+    # `x += e` evaluates to `x <op> e` — defer to the declared type.
+    if assignment.aug_op is not None {
+        return None;
+    }
+    # Identity check — a TupleVal can appear on both sides, `in` uses equality.
+    target_hit = False;
+    for t in assignment.target {
+        if t is lhs_root {
+            target_hit = True;
+            break;
+        }
+    }
+    if not target_hit {
+        return None;
+    }
+    # Flat: the Name is the target.
+    if lhs_root is expr {
+        return self.get_type_of_expression(assignment.value);
+    }
+    # Destructure: descend `type_args` by positional path.
+    path = find_destructure_index_path(lhs_root, expr.value);
+    if path is None or len(path) == 0 {
+        return None;
+    }
+    return self._extract_tuple_element_type_path(
+        self.get_type_of_expression(assignment.value), path
+    );
+}
+
+"""Extract the element type at `idx` from a concrete tuple-like class.
+
+Handles regular `tuple[T1, T2, ...]` via `private.type_args` and
+NamedTuple via `is_namedtuple()` + `get_has_vars()`. Returns the
+element as an instance, or None when `tuple_type` isn't a concrete
+tuple with a valid slot at `idx`.
+"""
+impl TypeEvaluator._extract_tuple_element_type(
+    tuple_type: TypeBase, idx: int
+) -> TypeBase | None {
+    if not isinstance(tuple_type, types.ClassType) or idx < 0 {
+        return None;
+    }
+    cls: types.ClassType = tuple_type;
+    if cls.is_namedtuple() {
+        has_vars = cls.shared.symbol_table.get_has_vars();
+        if idx >= len(has_vars) {
+            return None;
+        }
+        field = has_vars[idx];
+        if field.type_tag is None {
+            return None;
+        }
+        return self._convert_to_instance(
+            self.get_type_of_expression(field.type_tag.tag)
+        );
+    }
+    if cls.private.type_args and idx < len(cls.private.type_args) {
+        return self._convert_to_instance(cls.private.type_args[idx]);
+    }
+    return None;
+}
+
+"""Walk `tuple_type` through a positional index path and return the
+element type at the leaf, or None if any step fails."""
+impl TypeEvaluator._extract_tuple_element_type_path(
+    tuple_type: TypeBase, path: list[int]
+) -> TypeBase | None {
+    cursor: TypeBase | None = tuple_type;
+    for idx in path {
+        if cursor is None {
+            return None;
+        }
+        cursor = self._extract_tuple_element_type(cursor, idx);
+    }
+    return cursor;
+}
+
 """Return the effective type of the float."""
 impl TypeEvaluator.get_type_of_float(nd: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
@@ -77,9 +181,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         func_type_params = [
             types.TypeVarType(
                 name=tp.sym_name,
-                bound=self._convert_to_instance(
-                    self.get_type_of_expression(tp.bound)
-                )
+                bound=self._convert_to_instance(self.get_type_of_expression(tp.bound))
                     if tp.bound
                     else None
             ) for tp in node_.type_params
@@ -257,7 +359,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
     }
     cls_type = types.ClassType(
-        shared=types.ClassType.ClassDetailsShared(
+        _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=type_params,
@@ -270,7 +372,6 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),
-        private=None,
         flags=types.TypeFlags.Instantiable,
     );
     # Compute the MRO for the class.
@@ -309,7 +410,7 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
         parent_module.loc.mod_path if parent_module and parent_module.loc else ""
     );
     cls_type = types.ClassType(
-        shared=types.ClassType.ClassDetailsShared(
+        _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=None,
@@ -321,7 +422,6 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),
-        private=None,
         flags=types.TypeFlags.Instantiable,
     );
     type_utils.compute_mro_linearization(cls_type);

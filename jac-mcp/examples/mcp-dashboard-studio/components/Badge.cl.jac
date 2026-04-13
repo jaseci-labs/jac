@@ -19,7 +19,5 @@ def:pub Badge(label: str, variant: str = "default") -> JsxElement {
     cls = "inline-block px-2 py-0.5 rounded text-xs font-medium " + vr;
 
     return
-        <span className={cls}>
-            {label}
-        </span>;
+        <span className={cls}>{label}</span>;
 }

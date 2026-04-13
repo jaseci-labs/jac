@@ -338,7 +338,12 @@ cl {
                             )}
                         </p>
                         <button
-                            onClick={lambda { isSignup = not isSignup;error = "";username = "";password = "";}}
+                            onClick={lambda {
+                                isSignup = not isSignup;
+                                error = "";
+                                username = "";
+                                password = "";
+                            }}
                             style={{
                                 "background": "none",
                                 "border": "none",

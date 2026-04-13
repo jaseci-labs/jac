@@ -81,6 +81,11 @@ import from jaclang.jac0core.diagnostics {
     E1097,
     E1098,
     E1099,
+    E1100,
+    E1101,
+    E1102,
+    E1103,
+    E1104,
     W1100
 }
 
@@ -122,6 +127,8 @@ obj PrefetchedTypes {
         node_class: types.ClassType | None = None,
         walker_class: types.ClassType | None = None,
         jsx_element_class: types.ClassType | None = None,
+        # Intrinsic element prop types (from dom_types.pyi)
+        html_common_props_class: types.ClassType | None = None,
         # Fixed-width numeric types
         i8_class: types.ClassType | None = None,
         u8_class: types.ClassType | None = None,
@@ -222,9 +229,9 @@ obj TypeEvaluator {
         _pass: object | None = None,
         builtins_module: uni.Module | None = None,
         # Type narrowing (CFG-based only — no scope stack)
-        _narrowing_cache: dict[tuple, types.TypeBase | None] = {},
-        _narrowing_in_progress: set[int] by postinit,
-        _narrowing_in_progress_keys: set[str] by postinit,
+        _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
+        _flow_pending_symbols: set[int] by postinit,
+        _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
         # Stub modules - initialized in postinit
         typing_module: uni.Module by postinit,
@@ -307,9 +314,21 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
-    def _is_symbol_property(symbol: uni.Symbol) -> bool;
-    # Property type utilities
+    # Shared classifier: single decorator walk, returns the property kind.
+    def _classify_property_symbol(symbol: uni.Symbol) -> type_utils.PropertyWriteKind;
+    # Property type utilities — both delegate to _classify_property_symbol.
     def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
+    # Classifies a property symbol's writability for assignment checking.
+    # Returns a PropertyWriteResult with kind:
+    #   NOT_PROPERTY → normal field, caller should fall through
+    #   READ_ONLY    → @property with no setter, assignment is illegal
+    #   WRITABLE     → @cached_property or @property+setter, write_type set
+    def get_property_write_type(symbol: uni.Symbol) -> type_utils.PropertyWriteResult;
+    # Extract setter value-param type from a @name.setter overload symbol.
+    def _get_setter_value_type(
+        symbol: uni.Symbol, prop_name: str
+    ) -> (TypeBase | None);
+
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol
@@ -351,10 +370,25 @@ obj TypeEvaluator {
         scope: uni.Ability | uni.LambdaExpr
     ) -> TypeBase | None;
 
+    def _infer_lambda_block_return_type(body: list[uni.CodeBlockStmt]) -> TypeBase;
+    def _collect_return_types(
+        stmts: list[uni.CodeBlockStmt], out: list[TypeBase]
+    ) -> bool;
+
+    def _collect_if_else_returns(
+        else_body: uni.ElseIf | uni.ElseStmt | None, out: list[TypeBase]
+    ) -> bool;
+
     def _get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None;
     def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
+    def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
+    def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
+    def _extract_tuple_element_type_path(
+        tuple_type: TypeBase, path: list[int]
+    ) -> TypeBase | None;
+
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
@@ -432,6 +466,7 @@ obj TypeEvaluator {
         expr: uni.FuncCall, method_type: TypeBase
     ) -> types.FunctionType | None;
 
+    def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
@@ -473,9 +508,29 @@ obj TypeEvaluator {
 
     def _has_meaningful_params(method: types.FunctionType) -> bool;
     def _collect_type_var_bindings(
-        method: types.FunctionType, expr: uni.FuncCall
+        method: types.FunctionType,
+        expr: uni.FuncCall,
+        is_unbound_call: bool = False,
+        is_constructor_call: bool = False
     ) -> dict[str, TypeBase];
 
+    # -------------------------------------------------------------------------
+    # JSX prop validation
+    # -------------------------------------------------------------------------
+    def _validate_jsx_props(
+        expr: uni.JsxElement, expected_type: TypeBase | None = None
+    ) -> None;
+
+    def _resolve_jsx_component_type(
+        name: uni.JsxElementName
+    ) -> types.FunctionType | None;
+
+    def _get_intrinsic_props_type(tag_name: str) -> types.ClassType | None;
+    def _validate_component_jsx_props(
+        expr: uni.JsxElement, component_name: str
+    ) -> None;
+
+    def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;
     # -------------------------------------------------------------------------
     # TypeVar scope validation (Pyright: validateTypeVarUsage)
     # -------------------------------------------------------------------------
@@ -486,7 +541,10 @@ obj TypeEvaluator {
         expr: uni.Expr, operand_type: types.TypeBase, operation: str
     ) -> None;
 
-    def _get_enclosing_class_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
+    def _get_enclosing_class_type_params(
+        node_: uni.UniNode
+    ) -> list[types.TypeVarType];
+
     def _get_function_type_params(func: uni.Ability) -> list[types.TypeVarType];
     def _get_outer_scope_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
     # -------------------------------------------------------------------------
@@ -500,7 +558,7 @@ obj TypeEvaluator {
     # -------------------------------------------------------------------------
 
     # --- CFG-based narrowing (backward traversal) ---
-    def get_narrowing_key(expr: uni.Expr) -> str | None;
+    def create_key_for_reference(expr: uni.Expr) -> str | None;
     def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
     def classify_condition(condition: uni.Expr) -> ConditionInfo | None;
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
@@ -508,12 +566,8 @@ obj TypeEvaluator {
         expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
     ) -> TypeBase | None;
 
-    def _narrow_via_chain(
-        target: NarrowingTarget, from_expr: uni.Expr, base_type: TypeBase | None
-    ) -> TypeBase | None;
-
-    def _compute_narrowed_at(
-        target: NarrowingTarget, stmt: uni.UniCFGNode, visited: set
+    def _get_type_from_flow_node(
+        target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;

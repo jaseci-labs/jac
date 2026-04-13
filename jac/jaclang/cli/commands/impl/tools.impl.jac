@@ -246,7 +246,9 @@ impl gen_jir_registry(verify: bool = False) -> int {
 
     # Run jac format to get canonical output (formatter may expand long lines)
     try {
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.jac', delete=False) as tmp {
+        with tempfile.NamedTemporaryFile(
+            mode='w', suffix='.jac', delete=False
+        ) as tmp {
             tmp.write(content);
             tmp_path = tmp.name;
         }

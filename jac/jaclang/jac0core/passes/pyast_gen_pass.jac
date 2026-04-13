@@ -131,6 +131,29 @@ ctypes.
         """
     def _gen_native_interop_stubs(nd: uni.NativeBlock) -> None;
 
+    """Generate Python HTTP client stubs for sv-to-sv microservice imports.
+
+        For each function imported via an sv import from another server module,
+        generates a Python function that routes the call over HTTP via
+        jaclang.runtimelib.sv_client. For each typed object imported, generates
+        a lightweight stub class with from_wire / to_wire reconstruction.
+        Returns True if the import was handled (caller should not emit a normal
+        Python import), False otherwise.
+        """
+    def _generate_sv_to_sv_stubs(nd: uni.Import) -> bool;
+
+    """Build a Python source string for an sv-to-sv function stub."""
+    def _gen_py_sv_func_stub(
+        local_name: str,
+        func_name: str,
+        module_name: str,
+        binding: object,
+        boundary_types: dict
+    ) -> str;
+
+    """Build a Python source string for a boundary type stub class."""
+    def _gen_py_boundary_stub_class(class_name: str, info: object) -> str;
+
     """Return the object from jaclib as ast node based on the import config."""
     def jaclib_obj(obj_name: str) -> ast3.Name;
 
@@ -228,6 +251,15 @@ variables
     """Check if a name usage is in a type annotation context."""
     def _is_type_annotation_use(nd: uni.UniNode) -> bool;
 
+    """Resolve Self to the appropriate Python construct based on context."""
+    def _resolve_self_type(nd: uni.Name) -> (ast3.expr | None);
+
+    """Check if a node is in a type annotation context."""
+    def _is_in_type_annotation(nd: uni.UniNode) -> bool;
+
+    """Check if a node is or is a descendant of another node."""
+    def _is_descendant_of(nd: uni.UniNode, ancestor: uni.UniNode) -> bool;
+
     """Check if an import has a # jac:runtime annotation."""
     def _has_runtime_annotation(nd: uni.Module, imp: uni.Import) -> bool;
 
@@ -315,6 +347,7 @@ variables
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def translate_jac_bin_op(nd: uni.BinaryExpr) -> list[ast3.AST];
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
+    def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def _remove_lambda_param_annotations(signature: uni.FuncSignature) -> None;

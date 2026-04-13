@@ -814,7 +814,9 @@ impl NativeStrEmitter.emit_rfind(
     loop_bb = func.append_basic_block(name="rfind.loop");
     found_bb = func.append_basic_block(name="rfind.found");
     done_bb = func.append_basic_block(name="rfind.done");
-    is_empty = b.icmp_unsigned("==", sub_len, ir.Constant(i64, 0), name="rfind.isempty");
+    is_empty = b.icmp_unsigned(
+        "==", sub_len, ir.Constant(i64, 0), name="rfind.isempty"
+    );
     b.cbranch(is_empty, empty_bb, search_bb);
     b.position_at_start(empty_bb);
     b.branch(done_bb);
@@ -4124,7 +4126,9 @@ impl NativeSetEmitter.emit_union(
     len1_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="su.l1.ptr"
     );
-    e1_ptr = b.gep(target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="su.e1.ptr");
+    e1_ptr = b.gep(
+        target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="su.e1.ptr"
+    );
     len1 = b.load(len1_ptr, name="su.len1");
     elems1 = b.load(e1_ptr, name="su.elems1");
     func = b.basic_block.function;
@@ -5176,7 +5180,9 @@ impl NativeBuiltinEmitter.emit_round(
     b = get_builder(p);
     i64 = ir.IntType(64);
     if isinstance(arg_val.type, ir.DoubleType) {
-        round_fn = p._get_or_declare_extern("round", ir.DoubleType(), [ir.DoubleType()]);
+        round_fn = p._get_or_declare_extern(
+            "round", ir.DoubleType(), [ir.DoubleType()]
+        );
         rounded = b.call(round_fn, [arg_val], name="round.f");
         return b.fptosi(rounded, i64, name="round.result");
     }

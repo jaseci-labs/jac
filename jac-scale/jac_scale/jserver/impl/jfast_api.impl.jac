@@ -70,10 +70,7 @@ class ConsoleLogHandler(logging.Handler) {
 If the specified port is in use, tries subsequent ports up to max_retries times.
 """
 impl JFastApiServer.run_server(
-    self: JFastApiServer,
-    host: str = '0.0.0.0',
-    port: int = 8000,
-    max_retries: int = 10
+    self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000, max_retries: int = 10
 ) -> None {
     import from jaclang.cli.console { console }
     app = self.create_server();
@@ -356,7 +353,9 @@ impl JFastApiServer._create_endpoint_function(
                 }
                 return async_endpoint_wrapper;
             } else {
-                def sync_endpoint_wrapper(__jac_request__: Request) -> EndpointResponse {
+                def sync_endpoint_wrapper(
+                    __jac_request__: Request
+                ) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
                         query_params = dict(__jac_request__.query_params);

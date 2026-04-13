@@ -39,9 +39,6 @@ impl _typebase_to_tag(t: Any) -> (str | None) {
             NeverType as _NeverType
         }
         if isinstance(t, _ClassType) {
-            if not t.shared {
-                return None;
-            }
             class_name = t.shared.class_name;
             if class_name in _prim_names {
                 return class_name;
@@ -49,7 +46,7 @@ impl _typebase_to_tag(t: Any) -> (str | None) {
             if class_name in ("NoneType", "None") {
                 return "void";
             }
-            type_args = (t.private.type_args if t.private else None) or [];
+            type_args = t.private.type_args or [];
             if class_name == "list" and len(type_args) == 1 {
                 elem_tag = _typebase_to_tag(type_args[0]);
                 if elem_tag and elem_tag in _prim_names {
@@ -187,7 +184,5 @@ impl UniTreeEnrichPass.enter_module_code(nd: uni.ModuleCode) -> None {
 }
 
 impl UniTreeEnrichPass.exit_module(nd: uni.Module) -> None {
-    nd.gen.native_compat = (
-        not self._native_has_disqualifier and self._native_has_entry
-    );
+    nd.gen.native_compat = not self._native_has_disqualifier and self._native_has_entry;
 }

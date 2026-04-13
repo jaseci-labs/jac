@@ -19,9 +19,7 @@ cl {
         value = {"message": message, "alertType": alertType, "showAlert": showAlert};
 
         return
-            <AlertContext.Provider value={value}>
-                {children}
-            </AlertContext.Provider>;
+            <AlertContext.Provider value={value}>{children}</AlertContext.Provider>;
     }
 
     def:pub useAlert -> dict {
