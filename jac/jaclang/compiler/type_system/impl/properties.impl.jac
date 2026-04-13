@@ -16,14 +16,10 @@ impl is_cached_property_decorator_type(decorator_type: types.TypeBase) -> bool {
     if not isinstance(decorator_type, types.ClassType) {
         return False;
     }
-    shared = decorator_type._shared;
-    if shared is None {
-        return False;
-    }
-    if shared.class_name == "cached_property" and shared.is_from_stdlib_stub {
-        return True;
-    }
-    return False;
+    return (
+        decorator_type.shared.class_name == "cached_property"
+        and decorator_type.shared.is_from_stdlib_stub
+    );
 }
 
 # =============================================================================
@@ -37,14 +33,12 @@ impl create_property(
     new_private.is_property_class = True;
     new_private.fget_info = fget;
 
-    src_shared = class_type._shared if class_type is not None else None;
-    if src_shared is None {
+    if class_type is None {
         # Detached property — no enclosing class context available.
         return types.ClassType(private=new_private, flags=types.TypeFlags.Instance);
     }
-
     return types.ClassType(
-        _shared=src_shared, private=new_private, flags=types.TypeFlags.Instance
+        _shared=class_type.shared, private=new_private, flags=types.TypeFlags.Instance
     );
 }
 
