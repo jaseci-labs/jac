@@ -278,7 +278,7 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 | `tuple` | Immutable sequence | `(1, 2, 3)` |
 | `set` | Unique values | `{1, 2, 3}` |
 | `dict` | Key-value mapping | `{"a": 1}` |
-| `any` | Any type | -- |
+| `Any` | Any type | -- |
 | `type` | Type object | -- |
 | `None` | Null value | `None` |
 
@@ -346,13 +346,13 @@ Jac will support generic type parameters using Python-style syntax (coming soon)
 #     has value: T;
 # }
 
-# For now, use `any` as a placeholder:
-def first(items: list) -> any {
+# For now, use `Any` as a placeholder:
+def first(items: list) -> Any {
     return items[0];
 }
 
 obj Container {
-    has value: any;
+    has value: Any;
 }
 ```
 
@@ -1495,7 +1495,7 @@ obj Point {
     has y: int = 0;
 }
 
-def example(value: any) {
+def example(value: Any) {
     match value {
         case 0:
             print("zero");
@@ -1521,7 +1521,7 @@ def example(value: any) {
 **Advanced Patterns:**
 
 ```jac
-def example(data: any) {
+def example(data: Any) {
     match data {
         case [1, *middle, 5]:              # Spread: capture remainder
             print(f"Middle: {middle}");
@@ -1642,11 +1642,11 @@ def example(input: str) {
 **Multiple exception types:**
 
 ```jac
-def process(data: any) -> None {
+def process(data: Any) -> None {
     print(data);
 }
 
-def example(data: any) {
+def example(data: Any) {
     try {
         process(data);
     } except (TypeError, ValueError) as e {
@@ -1790,7 +1790,7 @@ def fibonacci(limit: int) -> int {
 **yield from (delegation):**
 
 ```jac
-def flatten(nested: list) -> any {
+def flatten(nested: list) -> Any {
     for item in nested {
         if isinstance(item, list) {
             yield from flatten(item);  # Delegate to sub-generator

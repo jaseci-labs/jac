@@ -480,7 +480,7 @@ cl {
 
     # Auth Provider component
     def:pub AuthProvider(props: dict) -> JsxElement {
-        has user: any = None;
+        has user: Any = None;
         has loading: bool = True;
 
         can with entry {

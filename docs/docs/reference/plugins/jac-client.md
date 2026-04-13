@@ -496,8 +496,8 @@ Create reusable state logic by defining functions that use `has`:
 cl {
     import from react { useEffect }
 
-    def use_local_storage(key: str, initial_value: any) -> tuple {
-        has value: any = initial_value;
+    def use_local_storage(key: str, initial_value: Any) -> tuple {
+        has value: Any = initial_value;
 
         useEffect(lambda -> None {
             stored = localStorage.getItem(key);
@@ -510,7 +510,7 @@ cl {
             localStorage.setItem(key, JSON.stringify(value));
         }, [value]);
 
-        return (value, lambda v: any -> None { value = v; });
+        return (value, lambda v: Any -> None { value = v; });
     }
 
     def:pub Settings() -> JsxElement {
@@ -630,7 +630,7 @@ Wrap spawn calls in try/catch and track loading/error state:
 ```jac
 cl {
     def:pub SafeDataView() -> JsxElement {
-        has data: any = None;
+        has data: Any = None;
         has loading: bool = True;
         has error: str = "";
 
@@ -668,7 +668,7 @@ cl {
     import from react { useEffect }
 
     def:pub LiveData() -> JsxElement {
-        has data: any = None;
+        has data: Any = None;
 
         async def fetch_data() -> None {
             result = root() spawn get_live_data();
@@ -2025,11 +2025,11 @@ cl {
 ```
 
 !!! tip "Migrating from `any`"
-    If you have existing event handlers using `e: any`, you can update them to use ambient types for better type safety and IDE support:
+    If you have existing event handlers using `e: Any`, you can update them to use ambient types for better type safety and IDE support:
 
     ```jac
     # Before
-    onChange={lambda e: any -> None { value = e.target.value; }}
+    onChange={lambda e: Any -> None { value = e.target.value; }}
 
     # After (no import needed)
     onChange={lambda e: ChangeEvent { value = e.target.value; }}

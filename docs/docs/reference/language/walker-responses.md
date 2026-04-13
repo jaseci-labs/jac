@@ -221,7 +221,7 @@ walker:priv MyWalker {
     }
 }
 
-def process(item: any) {
+def process(item: Any) {
     print(item);
 }
 

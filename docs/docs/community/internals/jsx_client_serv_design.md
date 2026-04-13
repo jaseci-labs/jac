@@ -143,15 +143,15 @@ The client runtime ([client_runtime.cl.jac](https://github.com/Jaseci-Labs/jasec
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | **JSX Rendering** | | |
-| `renderJsxTree` | `(node: any, container: any) -> None` | Renders a JSX tree into a DOM container |
+| `renderJsxTree` | `(node: Any, container: Any) -> None` | Renders a JSX tree into a DOM container |
 | **Reactive State Management** | | |
-| `createSignal` | `(initialValue: any) -> list` | Creates a reactive signal (primitive value). Returns `[getter, setter]` |
+| `createSignal` | `(initialValue: Any) -> list` | Creates a reactive signal (primitive value). Returns `[getter, setter]` |
 | `createState` | `(initialState: dict) -> list` | Creates a reactive state (object). Returns `[getter, setter]` with shallow merge |
-| `createEffect` | `(effectFn: any) -> None` | Runs a side effect function that re-executes when its dependencies change |
+| `createEffect` | `(effectFn: Any) -> None` | Runs a side effect function that re-executes when its dependencies change |
 | **Client-Side Routing** | | |
 | `createRouter` | `(routes: list, defaultRoute: str = "/") -> dict` | Creates a router instance with reactive path tracking |
-| `Route` | `(path: str, component: any, guard: any = None) -> dict` | Creates a route configuration object |
-| `Link` | `(props: dict) -> any` | Renders a navigation link component |
+| `Route` | `(path: str, component: Any, guard: Any = None) -> dict` | Creates a route configuration object |
+| `Link` | `(props: dict) -> Any` | Renders a navigation link component |
 | `navigate` | `(path: str) -> None` | Programmatically navigates to a path |
 | `useRouter` | `() -> dict` | Returns the current router instance |
 | **Authentication** | | |
@@ -192,7 +192,7 @@ cl import from jac:client_runtime {
 }
 
 cl def LoginForm() {
-    async def handleLogin(event: any) {
+    async def handleLogin(event: Any) {
         event.preventDefault();
         username = document.getElementById("username").value;
         password = document.getElementById("password").value;
@@ -633,7 +633,7 @@ On page load in the browser ([client_runtime.cl.jac:726-821](https://github.com/
 
 ```jac
 # Set up reactive root component for automatic re-rendering
-__jacReactiveContext.rootComponent = lambda -> any {
+__jacReactiveContext.rootComponent = lambda -> Any {
     __jacReactiveContext.currentComponent = "__root__";
     result = target(...orderedArgs);  # Execute with dependency tracking
     return result;
