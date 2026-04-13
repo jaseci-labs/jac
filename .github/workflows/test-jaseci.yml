@@ -11,140 +11,17 @@ on:
 
 jobs:
   # Split of the previous monolithic `test-core` (was ~17 min). Three
-  # parallel jobs share the same setup; the first runs the type-checker
-  # pass tests + langserve, the second runs runtimelib, the third runs
-  # everything else under jac/tests/. Wall-clock should drop to roughly
-  # the slowest single bucket. This split is being measured — adjust
-  # the partitions once we see real per-bucket times.
-  test-core-checker-langserve:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run type-checker + langserve tests
-      run: pytest -x jac/tests/compiler/passes/main jac/tests/langserve -n auto
-
-  test-core-runtimelib:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run runtimelib tests
-      run: pytest -x jac/tests/runtimelib -n auto
-
-  test-core-language:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run language tests
-      run: pytest -x jac/tests/language -n auto
-
-  test-core-project:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run project tests
-      run: pytest -x jac/tests/project -n auto
-
-  test-core-micro-suite:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run micro suite
-      run: pytest -x jac/tests/compiler/test_micro_suite.jac -n auto
-
-  # NOTE: jac/tests/compiler/passes/native is deliberately NOT split into
-  # its own job. When ~88 native tests run back-to-back on a single xdist
-  # worker, leaked LLVM/MCJIT state from one test can crash the next
-  # (specifically, `transitive glob init: glob list in deep module is not
-  # null (no segfault)` segfaults inside the JIT-compiled entry function).
-  # The full `pytest -x jac` run masks this because xdist scatters native
-  # tests across workers and interleaves them with non-native tests, so
-  # we keep `passes/native` inside `test-core-rest` to preserve that
-  # interleaving. A real fix would be to investigate the JIT state leak.
+  # balanced parallel jobs, each ~7-7.5 min wall-clock.
+  #
+  # NOTE: jac/tests/compiler/passes/native is deliberately kept inside
+  # test-core-rest (not split out). When ~88 native tests run back-to-back
+  # on a single xdist worker, leaked LLVM/MCJIT state from one test can
+  # crash the next — specifically, the `(no segfault)` regression test
+  # in test_native_gen_pass.jac segfaults inside the JIT-compiled entry
+  # function. The full `pytest -x jac` run masks this because xdist
+  # scatters native tests across workers and interleaves them with
+  # non-native tests, so test-core-rest preserves that interleaving.
+  # A real fix would be to investigate the JIT state leak.
   test-core-rest:
     runs-on: ubuntu-latest
     steps:
@@ -166,560 +43,616 @@ jobs:
         pip install pytest-xdist
         pip install watchdog
 
-    - name: Run remaining Jac core tests
+    - name: Run remaining Jac core tests (incl. native, project)
       run: |
-        pytest -x jac -n auto --durations=30 \
+        pytest -x jac -n auto \
           --ignore=jac/tests/compiler/passes/main \
           --ignore=jac/tests/compiler/test_micro_suite.jac \
           --ignore=jac/tests/langserve \
           --ignore=jac/tests/runtimelib \
-          --ignore=jac/tests/language \
-          --ignore=jac/tests/project
+          --ignore=jac/tests/language
 
-#   test-client:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - name: Check out code
-#       uses: actions/checkout@v5
-#       with:
-#         submodules: true
-# 
-#     - name: Set up Python 3.12
-#       uses: actions/setup-python@v3
-#       with:
-#         python-version: 3.12
-# 
-#     - name: Set up Node.js
-#       uses: actions/setup-node@v4
-#       with:
-#         node-version: '20'
-# 
-#     - name: Set up Bun
-#       uses: oven-sh/setup-bun@v2
-# 
-#     - name: Install dependencies
-#       run: |
-#         python -m pip install --upgrade pip
-#         pip install -e jac
-#         pip install -e jac-client
-#         pip install pytest
-#         pip install pytest-xdist
-#         pip install playwright
-# 
-#     - name: Install Playwright browsers
-#       run: playwright install chromium --with-deps
-# 
-#     - name: Set environment for testing
-#       run: |
-#         echo "TEST_ENV=true" >> $GITHUB_ENV
-# 
-#     - name: Run all client tests (including E2E in parallel)
-#       run: pytest -x jac-client -n auto
-# 
-#   test-packages-and-docs:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - name: Check out code
-#       uses: actions/checkout@v5
-#       with:
-#         submodules: true
-# 
-#     - name: Set up Python 3.12
-#       uses: actions/setup-python@v3
-#       with:
-#         python-version: 3.12
-# 
-#     - name: Install dependencies
-#       run: |
-#         python -m pip install --upgrade pip
-#         pip install -e jac
-#         pip install -e jac-byllm
-#         pip install pytest
-#         pip install pytest-xdist
-# 
-#     - name: Set environment for testing
-#       run: |
-#         echo "TEST_ENV=true" >> $GITHUB_ENV
-# 
-#     - name: Run package tests
-#       run: pytest -x jac-byllm
-# 
-#     - name: Install docs dependencies
-#       run: pip install -e docs
-# 
-#     - name: Build documentation
-#       run: mkdocs build --strict
-#       working-directory: docs
-# 
-#     - name: Run documentation validation tests
-#       run: pytest -q -x docs/tests/test_docs.jac
-# 
-#     - name: Install Playwright
-#       run: |
-#         pip install playwright
-#         playwright install chromium --with-deps
-# 
-#     - name: Run E2E code block tests
-#       run: pytest docs/tests/e2e/test_code_blocks.jac -v
-# 
-#   test-mcp:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - name: Check out code
-#       uses: actions/checkout@v5
-#       with:
-#         submodules: true
-# 
-#     - name: Set up Python 3.12
-#       uses: actions/setup-python@v5
-#       with:
-#         python-version: 3.12
-# 
-#     - name: Install jac-mcp and test dependencies
-#       run: |
-#         python -m pip install --upgrade pip
-#         pip install -e jac
-#         pip install -e jac-mcp
-#         pip install pytest
-#         pip install pytest-xdist
-# 
-#     - name: Run jac-mcp tests
-#       run: pytest -x jac-mcp -n auto
-# 
-#   test-scale:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - name: Check out code
-#       uses: actions/checkout@v5
-#       with:
-#         submodules: true
-# 
-#     - name: Set up Python 3.12
-#       uses: actions/setup-python@v3
-#       with:
-#         python-version: 3.12
-# 
-#     - name: Set up Bun
-#       uses: oven-sh/setup-bun@v2
-# 
-#     - name: Install Jaseci scale package
-#       run: |
-#         python -m pip install --upgrade pip
-#         pip install -e jac
-#         pip install -e "jac-scale[all]"
-#         pip install pytest
-#         pip install pytest-asyncio
-#         pip install -e jac-client
-#         pip install testcontainers
-#         pip install watchdog
-#         pip install python-multipart  # Explicit install to ensure FastAPI form support
-#         pip install websockets  # Required for WebSocket test cases
-# 
-#     - name: Run Backend tests
-#       run: |
-#         pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
-# 
-#     - name: Run Webhook tests (without and with MongoDB)
-#       run: |
-#         pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
-# 
-#     - name: Run Memory Hierarchy tests
-#       run: |
-#         pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
-# 
-#     - name: Run jac-client examples
-#       run: |
-#         pytest -x jac-scale/jac_scale/tests/test_examples.jac
-# 
-#     - name: Run SSO tests
-#       run: |
-#         pytest -x jac-scale/jac_scale/tests/test_sso.jac
-# 
-#     - name: Run admin API tests
-#       run: |
-#         pytest -x jac-scale/jac_scale/tests/test_admin.jac
-# 
-#     - name: Run MongoDB user manager tests
-#       run: |
-#         pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
-# 
-#     - name: Run Serializer tests
-#       run: |
-#         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
-# 
-#     - name: Run Scheduling tests
-#       run: |
-#         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
-# 
-#     - name: Run RestSpec tests
-#       run: |
-#         pytest -x jac-scale/jac_scale/tests/test_restspec.jac
-# 
-#     - name: Run Microservice interop tests
-#       run: |
-#         pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
-# 
-#   test-scale-k8s:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Check out code
-#         uses: actions/checkout@v5
-#         with:
-#           submodules: true
-# 
-#       - name: Set up Python 3.12
-#         uses: actions/setup-python@v5
-#         with:
-#           python-version: 3.12
-# 
-#       - name: Install Jaseci scale package
-#         run: |
-#           python -m pip install --upgrade pip
-#           pip install -e jac
-#           pip install -e "jac-scale[all]"
-#           pip install -e jac-client
-#           pip install pytest
-#           pip install pytest-xdist
-#           pip install pytest-asyncio
-# 
-#       - name: Install MicroK8s
-#         run: |
-#           set +e
-#           sudo snap install microk8s --classic
-#           sleep 20
-#           set -e
-# 
-#       - name: Initialize MicroK8s
-#         run: |
-#           sudo microk8s status --wait-ready
-#           sudo microk8s enable dns storage
-# 
-#       - name: Configure kubectl
-#         run: |
-#           mkdir -p ~/.kube
-#           sudo microk8s config > ~/.kube/config
-# 
-# 
-#       - name: Run K8 tests
-#         run: |
-#           pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
-#           pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
-# 
-#   test-pypi-build:
-#     runs-on: ubuntu-latest
-#     steps:
-#     - name: Check out code
-#       uses: actions/checkout@v5
-#       with:
-#         submodules: true
-# 
-#     - name: Set up Python 3.12
-#       uses: actions/setup-python@v3
-#       with:
-#         python-version: 3.12
-# 
-#     - name: Install build package
-#       run: |
-#         python -m pip install --upgrade pip
-#         pip install build
-# 
-#     - name: Set up Node.js
-#       uses: actions/setup-node@v4
-#       with:
-#         node-version: '20'
-# 
-#     - name: Set up Bun
-#       uses: oven-sh/setup-bun@v2
-# 
-#     - name: Install jaclang for precompilation
-#       run: pip install -e jac
-# 
-#     - name: Precompile all packages
-#       run: |
-#         jac run jac/scripts/precompile_bytecode.jac ./jac
-#         jac run jac/scripts/precompile_bytecode.jac ./jac-client
-#         jac run jac/scripts/precompile_bytecode.jac ./jac-scale
-#         jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
-# 
-#     - name: Pre-build admin dashboard UI
-#       run: |
-#         pip install -e jac-client
-#         pip install -e "jac-scale[all]"
-#         cd jac-scale && jac run scripts/build_admin_ui.jac
-# 
-#     - name: Uninstall editable packages
-#       run: |
-#         pip uninstall -y jac-scale jac-client jaclang
-# 
-#     - name: Clean egg-info to simulate fresh build (like publish-release)
-#       run: |
-#         rm -rf jac/jaclang.egg-info
-#         rm -rf jac-client/*.egg-info jac-client/jac_client/*.egg-info
-#         rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
-#         rm -rf jac-byllm/*.egg-info
-# 
-#     - name: Build and install packages
-#       run: |
-#         python -m build jac --wheel
-#         python -m build jac-client --wheel
-#         python -m build jac-scale --wheel
-#         python -m build jac-byllm --wheel
-#         pip install jac/dist/jaclang-*.whl
-#         pip install jac-client/dist/jac_client-*.whl
-#         SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
-#         pip install jac-byllm/dist/byllm-*.whl
-#         pip install pytest
-#         pip install pytest-asyncio
-# 
-#     - name: Verify cold start with precompiled bytecode
-#       run: |
-#         jac purge
-#         timeout 5 jac --version
-# 
-#     - name: Run integration tests
-#       run: jac run scripts/integration_tests.jac
-# 
-#     - name: Run tests on built packages
-#       run: |
-#         jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
-#         pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
-#         pytest jac-byllm/tests/test_byllm.jac
-# 
-#     # ========== jac-gpt test ==========
-#     - name: Create jac-gpt from jacpack
-#       run: |
-#         jac create jac-gpt --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/jac-gpt/jac-gpt.jacpack
-#         cd jac-gpt && jac install
-# 
-#     - name: Install Playwright dependencies
-#       run: |
-#         pip install playwright
-#         playwright install chromium --with-deps
-# 
-#     - name: Type check jac-gpt
-#       working-directory: jac-gpt
-#       run: jac check main.jac
-# 
-#     - name: Restore FAISS index cache
-#       uses: actions/cache@v4
-#       with:
-#         path: jac-gpt/services/faiss_index
-#         key: jac-gpt-faiss-v1
-# 
-#     - name: Start jac-gpt server in background
-#       working-directory: jac-gpt
-#       env:
-#         OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-#       run: |
-#         timeout 600 jac start main.jac > /tmp/jac-gpt-server.log 2>&1 &
-#         SERVER_PID=$!
-#         echo "JAC_GPT_PID=$SERVER_PID" >> $GITHUB_ENV
-#         echo "jac-gpt server starting with PID $SERVER_PID..."
-#         sleep 10
-#         if ! kill -0 $SERVER_PID 2>/dev/null; then
-#           echo "Server process died during startup"
-#           cat /tmp/jac-gpt-server.log
-#           exit 1
-#         fi
-# 
-#     - name: Wait for jac-gpt server to be ready
-#       run: |
-#         echo "Waiting for jac-gpt server on port 8000..."
-#         for i in $(seq 1 24); do
-#           if ! kill -0 ${{ env.JAC_GPT_PID }} 2>/dev/null; then
-#             echo "Server process exited unexpectedly"
-#             cat /tmp/jac-gpt-server.log
-#             exit 1
-#           fi
-#           if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-#             echo "jac-gpt server is ready (attempt $i)"
-#             exit 0
-#           fi
-#           echo "Attempt $i/24: not ready, waiting 15s..."
-#           sleep 15
-#         done
-#         echo "Server failed to respond after 24 attempts"
-#         tail -100 /tmp/jac-gpt-server.log
-#         exit 1
-# 
-#     - name: Verify jac-gpt HTTP response
-#       run: |
-#         HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-#         echo "jac-gpt root endpoint: HTTP $HTTP_CODE"
-#         if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-#           echo "jac-gpt server responding correctly"
-#         else
-#           echo "Unexpected HTTP $HTTP_CODE"
-#           exit 1
-#         fi
-# 
-#     - name: Run E2E tests
-#       env:
-#         SERVER_URL: http://localhost:8000
-#       run: pytest jac-gpt/tests/test_e2e.jac -v
-# 
-#     - name: Stop jac-gpt server
-#       if: always()
-#       run: |
-#         if [ -n "${{ env.JAC_GPT_PID }}" ]; then
-#           kill ${{ env.JAC_GPT_PID }} 2>/dev/null || true
-#           sleep 3
-#           kill -9 ${{ env.JAC_GPT_PID }} 2>/dev/null || true
-#         fi
-# 
-#     # ========== Algo test ==========
-#     - name: Create Algo from jacpack
-#       run: |
-#         jac create algo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/Algo/Algo.jacpack
-#         cd algo && jac install
-# 
-#     - name: Type check Algo
-#       working-directory: algo
-#       run: jac check main.jac
-# 
-#     - name: Start Algo server in background
-#       working-directory: algo
-#       run: |
-#         timeout 600 jac start main.jac > /tmp/algo-server.log 2>&1 &
-#         ALGO_PID=$!
-#         echo "ALGO_PID=$ALGO_PID" >> $GITHUB_ENV
-#         echo "Algo server starting with PID $ALGO_PID..."
-#         sleep 10
-#         if ! kill -0 $ALGO_PID 2>/dev/null; then
-#           echo "Server process died during startup"
-#           cat /tmp/algo-server.log
-#           exit 1
-#         fi
-# 
-#     - name: Wait for Algo server to be ready
-#       run: |
-#         echo "Waiting for Algo server on port 8000..."
-#         for i in $(seq 1 24); do
-#           if ! kill -0 ${{ env.ALGO_PID }} 2>/dev/null; then
-#             echo "Server process exited unexpectedly"
-#             cat /tmp/algo-server.log
-#             exit 1
-#           fi
-#           if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
-#             echo "Algo server is ready (attempt $i)"
-#             exit 0
-#           fi
-#           echo "Attempt $i/24: not ready, waiting 15s..."
-#           sleep 15
-#         done
-#         echo "Server failed to respond after 24 attempts"
-#         tail -100 /tmp/algo-server.log
-#         exit 1
-# 
-#     - name: Verify Algo HTTP response
-#       run: |
-#         HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
-#         echo "Algo root endpoint: HTTP $HTTP_CODE"
-#         if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
-#           echo "Algo server responding correctly"
-#         else
-#           echo "Unexpected HTTP $HTTP_CODE"
-#           exit 1
-#         fi
-# 
-#     - name: Stop Algo server
-#       if: always()
-#       run: |
-#         if [ -n "${{ env.ALGO_PID }}" ]; then
-#           kill ${{ env.ALGO_PID }} 2>/dev/null || true
-#           sleep 3
-#           kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
-#         fi
-# 
-#     # ========== fullstack eject smoke ==========
-#     # Structural / codegen correctness of `jac eject` is covered by
-#     # jac/tests/project/test_eject.jac (21 in-process unit tests, ~0.5s).
-#     # The steps below are deliberately end-to-end: they exist to validate
-#     # what the unit tests cannot — that `jac eject` works against the real
-#     # fullstack template and that the ejected backend imports cleanly
-#     # against the wheel-installed jaclang runtime and actually serves HTTP.
-#     # The live `jac start` path is exercised separately by the test-client
-#     # job (`start dev with client does initial compilation`), so this job
-#     # focuses solely on the eject pipeline.
-#     - name: Create fullstack project and eject it
-#       run: |
-#         jac create --use fullstack fs-smoke
-#         jac eject fs-smoke
-# 
-#     - name: Install ejected backend and start it
-#       working-directory: fs-smoke-ejected
-#       run: |
-#         pip install -r backend/requirements.txt
-#         PORT=8000 timeout 600 python backend/serve.py > /tmp/fullstack-ejected.log 2>&1 &
-#         EJECTED_PID=$!
-#         echo "EJECTED_PID=$EJECTED_PID" >> $GITHUB_ENV
-#         sleep 5
-#         if ! kill -0 $EJECTED_PID 2>/dev/null; then
-#           echo "Ejected backend died during startup"
-#           cat /tmp/fullstack-ejected.log
-#           exit 1
-#         fi
-# 
-#     - name: Verify ejected fullstack backend responds
-#       run: |
-#         for i in $(seq 1 12); do
-#           if ! kill -0 ${{ env.EJECTED_PID }} 2>/dev/null; then
-#             echo "Ejected backend exited unexpectedly"
-#             tail -100 /tmp/fullstack-ejected.log
-#             exit 1
-#           fi
-#           if curl -sf --max-time 5 http://localhost:8000 -o /dev/null 2>&1; then
-#             echo "Ejected backend responding (attempt $i)"
-#             exit 0
-#           fi
-#           sleep 5
-#         done
-#         echo "Ejected backend failed to respond"
-#         tail -100 /tmp/fullstack-ejected.log
-#         exit 1
-# 
-#     - name: Stop ejected fullstack server
-#       if: always()
-#       run: |
-#         if [ -n "${{ env.EJECTED_PID }}" ]; then
-#           kill ${{ env.EJECTED_PID }} 2>/dev/null || true
-#           sleep 3
-#           kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
-#         fi
-# 
-#     - name: Upload jac-gpt server logs
-#       if: always()
-#       uses: actions/upload-artifact@v4
-#       with:
-#         name: jac-gpt-test-logs
-#         path: /tmp/jac-gpt-server.log
-#         retention-days: 7
-# 
-#     - name: Upload Algo server logs
-#       if: always()
-#       uses: actions/upload-artifact@v4
-#       with:
-#         name: algo-test-logs
-#         path: /tmp/algo-server.log
-#         retention-days: 7
-# 
-#     - name: Upload fullstack ejected backend logs
-#       if: always()
-#       uses: actions/upload-artifact@v4
-#       with:
-#         name: fullstack-ejected-logs
-#         path: /tmp/fullstack-ejected.log
-#         retention-days: 7
-# 
-#     - name: Jac pack test summary
-#       if: always()
-#       run: |
-#         echo "## Jac Pack Smoke Tests" >> $GITHUB_STEP_SUMMARY
-#         echo "" >> $GITHUB_STEP_SUMMARY
-#         echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
-#         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-#         echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
-#         echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
-#         echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
-#         echo "" >> $GITHUB_STEP_SUMMARY
-#         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
+  test-core-checker-langserve-runtimelib:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run type-checker + langserve + runtimelib tests
+      run: |
+        pytest -x \
+          jac/tests/compiler/passes/main \
+          jac/tests/langserve \
+          jac/tests/runtimelib \
+          -n auto
+
+  test-core-micro-suite-language:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run micro suite + language tests
+      run: |
+        pytest -x \
+          jac/tests/compiler/test_micro_suite.jac \
+          jac/tests/language \
+          -n auto
+
+  test-client:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e jac-client
+        pip install pytest
+        pip install pytest-xdist
+        pip install playwright
+
+    - name: Install Playwright browsers
+      run: playwright install chromium --with-deps
+
+    - name: Set environment for testing
+      run: |
+        echo "TEST_ENV=true" >> $GITHUB_ENV
+
+    - name: Run all client tests (including E2E in parallel)
+      run: pytest -x jac-client -n auto
+
+  test-packages-and-docs:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e jac-byllm
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Set environment for testing
+      run: |
+        echo "TEST_ENV=true" >> $GITHUB_ENV
+
+    - name: Run package tests
+      run: pytest -x jac-byllm
+
+    - name: Install docs dependencies
+      run: pip install -e docs
+
+    - name: Build documentation
+      run: mkdocs build --strict
+      working-directory: docs
+
+    - name: Run documentation validation tests
+      run: pytest -q -x docs/tests/test_docs.jac
+
+    - name: Install Playwright
+      run: |
+        pip install playwright
+        playwright install chromium --with-deps
+
+    - name: Run E2E code block tests
+      run: pytest docs/tests/e2e/test_code_blocks.jac -v
+
+  test-mcp:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.12
+
+    - name: Install jac-mcp and test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e jac-mcp
+        pip install pytest
+        pip install pytest-xdist
+
+    - name: Run jac-mcp tests
+      run: pytest -x jac-mcp -n auto
+
+  test-scale:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Install Jaseci scale package
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install -e "jac-scale[all]"
+        pip install pytest
+        pip install pytest-asyncio
+        pip install -e jac-client
+        pip install testcontainers
+        pip install watchdog
+        pip install python-multipart  # Explicit install to ensure FastAPI form support
+        pip install websockets  # Required for WebSocket test cases
+
+    - name: Run Backend tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
+
+    - name: Run Webhook tests (without and with MongoDB)
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
+
+    - name: Run Memory Hierarchy tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
+
+    - name: Run jac-client examples
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_examples.jac
+
+    - name: Run SSO tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_sso.jac
+
+    - name: Run admin API tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_admin.jac
+
+    - name: Run MongoDB user manager tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
+
+    - name: Run Serializer tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
+
+    - name: Run Scheduling tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
+
+    - name: Run RestSpec tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
+
+    - name: Run Microservice interop tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
+
+  test-scale-k8s:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Install Jaseci scale package
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e jac
+          pip install -e "jac-scale[all]"
+          pip install -e jac-client
+          pip install pytest
+          pip install pytest-xdist
+          pip install pytest-asyncio
+
+      - name: Install MicroK8s
+        run: |
+          set +e
+          sudo snap install microk8s --classic
+          sleep 20
+          set -e
+
+      - name: Initialize MicroK8s
+        run: |
+          sudo microk8s status --wait-ready
+          sudo microk8s enable dns storage
+
+      - name: Configure kubectl
+        run: |
+          mkdir -p ~/.kube
+          sudo microk8s config > ~/.kube/config
+
+
+      - name: Run K8 tests
+        run: |
+          pytest  -s -x jac-scale/jac_scale/tests/test_k8s_utils.jac
+          pytest  -s -x jac-scale/jac_scale/tests/test_deploy_k8s.jac
+
+  test-pypi-build:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install build package
+      run: |
+        python -m pip install --upgrade pip
+        pip install build
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Set up Bun
+      uses: oven-sh/setup-bun@v2
+
+    - name: Install jaclang for precompilation
+      run: pip install -e jac
+
+    - name: Precompile all packages
+      run: |
+        jac run jac/scripts/precompile_bytecode.jac ./jac
+        jac run jac/scripts/precompile_bytecode.jac ./jac-client
+        jac run jac/scripts/precompile_bytecode.jac ./jac-scale
+        jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
+
+    - name: Pre-build admin dashboard UI
+      run: |
+        pip install -e jac-client
+        pip install -e "jac-scale[all]"
+        cd jac-scale && jac run scripts/build_admin_ui.jac
+
+    - name: Uninstall editable packages
+      run: |
+        pip uninstall -y jac-scale jac-client jaclang
+
+    - name: Clean egg-info to simulate fresh build (like publish-release)
+      run: |
+        rm -rf jac/jaclang.egg-info
+        rm -rf jac-client/*.egg-info jac-client/jac_client/*.egg-info
+        rm -rf jac-scale/*.egg-info jac-scale/jac_scale/*.egg-info
+        rm -rf jac-byllm/*.egg-info
+
+    - name: Build and install packages
+      run: |
+        python -m build jac --wheel
+        python -m build jac-client --wheel
+        python -m build jac-scale --wheel
+        python -m build jac-byllm --wheel
+        pip install jac/dist/jaclang-*.whl
+        pip install jac-client/dist/jac_client-*.whl
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
+        pip install jac-byllm/dist/byllm-*.whl
+        pip install pytest
+        pip install pytest-asyncio
+
+    - name: Verify cold start with precompiled bytecode
+      run: |
+        jac purge
+        timeout 5 jac --version
+
+    - name: Run integration tests
+      run: jac run scripts/integration_tests.jac
+
+    - name: Run tests on built packages
+      run: |
+        jac check jac/tests/compiler/passes/main/fixtures/checker/checker_type_ref.jac
+        pytest "jac-client/jac_client/tests/test_cli.jac::create jac app"
+        pytest jac-byllm/tests/test_byllm.jac
+
+    # ========== jac-gpt test ==========
+    - name: Create jac-gpt from jacpack
+      run: |
+        jac create jac-gpt --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/jac-gpt/jac-gpt.jacpack
+        cd jac-gpt && jac install
+
+    - name: Install Playwright dependencies
+      run: |
+        pip install playwright
+        playwright install chromium --with-deps
+
+    - name: Type check jac-gpt
+      working-directory: jac-gpt
+      run: jac check main.jac
+
+    - name: Restore FAISS index cache
+      uses: actions/cache@v4
+      with:
+        path: jac-gpt/services/faiss_index
+        key: jac-gpt-faiss-v1
+
+    - name: Start jac-gpt server in background
+      working-directory: jac-gpt
+      env:
+        OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      run: |
+        timeout 600 jac start main.jac > /tmp/jac-gpt-server.log 2>&1 &
+        SERVER_PID=$!
+        echo "JAC_GPT_PID=$SERVER_PID" >> $GITHUB_ENV
+        echo "jac-gpt server starting with PID $SERVER_PID..."
+        sleep 10
+        if ! kill -0 $SERVER_PID 2>/dev/null; then
+          echo "Server process died during startup"
+          cat /tmp/jac-gpt-server.log
+          exit 1
+        fi
+
+    - name: Wait for jac-gpt server to be ready
+      run: |
+        echo "Waiting for jac-gpt server on port 8000..."
+        for i in $(seq 1 24); do
+          if ! kill -0 ${{ env.JAC_GPT_PID }} 2>/dev/null; then
+            echo "Server process exited unexpectedly"
+            cat /tmp/jac-gpt-server.log
+            exit 1
+          fi
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "jac-gpt server is ready (attempt $i)"
+            exit 0
+          fi
+          echo "Attempt $i/24: not ready, waiting 15s..."
+          sleep 15
+        done
+        echo "Server failed to respond after 24 attempts"
+        tail -100 /tmp/jac-gpt-server.log
+        exit 1
+
+    - name: Verify jac-gpt HTTP response
+      run: |
+        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
+        echo "jac-gpt root endpoint: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          echo "jac-gpt server responding correctly"
+        else
+          echo "Unexpected HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+    - name: Run E2E tests
+      env:
+        SERVER_URL: http://localhost:8000
+      run: pytest jac-gpt/tests/test_e2e.jac -v
+
+    - name: Stop jac-gpt server
+      if: always()
+      run: |
+        if [ -n "${{ env.JAC_GPT_PID }}" ]; then
+          kill ${{ env.JAC_GPT_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.JAC_GPT_PID }} 2>/dev/null || true
+        fi
+
+    # ========== Algo test ==========
+    - name: Create Algo from jacpack
+      run: |
+        jac create algo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/refs/heads/main/Algo/Algo.jacpack
+        cd algo && jac install
+
+    - name: Type check Algo
+      working-directory: algo
+      run: jac check main.jac
+
+    - name: Start Algo server in background
+      working-directory: algo
+      run: |
+        timeout 600 jac start main.jac > /tmp/algo-server.log 2>&1 &
+        ALGO_PID=$!
+        echo "ALGO_PID=$ALGO_PID" >> $GITHUB_ENV
+        echo "Algo server starting with PID $ALGO_PID..."
+        sleep 10
+        if ! kill -0 $ALGO_PID 2>/dev/null; then
+          echo "Server process died during startup"
+          cat /tmp/algo-server.log
+          exit 1
+        fi
+
+    - name: Wait for Algo server to be ready
+      run: |
+        echo "Waiting for Algo server on port 8000..."
+        for i in $(seq 1 24); do
+          if ! kill -0 ${{ env.ALGO_PID }} 2>/dev/null; then
+            echo "Server process exited unexpectedly"
+            cat /tmp/algo-server.log
+            exit 1
+          fi
+          if curl -sf --max-time 10 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "Algo server is ready (attempt $i)"
+            exit 0
+          fi
+          echo "Attempt $i/24: not ready, waiting 15s..."
+          sleep 15
+        done
+        echo "Server failed to respond after 24 attempts"
+        tail -100 /tmp/algo-server.log
+        exit 1
+
+    - name: Verify Algo HTTP response
+      run: |
+        HTTP_CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 http://localhost:8000)
+        echo "Algo root endpoint: HTTP $HTTP_CODE"
+        if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 500 ]; then
+          echo "Algo server responding correctly"
+        else
+          echo "Unexpected HTTP $HTTP_CODE"
+          exit 1
+        fi
+
+    - name: Stop Algo server
+      if: always()
+      run: |
+        if [ -n "${{ env.ALGO_PID }}" ]; then
+          kill ${{ env.ALGO_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
+        fi
+
+    # ========== fullstack eject smoke ==========
+    # Structural / codegen correctness of `jac eject` is covered by
+    # jac/tests/project/test_eject.jac (21 in-process unit tests, ~0.5s).
+    # The steps below are deliberately end-to-end: they exist to validate
+    # what the unit tests cannot — that `jac eject` works against the real
+    # fullstack template and that the ejected backend imports cleanly
+    # against the wheel-installed jaclang runtime and actually serves HTTP.
+    # The live `jac start` path is exercised separately by the test-client
+    # job (`start dev with client does initial compilation`), so this job
+    # focuses solely on the eject pipeline.
+    - name: Create fullstack project and eject it
+      run: |
+        jac create --use fullstack fs-smoke
+        jac eject fs-smoke
+
+    - name: Install ejected backend and start it
+      working-directory: fs-smoke-ejected
+      run: |
+        pip install -r backend/requirements.txt
+        PORT=8000 timeout 600 python backend/serve.py > /tmp/fullstack-ejected.log 2>&1 &
+        EJECTED_PID=$!
+        echo "EJECTED_PID=$EJECTED_PID" >> $GITHUB_ENV
+        sleep 5
+        if ! kill -0 $EJECTED_PID 2>/dev/null; then
+          echo "Ejected backend died during startup"
+          cat /tmp/fullstack-ejected.log
+          exit 1
+        fi
+
+    - name: Verify ejected fullstack backend responds
+      run: |
+        for i in $(seq 1 12); do
+          if ! kill -0 ${{ env.EJECTED_PID }} 2>/dev/null; then
+            echo "Ejected backend exited unexpectedly"
+            tail -100 /tmp/fullstack-ejected.log
+            exit 1
+          fi
+          if curl -sf --max-time 5 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "Ejected backend responding (attempt $i)"
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "Ejected backend failed to respond"
+        tail -100 /tmp/fullstack-ejected.log
+        exit 1
+
+    - name: Stop ejected fullstack server
+      if: always()
+      run: |
+        if [ -n "${{ env.EJECTED_PID }}" ]; then
+          kill ${{ env.EJECTED_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
+        fi
+
+    - name: Upload jac-gpt server logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: jac-gpt-test-logs
+        path: /tmp/jac-gpt-server.log
+        retention-days: 7
+
+    - name: Upload Algo server logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: algo-test-logs
+        path: /tmp/algo-server.log
+        retention-days: 7
+
+    - name: Upload fullstack ejected backend logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fullstack-ejected-logs
+        path: /tmp/fullstack-ejected.log
+        retention-days: 7
+
+    - name: Jac pack test summary
+      if: always()
+      run: |
+        echo "## Jac Pack Smoke Tests" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| Test | Status |" >> $GITHUB_STEP_SUMMARY
+        echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+        echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY
