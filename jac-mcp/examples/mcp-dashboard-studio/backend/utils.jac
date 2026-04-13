@@ -22,8 +22,9 @@ def:pub empty_query_response -> dict {
 
 def:pub extract_first_error(result: dict) -> str {
     try {
-        return result["data"]["errors"][0]["message"];
-    } except Exception {
+        msg: str = str(result["data"]["errors"][0]["message"]);
+        return msg;
+    } except (KeyError, TypeError, IndexError) {
         return "";
     }
 }
