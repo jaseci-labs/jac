@@ -360,7 +360,8 @@ cl test my_test {}
 }
 
 test "to section headers" {
-    # Basic: 'to cl:' / 'to sv:' / 'to na:' tag subsequent stmts until next header
+    # Basic: each 'to X:' produces an implicit XBlock whose body contains
+    # all statements until the next header or EOF.
     source = """
 to sv:
 def sv_fn() -> int { return 1; }
@@ -375,19 +376,29 @@ def sv_fn2() -> int { return 4; }
     mod = prog.parse_str(source, "test.jac");
     assert not prog.errors_had;
     bd = mod.body;
-    ctxs = [
-        stmt.code_context
-        for stmt in bd
-        if isinstance(stmt, uni.ContextAwareNode)
-    ];
-    assert ctxs == [
+    assert len(bd) == 4;
+    assert isinstance(bd[0], uni.ServerBlock) and bd[0].implicit;
+    assert isinstance(bd[1], uni.ClientBlock) and bd[1].implicit;
+    assert isinstance(bd[2], uni.NativeBlock) and bd[2].implicit;
+    assert isinstance(bd[3], uni.ServerBlock) and bd[3].implicit;
+    expected_ctxs = [
         CodeContext.SERVER,
         CodeContext.CLIENT,
         CodeContext.NATIVE,
         CodeContext.SERVER
     ];
+    for (blk, expected) in zip(bd, expected_ctxs) {
+        inner = [
+            stmt
+            for stmt in blk.body
+            if isinstance(stmt, uni.ContextAwareNode)
+        ];
+        assert len(inner) == 1;
+        assert inner[0].code_context == expected;
+    }
 
-    # Explicit cl/sv/na prefix on a single stmt overrides the active section
+    # Explicit cl/sv/na single-stmt prefix inside a 'to X:' section overrides
+    # the active section's tagging for that one statement.
     source = """
 to cl:
 def cl_a() -> int { return 1; }
@@ -397,16 +408,19 @@ def cl_c() -> int { return 3; }
     prog = JacProgram();
     mod = prog.parse_str(source, "test.jac");
     assert not prog.errors_had;
-    bd = mod.body;
+    assert len(mod.body) == 1;
+    block = mod.body[0];
+    assert isinstance(block, uni.ClientBlock) and block.implicit;
     ctxs = [
-        stmt.code_context
-        for stmt in bd
-        if isinstance(stmt, uni.ContextAwareNode)
+        s.code_context
+        for s in block.body
+        if isinstance(s, uni.ContextAwareNode)
     ];
     assert ctxs == [CodeContext.CLIENT, CodeContext.SERVER, CodeContext.CLIENT];
 
-    # cl {} / sv {} / na {} braced blocks still win inside their own scope, and
-    # after the block closes the active section resumes.
+    # A braced 'cl { ... }' block nested inside a 'to sv:' section is itself
+    # an element of that section's body — the braced block's own stmts are
+    # tagged CLIENT, and a later plain def resumes the surrounding SERVER.
     source = """
 to sv:
 def sv_a() -> int { return 1; }
@@ -418,17 +432,24 @@ def sv_c() -> int { return 3; }
     prog = JacProgram();
     mod = prog.parse_str(source, "test.jac");
     assert not prog.errors_had;
-    bd = mod.body;
-    assert isinstance(bd[1], uni.ClientBlock);
-    assert bd[0].code_context == CodeContext.SERVER;
-    assert bd[2].code_context == CodeContext.SERVER;
+    assert len(mod.body) == 1;
+    outer = mod.body[0];
+    assert isinstance(outer, uni.ServerBlock) and outer.implicit;
+    assert len(outer.body) == 3;
+    assert isinstance(outer.body[0], uni.Ability);
+    assert outer.body[0].code_context == CodeContext.SERVER;
+    assert isinstance(outer.body[1], uni.ClientBlock);
+    assert not outer.body[1].implicit;
     assert all(
-        stmt.code_context == CodeContext.CLIENT
-        for stmt in bd[1].body
-        if isinstance(stmt, uni.ContextAwareNode)
+        s.code_context == CodeContext.CLIENT
+        for s in outer.body[1].body
+        if isinstance(s, uni.ContextAwareNode)
     );
+    assert isinstance(outer.body[2], uni.Ability);
+    assert outer.body[2].code_context == CodeContext.SERVER;
 
-    # A 'to X:' header at EOF with no following stmt is consumed silently.
+    # A 'to X:' header at EOF with no following stmt still parses as an empty
+    # implicit XBlock; earlier statements stay at module scope.
     source = """
 def a() -> int { return 1; }
 to cl:
@@ -437,6 +458,9 @@ to cl:
     mod = prog.parse_str(source, "test.jac");
     assert not prog.errors_had;
     assert mod.body[0].code_context == CodeContext.SERVER;
+    assert isinstance(mod.body[1], uni.ClientBlock);
+    assert mod.body[1].implicit;
+    assert len(mod.body[1].body) == 0;
 }
 
 test "cl/sv/na braced-block deprecation warning" {

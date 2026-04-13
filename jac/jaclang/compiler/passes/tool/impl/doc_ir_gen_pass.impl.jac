@@ -895,8 +895,46 @@ impl DocIRGenPass.exit_module_code(nd: uni.ModuleCode) -> None {
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
+"""Emit section-header form: 'to cl:' / 'to sv:' / 'to na:' on its own line
+with no space before the colon, a blank-line separator, then the body
+statements at the same column as the header (no indent).
+"""
+impl DocIRGenPass.emit_section_header_block(nd: uni.UniNode) -> None {
+    parts: list[doc.DocType] = [];
+    prev_body_item: (uni.UniNode | None) = None;
+    past_header = False;
+    for i in nd.kid {
+        if not past_header {
+            if isinstance(i, uni.Token) and (i.name == Tok.KW_TO) {
+                parts.append(i.gen.doc_ir);
+                parts.append(self.space());
+            } elif isinstance(i, uni.Token) and (i.name == Tok.COLON) {
+                parts.append(i.gen.doc_ir);
+                parts.append(self.hard_line());
+                parts.append(self.hard_line());
+                past_header = True;
+            } else {
+                parts.append(i.gen.doc_ir);
+            }
+        } else {
+            self.add_body_stmt_with_spacing(parts, i, prev_body_item);
+            prev_body_item = i;
+        }
+    }
+    self.trim_trailing_line(parts);
+    nd.gen.doc_ir = self.concat(parts, ast_node=nd);
+}
+
 """Generate DocIR for client blocks (cl { ... })."""
 impl DocIRGenPass.exit_client_block(nd: uni.ClientBlock) -> None {
+    if (
+        len(nd.kid) > 0
+        and isinstance(nd.kid[0], uni.Token)
+        and (nd.kid[0].name == Tok.KW_TO)
+    ) {
+        self.emit_section_header_block(nd);
+        return;
+    }
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -933,6 +971,14 @@ impl DocIRGenPass.exit_client_block(nd: uni.ClientBlock) -> None {
 
 """Generate DocIR for server blocks (sv { ... })."""
 impl DocIRGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
+    if (
+        len(nd.kid) > 0
+        and isinstance(nd.kid[0], uni.Token)
+        and (nd.kid[0].name == Tok.KW_TO)
+    ) {
+        self.emit_section_header_block(nd);
+        return;
+    }
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;
@@ -969,6 +1015,14 @@ impl DocIRGenPass.exit_server_block(nd: uni.ServerBlock) -> None {
 
 """Generate DocIR for native blocks (na { ... })."""
 impl DocIRGenPass.exit_native_block(nd: uni.NativeBlock) -> None {
+    if (
+        len(nd.kid) > 0
+        and isinstance(nd.kid[0], uni.Token)
+        and (nd.kid[0].name == Tok.KW_TO)
+    ) {
+        self.emit_section_header_block(nd);
+        return;
+    }
     parts: list[doc.DocType] = [];
     body_parts: list[doc.DocType] = [];
     in_body = False;

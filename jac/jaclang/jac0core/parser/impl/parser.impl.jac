@@ -755,18 +755,8 @@ impl Parser.parse_module -> Module {
     }
     while not self.at_end() {
         before = self.pos;
-        self._explicit_section = False;
         stmt = self.parse_element_stmt();
         if stmt is not None {
-            # Apply active 'to cl:' / 'to sv:' / 'to na:' section context to stmts
-            # that did not come from an explicit cl/sv/na prefix or block.
-            if (
-                self.section_context is not None
-                and not self._explicit_section
-                and stmt?.code_context
-            ) {
-                stmt.code_context = self.section_context;
-            }
             body.append(stmt);
         }
         # Guard: ensure forward progress to prevent infinite loops
@@ -3381,10 +3371,12 @@ impl Parser.parse_element_stmt{
     if self.at_end() {
         return None;
     }
-    # Handle section headers: 'to cl:' / 'to sv:' / 'to na:' change the default
-    # code context for all subsequent element statements until the next header
-    # or EOF. The 3 header tokens attach as left-kids of the following stmt for
-    # source round-trip.
+    # Handle section headers: 'to cl:' / 'to sv:' / 'to na:' collect all
+    # following element statements (until the next header or EOF) into an
+    # implicit ClientBlock / ServerBlock / NativeBlock. Reusing the existing
+    # block AST nodes keeps downstream passes (codegen, interop, etc.)
+    # unchanged — implicit=True is the discriminator that flips the formatter
+    # into 'to X:' section-header emission.
     if self.check(TokenKind.KW_TO)
     and self.check_peek_any(
         TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
@@ -3396,27 +3388,59 @@ impl Parser.parse_element_stmt{
         ctx_uni = self.make_uni_token(ctx_tok);
         colon_tok = self.advance();  # consume ':'
         colon_uni = self.make_uni_token(colon_tok);
+        section_ctx: CodeContext;
         if ctx_tok.kind == TokenKind.KW_CLIENT {
-            self.section_context = CodeContext.CLIENT;
+            section_ctx = CodeContext.CLIENT;
         } elif ctx_tok.kind == TokenKind.KW_SERVER {
-            self.section_context = CodeContext.SERVER;
+            section_ctx = CodeContext.SERVER;
         } else {
-            self.section_context = CodeContext.NATIVE;
+            section_ctx = CodeContext.NATIVE;
         }
-        # Recurse to get the next element statement; attach header tokens to it.
-        self._explicit_section = False;
-        stmt = self.parse_element_stmt();
-        if stmt is not None {
-            stmt.add_kids_left([to_uni, ctx_uni, colon_uni]);
-            if (
-                not self._explicit_section
-                and self.section_context is not None
-                and stmt?.code_context
-            ) {
-                stmt.code_context = self.section_context;
+        body: list = [];
+        kid: list = [to_uni, ctx_uni, colon_uni];
+        while not self.at_end() {
+            # Stop at the next 'to X:' header — it's a sibling, not part of
+            # this section's body.
+            if self.check(TokenKind.KW_TO)
+            and self.check_peek_any(
+                TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
+            )
+            and self.peek(2).kind == TokenKind.COLON {
+                break;
+            }
+            before = self.pos;
+            stmt = self.parse_element_stmt();
+            if stmt is not None {
+                # Tag with the section's context only if the stmt does not
+                # already carry an explicit cl/sv/na prefix. Detect the prefix
+                # by checking the stmt's first kid for the context keyword.
+                has_explicit_prefix = (
+                    len(stmt.kid) > 0
+                    and isinstance(stmt.kid[0], UniToken)
+                    and (
+                        stmt.kid[0].name == Tok.KW_CLIENT
+                        or stmt.kid[0].name == Tok.KW_SERVER
+                        or stmt.kid[0].name == Tok.KW_NATIVE
+                    )
+                );
+                if stmt?.code_context and not has_explicit_prefix {
+                    stmt.code_context = section_ctx;
+                }
+                body.append(stmt);
+                kid.append(stmt);
+            }
+            # Guard: ensure forward progress to prevent infinite loops
+            if self.pos == before and not self.at_end() {
+                self.advance();
             }
         }
-        return stmt;
+        if section_ctx == CodeContext.CLIENT {
+            return ClientBlock(body=body, implicit=True, kid=kid);
+        } elif section_ctx == CodeContext.SERVER {
+            return ServerBlock(body=body, implicit=True, kid=kid);
+        } else {
+            return NativeBlock(body=body, implicit=True, kid=kid);
+        }
     }
     # Handle client/server/native context blocks: cl { ... } or cl stmt
     if self.check(TokenKind.KW_CLIENT) {

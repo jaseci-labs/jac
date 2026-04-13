@@ -241,7 +241,7 @@ jsx_child ::= JSX_TEXT jsx_child? | "{" expression "}" | jsx_element
 
 element_stmt ::=
     ";"
-    | "to" element_stmt
+    | "to" element_stmt*
     | "cl" (client_block | element_stmt)?
     | "sv" (server_block | element_stmt)?
     | "na" (native_block | element_stmt)?

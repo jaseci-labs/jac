@@ -402,9 +402,7 @@ obj Parser {
         file_path: str = "<input>",
         source_code: str = "",
         source: Source | None = None,
-        prog: object | None = None,
-        section_context: CodeContext | None = None,
-        _explicit_section: bool = False;
+        prog: object | None = None;
 
     def current -> Token;
     def peek(offset: int = 1) -> Token;

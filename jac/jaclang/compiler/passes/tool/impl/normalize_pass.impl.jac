@@ -156,6 +156,14 @@ impl NormalizePass.enter_client_block(nd: uni.ClientBlock) -> None {
         } else {
             new_kid.append(EmptyToken());
         }
+    } elif nd.implicit {
+        # Section-header form: 'to cl:' followed by body at module scope.
+        new_kid.append(nd.gen_token(Tok.KW_TO));
+        new_kid.append(nd.gen_token(Tok.KW_CLIENT));
+        new_kid.append(nd.gen_token(Tok.COLON));
+        for stmt in nd.body {
+            new_kid.append(stmt);
+        }
     } else {
         new_kid.append(nd.gen_token(Tok.KW_CLIENT));
         new_kid.append(nd.gen_token(Tok.LBRACE));
@@ -183,6 +191,14 @@ impl NormalizePass.enter_server_block(nd: uni.ServerBlock) -> None {
         } else {
             new_kid.append(EmptyToken());
         }
+    } elif nd.implicit {
+        # Section-header form: 'to sv:' followed by body at module scope.
+        new_kid.append(nd.gen_token(Tok.KW_TO));
+        new_kid.append(nd.gen_token(Tok.KW_SERVER));
+        new_kid.append(nd.gen_token(Tok.COLON));
+        for stmt in nd.body {
+            new_kid.append(stmt);
+        }
     } else {
         new_kid.append(nd.gen_token(Tok.KW_SERVER));
         new_kid.append(nd.gen_token(Tok.LBRACE));
@@ -209,6 +225,14 @@ impl NormalizePass.enter_native_block(nd: uni.NativeBlock) -> None {
             new_kid.extend(nd.body);
         } else {
             new_kid.append(EmptyToken());
+        }
+    } elif nd.implicit {
+        # Section-header form: 'to na:' followed by body at module scope.
+        new_kid.append(nd.gen_token(Tok.KW_TO));
+        new_kid.append(nd.gen_token(Tok.KW_NATIVE));
+        new_kid.append(nd.gen_token(Tok.COLON));
+        for stmt in nd.body {
+            new_kid.append(stmt);
         }
     } else {
         new_kid.append(nd.gen_token(Tok.KW_NATIVE));
