@@ -136,30 +136,15 @@ jobs:
     - name: Run micro suite
       run: pytest -x jac/tests/compiler/test_micro_suite.jac -n auto
 
-  test-core-native:
-    runs-on: ubuntu-latest
-    steps:
-    - name: Check out code
-      uses: actions/checkout@v5
-      with:
-        submodules: true
-
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: 3.12
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -e jac
-        pip install pytest
-        pip install pytest-xdist
-        pip install watchdog
-
-    - name: Run native compiler pass tests
-      run: pytest -x jac/tests/compiler/passes/native -n auto
-
+  # NOTE: jac/tests/compiler/passes/native is deliberately NOT split into
+  # its own job. When ~88 native tests run back-to-back on a single xdist
+  # worker, leaked LLVM/MCJIT state from one test can crash the next
+  # (specifically, `transitive glob init: glob list in deep module is not
+  # null (no segfault)` segfaults inside the JIT-compiled entry function).
+  # The full `pytest -x jac` run masks this because xdist scatters native
+  # tests across workers and interleaves them with non-native tests, so
+  # we keep `passes/native` inside `test-core-rest` to preserve that
+  # interleaving. A real fix would be to investigate the JIT state leak.
   test-core-rest:
     runs-on: ubuntu-latest
     steps:
@@ -185,7 +170,6 @@ jobs:
       run: |
         pytest -x jac -n auto --durations=30 \
           --ignore=jac/tests/compiler/passes/main \
-          --ignore=jac/tests/compiler/passes/native \
           --ignore=jac/tests/compiler/test_micro_suite.jac \
           --ignore=jac/tests/langserve \
           --ignore=jac/tests/runtimelib \
