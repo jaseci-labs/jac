@@ -244,6 +244,8 @@ def:pub app() -> JsxElement {
 Use ternary expressions for dynamic Tailwind classes:
 
 ```jac
+import from typing { Any }
+
 def:pub Tab(props: Any) -> JsxElement {
     activeCls = "border-primary text-foreground";
     inactiveCls = "border-transparent text-muted-foreground hover:text-foreground";
@@ -319,6 +321,7 @@ cl {
 The standard shadcn `cn()` utility can be written entirely in Jac (no TypeScript needed):
 
 ```jac
+import from typing { Any }
 # lib/utils.cl.jac
 import from "clsx" { clsx }
 import from "tailwind-merge" { twMerge }
@@ -342,6 +345,7 @@ tailwind-merge = "*"
 Here's how the shadcn Button component looks in Jac, using Class Variance Authority (CVA) for variant management:
 
 ```jac
+import from typing { Any }
 # components/ui/button.cl.jac
 import from "class-variance-authority" { cva }
 import from ...lib.utils { cn }
@@ -396,6 +400,7 @@ Required dependencies:
 shadcn components wrap Radix UI primitives. Here's a Dialog example in Jac:
 
 ```jac
+import from typing { Any }
 # components/ui/dialog.cl.jac
 import from "radix-ui" { Dialog as DialogPrimitive }
 import from ...lib.utils { cn }
@@ -495,6 +500,7 @@ def:pub NavBar() -> JsxElement {
 ### Monaco Editor
 
 ```jac
+import from typing { Any }
 import from "@monaco-editor/react" { Editor }
 
 def:pub CodeEditor() -> JsxElement {

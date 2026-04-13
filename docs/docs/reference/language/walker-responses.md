@@ -215,13 +215,15 @@ with entry {
 Always handle the possibility of empty reports:
 
 ```jac
+import from typing { Any }
+
 walker:priv MyWalker {
     can work with Root entry {
         report "data";
     }
 }
 
-def process(item: any) {
+def process(item: Any) {
     print(item);
 }
 

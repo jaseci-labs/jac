@@ -5,8 +5,9 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 **Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
 
 ```jac
+
 # ============================================================
-# Learn Jac in Y Minutes
+# Learn Jac in 5 Minutes
 # ============================================================
 # Jac compiles to Python bytecode, JavaScript, and native machine code.
 # It features graph-native programming, object-spatial walkers,
@@ -67,7 +68,7 @@ with entry {
     nothing: None = None;
 
     # Jac has the same built-in types as Python:
-    # int, float, str, bool, list, tuple, set, dict, bytes, any
+    # int, float, str, bool, list, tuple, set, dict, bytes, Any
 
     # Union types
     maybe: str | None = None;
@@ -90,6 +91,7 @@ import datetime as dt;
 
 # Import specific items from a module
 import from math { sqrt, pi, log as logarithm }
+import from typing { Any }
 
 # Relative imports
 import from .sibling { helper_func }
@@ -137,7 +139,7 @@ def kitchen_sink(
     regular: str = "default",
     *args: int,
     kw_only: bool = True,
-    **kwargs: any
+    **kwargs: Any
 ) -> str {
     return "ok";
 }
@@ -1266,7 +1268,7 @@ cl {
         # Mount effect (runs once on component mount)
         async can with entry {
             data = await fetch("/api/data").then(
-                lambda r: any -> any { return r.json(); }
+                lambda r: Any -> Any { return r.json(); }
             );
             loading = False;
         }
@@ -1360,7 +1362,7 @@ cl {
 # ============================================================
 # Keywords Reference
 # ============================================================
-# Types:    str, int, float, bool, list, tuple, set, dict, bytes, any, type
+# Types:    str, int, float, bool, list, tuple, set, dict, bytes, Any, type
 # Decl:     obj, class, node, edge, walker, enum, has, can, def, impl,
 #           glob, test, type
 # Modifiers: pub, priv, protect, static, override, abs, async

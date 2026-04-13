@@ -1060,6 +1060,7 @@ walker:priv DeleteItem {
 ### Search Walker
 
 ```jac
+import from typing { Any }
 node Item {
     has name: str;
 }
@@ -1087,7 +1088,7 @@ walker:priv SearchItems {
     }
 
     can finish with Root exit {
-        self.matches.sort(key=lambda x: any: x["score"], reverse=True);
+        self.matches.sort(key=lambda x: Any: x["score"], reverse=True);
         report self.matches;
     }
 }
@@ -1101,7 +1102,7 @@ walker:priv SearchItems {
 
 ```
 walker:priv GetTree {
-    def build_tree(node: any) -> dict {
+    def build_tree(node: Any) -> dict {
         children = [];
         for child in [node -->] {
             children.append(self.build_tree(child));

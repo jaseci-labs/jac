@@ -61,7 +61,7 @@ with entry {
     numbers.append(6);
 
     # Dictionaries
-    person: dict[str, any] = {
+    person: dict[str, Any] = {
         "name": "Alice",
         "age": 30
     };
