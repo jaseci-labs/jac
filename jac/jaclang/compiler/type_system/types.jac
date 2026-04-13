@@ -166,12 +166,22 @@ obj TypeVarType(TypeBase) {
 
 """Represents a class type."""
 obj ClassType(TypeBase) {
-    has shared: (ClassType.ClassDetailsShared | None) = None,
-        private: (ClassType.ClassDetailsPrivate | None) = None;
+    # `private` is per-instance and always populated (the default
+    # factory creates a fresh `ClassDetailsPrivate` for every instance
+    # that doesn't override it).  `_shared` may legitimately be None
+    # for detached property ClassTypes produced by `create_property`
+    # without an enclosing class context — read `_shared` directly
+    # when handling that case, or use the `shared` accessor (which
+    # asserts non-null) for the common case.
+    has _shared: (ClassType.ClassDetailsShared | None) = None,
+        private: ClassType.ClassDetailsPrivate = ClassType.ClassDetailsPrivate();
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
+
+    @property
+    def shared -> ClassType.ClassDetailsShared;
 
     """
 Holds the shared details of class type.
@@ -230,7 +240,6 @@ Holds the private details of class type.
         def postinit -> None;
     }
 
-    def postinit -> None;
     def __str__ -> str;
     def clone_as_instance -> ClassType;
     def clone_as_class -> ClassType;
