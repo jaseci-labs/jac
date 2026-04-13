@@ -109,6 +109,7 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
+| `W0064` | `'{keyword} { ... }'` block syntax is deprecated at module scope. Use the `'to {keyword}:'` section header instead. |
 
 ### Lexer Errors
 

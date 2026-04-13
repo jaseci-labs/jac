@@ -1793,13 +1793,13 @@ sv import from main {
 **`cl { }` blocks** let you embed client-side code in a server file. This is useful for the entry point:
 
 ```jac
-cl {
-    import from frontend { app as ClientApp }
+to cl:
 
-    def:pub app -> JsxElement {
-        return
-            <ClientApp />;
-    }
+import from frontend { app as ClientApp }
+
+def:pub app -> JsxElement {
+    return
+        <ClientApp />;
 }
 ```
 
