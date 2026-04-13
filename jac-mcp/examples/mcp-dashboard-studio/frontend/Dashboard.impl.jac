@@ -399,29 +399,43 @@ impl DashboardPage.renderAstOutput -> JsxElement {
     badge_cls = "text-[9px] font-mono font-semibold px-2 py-0.5 rounded-md border " + (
         "text-teal-400 bg-teal-500/10 border-teal-500/20"
             if is_tree
-            else "text-indigo-400 bg-indigo-500/10 border-indigo-500/20"
+            else "text-violet-400 bg-violet-500/10 border-violet-500/20"
     );
-    pre_cls = "text-[11px] leading-5 max-h-[420px] overflow-auto bg-[#070809] rounded-b-lg border-x border-b whitespace-pre-wrap break-words font-mono " + (
-        "text-teal-300/80 border-teal-900/40"
-            if is_tree
-            else "text-indigo-300/80 border-indigo-900/40"
-    );
+    accent_border = "border-teal-900/40" if is_tree else "border-violet-900/40";
+    accent_header = "bg-teal-950/50 border-teal-900/30"
+        if is_tree
+        else "bg-violet-950/50 border-violet-900/30";
+    accent_dot = "bg-teal-400" if is_tree else "bg-violet-400";
     return
-        <div className="rounded-lg overflow-hidden border border-white/[0.06]">
+        <div
+            className={"rounded-xl overflow-hidden border flex flex-col " + accent_border}
+            style={{"height": "460px"}}
+        >
             <div
-                className={"flex items-center justify-between px-3 py-2 border-b " + (
-                    "bg-teal-950/40 border-teal-900/30"
-                        if is_tree
-                        else "bg-indigo-950/40 border-indigo-900/30"
-                )}
+                className={"flex-shrink-0 flex items-center justify-between px-3 py-2 border-b " + accent_header}
             >
                 <div className="flex items-center gap-2.5">
+                    <div
+                        className={"h-1.5 w-1.5 rounded-full flex-shrink-0 " + accent_dot}
+                    />
                     <span className={badge_cls}>
                         {"AST TREE" if is_tree else "AST JSON"}
                     </span>
                     <span className="text-[10px] text-zinc-600 font-mono">
                         {str(len(lines)) + " lines"}
                     </span>
+                    <span className="text-[10px] text-zinc-700">
+                        ·
+                    </span>
+                    <span className="text-[10px] text-zinc-600 font-mono">
+                        {str(len(json_str)) + " chars"}
+                    </span>
+                    {not is_tree
+                    and <span
+                        className="text-[9px] text-zinc-700 ml-1 font-mono italic"
+                    >
+                        fold with › / collapse with ‹
+                    </span>}
                 </div>
                 <button
                     onClick={lambda { navigator.clipboard.writeText(json_str);ast_copied = True;setTimeout(
@@ -436,28 +450,44 @@ impl DashboardPage.renderAstOutput -> JsxElement {
                     {"Copied!" if ast_copied else "Copy"}
                 </button>
             </div>
-            <div className="flex max-h-[420px] overflow-hidden bg-[#070809]">
-                <div
-                    className={"flex-shrink-0 select-none border-r px-2 py-3 text-right " + (
-                        "border-teal-900/30 bg-teal-950/20"
-                            if is_tree
-                            else "border-indigo-900/30 bg-indigo-950/20"
-                    )}
-                >
-                    {[
-                        <div
-                            key={str(i)}
-                            className={"text-[10px] leading-5 font-mono " + (
-                                "text-teal-900" if is_tree else "text-indigo-900"
-                            )}
-                        >
-                            {str(i + 1)}
-                        </div> for i in range(len(lines))
-                    ]}
-                </div>
-                <pre className={pre_cls + " flex-1 px-4 py-3"}>
-                    {json_str}
-                </pre>
+            <div className="flex-1 min-h-0">
+                <MonacoEditor
+                    height="100%"
+                    width="100%"
+                    language={"plaintext" if is_tree else "json"}
+                    theme="vs-dark"
+                    value={json_str}
+                    options={{
+                        "readOnly": True,
+                        "fontSize": 11,
+                        "fontFamily": "ui-monospace, 'JetBrains Mono', 'Fira Code', monospace",
+                        "lineHeight": 18,
+                        "minimap": {
+                            "enabled": True,
+                            "scale": 1,
+                            "showSlider": "always"
+                        },
+                        "scrollBeyondLastLine": False,
+                        "lineNumbers": "on",
+                        "renderLineHighlight": "line",
+                        "wordWrap": "off",
+                        "padding": {"top": 8, "bottom": 8},
+                        "folding": True,
+                        "foldingHighlight": True,
+                        "showFoldingControls": "always",
+                        "scrollbar": {
+                            "verticalScrollbarSize": 5,
+                            "horizontalScrollbarSize": 5
+                        },
+                        "overviewRulerBorder": False,
+                        "bracketPairColorization": {"enabled": True},
+                        "guides": {"bracketPairs": True, "indentation": True},
+                        "renderWhitespace": "none",
+                        "domReadOnly": True,
+                        "cursorStyle": "line",
+                        "cursorWidth": 1
+                    }}
+                />
             </div>
         </div>;
 }
