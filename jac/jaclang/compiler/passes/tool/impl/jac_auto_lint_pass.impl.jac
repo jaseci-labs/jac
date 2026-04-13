@@ -2140,6 +2140,14 @@ impl JacAutoLintPass._infer_type_from_usestate_value(value: (uni.Expr | None)) -
     return "Any";
 }
 
+"""Derive the React-convention setter name from a variable name.
+
+Follows the React convention: varName -> setVarName (capitalise first letter).
+"""
+impl JacAutoLintPass._setter_name(var_name: str) -> str {
+    return "set" + var_name[0].upper() + var_name[1:];
+}
+
 """Create an ArchHas (has declaration) node from useState info.
 
 Produces: has var_name: type_str = init_value;
@@ -2161,17 +2169,17 @@ impl JacAutoLintPass._create_has_from_usestate(
         pos_end=ref_node.loc.pos_end,
         is_kwesc=False
     );
-    # Build the type Name node
+    # Build the type Name node — positioned after name_node (i.e. the ": type" part)
     type_name_node = uni.Name(
-        orig_src=ref_node.loc.orig_src,
+        orig_src=name_node.loc.orig_src,
         name=Tok.NAME.value,
         value=type_str,
-        line=ref_node.loc.first_line,
-        end_line=ref_node.loc.last_line,
-        col_start=ref_node.loc.col_start,
-        col_end=ref_node.loc.col_start + len(type_str),
-        pos_start=ref_node.loc.pos_start,
-        pos_end=ref_node.loc.pos_end,
+        line=name_node.loc.first_line,
+        end_line=name_node.loc.last_line,
+        col_start=name_node.loc.col_end + 2,  # +2 for ": "
+        col_end=name_node.loc.col_end + 2 + len(type_str),
+        pos_start=name_node.loc.pos_end + 2,
+        pos_end=name_node.loc.pos_end + 2 + len(type_str),
         is_kwesc=False
     );
     # Use ref_node to generate tokens — gen_token() needs a live node with valid loc info
@@ -2229,11 +2237,9 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         }
         (var_name, setter_name, init_value) = match_result;
         type_str = self._infer_type_from_usestate_value(init_value);
-        init_repr = (
-            str(getattr(init_value, "value", "..."))
-                if init_value is not None
-                else '""'
-        );
+        init_repr = str(getattr(init_value, "value", "<expr>"))
+            if init_value is not None
+            else "<no default>";
         if not self.emit(
             W3038,
             node_override=stmt,
@@ -2248,23 +2254,19 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         has_node.parent = ability_node;
         new_body.append(has_node);
         replaced[id(stmt)] = has_node;
-        setters[setter_name] = var_name;
+        setters[self._setter_name(var_name)] = var_name;
         self._did_convert_usestate = True;
     }
     if replaced {
         ability_node.body = new_body;
         self.recalculate_parents(ability_node);
         ability_node.kid = [replaced.get(id(k), k) for k in ability_node.kid];
-    }
-
-    if not replaced {
+    } else {
         for stmt in ability_node.body {
             if isinstance(stmt, uni.ArchHas) {
                 for has_var in stmt.vars {
                     if isinstance(has_var.name, uni.Name) {
-                        var_name = has_var.name.value;
-                        setter_name = "set" + var_name[0].upper() + var_name[1:];
-                        setters[setter_name] = var_name;
+                        setters[self._setter_name(has_var.name.value)] = has_var.name.value;
                     }
                 }
             }

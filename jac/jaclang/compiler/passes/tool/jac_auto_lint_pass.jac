@@ -149,6 +149,7 @@ obj JacAutoLintPass(UniPass) {
     ) -> (tuple[str, str, uni.Expr | None] | None);
 
     def _infer_type_from_usestate_value(value: (uni.Expr | None)) -> str;
+    def _setter_name(var_name: str) -> str;
     def _create_has_from_usestate(
         ref_node: uni.UniNode,
         var_name: str,
