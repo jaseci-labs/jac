@@ -64,6 +64,54 @@ jobs:
     - name: Run runtimelib tests
       run: pytest -x jac/tests/runtimelib -n auto
 
+  test-core-language:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run language tests
+      run: pytest -x jac/tests/language -n auto
+
+  test-core-project:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run project tests
+      run: pytest -x jac/tests/project -n auto
+
   test-core-rest:
     runs-on: ubuntu-latest
     steps:
@@ -90,7 +138,9 @@ jobs:
         pytest -x jac -n auto \
           --ignore=jac/tests/compiler/passes/main \
           --ignore=jac/tests/langserve \
-          --ignore=jac/tests/runtimelib
+          --ignore=jac/tests/runtimelib \
+          --ignore=jac/tests/language \
+          --ignore=jac/tests/project
 
 #   test-client:
 #     runs-on: ubuntu-latest
