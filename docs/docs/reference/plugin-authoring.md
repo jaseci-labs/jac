@@ -425,6 +425,8 @@ If your plugin scaffolds a project structure (e.g., a fullstack app, a starter k
 
 ```jac
 """Plugin config for jac-myplugin."""
+import from typing { Any }
+
 class JacMypluginPluginConfig {
     # ... get_plugin_metadata, get_config_schema, validate_config from Recipe 4 ...
 

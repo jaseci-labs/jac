@@ -185,6 +185,7 @@ When processing client imports ([esast_gen_pass.py:317-325](https://github.com/J
 #### Example Usage
 
 ```jac
+import from typing { Any }
 cl import from jac:client_runtime {
     jacLogin,
     jacLogout,

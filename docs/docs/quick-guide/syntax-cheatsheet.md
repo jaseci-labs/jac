@@ -5,8 +5,9 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 **Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
 
 ```jac
+
 # ============================================================
-# Learn Jac in Y Minutes
+# Learn Jac in 5 Minutes
 # ============================================================
 # Jac compiles to Python bytecode, JavaScript, and native machine code.
 # It features graph-native programming, object-spatial walkers,
@@ -90,6 +91,7 @@ import datetime as dt;
 
 # Import specific items from a module
 import from math { sqrt, pi, log as logarithm }
+import from typing { Any }
 
 # Relative imports
 import from .sibling { helper_func }

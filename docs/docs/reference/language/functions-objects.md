@@ -64,6 +64,7 @@ obj Person {
 **Required Parameter Order:**
 
 ```jac
+import from typing { Any }
 def complete_example(
     pos_only1: int,           # 1. Positional-only parameters
     pos_only2: str,

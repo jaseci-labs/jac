@@ -176,6 +176,8 @@ def categorize(fruit: str) -> str {
 **`match`/`case`**, on the other hand, is for Python-style structural pattern matching -- use it when you need to destructure values or match more complex patterns:
 
 ```jac
+import from typing { Any }.
+
 def describe(value: Any) -> str {
     match value {
         case 0:

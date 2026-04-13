@@ -1060,6 +1060,7 @@ walker:priv DeleteItem {
 ### Search Walker
 
 ```jac
+import from typing { Any }
 node Item {
     has name: str;
 }

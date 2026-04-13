@@ -242,6 +242,7 @@ cl {
 ### Creating Context
 
 ```jac
+import from typing { Any }
 cl {
     import from react { createContext, useContext }
 
@@ -301,6 +302,7 @@ cl {
 Create reusable state logic:
 
 ```jac
+import from typing { Any }
 cl {
     import from react { useEffect }
 
@@ -347,6 +349,7 @@ cl {
 ### Loading State Pattern
 
 ```jac
+import from typing { Any }
 cl {
     def:pub DataComponent() -> JsxElement {
         has data: Any = None;

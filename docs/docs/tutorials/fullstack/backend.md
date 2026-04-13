@@ -310,6 +310,7 @@ cl {
 ### Loading States Pattern
 
 ```jac
+import from typing { Any }
 cl {
     def:pub DataView() -> JsxElement {
         has data: Any = None;
@@ -363,6 +364,7 @@ cl {
 ### Polling Pattern
 
 ```jac
+import from typing { Any }
 cl {
     import from react { useEffect }
 

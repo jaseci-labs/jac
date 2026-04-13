@@ -493,6 +493,7 @@ cl {
 Create reusable state logic by defining functions that use `has`:
 
 ```jac
+import from typing { Any }
 cl {
     import from react { useEffect }
 
@@ -628,6 +629,7 @@ cl {
 Wrap spawn calls in try/catch and track loading/error state:
 
 ```jac
+import from typing { Any }
 cl {
     def:pub SafeDataView() -> JsxElement {
         has data: Any = None;
@@ -664,6 +666,7 @@ cl {
 Use `setInterval` with effect cleanup for periodic data refresh:
 
 ```jac
+import from typing { Any }
 cl {
     import from react { useEffect }
 
@@ -1083,6 +1086,7 @@ cl {
 > **Note:** The `cn()` utility is a local file you create in your project. You can write it entirely in Jac (no TypeScript needed):
 >
 > ```jac
+> import from typing { Any }
 > # lib/utils.cl.jac
 > import from "clsx" { clsx }
 > import from "tailwind-merge" { twMerge }
@@ -2192,6 +2196,7 @@ Jac does not have a `new` keyword. Use `Reflect.construct()` to instantiate brow
 
 <!-- jac-skip -->
 ```jac
+import from typing { Any }
 cl {
     # WebSocket
     ws = Reflect.construct(WebSocket, [url]);
@@ -2218,6 +2223,7 @@ When passing callbacks to be invoked later, use `.call(None, ...)`:
 
 <!-- jac-skip -->
 ```jac
+import from typing { Any }
 cl {
     handler = myCallback;
     ws.onmessage = lambda(e: Any) {
@@ -2231,6 +2237,7 @@ cl {
 Use `glob` for state shared across a module:
 
 ```jac
+import from typing { Any }
 cl {
     glob initialized: bool = False;
     glob cache: Any = None;

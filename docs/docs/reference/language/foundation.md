@@ -336,6 +336,7 @@ If you later add runtime usage like `MyClass()`, the compiler automatically prom
 Jac will support generic type parameters using Python-style syntax (coming soon):
 
 ```jac
+
 # Generic function (coming soon):
 # def first[T](items: list[T]) -> T {
 #     return items[0];
@@ -346,7 +347,8 @@ Jac will support generic type parameters using Python-style syntax (coming soon)
 #     has value: T;
 # }
 
-# For now, use `Any` as a placeholder:
+# For now, use `Any` as a placeholder:\
+import from typing { Any }
 def first(items: list) -> Any {
     return items[0];
 }
@@ -1490,6 +1492,7 @@ Pattern matching lets you destructure and test complex data in a single construc
 **Basic Patterns:**
 
 ```jac
+import from typing { Any }
 obj Point {
     has x: int = 0;
     has y: int = 0;
@@ -1521,6 +1524,7 @@ def example(value: Any) {
 **Advanced Patterns:**
 
 ```jac
+import from typing { Any }
 def example(data: Any) {
     match data {
         case [1, *middle, 5]:              # Spread: capture remainder
@@ -1642,6 +1646,7 @@ def example(input: str) {
 **Multiple exception types:**
 
 ```jac
+import from typing { Any }
 def process(data: Any) -> None {
     print(data);
 }
@@ -1790,6 +1795,7 @@ def fibonacci(limit: int) -> int {
 **yield from (delegation):**
 
 ```jac
+import from typing { Any }
 def flatten(nested: list) -> Any {
     for item in nested {
         if isinstance(item, list) {
