@@ -135,7 +135,7 @@ jobs:
 
     - name: Run remaining Jac core tests
       run: |
-        pytest -x jac -n auto \
+        pytest -x jac -n auto --durations=30 \
           --ignore=jac/tests/compiler/passes/main \
           --ignore=jac/tests/langserve \
           --ignore=jac/tests/runtimelib \
