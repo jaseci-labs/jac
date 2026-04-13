@@ -57,9 +57,7 @@ def:pub HomePage(onEnter: Any) -> JsxElement {
                     <div
                         className="h-7 w-7 rounded-lg bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center shadow-[0_0_16px_rgba(255,122,24,0.45)] flex-shrink-0"
                     >
-                        <span className="text-[11px] font-black text-white">
-                            J
-                        </span>
+                        <span className="text-[11px] font-black text-white">J</span>
                     </div>
                     <span className="text-sm font-semibold text-white tracking-tight">
                         Jac MCP Studio
@@ -86,9 +84,7 @@ def:pub HomePage(onEnter: Any) -> JsxElement {
                         >
                             The Developer Studio
                             <br/>
-                            <span className="text-orange-400">
-                                for Jac.
-                            </span>
+                            <span className="text-orange-400">for Jac.</span>
                         </h1>
                         <p
                             className="text-base text-zinc-400 leading-relaxed max-w-[480px] mx-auto"
@@ -101,9 +97,7 @@ def:pub HomePage(onEnter: Any) -> JsxElement {
                             onClick={onEnter}
                             className="group flex items-center gap-2.5 px-8 py-3.5 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-400 hover:to-orange-500 shadow-[0_0_35px_rgba(255,122,24,0.38)] hover:shadow-[0_0_50px_rgba(255,122,24,0.5)] transition-all duration-200"
                         >
-                            <span>
-                                Explore the Tools
-                            </span>
+                            <span>Explore the Tools</span>
                             <span
                                 className="text-orange-200 transition-transform duration-200 group-hover:translate-x-1"
                             >
@@ -240,13 +234,9 @@ def:pub HomePage(onEnter: Any) -> JsxElement {
                     <div
                         className="h-5 w-5 rounded-md bg-gradient-to-br from-orange-400 to-orange-600 flex items-center justify-center flex-shrink-0"
                     >
-                        <span className="text-[9px] font-black text-white">
-                            J
-                        </span>
+                        <span className="text-[9px] font-black text-white">J</span>
                     </div>
-                    <span className="text-[11px] text-zinc-600">
-                        Jac MCP Studio
-                    </span>
+                    <span className="text-[11px] text-zinc-600">Jac MCP Studio</span>
                 </div>
                 <span className="text-[11px] text-zinc-700">
                     Built on the Jaseci platform
