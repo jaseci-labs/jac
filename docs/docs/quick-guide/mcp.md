@@ -227,6 +227,9 @@ project_root = "."           # Root directory for project-aware tools
 | SSE             | `GET /sse` (event stream), `POST /messages/` (client messages) |
 | Streamable HTTP | `POST /mcp` (bidirectional streaming)                          |
 
+!!! example "See streamable-http in action"
+    `mcp-dashboard-studio` (`jac-mcp/examples/mcp-dashboard-studio/`) is a complete Jac full-stack app that connects to the MCP server over `streamable-http`. See the [Example App](#example-app) section below.
+
 ## Resources (40+)
 
 Resources are read-only reference materials that AI models can load for context. They are served through the `jac://` URI scheme.
@@ -1039,6 +1042,12 @@ Convert Python code to idiomatic Jac.
 | Argument      | Required | Description                   |
 | ------------- | -------- | ----------------------------- |
 | `python_code` | Yes      | Python source code to convert |
+
+## Example App
+
+`mcp-dashboard-studio` is a complete Jac full-stack app that connects to the MCP server over `streamable-http`. It covers service-layer walkers, input validation, and a browser UI built with `jac-client`. You can find it in the [Jaseci GitHub repo](https://github.com/jaseci-labs/jaseci) under `jac-mcp/examples/mcp-dashboard-studio/`. See its `README.md` for setup and usage.
+
+---
 
 ## Troubleshooting
 
