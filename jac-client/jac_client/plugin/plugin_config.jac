@@ -284,8 +284,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         } except subprocess.CalledProcessError as e {
             console.warning(f"Failed to install packages: {e}");
             console.print(
-                "  💡 You can install packages later with: jac add --cl\n",
-                style="muted"
+                "  💡 You can install packages later with: jac add --cl\n", style="muted"
             );
         } finally {
             # Clean up temporary package.json

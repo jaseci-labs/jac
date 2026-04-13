@@ -116,13 +116,15 @@ cl {
         }
 
         useEffect(
-            lambda { stored_token = getStorage("admin_token");stored_user = getStorage(
-                "admin_username"
-            );if stored_token and stored_user {
-                validateAndRestoreSession(stored_token, stored_user);
-            } else {
-                isLoading = False;
-            } },
+            lambda {
+                stored_token = getStorage("admin_token");
+                stored_user = getStorage("admin_username");
+                if stored_token and stored_user {
+                    validateAndRestoreSession(stored_token, stored_user);
+                } else {
+                    isLoading = False;
+                }
+            },
             []
         );
 
@@ -137,9 +139,7 @@ cl {
         };
 
         return
-            <AuthContext.Provider value={value}>
-                {children}
-            </AuthContext.Provider>;
+            <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
     }
 
     def:pub useAuth -> dict {

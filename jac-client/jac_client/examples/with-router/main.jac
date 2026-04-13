@@ -22,28 +22,18 @@ cl {
 
         return
             <div>
-                <h1>
-                    🏠 Home Page
-                </h1>
-                <p>
-                    Welcome to the home page!
-                </p>
+                <h1>🏠 Home Page</h1>
+                <p>Welcome to the home page!</p>
                 <p>
                     This example uses React Router's
-                    <strong>
-                        HashRouter
-                    </strong>
+                    <strong>HashRouter</strong>
                     #  for client-side routing.
                 </p>
                 <p>
                     Current path:
-                    <code>
-                        {location.pathname}
-                    </code>
+                    <code>{location.pathname}</code>
                 </p>
-                <button onClick={goToAbout}>
-                    Go to About →
-                </button>
+                <button onClick={goToAbout}>Go to About →</button>
             </div>;
     }
 
@@ -53,25 +43,15 @@ cl {
 
         return
             <div>
-                <h1>
-                    ℹ️ About Page
-                </h1>
-                <p>
-                    This is the about page.
-                </p>
-                <p>
-                    Learn more about our application here.
-                </p>
+                <h1>ℹ️ About Page</h1>
+                <p>This is the about page.</p>
+                <p>Learn more about our application here.</p>
                 <p>
                     Current path:
-                    <code>
-                        {location.pathname}
-                    </code>
+                    <code>{location.pathname}</code>
                 </p>
                 <div style={{"marginTop": "1rem"}}>
-                    <Link to="/about/team">
-                        View Team →
-                    </Link>
+                    <Link to="/about/team">View Team →</Link>
                 </div>
             </div>;
     }
@@ -80,15 +60,9 @@ cl {
     def Team -> JsxElement {
         return
             <div>
-                <h1>
-                    👥 Our Team
-                </h1>
-                <p>
-                    Meet the amazing team behind this project!
-                </p>
-                <Link to="/about">
-                    ← Back to About
-                </Link>
+                <h1>👥 Our Team</h1>
+                <p>Meet the amazing team behind this project!</p>
+                <Link to="/about">← Back to About</Link>
             </div>;
     }
 
@@ -99,24 +73,16 @@ cl {
 
         return
             <div>
-                <h1>
-                    👤 User Profile
-                </h1>
+                <h1>👤 User Profile</h1>
                 <p>
                     Viewing profile for user:
-                    <strong>
-                        {userId}
-                    </strong>
+                    <strong>{userId}</strong>
                 </p>
                 <p>
                     This demonstrates URL parameters using
-                    <code>
-                        /user/:id
-                    </code>
+                    <code>/user/:id</code>
                 </p>
-                <Link to="/">
-                    ← Back to Home
-                </Link>
+                <Link to="/">← Back to Home</Link>
             </div>;
     }
 
@@ -136,28 +102,18 @@ cl {
         if submitted {
             return
                 <div>
-                    <h1>
-                        📧 Contact Page
-                    </h1>
+                    <h1>📧 Contact Page</h1>
                     <div style={{"color": "green"}}>
-                        <p>
-                            ✓ Thank you! Your message has been sent.
-                        </p>
-                        <button onClick={resetForm}>
-                            Send another
-                        </button>
+                        <p>✓ Thank you! Your message has been sent.</p>
+                        <button onClick={resetForm}>Send another</button>
                     </div>
                 </div>;
         }
 
         return
             <div>
-                <h1>
-                    📧 Contact Page
-                </h1>
-                <p>
-                    Get in touch with us!
-                </p>
+                <h1>📧 Contact Page</h1>
+                <p>Get in touch with us!</p>
                 <form onSubmit={handleSubmit}>
                     <input
                         type="text"
@@ -173,9 +129,7 @@ cl {
                         placeholder="Your message"
                         style={{"margin": "0.5rem 0", "display": "block"}}
                     ></textarea>
-                    <button type="submit">
-                        Send Message
-                    </button>
+                    <button type="submit">Send Message</button>
                 </form>
             </div>;
     }
@@ -191,19 +145,13 @@ cl {
 
         return
             <div style={{"textAlign": "center", "padding": "2rem"}}>
-                <h1>
-                    🔍 404 - Page Not Found
-                </h1>
+                <h1>🔍 404 - Page Not Found</h1>
                 <p>
                     The page
-                    <code>
-                        {location.pathname}
-                    </code>
+                    <code>{location.pathname}</code>
                     does not exist.
                 </p>
-                <button onClick={goHome}>
-                    Go Home
-                </button>
+                <button onClick={goHome}>Go Home</button>
             </div>;
     }
 
@@ -242,15 +190,9 @@ cl {
                         "alignItems": "center"
                     }}
                 >
-                    <Link to="/" style={linkStyle("/")}>
-                        Home
-                    </Link>
-                    <Link to="/about" style={linkStyle("/about")}>
-                        About
-                    </Link>
-                    <Link to="/contact" style={linkStyle("/contact")}>
-                        Contact
-                    </Link>
+                    <Link to="/" style={linkStyle("/")}>Home</Link>
+                    <Link to="/about" style={linkStyle("/about")}>About</Link>
+                    <Link to="/contact" style={linkStyle("/contact")}>Contact</Link>
                     <Link to="/user/123" style={linkStyle("/user/123")}>
                         Profile Demo
                     </Link>

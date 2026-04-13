@@ -1,6 +1,6 @@
 # {{name}}
 
-A Jac client-side application with React support.
+A Jac client-side application.
 
 ## Project Structure
 
@@ -35,5 +35,5 @@ cl import from .components.Button { Button }
 Add npm packages with the --cl flag:
 
 ```bash
-jac add --cl react-router-dom
+jac add --cl some-package
 ```

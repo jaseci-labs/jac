@@ -155,8 +155,7 @@ test "utility factory returns noop metrics when prometheus missing" {
     ) {
         config = {"enabled": True, "namespace": "test"};
         collector = UtilityFactory.create_metrics("prometheus", config);
-        assert isinstance(collector, NoOpMetricsCollector),
-            "Should fall back to NoOp when prometheus-client is missing";
+        assert isinstance(collector, NoOpMetricsCollector) , "Should fall back to NoOp when prometheus-client is missing";
     }
 }
 
@@ -182,11 +181,15 @@ test "database factory requires pymongo for mongodb" {
 
     with unittest.mock.patch(
         "jac_scale.factories.database_factory.require_optional",
-        side_effect=ImportError("'pymongo' is required. Install: pip install jac-scale[data]")
+        side_effect=ImportError(
+            "'pymongo' is required. Install: pip install jac-scale[data]"
+        )
     ) {
         raised = False;
         try {
-            DatabaseProviderFactory.create_client(DatabaseType.MONGODB, uri="mongodb://localhost");
+            DatabaseProviderFactory.create_client(
+                DatabaseType.MONGODB, uri="mongodb://localhost"
+            );
         } except ImportError as e {
             raised = True;
             assert "jac-scale[data]" in str(e);
@@ -203,11 +206,15 @@ test "database factory requires redis for redis" {
 
     with unittest.mock.patch(
         "jac_scale.factories.database_factory.require_optional",
-        side_effect=ImportError("'redis' is required. Install: pip install jac-scale[data]")
+        side_effect=ImportError(
+            "'redis' is required. Install: pip install jac-scale[data]"
+        )
     ) {
         raised = False;
         try {
-            DatabaseProviderFactory.create_client(DatabaseType.REDIS, uri="redis://localhost");
+            DatabaseProviderFactory.create_client(
+                DatabaseType.REDIS, uri="redis://localhost"
+            );
         } except ImportError as e {
             raised = True;
             assert "jac-scale[data]" in str(e);
@@ -221,7 +228,9 @@ test "deployment factory requires kubernetes for k8s target" {
 
     with unittest.mock.patch(
         "jac_scale.factories.deployment_factory.require_optional",
-        side_effect=ImportError("'kubernetes' is required. Install: pip install jac-scale[deploy]")
+        side_effect=ImportError(
+            "'kubernetes' is required. Install: pip install jac-scale[deploy]"
+        )
     ) {
         raised = False;
         try {
@@ -272,4 +281,50 @@ test "multiple require_optional calls do not conflict" {
     require_optional("json", "core");
     require_optional("json", "core");
     require_optional("os", "core");
+}
+
+# =============================================================================
+# Scheduler graceful degradation without APScheduler
+# =============================================================================
+test "scheduler setup succeeds without apscheduler installed" {
+    import from jac_scale.scheduler { JacScaleScheduler }
+
+    # Simulate APScheduler not being installed by patching the symbols
+    # in the scheduler module (where setup() reads them at runtime).
+    with unittest.mock.patch("jac_scale.scheduler.HAS_APSCHEDULER", False) {
+        with unittest.mock.patch("jac_scale.scheduler.BackgroundScheduler", None) {
+            with unittest.mock.patch("jac_scale.scheduler.ThreadPoolExecutor", None) {
+                sched = JacScaleScheduler();
+                # setup() should not crash — APScheduler init is skipped gracefully.
+                sched.setup(system_token="test-token");
+                assert sched._apscheduler is None , "APScheduler should be None when package is not installed";
+                # start/stop should be no-ops, not errors.
+                sched.start();
+                sched.stop();
+            }
+        }
+    }
+}
+
+test "scheduler create_job raises clear error without apscheduler" {
+    import from jac_scale.scheduler { JacScaleScheduler }
+
+    with unittest.mock.patch("jac_scale.scheduler.HAS_APSCHEDULER", False) {
+        with unittest.mock.patch("jac_scale.scheduler.BackgroundScheduler", None) {
+            with unittest.mock.patch("jac_scale.scheduler.ThreadPoolExecutor", None) {
+                sched = JacScaleScheduler();
+                sched.setup(system_token="test-token");
+                raised = False;
+                try {
+                    sched.create_job(
+                        name="test_walker", trigger="interval", interval=60.0
+                    );
+                } except RuntimeError as e {
+                    raised = True;
+                    assert "jac-scale[scheduler]" in str(e) , "Error message should include install instructions";
+                }
+                assert raised , "Expected RuntimeError when creating job without APScheduler";
+            }
+        }
+    }
 }

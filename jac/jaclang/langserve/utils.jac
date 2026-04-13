@@ -65,7 +65,9 @@ def find_surrounding_tokens(
     sem_tokens: list[int]
 ) -> tuple[(int | None), (int | None), bool];
 
-def get_line_of_code(line_number: int, lines: list[str]) -> Optional[tuple[(str, int)]];
+def get_line_of_code(
+    line_number: int, lines: list[str]
+) -> Optional[tuple[(str, int)]];
 
 def add_unique_text_edit(
     changes: dict[(str, list[lspt.TextEdit])], key: str, new_edit: lspt.TextEdit

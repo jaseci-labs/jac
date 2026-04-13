@@ -211,6 +211,14 @@ obj JacAPIServer {
     has module_name: str,
         port: int = 8000,
         base_path: str = "",
+        # True when this instance was spawned by another consumer's
+        # eager sv-to-sv spawn pass. Siblings skip their own eager-spawn
+        # step to avoid a cold-start race where multiple consumers each
+        # try to bring up the same transitive provider in parallel. The
+        # parent's spawn pass is the sole source of spawns; siblings
+        # fall back to the normal lazy _ensure_available path for
+        # anything the parent missed.
+        is_sv_sibling: bool = False,
         user_manager: UserManager by postinit,
         execution_manager: ExecutionManager by postinit,
         introspector: ModuleIntrospector by postinit,
@@ -244,6 +252,7 @@ obj JacAPIServer {
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;
+    def _ensure_sv_siblings -> None;
     def start(
         dev: bool = False,
         no_client: bool = False,

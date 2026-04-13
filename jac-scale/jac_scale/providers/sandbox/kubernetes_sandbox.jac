@@ -497,8 +497,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
 
             # List existing warm pods
             existing = core_v1.list_namespaced_pod(
-                namespace,
-                label_selector=f"{_SANDBOX_LABEL}=true,jac-sandbox-pool=warm"
+                namespace, label_selector=f"{_SANDBOX_LABEL}=true,jac-sandbox-pool=warm"
             );
             warm_count = 0;
             for p in existing.items {
@@ -541,7 +540,9 @@ obj KubernetesSandbox(SandboxEnvironment) {
         }
     }
 
-    def _claim_warm_pod(sandbox_id: str, user_id: str, project_id: str) -> (str | None) {
+    def _claim_warm_pod(
+        sandbox_id: str, user_id: str, project_id: str
+    ) -> (str | None) {
         self._lock.acquire();
         try {
             if not self._warm_pool {
@@ -846,8 +847,7 @@ obj KubernetesSandbox(SandboxEnvironment) {
                     if not injected {
                         self._cleanup_k8s_resources(sandbox_id, namespace);
                         return SandboxResult(
-                            success=False,
-                            message="Failed to inject code into warm pod"
+                            success=False, message="Failed to inject code into warm pod"
                         );
                     }
 

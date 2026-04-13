@@ -600,6 +600,16 @@ test "W3025: identical if/else branches" {
     assert has_diagnostic_code(prog, "W3025", in_warnings=True);
 }
 
+test "W3025: no false positive on subscript targets and call kwargs" {
+    path = os.path.join(
+        NEW_DIAG_FIXTURES, "lint_W3025_identical_branches_false_positive.jac"
+    );
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    # Fixture has 3 if/else pairs: 2 differ (must not warn) + 1 truly matches
+    # with a subscript target (must warn). Expect exactly 1 W3025.
+    assert count_diagnostic_code(prog, "W3025", in_warnings=True) == 1;
+}
+
 test "W3026: not (a == b) should be a != b" {
     pytest.skip("W3026 not yet implemented");
     (_, prog) = parse_and_validate('with entry { x = 5; y = not (x == 3); }');
@@ -684,8 +694,7 @@ test "W0061: bracket filter no warning" {
 test "W0061: multiple deprecated filters emit multiple warnings" {
     prog = JacProgram();
     prog.compile(
-        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }',
-        file_path="test.jac"
+        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }', file_path="test.jac"
     );
     assert count_diagnostic_code(prog, "W0061", in_warnings=True) == 2 , "Each deprecated filter occurrence should emit its own W0061";
 }

@@ -8,9 +8,12 @@ import from jaclang.jac0core.archetype {
     Anchor,
     NodeAnchor,
     EdgeAnchor,
+    WalkerAnchor,
+    ObjectAnchor,
     Permission,
     Access,
-    AccessLevel
+    AccessLevel,
+    access_level_cast
 }
 import from jaclang.jac0core.constructs {
     Archetype,
@@ -37,9 +40,17 @@ obj Serializer {
 
     Set include_type=True for storage (enables round-trip).
     Set api_mode=True for API responses (adds _jac_* metadata).
+    Set ref_mode=True to emit {"$ref": "<uuid-hex>", "$type": "<kind>"} for
+    repeated Jac objects instead of inlining them again (prevents duplication
+    and infinite recursion). Note: ref_mode registers discovered Jac objects
+    in the runtime memory store so that $ref placeholders can be resolved back
+    to live archetypes during deserialization.
     """
     static def serialize(
-        `obj: object, include_type: bool = False, api_mode: bool = False
+        `obj: object,
+        include_type: bool = False,
+        api_mode: bool = False,
+        ref_mode: bool = False
     ) -> object;
 
     """Reconstruct object from serialized data."""
@@ -47,15 +58,24 @@ obj Serializer {
 
     # Internal helpers
     static def _serialize_value(
-        val: object, include_type: bool, api_mode: bool = False
+        val: object,
+        include_type: bool,
+        api_mode: bool = False,
+        ref_mode: bool = False,
+        _seen: (tuple[set, set] | None) = None
     ) -> object;
 
     static def _type_info(`obj: object, `include: bool) -> dict[str, object];
     static def _serialize_attrs(
-        `obj: object, include_type: bool, api_mode: bool
+        `obj: object,
+        include_type: bool,
+        api_mode: bool,
+        ref_mode: bool = False,
+        _seen: (tuple[set, set] | None) = None
     ) -> dict[str, object];
 
     static def _deserialize_value(val: object) -> object;
+    static def _deserialize_jac_ref(data: dict[str, object]) -> (object | None);
     static def _get_class(module_name: str, class_name: str) -> (type | None);
     static def _id_to_stub(anchor_cls: type, id_str: str) -> (object | None);
     static def _deserialize_anchor(data: dict[str, object]) -> (object | None);

@@ -97,9 +97,7 @@ cl {
                 </div>
                 <div className="form-row">
                     <div className="form-group">
-                        <label htmlFor="description">
-                            Description
-                        </label>
+                        <label htmlFor="description">Description</label>
                         <input
                             id="description"
                             type="text"
@@ -110,9 +108,7 @@ cl {
                         />
                     </div>
                     <div className="form-group">
-                        <label htmlFor="amount">
-                            Amount
-                        </label>
+                        <label htmlFor="amount">Amount</label>
                         <input
                             id="amount"
                             type="number"
@@ -125,9 +121,7 @@ cl {
                         />
                     </div>
                     <div className="form-group">
-                        <label htmlFor="category">
-                            Category
-                        </label>
+                        <label htmlFor="category">Category</label>
                         <select
                             id="category"
                             value={category}
@@ -143,29 +137,22 @@ cl {
                     </div>
                     {showClientDropdown
                     and <div className="form-group">
-                        <label htmlFor="client">
-                            Client
-                        </label>
+                        <label htmlFor="client">Client</label>
                         <select
                             id="client"
                             value={clientName}
                             onChange={lambda e: Any { setClientName(e.target.value);}}
                             className="form-select"
                         >
-                            <option value="">
-                                Select Client (Optional)
-                            </option>
+                            <option value="">Select Client (Optional)</option>
                             {[
-                                <option key={client} value={client}>
-                                    {client}
-                                </option> for client in CLIENTS
+                                <option key={client} value={client}>{client}</option>
+                                for client in CLIENTS
                             ]}
                         </select>
                     </div>}
                     <div className="form-group">
-                        <label>
-                            Action
-                        </label>
+                        <label>Action</label>
                         <button type="submit" className="submit-btn">
                             Add{(txType[0].upper() + txType[1:])}
                         </button>

@@ -1080,3 +1080,43 @@ test "model pool router init" {
     assert "lb_deploy_count:3" in stdout_value;
     assert "lb_all_share_alias:True" in stdout_value;
 }
+
+import from byllm.llm {
+    _is_prompt_caching_eligible,
+    _apply_prompt_caching,
+    _CACHE_CONTROL_EPHEMERAL
+}
+
+test "prompt caching marks system message and last tool for anthropic models" {
+    # Eligibility: Anthropic yes, others no
+    assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514") == True;
+    assert _is_prompt_caching_eligible("claude-3-opus-20240229") == True;
+    assert _is_prompt_caching_eligible("gpt-4o") == False;
+    assert _is_prompt_caching_eligible("gemini/gemini-pro") == False;
+
+    # Apply to a realistic ReAct-style message + tools layout
+    messages = [
+        {"role": "system", "content": "You are an agent."},
+        {"role": "user", "content": "Do something"}
+    ];
+    tools = [
+        {"type": "function", "function": {"name": "read_file", "parameters": {}}},
+        {"type": "function", "function": {"name": "finish_tool", "parameters": {}}}
+    ];
+    _apply_prompt_caching(messages, tools);
+
+    assert messages[0].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+    assert "cache_control" not in messages[1];
+    assert "cache_control" not in tools[0];
+    assert tools[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+}
+
+test "prompt caching disabled via config" {
+    with unittest.mock.patch.object(
+        _byllm_llm_mod._byllm_config,
+        'get_prompt_caching_config',
+        return_value={'enabled': False}
+    ) {
+        assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514") == False;
+    }
+}

@@ -484,8 +484,7 @@ glob func = JacScalePlugin.create_j_context,
      sig = inspect.signature(func),
      sig_nodef = sig.replace(
          parameters=[
-             p.replace(default=inspect.Parameter.empty)
-             for p in sig.parameters.values()
+             p.replace(default=inspect.Parameter.empty) for p in sig.parameters.values()
          ]
      );
 

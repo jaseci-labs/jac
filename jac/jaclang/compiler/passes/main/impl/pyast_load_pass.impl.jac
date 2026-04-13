@@ -398,9 +398,7 @@ impl PyastBuildPass.proc_arguments(nd: py_ast.arguments) -> uni.FuncSignature {
         default = defaults.pop();
 
         if (
-            default
-            and isinstance(para, uni.ParamVar)
-            and isinstance(default, uni.Expr)
+            default and isinstance(para, uni.ParamVar) and isinstance(default, uni.Expr)
         ) {
             para.value = default;
             para.add_kids_right([para.value]);
@@ -1180,9 +1178,7 @@ impl PyastBuildPass.proc_match_as(nd: py_ast.MatchAs) -> (uni.MatchAs | uni.Matc
         return uni.MatchWild(kid=[name]);
     }
     return uni.MatchAs(
-        name=name,
-        pattern=pattern,
-        kid=[name] if (pattern is None) else [name, pattern]
+        name=name, pattern=pattern, kid=[name] if (pattern is None) else [name, pattern]
     );
 }
 
@@ -1439,7 +1435,9 @@ impl PyastBuildPass.proc_import_from(nd: py_ast.ImportFrom) -> uni.Import {
     }
     pytag = uni.SubTag[uni.Name](tag=lang, kid=[lang]);
     if ((len(nd.names) == 1) and (nd.names[0].name == '*')) {
-        ret = uni.Import(from_loc=None, items=[path], is_absorb=True, kid=[pytag, path]);
+        ret = uni.Import(
+            from_loc=None, items=[path], is_absorb=True, kid=[pytag, path]
+        );
         return ret;
     }
     ret = uni.Import(
@@ -2568,11 +2566,7 @@ impl PyastBuildPass.proc_assign(nd: py_ast.Assign) -> uni.Assignment {
     }
     if isinstance(value, uni.Expr) {
         return uni.Assignment(
-            target=valid,
-            value=value,
-            type_tag=None,
-            mutable=False,
-            kid=[*valid, value]
+            target=valid, value=value, type_tag=None, mutable=False, kid=[*valid, value]
         );
     } else {
         raise self.ice();
@@ -2699,7 +2693,9 @@ impl PyastBuildPass.proc_class_def(nd: py_ast.ClassDef) -> (uni.Archetype | uni.
     }
     doc = body[0].expr
         if (
-            isinstance(body[0], uni.ExprStmt) and isinstance(body[0].expr, uni.String)
+            body
+            and isinstance(body[0], uni.ExprStmt)
+            and isinstance(body[0].expr, uni.String)
         )
         else None;
     self.convert_to_doc(doc) if doc else None;

@@ -187,7 +187,5 @@ impl UniTreeEnrichPass.enter_module_code(nd: uni.ModuleCode) -> None {
 }
 
 impl UniTreeEnrichPass.exit_module(nd: uni.Module) -> None {
-    nd.gen.native_compat = (
-        not self._native_has_disqualifier and self._native_has_entry
-    );
+    nd.gen.native_compat = not self._native_has_disqualifier and self._native_has_entry;
 }

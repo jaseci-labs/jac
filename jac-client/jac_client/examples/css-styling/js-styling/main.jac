@@ -26,21 +26,18 @@ cl {
         return
             <div style={styles.container}>
                 <div style={styles.card}>
-                    <h1 style={styles.title}>
-                        Counter Application
-                    </h1>
+                    <h1 style={styles.title}>Counter Application</h1>
                     <div style={styles.divider}></div>
                     <div style={styles.counterSection}>
-                        <div style={styles.label}>
-                            Current Count
-                        </div>
-                        <div style={countStyle}>
-                            {count}
-                        </div>
+                        <div style={styles.label}>Current Count</div>
+                        <div style={countStyle}>{count}</div>
                     </div>
                     <div style={styles.divider}></div>
                     <div style={styles.buttonGroup}>
-                        <button style={styles.buttonDecrement} onClick={handleDecrement}>
+                        <button
+                            style={styles.buttonDecrement}
+                            onClick={handleDecrement}
+                        >
                             -
                         </button>
                         <button style={styles.buttonReset} onClick={handleReset}>

@@ -214,6 +214,9 @@ obj InteropManifest {
 
     @property
     def server_exports_to_client -> list[InteropBinding];
+
+    @property
+    def server_exports_to_server -> list[InteropBinding];
 }
 
 """Code generation target."""

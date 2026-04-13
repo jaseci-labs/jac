@@ -240,3 +240,52 @@ test "class reassignment impl match" {
     ];
     assert "impl.MyClass.get_value" in state.sym_tab.names_in_scope;
 }
+
+test "E2016 impl for method with full body" {
+    state = (out := JacProgram()).compile(
+        os.path.join(FIXTURES, "fullbody_impl_error.jac")
+    );
+
+    e2016_errors = [e for e in out.errors_had if "E2016" in e.pretty_print()];
+    assert len(e2016_errors) == 2 , (
+        f"Expected 2 E2016 errors (make + clone), got {len(e2016_errors)}"
+    );
+
+    errors_output = "";
+    for error in e2016_errors {
+        errors_output += error.pretty_print() + "\n";
+    }
+
+    # Find the Foo archetype's abilities
+    for node in state.get_all_sub_nodes(uni.Ability) {
+        if isinstance(node, uni.Ability) and node.sym_name in ("make", "clone") {
+            assert not isinstance(node.body, uni.ImplDef) , (
+                f"Ability '{node.sym_name}' body was overwritten by impl"
+            );
+        }
+    }
+
+    assert "E2016" in errors_output;
+    assert "Cannot provide implementation for a method that already has a body" in errors_output;
+    assert "impl Foo.make()" in errors_output;
+    assert "impl Foo.clone()" in errors_output;
+}
+
+test "E2017 duplicate impl for stub" {
+    (out := JacProgram()).compile(
+        os.path.join(FIXTURES, "duplicate_impl_error.jac")
+    );
+
+    e2017_errors = [e for e in out.errors_had if "E2017" in e.pretty_print()];
+    assert len(e2017_errors) == 2 , (
+        f"Expected 2 E2017 errors (make + clone from .impl file), got {len(e2017_errors)}"
+    );
+
+    errors_output = "";
+    for error in e2017_errors {
+        errors_output += error.pretty_print() + "\n";
+    }
+
+    assert "E2017" in errors_output;
+    assert "Duplicate implementation" in errors_output;
+}

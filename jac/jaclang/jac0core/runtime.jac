@@ -32,6 +32,7 @@ import from typing {
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
     GenericEdge,
+    ObjectAnchor,
     ObjectSpatialDestination,
     ObjectSpatialFunction,
     ObjectSpatialPath,
@@ -40,6 +41,7 @@ import from jaclang.jac0core.archetype {
 import from jaclang.jac0core.constant { EdgeDir, colors }
 import from jaclang.jac0core.constructs {
     AccessLevel,
+    access_level_cast,
     Anchor,
     Archetype,
     EdgeAnchor,
@@ -211,9 +213,9 @@ class JacWalker {
         `walker: WalkerArchetype,
         expr:
             (
-                list[
-                    (NodeArchetype | EdgeArchetype)
-                ] | list[NodeArchetype] | list[EdgeArchetype] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
+                list[(NodeArchetype | EdgeArchetype)] | list[NodeArchetype] | list[
+                    EdgeArchetype
+                ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
             ),
         insert_loc: int = -1
     ) -> bool;
@@ -247,9 +249,7 @@ class JacWalker {
         Returns True if walker should continue, False if disengaged.
         """
     static def _visit_node_recursive(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        anchor: (NodeAnchor | EdgeAnchor)
+        warch: WalkerArchetype, `walker: WalkerAnchor, anchor: (NodeAnchor | EdgeAnchor)
     ) -> bool;
 
     """Jac's spawn operator feature with recursive DFS semantics.
@@ -290,9 +290,7 @@ class JacWalker {
         Returns True if walker should continue, False if disengaged.
         """
     static async def _async_visit_node_recursive(
-        warch: WalkerArchetype,
-        `walker: WalkerAnchor,
-        anchor: (NodeAnchor | EdgeAnchor)
+        warch: WalkerArchetype, `walker: WalkerAnchor, anchor: (NodeAnchor | EdgeAnchor)
     ) -> bool;
 
     """Jac's async spawn operator feature with recursive DFS semantics.
@@ -567,6 +565,17 @@ class JacAPIServer {
         The returned class should be compatible with the JacAPIServer interface.
         """
     static def get_api_server_class -> type;
+
+    """Lazily ensure an sv-imported microservice is started and registered.
+
+        Called from sv_client.call() when an sv-imported function is invoked
+        for the first time and the service has no URL or TestClient yet.
+        Plugins (e.g. jac-scale) can override this to spawn their own
+        enhanced server. The default implementation spawns a base
+        JacAPIServer in a background thread, waits for the server to be
+        responsive, and registers the URL via sv_client.register().
+        """
+    static def ensure_sv_service(module_name: str, base_path: str) -> None;
 
     """Create the API server instance.
 

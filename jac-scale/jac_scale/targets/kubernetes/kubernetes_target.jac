@@ -345,11 +345,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Build volumes and build container configuration for code sync via code-server."""
     def _build_volumes_config(
-        app_name: str,
-        app_config: AppConfig,
-        namespace: str,
-        core_v1: Any,
-        apps_v1: Any
+        app_name: str, app_config: AppConfig, namespace: str, core_v1: Any, apps_v1: Any
     ) -> dict[str, Any] {
         pvc_name = f"{app_name}-code-pvc";
         pvc_size = self.k8s_config.pvc_size;
@@ -568,8 +564,7 @@ obj KubernetesTarget(DeploymentTarget) {
             );
             try {
                 core_v1.read_namespaced_secret(
-                    name=mongo_result['secret']['metadata']['name'],
-                    namespace=namespace
+                    name=mongo_result['secret']['metadata']['name'], namespace=namespace
                 );
             } except ApiException as e {
                 if e.status == 404 {
@@ -676,8 +671,7 @@ obj KubernetesTarget(DeploymentTarget) {
             );
             try {
                 core_v1.read_namespaced_secret(
-                    name=redis_result['secret']['metadata']['name'],
-                    namespace=namespace
+                    name=redis_result['secret']['metadata']['name'], namespace=namespace
                 );
             } except ApiException as e {
                 if e.status == 404 {
@@ -747,9 +741,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
                 # Check if deployment needs update (config hash changed)
                 annotations = existing_deploy.spec.template.metadata.annotations;
-                existing_hash = annotations.get(
-                    'redis-config-hash', ''
-                )
+                existing_hash = annotations.get('redis-config-hash', '')
                     if annotations
                     else '';
                 new_hash = redis_result['config_hash'];
@@ -1110,9 +1102,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     name=policy_config['name'], namespace=namespace
                 );
                 networking_v1.replace_namespaced_network_policy(
-                    name=policy_config['name'],
-                    namespace=namespace,
-                    body=network_policy
+                    name=policy_config['name'], namespace=namespace, body=network_policy
                 );
             } except ApiException as e {
                 if e.status == 404 {
@@ -1485,7 +1475,9 @@ obj KubernetesTarget(DeploymentTarget) {
                     self.logger.info(
                         f"\nAfter the record propagates, enable HTTPS with:"
                     );
-                    self.logger.info(f"  jac start <your-app.jac> --scale --enable-tls");
+                    self.logger.info(
+                        f"  jac start <your-app.jac> --scale --enable-tls"
+                    );
                     self.logger.info(f"{'=' * 62}\n");
                 }
             }
@@ -1721,7 +1713,9 @@ obj KubernetesTarget(DeploymentTarget) {
         self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
     }
 
-    def _destroy_application(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_application(
+        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+    ) {
         autoscaling_v2 = client.AutoscalingV2Api();
         delete_if_exists(
             autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,

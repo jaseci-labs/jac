@@ -735,9 +735,7 @@ impl UniCFGNode.get_head -> UniCFGNode {
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
-        and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
-        )
+        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
             nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
@@ -755,9 +753,7 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
-        and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
-        )
+        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
             nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
@@ -1138,9 +1134,7 @@ impl ModulePath.dot_path_str -> str {
         return (('.' * self.level) + self.path[0].lit_value);
     }
     return (
-        ('.' * self.level) + '.'.join(
-            [p.value for p in self.path] if self.path else []
-        )
+        ('.' * self.level) + '.'.join([p.value for p in self.path] if self.path else [])
     );
 }
 
@@ -1283,9 +1277,7 @@ impl Archetype._get_impl_resolved_body -> list {
     return `list(self.body)
         if isinstance(self.body, Sequence)
         else `list(self.body.body)
-            if (
-                isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence)
-            )
+            if (isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence))
             else [];
 }
 
@@ -1592,10 +1584,7 @@ impl ParamVar.postinit -> None {
     self.param_kind = ParamKind.NORMAL;
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(
-        self,
-        sym_name=self.name.value,
-        name_spec=self.name,
-        sym_category=SymbolType.VAR
+        self, sym_name=self.name.value, name_spec=self.name, sym_category=SymbolType.VAR
     );
 }
 
@@ -1939,7 +1928,9 @@ impl AtomTrailer.postinit -> None {
 impl AtomTrailer.as_attr_list -> list[AstSymbolNode] {
     left = self.right if isinstance(self.right, AtomTrailer) else self.target;
     right = self.target if isinstance(self.right, AtomTrailer) else self.right;
-    trag_list: list[AstSymbolNode] = [right] if isinstance(right, AstSymbolNode) else [];
+    trag_list: list[AstSymbolNode] = [right]
+        if isinstance(right, AstSymbolNode)
+        else [];
     while (isinstance(left, AtomTrailer) and left.is_attr) {
         if isinstance(left.right, AstSymbolNode) {
             trag_list.insert(0, left.right);

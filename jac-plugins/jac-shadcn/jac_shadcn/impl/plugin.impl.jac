@@ -58,8 +58,7 @@ impl _handle_shadcn_add(ctx: HookContext) -> None {
     packages = ctx.get_arg("packages", []);
     if not packages {
         console.error(
-            "No components specified",
-            hint="Usage: jac add --shadcn button card dialog"
+            "No components specified", hint="Usage: jac add --shadcn button card dialog"
         );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);

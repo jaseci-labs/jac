@@ -56,13 +56,11 @@ obj Memory {
 
     def get_roots -> Generator[Root, None, None] abs;
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None] abs;
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None) abs;
 
     def commit(anchor: (Anchor | None) = None) -> None abs;
@@ -118,13 +116,11 @@ obj VolatileMemory(Memory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
@@ -173,13 +169,11 @@ obj SqliteMemory(PersistentMemory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;

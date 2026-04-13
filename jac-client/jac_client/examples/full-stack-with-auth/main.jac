@@ -71,9 +71,7 @@ cl {
                         "justifyContent": "space-between"
                     }}
                 >
-                    <div style={{"fontWeight": "600"}}>
-                        Todo App
-                    </div>
+                    <div style={{"fontWeight": "600"}}>Todo App</div>
                     <div style={{"display": "flex", "gap": "16px"}}>
                         <Link
                             to="/todos"
@@ -108,9 +106,7 @@ cl {
                     "justifyContent": "space-between"
                 }}
             >
-                <div style={{"fontWeight": "600"}}>
-                    Todo App
-                </div>
+                <div style={{"fontWeight": "600"}}>Todo App</div>
                 <div style={{"display": "flex", "gap": "16px"}}>
                     <Link
                         to="/login"
@@ -187,9 +183,7 @@ cl {
                         "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
                     }}
                 >
-                    <h2 style={{"marginBottom": "20px"}}>
-                        Login
-                    </h2>
+                    <h2 style={{"marginBottom": "20px"}}>Login</h2>
                     <form onSubmit={handleLogin}>
                         <input
                             type="text"
@@ -244,9 +238,7 @@ cl {
                         }}
                     >
                         Need an account?
-                        <Link to="/signup">
-                            Sign up
-                        </Link>
+                        <Link to="/signup">Sign up</Link>
                     </p>
                 </div>
             </div>;
@@ -311,9 +303,7 @@ cl {
                         "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
                     }}
                 >
-                    <h2 style={{"marginBottom": "20px"}}>
-                        Sign Up
-                    </h2>
+                    <h2 style={{"marginBottom": "20px"}}>Sign Up</h2>
                     <form onSubmit={handleSignup}>
                         <input
                             type="text"
@@ -368,9 +358,7 @@ cl {
                         }}
                     >
                         Have an account?
-                        <Link to="/login">
-                            Login
-                        </Link>
+                        <Link to="/login">Login</Link>
                     </p>
                 </div>
             </div>;
@@ -388,9 +376,7 @@ cl {
                     type="text"
                     value={input}
                     onChange={lambda e: Any { setInput(e.target.value);}}
-                    onKeyPress={lambda e: Any { if e.key == "Enter" {
-                        addTodo();
-                    }}}
+                    onKeyPress={lambda e: Any { if e.key == "Enter" { addTodo(); }}}
                     placeholder="What needs to be done?"
                     style={{
                         "flex": "1",
@@ -561,10 +547,13 @@ cl {
 
         # Load todos on mount
         useEffect(
-            lambda { async def loadTodos {
-                result = root spawn read_todos();
-                setTodos(result.reports or []);
-            } loadTodos();},
+            lambda {
+                async def loadTodos {
+                    result = root spawn read_todos();
+                    setTodos(result.reports or []);
+                }
+                loadTodos();
+            },
             []
         );
 
@@ -636,9 +625,7 @@ cl {
                     "boxShadow": "0 2px 4px rgba(0,0,0,0.1)"
                 }}
             >
-                <h1 style={{"marginBottom": "20px"}}>
-                    My Todos
-                </h1>
+                <h1 style={{"marginBottom": "20px"}}>My Todos</h1>
                 <TodoInput input={input} setInput={setInput} addTodo={addTodo}/>
                 <TodoFilters filter={filter} setFilter={setFilter}/>
                 <TodoList

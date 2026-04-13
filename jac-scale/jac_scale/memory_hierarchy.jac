@@ -58,13 +58,11 @@ obj RedisBackend(CacheMemory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
@@ -103,13 +101,11 @@ obj MongoBackend(PersistentMemory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
@@ -143,7 +139,8 @@ Storage configuration comes from environment variables or jac.toml.
 obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
         _persistence_type: PersistenceType = PersistenceType.NONE,
-        use_cache: bool = True;  # Override parent default to enable Redis cache by default
+        use_cache:
+            bool = True;  # Override parent default to enable Redis cache by default
 
     def postinit -> None;
     def commit(anchor: (Anchor | None) = None) -> None;

@@ -45,7 +45,9 @@ impl run_lang_server -> None {
     )(
         completion
     );
-    server.feature(lspt.TEXT_DOCUMENT_HOVER, lspt.HoverOptions(work_done_progress=True))(
+    server.feature(
+        lspt.TEXT_DOCUMENT_HOVER, lspt.HoverOptions(work_done_progress=True)
+    )(
         hover
     );
     server.feature(lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL)(document_symbol);

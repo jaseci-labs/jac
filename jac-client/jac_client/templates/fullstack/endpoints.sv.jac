@@ -35,7 +35,7 @@ walker:priv AddTodo {
 
 walker:priv ListTodos {
     """List all todo items for the current user."""
-    has todos: list = [];
+    has todos: list[dict] = [];
 
     can collect with Root entry {
         visit [-->];

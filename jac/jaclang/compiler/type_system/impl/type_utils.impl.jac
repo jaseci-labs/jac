@@ -254,8 +254,7 @@ impl ParamAssignmentTracker.lookup_named_parameter(
 ) -> (types.Parameter | None) {
     for param in self.params {
         if (
-            (param.param_kind == types.ParamKind.POSONLY)
-            and (param_name == param.name)
+            (param.param_kind == types.ParamKind.POSONLY) and (param_name == param.name)
         ) {
             self.matched_params.add(param);
             raise Exception(

@@ -1176,10 +1176,7 @@ obj IngressDeployer {
             'ServiceAccount'
         );
         delete_if_exists(
-            core_v1.delete_namespaced_config_map,
-            configmap_name,
-            namespace,
-            'ConfigMap'
+            core_v1.delete_namespaced_config_map, configmap_name, namespace, 'ConfigMap'
         );
 
         # Delete cluster-scoped resources (no namespace parameter)
