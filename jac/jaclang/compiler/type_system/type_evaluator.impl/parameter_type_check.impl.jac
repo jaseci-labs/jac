@@ -836,9 +836,7 @@ impl TypeEvaluator._infer_type_args_from_method(
     # If direct binding failed, use return type approach (works for zip)
     # The return type is e.g. zip[tuple[_T1, _T2]] - substitute TypeVars and use
     ret_type = init_method.return_type;
-    if isinstance(ret_type, types.ClassType)
-    and ret_type.private
-    and ret_type.private.type_args {
+    if isinstance(ret_type, types.ClassType) and ret_type.private.type_args {
         substituted_args: list[TypeBase] = [];
         for arg in ret_type.private.type_args {
             substituted = self._substitute_type_vars(arg, bindings);
@@ -867,7 +865,7 @@ impl TypeEvaluator._substitute_type_vars(
         ];
         return types.UnionType(types=new_members);
     }
-    if isinstance(typ, types.ClassType) and typ.private and typ.private.type_args {
+    if isinstance(typ, types.ClassType) and typ.private.type_args {
         new_args = [
             self._substitute_type_vars(arg, bindings) for arg in typ.private.type_args
         ];
@@ -1038,9 +1036,7 @@ impl TypeEvaluator.infer_type_args(
                 # If base declares T and we inherit as MyClass[U](Base[U]),
                 # then binding {T: int} should become {U: int}.
                 translated: dict[str, TypeBase] = {};
-                if mro_cls.private
-                and mro_cls.private.type_args
-                and mro_cls.shared.type_params {
+                if mro_cls.private.type_args and mro_cls.shared.type_params {
                     # Build reverse map: base TypeVar name -> type_arg expression
                     for (idx, base_tp) in enumerate(mro_cls.shared.type_params) {
                         if base_tp.name and base_tp.name in bindings {

@@ -359,7 +359,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
     }
     cls_type = types.ClassType(
-        shared=types.ClassType.ClassDetailsShared(
+        _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=type_params,
@@ -372,7 +372,6 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),
-        private=None,
         flags=types.TypeFlags.Instantiable,
     );
     # Compute the MRO for the class.
@@ -411,7 +410,7 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
         parent_module.loc.mod_path if parent_module and parent_module.loc else ""
     );
     cls_type = types.ClassType(
-        shared=types.ClassType.ClassDetailsShared(
+        _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=None,
@@ -423,7 +422,6 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),
-        private=None,
         flags=types.TypeFlags.Instantiable,
     );
     type_utils.compute_mro_linearization(cls_type);

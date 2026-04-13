@@ -273,7 +273,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                         isinstance(expected_type, types.ClassType)
                         and self.prefetch.tuple_class
                         and expected_type.shared == self.prefetch.tuple_class.shared
-                        and expected_type.private
                         and expected_type.private.type_args
                         and elem_types_t
                     ) {
@@ -636,7 +635,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if not self.is_any_type(lookup_type) {
                         _has_tvars = (
                             isinstance(lookup_type, types.ClassType)
-                            and lookup_type.private is not None
                             and lookup_type.private.type_args is not None
                             and any(
                                 isinstance(a, types.TypeVarType)
@@ -667,7 +665,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if (
                         self.prefetch.final_class
                         and base_type.shared == self.prefetch.final_class.shared
-                        and base_type.private is not None
                         and base_type.private.type_args
                     ) {
                         inner = base_type.private.type_args[0];
@@ -1154,7 +1151,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                 # Use class_name check instead of shared instance comparison for cache compatibility.
                 if (
                     isinstance(base_type, types.ClassType)
-                    and base_type.shared is not None
                     and base_type.shared.is_builtin_class
                     and base_type.shared.class_name == "_SpecialForm"
                 ) {
@@ -2194,9 +2190,9 @@ impl TypeEvaluator._assign_class(
     # Check if src class is a subclass of dest class.
     if self.is_sub_class(dest_type, src_type) {
         # If dest has type_args, verify src supplies compatible args through MRO.
-        if dest_type.private and dest_type.private.type_args {
+        if dest_type.private.type_args {
             specialized = type_utils.specialize_for_base_class(src_type, dest_type);
-            src_args = specialized.private.type_args if specialized.private else [];
+            src_args = specialized.private.type_args;
             if src_args and len(src_args) == len(dest_type.private.type_args) {
                 for i in range(len(src_args)) {
                     src_arg = self._convert_to_instance(src_args[i]);
@@ -2244,7 +2240,7 @@ impl TypeEvaluator._assign_class(
     is_protocol = False;
     # Check 1: Direct Protocol/_SpecialForm base class from builtins
     for base_cls in dest_type.shared.base_classes {
-        if not isinstance(base_cls, types.ClassType) or base_cls.shared is None {
+        if not isinstance(base_cls, types.ClassType) or base_cls._shared is None {
             continue;
         }
         # Exact match with prefetched Protocol class
@@ -2273,7 +2269,7 @@ impl TypeEvaluator._assign_class(
     # Check 3: Check MRO for Protocol/_SpecialForm from stdlib (handles inheritance)
     if not is_protocol {
         for mro_cls in dest_type.shared.mro {
-            if isinstance(mro_cls, types.ClassType) and mro_cls.shared {
+            if isinstance(mro_cls, types.ClassType) {
                 if (
                     mro_cls.shared.is_builtin_class
                     or mro_cls.shared.is_from_stdlib_stub
@@ -2666,7 +2662,7 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
             if dest_type.shared == self.prefetch.type_class.shared {
                 if src_type.is_instantiable_class() {
                     # Parameterized type[X]: check covariance
-                    if dest_type.private and dest_type.private.type_args {
+                    if dest_type.private.type_args {
                         target_inner = self._convert_to_instance(
                             dest_type.private.type_args[0]
                         );
@@ -2707,7 +2703,6 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
         and isinstance(src_type, types.ClassType)
         and src_type.is_class_instance()
         and dest_type.is_class_instance()
-        and dest_type.shared
     ) {
         _protocol_methods: dict[str, str] = {
             "SupportsIndex": "__index__",
@@ -3858,10 +3853,8 @@ impl TypeEvaluator._type_matches_isinstance(
     # Both must be ClassTypes for subclass checking
     if isinstance(t, types.ClassType) and isinstance(target_type, types.ClassType) {
         # Same class?
-        if t.shared is not None and target_type.shared is not None {
-            if t.shared == target_type.shared {
-                return True;
-            }
+        if t.shared == target_type.shared {
+            return True;
         }
         # Is t a subclass of target_type?
         if self.is_sub_class(target_type, t) {
@@ -3896,7 +3889,7 @@ impl TypeEvaluator._union_narrowed_types(types_list: list) -> TypeBase {
     unique: list[TypeBase] = [];
     seen_shared: set = set();
     for t in flat {
-        if isinstance(t, types.ClassType) and t.shared is not None {
+        if isinstance(t, types.ClassType) {
             shared_id = id(t.shared);
             if shared_id not in seen_shared {
                 seen_shared.add(shared_id);
@@ -3935,7 +3928,7 @@ impl TypeEvaluator.exclude_type_from_union(
             to_exclude_list = [to_exclude];
         }
         for excl_t in to_exclude_list {
-            if isinstance(excl_t, types.ClassType) and excl_t.shared is not None {
+            if isinstance(excl_t, types.ClassType) {
                 exclude_shareds.add(id(excl_t.shared));
             } else {
                 exclude_ids.add(id(excl_t));
@@ -3943,7 +3936,7 @@ impl TypeEvaluator.exclude_type_from_union(
         }
         remaining: list[TypeBase] = [];
         for t in original.types {
-            if isinstance(t, types.ClassType) and t.shared is not None {
+            if isinstance(t, types.ClassType) {
                 if id(t.shared) in exclude_shareds {
                     continue;
                 }
@@ -3967,8 +3960,6 @@ impl TypeEvaluator.exclude_type_from_union(
     # should be NeverType (unreachable path), not the original NoneType.
     if isinstance(original, types.ClassType)
     and isinstance(to_exclude, types.ClassType)
-    and original.shared is not None
-    and to_exclude.shared is not None
     and original.shared == to_exclude.shared {
         return types.NeverType();
     }
@@ -4119,13 +4110,12 @@ impl TypeEvaluator._is_callable_type(t: types.TypeBase) -> bool {
         if (
             self.prefetch
             and self.prefetch.callable_class
-            and t.shared is not None
             and t.shared == self.prefetch.callable_class.shared
         ) {
             return True;
         }
         # Check for classes with __call__ method
-        if t.shared is not None and t.shared.symbol_table is not None {
+        if t.shared.symbol_table is not None {
             if t.shared.symbol_table.lookup("__call__", deep=False) is not None {
                 return True;
             }
@@ -4208,7 +4198,6 @@ impl TypeEvaluator._is_type_alias_annotation(
     # Structural check: TypeAlias is a _SpecialForm, same as Callable etc.
     is_special_form = (
         isinstance(annotation_type, types.ClassType)
-        and annotation_type.shared is not None
         and annotation_type.shared == self.prefetch.callable_class.shared
     );
     # Name check: verify the tag is specifically "TypeAlias"

@@ -134,7 +134,6 @@ impl TypeEvaluator._lookup_class_member(
 impl TypeEvaluator._is_type_subscript(class_type: types.ClassType) -> bool {
     return (
         class_type.is_builtin("type")
-        and class_type.private is not None
         and class_type.private.type_args is not None
         and len(class_type.private.type_args) >= 1
     );
@@ -279,7 +278,6 @@ impl TypeEvaluator._get_expected_element_type(
         isinstance(expected_type, types.ClassType)
         and isinstance(container_class, types.ClassType)
         and expected_type.shared == container_class.shared
-        and expected_type.private
         and expected_type.private.type_args
         and len(expected_type.private.type_args) >= 1
     ) {
@@ -303,7 +301,6 @@ impl TypeEvaluator._get_expected_kv_types(
         isinstance(expected_type, types.ClassType)
         and isinstance(dict_class, types.ClassType)
         and expected_type.shared == dict_class.shared
-        and expected_type.private
         and expected_type.private.type_args
         and len(expected_type.private.type_args) >= 2
     ) {
@@ -1174,7 +1171,7 @@ impl TypeEvaluator._create_special_builtin_type(
         mro=[],
         is_builtin_class=True
     );
-    special_type = types.ClassType(shared=shared, flags=base_class.flags);
+    special_type = types.ClassType(_shared=shared, flags=base_class.flags);
     # Compute MRO: [SpecialType, BaseClass, ...]
     special_type.shared.mro = [special_type] + base_class.shared.mro;
     return special_type;
@@ -1312,7 +1309,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
 
     # Get the class's type parameters
     class_type = self.get_type_of_class(enclosing_class);
-    if not class_type or not class_type.shared or not class_type.shared.type_params {
+    if not class_type or not class_type.shared.type_params {
         return;
     }
 

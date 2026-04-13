@@ -1647,7 +1647,7 @@ Returns the matching primitive name if ``_obj_type`` is a ``ClassType`` whose
 impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
     import from jaclang.compiler.type_system { types as jtypes }
     self._ensure_emitters();
-    if not (isinstance(_obj_type, jtypes.ClassType) and _obj_type.shared) {
+    if not isinstance(_obj_type, jtypes.ClassType) {
         return "";
     }
     if _obj_type.shared.class_name in self._primitive_type_names {
@@ -1655,7 +1655,7 @@ impl EsastGenPass._resolve_primitive_type_name(_obj_type: object) -> str {
     }
     # Walk the MRO to catch subtypes like LiteralString → str.
     for _base in _obj_type.shared.mro {
-        if _base.shared and _base.shared.class_name in self._primitive_type_names {
+        if _base.shared.class_name in self._primitive_type_names {
             return _base.shared.class_name;
         }
     }
