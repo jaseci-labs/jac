@@ -428,10 +428,10 @@ Define global variables that are replaced at compile time in client code via the
 These values are inlined by Vite during bundling. String values must be double-quoted (JSON-encoded). In client code, access them directly:
 
 ```jac
-cl {
-    def:pub Footer() -> JsxElement {
-        return <p>Version: {globalThis.BUILD_VERSION}</p>;
-    }
+to cl:
+
+def:pub Footer() -> JsxElement {
+    return <p>Version: {globalThis.BUILD_VERSION}</p>;
 }
 ```
 

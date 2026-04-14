@@ -1141,22 +1141,6 @@ impl ModulePath.dot_path_str -> str {
 """Convert an import target string into a relative file path."""
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    if target.startswith('@jac/') {
-        import jaclang.runtimelib;
-        runtime_dir = os.path.dirname(jaclang.runtimelib.__file__);
-        module_name = target[5:];
-        module_map = {'runtime': 'client_runtime.cl.jac'};
-        if (module_name in module_map) {
-            return os.path.join(runtime_dir, module_map[module_name]);
-        }
-        for ext in ['.cl.jac', '.jac', '.js'] {
-            path = os.path.join(runtime_dir, (module_name + ext));
-            if os.path.exists(path) {
-                return path;
-            }
-        }
-        return os.path.join(runtime_dir, (module_name + '.jac'));
-    }
     return resolve_relative_path(target, self.loc.mod_path);
 }
 

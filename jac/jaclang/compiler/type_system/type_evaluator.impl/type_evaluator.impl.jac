@@ -959,6 +959,14 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 } elif isinstance(base_type, types.TypeVarType) {
                     attr_name = expr.right.value;
+                    # ParamSpec.args / ParamSpec.kwargs -- the only attributes
+                    # a ParamSpec exposes (used in `*args: _P.args, **kwargs:
+                    # _P.kwargs` signatures). Full ParamSpecArgs/Kwargs
+                    # modelling is future work; returning AnyType is gradually
+                    # safe and silences bogus E1031 on typeshed stubs.
+                    if base_type.is_param_spec and attr_name in ("args", "kwargs") {
+                        return types.AnyType();
+                    }
                     # Constrained TypeVar - check all constraint types
                     if base_type.constraints {
                         found_member: Any = None;
@@ -2420,34 +2428,59 @@ impl TypeEvaluator.is_any_type(ty: TypeBase) -> bool {
     return False;
 }
 
+"""Match a typing special form loaded from any stdlib typing stub.
+
+Prefetch pins a single definition (e.g. typing.ParamSpec) but typeshed's
+typing_extensions.pyi declares its own ParamSpec/TypeVar/TypeVarTuple
+classes. Python unifies them at runtime; we match by canonical name
+constrained to stdlib stubs so user classes can't collide.
+"""
+impl TypeEvaluator._is_typing_special_form(ty: TypeBase, name: str) -> bool {
+    return (
+        isinstance(ty, types.ClassType)
+        and ty.shared is not None
+        and ty.shared.class_name == name
+        and ty.shared.is_from_stdlib_stub
+    );
+}
+
 """Check if a type is the TypeVar class itself (not a TypeVarType instance)."""
 impl TypeEvaluator.is_typevar_class(ty: TypeBase) -> bool {
-    return (
+    if (
         self.prefetch
         and self.prefetch.type_var_class
         and isinstance(ty, types.ClassType)
         and ty.shared == self.prefetch.type_var_class.shared
-    );
+    ) {
+        return True;
+    }
+    return self._is_typing_special_form(ty, "TypeVar");
 }
 
 """Check if a type is the ParamSpec class itself (not a TypeVarType instance)."""
 impl TypeEvaluator.is_paramspec_class(ty: TypeBase) -> bool {
-    return (
+    if (
         self.prefetch
         and self.prefetch.param_spec_class
         and isinstance(ty, types.ClassType)
         and ty.shared == self.prefetch.param_spec_class.shared
-    );
+    ) {
+        return True;
+    }
+    return self._is_typing_special_form(ty, "ParamSpec");
 }
 
 """Check if a type is the TypeVarTuple class itself (not a TypeVarType instance)."""
 impl TypeEvaluator.is_type_var_tuple_class(ty: TypeBase) -> bool {
-    return (
+    if (
         self.prefetch
         and self.prefetch.type_var_tuple_class
         and isinstance(ty, types.ClassType)
         and ty.shared == self.prefetch.type_var_tuple_class.shared
-    );
+    ) {
+        return True;
+    }
+    return self._is_typing_special_form(ty, "TypeVarTuple");
 }
 
 """Assign the source type to the destination type."""
