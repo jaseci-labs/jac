@@ -625,6 +625,24 @@ test "checker_import_missing_module" {
     assert len(program.errors_had) == 6;
 }
 
+test "checker_jac_runtime_alias" {
+    # `@jac/runtime` is a virtual module resolved by the bundler to
+    # jaclang/runtimelib/client_runtime.cl.jac. The type checker must use the
+    # same mapping so imported symbols keep their declared types (e.g.
+    # jacIsLoggedIn -> bool) instead of decaying to Unknown and producing
+    # spurious assignment errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jac_runtime_alias.cl.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+    assert len(program.warnings_had) == 0 , f"unexpected warnings: {[
+        w.pretty_print() for w in program.warnings_had
+    ]}";
+}
+
 test "cyclic_symbol" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cyclic_symbol.jac");
     program = JacProgram();
