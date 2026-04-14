@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.6.4 (Unreleased)
 
-- **Add: Automatic Anthropic prompt caching**: Caches system prompt and tool schemas across ReAct iterations for Claude models, reducing input token costs by up to 90%. Enabled by default.
+- **Add: Automatic Anthropic prompt caching**: Caches system prompt, tool schemas, and ReAct conversation history across iterations for Claude models, significantly reducing input token costs. Enabled by default.
 
 ## byllm 0.6.3 (Latest Release)
 
