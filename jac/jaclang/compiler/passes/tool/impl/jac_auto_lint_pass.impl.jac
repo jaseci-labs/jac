@@ -2217,11 +2217,10 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
     if not ability_node.body or not isinstance(ability_node.body, list) {
         return;
     }
-    body = list(ability_node.body);
     new_body: list[uni.UniNode] = [];
     replaced: dict[int, uni.ArchHas] = {};  # old stmt id -> new ArchHas for kid rebuild
     setters: dict[str, str] = {};  # setter_name -> var_name for this ability
-    for stmt in body {
+    for stmt in ability_node.body {
         match_result = self._is_usestate_assignment(stmt);
         if match_result is None {
             new_body.append(stmt);
@@ -2249,15 +2248,13 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         new_body.append(has_node);
         replaced[id(stmt)] = has_node;
         setters[setter_name] = var_name;
-        self._did_convert_usestate = True;
     }
     if replaced {
+        self._did_convert_usestate = True;
         ability_node.body = new_body;
         self.recalculate_parents(ability_node);
         ability_node.kid = [replaced.get(id(k), k) for k in ability_node.kid];
-    }
-
-    if not replaced {
+    } else {
         for stmt in ability_node.body {
             if isinstance(stmt, uni.ArchHas) {
                 for has_var in stmt.vars {
