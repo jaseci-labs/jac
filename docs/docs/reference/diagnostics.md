@@ -240,6 +240,7 @@ Emitted by the type checker and type evaluator.
 | Code | Message |
 |------|---------|
 | `W1100` | Module not found |
+| `W1101` | Cannot import name '{name}' from module '{module}' |
 
 ---
 
