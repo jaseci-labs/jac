@@ -26,21 +26,18 @@ impl DeclImplMatchPass.transform(
             self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
         }
     }
-    # Resolve module-level symbols (GlobalVars, TypeAlias, ModuleCode)
+    # Resolve all Load-context names across primary, impls, and variants.
+    # Why: prior carve-out to (TypeAlias, GlobalVars, ModuleCode) missed
+    # standalone top-level constructs in .impl.jac files (def/obj/node/walker/
+    # enum/etc.), leaving their bodies' reads unresolved and defeating type
+    # inference. _resolve_symbols_in_subtree is idempotent — it skips Names
+    # whose sym is already set by the matched-impl path above.
     for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
-        for item in module.body {
-            if isinstance(item, (uni.TypeAlias, uni.GlobalVars, uni.ModuleCode)) {
-                self._resolve_symbols_in_subtree(item);
-            }
-        }
+        self._resolve_symbols_in_subtree(module);
     }
     for variant_module in ir_in.variant_mod {
         for impl_module in variant_module.impl_mod {
-            for item in impl_module.body {
-                if isinstance(item, (uni.TypeAlias, uni.GlobalVars, uni.ModuleCode)) {
-                    self._resolve_symbols_in_subtree(item);
-                }
-            }
+            self._resolve_symbols_in_subtree(impl_module);
         }
     }
     return ir_in;
