@@ -47,7 +47,29 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     if not path.exists() {
                         continue;
                     }
-                    mod = self._import_module_from_path(str(path));
+                    path_str = str(path);
+                    # Foreign-source submodule (e.g. `from .pkg import foo`
+                    # where foo.js exists). The Jac parser cannot consume
+                    # JS/TS/etc., so expose the submodule as an opaque
+                    # external module and type the imported name as Any.
+                    if not path_str.endswith((".jac", ".py", ".pyi")) {
+                        mod_type = types.ModuleType(
+                            mod_name=node_.name.sym_name,
+                            file_uri=path,
+                            symbol_table=None,
+                            is_external=True,
+                        );
+                        node_.name.type = types.AnyType();
+                        node_.name._sym_category = SymbolType.VAR;
+                        self.emit_diag(
+                            W1102,
+                            node_.name,
+                            name=node_.name.value,
+                            module=from_mod_name
+                        );
+                        return node_.name.type;
+                    }
+                    mod = self._import_module_from_path(path_str);
 
                     # Check if this is a subpackage's __init__ file (e.g., subpkg/__init__.py)
                     # vs the parent module's __init__ file
@@ -108,6 +130,17 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                 # Module resolution failed; W1100 was emitted by
                 # get_type_of_module on the from-clause node.
                 node_.name.type = types.UnknownType();
+                return node_.name.type;
+            }
+            if mod_type.is_external {
+                # Foreign-source module (JS/TS/asset/etc.). The Jac type
+                # system cannot see inside it; treat the imported name as
+                # gradual Any to avoid false-positive "name not found".
+                node_.name.type = types.AnyType();
+                node_.name._sym_category = SymbolType.VAR;
+                self.emit_diag(
+                    W1102, node_.name, name=node_.name.value, module=from_mod_name
+                );
                 return node_.name.type;
             }
             if sym := type_utils.lookup_symtab(
@@ -234,6 +267,24 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
 
             if Path(mod_path).is_dir() {
                 npath._sym_category = SymbolType.MODULE;
+                continue;
+            }
+            # Only Jac / Python files are compiled for static analysis.
+            # Non-Jac files (JS/TS/assets/etc.) resolved via the module
+            # resolver become opaque external ModuleType instances; their
+            # imported names are typed as Any downstream (gradual typing),
+            # avoiding both false-positive "name not found" diagnostics
+            # and Jac-parser crashes on foreign syntax.
+            if not mod_path.endswith((".jac", ".py", ".pyi")) {
+                mod_type = types.ModuleType(
+                    mod_name=npath.value,
+                    file_uri=Path(mod_path).resolve(),
+                    symbol_table=None,
+                    is_external=True,
+                );
+                npath.type = mod_type;
+                npath._sym_category = SymbolType.MODULE;
+                self._module_type_cache[mod_path] = mod_type;
                 continue;
             }
             mod: uni.Module = self._import_module_from_path(mod_path);

@@ -548,6 +548,14 @@ impl TypeEvaluator._get_type_of_expression_core(
                 # Member lookup on (narrowed) base type
                 assert isinstance(expr.right, uni.Name);
                 if isinstance(base_type, types.ModuleType) {
+                    # Foreign-source modules (JS/TS/asset/etc.) are opaque
+                    # to the Jac type system; any attribute access yields
+                    # gradual Any rather than looking up a symbol table
+                    # that doesn't (and can't) exist.
+                    if base_type.is_external {
+                        expr.right.type = types.AnyType();
+                        return expr.right.type;
+                    }
                     # getTypeOfMemberAccessWithBaseType()
                     if sym := type_utils.lookup_symtab(
                         base_type.symbol_table, expr.right.value, self.builtins_module

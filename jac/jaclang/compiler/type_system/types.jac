@@ -128,7 +128,11 @@ obj ModuleType(TypeBase) {
         is_stub_file: bool = False,  # True if .pyi file
         is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
         is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
-        is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
+        is_builtin_stub: bool = False,  # True if builtins.pyi, abc.pyi, etc.
+        # True for modules backed by a file in a language the Jac compiler
+        # cannot parse (e.g. .js/.ts/.css/assets). Lookups against these
+        # modules yield AnyType (gradual) instead of erroring on missing names.
+        is_external: bool = False;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;

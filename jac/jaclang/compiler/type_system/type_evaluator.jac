@@ -87,7 +87,8 @@ import from jaclang.jac0core.diagnostics {
     E1103,
     E1104,
     W1100,
-    W1101
+    W1101,
+    W1102
 }
 
 """Types whose definitions are prefetched and cached by the type evaluator."""

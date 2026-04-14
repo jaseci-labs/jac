@@ -463,6 +463,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W1101 = _warn(
          "W1101", Category.IMPORT, "Cannot import name '{name}' from module '{module}'"
      ),
+     W1102 = _warn(
+         "W1102",
+         Category.IMPORT,
+         "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Semantic errors/warnings (E2xxx/W2xxx)
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
