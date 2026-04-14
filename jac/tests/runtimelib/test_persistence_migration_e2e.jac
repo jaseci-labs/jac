@@ -90,15 +90,21 @@ test "added field survives schema drift end-to-end" {
             f"bob lost across schema drift: {out}"
         );
         # Drift should be logged but cause zero data loss: quarantine empty.
+        # The exact DB filename depends on get_db_path() (jaclang default is
+        # `<stem>.db`; jac-scale plugin overrides to `anchor_store.db`), so
+        # glob rather than hard-coding.
         import sqlite3;
-        db = Path(tmpdir) / ".jac" / "data" / "anchor_store.db";
-        assert db.exists() , f"DB not created at {db}";
-        conn = sqlite3.connect(str(db));
-        q = conn.execute("SELECT count(*) FROM anchors_quarantine").fetchone()[0];
-        conn.close();
-        assert q == 0 , (
-            f"expected no quarantined anchors after tolerated drift, got {q}"
-        );
+        data_dir = Path(tmpdir) / ".jac" / "data";
+        dbs = sorted(data_dir.glob("*.db"));
+        assert dbs , f"no .db files in {data_dir}";
+        for db in dbs {
+            conn = sqlite3.connect(str(db));
+            q = conn.execute("SELECT count(*) FROM anchors_quarantine").fetchone()[0];
+            conn.close();
+            assert q == 0 , (
+                f"expected no quarantined anchors in {db.name} after tolerated drift, got {q}"
+            );
+        }
     }
 }
 
