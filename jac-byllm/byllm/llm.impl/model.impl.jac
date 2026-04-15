@@ -113,7 +113,9 @@ Returns a generator that yields response chunks.
 """
 impl Model.model_call_with_stream(params: dict) {
     # Ask the provider to include token usage in the final streamed chunk.
-    params["stream_options"] = (params.get("stream_options") or {}) | {"include_usage": True};
+    params["stream_options"] = (params.get("stream_options") or {}) | {
+        "include_usage": True
+    };
     try {
         if self.proxy {
             client = OpenAI(base_url=self.api_base, api_key=self.api_key or None);
