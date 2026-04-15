@@ -153,8 +153,12 @@ impl JacNode.get_edges(
                 and source.archetype
                 and target.archetype
             ) {
+                # Undirected edges are traversable in both directions.
+                effective_dir = EdgeDir.ANY
+                    if anchor.is_undirected
+                    else destination.direction;
                 if (
-                    (destination.direction in [EdgeDir.OUT, EdgeDir.ANY])
+                    (effective_dir in [EdgeDir.OUT, EdgeDir.ANY])
                     and (nanch == source)
                     and destination.node_filter(target.archetype)
                     and JacRuntimeInterface.check_read_access(target)
@@ -162,7 +166,7 @@ impl JacNode.get_edges(
                     edges[anchor] = anchor.archetype;
                 }
                 if (
-                    (destination.direction in [EdgeDir.IN, EdgeDir.ANY])
+                    (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
                     and (nanch == target)
                     and destination.node_filter(source.archetype)
                     and JacRuntimeInterface.check_read_access(source)
@@ -193,8 +197,12 @@ impl JacNode.get_edges_with_node(
                 and source.archetype
                 and target.archetype
             ) {
+                # Undirected edges are traversable in both directions.
+                effective_dir = EdgeDir.ANY
+                    if anchor.is_undirected
+                    else destination.direction;
                 if (
-                    (destination.direction in [EdgeDir.OUT, EdgeDir.ANY])
+                    (effective_dir in [EdgeDir.OUT, EdgeDir.ANY])
                     and (nanch == source)
                     and destination.node_filter(target.archetype)
                     and JacRuntimeInterface.check_read_access(target)
@@ -203,7 +211,7 @@ impl JacNode.get_edges_with_node(
                     loc[target] = target.archetype;
                 }
                 if (
-                    (destination.direction in [EdgeDir.IN, EdgeDir.ANY])
+                    (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
                     and (nanch == target)
                     and destination.node_filter(source.archetype)
                     and JacRuntimeInterface.check_read_access(source)
@@ -233,8 +241,12 @@ impl JacNode.edges_to_nodes(
                 and source.archetype
                 and target.archetype
             ) {
+                # Undirected edges are traversable in both directions.
+                effective_dir = EdgeDir.ANY
+                    if anchor.is_undirected
+                    else destination.direction;
                 if (
-                    (destination.direction in [EdgeDir.OUT, EdgeDir.ANY])
+                    (effective_dir in [EdgeDir.OUT, EdgeDir.ANY])
                     and (nanch == source)
                     and destination.node_filter(target.archetype)
                     and JacRuntimeInterface.check_read_access(target)
@@ -242,7 +254,7 @@ impl JacNode.edges_to_nodes(
                     nodes[target] = target.archetype;
                 }
                 if (
-                    (destination.direction in [EdgeDir.IN, EdgeDir.ANY])
+                    (effective_dir in [EdgeDir.IN, EdgeDir.ANY])
                     and (nanch == target)
                     and destination.node_filter(source.archetype)
                     and JacRuntimeInterface.check_read_access(source)
