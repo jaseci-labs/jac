@@ -2129,11 +2129,8 @@ impl JacAutoLintPass._create_has_from_usestate(
         pos_end=ref_node.loc.pos_end,
         is_kwesc=False
     );
-    # Use ref_node to generate tokens — gen_token() needs a live node with valid loc info
-    colon_tok = ref_node.gen_token(Tok.COLON);
-    # SubTag kid matches parser: SubTag(tag=type_expr, kid=[colon_uni, type_expr])
+    colon_tok = ref_node.gen_token(Tok.COLON);  # Use ref_node to generate tokens
     type_tag = uni.SubTag(tag=type_name_node, kid=[colon_tok, type_name_node]);
-    # HasVar kid: [name, type_tag] + optional [eq, value] — must be non-empty at construction
     has_var_kids: list[uni.UniNode] = [name_node, type_tag];
     if init_value is not None {
         eq_tok = ref_node.gen_token(Tok.EQ);
@@ -2221,21 +2218,21 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
     self._pending_setters.append(setters);
 }
 
-"""Look up call_node in _pending_setters and, if matched, return a ready-to-wire Assignment.
-
-Returns (var_name, Assignment) when call_node is a single-argument call to a
-known setter, None otherwise.  The caller must set .parent and swap the node
-into the tree — this helper only builds the replacement node.
+"""W3038: rewrite setterName(expr) → varName = expr for each ExprStmt.
+_pending_setters is a per-ability stack so nested abilities don't interfere.
 """
-impl JacAutoLintPass._resolve_setter_call(
-    call_node: uni.FuncCall
-) -> (tuple[str, uni.Assignment] | None) {
+impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
+    if not self.lint_enabled or self.report_only or not self._pending_setters {
+        return;
+    }
+    call_node = nd.expr;
     if (
-        not isinstance(call_node.target, uni.Name)
+        not isinstance(call_node, uni.FuncCall)
+        or not isinstance(call_node.target, uni.Name)
         or call_node.params is None
         or len(call_node.params) != 1
     ) {
-        return None;
+        return;
     }
     var_name: (str | None) = None;
     for setter_map in self._pending_setters {
@@ -2245,7 +2242,11 @@ impl JacAutoLintPass._resolve_setter_call(
         }
     }
     if var_name is None {
-        return None;
+        return;
+    }
+    parent = nd.parent;
+    if parent is None {
+        return;
     }
     value_expr = call_node.params[0];
     lhs_name = uni.Name(
@@ -2260,41 +2261,18 @@ impl JacAutoLintPass._resolve_setter_call(
         pos_end=call_node.loc.pos_end,
         is_kwesc=False
     );
-    eq_tok = call_node.gen_token(Tok.EQ);
-    semi_tok = call_node.gen_token(Tok.SEMI);
     assign = uni.Assignment(
         target=[lhs_name],
         value=value_expr,
         mutable=True,
         aug_op=None,
-        kid=[lhs_name, eq_tok, value_expr, semi_tok]
+        kid=[
+            lhs_name,
+            call_node.gen_token(Tok.EQ),
+            value_expr,
+            call_node.gen_token(Tok.SEMI)
+        ]
     );
-    return (var_name, assign);
-}
-
-"""Replace setterName(expr) with varName = expr as the visitor exits each ExprStmt.
-
-This is called automatically by the visitor for every ExprStmt in the tree.
-_pending_setters is a stack: the top entry belongs to the innermost ability
-currently being visited, so nested abilities with different state vars are
-handled correctly without any manual recursion.
-"""
-impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
-    if not self.lint_enabled or self.report_only or not self._pending_setters {
-        return;
-    }
-    if not isinstance(nd.expr, uni.FuncCall) {
-        return;
-    }
-    result = self._resolve_setter_call(nd.expr);
-    if result is None {
-        return;
-    }
-    (_, assign) = result;
-    parent = nd.parent;
-    if parent is None {
-        return;
-    }
     assign.parent = parent;
     # Swap nd -> assign in parent.body and parent.kid
     if isinstance(parent?.body, list) {
@@ -2303,12 +2281,7 @@ impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     parent.kid = [assign if k is nd else k for k in parent.kid];
 }
 
-"""Remove useState from react imports after all abilities have been processed.
-
-If all useState calls in the module were converted to has declarations,
-the useState import item is removed. If it was the only import from react,
-the entire import statement is removed from the module body.
-"""
+"""W3038: drop useState from imports after conversion; removes the whole import if it was the only item."""
 impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
     if not self.lint_enabled or self.report_only or not self._did_convert_usestate {
         return;
@@ -2332,19 +2305,19 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
             new_body.append(stmt);
             continue;
         }
-        remaining_items = [
+        stmt.items = [
             item
             for item in stmt.items
             if item not in usestate_items
         ];
-        if not remaining_items {
-            # useState was the only import — drop the whole statement
-            removed_ids.append(id(stmt));
-            changed = True;
+        changed = True;
+        if not stmt.items {
+            removed_ids.append(
+                id(stmt)
+            );  # useState was the only import — drop whole stmt
             continue;
         }
-        # Partial removal — update items and rebuild kids in-place
-        stmt.items = remaining_items;
+        # Partial removal — rebuild kids dropping useState items and their trailing comma
         new_kid: list[uni.UniNode] = [];
         skip_comma = False;
         for kid in stmt.kid {
@@ -2361,13 +2334,12 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
         }
         stmt.set_kids(nodes=new_kid);
         new_body.append(stmt);
-        changed = True;
     }
     if not changed {
         return;
     }
     nd.body = new_body;
-    # Must also rebuild kid list — the unparser reads nd.kid, not nd.body
+    # Must also rebuild nd.kid — the unparser reads nd.kid, not nd.body
     if removed_ids {
         removed_set = set(removed_ids);
         nd.set_kids(
