@@ -676,147 +676,6 @@ impl PyastGenPass.exit_sub_tag(nd: uni.SubTag[uni.T]) -> None {
     nd.gen.py_ast = nd.tag.gen.py_ast;
 }
 
-"""Check if a name usage is in a type annotation context (type_tag or return_type)."""
-impl PyastGenPass._is_type_annotation_use(nd: uni.UniNode) -> bool {
-    child = nd;
-    current = nd.parent;
-    while (current is not None) {
-        if (
-            isinstance(current, uni.SubTag)
-            and isinstance(current.parent, uni.AstTypedVarNode)
-            and current.parent.type_tag is current
-        ) {
-            return True;
-        }
-        if (isinstance(current, uni.FuncSignature) and current.return_type is child) {
-            return True;
-        }
-        child = current;
-        current = current.parent;
-    }
-    return False;
-}
-
-"""Check if an import has a # jac:runtime comment annotation on the same line."""
-impl PyastGenPass._has_runtime_annotation(nd: uni.Module, imp: uni.Import) -> bool {
-    if (not nd.source or not imp.loc) {
-        return False;
-    }
-    imp_line = imp.loc.first_line;
-    for comment in nd.source.comments {
-        if (comment.line_no == imp_line and 'jac:runtime' in comment.value) {
-            return True;
-        }
-    }
-    return False;
-}
-
-"""Classify import items and separate type-only imports for TYPE_CHECKING wrapping."""
-impl PyastGenPass._process_type_only_imports(
-    nd: uni.Module, merged_body: list
-) -> tuple[(list, list[ast3.AST])] {
-    filtered_body: list = [];
-    type_only_py_nodes: list[ast3.AST] = [];
-    for item in merged_body {
-        if not isinstance(item, uni.Import) {
-            filtered_body.append(item);
-            continue;
-        }
-        imp: uni.Import = item;
-        # Skip absorb imports and plain imports (not from-imports)
-        if (imp.is_absorb or not imp.from_loc) {
-            filtered_body.append(item);
-            continue;
-        }
-        # Skip __future__ imports (already handled in preamble)
-        if imp.from_loc.path {
-            module_parts = [
-                p.value
-                for p in imp.from_loc.path
-                if p?.value
-            ];
-            if (module_parts == ['__future__']) {
-                filtered_body.append(item);
-                continue;
-            }
-        }
-        # Skip imports annotated with # jac:runtime
-        if self._has_runtime_annotation(nd, imp) {
-            filtered_body.append(item);
-            continue;
-        }
-        # Classify each ModuleItem as type-only or runtime
-        type_only_items: list[uni.ModuleItem] = [];
-        runtime_items: list[uni.ModuleItem] = [];
-        for mi in imp.items {
-            if not isinstance(mi, uni.ModuleItem) {
-                runtime_items.append(mi);
-                continue;
-            }
-            sym_node = mi.alias or mi.name;
-            sym: (uni.Symbol | None) = None;
-            if isinstance(sym_node, uni.NameAtom) {
-                sym = sym_node.sym;
-            }
-            if (sym is not None and sym.imported and len(sym.uses) > 0) {
-                all_type_only = True;
-                for use_nd in sym.uses {
-                    if not self._is_type_annotation_use(use_nd) {
-                        all_type_only = False;
-                        break;
-                    }
-                }
-                if all_type_only {
-                    type_only_items.append(mi);
-                } else {
-                    runtime_items.append(mi);
-                }
-            } else {
-                runtime_items.append(mi);
-            }
-        }
-        if (not type_only_items) {
-            # All runtime - keep as-is
-            filtered_body.append(item);
-        } elif (not runtime_items) {
-            # All type-only - move entirely to TYPE_CHECKING
-            type_only_py_nodes.extend(imp.gen.py_ast);
-        } else {
-            # Mixed - split into two ImportFrom statements
-            module_name_parts = [p.value for p in imp.from_loc.path]
-                if imp.from_loc.path
-                else [];
-            module_name = '.'.join(module_name_parts) if module_name_parts else None;
-            # Runtime import stays in body
-            runtime_import = self.sync(
-                ast3.ImportFrom(
-                    module=module_name,
-                    names=[
-                        cast(ast3.alias, i) for ri in runtime_items
-                        for i in ri.gen.py_ast
-                    ],
-                    level=imp.from_loc.level
-                )
-            );
-            imp.gen.py_ast = [runtime_import];
-            filtered_body.append(item);
-            # Type-only import goes to TYPE_CHECKING
-            type_only_import = self.sync(
-                ast3.ImportFrom(
-                    module=module_name,
-                    names=[
-                        cast(ast3.alias, i) for ti in type_only_items
-                        for i in ti.gen.py_ast
-                    ],
-                    level=imp.from_loc.level
-                )
-            );
-            type_only_py_nodes.append(type_only_import);
-        }
-    }
-    return (filtered_body, type_only_py_nodes);
-}
-
 impl PyastGenPass.exit_module(nd: uni.Module) -> None {
     for child_pass in self.child_passes {
         self.jaclib_imports.update(child_pass.jaclib_imports);
@@ -859,28 +718,6 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
         );
     }
     merged_body = self._merge_module_bodies(nd);
-    # Separate type-only imports into TYPE_CHECKING block
-    _tc_result = self._process_type_only_imports(nd, merged_body);
-    filtered_body = _tc_result[0];
-    type_only_py_nodes: list[ast3.AST] = _tc_result[1];
-    if type_only_py_nodes {
-        self.needs_typing();
-        tc_block = self.sync(
-            ast3.If(
-                test=self.sync(
-                    ast3.Attribute(
-                        value=self.sync(ast3.Name(id='typing', ctx=ast3.Load())),
-                        attr='TYPE_CHECKING',
-                        ctx=ast3.Load()
-                    )
-                ),
-                body=[cast(ast3.stmt, n) for n in type_only_py_nodes],
-                orelse=[]
-            ),
-            jac_node=self.ir_out
-        );
-        self.preamble.append(tc_block);
-    }
     body_items: list[ast3.AST | list[ast3.AST] | None] = [];
     if nd.doc {
         doc_stmt = self.sync(
@@ -889,7 +726,7 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
         body_items.append(doc_stmt);
     }
     body_items.extend(self.preamble);
-    body_items.extend(item.gen.py_ast for item in filtered_body);
+    body_items.extend(item.gen.py_ast for item in merged_body);
     new_body = self._flatten_ast_list(body_items);
     nd.gen.py_ast = [
         self.sync(

@@ -226,8 +226,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         self.emit_diag(E1054, expr);
         return types.UnknownType();
     }
-    if isinstance(caller_type, types.ClassType)
-    and caller_type.shared == (self.prefetch and self.prefetch.type_var_class.shared) {
+    if self.is_typevar_class(caller_type) {
         # Pyright: createTypeVarType() - Extract TypeVar name and validate constraints
         type_var_name = "";
         first_constraint_arg: uni.Expr | None = None;
@@ -311,10 +310,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             constraints=constraint_types or None
         );
     }
-    if isinstance(caller_type, types.ClassType)
-    and caller_type.shared == (
-        self.prefetch and self.prefetch.param_spec_class.shared
-    ) {
+    if self.is_paramspec_class(caller_type) {
         # Handle ParamSpec("P", bound=..., covariant=..., contravariant=...)
         # ParamSpec accepts only a name and optional bound/variance kwargs (no positional constraints).
         param_spec_name = "";
@@ -367,10 +363,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             bound=bound_type
         );
     }
-    if isinstance(caller_type, types.ClassType)
-    and caller_type.shared == (
-        self.prefetch and self.prefetch.type_var_tuple_class.shared
-    ) {
+    if self.is_type_var_tuple_class(caller_type) {
         # Handle TypeVarTuple("Ts") - only accepts a name, no variance or bound
         tvt_name = "";
         if expr.params and len(expr.params) > 0 {

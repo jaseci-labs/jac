@@ -248,9 +248,6 @@ variables
         attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
     ) -> ast3.AST;
 
-    """Check if a name usage is in a type annotation context."""
-    def _is_type_annotation_use(nd: uni.UniNode) -> bool;
-
     """Resolve Self to the appropriate Python construct based on context."""
     def _resolve_self_type(nd: uni.Name) -> (ast3.expr | None);
 
@@ -259,14 +256,6 @@ variables
 
     """Check if a node is or is a descendant of another node."""
     def _is_descendant_of(nd: uni.UniNode, ancestor: uni.UniNode) -> bool;
-
-    """Check if an import has a # jac:runtime annotation."""
-    def _has_runtime_annotation(nd: uni.Module, imp: uni.Import) -> bool;
-
-    """Classify import items and separate type-only imports for TYPE_CHECKING."""
-    def _process_type_only_imports(
-        nd: uni.Module, merged_body: list
-    ) -> tuple[(list, list[ast3.AST])];
 
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_module(nd: uni.Module) -> None;

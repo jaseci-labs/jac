@@ -334,7 +334,9 @@ test "py_ast_val raises ICE with source location on empty py_ast" {
         assert "Internal Compiler Error" in msg , (
             f"ICE should mention 'Internal Compiler Error', got: {msg}"
         );
-        assert "PyastGenPass" in msg , (f"ICE should mention the pass name, got: {msg}");
+        assert "PyastGenPass" in msg , (
+            f"ICE should mention the pass name, got: {msg}"
+        );
         assert "Empty py_ast" in msg , (
             f"ICE should mention 'Empty py_ast', got: {msg}"
         );
@@ -349,5 +351,70 @@ test "py_ast_val raises ICE with source location on empty py_ast" {
         );
     } finally {
         target_node.gen.py_ast = original;
+    }
+}
+
+test "ClassVar import stays runtime-visible (dataclass can find it)" {
+    # Regression: a prior TYPE_CHECKING auto-classifier moved imports whose
+    # uses were all "annotation-shaped" into `if typing.TYPE_CHECKING:` blocks
+    # in the generated Python. ClassVar looks annotation-only but dataclass
+    # resolves its name against the class's module globals at runtime; when
+    # the import was demoted, dataclass failed to recognize ClassVar fields
+    # and crashed with `mutable default <class 'dict'> for field paths`.
+    # This test compiles a fixture with a ClassVar-typed class variable,
+    # imports the generated Python, and instantiates the archetype — which
+    # fires __init_subclass__ and dataclass processing. If ClassVar is ever
+    # demoted again, this call raises at import time.
+    fixture = os.path.join(FIXTURES, "classvar_runtime_import.jac");
+    code_gen = (prog := JacProgram()).compile(fixture);
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+
+    # Verify the generated module has the ClassVar import at top level,
+    # not wrapped in any `if typing.TYPE_CHECKING:` guard. (Explicit
+    # `with entry { if TYPE_CHECKING { ... } }` in source is fine; this
+    # fixture deliberately has none, so any such guard at the top of the
+    # generated module means the auto-classifier is back.)
+    py_mod: ast3.Module = code_gen.gen.py_ast[0];
+    classvar_at_top = False;
+    tc_guard_at_top = False;
+    for stmt in py_mod.body {
+        if isinstance(stmt, ast3.ImportFrom)
+        and stmt.module == "typing"
+        and any(n.name == "ClassVar" for n in stmt.names) {
+            classvar_at_top = True;
+        }
+        if isinstance(stmt, ast3.If)
+        and isinstance(stmt.test, ast3.Attribute)
+        and stmt.test.attr == "TYPE_CHECKING" {
+            tc_guard_at_top = True;
+        }
+    }
+    assert classvar_at_top , (
+        "expected module-level `from typing import ClassVar`. Source:\n" + ast3.unparse(
+            py_mod
+        )
+    );
+    assert not tc_guard_at_top , (
+        "fixture has no explicit TYPE_CHECKING block; any top-level "
+        "`if typing.TYPE_CHECKING:` means the auto-classifier came back. "
+        "Source:\n" + ast3.unparse(py_mod)
+    );
+
+    # Actually run the generated module — this is the runtime check that
+    # fails with the classifier bug. Dataclass resolves string ClassVar
+    # annotations by looking up cls.__module__ in sys.modules, so we exec
+    # inside a real ModuleType, not a bare dict.
+    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    mod = types.ModuleType("classvar_runtime_fixture_under_test");
+    sys.modules[mod.__name__] = mod;
+    try {
+        exec(compiled, mod.__dict__);
+        Registry = mod.__dict__["Registry"];
+        Registry.register("alpha", 1);
+        Registry.register("beta", 2);
+        assert Registry.paths == {"alpha": 1, "beta": 2};
+    } finally {
+        sys.modules.pop(mod.__name__, None);
     }
 }

@@ -625,6 +625,24 @@ test "checker_import_missing_module" {
     assert len(program.errors_had) == 6;
 }
 
+test "checker_jac_runtime_alias" {
+    # `@jac/runtime` is a virtual module resolved by the bundler to
+    # jaclang/runtimelib/client_runtime.cl.jac. The type checker must use the
+    # same mapping so imported symbols keep their declared types (e.g.
+    # jacIsLoggedIn -> bool) instead of decaying to Unknown and producing
+    # spurious assignment errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jac_runtime_alias.cl.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+    assert len(program.warnings_had) == 0 , f"unexpected warnings: {[
+        w.pretty_print() for w in program.warnings_had
+    ]}";
+}
+
 test "cyclic_symbol" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cyclic_symbol.jac");
     program = JacProgram();
@@ -2420,6 +2438,29 @@ test "stdlib_star_reexport" {
     assert mod.sym_tab.lookup("SimpleQueue") is not None , "SimpleQueue not resolved - queue star re-export broken";
 }
 
+"""Test relative .pyi re-export resolution (e.g., os.pathsep from os.path).
+
+`os/__init__.pyi` does `from .path import (pathsep as pathsep, ...)` and
+the originals live in `posixpath.pyi`. For the relative `from .path`
+import to resolve, the module resolver must try `.pyi` extensions (not
+just `.py`/`.jac`) when searching sibling files of a stub package.
+
+Regression: before the fix, `os.pathsep` resolved to <Unknown>, so
+`str.split(os.pathsep)` failed with a misleading E1054
+\"No matching overload found\".
+"""
+test "stdlib_pyi_relative_reexport" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_stdlib_pyi_relative_reexport.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected no type errors, but got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
 """Test ClassVar[T] type annotation unwraps to T correctly."""
 test "classvar_type_annotation" {
     program = JacProgram();
@@ -3203,9 +3244,12 @@ test "root_cause_8_dynamic_class_attrs" {
         for e in program.errors_had
         if e.loc and 360 <= e.loc.first_line <= 390
     ];
-    # 4 errors: type[Archetype].reports, WalkerArchetype._instance,
-    # object.call_params, executor.submit (ThreadPoolExecutor Unknown from import).
-    assert len(rc8_errors) == 4 , f"Expected 4 dynamic-attr errors, got {len(
+    # 3 errors: type[Archetype].reports, WalkerArchetype._instance,
+    # object.call_params. The former 4th (executor.submit on a then-Unknown
+    # ThreadPoolExecutor) went away after the relative .pyi re-export fix
+    # loaded concurrent/futures stubs and typing/typing_extensions ParamSpec
+    # parity let Callable[_P, _T] accept the lambda gradually.
+    assert len(rc8_errors) == 3 , f"Expected 3 dynamic-attr errors, got {len(
         rc8_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc8_errors);
 }
@@ -3300,8 +3344,14 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # RC9 now 4 (was 2 before Callable/Any resolution fix), RC5 dropped 2→0. Total: 36
-    assert len(program.errors_had) == 36 , f"Expected 36 total errors, got {len(
+    # RC9 now 4 (was 2 before Callable/Any resolution fix), RC5 dropped 2→0.
+    # -1 from former 36: line 390 `executor.submit(lambda: None)` now succeeds
+    # after typing/typing_extensions ParamSpec parity + ParamSpec.args/.kwargs
+    # modelling: `Callable[_P, _T]` is now gradual, accepting the lambda. The
+    # fixture comment predicted "E1032 if executor type is Unknown" when
+    # `executor` was Unknown (stub unloadable pre-fix); that path is resolved
+    # now, and ParamSpec is understood, so no error fires there. Total: 35.
+    assert len(program.errors_had) == 35 , f"Expected 35 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

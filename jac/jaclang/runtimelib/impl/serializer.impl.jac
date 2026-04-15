@@ -288,9 +288,35 @@ impl Serializer._deserialize_value(val: object) -> object {
     return val;
 }
 
-"""Register a class for safe deserialization."""
+"""Register a class for safe deserialization and attach its fingerprint."""
 impl Serializer.register(cls: type) -> None {
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
+    try {
+        cls.__jac_fingerprint__ = Serializer.fingerprint(cls);
+    } except Exception as e {
+        logger.debug(f"Failed to compute fingerprint for {cls.__name__}: {e}");
+        cls.__jac_fingerprint__ = '';
+    }
+}
+
+"""Compute an archetype schema fingerprint."""
+impl Serializer.fingerprint(cls: type) -> str {
+    field_pairs: list[list[str]] = [];
+    if is_dataclass(cls) {
+        for f in fields(cls) {
+            # str() on the type annotation handles typing generics, unions,
+            # and forward refs uniformly. It's not perfectly stable across
+            # Python versions, but it's stable within a given version — and
+            # the fingerprint is recomputed at class-load time, so version
+            # drift of type reprs just produces a new fingerprint, which
+            # migration layer will treat as drift (conservative, safe).
+            field_pairs.append([f.name, str(f.type)]);
+        }
+    }
+    field_pairs.sort(key=lambda p: list : p[0]);
+    payload = {'module': cls.__module__, 'name': cls.__name__, 'fields': field_pairs};
+    encoded = _json_dumps(payload, sort_keys=True, default=str).encode('utf-8');
+    return sha256(encoded).hexdigest()[:FINGERPRINT_LENGTH];
 }
 
 """Look up a class by module.name (only registered classes for security)."""

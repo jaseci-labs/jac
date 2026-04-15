@@ -1902,14 +1902,20 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
                 walker_sym = resolve_expr_symbol(
                     spawn_parts.walker.call_node.target, self.get_main_mod()
                 );
-                # If the symbol is an imported variable (sv import),
-                # search the main module for the original walker arch.
-                if (walker_sym and walker_sym.sym_type != SymbolType.WALKER_ARCH) {
-                    main_sym = self.search_sym_in_main_mod(
-                        spawn_parts.walker.call_node.target
-                    );
-                    if main_sym {
-                        walker_sym = main_sym;
+                # Follow sv-import chains: when the resolved symbol is the
+                # imported alias (sym_type=VAR, declared inside a ModuleItem),
+                # the type evaluator has already pointed ModuleItem.name.sym at
+                # the target walker archetype in the source module. Chain
+                # through so the effect analysis runs against the real body.
+                if (
+                    walker_sym
+                    and walker_sym.sym_type != SymbolType.WALKER_ARCH
+                    and walker_sym.decl
+                    and isinstance(walker_sym.decl.parent, uni.ModuleItem)
+                ) {
+                    mi_name = walker_sym.decl.parent.name;
+                    if (isinstance(mi_name, uni.Name) and mi_name.sym) {
+                        walker_sym = mi_name.sym;
                     }
                 }
                 if (walker_sym and walker_sym.sym_type == SymbolType.WALKER_ARCH) {
@@ -2523,13 +2529,13 @@ impl EsastGenPass._has_import(name: str) -> bool {
 
 """Register @jac/runtime in the client manifest so bundler can inline it."""
 impl EsastGenPass._register_jac_runtime_import -> None {
-    import from pathlib { Path }
-    import jaclang.runtimelib;
+    import from jaclang.jac0core.modresolver { resolve_jac_virtual_module_path }
     # Only register once
     if '@jac/runtime' not in self.client_manifest.imports {
-        runtime_dir = Path(jaclang.runtimelib.__file__).parent;
-        runtime_path = runtime_dir / 'client_runtime.cl.jac';
-        self.client_manifest.imports['@jac/runtime'] = str(runtime_path);
+        runtime_path = resolve_jac_virtual_module_path('@jac/runtime');
+        if runtime_path {
+            self.client_manifest.imports['@jac/runtime'] = runtime_path;
+        }
     }
 }
 

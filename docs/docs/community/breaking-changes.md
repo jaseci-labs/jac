@@ -40,6 +40,50 @@ No code changes are required - the same APIs, configuration, and behavior apply.
 
 ---
 
+### Version 0.13.6
+
+#### 1. `cl { }` / `sv { }` / `na { }` Module-Level Braced Blocks Deprecated
+
+Module-level braced codespace blocks (`cl { ... }`, `sv { ... }`, `na { ... }`) are now discouraged in favor of `to cl:` / `to sv:` / `to na:` section headers. A section header applies until the next header or end of file, which flattens cl/sv/na-heavy modules and eliminates the wrapping brace pair. The single-statement prefix form (`cl stmt`, `sv stmt`, `na stmt`) is unchanged.
+
+The braced block form still parses and compiles, but emits deprecation warning **W0064** when used at module scope. Inner-scope uses (inside a function or class body) do not emit W0064 and remain the recommended way to locally override the active codespace.
+
+**Impact:** Existing module-level `cl { ... }` / `sv { ... }` / `na { ... }` blocks keep working but will produce W0064 diagnostics. Migrate to the section-header form to silence the warning and reduce indentation.
+
+**Before:**
+
+```jac
+cl {
+    def:pub Greeting(props: dict) -> JsxElement {
+        return <h1>Hello, {props.name}!</h1>;
+    }
+
+    def:pub Counter() -> JsxElement {
+        has count: int = 0;
+        return <button onClick={lambda -> None { count = count + 1; }}>{count}</button>;
+    }
+}
+```
+
+**After:**
+
+```jac
+to cl:
+
+def:pub Greeting(props: dict) -> JsxElement {
+    return <h1>Hello, {props.name}!</h1>;
+}
+
+def:pub Counter() -> JsxElement {
+    has count: int = 0;
+    return <button onClick={lambda -> None { count = count + 1; }}>{count}</button>;
+}
+```
+
+`jac format` automatically rewrites module-level braced blocks to section headers.
+
+---
+
 ### Version 0.12.3
 
 #### 1. Automatic `TYPE_CHECKING` Import Guards

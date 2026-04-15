@@ -26,21 +26,18 @@ impl DeclImplMatchPass.transform(
             self.connect_impls(impl_module.sym_tab, variant_module.sym_tab);
         }
     }
-    # Resolve module-level symbols (GlobalVars, TypeAlias, ModuleCode)
+    # Resolve all Load-context names across primary, impls, and variants.
+    # Why: prior carve-out to (TypeAlias, GlobalVars, ModuleCode) missed
+    # standalone top-level constructs in .impl.jac files (def/obj/node/walker/
+    # enum/etc.), leaving their bodies' reads unresolved and defeating type
+    # inference. _resolve_symbols_in_subtree is idempotent — it skips Names
+    # whose sym is already set by the matched-impl path above.
     for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
-        for item in module.body {
-            if isinstance(item, (uni.TypeAlias, uni.GlobalVars, uni.ModuleCode)) {
-                self._resolve_symbols_in_subtree(item);
-            }
-        }
+        self._resolve_symbols_in_subtree(module);
     }
     for variant_module in ir_in.variant_mod {
         for impl_module in variant_module.impl_mod {
-            for item in impl_module.body {
-                if isinstance(item, (uni.TypeAlias, uni.GlobalVars, uni.ModuleCode)) {
-                    self._resolve_symbols_in_subtree(item);
-                }
-            }
+            self._resolve_symbols_in_subtree(impl_module);
         }
     }
     return ir_in;
@@ -241,7 +238,15 @@ impl DeclImplMatchPass.validate_params_match(
     }
 }
 
-"""Resolve unresolved Name and AtomTrailer symbols in a subtree."""
+"""Resolve unresolved Name and AtomTrailer symbols in a subtree.
+
+Best-effort: a single Name or chain whose scope chain is detached
+(seen in synthetic nodes from pyast_load_pass when type-checking
+imported `.py` modules) must not abort resolution for the rest of
+the subtree. The lookups here only ever populate `.sym`; failing
+to do so on one node is a degraded-info outcome, not a correctness
+hazard for the others.
+"""
 impl DeclImplMatchPass._resolve_symbols_in_subtree(
     self: DeclImplMatchPass, root: uni.UniNode
 ) -> None {
@@ -253,13 +258,17 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(
             continue;
         }
         if name_node.sym_tab {
-            name_node.sym_tab.use_lookup(name_node);
+            try {
+                name_node.sym_tab.use_lookup(name_node);
+            } except ValueError { }
         }
     }
     for trailer_node in root.get_all_sub_nodes(uni.AtomTrailer) {
         chain = trailer_node.as_attr_list;
         if chain and chain[0].sym is None and trailer_node.sym_tab {
-            trailer_node.sym_tab.chain_use_lookup(chain);
+            try {
+                trailer_node.sym_tab.chain_use_lookup(chain);
+            } except ValueError { }
         }
     }
 }

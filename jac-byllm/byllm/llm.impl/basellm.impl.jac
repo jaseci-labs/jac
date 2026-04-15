@@ -9,22 +9,35 @@ def _is_prompt_caching_eligible(model_name: str) -> bool {
 }
 
 
-"""Add cache_control markers to the last system message and last tool."""
+"""Attach a cache_control marker to a message (string or list content)."""
+def _mark_message_for_caching(msg: dict) {
+    content = msg.get("content");
+    if isinstance(content, str) {
+        msg["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+    } elif isinstance(content, list) and len(content) > 0 {
+        content[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+    }
+}
+
+
+"""Mark cache breakpoints for Anthropic: last system, last non-system, last tool."""
 def _apply_prompt_caching(messages: list, tools: list | None) {
     last_sys_idx = -1;
+    last_nonsys_idx = -1;
     for (i, msg) in enumerate(messages) {
-        if isinstance(msg, dict) and msg.get("role") == "system" {
-            last_sys_idx = i;
+        if isinstance(msg, dict) {
+            if msg.get("role") == "system" {
+                last_sys_idx = i;
+            } else {
+                last_nonsys_idx = i;
+            }
         }
     }
     if last_sys_idx >= 0 {
-        msg = messages[last_sys_idx];
-        content = msg.get("content");
-        if isinstance(content, str) {
-            msg["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
-        } elif isinstance(content, list) and len(content) > 0 {
-            content[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
-        }
+        _mark_message_for_caching(messages[last_sys_idx]);
+    }
+    if last_nonsys_idx >= 0 {
+        _mark_message_for_caching(messages[last_nonsys_idx]);
     }
     if tools {
         tools[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;

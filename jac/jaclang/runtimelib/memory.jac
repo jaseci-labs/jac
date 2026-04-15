@@ -19,7 +19,6 @@ jac-scale extends this to override L2 (Redis) and L3 (database).
 import logging;
 import sqlite3;
 import from collections.abc { Callable, Generator, Iterable }
-import from pickle { dumps, loads }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }

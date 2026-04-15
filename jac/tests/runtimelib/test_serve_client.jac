@@ -10,8 +10,8 @@ import re;
 import shutil;
 import uuid;
 import from pathlib { Path }
-import from pickle { dumps, loads }
 import from tempfile { TemporaryDirectory }
+import from jaclang.runtimelib.serializer { Serializer }
 import from jaclang.runtimelib.testing { JacTestClient }
 
 glob FIXTURES = str(Path(__file__).parent / "fixtures");
@@ -112,7 +112,7 @@ def capture_log_start(logger: logging.Logger, level: int = logging.DEBUG) -> tup
 """Remove handler and restore logger level."""
 def capture_log_stop(
     logger: logging.Logger, handler: logging.StreamHandler, old_level: int
-) -> None {
+) {
     logger.removeHandler(handler);
     logger.setLevel(old_level);
 }
@@ -1347,20 +1347,25 @@ test "serve sync skips write access check on unchanged anchors" {
         ctx = Jac.get_context();
         sys_root = ctx.system_root;
         sys_root.persistent = True;
-        sys_root_copy = loads(dumps(sys_root));
-        sys_root.__dict__.update(sys_root_copy.__dict__);
+        # Simulate a post-restart state: anchor has been through a
+        # serialize/deserialize round-trip, so its hash matches its canonical
+        # form on disk. l3.put() re-persists with the same canonical form,
+        # so a subsequent sync() should detect no drift and skip the
+        # write-access check.
+        import from typing { cast }
+        import from jaclang.runtimelib.memory { TieredMemory }
+        serialized = cast(dict, Serializer.serialize(sys_root, include_type=True));
+        sys_root_copy = Serializer.deserialize(serialized);
+        if sys_root_copy is not None {
+            sys_root.__dict__.update(sys_root_copy.__dict__);
+        }
         sys_root.persistent = True;
-        sys_root.hash = hash(dumps(sys_root));
-        # Ensure it is present in L3's __mem__
-        l3 = ctx.mem.l3;
+        sys_root.hash = Serializer._compute_hash(sys_root);
+        # Ensure it is present in L3's __mem__ and on disk.
+        tiered = cast(TieredMemory, ctx.mem);
+        l3 = tiered.l3;
         if l3 is not None {
             l3.put(sys_root);
-            l3._ensure_connection();
-            l3.__conn__.execute(
-                "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
-                (str(sys_root.id), dumps(sys_root))
-            );
-            l3.__conn__.commit();
         }
         # Capture logs
         logger = logging.getLogger("jaclang.jac0core.runtime");

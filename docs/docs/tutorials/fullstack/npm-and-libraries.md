@@ -305,12 +305,12 @@ This fetches resolved `.cl.jac` components into `components/ui/`, installs peer 
 ```jac
 cl import from "./components/ui/button" { Button }
 
-cl {
-    def:pub MyPage() -> JsxElement {
-        return <div>
-            <Button variant="outline">Click me</Button>
-        </div>;
-    }
+to cl:
+
+def:pub MyPage() -> JsxElement {
+    return <div>
+        <Button variant="outline">Click me</Button>
+    </div>;
 }
 ```
 
