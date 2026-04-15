@@ -43,16 +43,21 @@ jobs:
         pip install pytest-xdist
         pip install watchdog
 
-    - name: Run remaining Jac core tests (incl. native, project)
+    - name: Run remaining Jac core tests (incl. native, runtimelib, project, examples)
       run: |
         pytest -x jac -n auto \
           --ignore=jac/tests/compiler/passes/main \
           --ignore=jac/tests/compiler/test_micro_suite.jac \
           --ignore=jac/tests/langserve \
-          --ignore=jac/tests/runtimelib \
           --ignore=jac/tests/language
 
-  test-core-checker-langserve-runtimelib:
+  # NOTE: runtimelib deliberately stays inside `test-core-rest`, not this
+  # bucket. `jac/tests/runtimelib/test_serve.jac::faux flag with littlex
+  # example` depends on a JIR cache warmed by `jac/examples/littleX/
+  # test_littlex_client.jac` (which lives in `test-core-rest`). Splitting
+  # them into separate buckets strands the test_serve case with a cold
+  # cache and it hits real type errors in littleX_single_nodeps.jac.
+  test-core-checker-langserve:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
@@ -73,12 +78,11 @@ jobs:
         pip install pytest-xdist
         pip install watchdog
 
-    - name: Run type-checker + langserve + runtimelib tests
+    - name: Run type-checker + langserve tests
       run: |
         pytest -x \
           jac/tests/compiler/passes/main \
           jac/tests/langserve \
-          jac/tests/runtimelib \
           -n auto
 
   test-core-micro-suite-language:
