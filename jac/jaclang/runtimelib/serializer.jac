@@ -1,16 +1,22 @@
 """JSON serialization for Jac objects with type-safe deserialization."""
 
 import logging;
+import from dataclasses { fields, is_dataclass }
 import from enum { Enum }
+import from hashlib { sha256 }
+import from json { dumps as _json_dumps }
 import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
     Anchor,
     NodeAnchor,
     EdgeAnchor,
+    WalkerAnchor,
+    ObjectAnchor,
     Permission,
     Access,
-    AccessLevel
+    AccessLevel,
+    access_level_cast
 }
 import from jaclang.jac0core.constructs {
     Archetype,
@@ -20,7 +26,10 @@ import from jaclang.jac0core.constructs {
     GenericEdge
 }
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     # Number of hex chars kept from the SHA-256 of the archetype schema.
+     # 16 hex chars = 64 bits, plenty for drift detection.
+     FINGERPRINT_LENGTH: int = 16;
 
 """Converts Jac objects to/from JSON-compatible dicts.
 
@@ -30,16 +39,34 @@ preventing arbitrary code execution from untrusted data.
 obj Serializer {
     static has _registry: dict[str, type] = {};
 
-    """Register a class for deserialization."""
+    """Register a class for deserialization and attach its schema fingerprint."""
     static def register(cls: type) -> None;
+
+    """Compute a stable schema fingerprint for an archetype class.
+
+    Derived from class identity (module + name) plus dataclass field
+    (name, type_repr) pairs, sorted for determinism. Hashed with SHA-256
+    and truncated to FINGERPRINT_LENGTH hex chars. Used by the persistence
+    layer to detect schema drift between the code running now and the
+    schema of previously persisted anchors.
+    """
+    static def fingerprint(cls: type) -> str;
 
     """Convert object to JSON-compatible dict.
 
     Set include_type=True for storage (enables round-trip).
     Set api_mode=True for API responses (adds _jac_* metadata).
+    Set ref_mode=True to emit {"$ref": "<uuid-hex>", "$type": "<kind>"} for
+    repeated Jac objects instead of inlining them again (prevents duplication
+    and infinite recursion). Note: ref_mode registers discovered Jac objects
+    in the runtime memory store so that $ref placeholders can be resolved back
+    to live archetypes during deserialization.
     """
     static def serialize(
-        `obj: object, include_type: bool = False, api_mode: bool = False
+        `obj: object,
+        include_type: bool = False,
+        api_mode: bool = False,
+        ref_mode: bool = False
     ) -> object;
 
     """Reconstruct object from serialized data."""
@@ -47,15 +74,24 @@ obj Serializer {
 
     # Internal helpers
     static def _serialize_value(
-        val: object, include_type: bool, api_mode: bool = False
+        val: object,
+        include_type: bool,
+        api_mode: bool = False,
+        ref_mode: bool = False,
+        _seen: (tuple[set, set] | None) = None
     ) -> object;
 
     static def _type_info(`obj: object, `include: bool) -> dict[str, object];
     static def _serialize_attrs(
-        `obj: object, include_type: bool, api_mode: bool
+        `obj: object,
+        include_type: bool,
+        api_mode: bool,
+        ref_mode: bool = False,
+        _seen: (tuple[set, set] | None) = None
     ) -> dict[str, object];
 
     static def _deserialize_value(val: object) -> object;
+    static def _deserialize_jac_ref(data: dict[str, object]) -> (object | None);
     static def _get_class(module_name: str, class_name: str) -> (type | None);
     static def _id_to_stub(anchor_cls: type, id_str: str) -> (object | None);
     static def _deserialize_anchor(data: dict[str, object]) -> (object | None);

@@ -44,9 +44,7 @@ impl start_cli -> None {
         cmd = sys.argv[1] if len(sys.argv) > 1 else '';
         if cmd == 'test' and any(not u.startswith('-') for u in unknown) {
             console.error(
-                f"unrecognized arguments: {' '.join(
-                    unknown
-                )}\n"
+                f"unrecognized arguments: {' '.join(unknown)}\n"
                 "hint: use quotes for multi-word test names:\n"
                 "  jac test <file.jac> --test_name \"my test name\"\n"
                 "  jac test <file.jac> --test_name my_test_name"

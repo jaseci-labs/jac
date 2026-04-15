@@ -820,9 +820,7 @@ test "litellm debug enabled via config" {
     verbose_proxy_logger.disabled = False;
 
     with unittest.mock.patch.dict(
-        _byllm_llm_mod._litellm_config,
-        {"debug": True, "drop_params": True},
-        clear=True
+        _byllm_llm_mod._litellm_config, {"debug": True, "drop_params": True}, clear=True
     ) {
         model = Model(model_name="gpt-4o-mini");
         assert not verbose_logger.disabled , "verbose_logger should remain enabled when debug=True";
@@ -961,9 +959,7 @@ test "all exception types log and propagate regardless of debug" {
             with unittest.mock.patch(
                 "litellm.completion",
                 side_effect=litellm.exceptions.RateLimitError(
-                    message="quota exceeded",
-                    llm_provider="openai",
-                    model="gpt-4o-mini"
+                    message="quota exceeded", llm_provider="openai", model="gpt-4o-mini"
                 )
             ) {
                 raised = False;
@@ -1079,4 +1075,60 @@ test "model pool router init" {
     assert "lb_pool_alias:pool-model" in stdout_value;
     assert "lb_deploy_count:3" in stdout_value;
     assert "lb_all_share_alias:True" in stdout_value;
+}
+
+import from byllm.llm {
+    _is_prompt_caching_eligible,
+    _apply_prompt_caching,
+    _CACHE_CONTROL_EPHEMERAL
+}
+
+test "prompt caching marks system, last non-system message, and last tool for anthropic models" {
+    # Eligibility: Anthropic yes, others no
+    assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514") == True;
+    assert _is_prompt_caching_eligible("claude-3-opus-20240229") == True;
+    assert _is_prompt_caching_eligible("gpt-4o") == False;
+
+    # Multi-turn ReAct conversation, with list-content on the last message
+    messages = [
+        {"role": "system", "content": "You are an agent."},
+        {"role": "user", "content": "Do something"},
+        {"role": "assistant", "content": "Calling a tool."},
+        {
+            "role": "tool",
+            "content": [
+                {"type": "text", "text": "first"},
+                {"type": "text", "text": "last"}
+            ]
+        }
+    ];
+    tools = [
+        {"type": "function", "function": {"name": "read_file"}},
+        {"type": "function", "function": {"name": "finish_tool"}}
+    ];
+    _apply_prompt_caching(messages, tools);
+
+    # System marked, intermediate messages NOT marked, last message's last block marked
+    assert messages[0].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+    assert "cache_control" not in messages[1];
+    assert "cache_control" not in messages[2];
+    assert "cache_control" not in messages[3].get("content")[0];
+    assert messages[3].get("content")[-1].get(
+        "cache_control"
+    ) == _CACHE_CONTROL_EPHEMERAL;
+    # Only last tool marked
+    assert "cache_control" not in tools[0];
+    assert tools[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+}
+
+test "prompt caching disabled via config" {
+    with unittest.mock.patch.object(
+        _byllm_llm_mod._byllm_config,
+        'get_prompt_caching_config',
+        return_value={'enabled': False}
+    ) {
+        assert _is_prompt_caching_eligible(
+            "anthropic/claude-sonnet-4-20250514"
+        ) == False;
+    }
 }

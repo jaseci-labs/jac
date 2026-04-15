@@ -20,9 +20,7 @@ cl {
                         ]}
                     </tr>
                 </thead>
-                <tbody>
-                    {children}
-                </tbody>
+                <tbody>{children}</tbody>
             </table>;
     }
 
@@ -38,8 +36,6 @@ cl {
     def:pub TableCell(children: Any, align: str = "left") -> JsxElement {
         alignClass = align == "right" and "text-right" or "text-left";
         return
-            <td className={"px-4 py-3 " + alignClass}>
-                {children}
-            </td>;
+            <td className={"px-4 py-3 " + alignClass}>{children}</td>;
     }
 }

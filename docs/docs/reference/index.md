@@ -86,7 +86,7 @@ The `jac` command is your primary interface to the Jac toolchain. For the full r
 |---------|-------------|
 | `jac py2jac <file>` | Convert Python to Jac |
 | `jac jac2py <file>` | Convert Jac to Python |
-| `jac js <file>` | Compile to JavaScript |
+| `jac jac2js <file>` | Compile to JavaScript |
 
 ### Project Commands
 
@@ -286,11 +286,11 @@ VITE_API_URL=https://api.example.com
 Then access in client code:
 
 ```jac
-cl {
-    def:pub app() -> JsxElement {
-        api_url = import.meta.env.VITE_API_URL;
-        return <div>{api_url}</div>;
-    }
+to cl:
+
+def:pub app() -> JsxElement {
+    api_url = import.meta.env.VITE_API_URL;
+    return <div>{api_url}</div>;
 }
 ```
 
@@ -301,12 +301,12 @@ cl {
 ### npm Packages
 
 ```jac
-cl {
-    import from react { useState, useEffect, useCallback }
-    import from "@tanstack/react-query" { useQuery, useMutation }
-    import from lodash { debounce, throttle }
-    import from axios { default as axios }
-}
+to cl:
+
+import from react { useState, useEffect, useCallback }
+import from "@tanstack/react-query" { useQuery, useMutation }
+import from lodash { debounce, throttle }
+import from axios { default as axios }
 ```
 
 ### TypeScript Configuration
@@ -323,26 +323,26 @@ typescript = true
 ### Browser APIs
 
 ```jac
-cl {
-    def:pub app() -> JsxElement {
-        # Window
-        width = window.innerWidth;
+to cl:
 
-        # LocalStorage
-        window.localStorage.setItem("key", "value");
-        value = window.localStorage.getItem("key");
+def:pub app() -> JsxElement {
+    # Window
+    width = window.innerWidth;
 
-        # Document
-        element = document.getElementById("my-id");
+    # LocalStorage
+    window.localStorage.setItem("key", "value");
+    value = window.localStorage.getItem("key");
 
-        return <div>{width}</div>;
-    }
+    # Document
+    element = document.getElementById("my-id");
 
-    # Fetch
-    async def load_data() -> None {
-        response = await fetch("/api/data");
-        data = await response.json();
-    }
+    return <div>{width}</div>;
+}
+
+# Fetch
+async def load_data() -> None {
+    response = await fetch("/api/data");
+    data = await response.json();
 }
 ```
 

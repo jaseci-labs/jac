@@ -481,7 +481,12 @@ impl format(
                 if res['formatted_code'] is not None {
                     try {
                         if to_screen {
-                            console.print(res['formatted_code']);
+                            # markup=False, highlight=False: prevent Rich from
+                            # interpreting Jac syntax like [root()-->], [?:Todo],
+                            # or [todo] as markup tags and silently stripping them.
+                            console.print(
+                                res['formatted_code'], markup=False, highlight=False
+                            );
                         } else {
                             with open(res['path'], 'w', encoding='utf-8') as f {
                                 f.write(res['formatted_code']);
@@ -495,7 +500,7 @@ impl format(
                 for (impl_path, impl_code) in res['impl_results'] {
                     try {
                         if to_screen {
-                            console.print(impl_code);
+                            console.print(impl_code, markup=False, highlight=False);
                         } else {
                             with open(impl_path, 'w', encoding='utf-8') as f {
                                 f.write(impl_code);

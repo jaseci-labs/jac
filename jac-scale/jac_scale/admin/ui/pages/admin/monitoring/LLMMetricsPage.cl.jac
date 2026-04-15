@@ -29,11 +29,11 @@ cl {
         useEffect(lambda { loadSummary();}, []);
 
         useEffect(
-            lambda -> any { if not autoRefresh {
-                return undefined;
-            }interval = setInterval(lambda { loadSummary();}, 15000);return lambda { clearInterval(
-                interval
-            );}; },
+            lambda -> any {
+                if not autoRefresh { return undefined;  }
+                interval = setInterval(lambda { loadSummary();}, 15000);
+                return lambda { clearInterval(interval);};
+            },
             [autoRefresh]
         );
 
@@ -73,9 +73,7 @@ cl {
         if errorMsg {
             return
                 <div className="flex items-center justify-center h-64">
-                    <div className="text-red-400 text-lg">
-                        {errorMsg}
-                    </div>
+                    <div className="text-red-400 text-lg">{errorMsg}</div>
                 </div>;
         }
 
@@ -87,9 +85,7 @@ cl {
         return
             <div className="space-y-6">
                 <div className="flex items-center justify-between">
-                    <h2 className="text-xl font-bold text-white">
-                        LLM Telemetry
-                    </h2>
+                    <h2 className="text-xl font-bold text-white">LLM Telemetry</h2>
                     <div className="flex items-center gap-3">
                         <label
                             className="flex items-center gap-2 text-sm text-slate-400 cursor-pointer"
@@ -103,7 +99,10 @@ cl {
                             Auto-refresh
                         </label>
                         <Button
-                            onClick={lambda { isLoading = True;loadSummary();}}
+                            onClick={lambda {
+                                isLoading = True;
+                                loadSummary();
+                            }}
                             variant="secondary"
                         >
                             Refresh
@@ -111,7 +110,9 @@ cl {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+                    <div
+                        className="bg-slate-900 border border-slate-800 rounded-lg p-5"
+                    >
                         <div className="text-sm text-slate-500 mb-1">
                             Total Invocations
                         </div>
@@ -122,18 +123,18 @@ cl {
                             {str(summary["total_llm_calls"] or 0) + " LLM calls"}
                         </div>
                     </div>
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
-                        <div className="text-sm text-slate-500 mb-1">
-                            Total Tokens
-                        </div>
+                    <div
+                        className="bg-slate-900 border border-slate-800 rounded-lg p-5"
+                    >
+                        <div className="text-sm text-slate-500 mb-1">Total Tokens</div>
                         <div className="text-3xl font-bold text-teal-400">
                             {formatTokens(summary["total_tokens"] or 0)}
                         </div>
                     </div>
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
-                        <div className="text-sm text-slate-500 mb-1">
-                            Total Cost
-                        </div>
+                    <div
+                        className="bg-slate-900 border border-slate-800 rounded-lg p-5"
+                    >
+                        <div className="text-sm text-slate-500 mb-1">Total Cost</div>
                         <div className="text-3xl font-bold text-amber-400">
                             {formatCost(summary["total_cost"] or 0)}
                         </div>
@@ -141,9 +142,7 @@ cl {
                     <div
                         className="bg-slate-900 border border-slate-800 rounded-lg p-5"
                     >
-                        <div className="text-sm text-slate-500 mb-1">
-                            Avg Latency
-                        </div>
+                        <div className="text-sm text-slate-500 mb-1">Avg Latency</div>
                         <div className="text-3xl font-bold text-purple-400">
                             {formatLatency(summary["avg_latency_ms"] or 0)}
                         </div>
@@ -153,7 +152,9 @@ cl {
                     </div>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-lg p-5">
+                    <div
+                        className="bg-slate-900 border border-slate-800 rounded-lg p-5"
+                    >
                         <h3 className="text-lg font-semibold text-white mb-4">
                             Per Model
                         </h3>
@@ -168,21 +169,11 @@ cl {
                                     <tr
                                         className="text-slate-400 border-b border-slate-700"
                                     >
-                                        <th className="text-left py-2 pr-4">
-                                            Model
-                                        </th>
-                                        <th className="text-right py-2 px-2">
-                                            Calls
-                                        </th>
-                                        <th className="text-right py-2 px-2">
-                                            Tokens
-                                        </th>
-                                        <th className="text-right py-2 px-2">
-                                            Cost
-                                        </th>
-                                        <th className="text-right py-2 pl-2">
-                                            Errors
-                                        </th>
+                                        <th className="text-left py-2 pr-4">Model</th>
+                                        <th className="text-right py-2 px-2">Calls</th>
+                                        <th className="text-right py-2 px-2">Tokens</th>
+                                        <th className="text-right py-2 px-2">Cost</th>
+                                        <th className="text-right py-2 pl-2">Errors</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -233,21 +224,11 @@ cl {
                                     <tr
                                         className="text-slate-400 border-b border-slate-700"
                                     >
-                                        <th className="text-left py-2 pr-4">
-                                            Caller
-                                        </th>
-                                        <th className="text-right py-2 px-2">
-                                            Calls
-                                        </th>
-                                        <th className="text-right py-2 px-2">
-                                            Tokens
-                                        </th>
-                                        <th className="text-right py-2 px-2">
-                                            Cost
-                                        </th>
-                                        <th className="text-right py-2 pl-2">
-                                            Errors
-                                        </th>
+                                        <th className="text-left py-2 pr-4">Caller</th>
+                                        <th className="text-right py-2 px-2">Calls</th>
+                                        <th className="text-right py-2 px-2">Tokens</th>
+                                        <th className="text-right py-2 px-2">Cost</th>
+                                        <th className="text-right py-2 pl-2">Errors</th>
                                     </tr>
                                 </thead>
                                 <tbody>

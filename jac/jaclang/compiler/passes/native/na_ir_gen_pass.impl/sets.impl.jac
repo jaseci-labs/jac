@@ -25,7 +25,9 @@ impl NaIRGenPass._emit_set_helpers(
     );
     # --- __set_add: add element if not already present ---
     add_fnty = ir.FunctionType(ir.VoidType(), [set_ptr_type, elem_type]);
-    add_fn = ir.Function(self.llvm_module, add_fnty, name=f"__set_add_{elem_type_name}");
+    add_fn = ir.Function(
+        self.llvm_module, add_fnty, name=f"__set_add_{elem_type_name}"
+    );
     add_fn.linkage = "private";
     add_fn.args[0].name = "set";
     add_fn.args[1].name = "elem";

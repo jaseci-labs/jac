@@ -33,9 +33,7 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
             JEndPoint(
                 method=spec_method,
                 path=spec_path,
-                callback=self.create_walker_callback(
-                    walker_name, has_node_param=False
-                ),
+                callback=self.create_walker_callback(walker_name, has_node_param=False),
                 parameters=self.create_walker_parameters(
                     walker_name, invoke_on_root=True, method=spec_method
                 ),
@@ -302,7 +300,9 @@ impl JacAPIServerEndpoints.create_webhook_callback(
 ) -> Callable[..., TransportResponse] {
     async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
         webhook_config = get_scale_config().get_webhook_config();
-        signature_header = webhook_config.get('signature_header', 'X-Webhook-Signature');
+        signature_header = webhook_config.get(
+            'signature_header', 'X-Webhook-Signature'
+        );
         verify_signature = webhook_config.get('verify_signature', True);
 
         # Get API key from header

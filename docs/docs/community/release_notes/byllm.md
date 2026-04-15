@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## byllm 0.6.4 (Unreleased)
 
+- **Add: Automatic Anthropic prompt caching**: Caches system prompt, tool schemas, and ReAct conversation history across iterations for Claude models, significantly reducing input token costs. Enabled by default.
+
 ## byllm 0.6.3 (Latest Release)
 
 - **Add: `ModelPool` for LLM fallback and load-balancing**: Introduced `ModelPool` as a drop-in replacement for `Model` - use `by pool()` exactly like `by llm()`. Internally wraps a LiteLLM `Router` running in-process (no subprocess, no proxy server) that handles fallback, retries, and load-distribution across a list of `Model` instances. Exported from `byllm.lib`. Six routing strategies are supported: `"fallback"` (ordered priority, next model on failure), `"simple-shuffle"` (random pick per call - ideal for free-tier key rotation across multiple API keys), `"cost-based-routing"` (cheapest deployment via LiteLLM's built-in cost database), `"latency-based-routing"` (fastest by EWMA-tracked response time), `"usage-based-routing"` (lowest current TPM/RPM usage), and `"least-busy"` (fewest in-flight requests). Backward compatible - no changes needed to existing `by llm()` call sites.

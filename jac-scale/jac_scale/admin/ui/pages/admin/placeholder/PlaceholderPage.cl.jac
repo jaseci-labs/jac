@@ -11,9 +11,7 @@ cl {
             <PlaceholderCard
                 title="Active Sessions"
                 message="Session management coming soon"
-                action={<Button variant="danger">
-                    Revoke All
-                </Button>}
+                action={<Button variant="danger">Revoke All</Button>}
             />;
     }
 
@@ -22,9 +20,7 @@ cl {
             <PlaceholderCard
                 title="API Keys"
                 message="API key management coming soon"
-                action={<Button>
-                    Generate Key
-                </Button>}
+                action={<Button>Generate Key</Button>}
             />;
     }
 
@@ -33,9 +29,7 @@ cl {
             <div
                 className="bg-slate-900 border border-slate-800 rounded-lg p-8 text-center"
             >
-                <h2 className="text-sm font-medium text-white mb-1">
-                    Graph Explorer
-                </h2>
+                <h2 className="text-sm font-medium text-white mb-1">Graph Explorer</h2>
                 <p className="text-xs text-slate-500">
                     Interactive graph visualization coming soon
                 </p>
@@ -55,9 +49,7 @@ cl {
             <PlaceholderCard
                 title="Cache Management"
                 message="Redis/memory cache management coming soon"
-                action={<Button variant="danger">
-                    Clear Cache
-                </Button>}
+                action={<Button variant="danger">Clear Cache</Button>}
             />;
     }
 
@@ -82,9 +74,7 @@ cl {
             <PlaceholderCard
                 title="Webhooks"
                 message="Webhook management coming soon"
-                action={<Button>
-                    Add Webhook
-                </Button>}
+                action={<Button>Add Webhook</Button>}
             />;
     }
 
@@ -99,34 +89,26 @@ cl {
                 className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden"
             >
                 <div className="px-4 py-3 border-b border-slate-800">
-                    <h2 className="text-sm font-medium text-white">
-                        Health Status
-                    </h2>
+                    <h2 className="text-sm font-medium text-white">Health Status</h2>
                 </div>
                 <div className="p-4 grid grid-cols-2 gap-3">
-                    <div className="bg-slate-950 border border-slate-800 rounded-lg p-4">
+                    <div
+                        className="bg-slate-950 border border-slate-800 rounded-lg p-4"
+                    >
                         <div className="flex items-center gap-2 mb-2">
                             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                            <span className="text-sm text-white">
-                                API Server
-                            </span>
+                            <span className="text-sm text-white">API Server</span>
                         </div>
-                        <p className="text-xs text-slate-500">
-                            Healthy
-                        </p>
+                        <p className="text-xs text-slate-500">Healthy</p>
                     </div>
                     <div
                         className="bg-slate-950 border border-slate-800 rounded-lg p-4"
                     >
                         <div className="flex items-center gap-2 mb-2">
                             <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                            <span className="text-sm text-white">
-                                Database
-                            </span>
+                            <span className="text-sm text-white">Database</span>
                         </div>
-                        <p className="text-xs text-slate-500">
-                            Connected
-                        </p>
+                        <p className="text-xs text-slate-500">Connected</p>
                     </div>
                 </div>
             </div>;
@@ -137,9 +119,7 @@ cl {
             <PlaceholderCard
                 title="Alerts"
                 message="Alert configuration coming soon"
-                action={<Button>
-                    Add Alert Rule
-                </Button>}
+                action={<Button>Add Alert Rule</Button>}
             />;
     }
 
@@ -154,19 +134,11 @@ cl {
                         <select
                             className="px-2 py-1 bg-slate-950 border border-slate-700 rounded text-white text-xs"
                         >
-                            <option value="default">
-                                Default Profile
-                            </option>
-                            <option value="development">
-                                Development
-                            </option>
-                            <option value="production">
-                                Production
-                            </option>
+                            <option value="default">Default Profile</option>
+                            <option value="development">Development</option>
+                            <option value="production">Production</option>
                         </select>
-                        <Button>
-                            Save
-                        </Button>
+                        <Button>Save</Button>
                     </div>}
                 />
                 <CardBody>
@@ -185,9 +157,7 @@ cl {
             <PlaceholderCard
                 title="Environment Variables"
                 message="Environment variable management coming soon"
-                action={<Button>
-                    Add Variable
-                </Button>}
+                action={<Button>Add Variable</Button>}
             />;
     }
 
@@ -196,9 +166,7 @@ cl {
             <PlaceholderCard
                 title="Secrets"
                 message="Secret management coming soon"
-                action={<Button>
-                    Add Secret
-                </Button>}
+                action={<Button>Add Secret</Button>}
             />;
     }
 
@@ -241,12 +209,8 @@ cl {
                         />
                     </div>
                     <div className="flex justify-end gap-2">
-                        <Button variant="secondary">
-                            Test Connection
-                        </Button>
-                        <Button>
-                            Save
-                        </Button>
+                        <Button variant="secondary">Test Connection</Button>
+                        <Button>Save</Button>
                     </div>
                 </CardBody>
             </Card>;
@@ -258,9 +222,7 @@ cl {
                 className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden"
             >
                 <div className="px-4 py-3 border-b border-slate-800">
-                    <h2 className="text-sm font-medium text-white">
-                        Notifications
-                    </h2>
+                    <h2 className="text-sm font-medium text-white">Notifications</h2>
                 </div>
                 <div className="p-4 space-y-3">
                     {[
@@ -269,16 +231,10 @@ cl {
                             className="bg-slate-950 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
                         >
                             <div>
-                                <p className="text-sm text-white">
-                                    {n["name"]}
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                    {n["desc"]}
-                                </p>
+                                <p className="text-sm text-white">{n["name"]}</p>
+                                <p className="text-xs text-slate-500">{n["desc"]}</p>
                             </div>
-                            <Button variant="secondary">
-                                Configure
-                            </Button>
+                            <Button variant="secondary">Configure</Button>
                         </div>
                         for n in [
                             {
@@ -316,12 +272,8 @@ cl {
                             className="bg-slate-950 border border-slate-800 rounded-lg p-4 flex items-center justify-between"
                         >
                             <div>
-                                <p className="text-sm text-white">
-                                    {s["name"]}
-                                </p>
-                                <p className="text-xs text-slate-500">
-                                    {s["desc"]}
-                                </p>
+                                <p className="text-sm text-white">{s["name"]}</p>
+                                <p className="text-xs text-slate-500">{s["desc"]}</p>
                             </div>
                             <span className="text-xs text-slate-500">
                                 Not configured
@@ -380,9 +332,7 @@ cl {
             <PlaceholderCard
                 title="Deployments"
                 message="Kubernetes deployment management coming soon"
-                action={<Button>
-                    Deploy Now
-                </Button>}
+                action={<Button>Deploy Now</Button>}
             />;
     }
 
@@ -438,9 +388,7 @@ cl {
                 <div
                     className="flex items-center justify-between px-4 py-3 border-b border-slate-800"
                 >
-                    <h2 className="text-sm font-medium text-white">
-                        Activity Log
-                    </h2>
+                    <h2 className="text-sm font-medium text-white">Activity Log</h2>
                     <div className="flex gap-2">
                         <input
                             type="text"
@@ -450,18 +398,10 @@ cl {
                         <select
                             className="px-2 py-1 bg-slate-950 border border-slate-700 rounded text-white text-xs"
                         >
-                            <option value="all">
-                                All Actions
-                            </option>
-                            <option value="create">
-                                Create
-                            </option>
-                            <option value="update">
-                                Update
-                            </option>
-                            <option value="delete">
-                                Delete
-                            </option>
+                            <option value="all">All Actions</option>
+                            <option value="create">Create</option>
+                            <option value="update">Update</option>
+                            <option value="delete">Delete</option>
                         </select>
                     </div>
                 </div>
@@ -479,9 +419,7 @@ cl {
                 className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden"
             >
                 <div className="px-4 py-3 border-b border-slate-800">
-                    <h2 className="text-sm font-medium text-white">
-                        Security Events
-                    </h2>
+                    <h2 className="text-sm font-medium text-white">Security Events</h2>
                 </div>
                 <div className="p-4 space-y-2">
                     <div
@@ -489,9 +427,7 @@ cl {
                     >
                         <div className="w-2 h-2 rounded-full bg-amber-500 mt-1.5"></div>
                         <div>
-                            <p className="text-sm text-white">
-                                Failed login attempt
-                            </p>
+                            <p className="text-sm text-white">Failed login attempt</p>
                             <p className="text-xs text-slate-500">
                                 3 failed attempts for user admin - 5 minutes ago
                             </p>
@@ -502,9 +438,7 @@ cl {
                     >
                         <div className="w-2 h-2 rounded-full bg-emerald-500 mt-1.5"></div>
                         <div>
-                            <p className="text-sm text-white">
-                                Successful login
-                            </p>
+                            <p className="text-sm text-white">Successful login</p>
                             <p className="text-xs text-slate-500">
                                 User admin logged in - 10 minutes ago
                             </p>

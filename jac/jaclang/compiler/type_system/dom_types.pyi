@@ -9,6 +9,8 @@ Names use camelCase to match the browser DOM API (e.g. addEventListener,
 clientX, innerHTML) — this is intentional, not a Python naming violation.
 """
 
+from collections.abc import Callable
+
 # ---------------------------------------------------------------------------
 # DOM Element types
 # ---------------------------------------------------------------------------
@@ -492,3 +494,156 @@ class ResizeEvent(UIEvent):
     """Fired on element resize."""
 
     ...
+
+# ---------------------------------------------------------------------------
+# Event handler type aliases
+# ---------------------------------------------------------------------------
+
+MouseEventHandler = Callable[[MouseEvent], None]
+KeyboardEventHandler = Callable[[KeyboardEvent], None]
+InputEventHandler = Callable[[InputEvent], None]
+ChangeEventHandler = Callable[[ChangeEvent], None]
+FocusEventHandler = Callable[[FocusEvent], None]
+FormEventHandler = Callable[[FormEvent], None]
+DragEventHandler = Callable[[DragEvent], None]
+TouchEventHandler = Callable[[TouchEvent], None]
+WheelEventHandler = Callable[[WheelEvent], None]
+PointerEventHandler = Callable[[PointerEvent], None]
+ClipboardEventHandler = Callable[[ClipboardEvent], None]
+AnimationEventHandler = Callable[[AnimationEvent], None]
+TransitionEventHandler = Callable[[TransitionEvent], None]
+ScrollEventHandler = Callable[[ScrollEvent], None]
+EventHandler = Callable[[Event], None]
+
+# ---------------------------------------------------------------------------
+# Intrinsic HTML element prop types
+# ---------------------------------------------------------------------------
+
+class _HtmlCommonProps:
+    """Common props shared by all intrinsic HTML elements."""
+
+    id: str
+    className: str
+    style: dict[str, object]
+    title: str
+    hidden: bool
+    tabIndex: int
+    draggable: bool
+    role: str
+    # Event handlers
+    onClick: MouseEventHandler
+    onDoubleClick: MouseEventHandler
+    onMouseDown: MouseEventHandler
+    onMouseUp: MouseEventHandler
+    onMouseEnter: MouseEventHandler
+    onMouseLeave: MouseEventHandler
+    onMouseOver: MouseEventHandler
+    onMouseOut: MouseEventHandler
+    onKeyDown: KeyboardEventHandler
+    onKeyUp: KeyboardEventHandler
+    onKeyPress: KeyboardEventHandler
+    onFocus: FocusEventHandler
+    onBlur: FocusEventHandler
+    onInput: InputEventHandler
+    onChange: ChangeEventHandler
+    onSubmit: FormEventHandler
+    onReset: FormEventHandler
+    onDragStart: DragEventHandler
+    onDrag: DragEventHandler
+    onDragEnd: DragEventHandler
+    onDragEnter: DragEventHandler
+    onDragLeave: DragEventHandler
+    onDragOver: DragEventHandler
+    onDrop: DragEventHandler
+    onTouchStart: TouchEventHandler
+    onTouchMove: TouchEventHandler
+    onTouchEnd: TouchEventHandler
+    onTouchCancel: TouchEventHandler
+    onWheel: WheelEventHandler
+    onPointerDown: PointerEventHandler
+    onPointerUp: PointerEventHandler
+    onPointerMove: PointerEventHandler
+    onPointerEnter: PointerEventHandler
+    onPointerLeave: PointerEventHandler
+    onScroll: ScrollEventHandler
+    onCopy: ClipboardEventHandler
+    onCut: ClipboardEventHandler
+    onPaste: ClipboardEventHandler
+
+class _ButtonIntrinsicProps(_HtmlCommonProps):
+    """Props for <button> elements."""
+
+    type: str
+    disabled: bool
+    name: str
+    value: str
+
+class _InputIntrinsicProps(_HtmlCommonProps):
+    """Props for <input> elements."""
+
+    type: str
+    value: str
+    checked: bool
+    disabled: bool
+    readOnly: bool
+    required: bool
+    placeholder: str
+    name: str
+    min: str
+    max: str
+    step: str
+    pattern: str
+    multiple: bool
+    accept: str
+    maxLength: int
+    minLength: int
+
+class _FormIntrinsicProps(_HtmlCommonProps):
+    """Props for <form> elements."""
+
+    action: str
+    method: str
+    enctype: str
+    target: str
+    name: str
+
+class _AnchorIntrinsicProps(_HtmlCommonProps):
+    """Props for <a> elements."""
+
+    href: str
+    target: str
+    rel: str
+    download: str
+
+class _ImgIntrinsicProps(_HtmlCommonProps):
+    """Props for <img> elements."""
+
+    src: str
+    alt: str
+    width: int
+    height: int
+    loading: str
+    crossOrigin: str | None
+
+class _TextAreaIntrinsicProps(_HtmlCommonProps):
+    """Props for <textarea> elements."""
+
+    value: str
+    disabled: bool
+    readOnly: bool
+    required: bool
+    placeholder: str
+    name: str
+    rows: int
+    cols: int
+    maxLength: int
+    minLength: int
+
+class _SelectIntrinsicProps(_HtmlCommonProps):
+    """Props for <select> elements."""
+
+    value: str
+    disabled: bool
+    required: bool
+    multiple: bool
+    name: str

@@ -789,8 +789,12 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     loop_idx = self._entry_alloca(i64, "union.idx");
                                     self.builder.store(ir.Constant(i64, 0), loop_idx);
                                     func = self.builder.function;
-                                    cond_bb = func.append_basic_block(name="union.cond");
-                                    body_bb = func.append_basic_block(name="union.body");
+                                    cond_bb = func.append_basic_block(
+                                        name="union.cond"
+                                    );
+                                    body_bb = func.append_basic_block(
+                                        name="union.body"
+                                    );
                                     end_bb = func.append_basic_block(name="union.end");
                                     self.builder.branch(cond_bb);
                                     self.builder.position_at_end(cond_bb);
@@ -818,9 +822,7 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                         shelpers["add"], [lhs_cast, elem_val]
                                     );
                                     next_i = self.builder.add(
-                                        elem_i,
-                                        ir.Constant(i64, 1),
-                                        name="union.next.i"
+                                        elem_i, ir.Constant(i64, 1), name="union.next.i"
                                     );
                                     self.builder.store(next_i, loop_idx);
                                     self.builder.branch(cond_bb);
@@ -1264,7 +1266,8 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         return;
     }
     # ── Dict .items() iteration: for (k, v) in d.items() ──
-    if isinstance(nd.target, uni.TupleVal) and isinstance(nd.collection, uni.FuncCall) {
+    if isinstance(nd.target, uni.TupleVal)
+    and isinstance(nd.collection, uni.FuncCall) {
         coll_call = nd.collection;
         if isinstance(coll_call.target, uni.AtomTrailer) and coll_call.target.is_attr {
             items_method = self._get_name(coll_call.target.right);
@@ -1302,7 +1305,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                             end_bb = func.append_basic_block(name="fori.end");
                             self.builder.branch(cond_bb);
                             self.builder.position_at_end(cond_bb);
-                            cur_idx = self.builder.load(idx_alloca, name="fori.cur.idx");
+                            cur_idx = self.builder.load(
+                                idx_alloca, name="fori.cur.idx"
+                            );
                             cmp = self.builder.icmp_signed(
                                 "<", cur_idx, len_val, name="fori.cmp"
                             );
@@ -1332,7 +1337,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                             }
                             self.loop_stack.pop();
                             self.builder.position_at_end(incr_bb);
-                            inc_idx = self.builder.load(idx_alloca, name="fori.inc.idx");
+                            inc_idx = self.builder.load(
+                                idx_alloca, name="fori.inc.idx"
+                            );
                             next_idx = self.builder.add(
                                 inc_idx, ir.Constant(i64, 1), name="fori.next.idx"
                             );

@@ -17,7 +17,7 @@ impl JacAccessValidation._resolve_anchor(
 impl JacAccessValidation._check_access(
     `to: Anchor, min_level: AccessLevel, operation: str
 ) -> bool {
-    access_level = JacRuntimeInterface.check_access_level(`to) > min_level;
+    access_level = JacRuntimeInterface.check_access_level(`to).value > min_level.value;
     if not access_level {
         logger.info(
             "Current root doesn't have " + operation + " access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
@@ -35,7 +35,7 @@ impl JacAccessValidation.allow_root(
     if (level is None) {
         level = AccessLevel.READ;
     }
-    level = AccessLevel.cast(level);
+    level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
     access = anchor.access.roots;
     _root_id = str(root_id);
@@ -52,7 +52,7 @@ impl JacAccessValidation.disallow_root(
     if (level is None) {
         level = AccessLevel.READ;
     }
-    level = AccessLevel.cast(level);
+    level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
     access = anchor.access.roots;
     access.anchors.pop(str(root_id), None);
@@ -66,7 +66,7 @@ impl JacAccessValidation.perm_grant(
     if (level is None) {
         level = AccessLevel.READ;
     }
-    level = AccessLevel.cast(level);
+    level = access_level_cast(level);
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
     if (level != anchor.access.all) {
         anchor.access.all = level;
@@ -77,7 +77,7 @@ impl JacAccessValidation.perm_grant(
 """Disallow others to access current Archetype."""
 impl JacAccessValidation.perm_revoke(archetype: Archetype) -> None {
     (anchor, jctx) = JacAccessValidation._resolve_anchor(archetype);
-    if (anchor.access.all > AccessLevel.NO_ACCESS) {
+    if (anchor.access.all.value > AccessLevel.NO_ACCESS.value) {
         anchor.access.all = AccessLevel.NO_ACCESS;
         jctx.mem.put(anchor);
     }
@@ -115,17 +115,16 @@ impl JacAccessValidation.check_access_level(
         return AccessLevel.WRITE;
     }
     if (
-        not no_custom
-        and ((custom_level := `to.archetype.__jac_access__()) is not None)
+        not no_custom and ((custom_level := `to.archetype.__jac_access__()) is not None)
     ) {
-        return AccessLevel.cast(custom_level);
+        return access_level_cast(custom_level);
     }
     access_level = AccessLevel.NO_ACCESS;
-    if ((to_access := `to.access).all > AccessLevel.NO_ACCESS) {
+    if ((to_access := `to.access).all.value > AccessLevel.NO_ACCESS.value) {
         access_level = to_access.all;
     }
     if (`to.root and isinstance((to_root := jctx.mem.get(`to.root)), Anchor)) {
-        if (to_root.access.all > access_level) {
+        if (to_root.access.all.value > access_level.value) {
             access_level = to_root.access.all;
         }
         if ((level := to_root.access.roots.check(str(jroot.id))) is not None) {
@@ -277,9 +276,9 @@ impl JacWalker.`visit(
     `walker: WalkerArchetype,
     expr:
         (
-            list[
-                (NodeArchetype | EdgeArchetype)
-            ] | list[NodeArchetype] | list[EdgeArchetype] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
+            list[(NodeArchetype | EdgeArchetype)] | list[NodeArchetype] | list[
+                EdgeArchetype
+            ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
         ),
     insert_loc: int = -1
 ) -> bool {
@@ -970,7 +969,15 @@ impl JacBasics.get_object(id: str) -> (Archetype | None) {
 
 """Get object reference id."""
 impl JacBasics.object_ref(`obj: Archetype) -> str {
-    return `obj.__jac__.id.hex;
+    anchor = `obj.__jac__;
+    if isinstance(anchor, ObjectAnchor) {
+        try {
+            JacRuntimeInterface.get_context().mem.put(anchor);
+        } except Exception as e {
+            logger.warning(f"object_ref: failed to register anchor in memory: {e}");
+        }
+    }
+    return anchor.id.hex;
 }
 
 """Create a obj archetype."""
@@ -1119,7 +1126,9 @@ impl JacBasics.jac_import(
             import from jaclang.meta_importer { JacMetaImporter }
             finder = JacMetaImporter();
             spec = finder.find_spec(module_name, None);
-            if (spec and spec.origin and spec.origin.endswith('.jac') and (lng == 'py')) {
+            if (
+                spec and spec.origin and spec.origin.endswith('.jac') and (lng == 'py')
+            ) {
                 spec = None;
             }
             if ((not spec or not spec.origin) and (lng == 'py')) {
@@ -1213,7 +1222,9 @@ impl JacBasics.jac_test(description: str = "") -> Callable {
             test_fun(JacTestCheck());
         }
         test_deco.__name__ = test_fun.__name__;
-        JacTestCheck.add_test(file_path, func_name, test_deco, display_name=description);
+        JacTestCheck.add_test(
+            file_path, func_name, test_deco, display_name=description
+        );
         return test_deco;
     }
     return decorator;
@@ -1294,7 +1305,9 @@ impl JacBasics.run_test(
                         f"\n\n\t\t* Inside {root_dir}/{file} *"
                     );
                     JacTestCheck.reset();
-                    JacRuntimeInterface.jac_import(target=file[:-4], base_path=root_dir);
+                    JacRuntimeInterface.jac_import(
+                        target=file[:-4], base_path=root_dir
+                    );
                     JacTestCheck.run_test(
                         xit, maxfail, verbose, os.path.abspath(file), func_name
                     );
@@ -1695,6 +1708,88 @@ impl JacConsole.get_console -> ConsoleImpl {
 impl JacAPIServer.get_api_server_class -> type {
     import from jaclang.runtimelib.server { JacAPIServer }
     return JacAPIServer;
+}
+
+"""Default implementation: spawn a base JacAPIServer in a background thread.
+
+    Steps:
+      1. Pick a free port (deterministic per module name).
+      2. Build a base JacAPIServer (NOT plugin-resolved) with port=0 so
+         postinit skips its create_server hook.
+      3. Wire up a vanilla HTTPServer manually using its handler.
+      4. Run serve_forever in a daemon thread.
+      5. Poll /functions until the server is responsive.
+      6. Register the URL via sv_client.register().
+    """
+impl JacAPIServer.ensure_sv_service(module_name: str, base_path: str) -> None {
+    import os;
+    import socket;
+    import time;
+    import threading;
+    import urllib.request;
+    import from http.server { HTTPServer }
+    import from jaclang.runtimelib { sv_client }
+    import from jaclang.runtimelib.server { JacAPIServer as CoreJacAPIServer }
+    if module_name in sv_client._registry {
+        return;
+    }
+    if module_name in sv_client._test_clients {
+        return;
+    }
+    base_port = 18000 + (hash(module_name) % 1000);
+    port = base_port;
+    bind_ok = False;
+    for _ in range(100) {
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+        try {
+            s.bind(('127.0.0.1', port));
+            s.close();
+            bind_ok = True;
+            break;
+        } except OSError {
+            s.close();
+            port = port + 1;
+        }
+    }
+    if not bind_ok {
+        raise RuntimeError(f"Could not find free port near {base_port}");
+    }
+    # is_sv_sibling=True tells the spawned sibling to skip its own
+    # eager-spawn pass (_ensure_sv_siblings), so the parent is the sole
+    # source of provider spawns and we don't race on cold start.
+    srv = CoreJacAPIServer(
+        module_name=module_name, port=0, base_path=base_path, is_sv_sibling=True
+    );
+    srv.port = port;
+    srv.load_module();
+    handler_class = srv.create_handler();
+    httpd = HTTPServer(('127.0.0.1', port), handler_class);
+    srv.server = httpd;
+    thread = threading.Thread(target=httpd.serve_forever, daemon=True);
+    thread.start();
+    time.sleep(0.05);
+    base_url = f"http://127.0.0.1:{port}";
+    deadline = time.time() + 10.0;
+    healthy = False;
+    while time.time() < deadline {
+        try {
+            with urllib.request.urlopen(f"{base_url}/functions", timeout=1) as resp {
+                if resp.status < 500 {
+                    healthy = True;
+                    break;
+                }
+            }
+        } except Exception {
+            time.sleep(0.05);
+        }
+    }
+    if not healthy {
+        raise RuntimeError(
+            f"sv-to-sv service '{module_name}' did not become healthy at {base_url}"
+        );
+    }
+    sv_client.register(module_name, base_url);
 }
 
 """Create the API server instance.
@@ -2107,11 +2202,7 @@ impl JacUtils.create_archetype_from_source(
     }
     import tempfile;
     with tempfile.NamedTemporaryFile(
-        mode='w',
-        suffix='.jac',
-        prefix=(module_name + '_'),
-        dir=base_path,
-        delete=False
+        mode='w', suffix='.jac', prefix=(module_name + '_'), dir=base_path, delete=False
     ) as tmp_file {
         tmp_file_path = tmp_file.name;
         tmp_file.write(source_code);
@@ -2196,7 +2287,9 @@ impl JacUtils.spawn_walker(
     walker_name: str, attributes: (dict | None) = None, module_name: str = '__main__'
 ) -> WalkerArchetype {
     walker_class = JacRuntimeInterface.get_archetype(module_name, walker_name);
-    if (isinstance(walker_class, `type) and issubclass(walker_class, WalkerArchetype)) {
+    if (
+        isinstance(walker_class, `type) and issubclass(walker_class, WalkerArchetype)
+    ) {
         if (attributes is None) {
             attributes = {};
         }

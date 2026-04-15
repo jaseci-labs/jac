@@ -33,9 +33,7 @@ walker:pub set_mcp_server {
                 "data": {},
                 "error": {
                     "message": "Endpoint unreachable: " + (
-                        str(check["message"])
-                            if "message" in check
-                            else "unknown error"
+                        str(check["message"]) if "message" in check else "unknown error"
                     )
                 }
             };

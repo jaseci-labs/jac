@@ -97,7 +97,12 @@ import from jaclang.jac0core.unitree {
     GenCompr,
     InnerCompr
 }
-import from jaclang.jac0core.unitree { FString, FormattedValue, MultiString, LambdaExpr }
+import from jaclang.jac0core.unitree {
+    FString,
+    FormattedValue,
+    MultiString,
+    LambdaExpr
+}
 import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
@@ -145,7 +150,8 @@ import from jaclang.jac0core.diagnostics {
     E0046,
     E0047,
     W0060,
-    W0061
+    W0061,
+    W0063
 }
 
 impl Parser.current -> Token {
@@ -1476,15 +1482,9 @@ impl Parser.parse_atomic_chain -> Expr {
             filter_expr = self.parse_filter_compr_bracket();
             kid = [expr, filter_expr];
             expr = AtomTrailer(
-                target=expr,
-                right=filter_expr,
-                is_attr=False,
-                is_null_ok=False,
-                kid=kid
+                target=expr, right=filter_expr, is_attr=False, is_null_ok=False, kid=kid
             );
-        } elif (
-            self.check(TokenKind.NULL_OK) and self.check_peek(TokenKind.LSQUARE)
-        )
+        } elif (self.check(TokenKind.NULL_OK) and self.check_peek(TokenKind.LSQUARE))
         or self.check(TokenKind.LSQUARE) {
             # Parse index or slice: a[x], a?[x], a[x,y], a[1:2], a[::3], etc.
             is_null_ok_index = False;
@@ -1581,7 +1581,9 @@ impl Parser.parse_index_slice -> IndexSlice {
             colon_s2_uni = self.consume_uni(TokenKind.COLON);
             sn_kid.append(colon_s2_uni);
             e2: UniNode | None = None;
-            if not self.check_any(TokenKind.COLON, TokenKind.RSQUARE, TokenKind.COMMA) {
+            if not self.check_any(
+                TokenKind.COLON, TokenKind.RSQUARE, TokenKind.COMMA
+            ) {
                 e2 = self.parse_expression();
                 sn_kid.append(e2);
             }
@@ -2520,9 +2522,7 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> 
             fcond = FilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
             end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
             edge_op_ref = EdgeOpRef(
-                filter_cond=fcond,
-                edge_dir=EdgeDir.OUT,
-                kid=[start_uni, fcond, end_uni]
+                filter_cond=fcond, edge_dir=EdgeDir.OUT, kid=[start_uni, fcond, end_uni]
             );
         } elif self.check(TokenKind.ARROW_L_P1) {
             self.advance();
@@ -2926,11 +2926,7 @@ impl Parser.parse_compr_clause -> InnerCompr {
         kid.append(ifs[i]);
     }
     return InnerCompr(
-        is_async=is_async,
-        target=target,
-        collection=iter_expr,
-        conditional=ifs,
-        kid=kid
+        is_async=is_async, target=target, collection=iter_expr, conditional=ifs, kid=kid
     );
 }
 
@@ -3294,10 +3290,14 @@ impl Parser.parse_jsx_attributes -> list {
                 JsxNormalAttribute(name=attr_name, value=attr_value, kid=attr_kid)
             );
         } elif self.check(TokenKind.LBRACE) {
-            # Spread attribute: {...expr}
+            # Spread attribute: {**expr} (preferred) or {...expr} (JS-idiomatic)
             self.advance();  # consume {
             spread_kid: list = [self.make_uni_token(self.previous())];
-            if self.check(TokenKind.ELLIPSIS) {
+            if self.check(TokenKind.STAR_POW) {
+                star_tok = self.advance();
+                spread_kid.append(self.make_uni_token(star_tok));
+            } elif self.check(TokenKind.ELLIPSIS) {
+                self.emit_warn(W0063, loc=self.current().loc);
                 ellipsis_tok = self.advance();
                 spread_kid.append(self.make_ellipsis(ellipsis_tok));
             }
@@ -3371,8 +3371,80 @@ impl Parser.parse_element_stmt{
     if self.at_end() {
         return None;
     }
+    # Handle section headers: 'to cl:' / 'to sv:' / 'to na:' collect all
+    # following element statements (until the next header or EOF) into an
+    # implicit ClientBlock / ServerBlock / NativeBlock. Reusing the existing
+    # block AST nodes keeps downstream passes (codegen, interop, etc.)
+    # unchanged — implicit=True is the discriminator that flips the formatter
+    # into 'to X:' section-header emission.
+    if self.check(TokenKind.KW_TO)
+    and self.check_peek_any(
+        TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
+    )
+    and self.peek(2).kind == TokenKind.COLON {
+        to_tok = self.advance();  # consume 'to'
+        to_uni = self.make_uni_token(to_tok);
+        ctx_tok = self.advance();  # consume cl/sv/na
+        ctx_uni = self.make_uni_token(ctx_tok);
+        colon_tok = self.advance();  # consume ':'
+        colon_uni = self.make_uni_token(colon_tok);
+        section_ctx: CodeContext;
+        if ctx_tok.kind == TokenKind.KW_CLIENT {
+            section_ctx = CodeContext.CLIENT;
+        } elif ctx_tok.kind == TokenKind.KW_SERVER {
+            section_ctx = CodeContext.SERVER;
+        } else {
+            section_ctx = CodeContext.NATIVE;
+        }
+        body: list = [];
+        kid: list = [to_uni, ctx_uni, colon_uni];
+        while not self.at_end() {
+            # Stop at the next 'to X:' header — it's a sibling, not part of
+            # this section's body.
+            if self.check(TokenKind.KW_TO)
+            and self.check_peek_any(
+                TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE
+            )
+            and self.peek(2).kind == TokenKind.COLON {
+                break;
+            }
+            before = self.pos;
+            stmt = self.parse_element_stmt();
+            if stmt is not None {
+                # Tag with the section's context only if the stmt does not
+                # already carry an explicit cl/sv/na prefix. Detect the prefix
+                # by checking the stmt's first kid for the context keyword.
+                has_explicit_prefix = (
+                    len(stmt.kid) > 0
+                    and isinstance(stmt.kid[0], UniToken)
+                    and (
+                        stmt.kid[0].name == Tok.KW_CLIENT
+                        or stmt.kid[0].name == Tok.KW_SERVER
+                        or stmt.kid[0].name == Tok.KW_NATIVE
+                    )
+                );
+                if stmt?.code_context and not has_explicit_prefix {
+                    stmt.code_context = section_ctx;
+                }
+                body.append(stmt);
+                kid.append(stmt);
+            }
+            # Guard: ensure forward progress to prevent infinite loops
+            if self.pos == before and not self.at_end() {
+                self.advance();
+            }
+        }
+        if section_ctx == CodeContext.CLIENT {
+            return ClientBlock(body=body, implicit=True, kid=kid);
+        } elif section_ctx == CodeContext.SERVER {
+            return ServerBlock(body=body, implicit=True, kid=kid);
+        } else {
+            return NativeBlock(body=body, implicit=True, kid=kid);
+        }
+    }
     # Handle client/server/native context blocks: cl { ... } or cl stmt
     if self.check(TokenKind.KW_CLIENT) {
+        self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_client_block();
         } else {
@@ -3390,6 +3462,7 @@ impl Parser.parse_element_stmt{
         }
     }
     if self.check(TokenKind.KW_SERVER) {
+        self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_server_block();
         } else {
@@ -3406,6 +3479,7 @@ impl Parser.parse_element_stmt{
         }
     }
     if self.check(TokenKind.KW_NATIVE) {
+        self._explicit_section = True;
         if self.check_peek(TokenKind.LBRACE) {
             return self.parse_native_block();
         } else {
@@ -3638,10 +3712,12 @@ impl Parser.parse_docstring_target{
 
 """Parse client block: cl { stmts } or cl stmt"""
 impl Parser.parse_client_block -> ClientBlock {
+    cl_sloc = self.current().loc;
     cl_tok = self.consume_uni(TokenKind.KW_CLIENT);
     kid: list = [cl_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
+        self.emit_warn(W0064, loc=cl_sloc, keyword="cl");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3669,10 +3745,12 @@ impl Parser.parse_client_block -> ClientBlock {
 
 """Parse server block: sv { stmts } or sv stmt"""
 impl Parser.parse_server_block -> ServerBlock {
+    sv_sloc = self.current().loc;
     sv_tok = self.consume_uni(TokenKind.KW_SERVER);
     kid: list = [sv_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
+        self.emit_warn(W0064, loc=sv_sloc, keyword="sv");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3699,10 +3777,12 @@ impl Parser.parse_server_block -> ServerBlock {
 
 """Parse native block: na { stmts } or na stmt"""
 impl Parser.parse_native_block -> NativeBlock {
+    na_sloc = self.current().loc;
     na_tok = self.consume_uni(TokenKind.KW_NATIVE);
     kid: list = [na_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
+        self.emit_warn(W0064, loc=na_sloc, keyword="na");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3776,9 +3856,7 @@ impl Parser.parse_code_block_stmts -> list {
             # In Jac, semstrings go before the declaration, not inside.
             is_docstring = False;
             if (
-                not checked_first
-                and isinstance(stmt, ExprStmt)
-                and not stmt.in_fstring
+                not checked_first and isinstance(stmt, ExprStmt) and not stmt.in_fstring
             ) {
                 if isinstance(stmt.expr, String) {
                     is_docstring = True;
@@ -4163,7 +4241,9 @@ impl Parser.parse_for_stmt{
         if is_async {
             kid.append(async_uni);
         }
-        kid.extend([for_uni, init_assign, to_uni, end_val, by_uni, step_assign, lb_uni]);
+        kid.extend(
+            [for_uni, init_assign, to_uni, end_val, by_uni, step_assign, lb_uni]
+        );
         kid.extend(body);
         kid.append(rb_uni);
         if else_body {
@@ -6216,9 +6296,7 @@ impl Parser.parse_switch_case -> SwitchCase {
     }
     colon_uni = self.consume_uni(TokenKind.COLON);
     body: list = [];
-    while not self.check_any(
-        TokenKind.KW_CASE, TokenKind.KW_DEFAULT, TokenKind.RBRACE
-    )
+    while not self.check_any(TokenKind.KW_CASE, TokenKind.KW_DEFAULT, TokenKind.RBRACE)
     and not self.at_end() {
         before = self.pos;
         stmt = self.parse_statement();

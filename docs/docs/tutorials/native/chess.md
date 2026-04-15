@@ -1,6 +1,6 @@
 # Build a Chess Engine
 
-> **Prerequisites:** Familiarity with [Native Compilation](../../reference/language/native-pathway.md) basics -- `na {}` blocks, `.na.jac` files, and `with entry {}`.
+> **Prerequisites:** Familiarity with [Native Compilation](../../reference/language/native-pathway.md) basics -- `to na:` sections (or `.na.jac` files) and `with entry {}`.
 
 In this tutorial you will explore a fully playable chess engine written in idiomatic Jac, run it on the native compilation pathway, and compile it to a standalone binary. Along the way you will learn:
 

@@ -840,7 +840,9 @@ impl NaIRGenPass._emit_binary_op(
                     lmul_helpers["get"], [lmul_list, lmul_ei], name="lmul.elem"
                 );
                 self.builder.call(lmul_helpers["append"], [lmul_new, lmul_elem]);
-                lmul_ne = self.builder.add(lmul_ei, ir.Constant(i64, 1), name="lmul.ne");
+                lmul_ne = self.builder.add(
+                    lmul_ei, ir.Constant(i64, 1), name="lmul.ne"
+                );
                 lmul_ei.add_incoming(lmul_ne, lmul_ibody_bb);
                 self.builder.branch(lmul_inner_bb);
                 self.builder.position_at_start(lmul_onext_bb);
@@ -887,12 +889,16 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.branch(loop1_bb);
                 # Append all from right
                 self.builder.position_at_start(mid_bb);
-                right_len = self.builder.call(helpers["len"], [right], name="lcat.rlen");
+                right_len = self.builder.call(
+                    helpers["len"], [right], name="lcat.rlen"
+                );
                 self.builder.branch(loop2_bb);
                 self.builder.position_at_start(loop2_bb);
                 i2 = self.builder.phi(i64, name="lcat.i2");
                 i2.add_incoming(ir.Constant(i64, 0), mid_bb);
-                end2 = self.builder.icmp_unsigned(">=", i2, right_len, name="lcat.end2");
+                end2 = self.builder.icmp_unsigned(
+                    ">=", i2, right_len, name="lcat.end2"
+                );
                 self.builder.cbranch(end2, done_bb, body2_bb);
                 self.builder.position_at_start(body2_bb);
                 e2 = self.builder.call(helpers["get"], [right, i2], name="lcat.e2");
@@ -1485,13 +1491,17 @@ impl NaIRGenPass._emit_comparison(
                     # For < and <=: ea < eb → True, ea > eb → False
                     # For > and >=: ea > eb → True, ea < eb → False
                     if op == Tok.LT or op == Tok.LTE {
-                        self.builder.cbranch(lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody
+                        );
                         self.builder.position_at_start(lcmp_lex_lbody);
                         self.builder.cbranch(
                             lcmp_lex_gt, lcmp_lex_false, lcmp_lex_next
                         );
                     } else {
-                        self.builder.cbranch(lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody
+                        );
                         self.builder.position_at_start(lcmp_lex_lbody);
                         self.builder.cbranch(
                             lcmp_lex_lt, lcmp_lex_false, lcmp_lex_next

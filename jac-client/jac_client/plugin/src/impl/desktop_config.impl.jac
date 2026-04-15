@@ -53,7 +53,14 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
             'auto_update': False,
             'notifications': False
         },
-        'plugins': {'jac_scale': True, 'byllm': True, 'jac_coder': True}
+        'plugins': {
+            # Jac plugins to bundle in the desktop app (all enabled by default)
+            'jac_scale': True,  # jac-scale: FastAPI server, auth, scaling
+            'byllm': True,  # jac-byllm: LLM providers integration
+            'jac_coder': True,  # jac-coder: AI coding assistant
+            'jac_mcp': True  # jac-mcp: MCP server integration
+            # jac_client is always bundled as a core package (not configurable)
+        }
     };
 }
 
@@ -131,6 +138,12 @@ impl DesktopConfig.get_features_config(self: DesktopConfig) -> dict[str, Any] {
 impl DesktopConfig.get_plugins_config(self: DesktopConfig) -> dict[str, Any] {
     config = self.load();
     return config.get('plugins', {});
+}
+
+"""Check if desktop is configured for client-only mode (no sidecar)."""
+impl DesktopConfig.is_client_only(self: DesktopConfig) -> bool {
+    config = self.load();
+    return bool(config.get('client_only', False));
 }
 
 """Validate desktop configuration."""

@@ -169,7 +169,9 @@ impl EsJsxProcessor.normal_attribute(
     self: EsJsxProcessor, nd: uni.JsxNormalAttribute
 ) -> Property {
     es = self.es;
-    key_expr = self.pass_ref.sync_loc(es.Literal(value=nd.name.value), jac_node=nd.name);
+    key_expr = self.pass_ref.sync_loc(
+        es.Literal(value=nd.name.value), jac_node=nd.name
+    );
     if (nd.value is None) {
         value_expr = self.pass_ref.sync_loc(es.Literal(value=True), jac_node=nd);
     } elif isinstance(nd.value, uni.String) {

@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           pip install -e ./jac
-          pip install -e ./jac-scale
+          pip install -e "./jac-scale[all]"
           pip install -e ./jac-client
           pip install -e ./jac-byllm
           pip install -e ./jac-super

@@ -48,7 +48,9 @@ impl CoalesceBBPass.printgraph_cfg -> str {
     }
     for (key, value) in cfg.items() {
         if value.get('bb_stmts') {
-            stmts = '\\n'.join([stmt.replace('"', '\\"') for stmt in value['bb_stmts']]);
+            stmts = '\\n'.join(
+                [stmt.replace('"', '\\"') for stmt in value['bb_stmts']]
+            );
             dot += f'  {key} [label="BB{key}\\n{stmts}", shape=box];' + "\n";
         } else {
             dot += f'  {key} [label="BB{key}"];' + "\n";
@@ -483,7 +485,16 @@ impl CFGBuildPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
         return;
     }
     if len(nd.values) >= 2 {
-        self._wire_bool_operands(nd.values, _bool_is_and(nd), None, None);
+        entry = self._wire_bool_operands(nd.values, _bool_is_and(nd), None, None);
+        # Connect the operand sub-CFG to the nearest enclosing CFG node so
+        # that upstream narrowing (e.g., isinstance guard on an enclosing
+        # if-stmt) flows into the operand chain. Without this edge the
+        # sub-CFG is orphaned and narrowing established before the BoolExpr
+        # cannot be discovered by the backward CFG walk.
+        enclosing_flow = nd.find_parent_of_type(uni.UniCFGNode);
+        if enclosing_flow is not None {
+            self.link_bbs(enclosing_flow, entry);
+        }
     }
 }
 
@@ -492,10 +503,45 @@ IfElseExpr/BoolExpr so narrowing propagates through nested ternaries."""
 impl CFGBuildPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
     import from jaclang.compiler.symbol_utils { collect_narrowing_symbols }
     nd.condition.affected_symbols.update(collect_narrowing_symbols(nd.condition.expr));
-    nd.condition.sc_true_target = nd.value;
-    nd.condition.sc_false_target = nd.else_value;
-    self.link_bbs(nd.condition, nd.value);
-    self.link_bbs(nd.condition, nd.else_value);
+
+    # If the condition is a BoolExpr, wire the operand short-circuit chain
+    # through to the branches the same way `exit_if_stmt` does. This lets
+    # the backward walker traverse operands individually, so per-operand
+    # narrowings accumulate on the edge into the branch (critical for
+    # patterns like `0 if s is None or not isinstance(s, T) else s.m()`
+    # where the else branch needs s narrowed to T via double negation).
+    unwrapped_cond = _unwrap_parens(nd.condition.expr);
+    if isinstance(unwrapped_cond, uni.BoolExpr) and len(unwrapped_cond.values) >= 2 {
+        op_is_and = _bool_is_and(unwrapped_cond);
+        entry = self._wire_bool_operands(
+            unwrapped_cond.values, op_is_and, nd.value, nd.else_value
+        );
+        if entry {
+            self.link_bbs(nd.condition, entry);
+        }
+    } else {
+        # Simple condition: the outer CfgExpr is the branch point.
+        nd.condition.sc_true_target = nd.value;
+        nd.condition.sc_false_target = nd.else_value;
+        self.link_bbs(nd.condition, nd.value);
+        self.link_bbs(nd.condition, nd.else_value);
+    }
+
+    # Connect the ternary sub-CFG to its nearest enclosing CFG node so
+    # that narrowing established upstream flows into the condition and
+    # branches. For a top-level ternary this is the enclosing statement
+    # (CodeBlockStmt); for a nested ternary it is the outer ternary's
+    # branch CfgExpr, which correctly carries the outer ternary's own
+    # narrowing (skipping past it would lose the enclosing narrowing).
+    # Without this edge the sub-CFG is orphaned from surrounding flow
+    # and patterns like
+    # `if x is None { return } return x.m() if isinstance(x, T) else x.m()`
+    # bottom out with the declared type.
+    enclosing_flow = nd.find_parent_of_type(uni.UniCFGNode);
+    if enclosing_flow is not None {
+        self.link_bbs(enclosing_flow, nd.condition);
+    }
+
     for branch in [nd.value, nd.else_value] {
         inner = _unwrap_parens(branch.expr);
         if isinstance(inner, uni.IfElseExpr) {

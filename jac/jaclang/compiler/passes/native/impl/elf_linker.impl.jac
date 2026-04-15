@@ -575,7 +575,9 @@ impl ElfLinker.parse_object -> bool {
                 );
                 r_sym = r_info >> 32;
                 r_type = r_info & 0xFFFFFFFF;
-                sym_name = self.symbols[r_sym].name if r_sym < len(self.symbols) else "";
+                sym_name = self.symbols[r_sym].name
+                    if r_sym < len(self.symbols)
+                    else "";
                 self.relocations.append(
                     ElfRela(
                         offset=r_offset,

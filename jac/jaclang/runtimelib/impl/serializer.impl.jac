@@ -1,19 +1,22 @@
 """Helper: get type metadata dict."""
 impl Serializer._type_info(`obj: object, `include: bool) -> dict[str, object] {
-    return {
-        '__type__': type(`obj).__name__,
-        '__module__': type(`obj).__module__
-    }
+    return {'__type__': type(`obj).__name__, '__module__': type(`obj).__module__}
         if `include
         else {};
 }
 
 """Helper: serialize object attributes (non-private, non-callable)."""
 impl Serializer._serialize_attrs(
-    `obj: object, include_type: bool, api_mode: bool
+    `obj: object,
+    include_type: bool,
+    api_mode: bool,
+    ref_mode: bool = False,
+    _seen: (tuple[set, set] | None) = None
 ) -> dict[str, object] {
     return {
-        a: Serializer._serialize_value(getattr(`obj, a), include_type, api_mode)
+        a: Serializer._serialize_value(
+            getattr(`obj, a), include_type, api_mode, ref_mode, _seen
+        )
         for a in dir(`obj)
         if not a.startswith('_') and not callable(getattr(`obj, a, None))
     };
@@ -21,14 +24,22 @@ impl Serializer._serialize_attrs(
 
 """Serialize any object to JSON-compatible format."""
 impl Serializer.serialize(
-    `obj: object, include_type: bool = False, api_mode: bool = False
+    `obj: object,
+    include_type: bool = False,
+    api_mode: bool = False,
+    ref_mode: bool = False
 ) -> object {
-    return Serializer._serialize_value(`obj, include_type, api_mode);
+    _seen = (set(), set()) if ref_mode else None;
+    return Serializer._serialize_value(`obj, include_type, api_mode, ref_mode, _seen);
 }
 
 """Serialize a value recursively."""
 impl Serializer._serialize_value(
-    val: object, include_type: bool, api_mode: bool = False
+    val: object,
+    include_type: bool,
+    api_mode: bool = False,
+    ref_mode: bool = False,
+    _seen: (tuple[set, set] | None) = None
 ) -> object {
     # Primitives & UUID & Enum
     if val is None or isinstance(val, (str, int, float, bool)) {
@@ -42,12 +53,16 @@ impl Serializer._serialize_value(
     }
     # Collections
     if isinstance(val, (list, tuple)) {
-        return [Serializer._serialize_value(v, include_type, api_mode) for v in val];
+        return [
+            Serializer._serialize_value(v, include_type, api_mode, ref_mode, _seen)
+            for v in val
+        ];
     }
     if isinstance(val, dict) {
         return {
-            str(k): Serializer._serialize_value(v, include_type, api_mode)
-            for (k, v) in val.items()
+            str(k): Serializer._serialize_value(
+                v, include_type, api_mode, ref_mode, _seen
+            ) for (k, v) in val.items()
         };
     }
     # Access types
@@ -57,7 +72,9 @@ impl Serializer._serialize_value(
     if isinstance(val, Permission) {
         return {
             'all': val.all.value,
-            'roots': Serializer._serialize_value(val.roots, include_type, api_mode)
+            'roots': Serializer._serialize_value(
+                val.roots, include_type, api_mode, ref_mode, _seen
+            )
         };
     }
     # Anchor (NodeAnchor, EdgeAnchor)
@@ -67,12 +84,14 @@ impl Serializer._serialize_value(
             'id': str(val.id),
             'root': str(val.root) if val.root else None,
             'persistent': val.persistent,
-            'access': Serializer._serialize_value(val.access, include_type, api_mode)
+            'access': Serializer._serialize_value(
+                val.access, include_type, api_mode, ref_mode, _seen
+            )
         };
         if val.is_populated() {
             arch = val.archetype;
             result['archetype'] = Serializer._type_info(arch, include_type) | Serializer._serialize_attrs(
-                arch, include_type, api_mode
+                arch, include_type, api_mode, ref_mode, _seen
             );
         }
         if isinstance(val, NodeAnchor) {
@@ -99,6 +118,36 @@ impl Serializer._serialize_value(
     }
     # Archetype (standalone)
     if isinstance(val, Archetype) {
+        if _seen is not None {
+            jac_anchor = val?.__jac__;
+            if jac_anchor {
+                jac_id = jac_anchor.id;
+                (jac_uuids, _) = _seen;
+                if jac_id in jac_uuids {
+                    ref_type = (
+                        'node'
+                            if isinstance(jac_anchor, NodeAnchor)
+                            else 'edge'
+                                if isinstance(jac_anchor, EdgeAnchor)
+                                else 'walker'
+                                    if isinstance(jac_anchor, WalkerAnchor)
+                                    else 'object'
+                    );
+                    return {'$ref': jac_id.hex, '$type': ref_type};
+                }
+                jac_uuids.add(jac_id);
+                # Register in memory so _deserialize_jac_ref can resolve
+                # $ref placeholders back to the live archetype.
+                try {
+                    import from jaclang { JacRuntimeInterface as Jac }
+                    Jac.get_context().mem.put(jac_anchor);
+                } except Exception as e {
+                    logger.warning(
+                        f"ref_mode: failed to register {jac_id.hex} in memory: {e}"
+                    );
+                }
+            }
+        }
         result = Serializer._type_info(val, include_type);
         if api_mode {
             result |= {
@@ -109,10 +158,21 @@ impl Serializer._serialize_value(
                     else 'walker' if isinstance(val, WalkerArchetype) else 'archetype'
             };
         }
-        return result | Serializer._serialize_attrs(val, include_type, api_mode);
+        return result | Serializer._serialize_attrs(
+            val, include_type, api_mode, ref_mode, _seen
+        );
     }
     # Generic object with __dict__
     if val?.__dict__ {
+        # Cycle guard for non-Jac objects (tracked by identity, not UUID).
+        if _seen is not None {
+            (_, obj_ids) = _seen;
+            obj_identity = id(val);
+            if obj_identity in obj_ids {
+                return str(val);
+            }
+            obj_ids.add(obj_identity);
+        }
         result = Serializer._type_info(val, include_type);
         if api_mode {
             result['__type__'] = type(val).__name__;
@@ -120,7 +180,9 @@ impl Serializer._serialize_value(
         }
         for (k, v) in val.__dict__.items() {
             if not k.startswith('_') {
-                result[k] = Serializer._serialize_value(v, include_type, api_mode);
+                result[k] = Serializer._serialize_value(
+                    v, include_type, api_mode, ref_mode, _seen
+                );
             }
         }
         return result;
@@ -129,6 +191,46 @@ impl Serializer._serialize_value(
         f"Falling back to str() for {type(val).__module__}.{type(val).__name__}"
     );
     return str(val);
+}
+
+"""Deserialize a $ref placeholder back to the live archetype, typed stub, or None."""
+impl Serializer._deserialize_jac_ref(data: dict[str, object]) -> (object | None) {
+    id_str = data.get('$ref');
+    if not isinstance(id_str, str) {
+        return None;
+    }
+    try {
+        ref_uuid = UUID(id_str);
+    } except (ValueError, AttributeError) {
+        logger.error(f"Invalid UUID in $ref: {id_str}");
+        return None;
+    }
+    try {
+        import from jaclang { JacRuntimeInterface as Jac }
+        anchor = Jac.get_context().mem.get(ref_uuid);
+        if anchor {
+            if not anchor.is_populated() {
+                anchor.populate();
+            }
+            if anchor.is_populated() {
+                return anchor.archetype;
+            }
+        }
+    } except Exception as e {
+        logger.warning(f"Failed to resolve $ref {id_str} from context: {e}");
+    }
+    ref_type = data.get('$type');
+    stub_cls = cast(
+        type,
+        (
+            NodeAnchor
+                if ref_type == 'node'
+                else EdgeAnchor
+                    if ref_type == 'edge'
+                    else WalkerAnchor if ref_type == 'walker' else ObjectAnchor
+        )
+    );
+    return Serializer._id_to_stub(stub_cls, id_str);
 }
 
 """Deserialize data back to original object type."""
@@ -176,6 +278,9 @@ impl Serializer._deserialize_value(val: object) -> object {
         return [Serializer._deserialize_value(v) for v in val];
     }
     if isinstance(val, dict) {
+        if '$ref' in val and val.keys() <= {'$ref','$type'} {
+            return Serializer._deserialize_jac_ref(val);
+        }
         return Serializer.deserialize(val)
             if '__type__' in val
             else {k: Serializer._deserialize_value(v) for (k, v) in val.items()};
@@ -183,9 +288,35 @@ impl Serializer._deserialize_value(val: object) -> object {
     return val;
 }
 
-"""Register a class for safe deserialization."""
+"""Register a class for safe deserialization and attach its fingerprint."""
 impl Serializer.register(cls: type) -> None {
     Serializer._registry[f"{cls.__module__}.{cls.__name__}"] = cls;
+    try {
+        cls.__jac_fingerprint__ = Serializer.fingerprint(cls);
+    } except Exception as e {
+        logger.debug(f"Failed to compute fingerprint for {cls.__name__}: {e}");
+        cls.__jac_fingerprint__ = '';
+    }
+}
+
+"""Compute an archetype schema fingerprint."""
+impl Serializer.fingerprint(cls: type) -> str {
+    field_pairs: list[list[str]] = [];
+    if is_dataclass(cls) {
+        for f in fields(cls) {
+            # str() on the type annotation handles typing generics, unions,
+            # and forward refs uniformly. It's not perfectly stable across
+            # Python versions, but it's stable within a given version — and
+            # the fingerprint is recomputed at class-load time, so version
+            # drift of type reprs just produces a new fingerprint, which
+            # migration layer will treat as drift (conservative, safe).
+            field_pairs.append([f.name, str(f.type)]);
+        }
+    }
+    field_pairs.sort(key=lambda p: list : p[0]);
+    payload = {'module': cls.__module__, 'name': cls.__name__, 'fields': field_pairs};
+    encoded = _json_dumps(payload, sort_keys=True, default=str).encode('utf-8');
+    return sha256(encoded).hexdigest()[:FINGERPRINT_LENGTH];
 }
 
 """Look up a class by module.name (only registered classes for security)."""
@@ -277,7 +408,7 @@ impl Serializer._deserialize_permission(data: object) -> Permission {
         return Permission();
     }
     perm = Permission();
-    perm.all = AccessLevel(data.get('all', -1));
+    perm.all = access_level_cast(data.get('all', -1));
     if (roots := data.get('roots')) {
         perm.roots = Serializer._deserialize_access(roots);
     }
@@ -291,7 +422,7 @@ impl Serializer._deserialize_access(data: object) -> Access {
     }
     access = Access();
     if (anchors := data.get('anchors')) {
-        access.anchors = {k: AccessLevel(v) for (k, v) in anchors.items()};
+        access.anchors = {k: access_level_cast(v) for (k, v) in anchors.items()};
     }
     return access;
 }
