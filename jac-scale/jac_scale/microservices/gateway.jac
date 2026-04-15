@@ -15,9 +15,10 @@ import from fastapi { FastAPI, Request }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response }
 import from jac_scale.microservices.impl.http_forward { raw_forward }
 import from jac_scale.config_loader { get_scale_config }
+import from jaclang.cli.console { console }
 
 glob logger = logging.getLogger(__name__),
-     HOP_BY_HOP_HEADERS: set[str] = {"host", "transfer-encoding", "connection", "keep-alive"};
+     HOP_BY_HOP_HEADERS: set[str] = {"host","transfer-encoding","connection","keep-alive"};
 
 """API Gateway that routes client requests to microservices by path prefix."""
 obj MicroserviceGateway {

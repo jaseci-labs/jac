@@ -116,10 +116,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'gateway_port': 8000,
             'gateway_host': '0.0.0.0',
             'routes': {},
-            'client': {
-                'entry': '',
-                'dist_dir': '.jac/client/dist'
-            }
+            'client': {'entry': '', 'dist_dir': '.jac/client/dist'}
         }
     };
 }
