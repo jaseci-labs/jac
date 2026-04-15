@@ -12,9 +12,7 @@ cl {
         budget = useBudget();
 
         return
-            <BudgetContext.Provider value={budget}>
-                {children}
-            </BudgetContext.Provider>;
+            <BudgetContext.Provider value={budget}>{children}</BudgetContext.Provider>;
     }
 
     # Custom hook to access budget context

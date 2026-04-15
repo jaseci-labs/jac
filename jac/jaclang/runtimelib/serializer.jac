@@ -1,7 +1,10 @@
 """JSON serialization for Jac objects with type-safe deserialization."""
 
 import logging;
+import from dataclasses { fields, is_dataclass }
 import from enum { Enum }
+import from hashlib { sha256 }
+import from json { dumps as _json_dumps }
 import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
@@ -12,7 +15,8 @@ import from jaclang.jac0core.archetype {
     ObjectAnchor,
     Permission,
     Access,
-    AccessLevel
+    AccessLevel,
+    access_level_cast
 }
 import from jaclang.jac0core.constructs {
     Archetype,
@@ -22,7 +26,10 @@ import from jaclang.jac0core.constructs {
     GenericEdge
 }
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     # Number of hex chars kept from the SHA-256 of the archetype schema.
+     # 16 hex chars = 64 bits, plenty for drift detection.
+     FINGERPRINT_LENGTH: int = 16;
 
 """Converts Jac objects to/from JSON-compatible dicts.
 
@@ -32,8 +39,18 @@ preventing arbitrary code execution from untrusted data.
 obj Serializer {
     static has _registry: dict[str, type] = {};
 
-    """Register a class for deserialization."""
+    """Register a class for deserialization and attach its schema fingerprint."""
     static def register(cls: type) -> None;
+
+    """Compute a stable schema fingerprint for an archetype class.
+
+    Derived from class identity (module + name) plus dataclass field
+    (name, type_repr) pairs, sorted for determinism. Hashed with SHA-256
+    and truncated to FINGERPRINT_LENGTH hex chars. Used by the persistence
+    layer to detect schema drift between the code running now and the
+    schema of previously persisted anchors.
+    """
+    static def fingerprint(cls: type) -> str;
 
     """Convert object to JSON-compatible dict.
 

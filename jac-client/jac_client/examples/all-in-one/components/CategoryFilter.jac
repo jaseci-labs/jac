@@ -10,9 +10,7 @@ cl {
 
         return
             <div className="category-filter">
-                <h3 className="filter-title">
-                    Filter by Category
-                </h3>
+                <h3 className="filter-title">Filter by Category</h3>
                 <div className="filter-buttons">
                     {[
                         <button

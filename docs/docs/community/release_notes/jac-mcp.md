@@ -2,6 +2,8 @@
 
 ## jac-mcp 0.1.11 (Unreleased)
 
+- 1 small refactor/change.
+
 ## jac-mcp 0.1.10 (Latest Release)
 
 - **Content QA fixes**: Updated `root` to `root()` in pitfalls and knowledge map to match current deprecation (W0062). Fixed invalid graph filter syntax `` [-->](`?B) `` → `[-->][?:B]` in pitfalls. Updated `root spawn` → `root() spawn` in client-side examples.

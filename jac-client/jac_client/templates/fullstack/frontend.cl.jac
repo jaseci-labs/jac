@@ -7,7 +7,7 @@ import from .components.AuthForm { AuthForm }
 
 sv import from endpoints { AddTodo, ListTodos, ToggleTodo, DeleteTodo }
 
-def:pub app -> any {
+def:pub app -> JsxElement {
     has isLoggedIn: bool = False,
         checkingAuth: bool = True,
         isSignup: bool = False,
@@ -15,7 +15,7 @@ def:pub app -> any {
         password: str = "",
         error: str = "",
         loading: bool = False,
-        todos: list = [],
+        todos: list[dict] = [],
         newTodoText: str = "",
         todosLoading: bool = True;
 
@@ -37,8 +37,8 @@ def:pub app -> any {
     async def handleLogin -> None;
     async def handleSignup -> None;
     def handleLogout -> None;
-    async def handleSubmit(e: any) -> None;
-    def handleTodoKeyPress(e: any) -> None;
+    async def handleSubmit(e: FormEvent) -> None;
+    def handleTodoKeyPress(e: KeyboardEvent) -> None;
 
     # Loading screen
     if checkingAuth {
@@ -76,11 +76,9 @@ def:pub app -> any {
                         "marginBottom": "1.5rem"
                     }}
                 >
-                    <h1 style={{"margin": "0", "color": "#1a1a2e"}}>
-                        My Todos
-                    </h1>
+                    <h1 style={{"margin": "0", "color": "#1a1a2e"}}>My Todos</h1>
                     <button
-                        onClick={handleLogout}
+                        onClick={lambda _e: MouseEvent { handleLogout();}}
                         style={{
                             "padding": "0.5rem 1rem",
                             "fontSize": "0.9rem",
@@ -104,7 +102,7 @@ def:pub app -> any {
                     <input
                         type="text"
                         value={newTodoText}
-                        onChange={lambda e: any { newTodoText = e.target.value;}}
+                        onChange={lambda e: ChangeEvent { newTodoText = e.target.value;}}
                         onKeyPress={handleTodoKeyPress}
                         placeholder="What needs to be done?"
                         style={{
@@ -117,7 +115,7 @@ def:pub app -> any {
                         }}
                     />
                     <button
-                        onClick={lambda { addTodo();}}
+                        onClick={lambda _e: MouseEvent { addTodo();}}
                         style={{
                             "padding": "0.75rem 1.5rem",
                             "fontSize": "1rem",
@@ -151,10 +149,10 @@ def:pub app -> any {
                                 No todos yet. Add one above!
                             </p>
                         )
-                            if todos.length == 0
+                            if len(todos) == 0
                             else None}{[
                             <TodoItem
-                                key={todo.id}
+                                key={todo["id"]}
                                 todo={todo}
                                 onToggle={toggleTodo}
                                 onDelete={deleteTodo}
@@ -173,11 +171,13 @@ def:pub app -> any {
                         "fontSize": "0.9rem"
                     }}
                 >
-                    {[
-                        t
-                        for t in todos
-                        if not t.completed
-                    ].length} items left
+                    {len(
+                        [
+                            t
+                            for t in todos
+                            if not t["completed"]
+                        ]
+                    )} items left
                 </div>
             </div>;
     }
@@ -190,9 +190,12 @@ def:pub app -> any {
             password={password}
             error={error}
             loading={loading}
-            onUsernameChange={lambda e: any { username = e.target.value;}}
-            onPasswordChange={lambda e: any { password = e.target.value;}}
+            onUsernameChange={lambda e: ChangeEvent { username = e.target.value;}}
+            onPasswordChange={lambda e: ChangeEvent { password = e.target.value;}}
             onSubmit={handleSubmit}
-            onToggleMode={lambda { isSignup = not isSignup;error = "";}}
+            onToggleMode={lambda {
+                isSignup = not isSignup;
+                error = "";
+            }}
         />;
 }

@@ -11,9 +11,7 @@ cl {
 
         return
             <div style={{"padding": "2rem"}}>
-                <h1>
-                    Users Directory
-                </h1>
+                <h1>Users Directory</h1>
                 <p style={{"color": "#6b7280", "marginBottom": "1.5rem"}}>
                     Click on a user to view their profile (demonstrates dynamic [id] routing)
                 </p>
@@ -38,9 +36,7 @@ cl {
                                 "border": "1px solid #e5e7eb"
                             }}
                         >
-                            <strong>
-                                {user["name"]}
-                            </strong>
+                            <strong>{user["name"]}</strong>
                             <span style={{"color": "#6b7280", "marginLeft": "0.5rem"}}>
                                 —{user["role"]}
                             </span>

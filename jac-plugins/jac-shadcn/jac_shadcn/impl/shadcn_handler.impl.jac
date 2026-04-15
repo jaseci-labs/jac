@@ -159,7 +159,9 @@ impl add_shadcn_components(config: Any, component_names: list) -> bool {
 
     added: list = [];
     for name in to_install {
-        comp_data = _fetch_json(registry_url + "/component/" + name + "?style=" + style);
+        comp_data = _fetch_json(
+            registry_url + "/component/" + name + "?style=" + style
+        );
 
         if not comp_data or "error" in comp_data {
             err_msg = str(comp_data.get("error", "Unknown error"))

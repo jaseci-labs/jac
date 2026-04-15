@@ -773,10 +773,7 @@ This determines whether hasattr is being used as a guard before accessing the at
 (safe to convert) vs a standalone existence check (not safe to convert).
 """
 impl JacAutoLintPass._bool_expr_has_matching_access(
-    parent: uni.BoolExpr,
-    hasattr_node: uni.FuncCall,
-    obj_expr: uni.Expr,
-    attr_name: str
+    parent: uni.BoolExpr, hasattr_node: uni.FuncCall, obj_expr: uni.Expr, attr_name: str
 ) -> bool {
     for val in parent.values {
         if val is hasattr_node {
@@ -1563,51 +1560,6 @@ impl JacAutoLintPass._extract_string_literal_value(expr: uni.Expr) -> (str | Non
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 # New lint checks (W3020-W3036)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-"""Build a structural key from a body for comparison (identical branch check)."""
-impl JacAutoLintPass._body_to_key(body: list) -> str {
-    parts: list[str] = [];
-    for stmt in body {
-        if isinstance(stmt, uni.Semi) {
-            continue;
-        }
-        parts.append(type(stmt).__name__);
-        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.FuncCall) {
-            if isinstance(stmt.expr.target, uni.Name) {
-                parts.append(stmt.expr.target.value);
-            }
-            if stmt.expr.params {
-                for p in stmt.expr.params {
-                    if isinstance(p, uni.String) {
-                        parts.append(p.value);
-                    } elif isinstance(p, uni.Name) {
-                        parts.append(p.value);
-                    } elif isinstance(p, uni.Int) {
-                        parts.append(p.value);
-                    }
-                }
-            }
-        } elif isinstance(stmt, uni.Assignment) {
-            for t in stmt.target {
-                if isinstance(t, uni.Name) {
-                    parts.append(t.value);
-                }
-            }
-            if stmt.value and isinstance(stmt.value, uni.Name) {
-                parts.append(stmt.value.value);
-            }
-        } elif isinstance(stmt, uni.ReturnStmt) {
-            if stmt.expr {
-                if isinstance(stmt.expr, uni.Bool) {
-                    parts.append(stmt.expr.value);
-                } elif isinstance(stmt.expr, uni.Name) {
-                    parts.append(stmt.expr.value);
-                }
-            }
-        }
-    }
-    return "|".join(parts);
-}
-
 """W3020: Warn on unnecessary 'pass' in a body that has other statements."""
 impl JacAutoLintPass._check_unnecessary_pass(body: list, `node: uni.UniNode) -> None {
     if self._is_suppressed(W3020) {
@@ -1755,9 +1707,29 @@ impl JacAutoLintPass._check_identical_branches(nd: uni.IfStmt) -> None {
     if nd.else_body is None or not isinstance(nd.else_body, uni.ElseStmt) {
         return;
     }
-    if_key = self._body_to_key(list(nd.body));
-    else_key = self._body_to_key(list(nd.else_body.body));
-    if if_key and else_key and if_key == else_key {
+    if_body = [
+        s
+        for s in nd.body
+        if not isinstance(s, uni.Semi)
+    ];
+    else_body = [
+        s
+        for s in nd.else_body.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if not if_body or len(if_body) != len(else_body) {
+        return;
+    }
+    # Cheap guard: bail if top-level statement kinds differ.
+    for (a, b) in zip(if_body, else_body) {
+        if type(a) is not type(b) {
+            return;
+        }
+    }
+    # Definitive comparison: canonical unparse of each branch must match.
+    if_src = "".join(s.unparse() for s in if_body);
+    else_src = "".join(s.unparse() for s in else_body);
+    if if_src == else_src {
         self.emit(W3025, node_override=nd);
     }
 }

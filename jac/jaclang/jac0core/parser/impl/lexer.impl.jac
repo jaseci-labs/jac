@@ -244,11 +244,7 @@ impl Lexer.skip_block_comment -> bool {
         self.advance();
     }
     self.error(
-        "Unterminated block comment",
-        start_line,
-        start_col,
-        start_pos,
-        code_str="E0101"
+        "Unterminated block comment", start_line, start_col, start_pos, code_str="E0101"
     );
     return False;
 }
@@ -393,9 +389,7 @@ impl Lexer.scan_number -> Token {
             kind = TokenKind.OCT;
             while not self.at_end()
             and (
-                self.current() >= "0"
-                and self.current() <= "7"
-                or self.current() == "_"
+                self.current() >= "0" and self.current() <= "7" or self.current() == "_"
             ) {
                 value += self.advance();
             }
@@ -1546,13 +1540,19 @@ impl Lexer.scan_operator -> Token {
             );
 
         case "<":
-            return self.make_token(TokenKind.LT, "<", start_line, start_col, start_pos);
+            return self.make_token(
+                TokenKind.LT, "<", start_line, start_col, start_pos
+            );
 
         case ">":
-            return self.make_token(TokenKind.GT, ">", start_line, start_col, start_pos);
+            return self.make_token(
+                TokenKind.GT, ">", start_line, start_col, start_pos
+            );
 
         case "=":
-            return self.make_token(TokenKind.EQ, "=", start_line, start_col, start_pos);
+            return self.make_token(
+                TokenKind.EQ, "=", start_line, start_col, start_pos
+            );
 
         case "@":
             return self.make_token(

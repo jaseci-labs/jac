@@ -185,7 +185,9 @@ test "test_go_to_definition" {
             passes_main_fixture_abs_path("checker_impl/checker_impl_self_member.jac")
         );
         lsp.type_check_file(self_member_file);
-        go_def_result = str(lsp.get_definition(self_member_file, lspt.Position(24, 14)));
+        go_def_result = str(
+            lsp.get_definition(self_member_file, lspt.Position(24, 14))
+        );
         # program field is declared via 'has' -- go-to-def points to the declaration
         # (line 12, 1-indexed = line 11 in 0-indexed LSP format)
         assert "checker_impl_self_member.jac:11" in go_def_result , f"Unexpected go-to-def result: {go_def_result}";
@@ -237,7 +239,7 @@ test "test_go_to_definition_md_path" {
             (20, 34, "jaclang/jac0core/unitree.jac:0:0-0:0"),
             (22, 22, "tests/langserve/fixtures/circle.jac:7:5-7:8"),
             (23, 28, "jaclang/lsp/uris.jac:0:0-0:0"),
-            (24, 40, "jaclang/lsp/server.jac:114:"),
+            (24, 40, "jaclang/lsp/server.jac:117:4-117:18"),
             (26, 31, "jaclang/lsp/types.jac:0:0-0:0"),
 
         ];
@@ -365,9 +367,14 @@ test "test_go_to_reference" {
         lsp = create_server();
         circle_file = uris.from_fs_path(fixture_path("circle.jac"));
         lsp.type_check_file(circle_file);
-        test_cases = [(45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]), ];
+        test_cases = [
+            (45, 4, ["circle.jac:45:4-45:5", "51:23-51:24", "51:75-51:76"]),
+
+        ];
         for (line, char, expected_refs) in test_cases {
-            references = str(lsp.get_references(circle_file, lspt.Position(line, char)));
+            references = str(
+                lsp.get_references(circle_file, lspt.Position(line, char))
+            );
             for expected in expected_refs {
                 assert expected in references;
             }
@@ -534,7 +541,9 @@ test "test_go_to_definition_directory_import" {
         ];
 
         for (line, char, expected) in positions {
-            def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1));
+            def_loc = lsp.get_definition(
+                import_file, lspt.Position(line - 1, char - 1)
+            );
             assert def_loc is not None , f"Definition at line {line}, col {char} not found";
             assert expected in str(def_loc) , f"Expected '{expected}' in definition for line {line}, char {char}, "
             f"got: {def_loc}";
@@ -646,7 +655,9 @@ test "test_hover_types" {
 
         for case in hover_cases {
             (line, col, expected, should_not_contain) = case;
-            hover = lsp.get_hover_info(narrowing_file, lspt.Position(line - 1, col - 1));
+            hover = lsp.get_hover_info(
+                narrowing_file, lspt.Position(line - 1, col - 1)
+            );
             assert hover is not None , f"Hover should exist at line {line}, col {col}";
             assert expected in hover.contents.value , f"Line {line}: expected '{expected}' in hover, got: {hover.contents.value}";
             if should_not_contain {
@@ -677,7 +688,13 @@ test "test_hover_types" {
         # Comprehension types: iteration variables should have inferred types
         compr_file = uris.from_fs_path(fixture_path("hover_comprehension.jac"));
         lsp.type_check_file(compr_file);
-        compr_cases = [(4, 41, "int"), (5, 27, "int"), (6, 22, "int"), (7, 30, "int"), ];
+        compr_cases = [
+            (4, 41, "int"),
+            (5, 27, "int"),
+            (6, 22, "int"),
+            (7, 30, "int"),
+
+        ];
         for (line, col, expected) in compr_cases {
             hover = lsp.get_hover_info(compr_file, lspt.Position(line - 1, col - 1));
             assert hover is not None , f"Compr hover should exist at line {line}, col {col}";
@@ -922,7 +939,9 @@ test "test_go_to_definition_import_module_path_and_item" {
         ];
 
         for (line, char, expected) in positions {
-            def_loc = lsp.get_definition(import_file, lspt.Position(line - 1, char - 1));
+            def_loc = lsp.get_definition(
+                import_file, lspt.Position(line - 1, char - 1)
+            );
             assert def_loc is not None , f"Definition at line {line}, col {char} not found";
             assert expected in str(def_loc) , f"Expected '{expected}' in definition for "
             f"line {line}, char {char}, got: {def_loc}";

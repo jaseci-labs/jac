@@ -1929,6 +1929,11 @@ class CodeGen:
                         continue  # Skip stub; impl will provide the method
                 self._emit(bnode)
             for impl in impls:
+                parts = impl.target.split(".")
+                mname = parts[-1] if len(parts) > 1 else parts[0]
+                mname = _dunder_names.get(mname, mname)
+                if mname not in stub_lookup:
+                    continue
                 self._emit_impl_as_method(impl, stub_lookup)
             self._in_class = prev_in_class
         self.indent -= 1

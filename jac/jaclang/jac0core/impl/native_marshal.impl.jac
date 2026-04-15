@@ -64,12 +64,7 @@ impl NativeStructView._resolve(name: str, raw: Any) -> Any {
             ct_cls = self.ctypes_classes.get(sname);
             if ct_cls {
                 return NativeStructView(
-                    raw,
-                    ct_cls,
-                    sname,
-                    self.layout,
-                    self.ctypes_classes,
-                    self.enum_maps
+                    raw, ct_cls, sname, self.layout, self.ctypes_classes, self.enum_maps
                 );
             }
         }

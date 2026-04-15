@@ -576,17 +576,13 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
                     }}
                 >
                     <div style={{marginBottom: 16}}>
-                        <div style={{color: "#888", marginBottom: 8}}>
-                            File:
-                        </div>
+                        <div style={{color: "#888", marginBottom: 8}}>File:</div>
                         <div style={{color: "#64b5f6", fontWeight: "bold"}}>
                             {filePath}
                         </div>
                     </div>
                     <div>
-                        <div style={{color: "#888", marginBottom: 8}}>
-                            Error:
-                        </div>
+                        <div style={{color: "#888", marginBottom: 8}}>Error:</div>
                         <pre
                             style={{
                                 background: "#2d2d2d",
@@ -759,9 +755,7 @@ impl JacForm(props: dict) -> JsxElement {
                         className={inputClassName}
                         style={{cursor: "pointer"}}
                     />
-                    <span className={labelClassName}>
-                        {label}
-                    </span>
+                    <span className={labelClassName}>{label}</span>
                 </label>
             );
         }
@@ -780,14 +774,10 @@ impl JacForm(props: dict) -> JsxElement {
                     className={inputClassName}
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
-                    <option value="">
-                        {placeholder or f"Select {label}"}
-                    </option>
+                    <option value="">{placeholder or f"Select {label}"}</option>
                     {options.map(
                         lambda opt: any -> JsxElement { return
-                            <option value={opt} key={opt}>
-                                {opt}
-                            </option>; }
+                            <option value={opt} key={opt}>{opt}</option>; }
                     )}
                 </select>
             );
@@ -821,9 +811,7 @@ impl JacForm(props: dict) -> JsxElement {
                                     className={inputClassName}
                                     style={{cursor: "pointer"}}
                                 />
-                                <span>
-                                    {opt}
-                                </span>
+                                <span>{opt}</span>
                             </label>
                         ); }
                     )}
@@ -892,15 +880,15 @@ impl JacForm(props: dict) -> JsxElement {
                             type="checkbox"
                             checked={isVisible}
                             onChange={lambda e: any { setPasswordVisible(
-                                lambda prev: any -> dict { newState = Object.assign(
-                                    {}, prev
-                                );newState[fieldName] = not isVisible;return newState; }
+                                lambda prev: any -> dict {
+                                    newState = Object.assign({}, prev);
+                                    newState[fieldName] = not isVisible;
+                                    return newState;
+                                }
                             );}}
                             style={{cursor: "pointer"}}
                         />
-                        <span>
-                            Show password
-                        </span>
+                        <span>Show password</span>
                     </label>
                 </div>
             );
@@ -988,9 +976,7 @@ impl JacForm(props: dict) -> JsxElement {
     buttonClassName = submitClassName or "";
     return (
         <form onSubmit={form.handleSubmit(onSubmit)} className={formClassName}>
-            <div style={layoutStyle}>
-                {fields}
-            </div>
+            <div style={layoutStyle}>{fields}</div>
             <button
                 type="submit"
                 disabled={isSubmitting or not isDirty}
@@ -1062,11 +1048,17 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(
         "unhandledrejection",
-        lambda event: Any { reason = event.reason;message = "";stack = "";if reason {
-            message = reason.message or str(reason);
-            stack = reason.stack or "";
-        } else {
-            message = "Unhandled promise rejection";
-        } __jacReportError(message, stack, "", "unhandledrejection");}
+        lambda event: Any {
+            reason = event.reason;
+            message = "";
+            stack = "";
+            if reason {
+                message = reason.message or str(reason);
+                stack = reason.stack or "";
+            } else {
+                message = "Unhandled promise rejection";
+            }
+            __jacReportError(message, stack, "", "unhandledrejection");
+        }
     );
 }

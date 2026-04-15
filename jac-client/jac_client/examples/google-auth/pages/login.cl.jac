@@ -30,9 +30,7 @@ cl def:pub Login -> JsxElement {
                 gap: '2rem'
             }}
         >
-            <h1>
-                Login to Your Account
-            </h1>
+            <h1>Login to Your Account</h1>
             <div
                 style={{
                     display: 'flex',
@@ -48,9 +46,7 @@ cl def:pub Login -> JsxElement {
             >
                 <Button onClick={handleGoogleLogin} label="Sign in with Google"/>
                 <div style={{textAlign: 'center', marginTop: '1rem'}}>
-                    <p>
-                        Don't have an account?
-                    </p>
+                    <p>Don't have an account?</p>
                     <button
                         onClick={lambda() { auth.handleRegister('google');}}
                         style={{

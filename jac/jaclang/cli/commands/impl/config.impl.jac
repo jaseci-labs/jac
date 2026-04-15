@@ -124,7 +124,9 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             # Case 0: Wildcard - disable all external plugins
             if target == '*' {
                 if '*' not in config.plugins_config.disabled {
-                    config.plugins_config.disabled = ['*'];  # Replace with just wildcard
+                    config.plugins_config.disabled = [
+                        '*'
+                    ];  # Replace with just wildcard
                     console.success("Disabled: * (all external plugins)", emoji=False);
                 } else {
                     console.warning(
@@ -364,7 +366,12 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             pkg_name = pkg_name.replace(" (built-in)", "");
         }
 
-        for (short_name, qualified_name, plugin, plugin_class_name) in plugins_in_dist {
+        for (
+            short_name,
+            qualified_name,
+            plugin,
+            plugin_class_name
+        ) in plugins_in_dist {
             # Check disabled status using qualified name
             if qualified_name in disabled_plugins {
                 console.print(

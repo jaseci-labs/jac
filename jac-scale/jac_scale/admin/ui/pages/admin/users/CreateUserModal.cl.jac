@@ -62,12 +62,8 @@ cl {
                         className="mb-4"
                     />
                     <ModalFooter>
-                        <Button variant="ghost" onClick={handleClose}>
-                            Cancel
-                        </Button>
-                        <Button type="submit">
-                            Create
-                        </Button>
+                        <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+                        <Button type="submit">Create</Button>
                     </ModalFooter>
                 </form>
             </Modal>;

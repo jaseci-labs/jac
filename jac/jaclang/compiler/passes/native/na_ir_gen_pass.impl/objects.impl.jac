@@ -669,7 +669,8 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
                 # _codegen_list_val.  Fall back to calling helpers["new"] for
                 # the field's concrete dict or list type.
                 ftype_probe = field_types.get(key_name);
-                if ftype_probe is not None and isinstance(ftype_probe, ir.PointerType) {
+                if ftype_probe is not None
+                and isinstance(ftype_probe, ir.PointerType) {
                     for (dict_key, dtype) in self.dict_types.items() {
                         if ftype_probe == dtype.as_pointer() {
                             helpers = self.dict_helpers.get(dict_key);
@@ -687,9 +688,7 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
                                 helpers = self.list_helpers.get(elem_key);
                                 if helpers is not None {
                                     val = self.builder.call(
-                                        helpers["new"],
-                                        [],
-                                        name=f"list.ctor.{key_name}"
+                                        helpers["new"], [], name=f"list.ctor.{key_name}"
                                     );
                                 }
                                 break;

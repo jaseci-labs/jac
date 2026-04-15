@@ -56,7 +56,9 @@ obj MongoUserStorage {
     }
 
     def get_root_id(username: str) -> (str | None) {
-        user = self.users_col.find_one({'username': username}, {'root_id': 1, '_id': 0});
+        user = self.users_col.find_one(
+            {'username': username}, {'root_id': 1, '_id': 0}
+        );
         return user['root_id'] if user else None;
     }
 
@@ -286,9 +288,7 @@ obj MongoUserStorage {
                     'requires_password_reset': bool(
                         doc.get('requires_password_reset', False)
                     ),
-                    'is_password_required': bool(
-                        doc.get('is_password_required', True)
-                    )
+                    'is_password_required': bool(doc.get('is_password_required', True))
                         if doc.get('is_password_required') is not None
                         else True,
                     'user_id': doc.get('user_id')
@@ -299,7 +299,9 @@ obj MongoUserStorage {
     }
 
     def delete_user(username: str, admin_user_id: str) -> dict[str, str] {
-        user = self.users_col.find_one({'username': username}, {'user_id': 1, '_id': 0});
+        user = self.users_col.find_one(
+            {'username': username}, {'user_id': 1, '_id': 0}
+        );
         if user and user.get('user_id') == admin_user_id {
             return {'error': 'Cannot delete the primary admin user'};
         }

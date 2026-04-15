@@ -3,16 +3,231 @@
 Implementations for VolatileMemory, LocalCacheMemory, SqliteMemory, and TieredMemory.
 """
 
+import json;
 import logging;
 import os;
 import sqlite3;
 import from collections.abc { Callable, Generator, Iterable }
-import from pickle { dumps, loads }
+import from datetime { datetime, timezone }
 import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.runtimelib.serializer { Serializer }
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     # Bumped when the on-disk row layout changes in a way that requires
+     # schema migration. Kept in the `schema_meta` table.
+     SQLITE_DB_FORMAT_VERSION: int = 1;
+
+"""Serialize an anchor to the tuple of columns stored in the anchors table."""
+def _anchor_to_row(anchor: Anchor) -> tuple {
+    data = Serializer.serialize(anchor, include_type=True);
+    data_json = json.dumps(data);
+    anchor_type = type(anchor).__name__;
+    arch_module: (str | None) = None;
+    arch_type: (str | None) = None;
+    fingerprint: (str | None) = None;
+    if anchor.is_populated() and anchor.archetype is not None {
+        arch = anchor.archetype;
+        arch_module = type(arch).__module__;
+        arch_type = type(arch).__name__;
+        fp = getattr(type(arch), '__jac_fingerprint__', None);
+        fingerprint = fp if isinstance(fp, str) and fp else None;
+    }
+    return (
+        anchor_type,
+        arch_module,
+        arch_type,
+        fingerprint,
+        data_json,
+        SQLITE_DB_FORMAT_VERSION,
+        datetime.now(timezone.utc).isoformat()
+    );
+}
+
+"""Return True if the provided sqlite connection has the new anchors schema."""
+def _is_new_schema(conn: sqlite3.Connection) -> bool {
+    cursor = conn.execute("PRAGMA table_info(anchors)");
+    cols = {row[1] for row in cursor.fetchall()};
+    # Distinguishing column on the new schema. Legacy has (id, data) only.
+    return 'fingerprint' in cols and 'format_version' in cols;
+}
+
+"""Return True if the connection has the legacy (id TEXT, data BLOB) schema."""
+def _is_legacy_schema(conn: sqlite3.Connection) -> bool {
+    cursor = conn.execute("PRAGMA table_info(anchors)");
+    rows = cursor.fetchall();
+    if not rows {
+        return False;
+    }
+    cols = {row[1] for row in rows};
+    return cols == {'id','data'};
+}
+
+"""Create the anchors + quarantine + schema_meta tables (new schema)."""
+def _create_new_schema(conn: sqlite3.Connection) {
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS anchors (
+            id              TEXT PRIMARY KEY,
+            type            TEXT NOT NULL,
+            arch_module     TEXT,
+            arch_type       TEXT,
+            fingerprint     TEXT,
+            data            TEXT NOT NULL,
+            format_version  INTEGER NOT NULL DEFAULT 1,
+            updated_at      TEXT
+        )
+        """
+    );
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS anchors_quarantine (
+            id                   TEXT PRIMARY KEY,
+            type                 TEXT,
+            arch_module          TEXT,
+            arch_type            TEXT,
+            fingerprint          TEXT,
+            data                 TEXT,
+            error                TEXT,
+            quarantined_at       TEXT,
+            from_format_version  INTEGER
+        )
+        """
+    );
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS schema_meta (
+            key   TEXT PRIMARY KEY,
+            value TEXT
+        )
+        """
+    );
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
+        ('db_format_version', str(SQLITE_DB_FORMAT_VERSION))
+    );
+    conn.commit();
+}
+
+"""Quarantine a row that failed to deserialize. Never raises."""
+def _quarantine(
+    conn: sqlite3.Connection,
+    id: str,
+    anchor_type: (str | None),
+    arch_module: (str | None),
+    arch_type: (str | None),
+    fingerprint: (str | None),
+    data: (str | None),
+    error: str,
+    from_format_version: (int | None) = None
+) {
+    try {
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO anchors_quarantine
+                (id, type, arch_module, arch_type, fingerprint, data,
+                 error, quarantined_at, from_format_version)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                id,
+                anchor_type,
+                arch_module,
+                arch_type,
+                fingerprint,
+                data,
+                error,
+                datetime.now(timezone.utc).isoformat(),
+                from_format_version
+            )
+        );
+        conn.execute("DELETE FROM anchors WHERE id = ?", (id, ));
+        conn.commit();
+    } except Exception as e {
+        logger.error(f"Failed to quarantine anchor {id}: {e}");
+    }
+}
+
+"""One-shot migration from legacy pickle (id TEXT, data BLOB) to JSON schema.
+
+Called when an existing DB file has the legacy schema but none of the new
+tables. Reads every pickle row, re-serializes via Serializer, writes to the
+new anchors table. Rows that can't be unpickled or re-serialized are moved
+to anchors_quarantine with the raw bytes hex-encoded and the error message.
+"""
+def _migrate_legacy_pickle_db(conn: sqlite3.Connection) {
+    import from pickle { loads as pickle_loads }
+    import from _pickle { UnpicklingError }
+    logger.warning(
+        "SqliteMemory: legacy pickle schema detected; migrating to JSON. "
+        "Rows that can't be unpickled will be moved to anchors_quarantine."
+    );
+    # Snapshot old rows; the table will be rewritten.
+    cursor = conn.execute("SELECT id, data FROM anchors");
+    old_rows = cursor.fetchall();
+    # Rename old table aside so we can build the new one cleanly.
+    conn.execute("ALTER TABLE anchors RENAME TO anchors_legacy_pickle");
+    _create_new_schema(conn);
+    migrated = 0;
+    quarantined = 0;
+    for (id_str, blob) in old_rows {
+        try {
+            anchor = pickle_loads(blob);
+            row = _anchor_to_row(anchor);
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO anchors
+                    (id, type, arch_module, arch_type, fingerprint, data,
+                     format_version, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (id_str, ) + row
+            );
+            migrated += 1;
+        } except (
+            UnpicklingError,
+            ModuleNotFoundError,
+            AttributeError,
+            TypeError
+        ) as e {
+            # We intentionally don't store the raw bytes in quarantine for
+            # the legacy path — pickle bytes aren't useful to inspect and
+            # bloat the DB. Record the fact and the error instead.
+            _quarantine(
+                conn,
+                id_str,
+                None,
+                None,
+                None,
+                None,
+                None,
+                f"legacy pickle unreadable: {type(e).__name__}: {e}",
+                from_format_version=0
+            );
+            quarantined += 1;
+        } except Exception as e {
+            _quarantine(
+                conn,
+                id_str,
+                None,
+                None,
+                None,
+                None,
+                None,
+                f"legacy pickle migration error: {type(e).__name__}: {e}",
+                from_format_version=0
+            );
+            quarantined += 1;
+        }
+    }
+    conn.execute("DROP TABLE anchors_legacy_pickle");
+    conn.commit();
+    logger.warning(
+        f"SqliteMemory: legacy migration complete — "
+        f"{migrated} anchors migrated, {quarantined} quarantined."
+    );
+}
 
 # =============================================================================
 # VolatileMemory Implementation (L1)
@@ -161,7 +376,12 @@ impl SqliteMemory.postinit -> None {
     self.l3_fetch_count = 0;
 }
 
-"""Lazily initialize SQLite connection when first needed."""
+"""Lazily initialize SQLite connection when first needed.
+
+Creates the new JSON-based schema. If an existing DB uses the legacy
+pickle schema (id TEXT, data BLOB), migrates all rows in-place before
+returning.
+"""
 impl SqliteMemory._ensure_connection -> None {
     if self.__conn__ is not None {
         return;
@@ -175,16 +395,16 @@ impl SqliteMemory._ensure_connection -> None {
     self.__conn__ = sqlite3.connect(self.path, check_same_thread=False);
     self.__conn__.execute("PRAGMA journal_mode=WAL");
     self.__conn__.execute("PRAGMA synchronous=NORMAL");
-    # Create anchors table if it doesn't exist
-    self.__conn__.execute(
-        """
-        CREATE TABLE IF NOT EXISTS anchors (
-            id TEXT PRIMARY KEY,
-            data BLOB NOT NULL
-        )
-    """
-    );
-    self.__conn__.commit();
+    # Detect schema state: new, legacy pickle, or empty.
+    if _is_new_schema(self.__conn__) {
+        # Already migrated — ensure quarantine + meta tables exist in case
+        # someone opened a new-schema DB with an older client.
+        _create_new_schema(self.__conn__);
+    } elif _is_legacy_schema(self.__conn__) {
+        _migrate_legacy_pickle_db(self.__conn__);
+    } else {
+        _create_new_schema(self.__conn__);
+    }
 }
 
 """Check if database connection is available."""
@@ -192,9 +412,14 @@ impl SqliteMemory.is_available -> bool {
     return self.__conn__ is not None;
 }
 
-"""Get an anchor by ID. Check memory first, then database."""
+"""Get an anchor by ID. Check memory first, then database.
+
+On deserialization failure, the row is moved to anchors_quarantine
+(never deleted outright) so data can be inspected and recovered later.
+Fingerprint drift is logged but does not block deserialization — the
+Serializer tolerates added/removed fields by design.
+"""
 impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
-    import from _pickle { UnpicklingError }
     # Check in-memory cache first
     if (anchor := self.__mem__.get(id)) {
         return anchor;
@@ -203,28 +428,81 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
     if not self.__conn__ and os.path.exists(self.path) {
         self._ensure_connection();
     }
-    # Check database
-    if self.__conn__ {
-        cursor = self.__conn__.execute(
-            "SELECT data FROM anchors WHERE id = ?", (str(id), )
-        );
-        if (row := cursor.fetchone()) {
-            try {
-                self.l3_fetch_count += 1;
-                anchor = loads(row[0]);
-                # Promote to memory cache
-                self.__mem__[id] = anchor;
-                return anchor;
-            } except (UnpicklingError, ModuleNotFoundError, AttributeError) {
-                # Can't unpickle - likely stale data from previous session
-                # Delete the stale entry
-                self.__conn__.execute("DELETE FROM anchors WHERE id = ?", (str(id), ));
-                self.__conn__.commit();
-                return None;
-            }
+    if not self.__conn__ {
+        return None;
+    }
+    cursor = self.__conn__.execute(
+        """
+        SELECT type, arch_module, arch_type, fingerprint, data, format_version
+        FROM anchors WHERE id = ?
+        """,
+        (str(id), )
+    );
+    row = cursor.fetchone();
+    if not row {
+        return None;
+    }
+    (anchor_type, arch_module, arch_type, fingerprint, data_json, fmt_version) = row;
+    self.l3_fetch_count += 1;
+    # Fingerprint drift check — informational only. The serializer already
+    # tolerates added/removed fields; type changes will surface as
+    # deserialize exceptions below.
+    if arch_module and arch_type and fingerprint {
+        cls = Serializer._get_class(arch_module, arch_type);
+        current_fp = getattr(cls, '__jac_fingerprint__', None) if cls else None;
+        if current_fp and current_fp != fingerprint {
+            logger.info(
+                f"SqliteMemory: schema drift on {arch_module}.{arch_type} "
+                f"(stored fingerprint={fingerprint}, current={current_fp}, "
+                f"anchor id={id}); attempting best-effort load."
+            );
         }
     }
-    return None;
+    try {
+        data = json.loads(data_json);
+        anchor = Serializer.deserialize(data);
+    } except Exception as e {
+        logger.warning(
+            f"SqliteMemory: failed to deserialize anchor {id} "
+            f"({arch_module}.{arch_type}): {type(e).__name__}: {e}. "
+            f"Moving to anchors_quarantine."
+        );
+        _quarantine(
+            self.__conn__,
+            str(id),
+            anchor_type,
+            arch_module,
+            arch_type,
+            fingerprint,
+            data_json,
+            f"deserialize error: {type(e).__name__}: {e}",
+            from_format_version=fmt_version
+        );
+        return None;
+    }
+    if anchor is None {
+        # Registry couldn't resolve class (renamed/moved). Quarantine
+        # rather than drop — this is recoverable with an alias registry
+        # in Layer 3.
+        logger.warning(
+            f"SqliteMemory: class {arch_module}.{arch_type} not in "
+            f"registry for anchor {id}. Moving to anchors_quarantine."
+        );
+        _quarantine(
+            self.__conn__,
+            str(id),
+            anchor_type,
+            arch_module,
+            arch_type,
+            fingerprint,
+            data_json,
+            f"class {arch_module}.{arch_type} unregistered",
+            from_format_version=fmt_version
+        );
+        return None;
+    }
+    self.__mem__[id] = anchor;
+    return anchor;
 }
 
 """Store an anchor. Writes to memory and immediately persists to database."""
@@ -233,11 +511,18 @@ impl SqliteMemory.put(anchor: Anchor) -> None {
     if anchor.persistent {
         self._ensure_connection();
         try {
+            row = _anchor_to_row(anchor);
             self.__conn__.execute(
-                "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
-                (str(anchor.id), dumps(anchor))
+                """
+                INSERT OR REPLACE INTO anchors
+                    (id, type, arch_module, arch_type, fingerprint, data,
+                     format_version, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (str(anchor.id), ) + row
             );
             self.__conn__.commit();
+            anchor.hash = Serializer._compute_hash(anchor);
         } except Exception as e {
             logger.warning(f"SqliteMemory.put immediate persist failed: {e}");
         }
@@ -336,10 +621,24 @@ impl SqliteMemory.find_one(
     return None;
 }
 
-"""Sync memory to database with access control checks."""
+"""Serialize an object to canonical JSON for equality comparison."""
+def _canonical_json(val: object) -> str {
+    return json.dumps(
+        Serializer.serialize(val, include_type=True),
+        sort_keys=True,
+        default=lambda v: str : str(v)
+    );
+}
+
+"""Sync memory to database with access control checks.
+
+Preserves the field-level merge semantics from the legacy pickle path:
+edges merge requires CONNECT access, archetype/access merge require
+WRITE access. Equality comparisons use JSON-serialized forms instead of
+pickle-hash, making the sync safe across schema drift.
+"""
 impl SqliteMemory.sync -> None {
     import from jaclang { JacRuntimeInterface as Jac }
-    import from _pickle { PicklingError }
     # Check if there's anything to sync
     has_persistent = any(a.persistent for a in self.__mem__.values());
     if not self.__gc__ and not has_persistent {
@@ -348,9 +647,10 @@ impl SqliteMemory.sync -> None {
     }
     # Lazily create connection now that we have data to persist
     self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
     # Handle garbage collected anchors (deletions)
     for anchor in self.__gc__ {
-        self.__conn__.execute("DELETE FROM anchors WHERE id = ?", (str(anchor.id), ));
+        conn.execute("DELETE FROM anchors WHERE id = ?", (str(anchor.id), ));
     }
     self.__gc__.clear();
     # Sync memory to database with access control
@@ -365,52 +665,93 @@ impl SqliteMemory.sync -> None {
 
         key = str(id);
         try {
-            cursor = self.__conn__.execute(
-                "SELECT data FROM anchors WHERE id = ?", (key, )
+            cursor = conn.execute(
+                """
+                SELECT type, arch_module, arch_type, fingerprint, data,
+                       format_version
+                FROM anchors WHERE id = ?
+                """,
+                (key, )
             );
-            row = cursor.fetchone();
-            stored = loads(row[0]) if row else None;
+            raw_row = cursor.fetchone();
+            stored: (Anchor | None) = None;
+            if raw_row {
+                row_type = cast(str, raw_row[0]);
+                row_arch_module = cast((str | None), raw_row[1]);
+                row_arch_type = cast((str | None), raw_row[2]);
+                row_fingerprint = cast((str | None), raw_row[3]);
+                row_data = cast(str, raw_row[4]);
+                row_fmt = cast(int, raw_row[5]);
+                try {
+                    stored = cast(
+                        (Anchor | None), Serializer.deserialize(json.loads(row_data))
+                    );
+                } except Exception as de {
+                    logger.warning(
+                        f"SqliteMemory.sync: stored anchor {key} unreadable "
+                        f"({type(de).__name__}: {de}); quarantining and "
+                        "overwriting with in-memory version."
+                    );
+                    _quarantine(
+                        conn,
+                        key,
+                        row_type,
+                        row_arch_module,
+                        row_arch_type,
+                        row_fingerprint,
+                        row_data,
+                        f"sync-time deserialize: {type(de).__name__}: {de}",
+                        from_format_version=row_fmt
+                    );
+                    stored = None;
+                }
+            }
 
-            if stored and stored.is_populated() {
+            if stored is not None and stored.is_populated() {
+                stored_anchor = cast(Anchor, stored);
                 changed = False;
                 # Handle edge updates (CONNECT access)
                 if (
-                    isinstance(stored, NodeAnchor)
+                    isinstance(stored_anchor, NodeAnchor)
                     and isinstance(anchor, NodeAnchor)
-                    and stored.edges != anchor.edges
+                    and stored_anchor.edges != anchor.edges
                     and Jac.check_connect_access(anchor)
                 ) {
                     if not anchor.edges and not isinstance(anchor.archetype, Root) {
-                        self.__conn__.execute(
-                            "DELETE FROM anchors WHERE id = ?", (key, )
-                        );
+                        conn.execute("DELETE FROM anchors WHERE id = ?", (key, ));
                         continue;
                     }
-                    stored.edges = anchor.edges;
+                    stored_anchor.edges = anchor.edges;
                     changed = True;
                 }
                 # Handle access/archetype updates (WRITE access)
-                access_changed = hash(dumps(stored.access)) != hash(
-                    dumps(anchor.access)
+                access_changed = _canonical_json(stored_anchor.access) != _canonical_json(
+                    anchor.access
                 );
-                archetype_changed = hash(dumps(stored.archetype)) != hash(
-                    dumps(anchor.archetype)
+                archetype_changed = _canonical_json(stored_anchor.archetype) != _canonical_json(
+                    anchor.archetype
                 );
                 if (access_changed or archetype_changed)
                 and Jac.check_write_access(anchor) {
                     if access_changed {
-                        stored.access = anchor.access;
+                        stored_anchor.access = anchor.access;
                     }
                     if archetype_changed {
-                        stored.archetype = anchor.archetype;
+                        stored_anchor.archetype = anchor.archetype;
                     }
                     changed = True;
                 }
                 # Only write to database if something actually changed
                 if changed {
-                    self.__conn__.execute(
-                        "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
-                        (key, dumps(stored))
+                    merged_row = _anchor_to_row(stored_anchor);
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO anchors
+                            (id, type, arch_module, arch_type, fingerprint,
+                             data, format_version, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (key, ) + merged_row
                     );
                 }
             } else {
@@ -421,18 +762,30 @@ impl SqliteMemory.sync -> None {
                     and not anchor.edges
                 )
                 and Jac.check_write_access(anchor) {
-                    self.__conn__.execute(
-                        "INSERT OR REPLACE INTO anchors (id, data) VALUES (?, ?)",
-                        (key, dumps(anchor))
+                    new_row = _anchor_to_row(anchor);
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO anchors
+                            (id, type, arch_module, arch_type, fingerprint,
+                             data, format_version, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (key, ) + new_row
                     );
                 }
             }
-        } except (PicklingError, AttributeError, ModuleNotFoundError) {
-            # Skip anchors that can't be pickled (e.g., transient test classes)
+        } except (AttributeError, ModuleNotFoundError) {
+            # Skip anchors that can't be serialized (e.g. transient test classes)
+            continue;
+        } except Exception as e {
+            logger.warning(
+                f"SqliteMemory.sync: failed to sync anchor {key}: "
+                f"{type(e).__name__}: {e}"
+            );
             continue;
         }
     }
-    self.__conn__.commit();
+    conn.commit();
 }
 
 """Bulk store multiple anchors."""

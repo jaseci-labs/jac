@@ -139,7 +139,6 @@ obj JacAutoLintPass(UniPass) {
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
-    def _body_to_key(body: list) -> str;
 }
 
 """Report-only lint pass for use in the standard compile/LSP pipeline.
