@@ -15,6 +15,7 @@ jac start calculator_service.jac --port 8002
 ```
 
 This starts:
+
 - `calculator_service` on `:8002`
 - `math_service` auto-spawned on `:18xxx` (check logs for exact port)
 

@@ -19,20 +19,24 @@ Usage:
 """
 
 import argparse
-import sys
 import os
+import sys
 
 # Add jac-scale to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
 
-from jaclang.runtimelib import sv_client
 from jac_scale.microservices.gateway import MicroserviceGateway
+from jaclang.runtimelib import sv_client
 
 
 def main():
     parser = argparse.ArgumentParser(description="Start the microservice gateway")
-    parser.add_argument("--math-port", type=int, required=True, help="Port of math_service")
-    parser.add_argument("--calc-port", type=int, default=8002, help="Port of calculator_service")
+    parser.add_argument(
+        "--math-port", type=int, required=True, help="Port of math_service"
+    )
+    parser.add_argument(
+        "--calc-port", type=int, default=8002, help="Port of calculator_service"
+    )
     parser.add_argument("--gateway-port", type=int, default=8000, help="Gateway port")
     args = parser.parse_args()
 
@@ -40,7 +44,7 @@ def main():
     sv_client.register("math_service", f"http://127.0.0.1:{args.math_port}")
     sv_client.register("calculator_service", f"http://127.0.0.1:{args.calc_port}")
 
-    print(f"Registered math_service at :{ args.math_port}")
+    print(f"Registered math_service at :{args.math_port}")
     print(f"Registered calculator_service at :{args.calc_port}")
 
     # Start gateway
@@ -52,9 +56,9 @@ def main():
         port=args.gateway_port,
     )
     print(f"\nStarting gateway on :{args.gateway_port}")
-    print(f"  /api/math/*  → :{ args.math_port}")
+    print(f"  /api/math/*  → :{args.math_port}")
     print(f"  /api/calc/*  → :{args.calc_port}")
-    print(f"  /health      → service status\n")
+    print("  /health      → service status\n")
     gw.start()
 
 
