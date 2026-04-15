@@ -10,10 +10,6 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Split of the previous monolithic `test-core` (was ~17 min) into
-  # two top-level buckets: all compiler tests vs. everything else.
-  # One `--ignore` at the top level, no inner carve-outs. New test
-  # dirs added under jac/tests/ automatically land in `test-core-other`.
   test-core-compiler:
     runs-on: ubuntu-latest
     steps:
@@ -38,7 +34,7 @@ jobs:
     - name: Run compiler tests
       run: pytest -x jac/tests/compiler -n auto
 
-  test-core-other:
+  test-core-runtime:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
@@ -59,10 +55,8 @@ jobs:
         pip install pytest-xdist
         pip install watchdog
 
-    - name: Run remaining Jac core tests
-      run: |
-        pytest -x jac -n auto \
-          --ignore=jac/tests/compiler
+    - name: Run runtime + langserve + language tests
+      run: pytest -x jac -n auto --ignore=jac/tests/compiler
 
   test-client:
     runs-on: ubuntu-latest
