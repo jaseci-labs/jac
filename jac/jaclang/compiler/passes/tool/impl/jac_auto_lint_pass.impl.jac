@@ -820,23 +820,6 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     self._check_no_print(nd);
-    # W3038: replace setterName(expr) when it appears as a lambda body expression
-    # (ExprStmt-based setter calls are handled in exit_expr_stmt)
-    if (
-        not self.report_only
-        and self._pending_setters
-        and isinstance(nd.parent, uni.LambdaExpr)
-        and nd.parent.body is nd
-    ) {
-        result = self._resolve_setter_call(nd);
-        if result is not None {
-            (_, assign) = result;
-            lambda_node = nd.parent;
-            assign.parent = lambda_node;
-            lambda_node.body = assign;
-            lambda_node.kid = [assign if k is nd else k for k in lambda_node.kid];
-        }
-    }
     if self.report_only or self._is_suppressed(W3007) {
         return;
     }
@@ -2361,51 +2344,44 @@ the useState import item is removed. If it was the only import from react,
 the entire import statement is removed from the module body.
 """
 impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
-    if not self.lint_enabled or self.report_only {
+    if not self.lint_enabled or self.report_only or not self._did_convert_usestate {
         return;
     }
-    if not self._did_convert_usestate {
-        return;
-    }
-    # Check if useState is still referenced anywhere (in case it wasn't converted everywhere)
-    module_body = list(nd.body);
-    new_module_body: list[uni.UniNode] = [];
-    for stmt in module_body {
-        if not isinstance(stmt, uni.Import) {
-            new_module_body.append(stmt);
-            continue;
-        }
-        import_node = stmt;
-        # Only handle `import from "..." { useState }` style imports
-        if import_node.from_loc is None {
-            new_module_body.append(stmt);
+    new_body = [];
+    removed_ids: list[int] = [];
+    changed = False;
+    for stmt in nd.body {
+        if not isinstance(stmt, uni.Import) or stmt.from_loc is None {
+            new_body.append(stmt);
             continue;
         }
         usestate_items = [
             item
-            for item in import_node.items
+            for item in stmt.items
             if isinstance(item, uni.ModuleItem)
             and isinstance(item.name, uni.Name)
             and item.name.value == "useState"
         ];
         if not usestate_items {
-            new_module_body.append(stmt);
+            new_body.append(stmt);
             continue;
         }
         remaining_items = [
             item
-            for item in import_node.items
+            for item in stmt.items
             if item not in usestate_items
         ];
         if not remaining_items {
-            # useState was the only import — remove the whole import statement
+            # useState was the only import — drop the whole statement
+            removed_ids.append(id(stmt));
+            changed = True;
             continue;
         }
-        # Remove useState from the import's item list and rebuild kids
-        import_node.items = remaining_items;
+        # Partial removal — update items and rebuild kids in-place
+        stmt.items = remaining_items;
         new_kid: list[uni.UniNode] = [];
         skip_comma = False;
-        for kid in import_node.kid {
+        for kid in stmt.kid {
             if kid in usestate_items {
                 skip_comma = True;
                 continue;
@@ -2417,23 +2393,25 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
             skip_comma = False;
             new_kid.append(kid);
         }
-        import_node.set_kids(nodes=new_kid);
-        new_module_body.append(stmt);
+        stmt.set_kids(nodes=new_kid);
+        new_body.append(stmt);
+        changed = True;
     }
-    nd.body = new_module_body;
+    if not changed {
+        return;
+    }
+    nd.body = new_body;
     # Must also rebuild kid list — the unparser reads nd.kid, not nd.body
-    removed_ids = set(
-        id(s)
-        for s in module_body
-        if s not in new_module_body
-    );
     if removed_ids {
-        new_kid: list[uni.UniNode] = [
-            k
-            for k in nd.kid
-            if id(k) not in removed_ids
-        ];
-        nd.set_kids(nodes=new_kid or [uni.EmptyToken()]);
+        removed_set = set(removed_ids);
+        nd.set_kids(
+            nodes=[
+                k
+                for k in nd.kid
+                if id(k) not in removed_set
+            ]
+            or [uni.EmptyToken()]
+        );
     }
     self.recalculate_parents(nd);
 }
