@@ -567,6 +567,45 @@ test "builtin llm compiles without glob" {
     sys.stdout = sys.__stdout__;
 }
 
+import from pathlib { Path }
+import from byllm.config_loader { get_byllm_config, reset_byllm_config }
+import from jaclang.jac0core.runtime { JacRuntime }
+
+glob GEMINI_FIXTURE = os.path.join(FIXTURE_DIR, "jac_toml_gemini");
+
+
+test "byllm config reads model from jac.toml" {
+    # Explicit project_dir pointing at a jac.toml with gemini model
+    reset_byllm_config();
+    config = get_byllm_config(Path(GEMINI_FIXTURE));
+    assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
+}
+
+test "byllm config defaults to gpt-4o-mini when no jac.toml" {
+    # fixtures/ dir has no jac.toml, so built-in defaults apply
+    reset_byllm_config();
+    config = get_byllm_config(Path(FIXTURE_DIR));
+    assert config.get_model_config()['default_model'] == "gpt-4o-mini";
+}
+
+test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
+    # cwd is /tmp, but full_target_path points at the gemini fixture —
+    # the correct jac.toml must still be picked up
+    orig = JacRuntime.full_target_path;
+    orig_cwd = os.getcwd();
+    JacRuntime.full_target_path = os.path.join(GEMINI_FIXTURE, "main.jac");
+    reset_byllm_config();
+    os.chdir("/tmp");
+    try {
+        config = get_byllm_config();
+        assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
+    } finally {
+        os.chdir(orig_cwd);
+        JacRuntime.full_target_path = orig;
+        reset_byllm_config();
+    }
+}
+
 # Note: OutputConversionError tests call MTRuntime.parse_response directly because
 # MockLLM.dispatch_no_streaming bypasses parse_response, returning the pre-built
 # output object straight from CompletionResult. The error lives in parse_response,
