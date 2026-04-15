@@ -100,7 +100,10 @@ class SymTabBuildPass(UniPass) {
     def exit_iter_for_stmt(self: SymTabBuildPass, nd: uni.IterForStmt) -> None;
     """Recursively define symbols in unpacking expressions."""
     def _def_insert_unpacking(
-        self: SymTabBuildPass, nd: uni.Expr, sym_tab: UniScopeNode
+        self: SymTabBuildPass,
+        nd: uni.Expr,
+        sym_tab: UniScopeNode,
+        rebind_in_python_scope: bool = False
     ) -> None;
 
     def enter_in_for_stmt(self: SymTabBuildPass, nd: uni.InForStmt) -> None;

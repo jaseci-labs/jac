@@ -164,7 +164,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        pip install -e jac-scale
+        pip install -e "jac-scale[all]"
         pip install pytest
         pip install pytest-asyncio
         pip install -e jac-client
@@ -213,6 +213,10 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_restspec.jac
 
+    - name: Run Microservice interop tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
+
   test-scale-k8s:
     runs-on: ubuntu-latest
     steps:
@@ -230,7 +234,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e jac
-          pip install -e jac-scale
+          pip install -e "jac-scale[all]"
           pip install -e jac-client
           pip install pytest
           pip install pytest-xdist
@@ -298,7 +302,7 @@ jobs:
     - name: Pre-build admin dashboard UI
       run: |
         pip install -e jac-client
-        pip install -e jac-scale
+        pip install -e "jac-scale[all]"
         cd jac-scale && jac run scripts/build_admin_ui.jac
 
     - name: Uninstall editable packages
@@ -320,7 +324,7 @@ jobs:
         python -m build jac-byllm --wheel
         pip install jac/dist/jaclang-*.whl
         pip install jac-client/dist/jac_client-*.whl
-        pip install jac-scale/dist/jac_scale-*.whl
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
         pip install pytest-asyncio
@@ -485,6 +489,62 @@ jobs:
           kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
         fi
 
+    # ========== fullstack eject smoke ==========
+    # Structural / codegen correctness of `jac eject` is covered by
+    # jac/tests/project/test_eject.jac (21 in-process unit tests, ~0.5s).
+    # The steps below are deliberately end-to-end: they exist to validate
+    # what the unit tests cannot — that `jac eject` works against the real
+    # fullstack template and that the ejected backend imports cleanly
+    # against the wheel-installed jaclang runtime and actually serves HTTP.
+    # The live `jac start` path is exercised separately by the test-client
+    # job (`start dev with client does initial compilation`), so this job
+    # focuses solely on the eject pipeline.
+    - name: Create fullstack project and eject it
+      run: |
+        jac create --use fullstack fs-smoke
+        jac eject fs-smoke
+
+    - name: Install ejected backend and start it
+      working-directory: fs-smoke-ejected
+      run: |
+        pip install -r backend/requirements.txt
+        PORT=8000 timeout 600 python backend/serve.py > /tmp/fullstack-ejected.log 2>&1 &
+        EJECTED_PID=$!
+        echo "EJECTED_PID=$EJECTED_PID" >> $GITHUB_ENV
+        sleep 5
+        if ! kill -0 $EJECTED_PID 2>/dev/null; then
+          echo "Ejected backend died during startup"
+          cat /tmp/fullstack-ejected.log
+          exit 1
+        fi
+
+    - name: Verify ejected fullstack backend responds
+      run: |
+        for i in $(seq 1 12); do
+          if ! kill -0 ${{ env.EJECTED_PID }} 2>/dev/null; then
+            echo "Ejected backend exited unexpectedly"
+            tail -100 /tmp/fullstack-ejected.log
+            exit 1
+          fi
+          if curl -sf --max-time 5 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "Ejected backend responding (attempt $i)"
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "Ejected backend failed to respond"
+        tail -100 /tmp/fullstack-ejected.log
+        exit 1
+
+    - name: Stop ejected fullstack server
+      if: always()
+      run: |
+        if [ -n "${{ env.EJECTED_PID }}" ]; then
+          kill ${{ env.EJECTED_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
+        fi
+
     - name: Upload jac-gpt server logs
       if: always()
       uses: actions/upload-artifact@v4
@@ -501,6 +561,14 @@ jobs:
         path: /tmp/algo-server.log
         retention-days: 7
 
+    - name: Upload fullstack ejected backend logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fullstack-ejected-logs
+        path: /tmp/fullstack-ejected.log
+        retention-days: 7
+
     - name: Jac pack test summary
       if: always()
       run: |
@@ -510,5 +578,6 @@ jobs:
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY

@@ -256,7 +256,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Update user role or settings (admin only)'
         )
     );
-    async def delete_user_handler(request: Request, username: str) -> TransportResponse {
+    async def delete_user_handler(
+        request: Request, username: str
+    ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
         return self.admin_delete_user(username, authorization);
     }
@@ -607,7 +609,9 @@ impl JacAPIServerAdmin.reset_password(
         );
     }
     # Update password
-    result = self.user_manager.update_password(username, current_password, new_password);
+    result = self.user_manager.update_password(
+        username, current_password, new_password
+    );
     if 'error' in result {
         return TransportResponse.fail(
             code='UPDATE_FAILED',
@@ -965,7 +969,10 @@ impl JacAPIServerAdmin.admin_graph_data(
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {'from': str(id(source_node)), 'to': str(id(target_node))};
+            edge_data: dict = {
+                'from': str(id(source_node)),
+                'to': str(id(target_node))
+            };
             if repr(edge_arch) != 'GenericEdge()' {
                 edge_data['label'] = repr(edge_arch);
             }
@@ -993,7 +1000,7 @@ impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
     import re;
-    import from prometheus_client { generate_latest, REGISTRY }
+    import from jac_scale._optdeps.prometheus { generate_latest, REGISTRY }
     error = self.require_admin(Authorization);
     if error {
         return error;
@@ -1105,9 +1112,7 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
                             'name': metric_name,
                             'description': '',
                             'type': 'unknown',
-                            'values': [
-                                {'labels': labels, 'value': value, 'suffix': ''}
-                            ]
+                            'values': [{'labels': labels, 'value': value, 'suffix': ''}]
                         }
                     );
                 }

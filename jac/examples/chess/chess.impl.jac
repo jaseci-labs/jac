@@ -145,9 +145,7 @@ impl Pawn.raw_moves(board: Board) -> list[Move] {
             if target is not None and target.color != self.color {
                 is_promo = new_row == promo_row;
                 moves.append(
-                    Move(
-                        from_pos=self.pos, to_pos=(new_row, nc), is_promotion=is_promo
-                    )
+                    Move(from_pos=self.pos, to_pos=(new_row, nc), is_promotion=is_promo)
                 );
             }
             (ep_row, ep_col) = board.ep_pos;
@@ -434,7 +432,9 @@ impl Board.evaluate(color: Color) -> int {
                 }
 
                 # Development bonus
-                dev_bonus = 8 if piece.has_moved and piece.kind != PieceKind.KING else 0;
+                dev_bonus = 8
+                    if piece.has_moved and piece.kind != PieceKind.KING
+                    else 0;
 
                 total = base + center_bonus + dev_bonus;
                 if piece.color == color {

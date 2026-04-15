@@ -17,9 +17,7 @@ impl AstTool.autodoc_uninode -> str {
             }
             typ_str = str(kid.typ);
             arrow = '-.->' if ('Optional' in typ_str) else '-->';
-            typ = typ_str.replace(
-                'typing.', ''
-            ).replace(
+            typ = typ_str.replace('typing.', '').replace(
                 'jaclang.jac0core.unitree.', ''
             ).replace(
                 'Optional[', ''
@@ -213,9 +211,7 @@ impl AstTool.pass_template -> str {
         }
         emit('    """\n');
     }
-    output = output.replace(
-        'jaclang.jac0core.unitree.', ''
-    ).replace(
+    output = output.replace('jaclang.jac0core.unitree.', '').replace(
         'typing.', ''
     ).replace(
         "<enum '", ''

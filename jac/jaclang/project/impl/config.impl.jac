@@ -121,7 +121,9 @@ impl JacConfig.load(toml_path: Path) -> JacConfig {
     return config;
 }
 
-impl JacConfig.from_toml_str(toml_str: str, toml_path: Path | None = None) -> JacConfig {
+impl JacConfig.from_toml_str(
+    toml_str: str, toml_path: Path | None = None
+) -> JacConfig {
     import tomllib;
     data = tomllib.loads(toml_str);
     return _parse_toml_data(data, toml_path);
@@ -726,7 +728,9 @@ impl JacConfig.remove_dependency(
 # ===============================================================================
 # Helper Functions Implementation
 # ===============================================================================
-impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig {
+impl _parse_toml_data(
+    data: dict[str, Any], toml_path: Path | None = None
+) -> JacConfig {
     config = JacConfig();
     config._raw_data = data;
     if toml_path {

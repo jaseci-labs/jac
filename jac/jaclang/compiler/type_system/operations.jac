@@ -345,9 +345,7 @@ def get_type_of_binary_operation(
     if isinstance(expr.op, (uni.ConnectOp, uni.DisconnectOp)) {
         def is_node_type_instance(t: jtypes.TypeBase) -> bool {
             return (
-                isinstance(t, jtypes.ClassType)
-                and t.is_node_type()
-                and t.is_instance()
+                isinstance(t, jtypes.ClassType) and t.is_node_type() and t.is_instance()
             );
         }
         # Check whether a type is a valid node operand for connections.

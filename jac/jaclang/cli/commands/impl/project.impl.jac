@@ -44,7 +44,9 @@ impl create(
     tmpl = _resolve_template(use, registry);
     if tmpl is None {
         console.error(f"Unknown template: {use}");
-        console.print("Use --list-templates to see available templates.", style="muted");
+        console.print(
+            "Use --list-templates to see available templates.", style="muted"
+        );
         return 1;
     }
     cwd = Path.cwd();
@@ -85,7 +87,7 @@ impl create(
     console.print("  📁 Setting up project structure", style="muted");
     # Generate jac.toml from config dict
     toml_content = _render_config_to_toml(tmpl.config, project_name);
-    with open(toml_path, "w") as f {
+    with open(toml_path, "w", encoding="utf-8") as f {
         f.write(toml_content);
     }
     console.print(f"  ✔ jac.toml", style="success");
@@ -104,7 +106,7 @@ impl create(
             } else {
                 # Text file - apply template substitution and write as text
                 rendered = content.replace("{{name}}", project_name);
-                with open(full_path, "w") as f {
+                with open(full_path, "w", encoding="utf-8") as f {
                     f.write(rendered);
                 }
             }
@@ -334,7 +336,7 @@ def _render_config_to_toml(config: dict, project_name: str) -> str {
 """Create project-root .gitignore with entries."""
 def _create_root_gitignore(project_path: Path, entries: list[str]) {
     gitignore_path = project_path / ".gitignore";
-    with open(gitignore_path, "w") as f {
+    with open(gitignore_path, "w", encoding="utf-8") as f {
         f.write("\n".join(entries) + "\n");
     }
     console.print(f"  ✔ .gitignore", style="success");
@@ -347,7 +349,9 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.dep_registry { get_dependency_registry }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         return 1;
     }
     console.print(
@@ -378,8 +382,7 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     all_packages = pip_packages + git_packages;
     if all_packages {
         with console.status(
-            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]",
-            spinner="dots"
+            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]", spinner="dots"
         ) as status {
             install_success = installer.install_package(all_packages);
         }
@@ -534,7 +537,9 @@ impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.dependencies { DependencyInstaller }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         return 1;
     }
     if not packages {

@@ -15,6 +15,7 @@ import from jaclang.jac0core.diagnostics {
     E1002,
     E1003,
     E1004,
+    E1005,
     E1010,
     E1011,
     E1020,
@@ -46,21 +47,14 @@ class TypeCheckPass(UniPass) {
     def exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> None;
     def exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -> None;
     def exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None;
-    def enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None;
-    def exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None;
     def exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None;
+    def exit_jsx_element(self: TypeCheckPass, nd: uni.JsxElement) -> None;
     def exit_filter_compr(self: TypeCheckPass, nd: uni.FilterCompr) -> None;
     def exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> None;
     def exit_formatted_value(self: TypeCheckPass, nd: uni.FormattedValue) -> None;
     def exit_edge_ref_trailer(self: TypeCheckPass, nd: uni.EdgeRefTrailer) -> None;
     def exit_special_var_ref(self: TypeCheckPass, nd: uni.SpecialVarRef) -> None;
     def exit_name(self: TypeCheckPass, nd: uni.Name) -> None;
-    def enter_if_else_expr(self: TypeCheckPass, nd: uni.IfElseExpr) -> None;
-    def enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None;
-    def exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None;
-    def _if_body_always_terminates(self: TypeCheckPass, nd: uni.IfStmt) -> bool;
-    def enter_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None;
-    def exit_match_case(self: TypeCheckPass, nd: uni.MatchCase) -> None;
     def exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None;
     def exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None;
     def exit_in_for_stmt(self: TypeCheckPass, nd: uni.InForStmt) -> None;

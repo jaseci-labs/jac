@@ -45,18 +45,10 @@ cl def:pub app -> JsxElement {
             <input
                 value={text}
                 onChange={lambda e: ChangeEvent { text = e.target.value;}}
-                onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
-                    add();
-                }}}
+                onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}}
                 placeholder="Add a todo..."
             />
-            <button onClick={add}>
-                Add
-            </button>
-            {[
-                <p key={jid(t)}>
-                    {t.title} ({t.category})
-                </p> for t in todos
-            ]}
+            <button onClick={add}>Add</button>
+            {[<p key={jid(t)}>{t.title} ({t.category})</p> for t in todos]}
         </div>;
 }

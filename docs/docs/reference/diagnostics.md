@@ -109,6 +109,7 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
+| `W0064` | `'{keyword} { ... }'` block syntax is deprecated at module scope. Use the `'to {keyword}:'` section header instead. |
 
 ### Lexer Errors
 
@@ -239,6 +240,8 @@ Emitted by the type checker and type evaluator.
 | Code | Message |
 |------|---------|
 | `W1100` | Module not found |
+| `W1101` | Cannot import name '{name}' from module '{module}' |
+| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
 
 ---
 

@@ -76,6 +76,7 @@ glob id_bag: dict = {},
          'Assignment': '#ffc596',
          'BinaryExpr': '#fbeb93',
          'CompareExpr': '#fbeb93',
+         'CfgExpr': '#fbeb93',
          'BoolExpr': '#fbeb93',
          'LambdaExpr': '#fbeb93',
          'UnaryExpr': '#fbeb93',
@@ -337,7 +338,9 @@ def print_ast_tree(
             );
         }
     } elif isinstance(root, ast3.AST) {
-        tree_str = f"{get_location_info(root)}	{markers}{__node_repr_in_py_tree(root)}\n";
+        tree_str = f"{get_location_info(root)}	{markers}{__node_repr_in_py_tree(
+            root
+        )}\n";
         for (i_a, child_a) in enumerate(ast3.iter_child_nodes(root)) {
             is_last = i_a == (len(`list(ast3.iter_child_nodes(root))) - 1);
             tree_str += print_ast_tree(

@@ -4,7 +4,8 @@ impl JacFormatPass.format_doc_ir(
     indent_level: int = 0,
     width_remaining: (int | None) = None,
     is_broken: bool = False,
-    align_spaces: int = 0
+    align_spaces: int = 0,
+    trailing_width: int = 0
 ) -> str {
     if (doc_node is None) {
         doc_node = self.ir_in.gen.doc_ir;
@@ -26,17 +27,30 @@ impl JacFormatPass.format_doc_ir(
             return ' ';
         }
     } elif isinstance(doc_node, doc.Group) {
+        # Probe whether the group's flat form fits in the space that will
+        # actually be available on the current line, which is
+        # `width_remaining - trailing_width` (trailing_width is the flat
+        # width of content that will follow this group on the same line,
+        # propagated from enclosing Concats).
+        probe_budget = max(0, (width_remaining - trailing_width));
         fits_flat = self._probe_fits(
-            doc_node.contents,
-            indent_level=indent_level,
-            width_remaining=width_remaining
+            doc_node.contents, indent_level=indent_level, width_remaining=probe_budget
         );
+        # break_contiguous=True: when the enclosing group has already
+        # broken (is_broken=True), this group breaks unconditionally
+        # regardless of whether its own contents would fit flat. Used by
+        # JSX children groups to force children onto their own lines
+        # whenever the parent element has broken.
+        if (doc_node.break_contiguous and is_broken) {
+            fits_flat = False;
+        }
         return self.format_doc_ir(
             doc_node.contents,
             indent_level,
             width_remaining,
             is_broken=not fits_flat,
-            align_spaces=align_spaces
+            align_spaces=align_spaces,
+            trailing_width=trailing_width
         );
     } elif isinstance(doc_node, doc.Indent) {
         new_indent_level = indent_level + 1;
@@ -45,29 +59,37 @@ impl JacFormatPass.format_doc_ir(
             new_indent_level,
             width_remaining,
             is_broken,
-            align_spaces=align_spaces
+            align_spaces=align_spaces,
+            trailing_width=trailing_width
         );
     } elif isinstance(doc_node, doc.Concat) {
         result: list[str] = [];
         current_line_budget = width_remaining;
         num_parts = len(doc_node.parts);
         for (idx, part) in enumerate(doc_node.parts) {
-            effective_budget = current_line_budget;
-            # For Group nodes, reduce budget by flat first-line width of
-            # remaining siblings so the Group knows how much space is
-            # actually left on the line for its flat/break decision.
-            if isinstance(part, doc.Group) and (idx + 1) < num_parts {
-                rest_width = self._flat_first_line_width(
-                    doc.Concat(doc_node.parts[(idx + 1):])
+            is_last = (idx + 1) == num_parts;
+            # Compute the flat width of everything that will follow this
+            # part on the current line. For the last part, that's just the
+            # caller's trailing_width. For earlier parts, it's the flat
+            # first-line width of the following siblings, seeded with
+            # trailing_width so that a fully-flat tail extends the reach
+            # of the outer context's trailing content.
+            if is_last {
+                child_trailing = trailing_width;
+            } else {
+                child_trailing = self._flat_first_line_width(
+                    doc.Concat(doc_node.parts[(idx + 1):]),
+                    base=trailing_width,
+                    is_broken=is_broken
                 );
-                effective_budget = max(0, (current_line_budget - rest_width + 1));
             }
             part_str = self.format_doc_ir(
                 part,
                 indent_level,
-                effective_budget,
+                current_line_budget,
                 is_broken,
-                align_spaces=align_spaces
+                align_spaces=align_spaces,
+                trailing_width=child_trailing
             );
             if (part_str.startswith('\n') and result and result[-1].endswith(' ')) {
                 result[-1] = result[-1].rstrip(' ');
@@ -97,7 +119,12 @@ impl JacFormatPass.format_doc_ir(
     } elif isinstance(doc_node, doc.IfBreak) {
         branch = doc_node.break_contents if is_broken else doc_node.flat_contents;
         return self.format_doc_ir(
-            branch, indent_level, width_remaining, is_broken, align_spaces=align_spaces
+            branch,
+            indent_level,
+            width_remaining,
+            is_broken,
+            align_spaces=align_spaces,
+            trailing_width=trailing_width
         );
     } elif isinstance(doc_node, doc.Align) {
         new_align = doc_node.n if (doc_node.n is not None) else self.indent_size;
@@ -108,7 +135,8 @@ impl JacFormatPass.format_doc_ir(
             indent_level,
             child_width_budget,
             is_broken,
-            align_spaces=child_align_spaces
+            align_spaces=child_align_spaces,
+            trailing_width=trailing_width
         );
     } else {
         raise self.ice(f"Unknown DocType: {type(doc_node)}");
@@ -161,7 +189,7 @@ impl JacFormatPass._probe_fits(
         (cur, lvl) = work.pop();
         if isinstance(cur, doc.Text) {
             remaining -= len(cur.text);
-            if (remaining <= 0) {
+            if (remaining < 0) {
                 self._probe_cache[cache_key] = False;
                 return False;
             }
@@ -174,7 +202,7 @@ impl JacFormatPass._probe_fits(
                 continue;
             }
             remaining -= 1;
-            if (remaining <= 0) {
+            if (remaining < 0) {
                 self._probe_cache[cache_key] = False;
                 return False;
             }
@@ -207,7 +235,19 @@ etc.) that will definitely appear on the same line.  Stops at the first
 hard/literal line break or Group (since Groups make their own break
 decisions and may wrap to a new line).
 """
-impl JacFormatPass._flat_first_line_width(nd: doc.DocType) -> int {
+impl JacFormatPass._flat_first_line_width(
+    nd: doc.DocType, base: int = 0, is_broken: bool = False
+) -> int {
+    # `base` is the trailing_width from the enclosing context: content that
+    # will appear on the current line AFTER this subtree, but only if the
+    # subtree itself walks flat to completion (no Group, no hard break).
+    # If the walk terminates early at a Group or hard line, that outer
+    # trailing content is on a later line, so we don't add `base`.
+    #
+    # When `is_broken=True`, tight lines also act as breaks (format_doc_ir
+    # renders them as newline+indent in a broken context), so we must stop
+    # counting there too — otherwise content past a broken tight line gets
+    # wrongly charged to the current-line trailing width.
     work: deque[object] = deque();
     work.append(nd);
     width = 0;
@@ -219,7 +259,15 @@ impl JacFormatPass._flat_first_line_width(nd: doc.DocType) -> int {
             if (cur.hard or cur.literal) {
                 return width;
             }
-            if not cur.tight {
+            if cur.tight {
+                if is_broken {
+                    return width;
+                }
+                # Flat tight line: 0 width, continue walking.
+            } else {
+                if is_broken {
+                    return width;
+                }
                 width += 1;
             }
         } elif isinstance(cur, doc.Concat) {
@@ -234,10 +282,14 @@ impl JacFormatPass._flat_first_line_width(nd: doc.DocType) -> int {
         } elif isinstance(cur, doc.Align) {
             work.append(cur.contents);
         } elif isinstance(cur, doc.IfBreak) {
-            work.append(cur.flat_contents);
+            if is_broken {
+                work.append(cur.break_contents);
+            } else {
+                work.append(cur.flat_contents);
+            }
         }
     }
-    return width;
+    return width + base;
 }
 
 """Initialize pass."""

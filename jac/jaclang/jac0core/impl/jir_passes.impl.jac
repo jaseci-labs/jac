@@ -284,7 +284,11 @@ impl JirWriter._write_field(
     val = getattr(ir_node, field_name, None);
     # Token stores line/col under aliased names; fall back when primary is None
     if val is None and kind == FieldKind.INT {
-        _TOKEN_ALIASES = {'line': 'line_no', 'col_start': 'c_start', 'col_end': 'c_end'};
+        _TOKEN_ALIASES = {
+            'line': 'line_no',
+            'col_start': 'c_start',
+            'col_end': 'c_end'
+        };
         alias = _TOKEN_ALIASES.get(field_name);
         if alias is not None {
             val = getattr(ir_node, alias, None);

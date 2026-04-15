@@ -1,4 +1,3 @@
-import logging;
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
@@ -7,11 +6,12 @@ import from jaclang.runtimelib.client_bundle {
     _ensure_js_generated
 }
 
-glob _client_error_logger = logging.getLogger("jaclang.client_errors");
-
 impl UserManager.postinit -> None {
     import sqlite3;
-    data_dir = os.path.join(self.base_path, ".jac", "data");
+    # Check for data path override (JAC_DATA_PATH env var for read-only deployments like AppImage)
+    data_path_override = os.environ.get('JAC_DATA_PATH');
+    effective_data_path = data_path_override or self.base_path;
+    data_dir = os.path.join(effective_data_path, ".jac", "data");
     os.makedirs(data_dir, exist_ok=True);
     self._db_path = os.path.join(data_dir, "main.db");
     self._conn = None;
@@ -86,7 +86,9 @@ impl UserManager.authenticate(
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
-    cursor = self._conn.execute("SELECT username FROM users WHERE token = ?", (token, ));
+    cursor = self._conn.execute(
+        "SELECT username FROM users WHERE token = ?", (token, )
+    );
     row = cursor.fetchone();
     return row[0] if row else None;
 }
@@ -438,7 +440,9 @@ impl ModuleIntrospector._extract_access_levels -> None {
             }
             sym = source_ast.lookup(name) if source_ast else None;
             is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
-            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode) if sym else None;
+            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode)
+                if sym
+                else None;
             if is_walker {
                 walker_access[name] = not is_public(decl_node);
             } else {
@@ -1077,7 +1081,9 @@ impl AuthHandler.update_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    result = self.user_manager.update_password(username, current_password, new_password);
+    result = self.user_manager.update_password(
+        username, current_password, new_password
+    );
     if ('error' in result) {
         return TransportResponse.fail(
             code='UPDATE_FAILED',
@@ -1417,7 +1423,9 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                             Jac.send_css(self, css_content);
                             return;
                         } elif assets_file_simple.exists() {
-                            css_content = assets_file_simple.read_text(encoding='utf-8');
+                            css_content = assets_file_simple.read_text(
+                                encoding='utf-8'
+                            );
                             Jac.send_css(self, css_content);
                             return;
                         } else {
@@ -1784,6 +1792,57 @@ impl JacAPIServer.print_endpoint_docs -> None {
     print_endpoint_docs(self);
 }
 
+"""Eagerly spawn every sv-to-sv provider this consumer imports.
+
+Walks the consumer's compile-time-recorded provider list (populated by
+PyastGenPass in every `sv import` stub) and dispatches them through
+sv_client.ensure_all. Siblings spawned via ensure_sv_service skip this
+step (is_sv_sibling=True) so only the root consumer drives the spawn.
+
+Performs a BFS over the loaded sibling modules' provider lists to pick
+up transitive providers. If A imports B and B imports C, A's first
+pass spawns B; the BFS then reads B's just-loaded _consumer_providers
+entry and spawns C in a second wave. Terminates when no new providers
+are discovered.
+
+Idempotent: anything already in sv_client._registry or _test_clients
+is skipped by ensure_all without submitting a task.
+
+Fail-fast: ensure_all re-raises the first spawn failure, which
+propagates out of this method and crashes the consumer startup.
+"""
+impl JacAPIServer._ensure_sv_siblings -> None {
+    if self.is_sv_sibling {
+        return;
+    }
+    import from jaclang.runtimelib { sv_client }
+    visited: set[str] = set();
+    frontier: list[str] = sv_client.get_consumer_providers(self.module_name);
+    while frontier {
+        wave: list[str] = [
+            p
+            for p in frontier
+            if p not in visited
+        ];
+        if not wave {
+            break;
+        }
+        for p in wave {
+            visited.add(p);
+        }
+        sv_client.ensure_all(wave);
+        next_frontier: list[str] = [];
+        for provider in wave {
+            for transitive in sv_client.get_consumer_providers(provider) {
+                if transitive not in visited {
+                    next_frontier.append(transitive);
+                }
+            }
+        }
+        frontier = next_frontier;
+    }
+}
+
 """Start the HTTP server."""
 impl JacAPIServer.start(
     dev: bool = False,
@@ -1792,6 +1851,7 @@ impl JacAPIServer.start(
 ) -> None {
     import from pathlib { Path }
     self.introspector.load();
+    self._ensure_sv_siblings();
     # Register scheduled walkers and functions, start scheduler only if needed
     for (name, walker_cls) in self.introspector._walkers.items() {
         if walker_cls?.schedule_spec {
@@ -1898,44 +1958,6 @@ impl JacAPIServer.start(
             self.scheduler.stop();
         }
     }
-}
-
-"""Handle a client-side error report posted to /cl/__error__.
-
-Logs the error via the client_errors logger and prints to console.
-Requires at least a 'message' field in the JSON payload.
-"""
-def _handle_client_error(handler: Any, data: dict[str, Any]) -> None {
-    message = data.get('message', '');
-    if not message {
-        Jac.send_json(handler, 400, {'error': 'Missing required field: message'});
-        return;
-    }
-    stack = data.get('stack', '');
-    url = data.get('url', '');
-    source = data.get('source', '');
-    timestamp = data.get('timestamp', '');
-    # Log to the client_errors logger
-    log_parts = [f"[Client] {message}"];
-    if stack {
-        log_parts.append(f"  Stack: {stack}");
-    }
-    if url {
-        log_parts.append(f"  URL: {url}");
-    }
-    if source {
-        log_parts.append(f"  Source: {source}");
-    }
-    log_message = '\n'.join(log_parts);
-    _client_error_logger.error(log_message);
-    # Also print to console for dev visibility
-    console.error(f"[Client] {message}");
-    if stack {
-        for line in stack.split('\n') {
-            console.print(f"    {line}");
-        }
-    }
-    Jac.send_json(handler, 200, {'ok': True});
 }
 
 """Print comprehensive documentation for all endpoints that would be generated."""

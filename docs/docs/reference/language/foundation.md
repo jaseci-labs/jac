@@ -1908,11 +1908,11 @@ Native and Python codespaces can call each other within the same module:
 
 ```jac
 # main.jac (Python/server codespace)
-sv {
-    def process_data(data: list) -> list {
-        # Python code with full PyPI access
-        return sorted(data);
-    }
+to sv:
+
+def process_data(data: list) -> list {
+    # Python code with full PyPI access
+    return sorted(data);
 }
 
 # main.na.jac (native codespace)

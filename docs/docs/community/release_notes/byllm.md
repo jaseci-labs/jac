@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## byllm 0.6.4 (Unreleased)
 
 - **Add: Native MCP tool support**: New `McpClient` and `McpTool` let `by llm()` use tools from any MCP server alongside local tools, e.g. `def answer(q: str) -> str by llm(tools=[*mcp.get_tools()]);`. Supports `stdio`, `sse`, and `streamable-http` transports, auto-detected from `command=` or `url=`. Optional dep: `pip install byllm[mcp]`.
+- **Add: Automatic Anthropic prompt caching**: Caches system prompt, tool schemas, and ReAct conversation history across iterations for Claude models, significantly reducing input token costs. Enabled by default.
 
 ## byllm 0.6.3 (Latest Release)
 

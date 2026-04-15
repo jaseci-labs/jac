@@ -2,6 +2,7 @@
 import from typing { Any }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.abstractions.metrics { MetricsCollector, NoOpMetricsCollector }
+import from jac_scale._optdeps.optional_deps { is_optional_available }
 
 """Factory for creating utility instances."""
 class UtilityFactory {
@@ -51,6 +52,9 @@ class UtilityFactory {
         }
 
         if metrics_type == 'prometheus' {
+            if not is_optional_available("prometheus_client") {
+                return NoOpMetricsCollector();
+            }
             import from jac_scale.utilities.metrics.prometheus_metrics {
                 PrometheusMetricsCollector
             }

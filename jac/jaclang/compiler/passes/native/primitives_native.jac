@@ -1692,7 +1692,9 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="hex.fmt.pos");
         fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="hex.fmt.neg");
         fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="hex.fmt");
-        b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="hex.snprintf");
+        b.call(
+            snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="hex.snprintf"
+        );
         return buf;
     }
 
@@ -1721,7 +1723,9 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="oct.fmt.pos");
         fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="oct.fmt.neg");
         fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="oct.fmt");
-        b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="oct.snprintf");
+        b.call(
+            snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="oct.snprintf"
+        );
         return buf;
     }
 
@@ -1761,7 +1765,9 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b.position_at_start(zero_bb);
         fmt_zero = p._get_snprintf_fmt("0b0");
         fmt_zero_ptr = b.bitcast(fmt_zero, i8p, name="bin.fmt.zero");
-        b.call(snprintf, [buf, ir.Constant(i64, 68), fmt_zero_ptr], name="bin.zero.snp");
+        b.call(
+            snprintf, [buf, ir.Constant(i64, 68), fmt_zero_ptr], name="bin.zero.snp"
+        );
         b.branch(done_bb);
         # Write prefix: "-0b" or "0b"
         b.position_at_start(prefix_bb);
@@ -1792,9 +1798,7 @@ class NativeBuiltinEmitter(BuiltinEmitter[(ir.Value, NativeEmitCtx)]) {
         b.position_at_start(body_bb);
         bit = b.and_(val, ir.Constant(i64, 1), name="bin.bit");
         digit = b.trunc(
-            b.add(bit, ir.Constant(i64, 48), name="bin.digit.val"),
-            i8,
-            name="bin.digit"
+            b.add(bit, ir.Constant(i64, 48), name="bin.digit.val"), i8, name="bin.digit"
         );
         digit_ptr = b.gep(buf, [off], name="bin.digit.ptr");
         b.store(digit, digit_ptr);

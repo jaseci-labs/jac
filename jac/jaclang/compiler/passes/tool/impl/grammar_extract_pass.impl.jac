@@ -753,6 +753,9 @@ impl GrammarExtractPass.has_early_return(stmts: list) -> bool {
 
 """Check if condition is a negated check pattern."""
 impl GrammarExtractPass.is_negated_check(cond: uni.Expr) -> bool {
+    if isinstance(cond, uni.CfgExpr) {
+        return self.is_negated_check(cond.expr);
+    }
     if isinstance(cond, uni.UnaryExpr) {
         if cond.op is not None and cond.op?.value and cond.op.value == "not" {
             if isinstance(cond.operand, uni.FuncCall) {
@@ -760,7 +763,9 @@ impl GrammarExtractPass.is_negated_check(cond: uni.Expr) -> bool {
                 if method is not None {
                     sem = METHOD_TABLE.get(method);
                     if sem is not None
-                    and (sem.kind.startswith("lookahead") or sem.kind == "consume_opt") {
+                    and (
+                        sem.kind.startswith("lookahead") or sem.kind == "consume_opt"
+                    ) {
                         return True;
                     }
                 }
@@ -1448,7 +1453,8 @@ impl GrammarExtractPass._merge_or_conditions(exprs: list) -> ConditionResult | N
     all_toks: list = [];
     found_method: str | None = None;
     found_kind: str | None = None;
-    for val in exprs {
+    for raw_val in exprs {
+        val = raw_val.expr if isinstance(raw_val, uni.CfgExpr) else raw_val;
         if isinstance(val, uni.FuncCall) {
             m = self.get_self_method(val.target);
             if m is not None {
@@ -1485,6 +1491,10 @@ impl GrammarExtractPass._merge_or_conditions(exprs: list) -> ConditionResult | N
 
 """Analyze condition. Returns ConditionResult or None."""
 impl GrammarExtractPass.interpret_condition(cond: uni.Expr) -> ConditionResult | None {
+    # Unwrap CfgExpr transparently
+    if isinstance(cond, uni.CfgExpr) {
+        return self.interpret_condition(cond.expr);
+    }
     # Unwrap parenthesized expressions (AtomUnit wraps inner expr in parens)
     if isinstance(cond, uni.AtomUnit) and cond.value is not None {
         return self.interpret_condition(cond.value);
@@ -1809,6 +1819,9 @@ impl GrammarExtractPass.get_token_args(call: uni.FuncCall) -> list {
 
 """Extract a FuncCall from an expression, if present."""
 impl GrammarExtractPass.get_call_from_expr(expr: uni.Expr) -> uni.FuncCall | None {
+    if isinstance(expr, uni.CfgExpr) {
+        return self.get_call_from_expr(expr.expr);
+    }
     if isinstance(expr, uni.FuncCall) {
         return expr;
     }

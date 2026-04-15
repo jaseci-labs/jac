@@ -41,9 +41,9 @@ import from jaclang.runtimelib.transport { TransportResponse }
 import from jaclang.jac0core.runtime { JacRuntime, JacRuntimeInterface }
 
 glob logger = logging.getLogger(__name__),
-     EndpointResponse: TypeAlias = Response | BaseModel | dict[
-         (str, object)
-     ] | list[object] | str | `bytes | None;
+     EndpointResponse: TypeAlias = Response | BaseModel | dict[(str, object)] | list[
+         object
+     ] | str | `bytes | None;
 
 """Base protocol for parameter handlers."""
 obj ParameterHandler {
