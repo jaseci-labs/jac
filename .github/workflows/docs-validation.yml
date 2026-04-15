@@ -68,7 +68,7 @@ jobs:
     name: Check Release Notes Updated
     if: |
       github.event_name == 'pull_request' &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-release-notes')
+      !contains(github.event.pull_request.labels.*.name, 'skip-release-notes-check')
     runs-on: ubuntu-latest
 
     steps:

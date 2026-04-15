@@ -78,7 +78,7 @@ if [ ${#MISSING_NOTES[@]} -gt 0 ]; then
     echo "Fragment content should be a single bullet point, e.g.:"
     echo '  - **Fix: Brief title**: Description of the change.'
     echo ""
-    echo "To skip this check, add the 'skip-release-notes' label to your PR."
+    echo "To skip this check, add the 'skip-release-notes-check' label to your PR."
     echo ""
     exit 1
 fi
