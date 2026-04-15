@@ -27,7 +27,7 @@ def collect_fragments(package_dir: Path) -> dict[str, list[str]]:
     Fragments follow the flat naming convention: <PR#>.<category>.md
     Returns a dict mapping category name to list of entry strings.
     """
-    categories: dict[str, list[str]] = {"feature": [], "bugfix": []}
+    categories: dict[str, list[str]] = {"feature": [], "bugfix": [], "breaking": []}
     for fragment in sorted(package_dir.glob("*.md")):
         if fragment.name == "README.md":
             continue
@@ -49,11 +49,12 @@ def build_section(
     lines = [f"## {display_name} {version} (Latest Release)", ""]
 
     category_headings = {
+        "breaking": "### Breaking Changes",
         "feature": "### New Features",
         "bugfix": "### Bug Fixes",
     }
 
-    for cat_key in ("feature", "bugfix"):
+    for cat_key in ("breaking", "feature", "bugfix"):
         entries = categories.get(cat_key, [])
         if not entries:
             continue

@@ -16,8 +16,8 @@ import re
 import sys
 from pathlib import Path
 
-VALID_CATEGORIES = {"feature", "bugfix"}
-PATTERN = re.compile(r"^\d+\.(feature|bugfix)\.md$")
+VALID_CATEGORIES = {"feature", "bugfix", "breaking"}
+PATTERN = re.compile(r"^\d+\.(feature|bugfix|breaking)\.md$")
 
 
 def validate(files: list[str]) -> int:
