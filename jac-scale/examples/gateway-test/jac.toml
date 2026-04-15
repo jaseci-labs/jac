@@ -1,0 +1,11 @@
+[project]
+name = "gateway-test"
+version = "0.1.0"
+
+[plugins.scale.microservices]
+enabled = true
+gateway_port = 8000
+
+[plugins.scale.microservices.routes]
+math_service = "/api/math"
+calculator_service = "/api/calc"

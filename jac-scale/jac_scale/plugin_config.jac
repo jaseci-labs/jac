@@ -272,6 +272,50 @@ class JacScalePluginConfig {
                         }
                     }
                 },
+                "microservices": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Microservice gateway mode — route client traffic to sv-import services via an API gateway",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable microservice gateway (off by default)"
+                        },
+                        "gateway_port": {
+                            "type": "int",
+                            "default": 8000,
+                            "description": "Gateway port (client-facing)"
+                        },
+                        "gateway_host": {
+                            "type": "string",
+                            "default": "0.0.0.0",
+                            "description": "Gateway host"
+                        },
+                        "routes": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Map module names to API prefixes for the gateway (e.g., products_app = '/api/products')"
+                        },
+                        "client": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Client UI build settings (optional)",
+                            "nested": {
+                                "entry": {
+                                    "type": "string",
+                                    "default": "",
+                                    "description": "jac-client entry point (e.g., main.jac)"
+                                },
+                                "dist_dir": {
+                                    "type": "string",
+                                    "default": ".jac/client/dist",
+                                    "description": "Build output directory for static assets"
+                                }
+                            }
+                        }
+                    }
+                },
                 "monitoring": {
                     "type": "dict",
                     "default": {},

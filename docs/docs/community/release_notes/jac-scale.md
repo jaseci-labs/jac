@@ -4,6 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.14 (Unreleased)
 
+- **Feat: Microservice API Gateway**: New `MicroserviceGateway` routes client traffic to `sv import` services by URL prefix. Reads `sv_client._registry` for service URLs, proxies `/api/{service}/*` to auto-assigned service ports, serves static client assets with SPA fallback, admin UI at `/admin/`, and passes through all built-in jac-scale routes (`/user/*`, `/walker/*`, `/healthz`, etc.). Configured via `[plugins.scale.microservices]` in `jac.toml`.
 - **Feat: SV-to-SV Eager Auto-Spawn in `jac start`**: `jac start consumer.jac` now brings up every `sv import`-ed provider (including transitive ones) automatically before serving the first request, so single-host multi-service deployments need exactly one terminal and zero env vars.
 - **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
 - **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
