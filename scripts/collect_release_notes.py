@@ -1,7 +1,8 @@
 """Collect release note fragments and assemble them into release notes files.
 
-Reads fragment files from docs/docs/community/release_notes/unreleased/<package>/{feature,bugfix}/
-and inserts them as a new version section into the corresponding release notes markdown file.
+Reads fragment files from docs/docs/community/release_notes/unreleased/<package>/
+Fragment files follow the flat naming convention: <PR#>.<category>.md
+(e.g. 1234.bugfix.md, 5678.feature.md)
 
 Usage:
     Called by release.py during the release process.
@@ -23,21 +24,22 @@ UNRELEASED_DIR = Path("docs/docs/community/release_notes/unreleased")
 def collect_fragments(package_dir: Path) -> dict[str, list[str]]:
     """Read all fragment files from a package's unreleased directory.
 
+    Fragments follow the flat naming convention: <PR#>.<category>.md
     Returns a dict mapping category name to list of entry strings.
     """
-    categories: dict[str, list[str]] = {}
-    for category in ("feature", "bugfix"):
-        cat_dir = package_dir / category
-        if not cat_dir.is_dir():
+    categories: dict[str, list[str]] = {"feature": [], "bugfix": []}
+    for fragment in sorted(package_dir.glob("*.md")):
+        if fragment.name == "README.md":
             continue
-        entries = []
-        for fragment in sorted(cat_dir.glob("*.md")):
-            content = fragment.read_text(encoding="utf-8").strip()
-            if content:
-                entries.append(content)
-        if entries:
-            categories[category] = entries
-    return categories
+        parts = fragment.stem.split(".")
+        if len(parts) != 2 or parts[1] not in categories:
+            continue
+        category = parts[1]
+        content = fragment.read_text(encoding="utf-8").strip()
+        if content:
+            categories[category].append(content)
+    # Remove empty categories
+    return {k: v for k, v in categories.items() if v}
 
 
 def build_section(
@@ -90,15 +92,13 @@ def inject_section(
 
 
 def delete_fragments(package_dir: Path) -> list[str]:
-    """Delete all fragment files (but keep .gitkeep and directories)."""
+    """Delete all fragment files (but keep README.md)."""
     deleted = []
-    for category in ("feature", "bugfix"):
-        cat_dir = package_dir / category
-        if not cat_dir.is_dir():
+    for fragment in package_dir.glob("*.md"):
+        if fragment.name == "README.md":
             continue
-        for fragment in cat_dir.glob("*.md"):
-            fragment.unlink()
-            deleted.append(str(fragment))
+        fragment.unlink()
+        deleted.append(str(fragment))
     return deleted
 
 

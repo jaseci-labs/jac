@@ -50,13 +50,13 @@ for folder in "${!FOLDER_TO_FRAGMENTS[@]}"; do
         if [[ "$file" == "${folder}"* ]] && [[ "$file" != */tests/* ]]; then
             folder_changed=true
         fi
-        if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" == *.md ]]; then
+        if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" =~ \.[0-9]+\.(feature|bugfix)\.md$ || "$file" =~ /[0-9]+\.(feature|bugfix)\.md$ ]]; then
             fragment_added=true
         fi
     done <<< "$CHANGED_FILES"
 
     if $folder_changed && ! $fragment_added; then
-        MISSING_NOTES+=("${folder} -> ${fragments_dir}{feature,bugfix}/<PR#>.md")
+        MISSING_NOTES+=("${folder} -> ${fragments_dir}<PR#>.<feature|bugfix>.md")
     fi
 done
 
@@ -73,7 +73,7 @@ if [ ${#MISSING_NOTES[@]} -gt 0 ]; then
     done
     echo ""
     echo "Please add a release note fragment file."
-    echo "Example: docs/docs/community/release_notes/unreleased/<package>/bugfix/<PR#>.md"
+    echo "Example: docs/docs/community/release_notes/unreleased/<package>/1234.bugfix.md"
     echo ""
     echo "Fragment content should be a single bullet point, e.g.:"
     echo '  - **Fix: Brief title**: Description of the change.'
