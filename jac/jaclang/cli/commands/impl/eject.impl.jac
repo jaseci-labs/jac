@@ -12,9 +12,20 @@ jaclang dependency".
 import shutil;
 import tomllib;
 import json;
+import re;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.cli.console { console }
+
+# Python imports in the ejected backend that pull in a jaclang "companion"
+# package not covered by the user's jac.toml [dependencies]. Eject auto-adds
+# these to requirements.txt so `pip install` produces a runnable backend.
+glob _IMPLICIT_PY_DEPS: dict[str, str] = {
+         "byllm": "byllm",
+         "jac_cloud": "jac-cloud",
+         "jac_client": "jac-client",
+
+     };
 
 # File suffixes that mark a Jac file as exclusively server- or client-side.
 # Other .jac files (e.g. main.jac) may compile to both Python and JS.
@@ -167,9 +178,19 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
     # import cost during normal CLI startup.
     import from jaclang.jac0core.program { JacProgram }
 
+    # Imports needed to classify walkers/defs as public vs private from the
+    # AST. These modules are expensive to pull in at CLI-startup time, so
+    # we defer them to the eject path.
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constant { Tokens as Tok, SymbolType }
+
     py_count = 0;
     js_count = 0;
     error_count = 0;
+    entry_rel = Path(entry_point);
+    emitted_py_files: list[Path] = [];
+    public_walkers: set[str] = set();
+    public_functions: set[str] = set();
     for jac_file in jac_files {
         rel = jac_file.relative_to(src);
         try {
@@ -191,20 +212,45 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         py_code = ir.gen.py or "";
         js_code = ir.gen.js or "";
 
+        # The entry module must always be emitted even when its Python body
+        # is nothing but imports (e.g. a root main.jac that only pulls in
+        # walkers from sub-packages and declares a cl {} block): serve.py
+        # imports it by name to register those walkers/functions.
+        is_entry = rel == entry_rel;
+
+        # Harvest access modifiers (`:pub` / default) for every walker and
+        # module-level ability the file declares. The runtime's access-check
+        # path (ModuleIntrospector._extract_access_levels) normally reads
+        # these straight off the Jac AST at request time — but the ejected
+        # backend only ships compiled Python, so we seed the sets here and
+        # wire them into serve.py below.
+        for item in ir.body {
+            if isinstance(item, uni.Archetype)
+            and item.sym_category == SymbolType.WALKER_ARCH
+            and _has_pub_access(item) {
+                public_walkers.add(item.name.sym_name);
+            } elif isinstance(item, uni.Ability)
+            and item.name_ref is not None
+            and _has_pub_access(item) {
+                public_functions.add(item.name_ref.sym_name);
+            }
+        }
+
         wrote_any = False;
-        if _is_meaningful_python(py_code) {
+        if _is_meaningful_python(py_code) or (is_entry and py_code.strip()) {
             py_rel = _to_py_rel_path(rel);
             py_out = backend_dir / py_rel;
             py_out.parent.mkdir(parents=True, exist_ok=True);
             py_out.write_text(py_code, encoding="utf-8");
             py_count += 1;
+            emitted_py_files.append(py_out);
             wrote_any = True;
         }
         if js_code.strip() {
             js_rel = _to_js_rel_path(rel);
             js_out = frontend_src_dir / js_rel;
             js_out.parent.mkdir(parents=True, exist_ok=True);
-            js_out.write_text(js_code, encoding="utf-8");
+            js_out.write_text(_inject_runtime_imports(js_code), encoding="utf-8");
             js_count += 1;
             wrote_any = True;
         }
@@ -222,22 +268,23 @@ impl eject(source: str = ".", output: str = "", force: bool = False) -> int {
         return 1;
     }
 
-    # Copy static assets if present.
-    assets_src = src / "assets";
-    if assets_src.exists() and assets_src.is_dir() {
-        try {
-            shutil.copytree(assets_src, frontend_src_dir / "assets");
-            console.print("  ✔ assets/", style="success");
-        } except Exception as e {
-            console.warning(f"Failed to copy assets/: {e}");
-        }
-    }
+    # Copy every non-.jac source file into both backend/ and frontend/src/
+    # so paths referenced by the compiled Python (e.g. services/config/*.json,
+    # services/docs/*.md) and by the compiled JavaScript (e.g. ./global.css,
+    # ../styles/*.css) resolve at runtime without per-project bookkeeping.
+    _copy_data_files(src, backend_dir, frontend_src_dir, out / "frontend");
+
+    # Copy the client runtime emitted by the Jac client build so the ejected
+    # frontend can resolve imports from "@jac/runtime" without depending on
+    # the external `jac-client-node` meta-package or the Jac build toolchain.
+    runtime_copied = _copy_client_runtime(src, out / "frontend");
 
     # Generate boilerplate.
-    _emit_requirements_txt(backend_dir, toml_data);
-    _emit_serve_py(backend_dir, entry_module);
+    _emit_requirements_txt(backend_dir, toml_data, emitted_py_files);
+    _emit_serve_py(backend_dir, entry_module, public_walkers, public_functions);
     _emit_package_json(out / "frontend", project_name, toml_data);
-    _emit_vite_config(out / "frontend");
+    _emit_vite_config(out / "frontend", runtime_copied);
+    _emit_entry_js(frontend_src_dir, entry_module);
     _emit_index_html(out / "frontend", project_name);
     _emit_run_script(out);
     _emit_readme(out, project_name, entry_module);
@@ -335,6 +382,53 @@ def _to_js_rel_path(rel: Path) -> Path {
 }
 
 
+"""True iff the given AST node carries a `:pub` access modifier.
+
+Matches the `is_public` helper inside the runtime's access-level extractor
+(ModuleIntrospector._extract_access_levels in server.impl.jac) so eject's
+pre-computed access sets classify walkers and abilities exactly the way
+the normal `jac start` path would — otherwise a walker that's public in
+source would end up gated at runtime.
+"""
+def _has_pub_access(ast_item: Any) -> bool {
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    if not isinstance(ast_item, uni.AstAccessNode) {
+        return False;
+    }
+    access = getattr(ast_item, "access", None);
+    if access is None {
+        return False;
+    }
+    tag = getattr(access, "tag", None);
+    if tag is None {
+        return False;
+    }
+    return getattr(tag, "name", None) == Tok.KW_PUB;
+}
+
+
+"""Prepend the `@jac/runtime` import the Jac client compiler injects.
+
+The raw JS code emitted by `JacProgram.compile(...).gen.js` uses `__jacJsx`
+and `__jacSpawn` as free identifiers — the normal `jac-client` build path
+injects `import {__jacJsx, __jacSpawn} from "@jac/runtime";` at the top
+of every compiled module after codegen. Without that import the ejected
+frontend boots but throws `__jacJsx is not defined` the moment it tries
+to render any JSX, so eject replicates the same post-processing step.
+
+The runtime itself defines `__jacJsx` — we detect that case by the
+function definition signature and skip the injection to avoid a circular
+import.
+"""
+def _inject_runtime_imports(js_code: str) -> str {
+    if "function __jacJsx(" in js_code {
+        return js_code;
+    }
+    return 'import {__jacJsx, __jacSpawn} from "@jac/runtime";\n' + js_code;
+}
+
+
 """Decide whether a unparsed Python module has any real content worth writing.
 
 Files like `frontend.cl.jac` produce a Python module that contains only a
@@ -371,10 +465,19 @@ def _is_meaningful_python(py_code: str) -> bool {
 
 """Write backend/requirements.txt mapping jac.toml [dependencies] to pip.
 
-Always pins jaclang itself so the ejected backend can use the runtime
-helpers it imports (jaclang.jac0core.jaclib, jaclang.runtimelib.server, ...).
+Pins jaclang to its current version so the ejected backend can use the
+runtime helpers it imports (jaclang.jac0core.jaclib, jaclang.runtimelib.server,
+...) and so a `pip install` produces the same runtime the project was
+ejected against.
+
+Also scans the emitted backend .py files for `from <pkg>` / `import <pkg>`
+references to well-known jaclang companion packages (byllm, jac-cloud, ...)
+that aren't declared in jac.toml because they're implicit plugin deps, and
+adds them automatically so `python serve.py` doesn't ImportError.
 """
-def _emit_requirements_txt(backend_dir: Path, toml_data: dict) {
+def _emit_requirements_txt(
+    backend_dir: Path, toml_data: dict, emitted_py_files: list[Path]
+) {
     deps = toml_data.get("dependencies", {});
     # Filter out the npm subsection (it's a sibling key, not a python dep).
     py_deps: dict[str, str] = {};
@@ -383,7 +486,7 @@ def _emit_requirements_txt(backend_dir: Path, toml_data: dict) {
             py_deps[k] = v;
         }
     }
-    lines: list[str] = ["jaclang"];
+    lines: list[str] = [_jaclang_pin()];
     for (name, spec) in sorted(py_deps.items()) {
         if spec and spec != "*" {
             # tomllib gives version specs like ">=1.0" or "1.0.0".
@@ -398,9 +501,86 @@ def _emit_requirements_txt(backend_dir: Path, toml_data: dict) {
             lines.append(name);
         }
     }
+    declared = {name for name in py_deps};
+    for plugin_pkg in _detect_implicit_plugins(emitted_py_files) {
+        # Normalise: both `jac-cloud` and `jac_cloud` should be considered
+        # already-declared if the user happened to pin either spelling.
+        if plugin_pkg in declared or plugin_pkg.replace("-", "_") in declared {
+            continue;
+        }
+        lines.append(plugin_pkg);
+    }
     (backend_dir / "requirements.txt").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     );
+}
+
+
+"""Resolve the version spec to pin jaclang to in requirements.txt.
+
+Reads `jaclang.__version__` from the running interpreter so the ejected
+backend reinstalls the same jaclang the project was ejected against. Falls
+back to an unpinned `jaclang` line if the version attribute is missing, so
+eject still produces a working (if unreproducible) requirements.txt even
+in edge cases where jaclang was imported via an unusual path.
+"""
+def _jaclang_pin -> str {
+    version = "";
+    try {
+        import jaclang;
+        version = getattr(jaclang, "__version__", "") or "";
+    } except Exception {
+        version = "";
+    }
+    if not version {
+        try {
+            import from importlib.metadata { version as _pkg_version }
+            version = _pkg_version("jaclang") or "";
+        } except Exception {
+            version = "";
+        }
+    }
+    if version {
+        return f"jaclang=={version}";
+    }
+    return "jaclang";
+}
+
+
+"""Scan emitted backend .py files for imports of known jaclang plugins.
+
+Jaclang ships some functionality as separate pypi packages (byllm for LLM
+integration, jac-cloud for cloud persistence, ...). The compiled Python
+just does `from byllm.types import ...` / `import byllm` — there is no
+marker distinguishing these from any other Python import. The user's
+jac.toml rarely lists them because they're pulled in implicitly by the
+jaclang toolchain. We detect them post-codegen and add to requirements so
+the ejected app runs without a follow-up `pip install byllm` step.
+
+Returns a sorted list of pypi package names to add.
+"""
+def _detect_implicit_plugins(emitted_py_files: list[Path]) -> list[str] {
+    pattern = re.compile(r"^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_]*)");
+    found: set[str] = set();
+    for py_path in emitted_py_files {
+        text = "";
+        try {
+            text = py_path.read_text(encoding="utf-8");
+        } except Exception {
+            text = "";
+        }
+        for line in text.splitlines() {
+            mo = pattern.match(line);
+            if not mo {
+                continue;
+            }
+            top = mo.group(1);
+            if top in _IMPLICIT_PY_DEPS {
+                found.add(_IMPLICIT_PY_DEPS[top]);
+            }
+        }
+    }
+    return sorted(list(found));
 }
 
 
@@ -413,7 +593,20 @@ JacAPIServer.create_handler() — bypassing the create_server plugin hook so
 the ejected app is independent of which jaclang plugins happen to be
 installed in the runtime environment.
 """
-def _emit_serve_py(backend_dir: Path, entry_module: str) {
+def _emit_serve_py(
+    backend_dir: Path,
+    entry_module: str,
+    public_walkers: set[str],
+    public_functions: set[str]
+) {
+    # Sort for deterministic output — the sets would otherwise reorder
+    # between eject runs, producing noisy diffs in the ejected serve.py.
+    walker_literal = (
+        "{" + ", ".join(f'"{n}"' for n in sorted(list(public_walkers))) + "}"
+    );
+    function_literal = (
+        "{" + ", ".join(f'"{n}"' for n in sorted(list(public_functions))) + "}"
+    );
     lines: list[str] = [
         '"""Auto-generated entry point for ejected Jac application.',
         '',
@@ -432,9 +625,18 @@ def _emit_serve_py(backend_dir: Path, entry_module: str) {
         '  2. The HTTP transport is built directly with `http.server.HTTPServer`',
         '     instead of going through `Jac.create_server`, which plugins like',
         '     jac-scale override with their own (incompatible) FastAPI server.',
+        '',
+        'PUBLIC_WALKERS / PUBLIC_FUNCTIONS are seeded from the original Jac AST',
+        'by eject and used to rehydrate ModuleIntrospector._walker_access /',
+        '_function_access after load(). The introspector normally recomputes',
+        'these by re-parsing the Jac sources, but the ejected backend has none',
+        'of those — without this step every `:pub` walker would return 401.',
         '"""',
         'import os',
         'import sys',
+        'import json',
+        'import types',
+        'import asyncio',
         'import importlib.util',
         'from http.server import HTTPServer',
         '',
@@ -442,8 +644,59 @@ def _emit_serve_py(backend_dir: Path, entry_module: str) {
         'if HERE not in sys.path:',
         '    sys.path.insert(0, HERE)',
         '',
+        '',
         'from jaclang.jac0core.runtime import JacRuntime as Jac',
         'from jaclang.runtimelib.server import JacAPIServer, UserManager',
+        'from jaclang.runtimelib.transport import HTTPTransport',
+        '',
+        '# Walkers that stream (e.g. an LLM-backed RAG chat) return a',
+        '# generator of SSE-formatted chunks. The base jaclang HTTPTransport',
+        '# always json.dumps() the response body, which raises TypeError the',
+        '# moment a generator lands inside `response.data`. In `jac start`',
+        '# the jac-scale FastAPI plugin catches that and streams SSE; the',
+        '# ejected backend runs on stdlib HTTPServer so we patch the',
+        '# transport here to write SSE bytes straight to the socket when the',
+        '# response data is a generator and fall through to the default',
+        '# JSON path otherwise.',
+        '_orig_http_send = HTTPTransport.send',
+        'def _streaming_http_send(self, data):',
+        '    inner = getattr(data, "data", None)',
+        '    if isinstance(inner, (types.GeneratorType, types.AsyncGeneratorType)):',
+        '        handler = self.handler',
+        '        handler.send_response(200)',
+        '        handler.send_header("Content-Type", "text/event-stream")',
+        '        handler.send_header("Cache-Control", "no-cache")',
+        '        handler.send_header("X-Accel-Buffering", "no")',
+        '        handler.send_header("Access-Control-Allow-Origin", "*")',
+        '        handler.end_headers()',
+        '        def _write_chunk(chunk):',
+        '            if isinstance(chunk, (bytes, bytearray)):',
+        '                handler.wfile.write(bytes(chunk))',
+        '            elif isinstance(chunk, str):',
+        '                handler.wfile.write(chunk.encode("utf-8"))',
+        '            else:',
+        '                payload = json.dumps(chunk)',
+        '                handler.wfile.write(f"data: {payload}\\n\\n".encode("utf-8"))',
+        '            handler.wfile.flush()',
+        '        if isinstance(inner, types.AsyncGeneratorType):',
+        '            async def _pump():',
+        '                async for chunk in inner:',
+        '                    _write_chunk(chunk)',
+        '            try:',
+        '                loop = asyncio.get_event_loop()',
+        '            except RuntimeError:',
+        '                loop = asyncio.new_event_loop()',
+        '            if loop.is_running():',
+        '                asyncio.run_coroutine_threadsafe(_pump(), loop).result()',
+        '            else:',
+        '                loop.run_until_complete(_pump())',
+        '        else:',
+        '            for chunk in inner:',
+        '                _write_chunk(chunk)',
+        '        self.response_data = None',
+        '        return',
+        '    return _orig_http_send(self, data)',
+        'HTTPTransport.send = _streaming_http_send',
         '',
         '# Force the base UserManager. Must happen BEFORE JacAPIServer is',
         '# constructed, because postinit calls Jac.get_user_manager().',
@@ -451,6 +704,8 @@ def _emit_serve_py(backend_dir: Path, entry_module: str) {
         '',
         f'ENTRY_MODULE = "{entry_module}"',
         'PORT = int(os.environ.get("PORT", "8000"))',
+        f'PUBLIC_WALKERS = {walker_literal}',
+        f'PUBLIC_FUNCTIONS = {function_literal}',
         '',
         '',
         'def main() -> None:',
@@ -475,6 +730,20 @@ def _emit_serve_py(backend_dir: Path, entry_module: str) {
         '    server.server = httpd',
         '',
         '    server.introspector.load(force_reload=False)',
+        '',
+        '    # Rehydrate auth-level classification from eject-time metadata.',
+        '    # _walker_access / _function_access map name -> auth-required,',
+        '    # so :pub entries are set to False and anything else stays True.',
+        '    introspector = server.introspector',
+        '    for walker_name in server.get_walkers().keys():',
+        '        introspector._walker_access[walker_name] = (',
+        '            walker_name not in PUBLIC_WALKERS',
+        '        )',
+        '    for func_name in server.get_functions().keys():',
+        '        introspector._function_access[func_name] = (',
+        '            func_name not in PUBLIC_FUNCTIONS',
+        '        )',
+        '',
         '    walkers = list(server.get_walkers().keys())',
         '    functions = list(server.get_functions().keys())',
         '',
@@ -544,29 +813,188 @@ Vite serves the static frontend on its dev server port; all requests under
 /walker, /function, /user, /cl, /functions, /walkers are forwarded to the
 backend so the SPA can talk to the ejected serve.py without any CORS
 plumbing in the user's code.
+
+When `runtime_copied` is True, also emits a resolve.alias mapping the
+"@jac/runtime" bare specifier (hardcoded throughout the compiled frontend
+JS) to the local `src/__jac_runtime.js` we wrote alongside the frontend.
+This is what allows the ejected SPA to load in the browser without
+depending on the `jac-client-node` meta-package or the Jac build.
 """
-def _emit_vite_config(frontend_dir: Path) {
-    lines: list[str] = [
+def _emit_vite_config(frontend_dir: Path, runtime_copied: bool) {
+    # Proxy target honours $BACKEND_PORT (set by run.sh from $PORT) so a
+    # custom backend port flows through to the Vite proxy without the user
+    # having to edit vite.config.js. Falls back to 8000 for parity with
+    # run.sh's own default when neither env var is set.
+    header: list[str] = [
+        'import path from "path";',
+        'import { fileURLToPath } from "url";',
+        '',
+        'const __dirname = path.dirname(fileURLToPath(import.meta.url));',
+        'const _backendPort = process.env.BACKEND_PORT || "8000";',
+        'const _backend = `http://localhost:${_backendPort}`;',
+        '',
         '/** @type {import("vite").UserConfig} */',
         'export default {',
+
+    ];
+    resolve_block: list[str] = [];
+    if runtime_copied {
+        resolve_block = [
+            '  resolve: {',
+            '    alias: {',
+            '      "@jac/runtime": path.resolve(__dirname, "src/__jac_runtime.js")',
+            '    }',
+            '  },',
+
+        ];
+    }
+    server_block: list[str] = [
         '  server: {',
         '    proxy: {',
-        '      "/walker":    "http://localhost:8000",',
-        '      "/walkers":   "http://localhost:8000",',
-        '      "/function":  "http://localhost:8000",',
-        '      "/functions": "http://localhost:8000",',
-        '      "/user":      "http://localhost:8000",',
-        '      "/cl":        "http://localhost:8000"',
+        '      "/walker":    _backend,',
+        '      "/walkers":   _backend,',
+        '      "/function":  _backend,',
+        '      "/functions": _backend,',
+        '      "/user":      _backend,',
+        '      "/cl":        _backend',
         '    }',
         '  }',
         '};',
         ''
     ];
+    lines: list[str] = header + resolve_block + server_block;
     (frontend_dir / "vite.config.js").write_text("\n".join(lines), encoding="utf-8");
 }
 
 
-"""Write a minimal frontend/index.html that bootstraps src/main.js."""
+"""Copy every non-.jac source file into backend/ and frontend/src/.
+
+The ejected backend Python and the ejected frontend JavaScript both keep
+reading files from the project tree at runtime (e.g. `services/config/*.json`
+from the RAG engine, `./global.css` and `../styles/*.css` from components).
+Eject's codegen only produces .py and .js files; without copying the rest,
+every project with any config or static resource blows up the moment it
+runs. Mirroring the tree into both halves is cheap and avoids having to
+guess which file belongs to which half.
+
+Exclusions: files in _SKIP_DIRS (jac build cache, node_modules, virtualenvs,
+...), hidden directories (anything starting with "."), the .jac source
+files themselves (compile handles those), and the project's jac.toml (not
+needed at runtime).
+
+`public/` is treated specially: Vite expects it at the frontend project
+root, not under src/, so we copy `public/*` to `frontend/public/` rather
+than duplicating into `frontend/src/public/`.
+"""
+def _copy_data_files(
+    src: Path, backend_dir: Path, frontend_src_dir: Path, frontend_root: Path
+) {
+    copied_tree = False;
+    for path in src.rglob("*") {
+        if not path.is_file() {
+            continue;
+        }
+        rel = path.relative_to(src);
+        rel_parts = list(rel.parts);
+        excluded = False;
+        for i in range(len(rel_parts) - 1) {
+            part = rel_parts[i];
+            if part in _SKIP_DIRS or part.startswith(".") {
+                excluded = True;
+                break;
+            }
+        }
+        if excluded {
+            continue;
+        }
+        # Hidden file at any depth (e.g. `.DS_Store`) — skip.
+        if path.name.startswith(".") {
+            continue;
+        }
+        if path.suffix == ".jac" {
+            continue;
+        }
+        if str(rel) == "jac.toml" {
+            continue;
+        }
+        # Vite-convention public dir lands at frontend root, not frontend/src.
+        if rel_parts and rel_parts[0] == "public" {
+            dest = frontend_root / rel;
+            dest.parent.mkdir(parents=True, exist_ok=True);
+            shutil.copy2(path, dest);
+            copied_tree = True;
+            continue;
+        }
+        dest_backend = backend_dir / rel;
+        dest_backend.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copy2(path, dest_backend);
+        dest_frontend = frontend_src_dir / rel;
+        dest_frontend.parent.mkdir(parents=True, exist_ok=True);
+        shutil.copy2(path, dest_frontend);
+        copied_tree = True;
+    }
+    if copied_tree {
+        console.print("  ✔ resources/", style="success");
+    }
+}
+
+
+"""Copy the Jac client runtime bundle produced by the Jac client build.
+
+`@jac/runtime` is a bare-specifier import baked into every compiled .cl.jac
+module (jacIsLoggedIn, __jacCallFunction, Router, useNavigate, ...). During
+normal `jac start`, Vite resolves it via an alias pointing at
+`.jac/client/compiled/client_runtime.js`. The ejected frontend cannot rely
+on that build dir (it's excluded from the output by design), so we copy
+the compiled runtime into the ejected tree and alias to it in vite.config.js.
+
+Returns True if the runtime was copied. Callers use this to decide whether
+to emit the resolve.alias in vite.config.js; projects that never built a
+client (no `.jac/client/compiled/client_runtime.js`) still eject, they just
+warn at build-time that `@jac/runtime` will be unresolved until the user
+brings their own runtime or re-runs `jac install` before ejecting.
+"""
+def _copy_client_runtime(src: Path, frontend_root: Path) -> bool {
+    runtime_src = src / ".jac" / "client" / "compiled" / "client_runtime.js";
+    if not runtime_src.exists() {
+        console.warning(
+            "  No .jac/client/compiled/client_runtime.js found; "
+            "@jac/runtime imports will be unresolved. "
+            "Run `jac install` (or any `jac start`) before `jac eject` "
+            "to build the client runtime."
+        );
+        return False;
+    }
+    dest = frontend_root / "src" / "__jac_runtime.js";
+    dest.parent.mkdir(parents=True, exist_ok=True);
+    try {
+        shutil.copy2(runtime_src, dest);
+    } except Exception as e {
+        console.warning(f"Failed to copy client_runtime.js: {e}");
+        return False;
+    }
+    # The client runtime sometimes emits a sibling .map file; copy it too.
+    map_src = runtime_src.with_suffix(".js.map");
+    if map_src.exists() {
+        try {
+            shutil.copy2(map_src, dest.with_suffix(".js.map"));
+        } except Exception {
+            # Best-effort; missing source map doesn't break the app.
+            _ = 0;
+        }
+    }
+    console.print("  ✔ @jac/runtime", style="success");
+    return True;
+}
+
+
+"""Write a minimal frontend/index.html that bootstraps the ejected SPA.
+
+Uses `<div id="root"></div>` to match the mount node the client runtime
+and generated __jac_entry.js target. Loads __jac_entry.js (not main.js
+directly) so eject controls the React bootstrap — main.js only exports
+the `app` component.
+"""
 def _emit_index_html(frontend_dir: Path, project_name: str) {
     lines: list[str] = [
         '<!doctype html>',
@@ -577,13 +1005,46 @@ def _emit_index_html(frontend_dir: Path, project_name: str) {
         f'    <title>{project_name}</title>',
         '  </head>',
         '  <body>',
-        '    <div id="app"></div>',
-        '    <script type="module" src="/src/main.js"></script>',
+        '    <div id="root"></div>',
+        '    <script type="module" src="/src/__jac_entry.js"></script>',
         '  </body>',
         '</html>',
         ''
     ];
     (frontend_dir / "index.html").write_text("\n".join(lines), encoding="utf-8");
+}
+
+
+"""Write the SPA bootstrap (__jac_entry.js) that mounts the ejected app.
+
+The Jac client compiler emits a per-module main.js that *exports* an `app`
+component but never renders it — the Jac build's auto-generated _entry.js
+handles createRoot. Eject is that _entry.js' substitute: it imports the
+entry module's `app`, wraps it in the runtime's ErrorBoundary, and calls
+createRoot against <div id="root">. Without this, `vite dev` serves the
+files and 200s cleanly, but the page stays blank.
+"""
+def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
+    lines: list[str] = [
+        'import React from "react";',
+        'import { createRoot } from "react-dom/client";',
+        f'import {{ app as App }} from "./{entry_module}.js";',
+        'import { JacClientErrorBoundary, ErrorFallback, __jacInstallErrorHandlers } from "@jac/runtime";',
+        '',
+        '__jacInstallErrorHandlers();',
+        'const root = createRoot(document.getElementById("root"));',
+        'root.render(',
+        '  React.createElement(',
+        '    JacClientErrorBoundary,',
+        '    { FallbackComponent: ErrorFallback },',
+        '    React.createElement(App, null)',
+        '  )',
+        ');',
+        ''
+    ];
+    (frontend_src_dir / "__jac_entry.js").write_text(
+        "\n".join(lines), encoding="utf-8"
+    );
 }
 
 
@@ -612,7 +1073,7 @@ def _emit_run_script(out: Path) {
         '',
         'if [[ -d "$HERE/frontend/node_modules" ]]; then',
         '  echo "Starting frontend on http://localhost:$FRONTEND_PORT"',
-        '  (cd "$HERE/frontend" && npm run dev -- --port "$FRONTEND_PORT") &',
+        '  (cd "$HERE/frontend" && BACKEND_PORT="$PORT" npm run dev -- --port "$FRONTEND_PORT") &',
         '  FRONTEND_PID=$!',
         'else',
         '  echo "(frontend/node_modules missing - run \\"cd frontend && npm install\\" first)"',
@@ -678,8 +1139,10 @@ def _emit_readme(out: Path, project_name: str, entry_module: str) {
         "- Persistent state (users, root nodes) lives wherever the jaclang",
         "  runtime puts it by default. Set the relevant environment variables",
         "  before running `serve.py` if you need to point it elsewhere.",
-        "- The frontend uses `@jac/runtime` (from the `jac-client-node` npm",
-        "  package). Make sure that dependency stays in `frontend/package.json`.",
+        "- `@jac/runtime` is vendored as `frontend/src/__jac_runtime.js` and",
+        "  wired up via a resolve.alias in `frontend/vite.config.js` — no extra",
+        "  npm package is needed. Re-run `jac install` in the original project",
+        "  and re-eject if the runtime API changes.",
         ""
     ];
     (out / "README.md").write_text("\n".join(lines), encoding="utf-8");

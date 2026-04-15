@@ -299,6 +299,156 @@ impl Serializer.register(cls: type) -> None {
     }
 }
 
+"""Register an alias mapping `old_name` -> current registry key for `cls`."""
+impl Serializer.register_alias(old_name: str, cls: type) -> None {
+    new_name = f"{cls.__module__}.{cls.__name__}";
+    if old_name == new_name {
+        # No-op alias; likely a copy/paste error. Warn but don't fail.
+        logger.debug(f"archetype_alias: {old_name} == current name; alias is a no-op");
+        return;
+    }
+    Serializer._aliases[old_name] = new_name;
+}
+
+"""Return {field_name: resolved_annotation} for a dataclass (empty otherwise)."""
+impl Serializer._get_field_types(cls: type) -> dict[str, object] {
+    if not is_dataclass(cls) {
+        return {};
+    }
+    # Prefer resolved hints (unwraps string forward-refs); fall back to raw.
+    try {
+        hints = get_type_hints(cls);
+    } except Exception {
+        hints = getattr(cls, '__annotations__', {}) or {};
+    }
+    out: dict[str, object] = {};
+    for f in fields(cls) {
+        if f.name in hints {
+            out[f.name] = hints[f.name];
+        }
+    }
+    return out;
+}
+
+"""Best-effort coercion table. Returns (value, ok)."""
+impl Serializer.coerce(val: object, target_type: object) -> tuple {
+    # Unresolved or missing annotation: caller falls back to raw.
+    if target_type is None or isinstance(target_type, str) {
+        return (val, False);
+    }
+    # Unwrap Optional[X] / X | None at this layer: None passes through;
+    # a non-None val is coerced against the non-None branch.
+    (origin, args) = (get_origin(target_type), get_args(target_type));
+    if origin is Union or origin is UnionType {
+        non_none = [
+            a
+            for a in args
+            if a is not NoneType
+        ];
+        if val is None {
+            return (None, True);
+        }
+        # Try each non-None variant; first success wins.
+        for variant in non_none {
+            (coerced, ok) = Serializer.coerce(val, variant);
+            if ok {
+                return (coerced, True);
+            }
+        }
+        return (val, False);
+    }
+    # Strip parameterized generics to their origin for isinstance checks.
+    base = origin if origin is not None else target_type;
+    if not isinstance(base, type) {
+        # e.g. ParamSpec, TypeVar, Literal: we can't isinstance-check;
+        # leave the value alone and call it "ok" (don't spam coercion warnings).
+        return (val, True);
+    }
+    if val is None {
+        return (None, False);
+    }
+    if isinstance(val, base) {
+        return (val, True);
+    }
+    # Ordered coercion attempts — the first that raises or returns wrong type
+    # falls through to the next. The outer try/except catches everything so
+    # coercion is never worse than a no-op.
+    try {
+        # Booleans must be checked before int/float because bool is a subclass
+        # of int and isinstance(True, int) == True would short-circuit above.
+        if base is bool {
+            if isinstance(val, (int, float)) {
+                return (bool(val), True);
+            }
+            if isinstance(val, str) {
+                lowered = val.strip().lower();
+                if lowered in ('true', '1', 'yes', 'y', 'on') {
+                    return (True, True);
+                }
+                if lowered in ('false', '0', 'no', 'n', 'off', '') {
+                    return (False, True);
+                }
+            }
+            return (val, False);
+        }
+        if base is int {
+            if isinstance(val, bool) {
+                return (int(val), True);
+            }
+            if isinstance(val, (str, float)) {
+                return (int(val), True);
+            }
+        }
+        if base is float {
+            if isinstance(val, (bool, int, str)) {
+                return (float(val), True);
+            }
+        }
+        if base is str {
+            return (str(val), True);
+        }
+        if base is UUID and isinstance(val, str) {
+            return (UUID(val), True);
+        }
+        # ISO-string coercions to datetime/date/time use getattr dispatch to
+        # sidestep typeshed gaps on `fromisoformat` in some Python versions.
+        if base is datetime and isinstance(val, str) {
+            return (getattr(datetime, 'fromisoformat')(val), True);
+        }
+        if base is date and isinstance(val, str) {
+            return (getattr(date, 'fromisoformat')(val), True);
+        }
+        if base is time and isinstance(val, str) {
+            return (getattr(time, 'fromisoformat')(val), True);
+        }
+        if isinstance(base, type) and issubclass(base, Enum) {
+            # Try value-based construction (Enum(val)); if that fails, name lookup.
+            try {
+                return (base(val), True);
+            } except (ValueError, KeyError) {
+                members = getattr(base, '__members__', {});
+                if isinstance(val, str) and val in members {
+                    return (members[val], True);
+                }
+            }
+        }
+        # Container widening: list <-> tuple, keep contents as-is
+        # (deep container coercion is Layer 4 territory).
+        if base is tuple and isinstance(val, list) {
+            return (tuple(val), True);
+        }
+        if base is list and isinstance(val, tuple) {
+            return (list(val), True);
+        }
+    } except Exception as e {
+        logger.debug(
+            f"Serializer.coerce fallback: {type(val).__name__} -> "
+            f"{getattr(base, '__name__', base)}: {e}"
+        );
+    }
+    return (val, False);
+}
+
 """Compute an archetype schema fingerprint."""
 impl Serializer.fingerprint(cls: type) -> str {
     field_pairs: list[list[str]] = [];
@@ -319,16 +469,41 @@ impl Serializer.fingerprint(cls: type) -> str {
     return sha256(encoded).hexdigest()[:FINGERPRINT_LENGTH];
 }
 
-"""Look up a class by module.name (only registered classes for security)."""
+"""Look up a class by module.name, consulting the alias registry on miss.
+
+Order:
+  1. Direct hit in `_registry`.
+  2. Alias resolution: follow one level (an alias can point only to a
+     registered class; chains are not supported to keep resolution O(1)
+     and prevent cycles).
+  3. Log and return None (caller quarantines).
+"""
 impl Serializer._get_class(module_name: str, class_name: str) -> (type | None) {
     if not module_name or not class_name {
         return None;
     }
     key = f"{module_name}.{class_name}";
-    if not (cls := Serializer._registry.get(key)) {
-        logger.warning(f"Refused to deserialize unregistered class: {key}");
+    if (cls := Serializer._registry.get(key)) {
+        return cls;
     }
-    return cls;
+    # Alias miss-path: resolve one level.
+    if (aliased_key := Serializer._aliases.get(key)) {
+        if (cls := Serializer._registry.get(aliased_key)) {
+            logger.info(f"Serializer: resolving aliased class {key} -> {aliased_key}");
+            return cls;
+        }
+        # Alias pointed at something that isn't registered either. Log once
+        # with the specific alias context; don't also emit the generic
+        # "unregistered class" warning since that would be misleading (the
+        # original key IS known, via the alias — it's the target that's gone).
+        logger.warning(
+            f"Serializer: alias {key} -> {aliased_key} has no registered "
+            "target; cannot resolve."
+        );
+        return None;
+    }
+    logger.warning(f"Refused to deserialize unregistered class: {key}");
+    return None;
 }
 
 """Helper: Convert string ID to unpopulated anchor stub."""
@@ -358,7 +533,29 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
         anchor.access = Serializer._deserialize_permission(data.get('access'));
 
         if (arch_data := data.get('archetype')) {
-            anchor.archetype = Serializer._deserialize_archetype(arch_data, anchor);
+            if not isinstance(arch_data, dict) {
+                logger.warning(
+                    "Serializer: archetype field is not a dict "
+                    f"({type(arch_data).__name__}); dropping anchor."
+                );
+                return None;
+            }
+            archetype = Serializer._deserialize_archetype(arch_data, anchor);
+            if archetype is None {
+                # Class resolution or reconstruction failed. Don't leave a
+                # half-constructed shell with archetype=None — every caller
+                # (SqliteMemory, MongoBackend, direct test uses) would then
+                # cache an unusable anchor and NPE later on attribute access.
+                # Signal the failure with a single return None and let the
+                # caller quarantine.
+                logger.warning(
+                    "Serializer: archetype reconstruction failed for "
+                    f"{arch_data.get('__module__')}.{arch_data.get('__type__')}; "
+                    "dropping anchor (caller should quarantine)."
+                );
+                return None;
+            }
+            anchor.archetype = archetype;
         }
         if isinstance(anchor, NodeAnchor) {
             # Restore edges from serialized edge IDs
@@ -427,27 +624,67 @@ impl Serializer._deserialize_access(data: object) -> Access {
     return access;
 }
 
-"""Deserialize Archetype."""
+"""Deserialize Archetype with Layer 3 coercion.
+
+For each field in the stored data:
+  - `__*` keys are skipped (metadata).
+  - Fields NOT declared on the current class are silently dropped; the
+    stale value doesn't carry forward on re-save. This cleans up removed
+    fields across schema drift.
+  - Fields declared on the current class run through `Serializer.coerce`
+    against the resolved annotation. Successful coercions setattr the
+    converted value; unsuccessful ones log at debug and setattr the raw
+    value (never lose data — if a field is un-coercible, downstream code
+    will notice, but the anchor still loads).
+"""
 impl Serializer._deserialize_archetype(
     data: dict[str, object], anchor: Anchor
 ) -> (object | None) {
-    type_name = data.get('__type__');
-    module_name = data.get('__module__');
-    if not type_name or not module_name {
+    raw_type_name = data.get('__type__');
+    raw_module_name = data.get('__module__');
+    if not isinstance(raw_type_name, str) or not isinstance(raw_module_name, str) {
         return None;
     }
-    cls = Serializer._get_class(module_name, type_name);
-    if not cls {
+    type_name = raw_type_name;
+    module_name = raw_module_name;
+    resolved = Serializer._get_class(module_name, type_name);
+    if not resolved {
         return None;
     }
+    cls = cast(type, resolved);
     try {
-        arch = cls.__new__(cls);
+        arch: object = cls.__new__(cls);
+        field_types = Serializer._get_field_types(cls);
+        known = set(field_types.keys());
+        dropped: list[str] = [];
         for (k, v) in data.items() {
-            if not k.startswith('__') {
-                setattr(arch, k, Serializer._deserialize_value(v));
+            if k.startswith('__') {
+                continue;
+            }
+            deser_v = Serializer._deserialize_value(v);
+            if k not in known {
+                # Field not on current class; drop silently (Layer 3 removed-field path).
+                dropped.append(k);
+                continue;
+            }
+            target = field_types[k];
+            (coerced, ok) = Serializer.coerce(deser_v, target);
+            setattr(arch, k, coerced);
+            if not ok {
+                logger.debug(
+                    f"Serializer: coercion fallback on {module_name}."
+                    f"{type_name}.{k}: stored={type(deser_v).__name__}, "
+                    f"target={target}; stored value kept as-is."
+                );
             }
         }
-        arch.__jac__ = anchor;
+        if dropped {
+            logger.debug(
+                f"Serializer: dropped removed fields on {module_name}."
+                f"{type_name}: {sorted(dropped)}"
+            );
+        }
+        setattr(arch, '__jac__', anchor);
         return arch;
     } except Exception as e {
         logger.error(f"Failed to deserialize archetype {type_name}: {e}");

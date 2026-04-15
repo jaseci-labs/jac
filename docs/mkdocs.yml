@@ -64,6 +64,7 @@ nav:
           - CLI Commands: "reference/cli/index.md"
           - Plugin Authoring: "reference/plugin-authoring.md"
           - Configuration: "reference/config/index.md"
+          - Persistence & Schema Migration: "reference/persistence.md"
           - Errors & Warnings: "reference/diagnostics.md"
           - Code Organization: "reference/code-organization.md"
           - Testing: "reference/testing.md"

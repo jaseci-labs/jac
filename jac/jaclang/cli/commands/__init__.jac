@@ -7,4 +7,5 @@ import from jaclang.cli.commands { project }
 import from jaclang.cli.commands { eject }
 import from jaclang.cli.commands { tools }
 import from jaclang.cli.commands { config }
+import from jaclang.cli.commands { db }
 import from jaclang.cli.commands { nacompile }
