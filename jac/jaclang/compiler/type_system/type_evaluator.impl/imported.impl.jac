@@ -18,11 +18,23 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
     # Resolve the base directory for the from-clause (e.g. from . import utils → current dir).
     from_path = self._resolve_from_path(import_node.from_loc);
     from_mod_type = self.get_type_of_module(import_node.from_loc);
+    from_mod_name = import_node.from_loc.dot_path_str;
     if isinstance(from_mod_type, types.ModuleType) or from_path.exists() {
         is_dir = from_path.is_dir() or (from_path.stem == "__init__");
         if is_dir {
             mod_dir = from_path.parent if not from_path.is_dir() else from_path;
-            for ext in (".jac", ".py", ".pyi", ".js", ".ts", ".jsx", ".tsx") {
+            for ext in (
+                ".jac",
+                ".cl.jac",
+                ".sv.jac",
+                ".na.jac",
+                ".py",
+                ".pyi",
+                ".js",
+                ".ts",
+                ".jsx",
+                ".tsx"
+            ) {
                 candidate_paths = [
                     (mod_dir / f"{node_.name.value}{ext}").resolve(),
                     # Check for subpackage: e.g., llvmlite/ir/__init__.py
@@ -35,7 +47,29 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     if not path.exists() {
                         continue;
                     }
-                    mod = self._import_module_from_path(str(path));
+                    path_str = str(path);
+                    # Foreign-source submodule (e.g. `from .pkg import foo`
+                    # where foo.js exists). The Jac parser cannot consume
+                    # JS/TS/etc., so expose the submodule as an opaque
+                    # external module and type the imported name as Any.
+                    if not path_str.endswith((".jac", ".py", ".pyi")) {
+                        mod_type = types.ModuleType(
+                            mod_name=node_.name.sym_name,
+                            file_uri=path,
+                            symbol_table=None,
+                            is_external=True,
+                        );
+                        node_.name.type = types.AnyType();
+                        node_.name._sym_category = SymbolType.VAR;
+                        self.emit_diag(
+                            W1102,
+                            node_.name,
+                            name=node_.name.value,
+                            module=from_mod_name
+                        );
+                        return node_.name.type;
+                    }
+                    mod = self._import_module_from_path(path_str);
 
                     # Check if this is a subpackage's __init__ file (e.g., subpkg/__init__.py)
                     # vs the parent module's __init__ file
@@ -83,10 +117,30 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     return mod_type;
                 }
             }
+            # Nothing matched in the package directory — the imported name
+            # doesn't exist either as a submodule or as a symbol in __init__.
+            node_.name.type = types.UnknownType();
+            self.emit_diag(
+                W1101, node_.name, name=node_.name.value, module=from_mod_name
+            );
+            return node_.name.type;
         } else {
             mod_type = self.get_type_of_module(import_node.from_loc);
             if not isinstance(mod_type, types.ModuleType) {
+                # Module resolution failed; W1100 was emitted by
+                # get_type_of_module on the from-clause node.
                 node_.name.type = types.UnknownType();
+                return node_.name.type;
+            }
+            if mod_type.is_external {
+                # Foreign-source module (JS/TS/asset/etc.). The Jac type
+                # system cannot see inside it; treat the imported name as
+                # gradual Any to avoid false-positive "name not found".
+                node_.name.type = types.AnyType();
+                node_.name._sym_category = SymbolType.VAR;
+                self.emit_diag(
+                    W1102, node_.name, name=node_.name.value, module=from_mod_name
+                );
                 return node_.name.type;
             }
             if sym := type_utils.lookup_symtab(
@@ -102,8 +156,16 @@ impl TypeEvaluator.get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeB
                     return self._set_module_item_symbol_and_type(node_, sym);
                 }
             }
+            # Module resolved but the imported name isn't defined in it.
+            node_.name.type = types.UnknownType();
+            self.emit_diag(
+                W1101, node_.name, name=node_.name.value, module=from_mod_name
+            );
+            return node_.name.type;
         }
     }
+    # The from-clause didn't resolve at all — W1100 was emitted by
+    # get_type_of_module on the from-clause node.
     return types.UnknownType();
 }
 
@@ -171,20 +233,14 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
             return node_.path[-1].type;
         }
         path_list = node_.resolve_relative_path_list();
-        # Calculate offset for relative imports from Python packages:
-        # leading dots produce extra segments in resolve_relative_path_list()
-        # that don't have corresponding entries in node_.path.
-        # E.g., "from .base import X" has path=[base] but path_list=[__init__.py, base.jac]
-        # Only apply offset when importing from Python __init__.py (not jaclang internals)
-        # to avoid circular import issues during compiler bootstrap.
+        # Calculate offset for relative imports: leading dots produce extra
+        # segments in resolve_relative_path_list() that don't have corresponding
+        # entries in node_.path. Align node_.path[-1] with path_list[-1] (the
+        # resolved target file); intermediate extras are the walked-up package
+        # contexts (either __init__.py for Python or dirs for Jac namespaces).
         offset = 0;
         if node_.path and len(path_list) > len(node_.path) and node_.level > 0 {
-            first_path = path_list[0] if path_list else "";
-            # Only for Python __init__ files, not Jac __init__.jac
-            is_python_init = first_path.endswith(("__init__.py", "__init__.pyi"));
-            if is_python_init {
-                offset = len(path_list) - len(node_.path);
-            }
+            offset = len(path_list) - len(node_.path);
         }
         for (idx, npath) in enumerate(node_.path) {
             mod_path = path_list[idx + offset];
@@ -211,6 +267,24 @@ impl TypeEvaluator.get_type_of_module(node_: uni.ModulePath) -> types.TypeBase {
 
             if Path(mod_path).is_dir() {
                 npath._sym_category = SymbolType.MODULE;
+                continue;
+            }
+            # Only Jac / Python files are compiled for static analysis.
+            # Non-Jac files (JS/TS/assets/etc.) resolved via the module
+            # resolver become opaque external ModuleType instances; their
+            # imported names are typed as Any downstream (gradual typing),
+            # avoiding both false-positive "name not found" diagnostics
+            # and Jac-parser crashes on foreign syntax.
+            if not mod_path.endswith((".jac", ".py", ".pyi")) {
+                mod_type = types.ModuleType(
+                    mod_name=npath.value,
+                    file_uri=Path(mod_path).resolve(),
+                    symbol_table=None,
+                    is_external=True,
+                );
+                npath.type = mod_type;
+                npath._sym_category = SymbolType.MODULE;
+                self._module_type_cache[mod_path] = mod_type;
                 continue;
             }
             mod: uni.Module = self._import_module_from_path(mod_path);
