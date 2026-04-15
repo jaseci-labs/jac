@@ -24,12 +24,17 @@ with entry {
         events.append(event);
     }
 
-    # All events should be chunk type (no tools = no reasoning steps)
+    # No-tools path yields chunk events followed by a single usage event.
     chunk_events = [e for e in events if e.event_type == "chunk"];
-    other_events = [e for e in events if e.event_type != "chunk"];
+    usage_events = [e for e in events if e.event_type == "usage"];
+    other_events = [e for e in events if e.event_type not in ("chunk", "usage")];
 
     assert len(chunk_events) > 0 , "Should have at least one chunk event";
-    assert len(other_events) == 0 , f"No-tools path should only yield chunk events, got: {[e.event_type for e in other_events]}";
+    assert len(other_events) == 0 , f"No-tools path should only yield chunk and usage events, got: {[e.event_type for e in other_events]}";
+    assert len(usage_events) == 1 , f"Should have exactly 1 usage event, got: {len(usage_events)}";
+    assert usage_events[0] == events[-1] , "Usage event should be the last event";
+    assert "total" in usage_events[0].data , "Usage event should have 'total' field";
+    assert "per_call" in usage_events[0].data , "Usage event should have 'per_call' field";
 
     # Reassemble the full content
     full_content = "";
