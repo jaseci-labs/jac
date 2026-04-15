@@ -104,7 +104,7 @@ Every PR that changes package code must include a release note fragment file:
    - **Fix: Another fix in same PR**: Description.
    ```
 
-To skip the CI check: `SKIP=check-release-notes git commit ...`
+To skip this check, add the `skip-release-notes` label to your PR.
 
 ## Code Rules and Guidelines
 
