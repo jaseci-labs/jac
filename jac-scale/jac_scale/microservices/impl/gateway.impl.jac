@@ -80,7 +80,12 @@ impl MicroserviceGateway.bootstrap_admin
     }
     try {
         import from jac_scale.admin { admin_portal }
-        bundled = Path(admin_portal.__file__).parent / "_dist";
+        admin_file: str = admin_portal.__file__ or "";
+        if not admin_file {
+            logger.debug("No admin module file path, skipping admin UI bootstrap");
+            return;
+        }
+        bundled = Path(admin_file).parent / "_dist";
         if bundled.exists() and (bundled / "index.html").exists() {
             logger.info("Deploying pre-built admin UI to gateway");
             admin_dist.mkdir(parents=True, exist_ok=True);
@@ -269,6 +274,53 @@ impl MicroserviceGateway.start -> None {
     if self.app is None {
         self.setup();
     }
-    logger.info(f"Gateway starting on {self.host}:{self.port}");
+
+    # Startup banner
+    print("");
+    print("  ╔══════════════════════════════════════════════════╗");
+    print("  ║           JAC MICROSERVICE GATEWAY               ║");
+    print("  ╚══════════════════════════════════════════════════╝");
+    print("");
+    print(f"  Gateway:  http://{self.host}:{self.port}");
+    print("");
+
+    if self.routes {
+        print("  Routes:");
+        for (module_name, prefix) in self.routes.items() {
+            svc_url = self.resolve_service_url(module_name);
+            status_icon = "●" if svc_url else "○";
+            url_str = svc_url if svc_url else "not registered";
+            print(f"    {status_icon} {prefix:24s} → {module_name:20s} ({url_str})");
+        }
+    } else {
+        print("  No routes configured.");
+    }
+
+    print("");
+
+    import os;
+    has_client = os.path.isfile(os.path.join(self.client_dist_dir, "index.html"));
+    has_admin = os.path.isfile(os.path.join(self.admin_dist_dir, "index.html"));
+    if has_client or has_admin {
+        print("  Serving:");
+        if has_client {
+            print(f"    ● Client UI     → {self.client_dist_dir}");
+        }
+        if has_admin {
+            print("    ● Admin         → /admin/");
+        }
+        print("");
+    }
+
+    print("  Endpoints:");
+    print("    /health          Gateway + service status");
+    print("    /admin/          Admin dashboard");
+    print("    /api/<svc>/*     Proxy to service");
+    print("    /user/*          Auth passthrough");
+    print("    /*               Static files + SPA fallback");
+    print("");
+    print("  ─────────────────────────────────────────────────");
+    print("");
+
     uvicorn.run(getattr(self, "app"), host=self.host, port=self.port);
 }

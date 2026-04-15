@@ -6,8 +6,8 @@ Each add()/multiply() call is an RPC to the math_service process.
 
 sv import from math_service { add, multiply }
 
+"""Sum a list of numbers — each addition is a cross-service call."""
 def:pub sum_list(numbers: list[int]) -> int {
-    """Sum a list of numbers — each addition is a cross-service call."""
     result = 0;
     for n in numbers {
         result = add(result, n);
@@ -15,11 +15,12 @@ def:pub sum_list(numbers: list[int]) -> int {
     return result;
 }
 
+"""Dot product — uses both add and multiply across services."""
 def:pub dot_product(a: list[int], b: list[int]) -> int {
-    """Dot product — uses both add and multiply across services."""
     result = 0;
     for i in range(len(a)) {
-        result = add(result, multiply(a[i], b[i]));
+        product = multiply(a[i], b[i]);
+        result = add(result, product);
     }
     return result;
 }
