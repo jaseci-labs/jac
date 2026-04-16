@@ -20,7 +20,7 @@ glob DEFAULT_API_PORT: int = 8000,
      SUBPROCESS_TIMEOUT_SHORT: int = 5,
      SUBPROCESS_TIMEOUT_MEDIUM: int = 60,
      SUBPROCESS_TIMEOUT_LONG: int = 300,
-     SUBPROCESS_TIMEOUT_BUILD: int = 600,
+     SUBPROCESS_TIMEOUT_BUILD: int = 7200,
      DEFAULT_ICON_COLOR_RGB: tuple[int, int, int, int] = (66, 139, 202, 255),
      DEFAULT_ICON_SIZE: int = 1024,
      DEFAULT_WINDOW_WIDTH: int = 1200,
@@ -1569,7 +1569,7 @@ def _check_python_and_jaclang -> None {
             [python_cmd, "-m", "jaclang", "--version"],
             capture_output=True,
             text=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
+            timeout=SUBPROCESS_TIMEOUT_MEDIUM
         );
         if result.returncode == 0 {
             version = result.stdout.strip();
@@ -2712,7 +2712,7 @@ if __name__ == "__main__":
         );
         return output_path;
     } except subprocess.TimeoutExpired {
-        console.warning("PyInstaller timed out after 10 minutes");
+        console.warning("PyInstaller timed out after 2 hours");
         return None;
     } except Exception as e {
         console.warning(f"PyInstaller error: {e}");

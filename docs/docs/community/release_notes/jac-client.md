@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.13 (Unreleased)
 
+- **Fix: Raise PyInstaller Sidecar Build Timeout**: The PyInstaller sidecar build timeout has been raised from 10 minutes to 2 hours, preventing premature failures on slow machines and on first-run Windows builds. The `jaclang --version` probe used during sidecar preparation now uses `SUBPROCESS_TIMEOUT_MEDIUM` (60s) instead of `SUBPROCESS_TIMEOUT_SHORT` (5s), since the first invocation can compile ~20 modules on Windows and exceed 5 seconds.
+
 ## jac-client 0.3.12 (Latest Release)
 
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.
