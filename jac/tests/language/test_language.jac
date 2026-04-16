@@ -848,4 +848,10 @@ test "bidirectional edge traversal" {
     assert "Neighbor found: 4" in lines[5];
     assert "Generic from d:" in lines[6];
     assert "Neighbor found: 3" in lines[7];
+    assert "Reverse from a:\nFriend found: 2" in output;
+    assert "Reverse from b:\nFriend found: 1" in output;
+    assert "Forward from e:\nFollower found: 6" in output;
+    assert "Forward from f:\nBackward from f:" in output;
+    assert "Backward from f:\nFollower found: 5" in output;
+    assert "Backward from e:\nDone." in output;
 }
