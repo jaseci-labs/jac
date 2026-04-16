@@ -498,12 +498,13 @@ def:pub ThemedComponent() -> JsxElement {
 Create reusable state logic by defining functions that use `has`:
 
 ```jac
+import from typing { Any }
 to cl:
 
 import from react { useEffect }
 
-def use_local_storage(key: str, initial_value: any) -> tuple {
-    has value: any = initial_value;
+def use_local_storage(key: str, initial_value: Any) -> tuple {
+    has value: Any = initial_value;
 
     useEffect(lambda -> None {
         stored = localStorage.getItem(key);
@@ -516,7 +517,7 @@ def use_local_storage(key: str, initial_value: any) -> tuple {
         localStorage.setItem(key, JSON.stringify(value));
     }, [value]);
 
-    return (value, lambda v: any -> None { value = v; });
+    return (value, lambda v: Any -> None { value = v; });
 }
 
 def:pub Settings() -> JsxElement {
@@ -633,10 +634,11 @@ def:pub TaskManager() -> JsxElement {
 Wrap spawn calls in try/catch and track loading/error state:
 
 ```jac
+import from typing { Any }
 to cl:
 
 def:pub SafeDataView() -> JsxElement {
-    has data: any = None;
+    has data: Any = None;
     has loading: bool = True;
     has error: str = "";
 
@@ -669,12 +671,13 @@ def:pub SafeDataView() -> JsxElement {
 Use `setInterval` with effect cleanup for periodic data refresh:
 
 ```jac
+import from typing { Any }
 to cl:
 
 import from react { useEffect }
 
 def:pub LiveData() -> JsxElement {
-    has data: any = None;
+    has data: Any = None;
 
     async def fetch_data() -> None {
         result = root() spawn get_live_data();
@@ -1086,14 +1089,19 @@ def:pub StylingExamples() -> JsxElement {
 > **Note:** The `cn()` utility is a local file you create in your project. You can write it entirely in Jac (no TypeScript needed):
 >
 > ```jac
+>
+import from typing { Any }
+
 > # lib/utils.cl.jac
+>
 > import from "clsx" { clsx }
 > import from "tailwind-merge" { twMerge }
 >
 > def:pub cn(inputs: Any) -> str {
->     args = [].slice.call(arguments);
->     return twMerge(clsx(args));
+> args = [].slice.call(arguments);
+> return twMerge(clsx(args));
 > }
+>
 > ```
 >
 > Requires `clsx` and `tailwind-merge` in `[dependencies.npm]`.
@@ -2027,12 +2035,13 @@ def:pub TypedForm() -> JsxElement {
 }
 ```
 
-!!! tip "Migrating from `any`"
-    If you have existing event handlers using `e: any`, you can update them to use ambient types for better type safety and IDE support:
+!!! tip "Migrating from `Any`"
+    If you have existing event handlers using `e: Any`, you can update them to use ambient types for better type safety and IDE support:
 
     ```jac
+import from typing { Any }
     # Before
-    onChange={lambda e: any -> None { value = e.target.value; }}
+    onChange={lambda e: Any -> None { value = e.target.value; }}
 
     # After (no import needed)
     onChange={lambda e: ChangeEvent { value = e.target.value; }}
@@ -2195,6 +2204,7 @@ Jac does not have a `new` keyword. Use `Reflect.construct()` to instantiate brow
 
 <!-- jac-skip -->
 ```jac
+import from typing { Any }
 to cl:
 
 # WebSocket
@@ -2221,6 +2231,7 @@ When passing callbacks to be invoked later, use `.call(None, ...)`:
 
 <!-- jac-skip -->
 ```jac
+import from typing { Any }
 to cl:
 
 handler = myCallback;
@@ -2234,6 +2245,7 @@ ws.onmessage = lambda(e: Any) {
 Use `glob` for state shared across a module:
 
 ```jac
+import from typing { Any }
 to cl:
 
 glob initialized: bool = False;

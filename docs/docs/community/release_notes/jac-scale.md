@@ -178,7 +178,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Native Kubernetes Secret support**: New `[plugins.scale.secrets]` config section. Declare secrets with `${ENV_VAR}` syntax, auto-resolved at deploy time into a K8s Secret with `envFrom.secretRef`.
 - **Minor Internal Refactor in Tests**: Minor internal refactoring in test_direct.py to improve test structure
 - **fix**: Return 401 instead of 500 for deleted users with valid JWT tokens.
-- Docs update: return type `any` -> `JsxElement`
+- Docs update: return type `Any` -> `JsxElement`
 - **1 Small Refactors**
 - **promethius and grafana deployment**: Jac-scale automatically deploys promethius and grafana and connect with metrics endpoint.
 
@@ -195,7 +195,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.1.5
 
-- **JsxElement Return Types**: Updated all JSX component return types from `any` to `JsxElement` for compile-time type safety.
+- **JsxElement Return Types**: Updated all JSX component return types from `Any` to `JsxElement` for compile-time type safety.
 - **Client bundle error help message**: When the client bundle build fails during `jac start`, the server now prints a troubleshooting suggestion to run `jac clean --all` and a link to the Discord community for support.
 
 ## jac-scale 0.1.4

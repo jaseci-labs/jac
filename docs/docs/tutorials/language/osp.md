@@ -425,6 +425,7 @@ Without `disengage`, the walker would continue visiting Carol. With it, the walk
 Walkers can have different entry points:
 
 ```jac
+import from typing { Any }
 walker DataProcessor {
     has data: str;
 

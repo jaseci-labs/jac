@@ -27,6 +27,7 @@ enum MessageType {
 A protocol-independent request container that normalizes requests from different transport implementations:
 
 ```jac
+import from typing { Any }
 obj TransportRequest {
     has method: str,                                   # HTTP method (GET, POST, etc.)
         path: str,                                     # Request path
@@ -42,6 +43,7 @@ obj TransportRequest {
 Encapsulates error information for responses:
 
 ```jac
+import from typing { Any }
 obj ErrorInfo {
     has code: str,          # Error code (e.g., "INVALID_REQUEST")
         message: str,       # Human-readable error message
@@ -54,6 +56,7 @@ obj ErrorInfo {
 Metadata container for tracking request context:
 
 ```jac
+import from typing { Any }
 obj Meta {
     has request_id: (str | None) = None,     # Unique request identifier
         trace_id: (str | None) = None,       # Distributed trace identifier
@@ -67,6 +70,7 @@ obj Meta {
 Transport-agnostic response container following the envelope pattern:
 
 ```jac
+import from typing { Any }
 obj TransportResponse {
     has type: MessageType = MessageType.RESPONSE.value,  # Message type
         ok: bool = True,                                 # Success flag
@@ -86,6 +90,7 @@ obj TransportResponse {
 The abstract interface all transport implementations must extend:
 
 ```jac
+import from typing { Any }
 obj BaseTransport {
     has on_message: (Callable[(..., Any)] | None) = None,  # Message callback
         on_error: (Callable[(..., Any)] | None) = None,    # Error callback
@@ -104,6 +109,7 @@ obj BaseTransport {
 Handles stateless HTTP request/response communication:
 
 ```jac
+import from typing { Any }
 obj HTTPTransport(BaseTransport) {
     has handler: Any = None,
         response_data: dict[(str, Any)] = {};
@@ -146,6 +152,7 @@ To add support for a new transport protocol, follow these steps:
 Extend `BaseTransport` and implement the three required methods:
 
 ```jac
+import from typing { Any }
 obj NewProtocolTransport(BaseTransport) {
     has connection: Any = None;
 
@@ -172,6 +179,7 @@ obj NewProtocolTransport(BaseTransport) {
 Handle data serialization/deserialization for your protocol:
 
 ```jac
+import from typing { Any }
 obj NewProtocolTransport(BaseTransport) {
     # ... existing code ...
 
@@ -191,6 +199,7 @@ obj NewProtocolTransport(BaseTransport) {
 Ensure callbacks are properly triggered:
 
 ```jac
+import from typing { Any }
 async def send(data: Any) -> None {
     try {
         encoded = self.serialize(data);
@@ -209,6 +218,7 @@ async def send(data: Any) -> None {
 Here's a concrete example:
 
 ```jac
+import from typing { Any }
 obj gRPCTransport(BaseTransport) {
     has stub: Any = None,
         context: Any = None;

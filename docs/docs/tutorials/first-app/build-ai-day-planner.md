@@ -65,7 +65,7 @@ Run it:
 jac hello.jac
 ```
 
-In Jac, any free-floating code in a module must live inside a `with entry { }` block. These blocks execute when you run a `.jac` file as a script, and also at the point it's imported -- similar to top-level code in Python. The reason Jac requires this explicit demarcation is an important design principle: code that runs once on module load is a common source of subtle bugs in larger programs. By making it visually distinct, Jac ensures you're always intentional about side effects at the module level.
+In Jac, Any free-floating code in a module must live inside a `with entry { }` block. These blocks execute when you run a `.jac` file as a script, and also at the point it's imported -- similar to top-level code in Python. The reason Jac requires this explicit demarcation is an important design principle: code that runs once on module load is a common source of subtle bugs in larger programs. By making it visually distinct, Jac ensures you're always intentional about side effects at the module level.
 
 !!! info "Why `with entry`?"
     Python was originally designed as a replacement for bash, and its initial version didn't even have import statements. Jac slightly discourages mistakes stemming from free-floating module code by making it an intentional, visible choice in the language.
@@ -176,7 +176,8 @@ def categorize(fruit: str) -> str {
 **`match`/`case`**, on the other hand, is for Python-style structural pattern matching -- use it when you need to destructure values or match more complex patterns:
 
 ```jac
-def describe(value: any) -> str {
+import from typing { Any }
+def describe(value: Any) -> str {
     match value {
         case 0:
             return "zero";
@@ -284,7 +285,7 @@ graph LR
     root((root))
 ```
 
-Here's the key insight: any node connected to `root` (directly or through a chain of edges) is **persistent** -- it survives across requests, program runs, and server restarts. You don't configure a database or write SQL; connecting a node to `root` *is* the declaration that it should be saved. This is a fundamentally different model from traditional persistence, where you explicitly serialize data to a database. In Jac, persistence is a property of graph connectivity. Nodes that are *not* reachable from `root` behave like regular objects -- they live in memory for the duration of the current execution and are then garbage collected, though you can still connect them to other nodes for utility while they exist.
+Here's the key insight: Any node connected to `root` (directly or through a chain of edges) is **persistent** -- it survives across requests, program runs, and server restarts. You don't configure a database or write SQL; connecting a node to `root` *is* the declaration that it should be saved. This is a fundamentally different model from traditional persistence, where you explicitly serialize data to a database. In Jac, persistence is a property of graph connectivity. Nodes that are *not* reachable from `root` behave like regular objects -- they live in memory for the duration of the current execution and are then garbage collected, though you can still connect them to other nodes for utility while they exist.
 
 When your app serves multiple users, each user gets their **own isolated `root`**. User A's tasks and User B's tasks live in completely separate graphs -- same code, isolated data, enforced by the runtime. Connections *between* user graphs are possible when explicitly created, but by default each user's `root` is a private, independent entry point. We'll see this in action in [Part 6](#part-6-authentication-and-multi-file-organization) when we add authentication.
 

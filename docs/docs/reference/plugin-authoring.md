@@ -424,6 +424,7 @@ If your plugin scaffolds a project structure (e.g., a fullstack app, a starter k
 **`jac_myplugin/plugin_config.jac`** (continuing from Recipe 4)
 
 ```jac
+import from typing { Any }
 """Plugin config for jac-myplugin."""
 class JacMypluginPluginConfig {
     # ... get_plugin_metadata, get_config_schema, validate_config from Recipe 4 ...
@@ -481,6 +482,7 @@ def _post_create_starter(project_path: Any, project_name: str) -> None {
 The core `jac add` and `jac install` commands manage Python dependencies via PyPI. If your plugin manages packages from a different registry -- npm, Cargo, gem, Helm chart repos, anything -- register a custom dependency type so users can do `jac add <pkg> --<your-flag>` and `jac install` will pick it up too.
 
 ```jac
+import from typing { Any }
 """Plugin config for jac-myplugin."""
 class JacMypluginPluginConfig {
     # ... other hooks ...

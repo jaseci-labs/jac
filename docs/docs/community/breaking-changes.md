@@ -286,7 +286,7 @@ obj Foo {
 myobj = otherobj.`walker.`type;
 ```
 
-**Note:** Builtin type names (`list`, `dict`, `set`, `tuple`, `any`, `type`, `bytes`, `int`, `float`, `str`, `bool`) do **not** need backtick escaping when used in expression contexts (function calls, type annotations, isinstance arguments). Backtick is only needed when using them as field, variable, or parameter names:
+**Note:** Builtin type names (`list`, `dict`, `set`, `tuple`, `Any`, `type`, `bytes`, `int`, `float`, `str`, `bool`) do **not** need backtick escaping when used in expression contexts (function calls, type annotations, isinstance arguments). Backtick is only needed when using them as field, variable, or parameter names:
 
 ```jac
 # No backtick needed (expression context)
@@ -593,6 +593,7 @@ Entries execute depth-first, exits execute in reverse order (LIFO/stack unwindin
 **Example migration for disengage pattern:**
 
 ```jac
+import from typing { Any }
 # Before: Exit ability would run before disengage stops traversal
 walker MyWalker {
     can process with MyNode entry {

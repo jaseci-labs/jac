@@ -18,6 +18,7 @@ These patterns are drawn from [JacBuilder](https://github.com/jaseci-labs/jacBui
 In Jac client code, use `Reflect.construct()` instead of the `new` keyword to instantiate browser built-in objects like `WebSocket`:
 
 ```jac
+import from typing { Any }
 glob _ws: Any = None;
 
 def connectWebSocket(url: str) -> None {
@@ -49,6 +50,7 @@ def connectWebSocket(url: str) -> None {
 ### Sending Messages
 
 ```jac
+import from typing { Any }
 def sendMessage(action: str, data: Any) -> None {
     if not _ws or _ws.readyState != 1 {
         console.warn("WebSocket not connected");
@@ -73,6 +75,7 @@ def sendMessage(action: str, data: Any) -> None {
 For WebSocket protocols that use request IDs:
 
 ```jac
+import from typing { Any }
 glob _nextReqId: int = 1;
 glob _pendingCallbacks: Any = {};
 
@@ -123,6 +126,7 @@ Jac does not have a `new` keyword. For browser built-in constructors, use `Refle
 
 <!-- jac-skip -->
 ```jac
+import from typing { Any }
 # WebSocket
 ws = Reflect.construct(WebSocket, [url]);
 
@@ -155,6 +159,7 @@ When passing callbacks that will be invoked later, use `.call(None, ...)` to avo
 
 <!-- jac-skip -->
 ```jac
+import from typing { Any }
 # Assign callback to local variable, then use .call()
 msgHandler = onMessage;
 ws.onmessage = lambda(e: Any) {
@@ -205,6 +210,7 @@ output = lines.join(_NL);
 Use `glob` for state that persists across component renders and is shared across the module:
 
 ```jac
+import from typing { Any }
 # Module-level state (like JavaScript module variables)
 glob monacoInitialized: bool = False;
 glob cachedConfig: Any = None;
@@ -228,6 +234,7 @@ Access browser globals through `globalThis` or directly:
 
 <!-- jac-skip -->
 ```jac
+import from typing { Any }
 # localStorage
 localStorage.getItem("auth_token");
 localStorage.setItem("auth_token", token);
@@ -245,6 +252,7 @@ document.querySelector(".my-element");
 ### Custom Events (Cross-Component Communication)
 
 ```jac
+import from typing { Any }
 glob _THEME_EVENT: str = "theme-change";
 
 # Dispatch
@@ -283,6 +291,7 @@ def:pub ThemeListener() -> JsxElement {
 ### Async File Reading with Promises
 
 ```jac
+import from typing { Any }
 def readAllEntries(reader: Any) -> Any {
     return Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
         allEntries: list = [];
@@ -312,6 +321,7 @@ def readAllEntries(reader: Any) -> Any {
 ### Debounced Auto-Save
 
 ```jac
+import from typing { Any }
 import from react { useRef }
 
 def:pub useAutoSave() -> Any {
@@ -343,6 +353,7 @@ def:pub useAutoSave() -> Any {
 ### requestAnimationFrame for Smooth UI
 
 ```jac
+import from typing { Any }
 import from react { useRef }
 
 def:pub useDrag() -> Any {
@@ -387,6 +398,7 @@ console.error("[DataLoader] Failed to fetch:", err);
 ### Error Recovery with Retry Limits
 
 ```jac
+import from typing { Any }
 glob _errorCount: int = 0;
 glob _maxRetries: int = 10;
 
@@ -408,6 +420,7 @@ def handleError(context: str, err: Any) -> None {
 ### Preventing Duplicate Operations
 
 ```jac
+import from typing { Any }
 import from react { useRef }
 
 def:pub useSafeSubmit() -> Any {
@@ -501,6 +514,7 @@ myapp/
 Extract reusable stateful logic into custom hooks (functions starting with `use`):
 
 ```jac
+import from typing { Any }
 # hooks/usePolling.cl.jac
 import from react { useRef, useEffect }
 

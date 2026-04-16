@@ -471,6 +471,7 @@ The `AuthGuard` component:
 For complex apps that need shared auth state across components:
 
 ```jac
+import from typing { Any }
 cl import from "@jac/runtime" { jacIsLoggedIn, jacLogin, jacLogout }
 
 to cl:
@@ -481,7 +482,7 @@ glob AuthContext = createContext(None);
 
 # Auth Provider component
 def:pub AuthProvider(props: dict) -> JsxElement {
-    has user: any = None;
+    has user: Any = None;
     has loading: bool = True;
 
     can with entry {

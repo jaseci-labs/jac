@@ -55,13 +55,14 @@ with entry {
 ### Collections
 
 ```jac
+import from typing { Any }
 with entry {
     # Lists
     numbers: list[int] = [1, 2, 3, 4, 5];
     numbers.append(6);
 
     # Dictionaries
-    person: dict[str, any] = {
+    person: dict[str, Any] = {
         "name": "Alice",
         "age": 30
     };

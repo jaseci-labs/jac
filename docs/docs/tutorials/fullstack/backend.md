@@ -310,10 +310,11 @@ def:pub SafeSubmit() -> JsxElement {
 ### Loading States Pattern
 
 ```jac
+import from typing { Any }
 to cl:
 
 def:pub DataView() -> JsxElement {
-    has data: any = None;
+    has data: Any = None;
     has loading: bool = True;
     has error: str = "";
 
@@ -363,12 +364,13 @@ def:pub DataView() -> JsxElement {
 ### Polling Pattern
 
 ```jac
+import from typing { Any }
 to cl:
 
 import from react { useEffect }
 
 def:pub LiveData() -> JsxElement {
-    has data: any = None;
+    has data: Any = None;
     has loading: bool = True;
 
     async def fetch_data() -> None {
