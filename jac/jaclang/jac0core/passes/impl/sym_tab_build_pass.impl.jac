@@ -374,6 +374,7 @@ impl SymTabBuildPass.exit_atom_trailer(
             if (
                 archetype.arch_type.name == 'KW_CLASS'
                 or archetype.sym_tab.lookup(chain[1].sym_name, deep=False) is not None
+                or ability.name_spec.sym_name == '__post_init__'
             ) {
                 archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
             }
@@ -396,6 +397,7 @@ impl SymTabBuildPass.exit_atom_trailer(
                     or archetype.sym_tab.lookup(
                         chain[1].sym_name, deep=False
                     ) is not None
+                    or impl_def.target[1].sym_name == '__post_init__'
                 ) {
                     archetype.sym_tab.def_insert(chain[1], access_spec=archetype);
                 }

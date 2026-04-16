@@ -173,3 +173,16 @@ Always = "always_available"
     # Future should NOT be found (requires Python 3.15+)
     assert future_sym is None , "Future should NOT be found on Python < 3.15";
 }
+
+test "postinit fields registered in symbol table for obj" {
+    file_path = os.path.join(FIXTURES, "postinit_fields.jac");
+    mod = JacProgram().compile(file_path);
+
+    # Find MyObj archetype and check 'hub' is in its symbol table
+    my_obj_sym = mod.sym_tab.lookup("MyObj", deep=False);
+    assert my_obj_sym is not None , "MyObj should be in module scope";
+    my_obj_node = my_obj_sym.decl.name_of;
+    assert isinstance(my_obj_node, uni.Archetype) , "MyObj should be an Archetype";
+    hub_sym = my_obj_node.sym_tab.lookup("hub", deep=False);
+    assert hub_sym is not None , "hub field from postinit should be registered in MyObj symbol table";
+}
