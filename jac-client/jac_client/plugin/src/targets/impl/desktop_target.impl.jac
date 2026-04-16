@@ -240,8 +240,7 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
         }
 
         console.print(
-            f"  Project name: {project_name}, version: {project_version}",
-            style="muted"
+            f"  Project name: {project_name}, version: {project_version}", style="muted"
         );
         console.print(f"  Identifier: {identifier}", style="muted");
 
@@ -320,8 +319,7 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
         } except Exception as e {
             console.warning(f"  Failed to add [desktop] section to jac.toml: {e}");
             console.print(
-                "  Setup will continue, but jac.toml may not be updated.",
-                style="muted"
+                "  Setup will continue, but jac.toml may not be updated.", style="muted"
             );
         }
 
@@ -599,7 +597,9 @@ except ImportError:
     # IDAT chunk - solid blue color with alpha (RGBA: 66, 139, 202, 255 = #428BCA)
     # PNG scanlines: each row is prefixed with filter byte (0 = none)
     row_size = width * 4;  # RGBA = 4 bytes per pixel
-    scanline = bytes([0]) + bytes([66, 139, 202, 255]) * width;  # Filter byte + RGBA data
+    scanline = bytes([0]) + bytes(
+        [66, 139, 202, 255]
+    ) * width;  # Filter byte + RGBA data
     image_data = scanline * height;
 
     # Compress
@@ -1771,7 +1771,9 @@ def _check_and_install_tauri_cli -> None {
         }
     } else {
         console.print("  Skipping Tauri CLI installation.", style="muted");
-        console.print("  It will be needed when building. Install with:", style="muted");
+        console.print(
+            "  It will be needed when building. Install with:", style="muted"
+        );
         if cargo_available {
             console.print("    cargo install tauri-cli", style="muted");
         }
@@ -2502,12 +2504,7 @@ def _bundle_sidecar(
 
     if use_pyinstaller {
         result = _bundle_sidecar_pyinstaller(
-            entry_file,
-            project_dir,
-            tauri_dir,
-            binaries_dir,
-            is_windows,
-            plugins_config
+            entry_file, project_dir, tauri_dir, binaries_dir, is_windows, plugins_config
         );
         if result {
             return result;
@@ -3079,7 +3076,9 @@ impl DesktopTarget.dev(
     # Compile runtime utils (creates client_runtime.js)
     compiler.compile_runtime_utils();
     # Compile the module to create compiled/main.js (or whatever the module name is)
-    (module_js, mod, module_manifest) = compiler.jac_compiler.compile_module(entry_file);
+    (module_js, mod, module_manifest) = compiler.jac_compiler.compile_module(
+        entry_file
+    );
     # Write the compiled module to compiled directory
     module_name = entry_file.stem;
     compiled_module_path = compiler.compiled_dir / f"{module_name}.js";
@@ -3117,7 +3116,9 @@ impl DesktopTarget.dev(
         f"  Step 3: Starting backend server on port {server_port}...", style="muted"
     );
     server_process = _start_backend_server(entry_file, project_dir, server_port);
-    console.print(f"  ✔ Backend server starting on port {server_port}", style="success");
+    console.print(
+        f"  ✔ Backend server starting on port {server_port}", style="success"
+    );
     # Step 4: Launch tauri dev
     console.print("  Step 4: Launching Tauri dev window...", style="muted");
     console.print("  (Press Ctrl+C to stop)", style="muted");
@@ -3410,7 +3411,9 @@ impl DesktopTarget.start(
         f"  Step 3: Starting backend server on port {server_port}...", style="muted"
     );
     server_process = _start_backend_server(entry_file, project_dir, server_port);
-    console.print(f"  ✔ Backend server starting on port {server_port}", style="success");
+    console.print(
+        f"  ✔ Backend server starting on port {server_port}", style="success"
+    );
     # Step 4: Launch tauri dev (which will use the built bundle)
     console.print("  Step 4: Launching Tauri app...", style="muted");
     console.print("  (Press Ctrl+C to stop)", style="muted");
