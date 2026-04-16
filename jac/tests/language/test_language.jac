@@ -836,3 +836,22 @@ test "escape sequences in strings and fstrings" {
     # Test 9: unicode \u001b → ESC (third distinct escape syntax)
     assert "unicode_escape_first_ord:27" in output , f"Unicode escape failed: {output}";
 }
+
+test "undirected edge traversal" {
+    output = run_jac(os.path.join(FIXTURES, "undirected_edge_traversal.jac"));
+    lines = output.strip().split("\n");
+    # Typed bidirectional <+:friend:+>: forward a->b
+    assert lines[0] == "[person(name='Bob')]";
+    # Typed bidirectional <+:friend:+>: reverse b->a (was broken before fix)
+    assert lines[1] == "[person(name='Alice')]";
+    # Typed with explicit target: b ->:friend:-> a
+    assert lines[2] == "[person(name='Alice')]";
+    # Generic bidirectional <++>: forward c->d
+    assert lines[3] == "[person(name='Dave')]";
+    # Generic bidirectional <++>: reverse d->c (was broken before fix)
+    assert lines[4] == "[person(name='Carol')]";
+    # Edge object reachable from source endpoint
+    assert lines[5] == "1";
+    # Edge object reachable from target endpoint (was broken before fix)
+    assert lines[6] == "1";
+}
