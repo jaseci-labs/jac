@@ -14,7 +14,16 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
      ),
+     COMPILER_FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures"),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
+
+test "inverted isinstance guard narrows type" {
+    out = JacProgram();
+    out.compile(
+        os.path.join(COMPILER_FIXTURES, "isinstance_narrowing_guard.jac")
+    );
+    assert len(out.errors_had) == 0;
+}
 
 test "compile hodge podge" {
     out = JacProgram();
