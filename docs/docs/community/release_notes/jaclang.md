@@ -5,6 +5,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 ## jaclang 0.14.1 (Unreleased)
 
 - **Type Checker: Walker `.reports` Attribute Resolution**: Accessing `.reports` on a spawned walker no longer produces a spurious `E1030` error. Walker and node archetypes now inherit from their builtin base types (`Walker`, `Node`) in the type system's MRO, so fields like `reports: list[Any]` resolve through normal inheritance. Users can also declare `has reports: list[MyType]` on a walker for compile-time type checking of `report` statements.
+- **Type Checker: `W1051` Warning for Unresolved Expressions**: The type evaluator now emits `W1051` ("Expression type could not be resolved") when an expression evaluates to `UnknownType`. Enum member names are also type-checked during `exit_enum`, so unresolved enum members surface as warnings instead of silently passing.
 
 ## jaclang 0.14.0 (Latest Release)
 
