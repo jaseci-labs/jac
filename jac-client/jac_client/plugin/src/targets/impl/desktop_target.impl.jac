@@ -689,11 +689,19 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
     // Try to find the sidecar in bundled resources
     let resource_dir = app.path().resource_dir()?;
 
-    // Possible sidecar names
+    // Possible sidecar names (onedir paths first, then onefile/wrapper fallbacks)
     let sidecar_names = if cfg!(windows) {{
-        vec!["binaries/jac-sidecar.exe", "binaries/jac-sidecar.bat"]
+        vec![
+            "binaries/jac-sidecar/jac-sidecar.exe",  // onedir mode
+            "binaries/jac-sidecar.exe",               // onefile fallback
+            "binaries/jac-sidecar.bat",               // wrapper fallback
+        ]
     }} else {{
-        vec!["binaries/jac-sidecar", "binaries/jac-sidecar.sh"]
+        vec![
+            "binaries/jac-sidecar/jac-sidecar",       // onedir mode
+            "binaries/jac-sidecar",                    // onefile fallback
+            "binaries/jac-sidecar.sh",                 // wrapper fallback
+        ]
     }};
 
     let mut sidecar_path = None;
@@ -1940,7 +1948,14 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
 
     }
 
-    # Find sidecar wrapper script (must exist and be executable)
+    # Onedir output ships the sidecar as a directory (binaries/jac-sidecar/
+    # containing the exe plus DLLs and data). When present, we bundle the
+    # whole folder via a glob so every file is packaged.
+    onedir_folder = binaries_dir / "jac-sidecar";
+    has_onedir = onedir_folder.exists() and onedir_folder.is_dir();
+
+    # Also look for onefile / wrapper scripts sitting directly in binaries_dir
+    # (fallback modes when onedir bundling is disabled or unavailable).
     sidecar_files = [];
     for pattern in [
         "jac-sidecar.sh",
@@ -1956,7 +1971,7 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
         }
     }
 
-    if not sidecar_files {
+    if not sidecar_files and not has_onedir {
         # Remove sidecar from resources if it was previously added but no longer exists
         if "bundle" in config and "resources" in config["bundle"] {
             resources = config["bundle"]["resources"];
@@ -1981,7 +1996,16 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
         config["bundle"]["resources"] = [];
     }
 
-    # Add sidecar binary path (relative to tauri_dir)
+    # Add onedir folder glob (captures exe + DLLs + runtime data files)
+    if has_onedir {
+        onedir_resource = "binaries/jac-sidecar/**/*";
+        if onedir_resource not in config["bundle"]["resources"] {
+            config["bundle"]["resources"].append(onedir_resource);
+            console.print(f"  ✔ Added sidecar folder to config: {onedir_resource}", style="success");
+        }
+    }
+
+    # Add sidecar binary path (relative to tauri_dir) for fallback modes
     for sidecar_file in sidecar_files {
         rel_path = sidecar_file.relative_to(tauri_dir);
         rel_str = str(rel_path.as_posix());
@@ -2559,12 +2583,35 @@ def _bundle_sidecar_pyinstaller(
             '''#!/usr/bin/env python3
 # Entry point for PyInstaller-bundled sidecar
 # Plugin registration for frozen apps is handled in sidecar/main.py
+import os
+import sys
+
+# Force UTF-8 mode on Windows to avoid charmap codec errors when the
+# console code page is not cp65001. Complemented by rthook_utf8.py.
+os.environ["PYTHONUTF8"] = "1"
+
+# Windows multiprocessing freeze support - MUST be called before any other
+# imports that may start child processes. Required for PyInstaller apps that
+# use multiprocessing on Windows (spawn start method re-executes the frozen
+# binary and needs this guard to avoid re-entering main()).
+if sys.platform == "win32":
+    import multiprocessing
+    multiprocessing.freeze_support()
 
 from jac_client.plugin.src.targets.desktop.sidecar.main import main
 if __name__ == "__main__":
     main()
 '''
         );
+    }
+
+    # Create runtime hook to force UTF-8 mode (fixes charmap codec errors on
+    # Windows where the default console code page is not UTF-8). PyInstaller
+    # runs runtime hooks before user code, ensuring PYTHONUTF8 takes effect
+    # before any stdlib module is imported.
+    runtime_hook = tauri_dir / "rthook_utf8.py";
+    with open(runtime_hook, "w") as f {
+        f.write("import os; os.environ['PYTHONUTF8'] = '1'\n");
     }
 
     # Auto-install Python dependencies from jac.toml before bundling
@@ -2671,32 +2718,29 @@ if __name__ == "__main__":
             return None;
         }
 
-        # Find the bundled binary
-        bundled_binary = dist_dir / binary_name;
-        if not bundled_binary.exists() {
-            # Check if it's in a subdirectory (onedir mode)
-            bundled_dir = dist_dir / "jac-sidecar";
-            if bundled_dir.exists() {
-                bundled_binary = bundled_dir / binary_name;
+        # Find the bundled binary. With onedir mode the output is
+        # dist/jac-sidecar/<binary>; with onefile fallback it is dist/<binary>.
+        bundled_dir = dist_dir / "jac-sidecar";
+        bundled_binary = bundled_dir / binary_name;
+
+        if bundled_binary.exists() {
+            # Onedir mode - copy the entire jac-sidecar folder to binaries/
+            # so DLLs and runtime data ship alongside the exe.
+            output_dir = binaries_dir / "jac-sidecar";
+            if output_dir.exists() {
+                shutil.rmtree(output_dir);
             }
-        }
-
-        if not bundled_binary.exists() {
-            console.warning(f"Bundled binary not found at {bundled_binary}");
-            return None;
-        }
-
-        # Copy to binaries directory
-        output_path = binaries_dir / binary_name;
-        if bundled_binary.is_file() {
-            shutil.copy2(bundled_binary, output_path);
+            shutil.copytree(bundled_dir, output_dir);
+            output_path = output_dir / binary_name;
         } else {
-            # Copy entire directory for onedir mode
-            if output_path.exists() {
-                shutil.rmtree(output_path);
+            # Fallback: onefile mode (dist/<binary>)
+            bundled_binary = dist_dir / binary_name;
+            if not bundled_binary.exists() {
+                console.warning(f"Bundled binary not found at {bundled_binary}");
+                return None;
             }
-            shutil.copytree(bundled_binary.parent, binaries_dir / "jac-sidecar");
-            output_path = binaries_dir / "jac-sidecar" / binary_name;
+            output_path = binaries_dir / binary_name;
+            shutil.copy2(bundled_binary, output_path);
         }
 
         # Cleanup build artifacts
@@ -2758,6 +2802,10 @@ hiddenimports = [
     'sqlite3', 'hashlib', 'secrets', 'http.server', 'json',
     'asyncio', 'inspect', 'typing', 'pathlib',
     'pdb', 'bdb', 'cmd', 'code', 'codeop', 'readline',
+    # Windows multiprocessing support (required for frozen apps; spawn start
+    # method re-executes the frozen binary and needs these modules bundled)
+    'multiprocessing', 'multiprocessing.pool', 'multiprocessing.process',
+    'multiprocessing.spawn', 'multiprocessing.popen_spawn_win32',
     # PyInstaller runtime deps - use importlib.metadata instead of pkg_resources
     'appdirs', 'setuptools',
     'packaging', 'packaging.version', 'packaging.specifiers', 'packaging.requirements',
@@ -2956,19 +3004,22 @@ a = Analysis(
     hiddenimports=list(set(hiddenimports)),  # deduplicate
     hookspath=[],
     hooksconfig={{}},
-    runtime_hooks=[],
+    runtime_hooks=[str(Path(r'{entry_script}').parent / 'rthook_utf8.py')],
     excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy', 'pkg_resources'],
     noarchive=False,
 )
 
 pyz = PYZ(a.pure)
 
+# Use onedir mode (EXE + COLLECT) instead of onefile. On Windows + Python 3.13
+# onefile builds hang on startup due to temp-directory extraction issues;
+# onedir ships DLLs alongside the exe and skips extraction entirely. On other
+# platforms onedir is also faster to start, so we use it uniformly.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='{binary_name.replace(
         ".exe", ""
     )}',
@@ -2976,14 +3027,22 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='jac-sidecar',
 )
 ''';
 }
