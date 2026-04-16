@@ -51,7 +51,7 @@ test "ico helper exists and uses correct python per platform" {
     );
 
     # The subprocess fallback must pick 'python' on Windows and 'python3'
-    # elsewhere — /usr/bin/python on old Unix systems is often Python 2, and
+    # elsewhere: /usr/bin/python on old Unix systems is often Python 2, and
     # the Windows py launcher exposes only 'python'.
     assert 'python_cmd = "python" if sys.platform == "win32" else "python3"' in section , (
         "ICO subprocess fallback should select python vs python3 per platform"
