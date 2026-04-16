@@ -191,7 +191,7 @@ jobs:
         pip install -e jac-scale
         pip install -e jac-client
         pip install pytest pytest-asyncio
-        pip install watchdog websockets
+        pip install requests watchdog websockets
 
     - name: Run Backend tests
       run: |
