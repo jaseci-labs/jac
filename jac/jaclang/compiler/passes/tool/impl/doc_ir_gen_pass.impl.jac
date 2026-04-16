@@ -228,7 +228,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         );
     }
     parts.append(closing_doc);
-    nd.gen.doc_ir = self.group(self.concat(parts), ast_node=nd);
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
 """Generate DocIR for ellipsis."""

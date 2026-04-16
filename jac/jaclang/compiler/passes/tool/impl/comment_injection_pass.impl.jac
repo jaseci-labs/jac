@@ -324,7 +324,20 @@ impl CommentInjectionPass._emit_standalone_comments(
                 sink.append(doc.Line(hard=True));
             }
         }
-        sink.append(self._make_standalone_comment(info.token));
+        if info.is_jsx_body {
+            sink.append(
+                doc.Concat(
+                    [
+                        doc.Text('{'),
+                        doc.Text(info.token.value),
+                        doc.Text('}'),
+                        doc.Line(hard=True)
+                    ]
+                )
+            );
+        } else {
+            sink.append(self._make_standalone_comment(info.token));
+        }
         last_line = info.last_line;
         prev_comment_line = comment_line;
     }
@@ -1154,6 +1167,39 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
                     left_token.loc.col_end
                 )
             );
+        }
+        # Special case: {#* comment *#} in JSX body.
+        # The parser consumes the LBRACE and RBRACE without adding them to
+        # any AST node, so the anchor hash is never found in the doc tree
+        # and the comment ends up displaced to end of file (E5051).
+        # Detect this by checking: anchor is LBRACE and the very next real
+        # token in source order is RBRACE — meaning the braces held only a
+        # comment.  Reclassify as standalone so _handle_body_comments picks
+        # it up between JSX children by line number instead.
+        if (
+            anchor_token_id is not None
+            and left_token is not None
+            and left_token.name == Tok.LBRACE
+        ) {
+            right_token: (uni.Token | None) = None;
+            for j in range((offset + 1), len(items)) {
+                if (items[j][0] == 'token') {
+                    right_token = items[j][2];
+                    break;
+                }
+            }
+            if (right_token is not None and right_token.name == Tok.RBRACE) {
+                anchor_token_id = None;
+                info = CommentInfo(comment_idx, comment, anchor_token_id);
+                info.is_jsx_body = True;
+                if info.is_inline {
+                    assert (info.anchor_token_id is not None);
+                    inline.setdefault(info.anchor_token_id, []).append(info);
+                } else {
+                    standalone.append(info);
+                }
+                continue;
+            }
         }
         info = CommentInfo(comment_idx, comment, anchor_token_id);
         if info.is_inline {
