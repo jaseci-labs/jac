@@ -18,14 +18,14 @@ test "pyinstaller command does not include --clean" {
 
     # Find the PyInstaller subprocess invocation (the arg list that begins with
     # sys.executable, "-m", "PyInstaller").
-    match = re.search(
+    m = re.search(
         r'sys\.executable\s*,\s*"-m"\s*,\s*"PyInstaller"\s*,(.*?)str\(spec_path\)',
         content,
         re.DOTALL
     );
-    assert match is not None , "Could not locate PyInstaller invocation arg list";
+    assert m is not None , "Could not locate PyInstaller invocation arg list";
 
-    args_block = match.group(1);
+    args_block = m.group(1);
     assert '"--clean"' not in args_block , (
         "PyInstaller invocation should not include --clean; it forces a full "
         "rebuild on every run, slowing incremental sidecar builds."
