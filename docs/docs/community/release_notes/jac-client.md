@@ -4,9 +4,10 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.13 (Unreleased)
 
+- **Examples: useState → `has` Declaration Migration**: Updated `all-in-one` and `full-stack-with-auth` examples to replace React `useState` hooks with Jac-native `has` declarations. Setter callbacks passed as JSX props (e.g. `setFilter`, `setInput`) are now expressed as inline lambdas (`lambda val: str -> str { x = val; }`). The `useLocalStorage` hook was refactored to use `useEffect` for the initial localStorage load, replacing the unsupported lazy-initializer pattern.
+
 ## jac-client 0.3.12 (Latest Release)
 
-- **Examples: useState → `has` Declaration Migration**: Updated `all-in-one` and `full-stack-with-auth` examples to replace React `useState` hooks with Jac-native `has` declarations. Setter callbacks passed as JSX props (e.g. `setFilter`, `setInput`) are now expressed as inline lambdas (`lambda val: str -> str { x = val; }`). The `useLocalStorage` hook was refactored to use `useEffect` for the initial localStorage load, replacing the unsupported lazy-initializer pattern.
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.
 - **Jacpack Template Cleanup**: The `client` and `fullstack` scaffolds drop their leftover React usage, return `JsxElement` from their component roots, and use idiomatic Jac state/effect/event patterns so freshly-created projects pass `jac check` out of the box.
 - **Feat: Multi-mode Sidecar for Windows Desktop**: --jac-cli flag for CLI proxy, manual plugin registration for frozen apps, .env loading from bundled location, UTF-8/NO_COLOR for Windows.
