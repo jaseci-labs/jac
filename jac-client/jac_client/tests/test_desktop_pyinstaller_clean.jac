@@ -27,7 +27,7 @@ test "pyinstaller command does not include --clean" {
 
     args_block = match.group(1);
     assert '"--clean"' not in args_block , (
-        "PyInstaller invocation should not include --clean — it forces a full "
+        "PyInstaller invocation should not include --clean; it forces a full "
         "rebuild on every run, slowing incremental sidecar builds."
     );
     # Sanity check: we still pass --noconfirm so the build is non-interactive.
