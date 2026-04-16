@@ -1,22 +1,20 @@
-"""Fixture for W3038 auto-fix: useState hook to has declaration."""
+"""Fixture for W3038 auto-fix: useState hook to has declaration (Multiple useState hooks)."""
 
 import from "react" { useState }
 
-def:pub NameInput() -> JsxElement {
-    [name, setName] = useState("");
+def:pub Counter() -> JsxElement {
+    [count, setCount] = useState(0);
+    [label, setLabel] = useState("hello");
 
-    def handleChange(e: any) {
-        setName(str(e.target.value));
+    def handleClick(e: any) {
+        setCount(count + 1);
+        setLabel("clicked");
     }
 
     return (
         <div>
-            <input
-                type="text"
-                value={name}
-                onChange={handleChange}
-            />
-            <p>Hello, {name}</p>
+            <p>{label}: {count}</p>
+            <button onClick={handleClick}>Click</button>
         </div>
     );
 }
