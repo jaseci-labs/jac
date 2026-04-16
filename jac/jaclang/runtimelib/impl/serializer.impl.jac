@@ -315,7 +315,7 @@ impl Serializer.register_alias(old_name: str, cls: type) -> None {
 Memoized on `cls` identity: `get_type_hints` evaluates forward-refs via
 `eval` and walks the MRO, so calling it on every anchor deserialize
 dominates load cost under Mongo. Annotations are effectively immutable
-at runtime — no invalidation path is wired.
+at runtime, so no invalidation path is wired.
 """
 impl Serializer._get_field_types(cls: type) -> dict[str, object] {
     cached = Serializer._field_types_cache.get(cls);

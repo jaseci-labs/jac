@@ -4,7 +4,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.14.1 (Unreleased)
 
-- **Perf: Cache `Serializer._get_field_types` per class**: `_deserialize_archetype` calls `_get_field_types(cls)` once per anchor to drive Layer 3 field coercion, and the inner `typing.get_type_hints` evaluates string forward-refs via `eval` and walks the MRO — expensive enough to roughly double Mongo-backed test wall-clock (`test_memory_hierarchy` went from ~5m to ~10m after #5561). Results are now memoized on `cls` identity; class annotations are effectively immutable at runtime so no invalidation is wired.
+- **Perf: Cache `Serializer._get_field_types` per class**: `_deserialize_archetype` calls `_get_field_types(cls)` once per anchor to drive Layer 3 field coercion, and the inner `typing.get_type_hints` evaluates string forward-refs via `eval` and walks the MRO - expensive enough to roughly double Mongo-backed test wall-clock (`test_memory_hierarchy` went from ~5m to ~10m after #5561). Results are now memoized on `cls` identity; class annotations are effectively immutable at runtime so no invalidation is wired.
 
 ## jaclang 0.14.0 (Latest Release)
 
