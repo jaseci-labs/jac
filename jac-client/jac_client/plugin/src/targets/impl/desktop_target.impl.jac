@@ -624,7 +624,89 @@ except ImportError:
     console.warning(
         "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
     );
+
+    # Generate platform-specific derivatives. Tauri's Windows bundler (NSIS/MSI)
+    # requires icon.ico; without it `cargo tauri build` fails on Windows even
+    # when icon.png is present.
+    _generate_ico_from_png(icons_dir);
 }
+
+
+"""Generate icon.ico from icon.png for the Windows bundler.
+
+Tauri's Windows bundler expects icons/icon.ico. Tries Pillow in-process first
+for speed and clearer errors, and falls back to a subprocess invocation so a
+Pillow install in a different Python environment still satisfies the need.
+On non-Windows hosts the missing Pillow case is silent (tauri may still bundle
+fine when cross-compiling via `cargo tauri icon`), but on Windows we surface a
+warning so the user knows to install Pillow.
+"""
+def _generate_ico_from_png(icons_dir: Path) -> None {
+    import sys;
+    png_path = icons_dir / "icon.png";
+    ico_path = icons_dir / "icon.ico";
+
+    if not png_path.exists() {
+        return;
+    }
+
+    # Try Pillow in-process first.
+    try {
+        import from PIL {Image}
+        img = Image.open(str(png_path));
+        # Ship common Windows icon sizes; tauri picks the best fit.
+        sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
+        img.save(str(ico_path), format="ICO", sizes=sizes);
+        console.print("  ✔ Generated icon.ico for Windows", style="success");
+        return;
+    } except ImportError {
+        # Pillow not available in this process; try subprocess fallback.
+    } except Exception as e {
+        console.warning(f"  Could not generate icon.ico: {e}");
+        return;
+    }
+
+    # Subprocess fallback in case Pillow is installed in a different env.
+    try {
+        python_code = '''
+import sys
+try:
+    from PIL import Image
+    img = Image.open(sys.argv[1])
+    sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+    img.save(sys.argv[2], format="ICO", sizes=sizes)
+    sys.exit(0)
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+''';
+        # Windows: "python" is the canonical command (py launcher or PATH).
+        # Unix: "python3" to avoid matching an ancient /usr/bin/python.
+        python_cmd = "python" if sys.platform == "win32" else "python3";
+        result = subprocess.run(
+            [python_cmd, "-c", python_code, str(png_path), str(ico_path)],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SHORT
+        );
+        if result.returncode == 0 {
+            console.print("  ✔ Generated icon.ico for Windows", style="success");
+            return;
+        } else {
+            console.warning(f"  ICO generation failed: {result.stderr}");
+        }
+    } except Exception as e {
+        console.warning(f"  ICO generation error: {e}");
+    }
+
+    # Only warn loudly on Windows where ICO is mandatory for bundling.
+    if sys.platform == "win32" {
+        console.warning(
+            "  Could not generate icon.ico - install Pillow: pip install Pillow"
+        );
+    }
+}
+
 
 """Generate main.rs.
 

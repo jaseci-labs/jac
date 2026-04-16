@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.13 (Unreleased)
 
+- **Feat: Generate `icon.ico` for Windows Desktop Bundles**: `_generate_default_icons` now also produces `icons/icon.ico` alongside `icon.png`. Tauri's Windows bundler (NSIS/MSI) requires an ICO, and without it `cargo tauri build` fails on Windows even when `icon.png` is present. Uses Pillow in-process first for speed, and falls back to a subprocess invocation (using `python` on Windows and `python3` on Unix) so a Pillow install in a different Python environment still satisfies the requirement. On Windows the missing-Pillow case surfaces a warning suggesting `pip install Pillow`; on other platforms it stays quiet because `cargo tauri icon` can fill the gap when cross-building.
+
 ## jac-client 0.3.12 (Latest Release)
 
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.
