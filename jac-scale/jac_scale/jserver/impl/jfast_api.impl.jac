@@ -317,14 +317,15 @@ impl JFastApiServer._create_endpoint_function(
     self: JFastApiServer,
     callback: Callable[(..., Any)],
     parameters: list[APIParameter],
-    dependencies: list[Any]
+    dependencies: list[Any],
+    request_model: (type[BaseModel] | None) = None
 ) -> Callable[..., Any] {
     sig = inspect.signature(callback);
     accepts_kwargs = any(
         (p.kind == inspect.Parameter.VAR_KEYWORD) for p in sig.parameters.values()
     );
     needs_request_no_params = 'request' in sig.parameters;
-    if not parameters {
+    if not parameters and not request_model {
         if accepts_kwargs {
             if inspect.iscoroutinefunction(callback) {
                 async def async_endpoint_wrapper(
@@ -500,7 +501,13 @@ impl JFastApiServer._create_endpoint_function(
     };
     # Handle body parameters using appropriate handler
     body_model: (type[BaseModel] | None) = None;
-    if (len(body_params) >= 1) {
+    use_request_model = request_model is not None;
+    if use_request_model {
+        # Use the provided Pydantic model directly as the request body
+        body_model = request_model;
+        param_strs.append('body_data: RequestBody');
+        param_mapping['body_data'] = 'body_data';
+    } elif (len(body_params) >= 1) {
         if has_file_params {
             # Use Form handler when files are present (multipart/form-data)
             form_handler = FormBodyParameterHandler(type_converter=self);
@@ -545,12 +552,19 @@ impl JFastApiServer._create_endpoint_function(
     params = ', '.join(param_strs);
     callback_args_lines: list[str] = [];
     if body_model {
-        for param in body_params {
-            param_name = param.name;
-            if param_name {
-                callback_args_lines.append(
-                    f"        callback_args['{param_name}'] = body_data.{param_name}"
-                );
+        if use_request_model {
+            # Pass the whole Pydantic model to the callback as body_data
+            callback_args_lines.append(
+                "        callback_args['body_data'] = body_data"
+            );
+        } else {
+            for param in body_params {
+                param_name = param.name;
+                if param_name {
+                    callback_args_lines.append(
+                        f"        callback_args['{param_name}'] = body_data.{param_name}"
+                    );
+                }
             }
         }
         for name in param_mapping {
@@ -671,7 +685,10 @@ impl JFastApiServer._create_fastapi_route(
     self: JFastApiServer, method: HTTPMethod, endpoint: JEndPoint
 ) -> None {
     endpoint_func = self._create_endpoint_function(
-        endpoint.callback, (endpoint.parameters or []), []
+        endpoint.callback,
+        (endpoint.parameters or []),
+        [],
+        request_model=endpoint.request_model
     );
     route_kwargs: dict[(str, Any)] = {
         'response_model': endpoint.response_model,

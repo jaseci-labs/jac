@@ -9,7 +9,11 @@ import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.utils { generate_random_password }
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
-import from jac_scale.mongo_storage { MongoUserStorage }
+import from jac_scale.identity_storage {
+    IdentityStorage,
+    MongoIdentityStorage,
+    SqliteIdentityStorage
+}
 import from jaclang.jac0core.constant { Constants as Con }
 
 # Load configuration
@@ -24,68 +28,77 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
 """User roles enum."""
 enum UserRole {
     ADMIN = 'admin',
+    SYSTEM = 'system',
     USER = 'user',
 }
 
 obj JacScaleUserManager(UserManager) {
     has SUPPORTED_PLATFORMS: dict = {},
         ADMIN_USER_ID: str = '00000000-0000-0000-0000-000000000000',
-        _storage: (MongoUserStorage | None) by postinit;
+        _identity_storage: IdentityStorage by postinit;
 
     def postinit -> None;
-    def _ensure_connection -> None;
-    def _init_sqlite_schema -> None;
-    def create_user(username: str, password: str) -> dict[str, str];
-    def authenticate(username: str, password: str) -> (dict[(str, str)] | None);
-    def get_root_id(username: str) -> (str | None);
-    def get_user(username: str) -> (dict[(str, str)] | None);
-    def user_exists(username: str) -> bool;
-    def update_username(current_username: str, new_username: str) -> dict[str, str];
+    # Identity-based user CRUD
+    def create_user(
+        identities: list[dict[str, Any]], credential: dict[str, Any]
+    ) -> dict[str, Any];
+
+    def create_internal_user(
+        username: str, password: str, role: str = 'user'
+    ) -> dict[str, Any];
+
+    def authenticate(identifier: str, password: str) -> dict[str, Any] | None;
+    def find_user_by_identity(value: str) -> dict[str, Any] | None;
+    def user_exists(user_id: str) -> bool;
+    def get_user(user_id: str) -> dict[str, Any] | None;
+    def get_root_id(user_id: str) -> str | None;
     def update_password(
-        username: str, current_password: str, new_password: str
+        user_id: str, current_password: str, new_password: str
     ) -> dict[str, str];
 
     def close -> None;
-    # JWT methods
-    def create_jwt_token(username: str, include_role: bool = True) -> str;
-    def validate_jwt_token(token: str) -> (str | None);
-    def refresh_jwt_token(token: str) -> (str | None);
-    def get_jwt_claims(token: str) -> (dict | None);
+    # JWT methods (use user_id as claim)
+    def create_jwt_token(user_id: str, include_role: bool = True) -> str;
+    def validate_jwt_token(token: str) -> str | None;
+    def refresh_jwt_token(token: str) -> str | None;
+    def get_jwt_claims(token: str) -> dict | None;
     # SSO methods
-    def get_sso(platform: str) -> (SSOProvider | None);
+    def get_sso(platform: str) -> SSOProvider | None;
     async def sso_initiate(
         platform: str, operation: str
-    ) -> (Response | TransportResponse);
+    ) -> Response | TransportResponse;
 
     async def sso_callback(request: Request, platform: str) -> TransportResponse;
-    # SSO Account Linking methods
+    # SSO Account Linking
     def link_sso_account(
-        user_id: str, platform: str, external_id: str, email: str
+        user_id: str, platform: str, external_id: str
     ) -> dict[str, str];
 
     def unlink_sso_account(user_id: str, platform: str) -> dict[str, str];
     def get_sso_accounts(user_id: str) -> list[dict[str, str]];
-    def get_user_by_sso(platform: str, external_id: str) -> (dict[str, str] | None);
+    def get_user_by_sso(platform: str, external_id: str) -> dict[str, str] | None;
     # Override validate_token to use JWT
-    def validate_token(token: str) -> (str | None);
+    def validate_token(token: str) -> str | None;
     # User role and admin management
-    def get_user_role(username: str) -> (str | None);
-    def set_user_role(username: str, role: str) -> dict[str, str];
-    def is_admin(username: str) -> bool;
-    def requires_password_reset(username: str) -> bool;
+    def get_user_role(user_id: str) -> str | None;
+    def set_user_role(user_id: str, role: str) -> dict[str, str];
+    def is_admin(user_id: str) -> bool;
+    def requires_password_reset(user_id: str) -> bool;
     def set_requires_password_reset(
-        username: str, requires_reset: bool
+        user_id: str, requires_reset: bool
     ) -> dict[str, str];
 
-    def is_password_required(username: str) -> bool;
-    def set_password_required(username: str, required: bool) -> dict[str, str];
+    def is_password_required(user_id: str) -> bool;
     def bootstrap_admin_user -> dict[str, str];
     def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, Any]];
-    def delete_user(username: str) -> dict[str, str];
+    def delete_user(user_id: str) -> dict[str, str];
     def create_user_as_admin(
         username: str,
         password: str,
         role: str = 'user',
         requires_password_reset: bool = True
     ) -> dict[str, Any];
+
+    # Backward compat helpers
+    def get_username(user_id: str) -> str | None;
 }

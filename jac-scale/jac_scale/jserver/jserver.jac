@@ -53,6 +53,7 @@ obj JEndPoint {
         callback: Callable[(..., Any)],
         parameters: (list[APIParameter] | None) = None,
         response_model: (type[BaseModel] | None) = None,
+        request_model: (type[BaseModel] | None) = None,
         tags: (list[str] | None) = None,
         summary: (str | None) = None,
         description: (str | None) = None;
