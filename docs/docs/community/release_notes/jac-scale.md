@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.14 (Unreleased)
+## jac-scale 0.2.15 (Unreleased)
+
+## jac-scale 0.2.14 (Latest Release)
 
 - **Feat: SV-to-SV Eager Auto-Spawn in `jac start`**: `jac start consumer.jac` now brings up every `sv import`-ed provider (including transitive ones) automatically before serving the first request, so single-host multi-service deployments need exactly one terminal and zero env vars.
 - **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
@@ -14,7 +16,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Fix: `jac start` crashes without `jac-scale[scheduler]`**: The scheduler setup in `jac start` unconditionally initialized APScheduler, causing a `'NoneType' object is not callable` error when APScheduler wasn't installed. The scheduler now gracefully degrades: static/interval/cron tasks still work via the core jaclang scheduler, and dynamic scheduling features are skipped with a clear log message when APScheduler is absent.
 - 1 small refactor/change.
 
-## jac-scale 0.2.13 (Latest Release)
+## jac-scale 0.2.13
 
 - **jac-mcp included by default**: Added to the default Kubernetes package set in jac-scale.
 
