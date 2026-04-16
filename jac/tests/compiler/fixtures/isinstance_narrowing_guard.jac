@@ -16,4 +16,3 @@ def describe(pet: Dog | Cat) -> str {
     }
     return pet.breed;
 }
-
