@@ -522,6 +522,7 @@ EventHandler = Callable[[Event], None]
 class _HtmlCommonProps:
     """Common props shared by all intrinsic HTML elements."""
 
+    key: object
     id: str
     className: str
     style: dict[str, object]
@@ -647,3 +648,100 @@ class _SelectIntrinsicProps(_HtmlCommonProps):
     required: bool
     multiple: bool
     name: str
+
+# ---------------------------------------------------------------------------
+# JSX intrinsic elements registry
+# ---------------------------------------------------------------------------
+# Maps lowercase HTML tag names to their prop types.  Looked up by the type
+# checker only in JSX context (<tag ...>) — these names are NOT globals.
+# Analogous to TypeScript's JSX.IntrinsicElements interface.
+
+class _JsxIntrinsicElements:
+    """Registry mapping intrinsic HTML tag names to their prop types."""
+
+    # Sectioning / structural
+    div: _HtmlCommonProps
+    span: _HtmlCommonProps
+    p: _HtmlCommonProps
+    section: _HtmlCommonProps
+    article: _HtmlCommonProps
+    aside: _HtmlCommonProps
+    header: _HtmlCommonProps
+    footer: _HtmlCommonProps
+    main: _HtmlCommonProps
+    nav: _HtmlCommonProps
+    # Headings
+    h1: _HtmlCommonProps
+    h2: _HtmlCommonProps
+    h3: _HtmlCommonProps
+    h4: _HtmlCommonProps
+    h5: _HtmlCommonProps
+    h6: _HtmlCommonProps
+    # Text-level semantics
+    strong: _HtmlCommonProps
+    em: _HtmlCommonProps
+    small: _HtmlCommonProps
+    s: _HtmlCommonProps
+    cite: _HtmlCommonProps
+    q: _HtmlCommonProps
+    code: _HtmlCommonProps
+    pre: _HtmlCommonProps
+    blockquote: _HtmlCommonProps
+    abbr: _HtmlCommonProps
+    time: _HtmlCommonProps
+    mark: _HtmlCommonProps
+    sub: _HtmlCommonProps
+    sup: _HtmlCommonProps
+    br: _HtmlCommonProps
+    hr: _HtmlCommonProps
+    # Lists
+    ul: _HtmlCommonProps
+    ol: _HtmlCommonProps
+    li: _HtmlCommonProps
+    dl: _HtmlCommonProps
+    dt: _HtmlCommonProps
+    dd: _HtmlCommonProps
+    # Tables
+    table: _HtmlCommonProps
+    thead: _HtmlCommonProps
+    tbody: _HtmlCommonProps
+    tfoot: _HtmlCommonProps
+    tr: _HtmlCommonProps
+    th: _HtmlCommonProps
+    td: _HtmlCommonProps
+    caption: _HtmlCommonProps
+    colgroup: _HtmlCommonProps
+    col: _HtmlCommonProps
+    # Forms & interactive (specialized)
+    form: _FormIntrinsicProps
+    input: _InputIntrinsicProps
+    button: _ButtonIntrinsicProps
+    textarea: _TextAreaIntrinsicProps
+    select: _SelectIntrinsicProps
+    label: _HtmlCommonProps
+    fieldset: _HtmlCommonProps
+    legend: _HtmlCommonProps
+    option: _HtmlCommonProps
+    optgroup: _HtmlCommonProps
+    datalist: _HtmlCommonProps
+    output: _HtmlCommonProps
+    progress: _HtmlCommonProps
+    meter: _HtmlCommonProps
+    # Links & media (specialized)
+    a: _AnchorIntrinsicProps
+    img: _ImgIntrinsicProps
+    video: _HtmlCommonProps
+    audio: _HtmlCommonProps
+    source: _HtmlCommonProps
+    canvas: _HtmlCommonProps
+    svg: _HtmlCommonProps
+    iframe: _HtmlCommonProps
+    picture: _HtmlCommonProps
+    figure: _HtmlCommonProps
+    figcaption: _HtmlCommonProps
+    # Misc
+    details: _HtmlCommonProps
+    summary: _HtmlCommonProps
+    dialog: _HtmlCommonProps
+    template: _HtmlCommonProps
+    slot: _HtmlCommonProps
