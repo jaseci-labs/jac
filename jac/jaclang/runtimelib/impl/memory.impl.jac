@@ -103,11 +103,45 @@ def _create_new_schema(conn: sqlite3.Connection) {
         )
         """
     );
+    # DB-resident alias table. CLI-managed; complements the
+    # @archetype_alias decorator (which is code-resident, per-process).
+    # DB aliases are merged into Serializer._aliases at connect time so
+    # operator-driven rescues work without a code deploy.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS aliases (
+            old_name    TEXT PRIMARY KEY,
+            new_name    TEXT NOT NULL,
+            created_at  TEXT
+        )
+        """
+    );
     conn.execute(
         "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
         ('db_format_version', str(SQLITE_DB_FORMAT_VERSION))
     );
     conn.commit();
+}
+
+
+"""Load all DB-resident aliases into the in-process Serializer registry.
+
+Called at connection-open time. DB aliases merge with decorator-declared
+aliases; if both touch the same old_name, the DB entry takes precedence
+(the CLI is the operator's rescue path, expected to override a stale
+default from code).
+"""
+def _load_db_aliases(conn: sqlite3.Connection) -> int {
+    import from jaclang.runtimelib.serializer { Serializer }
+    cursor = conn.execute("SELECT old_name, new_name FROM aliases");
+    count = 0;
+    for (old_name, new_name) in cursor.fetchall() {
+        if isinstance(old_name, str) and isinstance(new_name, str) {
+            Serializer._aliases[old_name] = new_name;
+            count += 1;
+        }
+    }
+    return count;
 }
 
 """Quarantine a row that failed to deserialize. Never raises."""
@@ -397,14 +431,18 @@ impl SqliteMemory._ensure_connection -> None {
     self.__conn__.execute("PRAGMA synchronous=NORMAL");
     # Detect schema state: new, legacy pickle, or empty.
     if _is_new_schema(self.__conn__) {
-        # Already migrated — ensure quarantine + meta tables exist in case
-        # someone opened a new-schema DB with an older client.
+        # Already migrated — ensure quarantine + meta + aliases tables exist
+        # in case the DB was opened by an older client before this version
+        # (CREATE TABLE IF NOT EXISTS is idempotent).
         _create_new_schema(self.__conn__);
     } elif _is_legacy_schema(self.__conn__) {
         _migrate_legacy_pickle_db(self.__conn__);
     } else {
         _create_new_schema(self.__conn__);
     }
+    # Merge DB-resident aliases into Serializer._aliases so CLI-managed
+    # rescues apply automatically on the next read.
+    _load_db_aliases(self.__conn__);
 }
 
 """Check if database connection is available."""
@@ -481,12 +519,15 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
         return None;
     }
     if anchor is None {
-        # Registry couldn't resolve class (renamed/moved). Quarantine
-        # rather than drop — this is recoverable with an alias registry
-        # in Layer 3.
+        # Either the row couldn't deserialize at all, or the archetype
+        # class was unresolvable (even after alias lookup). Quarantine
+        # rather than drop — class rename/move is recoverable via the
+        # @archetype_alias decorator. The source of truth for "can't
+        # reconstruct" lives inside Serializer._deserialize_anchor so
+        # every persistence backend gets the same guarantee.
         logger.warning(
-            f"SqliteMemory: class {arch_module}.{arch_type} not in "
-            f"registry for anchor {id}. Moving to anchors_quarantine."
+            f"SqliteMemory: class {arch_module}.{arch_type} unresolvable "
+            f"for anchor {id}. Moving to anchors_quarantine."
         );
         _quarantine(
             self.__conn__,
@@ -496,13 +537,13 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
             arch_type,
             fingerprint,
             data_json,
-            f"class {arch_module}.{arch_type} unregistered",
+            f"class {arch_module}.{arch_type} unresolvable",
             from_format_version=fmt_version
         );
         return None;
     }
-    self.__mem__[id] = anchor;
-    return anchor;
+    self.__mem__[id] = cast(Anchor, anchor);
+    return cast(Anchor, anchor);
 }
 
 """Store an anchor. Writes to memory and immediately persists to database."""
@@ -813,6 +854,294 @@ impl SqliteMemory.get_mem -> dict[UUID, Anchor] {
 """Commit - syncs pending changes to database."""
 impl SqliteMemory.commit(anchor: (Anchor | None) = None) -> None {
     self.sync();
+}
+
+# =============================================================================
+# SqliteMemory: Layer 1+2+3 operator surface
+# =============================================================================
+"""Helper: attempt to re-deserialize one quarantined row, re-stamped with the
+live class's identity + fingerprint on success. Returns (ok, reason)."""
+def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
+    (
+        row_id,
+        anchor_type,
+        arch_module,
+        arch_type,
+        fingerprint,
+        data_json,
+        _error,
+        _quarantined_at,
+        from_format_version
+    ) = row;
+    if not data_json {
+        return (False, "no data payload stored");
+    }
+    try {
+        data = json.loads(data_json);
+    } except Exception as e {
+        return (False, f"json decode failed: {e}");
+    }
+    try {
+        anchor = Serializer.deserialize(data);
+    } except Exception as e {
+        return (False, f"deserialize raised: {type(e).__name__}: {e}");
+    }
+    if anchor is None {
+        return (False, f"class {arch_module}.{arch_type} still unresolvable");
+    }
+    # Re-stamp with live class metadata so subsequent reads bypass alias
+    # resolution and drift-detection logging.
+    re_data = Serializer.serialize(anchor, include_type=True);
+    re_data_json = json.dumps(re_data);
+    live_arch = getattr(anchor, 'archetype', None);
+    live_module = getattr(type(live_arch), '__module__', arch_module)
+        if live_arch
+        else arch_module;
+    live_type = getattr(type(live_arch), '__name__', arch_type)
+        if live_arch
+        else arch_type;
+    live_fp = getattr(type(live_arch), '__jac_fingerprint__', fingerprint)
+        if live_arch
+        else fingerprint;
+    now = datetime.now(timezone.utc).isoformat();
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO anchors
+            (id, type, arch_module, arch_type, fingerprint, data,
+             format_version, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            row_id,
+            anchor_type or 'Anchor',
+            live_module,
+            live_type,
+            live_fp,
+            re_data_json,
+            from_format_version or 1,
+            now
+        )
+    );
+    conn.execute("DELETE FROM anchors_quarantine WHERE id = ?", (row_id, ));
+    return (True, "recovered");
+}
+
+
+"""Summary dict for `jac db inspect`."""
+impl SqliteMemory.inspect_summary -> dict {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    fmt_row = conn.execute(
+        "SELECT value FROM schema_meta WHERE key='db_format_version'"
+    ).fetchone();
+    fmt_version = fmt_row[0] if fmt_row else '?';
+    anchors_rows = list(
+        conn.execute(
+            """
+        SELECT COALESCE(arch_type, '<none>'), COUNT(*)
+        FROM anchors
+        GROUP BY arch_type
+        ORDER BY COUNT(*) DESC
+        """
+        )
+    );
+    quarantine_rows = list(
+        conn.execute(
+            """
+        SELECT COALESCE(arch_type, '<none>'), COUNT(*)
+        FROM anchors_quarantine
+        GROUP BY arch_type
+        ORDER BY COUNT(*) DESC
+        """
+        )
+    );
+    (alias_count, ) = conn.execute("SELECT COUNT(*) FROM aliases").fetchone();
+    return {
+        'format_version': str(fmt_version),
+        'anchors_total': sum(r[1] for r in anchors_rows),
+        'anchors_by_type': [(r[0], r[1]) for r in anchors_rows],
+        'quarantine_total': sum(r[1] for r in quarantine_rows),
+        'quarantine_by_type': [(r[0], r[1]) for r in quarantine_rows],
+        'aliases_total': alias_count,
+        'location': self.path
+    };
+}
+
+
+"""List recent quarantined rows."""
+impl SqliteMemory.list_quarantined(limit: int = 50) -> list {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    rows = list(
+        conn.execute(
+            """
+        SELECT id, COALESCE(arch_module, '?') || '.' ||
+               COALESCE(arch_type, '?'), COALESCE(fingerprint, ''),
+               COALESCE(error, ''), COALESCE(quarantined_at, '')
+        FROM anchors_quarantine
+        ORDER BY quarantined_at DESC
+        LIMIT ?
+        """,
+            (limit, )
+        )
+    );
+    return [
+        {
+            'id': str(r[0]),
+            'arch': str(r[1]),
+            'fingerprint': str(r[2]),
+            'error': str(r[3]),
+            'quarantined_at': str(r[4])
+        } for r in rows
+    ];
+}
+
+
+"""Full detail of one quarantined row (by id or unique prefix)."""
+impl SqliteMemory.show_quarantined(id_prefix: str) -> (dict | None) {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    rows = list(
+        conn.execute(
+            """
+        SELECT id, type, arch_module, arch_type, fingerprint, data,
+               error, quarantined_at, from_format_version
+        FROM anchors_quarantine
+        WHERE id = ? OR id LIKE ?
+        LIMIT 2
+        """,
+            (id_prefix, id_prefix + '%')
+        )
+    );
+    if not rows {
+        return None;
+    }
+    if len(rows) > 1 {
+        return {'error': 'ambiguous', 'count': len(rows)};
+    }
+    r = rows[0];
+    parsed_data = None;
+    try {
+        parsed_data = json.loads(r[5]) if r[5] else None;
+    } except Exception { }
+    return {
+        'id': r[0],
+        'type': r[1],
+        'arch_module': r[2],
+        'arch_type': r[3],
+        'fingerprint': r[4],
+        'error': r[6],
+        'quarantined_at': r[7],
+        'from_format_version': r[8],
+        'data': parsed_data
+    };
+}
+
+
+"""Recover a single quarantined row (or unique prefix)."""
+impl SqliteMemory.recover_one(id_prefix: str) -> tuple {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    # Pull in DB-resident aliases so CLI-added rescues apply.
+    _load_db_aliases(conn);
+    rows = list(
+        conn.execute(
+            """
+        SELECT id, type, arch_module, arch_type, fingerprint, data,
+               error, quarantined_at, from_format_version
+        FROM anchors_quarantine
+        WHERE id = ? OR id LIKE ?
+        LIMIT 2
+        """,
+            (id_prefix, id_prefix + '%')
+        )
+    );
+    if not rows {
+        return (False, f"no quarantined row matching {id_prefix}");
+    }
+    if len(rows) > 1 {
+        return (False, f"prefix {id_prefix} matches multiple rows");
+    }
+    (ok, reason) = _sqlite_attempt_recover(conn, rows[0]);
+    conn.commit();
+    return (ok, reason);
+}
+
+
+"""Recover every quarantined row; return (n_recovered, [(id, reason)...])."""
+impl SqliteMemory.recover_all -> tuple {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    _load_db_aliases(conn);
+    rows = list(
+        conn.execute(
+            """
+        SELECT id, type, arch_module, arch_type, fingerprint, data,
+               error, quarantined_at, from_format_version
+        FROM anchors_quarantine
+        """
+        )
+    );
+    recovered = 0;
+    still_stuck: list = [];
+    for r in rows {
+        (ok, reason) = _sqlite_attempt_recover(conn, r);
+        if ok {
+            recovered += 1;
+        } else {
+            still_stuck.append((str(r[0]), reason));
+        }
+    }
+    conn.commit();
+    return (recovered, still_stuck);
+}
+
+
+"""List DB-resident aliases."""
+impl SqliteMemory.list_aliases -> list {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    rows = list(
+        conn.execute(
+            "SELECT old_name, new_name, COALESCE(created_at, '') "
+            "FROM aliases ORDER BY created_at"
+        )
+    );
+    return [
+        {'old_name': str(r[0]), 'new_name': str(r[1]), 'created_at': str(r[2])}
+        for r in rows
+    ];
+}
+
+
+"""Add (or replace) an alias; merge into the in-process Serializer map."""
+impl SqliteMemory.add_alias(old_name: str, new_name: str) -> None {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    now = datetime.now(timezone.utc).isoformat();
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO aliases (old_name, new_name, created_at)
+        VALUES (?, ?, ?)
+        """,
+        (old_name, new_name, now)
+    );
+    conn.commit();
+    Serializer._aliases[old_name] = new_name;
+}
+
+
+"""Remove an alias. Returns True if an entry was deleted."""
+impl SqliteMemory.remove_alias(old_name: str) -> bool {
+    self._ensure_connection();
+    conn = cast(sqlite3.Connection, self.__conn__);
+    cursor = conn.execute("DELETE FROM aliases WHERE old_name = ?", (old_name, ));
+    conn.commit();
+    removed = cursor.rowcount > 0;
+    if removed {
+        Serializer._aliases.pop(old_name, None);
+    }
+    return removed;
 }
 
 # =============================================================================

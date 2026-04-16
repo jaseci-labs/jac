@@ -41,6 +41,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac jac2js` | Convert Jac to JavaScript |
 | `jac build` | Build for target platform (jac-client) |
 | `jac setup` | Setup build target (jac-client) |
+| `jac db` | Inspect persistence DB, manage rescue aliases, recover quarantined data |
 
 ---
 
@@ -611,6 +612,157 @@ jac plugins disabled
 > - **jac-super**: Enhanced console output with Rich formatting, colors, and spinners (`pip install jac-super`)
 > - **jac-client**: Full-stack web development with client-side rendering (`pip install jac-client`)
 > - **jac-scale**: Kubernetes deployment and scaling (`pip install jac-scale`)
+
+---
+
+## Database Operations
+
+The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), `MongoBackend` (with `jac-scale`), or any plugin-provided backend that implements the interface -- through the same set of subcommands.
+
+For the architectural background (fingerprints, drift detection, quarantine philosophy, alias decorator), see [Persistence & Schema Migration](../persistence.md).
+
+### Backend dispatch
+
+`jac db` always operates on the backend the user's app is configured to use:
+
+- Pass `--app PATH` to point at the entry `.jac` file.
+- Or run the command from the app's directory; if there's exactly one `.jac` in the current directory, it's picked automatically.
+
+The command imports the user's app to set up the runtime context, then talks to whatever `PersistentMemory` backend the configuration installs -- SQLite locally, Mongo in production, etc. There is no separate mode for each backend.
+
+```bash
+# Explicit
+jac db inspect --app path/to/app.jac
+
+# Implicit when there's one .jac in cwd
+cd my_app/
+jac db inspect
+```
+
+### jac db inspect
+
+Print a one-line summary of the live persistence backend plus per-archetype count tables for both anchors and quarantine.
+
+```bash
+jac db inspect
+```
+
+**Output:**
+
+```
+Jac DB: /tmp/myapp/.jac/data/anchor_store.db
+[INFO] format_version=1   anchors=5   quarantined=0   aliases=0
+        Anchors
+┏━━━━━━━━━━━━━┳━━━━━━━┓
+┃ arch_type   ┃ count ┃
+┡━━━━━━━━━━━━━╇━━━━━━━┩
+│ Person      │ 2     │
+│ GenericEdge │ 2     │
+│ Root        │ 1     │
+└─────────────┴───────┘
+```
+
+The summary line covers: storage format version, total live anchor count, total quarantined count, and total alias count. Quarantine + Anchors tables only print when non-empty.
+
+### jac db quarantine list
+
+List the most recent quarantined anchors with their class, fingerprint, error, and timestamp.
+
+```bash
+jac db quarantine list           # default limit: 50
+jac db quarantine list -n 200    # raise limit
+```
+
+Sorted newest first. UUID columns are truncated to a recognizable prefix; pass any unique prefix to `quarantine show` or `recover`.
+
+### jac db quarantine show \<id-prefix\>
+
+Dump one quarantined row in full (parsed JSON), including the original `data` payload -- useful for understanding why a row failed to load.
+
+```bash
+jac db quarantine show 86092d34
+```
+
+A unique prefix is sufficient. If the prefix is ambiguous, the command tells you and asks for a longer prefix.
+
+### jac db alias add / list / remove
+
+DB-resident rescue aliases. Persisted in an `aliases` table (SQLite) or `<collection>_aliases` companion collection (Mongo, e.g. `_anchors_aliases`) and merged into the in-process `Serializer._aliases` map at backend connect time. Survives across process restarts; affects every consumer of that database.
+
+```bash
+# List current aliases.
+jac db alias list
+
+# Register a rescue alias for a class rename / module move.
+jac db alias add "old.module.LegacyName" "new.module.NewName"
+
+# Remove one.
+jac db alias remove "old.module.LegacyName"
+```
+
+Both arguments to `alias add` are fully-qualified `module.ClassName` strings -- the `module` part is what would have appeared in the stored row's `arch_module` field. For files imported via `jac enter app.jac`, the module is `__main__`.
+
+> **When to use this vs. the decorator.** The [`@archetype_alias`](../persistence.md#class-renames-the-alias-decorator) decorator is the normal path: it's code-resident, travels through git, applies wherever the code runs. `jac db alias add` is the rescue path: emergency recovery in production without a code deploy. Decorator first, CLI as the safety net.
+
+### jac db recover \<id-prefix\>
+
+Re-attempt deserialization on one quarantined row. On success, the row is moved back to the live anchors collection and **re-stamped with the live class's identity + fingerprint** so subsequent reads bypass alias resolution and drift detection.
+
+```bash
+jac db recover 86092d34 --app app.jac
+```
+
+Recovery only succeeds when the user's archetype classes (and any `@archetype_alias` decorators) are registered, so the user app must be discoverable -- via `--app PATH` or the cwd auto-discovery described above. Without it, every quarantined row will be reported as `class X.Y still unresolvable`.
+
+### jac db recover-all
+
+Batch variant. Re-attempts every quarantined row and reports counts, plus a per-row reason for whatever still can't be recovered.
+
+```bash
+jac db recover-all --app app.jac
+```
+
+Typical output:
+
+```
+✔ Recovered 2 of 2 quarantined rows.
+```
+
+Or, when some rows are still stuck (often because the class involved isn't covered by any alias yet):
+
+```
+✔ Recovered 3 of 5 quarantined rows.
+[WARN] 2 rows still quarantined.
+                Still quarantined
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ id        ┃ reason                                          ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ d44e2c7a… │ class oldmod.GoneAway still unresolvable       │
+│ 902b14ee… │ deserialize raised: ValueError: bad enum value │
+└───────────┴─────────────────────────────────────────────────┘
+```
+
+### Typical rescue workflow
+
+```bash
+# 1. Discover what's quarantined.
+jac db inspect --app app.jac
+jac db quarantine list --app app.jac
+
+# 2. Drill into one row to understand why.
+jac db quarantine show <prefix> --app app.jac
+
+# 3. If it's a class rename: register an alias.
+jac db alias add "__main__.OldName" "__main__.NewName"
+
+# 4. Re-attempt every stuck row.
+jac db recover-all --app app.jac
+
+# 5. Confirm.
+jac db inspect --app app.jac
+```
+
+After step 5 the quarantine count should be zero (or list only rows that genuinely need a different fix -- type changes too aggressive for the coercion table, etc.).
 
 ---
 

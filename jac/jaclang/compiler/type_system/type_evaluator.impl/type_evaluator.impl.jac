@@ -502,6 +502,22 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.JsxElement():
             if self.prefetch and self.prefetch.jsx_element_class {
+                if expr.name and expr.name.parts {
+                    for part in expr.name.parts {
+                        if isinstance(part, uni.Name) {
+                            tag_val = part.value or "";
+                            if tag_val and tag_val[0].isupper() {
+                                # Uppercase = user component — resolve via normal scope.
+                                self.get_type_of_expression(part);
+                            } else {
+                                # Lowercase = intrinsic HTML element — resolve via
+                                # _JsxIntrinsicElements registry (JSX-context only,
+                                # not global scope).
+                                self._resolve_intrinsic_jsx_tag(part, tag_val);
+                            }
+                        }
+                    }
+                }
                 self._validate_jsx_props(expr, expected_type);
                 return self._convert_to_instance(self.prefetch.jsx_element_class);
             }
@@ -2923,6 +2939,9 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.walker_class = get_jac_builtin_class("Walker");
     self.prefetch.jsx_element_class = get_jac_builtin_class("JsxElement");
     self.prefetch.html_common_props_class = get_jac_builtin_class("_HtmlCommonProps");
+    self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(
+        "_JsxIntrinsicElements"
+    );
     # Fixed-width numeric types
     self.prefetch.i8_class = get_jac_builtin_class("i8");
     self.prefetch.u8_class = get_jac_builtin_class("u8");

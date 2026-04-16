@@ -111,7 +111,8 @@ obj ModelPool(BaseLLM) {
         strategy: str | None = None,
         num_retries: int | None = None,
         timeout: float | None = None,
-        _router: object = None;
+        _router: object = None,
+        _fallback_model_names: list = [];
 
     def postinit -> None;
     override def model_call_no_stream(params: dict) -> dict;
