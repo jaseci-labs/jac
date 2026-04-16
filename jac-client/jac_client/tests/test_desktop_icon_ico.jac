@@ -61,7 +61,5 @@ test "ico helper exists and uses correct python per platform" {
     assert '(256, 256)' in section and '(16, 16)' in section , (
         "ICO output should include standard Windows icon sizes"
     );
-    assert 'format="ICO"' in section , (
-        "ICO helper should save with format='ICO'"
-    );
+    assert 'format="ICO"' in section , ("ICO helper should save with format='ICO'");
 }
