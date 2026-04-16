@@ -3685,3 +3685,15 @@ test "lambda_block_body_return_type_inference" {
         for err in all_errors
     );
 }
+
+test "walker_reports_attribute_resolves" {
+    # Walker types should have .reports visible (inherited from builtin Walker).
+    # Both typed (has reports: list[T]) and untyped walkers should pass.
+    path = os.path.join(CHECKER_FIXTURES, "checker_walker_reports.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors for walker .reports access, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}

@@ -6,6 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.14.0 (Latest Release)
 
+- **Type Checker: Walker `.reports` Attribute Resolution**: Accessing `.reports` on a spawned walker no longer produces a spurious `E1030` error. Walker and node archetypes now inherit from their builtin base types (`Walker`, `Node`) in the type system's MRO, so fields like `reports: list[Any]` resolve through normal inheritance. Users can also declare `has reports: list[MyType]` on a walker for compile-time type checking of `report` statements.
 - **Fix: byllm Provider Config Ignored from `jac.toml`**: The byllm plugin now correctly reads the provider and model from `[plugins.byllm.model]` in `jac.toml`. Previously, `PluginConfigBase` resolved `project_dir` via `cwd`, causing the config lookup to miss the project's `jac.toml` and fall back to the OpenAI default. `PluginConfigBase` now derives the project directory from `JacRuntime.full_target_path` (set by `jac run` before compilation).
 - 1 internal refactor.
 - **Feat: `to cl:` / `to sv:` / `to na:` Section Headers**: Module-level section headers set the default client/server/native context for every following statement until the next header; the legacy `cl { ... }` / `sv { ... }` / `na { ... }` braced blocks now emit a deprecation warning.
