@@ -6,7 +6,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.14.0 (Latest Release)
 
-- **Fix:CFG** Type narrowing now works for if isinstance(x, T) { } else { return; } guards. Previously the type checker didn't narrow x to T after this pattern, causing 35 false-positive errors
+- **Fix:CFG** Type narrowing now works for `if isinstance(x, T) { } else { return; }` guards. Previously the type checker didn't narrow x to T after this pattern, causing 35 false-positive errors
 - **Fix: byllm Provider Config Ignored from `jac.toml`**: The byllm plugin now correctly reads the provider and model from `[plugins.byllm.model]` in `jac.toml`. Previously, `PluginConfigBase` resolved `project_dir` via `cwd`, causing the config lookup to miss the project's `jac.toml` and fall back to the OpenAI default. `PluginConfigBase` now derives the project directory from `JacRuntime.full_target_path` (set by `jac run` before compilation).
 - 1 internal refactor.
 - **Feat: `to cl:` / `to sv:` / `to na:` Section Headers**: Module-level section headers set the default client/server/native context for every following statement until the next header; the legacy `cl { ... }` / `sv { ... }` / `na { ... }` braced blocks now emit a deprecation warning.
