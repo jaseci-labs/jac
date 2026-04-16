@@ -3348,6 +3348,13 @@ impl Parser.parse_jsx_child -> Expr {
     # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
+        # If braces contain only a comment, the comment was already skipped by
+        # the lexer. Next token is immediately RBRACE — treat as a no-op child
+        # and recurse so siblings that follow are not cut off.
+        if self.check(TokenKind.RBRACE) {
+            self.advance();  # consume }
+            return self.parse_jsx_child();
+        }
         lbrace_uni = self.make_uni_token(lbrace);
         expr = self.parse_expression();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
