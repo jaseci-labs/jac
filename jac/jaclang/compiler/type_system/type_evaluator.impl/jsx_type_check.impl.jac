@@ -5,16 +5,11 @@ Validates that JSX element attributes match the expected types from:
 2. Intrinsic HTML element prop schemas (lowercase tags like <button>)
 """
 
-# Mapping from intrinsic HTML tag names to their prop type class names in dom_types.pyi.
-glob _INTRINSIC_TAG_MAP: dict[str, str] = {
-         "button": "_ButtonIntrinsicProps",
-         "input": "_InputIntrinsicProps",
-         "form": "_FormIntrinsicProps",
-         "a": "_AnchorIntrinsicProps",
-         "img": "_ImgIntrinsicProps",
-         "textarea": "_TextAreaIntrinsicProps",
-         "select": "_SelectIntrinsicProps"
-     };
+# Reserved JSX attributes consumed by the framework reconciler, never forwarded
+# to the component as props.  Must be accepted on any element/component without
+# being declared in its parameter list (mirrors React/Preact behaviour).
+glob _JSX_RESERVED_ATTRS: set[str] = {"key","ref"};
+
 
 """Resolve a JsxElementName to the FunctionType of the component it references."""
 impl TypeEvaluator._resolve_jsx_component_type(
@@ -34,19 +29,13 @@ impl TypeEvaluator._resolve_jsx_component_type(
     if not component_name or not component_name[0].isupper() {
         return None;
     }
-    # Try sym first (populated by sem_def_match_pass for some Name nodes).
+    # The JsxElement expression handler drives get_type_of_expression()
+    # on each Name part before reaching this method, so .sym is already
+    # populated via the standard name-resolution pipeline (lines 1613-1626
+    # of type_evaluator.impl.jac). Read it directly.
     sym: uni.Symbol | None = None;
     if isinstance(first_part, uni.Name) and first_part.sym {
         sym = first_part.sym;
-    }
-    # Fallback: walk the scope chain to find the name.
-    if sym is None {
-        scope_node = name.find_parent_of_type(uni.UniScopeNode);
-        if scope_node is not None and self.builtins_module is not None {
-            sym = type_utils.lookup_symtab(
-                scope_node, component_name, self.builtins_module
-            );
-        }
     }
     if sym is not None {
         sym_type = self.get_type_of_symbol(sym);
@@ -57,22 +46,51 @@ impl TypeEvaluator._resolve_jsx_component_type(
     return None;
 }
 
-"""Look up the intrinsic prop ClassType for a lowercase HTML tag name."""
+"""Look up the intrinsic prop ClassType for a lowercase HTML tag name.
+
+Uses _JsxIntrinsicElements from dom_types.pyi — each member maps a tag name
+to its prop type (e.g. ``button: _ButtonIntrinsicProps``).  Returns None for
+unrecognised tags so the caller can decide whether to warn or allow."""
 impl TypeEvaluator._get_intrinsic_props_type(tag_name: str) -> types.ClassType | None {
-    # For tags not in the map, fall back to common props.
-    class_name = _INTRINSIC_TAG_MAP.get(tag_name, "_HtmlCommonProps");
-    # Look up in the builtins scope (dom_types.pyi is merged there).
-    if self.builtins_module is not None
-    and class_name in self.builtins_module.names_in_scope {
-        sym = self.builtins_module.names_in_scope[class_name];
-        if sym is not None {
-            sym_type = self.get_type_of_symbol(sym);
-            if isinstance(sym_type, types.ClassType) {
-                return sym_type;
+    registry = self.prefetch.jsx_intrinsic_elements_class if self.prefetch else None;
+    if registry is not None {
+        member = self._lookup_class_member(registry, tag_name);
+        if member is not None {
+            member_type = self.get_type_of_symbol(member.symbol);
+            if isinstance(member_type, types.ClassType) {
+                return member_type;
             }
         }
     }
+    # Fallback: tag not listed in _JsxIntrinsicElements — use common props.
+    if self.prefetch and self.prefetch.html_common_props_class {
+        return self.prefetch.html_common_props_class;
+    }
     return None;
+}
+
+"""Bind a symbol on an intrinsic JSX tag Name node.
+
+Looks up the tag name (e.g. ``div``) in ``_JsxIntrinsicElements``.  If found,
+binds the member symbol to ``part.sym`` so that:
+  - the static-analysis pass sees a resolved name (no W2001),
+  - IDE hover / goto-definition works on tag names.
+If the tag is unknown, emits W1050."""
+impl TypeEvaluator._resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> None {
+    registry = self.prefetch.jsx_intrinsic_elements_class if self.prefetch else None;
+    if registry is not None {
+        member = self._lookup_class_member(registry, tag_name);
+        if member is not None {
+            if part.sym is None {
+                part.sym = member.symbol;
+            }
+            return;
+        }
+    }
+    # Tag not in _JsxIntrinsicElements — warn about unknown intrinsic element.
+    if tag_name {
+        self.emit_diag(W1050, part, tag=tag_name);
+    }
 }
 
 """Validate JSX element attributes against the component's parameter types
@@ -121,6 +139,9 @@ impl TypeEvaluator._validate_component_jsx_props(
             attr_name = attr.name.value
                 if isinstance(attr.name, (uni.Name, uni.Token))
                 else str(attr.name);
+            if attr_name in _JSX_RESERVED_ATTRS {
+                continue;
+            }
             if attr_name not in param_map {
                 self.emit_diag(E1101, attr, component=component_name, name=attr_name);
                 continue;
