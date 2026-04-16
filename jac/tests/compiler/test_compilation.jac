@@ -8,6 +8,7 @@ import os;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.cli.commands { analysis }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      EXAMPLES = os.path.join(JAC_ROOT, "examples"),
@@ -18,11 +19,10 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      LANG_FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures");
 
 test "inverted isinstance guard narrows type" {
-    out = JacProgram();
-    out.compile(
-        os.path.join(COMPILER_FIXTURES, "isinstance_narrowing_guard.jac")
+    result = analysis.check(
+        [os.path.join(COMPILER_FIXTURES, "isinstance_narrowing_guard.jac")]
     );
-    assert len(out.errors_had) == 0;
+    assert result == 0;
 }
 
 test "compile hodge podge" {
