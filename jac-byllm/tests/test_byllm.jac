@@ -1189,6 +1189,8 @@ test "McpClient errors when neither command nor url is set" {
         err = e;
     }
     assert err is not None , "McpClient must require command or url";
+}
+
 """Test ModelPool streaming fallback path."""
 test "model pool streaming fallback" {
     captured_output = io.StringIO();
