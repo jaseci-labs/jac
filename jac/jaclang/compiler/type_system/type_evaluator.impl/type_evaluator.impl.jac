@@ -1596,12 +1596,18 @@ impl TypeEvaluator._get_type_of_expression_core(
                                     expr
                                 );
                                 if cls_ {
-                                    if cls_.sym_category == uni.SymbolType.WALKER_ARCH {
+                                    if (
+                                        cls_.sym_category == uni.SymbolType.WALKER_ARCH
+                                        and self.prefetch.node_class
+                                    ) {
                                         self._set_symbol_to_expr(
                                             expr,
                                             self.prefetch.node_class.get_class_symbol(),
                                         );
-                                    } elif cls_.sym_category == uni.SymbolType.NODE_ARCH {
+                                    } elif (
+                                        cls_.sym_category == uni.SymbolType.NODE_ARCH
+                                        and self.prefetch.walker_class
+                                    ) {
                                         self._set_symbol_to_expr(
                                             expr,
                                             self.prefetch.walker_class.get_class_symbol(),
@@ -1777,13 +1783,13 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
         case uni.ParamVar():
             if node_.type_tag {
                 annotation_type = self.get_type_of_expression(node_.type_tag.tag);
-                if node_.is_vararg {
+                if node_.is_vararg and self.prefetch.list_class {
                     # FIXME: *args are actually a tuple, not a list. But tuples are
                     # complicated to handle, so we'll use list for now. Will revisit this later.
                     param_type = self.prefetch.list_class.clone_as_instance();
                     param_type.private.type_args = [annotation_type];
                     return param_type;
-                } elif node_.is_kwargs {
+                } elif node_.is_kwargs and self.prefetch.dict_class {
                     param_type = self.prefetch.dict_class.clone_as_instance();
                     param_type.private.type_args = [
                         self.prefetch.str_class,
@@ -2172,12 +2178,12 @@ impl TypeEvaluator._assign_class(
     # prevent that, but for now just unwrap it.
     unwrapped_dest: types.TypeBase = dest_type;
     unwrapped_src: types.TypeBase = src_type;
-    if dest_type.shared == self.prefetch.final_class.shared {
+    if self.prefetch.final_class and dest_type.shared == self.prefetch.final_class.shared {
         if len(dest_type.private.type_args) > 0 {
             unwrapped_dest = dest_type.private.type_args[0];
         }
     }
-    if src_type.shared == self.prefetch.final_class.shared {
+    if self.prefetch.final_class and src_type.shared == self.prefetch.final_class.shared {
         if len(src_type.private.type_args) > 0 {
             unwrapped_src = src_type.private.type_args[0];
         }
@@ -2276,7 +2282,7 @@ impl TypeEvaluator._assign_class(
             continue;
         }
         # Exact match with prefetched Protocol class
-        if base_cls.shared == self.prefetch.protocol_class.shared {
+        if self.prefetch.protocol_class and base_cls.shared == self.prefetch.protocol_class.shared {
             is_protocol = True;
             break;
         }
@@ -3022,15 +3028,12 @@ impl TypeEvaluator.postinit -> None {
     self.types_module = self._load_stub_module(self._TYPES_STUB_FILE_PATH);
     self.enum_module = self._load_stub_module(self._ENUM_STUB_FILE_PATH);
     # These prefetch types are essential for the builtin types.
-    self.prefetch.type_var_class = self._get_type_from_module(
-        self.typing_module, "TypeVar"
-    );
-    self.prefetch.param_spec_class = self._get_type_from_module(
-        self.typing_module, "ParamSpec"
-    );
-    self.prefetch.type_var_tuple_class = self._get_type_from_module(
-        self.typing_module, "TypeVarTuple"
-    );
+    _tv = self._get_type_from_module(self.typing_module, "TypeVar");
+    self.prefetch.type_var_class = _tv if isinstance(_tv, types.ClassType) else None;
+    _ps = self._get_type_from_module(self.typing_module, "ParamSpec");
+    self.prefetch.param_spec_class = _ps if isinstance(_ps, types.ClassType) else None;
+    _tvt = self._get_type_from_module(self.typing_module, "TypeVarTuple");
+    self.prefetch.type_var_tuple_class = _tvt if isinstance(_tvt, types.ClassType) else None;
     self.builtins_module = self._load_stub_module(self._BUILTINS_STUB_FILE_PATH);
     self.jac_builtins_module = self._load_stub_module(
         self._JAC_BUILTINS_STUB_FILE_PATH
