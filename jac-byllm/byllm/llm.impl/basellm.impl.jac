@@ -347,6 +347,11 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     params.pop("api_key", None);
     response = self.model_call_with_stream(params);
     for chunk in response {
+        # Final chunk carries usage when stream_options.include_usage is set.
+        chunk_usage = getattr(chunk, "usage", None);
+        if chunk_usage {
+            self._usage_history.append(chunk_usage);
+        }
         if chunk?.choices and chunk?.choices?[0]?.delta {
             delta = chunk.choices[0].delta;
             yield delta.content or "";

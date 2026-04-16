@@ -103,6 +103,17 @@ jac start app.jac --port 8000 --profile prod
 
 When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
 
+When `MONGODB_URI` is set (or `--scale` provisions Mongo on Kubernetes), persistence flips to `MongoBackend`. The MongoDB backend has full Layer 1+2+3 schema-migration support: every persisted document is stamped with `arch_module`, `arch_type`, `fingerprint`, and `format_version`; documents that can't be deserialized (un-resolvable archetype class, corrupt data, deserialize exception) are moved to a `<collection>_quarantine` companion collection instead of being silently dropped; and DB-resident class-rename aliases live in `<collection>_aliases` and are merged into the in-process Serializer registry on every connect. The same `jac db inspect / quarantine / alias / recover` operator commands work against Mongo deployments unchanged -- see [CLI → Database Operations](../cli/index.md#database-operations) and [Persistence & Schema Migration](../persistence.md) for the full model.
+
+```bash
+# Inspect a live Mongo-backed deployment.
+jac db inspect --app app.jac
+
+# Operator rescue: register a class-rename alias in production without redeploying.
+jac db alias add "old.module.LegacyName" "new.module.NewName" --app app.jac
+jac db recover-all --app app.jac
+```
+
 ### Server Configuration
 
 ```toml

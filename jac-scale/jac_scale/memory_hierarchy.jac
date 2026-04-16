@@ -12,6 +12,7 @@ Falls back to jaclang's SqliteMemory when MongoDB is unavailable.
 import json;
 import logging;
 import from collections.abc { Callable, Generator, Iterable }
+import from datetime { datetime, timezone }
 import from pickle { dumps, loads }
 import from typing { Any, cast }
 import from uuid { UUID }
@@ -113,8 +114,18 @@ obj MongoBackend(PersistentMemory) {
     # PersistentMemory-specific
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
+    # Layer 1+2+3 operator surface
+    def inspect_summary -> dict;
+    def list_quarantined(limit: int = 50) -> list;
+    def show_quarantined(id_prefix: str) -> (dict | None);
+    def recover_one(id_prefix: str) -> tuple;
+    def recover_all -> tuple;
+    def list_aliases -> list;
+    def add_alias(old_name: str, new_name: str) -> None;
+    def remove_alias(old_name: str) -> bool;
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
+    def _load_db_aliases -> int;
 }
 
 """
