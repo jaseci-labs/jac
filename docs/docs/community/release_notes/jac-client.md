@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.13 (Unreleased)
 
+- **Feat: Bundle Extra Data Files via `[desktop.bundle] extra_data`**: `jac.toml` now accepts a `[desktop.bundle] extra_data` array of glob patterns that the PyInstaller spec will include in the sidecar bundle. Patterns are rooted at the project directory, and matches keep their relative path inside the bundle so `Path(__file__).parent / "config/prompts.yaml"` still resolves at runtime. Useful for shipping config files, YAML schemas, seed data, and anything else the sidecar needs at runtime but that isn't picked up by `[dependencies]`.
+
 ## jac-client 0.3.12 (Latest Release)
 
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.

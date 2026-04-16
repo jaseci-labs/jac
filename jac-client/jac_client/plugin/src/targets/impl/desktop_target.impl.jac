@@ -2942,6 +2942,26 @@ try:
             except Exception:
                 pass
     print(f"Added {{len([d for d in python_deps.values() if isinstance(d, str)])}} Python dependencies from jac.toml")
+
+    # Read [desktop.bundle] extra_data glob patterns from jac.toml and bundle
+    # every matching file into the sidecar. Paths are glob patterns rooted at
+    # project_dir; matches are placed at the same relative path inside the
+    # frozen bundle so `Path(__file__).parent / "some/file"` still resolves
+    # at runtime.
+    desktop_cfg = toml_data.get('desktop', {{}})
+    bundle_cfg = desktop_cfg.get('bundle', {{}}) if isinstance(desktop_cfg, dict) else {{}}
+    extra_data_patterns = bundle_cfg.get('extra_data', []) if isinstance(bundle_cfg, dict) else []
+    if extra_data_patterns:
+        extra_count = 0
+        for pattern in extra_data_patterns:
+            if isinstance(pattern, str):
+                for match in project_dir.glob(pattern):
+                    if match.is_file():
+                        rel = match.relative_to(project_dir)
+                        datas.append((str(match), str(rel.parent) or '.'))
+                        extra_count += 1
+        if extra_count:
+            print(f"Added {{extra_count}} extra data file(s) from [desktop.bundle] extra_data")
 except Exception as e:
     print(f"Warning: Could not read Python dependencies from jac.toml: {{e}}")
 
