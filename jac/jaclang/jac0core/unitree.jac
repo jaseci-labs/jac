@@ -481,6 +481,7 @@ obj Module(AstDocNode, UniScopeNode) {
 """Whole Program node type for Jac Ast."""
 obj ProgramModule(UniNode) {
     has main_mod: (Module | None) = None;
+    has hub: dict[str, Module] by postinit;
 
     def postinit -> None;
 }

@@ -937,7 +937,7 @@ impl ProgramModule.postinit -> None {
     self.main = self.main_mod or Module.make_stub();
     self.kid = [self.main];
     UniNode.postinit(self);
-    self.hub: dict[(str, Module)] = {self.loc.mod_path: self.main_mod}
+    self.hub = {self.loc.mod_path: self.main_mod}
         if self.main_mod
         else {};
 }

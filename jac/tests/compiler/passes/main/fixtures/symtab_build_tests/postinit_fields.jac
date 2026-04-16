@@ -1,13 +1,14 @@
-"""Fixture for testing that fields assigned in postinit are registered in the symbol table."""
+"""Fixture for testing that fields declared with 'by postinit' are registered in the symbol table."""
 
 obj MyObj {
     has name: str = "hello";
+    has hub: dict[str, int] by postinit;
 
     def postinit -> None;
 }
 
 impl MyObj.postinit -> None {
-    self.hub: dict[str, int] = {'a': 1};
+    self.hub = {'a': 1};
 }
 
 with entry {
