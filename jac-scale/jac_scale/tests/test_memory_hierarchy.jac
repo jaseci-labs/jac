@@ -63,12 +63,24 @@ def extract_transport_response_data(
 def register_user(base_url: str, username: str, password: str = "password123") -> str {
     res = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": password},
+        json={
+            "identities": [{"type": "username", "value": username}],
+            "credential": {"type": "password", "password": password}
+        },
         timeout=2
     );
     assert res.status_code == 201 , f"Registration failed: {res.status_code} - {res.text}";
-    data = cast(dict[str, Any], extract_transport_response_data(res.json()));
-    return data["token"];
+    login_res = requests.post(
+        f"{base_url}/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": password}
+        },
+        timeout=2
+    );
+    assert login_res.status_code == 200 , f"Login failed: {login_res.status_code} - {login_res.text}";
+    login_data = cast(dict[str, Any], extract_transport_response_data(login_res.json()));
+    return login_data["token"];
 }
 
 def post_request(base_url: str, path: str, payload: dict, token: str) -> dict[str, Any] {
@@ -78,7 +90,7 @@ def post_request(base_url: str, path: str, payload: dict, token: str) -> dict[st
         headers={"Authorization": f"Bearer {token}"},
         timeout=2
     );
-    assert res.status_code == 200;
+    assert res.status_code == 200 , f"POST {path} failed: {res.status_code} - {res.text}";
     return cast(dict[str, Any], extract_transport_response_data(res.json()));
 }
 
@@ -692,7 +704,10 @@ test "L2 and L3 commit with server restart" {
         # Login as existing user after server restart (user persisted in MongoDB)
         res = requests.post(
             f"{base_url}/user/login",
-            json={"username": "testuser", "password": "testpass"},
+            json={
+                "identity": {"type": "username", "value": "testuser"},
+                "credential": {"type": "password", "password": "testpass"}
+            },
             timeout=2
         );
         assert res.status_code == 200 , f"Login failed: {res.status_code} - {res.text}";

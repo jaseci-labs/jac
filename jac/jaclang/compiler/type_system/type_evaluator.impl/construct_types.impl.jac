@@ -326,6 +326,24 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     );
     is_builtin_class = mod_flags.is_builtin_stub;
     is_from_stdlib_stub = mod_flags.is_stdlib_stub;
+    # Add implicit base classes for Jac archetype keywords.
+    # walker Foo {} → base_classes = [Walker]  (so .reports etc. are visible)
+    # node Foo {}   → base_classes = [Node]
+    if not base_classes and self.prefetch {
+        if (
+            node_.sym_category == SymbolType.WALKER_ARCH
+            and self.prefetch.walker_class
+            and not (is_builtin_class and node_.name_spec.sym_name == "Walker")
+        ) {
+            base_classes.append(self.prefetch.walker_class);
+        } elif (
+            node_.sym_category == SymbolType.NODE_ARCH
+            and self.prefetch.node_class
+            and not (is_builtin_class and node_.name_spec.sym_name == "Node")
+        ) {
+            base_classes.append(self.prefetch.node_class);
+        }
+    }
     # Add object as implicit base class (Every class inherits from object)
     if not base_classes and self.prefetch and self.prefetch.object_class {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
