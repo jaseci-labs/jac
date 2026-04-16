@@ -311,6 +311,12 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
             # All exit paths covered (if/elif/else or loop-else) -- no direct prev→next edge.
             # Only connect internal tails (body ends) to next.
             self._connect_tails(prev, next);
+            # Special case: `if cond { } else { ... }` — empty true body means the
+            # IfStmt itself is the true-branch fall-through tail. Connect it directly
+            # so CFG narrowing can see the "true" edge and narrow the condition.
+            if isinstance(prev, uni.IfStmt) and not prev.body {
+                self.link_bbs(prev, next);
+            }
         } elif has_bool_sc {
             # Short-circuit wiring handled false path via BoolExpr chain -- no direct prev→next.
             self._connect_tails(prev, next);

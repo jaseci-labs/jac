@@ -495,6 +495,9 @@ impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
 impl TypeEvaluator._set_module_item_symbol_and_type(
     node_: uni.ModuleItem, sym: uni.Symbol
 ) -> TypeBase {
+    if isinstance(node_.name, uni.Name) { } else {
+        return types.UnknownType();
+    }
     node_.name.sym = sym;
     if node_.alias {
         node_.alias.sym = sym;

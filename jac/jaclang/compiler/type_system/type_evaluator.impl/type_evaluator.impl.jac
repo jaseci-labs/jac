@@ -3403,6 +3403,23 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
     if pred.body and succ is pred.body[0] {
         return "true";
     }
+    # True branch (empty body): `if isinstance(x, T) { } else { ... }`.
+    # When pred.body is empty the true fall-through goes directly to the next
+    # statement after the if-else. Confirm succ is not the else entry before
+    # claiming the "true" edge so that a non-empty else is still "false".
+    if not pred.body and pred.else_body is not None {
+        is_else_entry = (
+            (isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body)
+            or (
+                isinstance(pred.else_body, uni.ElseStmt)
+                and pred.else_body.body
+                and succ is pred.else_body.body[0]
+            )
+        );
+        if not is_else_entry {
+            return "true";
+        }
+    }
     # False branch: ElseIf (which IS a CodeBlockStmt/UniCFGNode).
     if isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body {
         return "false";
