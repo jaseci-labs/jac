@@ -7,7 +7,7 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 ```jac
 import from typing { Any }
 # ============================================================
-# Learn Jac in Y Minutes
+# Learn Jac in 5 Minutes
 # ============================================================
 # Jac compiles to Python bytecode, JavaScript, and native machine code.
 # It features graph-native programming, object-spatial walkers,
