@@ -2281,26 +2281,25 @@ impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     parent.kid = [assign if k is nd else k for k in parent.kid];
 }
 
-"""W3038: drop useState from imports after conversion; removes the whole import if it was the only item."""
+"""Handle the three cases: no useState found, full import removal, and partial import removal with comma cleanup."""
 impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
     if not self.lint_enabled or self.report_only or not self._did_convert_usestate {
         return;
     }
+    removed: set[int] = set();
     new_body = [];
-    removed_ids: list[int] = [];
-    changed = False;
     for stmt in nd.body {
         if not isinstance(stmt, uni.Import) or stmt.from_loc is None {
             new_body.append(stmt);
             continue;
         }
-        usestate_items = [
+        usestate_items = {
             item
             for item in stmt.items
             if isinstance(item, uni.ModuleItem)
             and isinstance(item.name, uni.Name)
             and item.name.value == "useState"
-        ];
+        };
         if not usestate_items {
             new_body.append(stmt);
             continue;
@@ -2310,15 +2309,12 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
             for item in stmt.items
             if item not in usestate_items
         ];
-        changed = True;
         if not stmt.items {
-            removed_ids.append(
-                id(stmt)
-            );  # useState was the only import — drop whole stmt
+            removed.add(id(stmt));  # useState was the only import — drop whole stmt
             continue;
         }
         # Partial removal — rebuild kids dropping useState items and their trailing comma
-        new_kid: list[uni.UniNode] = [];
+        new_kid = [];
         skip_comma = False;
         for kid in stmt.kid {
             if kid in usestate_items {
@@ -2335,18 +2331,16 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
         stmt.set_kids(nodes=new_kid);
         new_body.append(stmt);
     }
-    if not changed {
+    if len(new_body) == len(nd.body) {
         return;
     }
     nd.body = new_body;
-    # Must also rebuild nd.kid — the unparser reads nd.kid, not nd.body
-    if removed_ids {
-        removed_set = set(removed_ids);
+    if removed {
         nd.set_kids(
             nodes=[
                 k
                 for k in nd.kid
-                if id(k) not in removed_set
+                if id(k) not in removed
             ]
             or [uni.EmptyToken()]
         );
