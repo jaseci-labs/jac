@@ -4,6 +4,8 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-client 0.3.13 (Unreleased)
 
+- **Fix: Windows Data Path + Skip `cc` Build-Tool Check on Windows**: The Tauri `main.rs` template now computes the sidecar `--data-path` using `LOCALAPPDATA` (falling back to `USERPROFILE\AppData\Local`) on Windows, mirroring the existing `HOME/.local/share/jac-app` path on Unix. The generated code wraps the two branches in `#[cfg(windows)]` / `#[cfg(not(windows))]` so only the platform-appropriate variant compiles. `_run_tauri_dev` also skips the `cc --version` build-tools probe on `win32` — `cc` is not a standard command on Windows (MSVC handles native compilation via VS Build Tools) and the probe failed on correctly configured machines.
+
 ## jac-client 0.3.12 (Latest Release)
 
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.

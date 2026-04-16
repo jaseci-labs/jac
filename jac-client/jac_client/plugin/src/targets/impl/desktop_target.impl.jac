@@ -786,12 +786,30 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
 
         // Compute writable data path for runtime data (database, etc.)
         // AppImage bundles are read-only, so we need a writable location
-        if let Some(home) = std::env::var_os("HOME") {{
-            let data_path = std::path::Path::new(&home)
-                .join(".local")
-                .join("share")
-                .join("jac-app");
-            cmd.arg("--data-path").arg(data_path);
+        #[cfg(windows)]
+        {{
+            // Windows: prefer LOCALAPPDATA, fall back to USERPROFILE\AppData\Local
+            if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {{
+                let data_path = std::path::Path::new(&local_app_data).join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }} else if let Some(user_profile) = std::env::var_os("USERPROFILE") {{
+                let data_path = std::path::Path::new(&user_profile)
+                    .join("AppData")
+                    .join("Local")
+                    .join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }}
+        }}
+        #[cfg(not(windows))]
+        {{
+            // Unix: HOME/.local/share/jac-app
+            if let Some(home) = std::env::var_os("HOME") {{
+                let data_path = std::path::Path::new(&home)
+                    .join(".local")
+                    .join("share")
+                    .join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }}
         }}
 
         // Remove AppImage-injected Python environment variables that break system Python
@@ -3223,6 +3241,7 @@ def _update_tauri_config_for_dev(tauri_dir: Path) {
 
 """Run tauri dev command."""
 def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
+    import sys;
     # Check if cargo is available
     try {
         subprocess.run(
@@ -3242,25 +3261,30 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
         );
     }
 
-    # Check if build tools (gcc/cc) are available
-    try {
-        subprocess.run(
-            ["cc", "--version"],
-            capture_output=True,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
-        );
-    } except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired
-    ) {
-        raise RuntimeError(
-            "Build tools not found. Install build-essential:\n"
-            "  Ubuntu/Debian: sudo apt-get install build-essential\n"
-            "  Fedora: sudo dnf install gcc gcc-c++\n"
-            "  Arch: sudo pacman -S base-devel"
-        );
+    # Check if build tools (gcc/cc) are available.
+    # Skipped on Windows: MSVC (from VS Build Tools) handles native compilation
+    # there, and `cc` is not a standard command on Windows so this check would
+    # raise even on correctly configured machines.
+    if sys.platform != "win32" {
+        try {
+            subprocess.run(
+                ["cc", "--version"],
+                capture_output=True,
+                check=True,
+                timeout=SUBPROCESS_TIMEOUT_SHORT
+            );
+        } except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired
+        ) {
+            raise RuntimeError(
+                "Build tools not found. Install build-essential:\n"
+                "  Ubuntu/Debian: sudo apt-get install build-essential\n"
+                "  Fedora: sudo dnf install gcc gcc-c++\n"
+                "  Arch: sudo pacman -S base-devel"
+            );
+        }
     }
 
     # Check if tauri CLI is available via cargo
