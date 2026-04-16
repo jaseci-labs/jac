@@ -2200,18 +2200,6 @@ impl JacAutoLintPass._convert_usestate_vars(ability_node: uni.Ability) -> None {
         ability_node.body = new_body;
         self.recalculate_parents(ability_node);
         ability_node.kid = [replaced.get(id(k), k) for k in ability_node.kid];
-    } else {
-        for stmt in ability_node.body {
-            if isinstance(stmt, uni.ArchHas) {
-                for has_var in stmt.vars {
-                    if isinstance(has_var.name, uni.Name) {
-                        var_name = has_var.name.value;
-                        setter_name = "set" + var_name[0].upper() + var_name[1:];
-                        setters[setter_name] = var_name;
-                    }
-                }
-            }
-        }
     }
     # Always push (even if empty) so exit_ability can always pop safely.
     # Without this, a nested def exiting would pop the outer ability's map.
@@ -2281,8 +2269,9 @@ impl JacAutoLintPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     parent.kid = [assign if k is nd else k for k in parent.kid];
 }
 
-"""Handle the three cases: no useState found, full import removal, and partial import removal with comma cleanup."""
-impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
+"""Remove useState from each import statement in the module, dropping the whole statement
+if useState was the only item, or rebuilding kids with correct commas if it was partial."""
+impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
     if not self.lint_enabled or self.report_only or not self._did_convert_usestate {
         return;
     }
@@ -2320,7 +2309,6 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
             for kid in stmt.kid
             if kid not in usestate_items
         ];
-        # Strip all commas, reinsert one between each adjacent pair of ModuleItems
         commas = [
             k
             for k in new_kid
@@ -2363,4 +2351,9 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
         );
     }
     self.recalculate_parents(nd);
+}
+
+"""W3038: drop useState from imports after all useState hooks have been converted."""
+impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
+    self._strip_usestate_imports(nd);
 }

@@ -157,6 +157,7 @@ obj JacAutoLintPass(UniPass) {
     ) -> uni.ArchHas;
 
     def _convert_usestate_vars(ability_node: uni.Ability) -> None;
+    def _strip_usestate_imports(nd: uni.Module) -> None;
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
 }
