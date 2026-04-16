@@ -4,7 +4,13 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jaclang 0.14.1 (Unreleased)
 
+<<<<<<< usestate-auto-lint-pass
+
 - **Lint: W3038 Auto-Convert React `useState` to Jac `has`**: `jac lint --fix` now rewrites the React `useState` hook pattern into Jac native state declarations. `[name, setName] = useState("")` becomes `has name: str = ""`, all `setName(expr)` calls throughout the function body are rewritten to direct `name = expr` assignments, and the unused `useState` import is automatically removed. The type is inferred from the initial value.
+=======
+- **Type Checker: Walker `.reports` Attribute Resolution**: Accessing `.reports` on a spawned walker no longer produces a spurious `E1030` error. Walker and node archetypes now inherit from their builtin base types (`Walker`, `Node`) in the type system's MRO, so fields like `reports: list[Any]` resolve through normal inheritance. Users can also declare `has reports: list[MyType]` on a walker for compile-time type checking of `report` statements.
+
+>>>>>>> main
 
 ## jaclang 0.14.0 (Latest Release)
 
