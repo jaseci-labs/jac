@@ -2,7 +2,9 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.13.6 (Unreleased)
+## jaclang 0.14.1 (Unreleased)
+
+## jaclang 0.14.0 (Latest Release)
 
 - **Type Checker: Walker `.reports` Attribute Resolution**: Accessing `.reports` on a spawned walker no longer produces a spurious `E1030` error. Walker and node archetypes now inherit from their builtin base types (`Walker`, `Node`) in the type system's MRO, so fields like `reports: list[Any]` resolve through normal inheritance. Users can also declare `has reports: list[MyType]` on a walker for compile-time type checking of `report` statements.
 - **Fix: byllm Provider Config Ignored from `jac.toml`**: The byllm plugin now correctly reads the provider and model from `[plugins.byllm.model]` in `jac.toml`. Previously, `PluginConfigBase` resolved `project_dir` via `cwd`, causing the config lookup to miss the project's `jac.toml` and fall back to the OpenAI default. `PluginConfigBase` now derives the project directory from `JacRuntime.full_target_path` (set by `jac run` before compilation).
@@ -65,7 +67,7 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **LSP: Goto-Definition on JSX Component Tags**: Clicking a `<MyButton>` tag in a `.cl.jac` file now jumps to the component's function declaration.
 - 2 small refactors/changes.
 
-## jaclang 0.13.5 (Latest Release)
+## jaclang 0.13.5
 
 - **Native: Lambda Expressions and Capturing Closures**: Added lambda expression support in the `na` (native LLVM) codespace. Simple lambdas compile to anonymous LLVM IR functions returned as function pointers. Capturing closures -- lambdas that reference variables from the enclosing scope -- pass captured values as hidden extra parameters, with automatic injection at call sites. No heap allocation required for captures. Leverages the existing indirect function pointer call infrastructure.
 

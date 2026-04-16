@@ -1050,7 +1050,6 @@ test "model pool router fallback" {
     assert "fallback_success" in stdout_value;
 }
 
-
 """Test ModelPool load-balancing (simple-shuffle): all three deployments share the
 pool-model alias; three independent calls all succeed and the alias is pool-model."""
 test "model pool router load balance" {
@@ -1064,7 +1063,6 @@ test "model pool router load balance" {
     assert "pool_alias:pool-model" in stdout_value;
     assert stdout_value.count("load_balance_response") == 3;
 }
-
 
 """Test ModelPool propagates router exceptions: when the LiteLLM Router
 raises (all deployments exhausted) the exception reaches the caller."""
@@ -1080,7 +1078,6 @@ test "model pool router all fail" {
     assert "UNEXPECTED" not in stdout_value;
 }
 
-
 """Test ModelPool cost-based-routing uses the async path (acompletion).
 LiteLLM Router only supports cost-based-routing via acompletion(); ModelPool
 bridges this via ThreadPoolExecutor to stay safe in async frameworks."""
@@ -1094,7 +1091,6 @@ test "model pool router cost based" {
     stdout_value = captured_output.getvalue();
     assert "cost_based_success" in stdout_value;
 }
-
 
 """Test ModelPool LiteLLM Router model_list initialisation.
 Fallback strategy: unique per-model aliases + fallbacks list.
@@ -1114,6 +1110,26 @@ test "model pool router init" {
     assert "lb_pool_alias:pool-model" in stdout_value;
     assert "lb_deploy_count:3" in stdout_value;
     assert "lb_all_share_alias:True" in stdout_value;
+}
+
+"""Test ModelPool streaming fallback path."""
+test "model pool streaming fallback" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_pool_streaming_fallback", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "output:stream_fallback_success" in stdout_value;
+    assert "primary_tried:True" in stdout_value;
+    assert "fallback_tried:True" in stdout_value;
+    assert "order_correct:True" in stdout_value;
+    # Scenario B: mid-stream failure — exception must propagate, no fallback
+    assert "mid_raised:True" in stdout_value;
+    assert "mid_partial_received:True" in stdout_value;
+    assert "mid_fallback_not_tried:True" in stdout_value;
+    assert "mid_should_not_appear:True" in stdout_value;
 }
 
 import from byllm.llm {
