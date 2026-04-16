@@ -124,7 +124,9 @@ async def _do_connect(client: McpClient, transport_type: str) {
     );
 }
 
-async def _do_call_tool(client: McpClient, name: str, arguments: dict[str, Any]) -> str {
+async def _do_call_tool(
+    client: McpClient, name: str, arguments: dict[str, Any]
+) -> str {
     state = _get_state(client);
     logger.debug(f"[MCP] call_tool {name}({arguments})");
     result = await state.session.call_tool(name, arguments);
