@@ -184,34 +184,18 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install Jaseci scale package
+    - name: Install base jac-scale and test deps
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
-        pip install -e "jac-scale[all]"
-        pip install pytest
-        pip install pytest-asyncio
+        pip install -e jac-scale
         pip install -e jac-client
-        pip install testcontainers
-        pip install watchdog
-        pip install python-multipart  # Explicit install to ensure FastAPI form support
-        pip install websockets  # Required for WebSocket test cases
+        pip install pytest pytest-asyncio
+        pip install requests watchdog websockets
 
     - name: Run Backend tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
-
-    - name: Run Webhook tests (without and with MongoDB)
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
-
-    - name: Run Memory Hierarchy tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
-
-    - name: Run jac-client examples
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.jac
 
     - name: Run SSO tests
       run: |
@@ -221,6 +205,31 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_admin.jac
 
+    - name: Run RestSpec tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
+
+    - name: Run Microservice interop tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
+
+    - name: Run jac-client examples
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_examples.jac
+
+    - name: Install jac-scale[data] extras
+      run: |
+        pip install -e "jac-scale[data]"
+        pip install testcontainers
+
+    - name: Run Webhook tests (without and with MongoDB)
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
+
+    - name: Run Memory Hierarchy tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
+
     - name: Run MongoDB user manager tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
@@ -229,17 +238,13 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
 
+    - name: Install jac-scale[scheduler] extras
+      run: |
+        pip install -e "jac-scale[scheduler]"
+
     - name: Run Scheduling tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
-
-    - name: Run RestSpec tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
-
-    - name: Run Microservice interop tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
 
   test-scale-k8s:
     runs-on: ubuntu-latest
@@ -258,7 +263,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e jac
-          pip install -e "jac-scale[all]"
+          pip install -e "jac-scale[deploy]"
           pip install -e jac-client
           pip install pytest
           pip install pytest-xdist

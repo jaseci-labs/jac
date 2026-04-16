@@ -24,12 +24,16 @@ impl ModelPool.postinit -> None {
     is_fallback = self.strategy == "fallback";
     model_list: list = [];
     fallback_names: list = [];
+    self._fallback_model_names = [];
     for (i, model) in enumerate(self.models) {
         name = (
             ("pool-primary" if i == 0 else f"pool-fallback-{i}")
                 if is_fallback
                 else "pool-model"
         );
+        if is_fallback {
+            self._fallback_model_names.append(name);
+        }
         litellm_params: dict = {
             "model": model.model_name,
             "api_key": model.api_key or model.config.get("api_key", "") or None,
@@ -107,6 +111,10 @@ impl ModelPool.model_call_no_stream(params: dict) -> dict {
 
 cost-based-routing uses acompletion() via ThreadPoolExecutor for the same
 reason as model_call_no_stream. All other strategies use router.completion().
+
+For fallback strategy, we call Router._completion() per model with
+fallbacks=[] to work around a recursive infinite loop in the Router's
+stream_with_fallbacks().
 """
 impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None] {
     if self.strategy == "cost-based-routing" {
@@ -122,6 +130,45 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
             return pool.submit(asyncio.run, _collect_stream()).result();  # type: ignore
 
         }
+    }
+    # Fallback strategy: call Router._completion() per model with fallbacks=[]
+    # to prevent the recursive stream_with_fallbacks infinite loop.
+    if self.strategy == "fallback" {
+        model_names: list = self._fallback_model_names;
+        router = self._router;
+        def _fallback_gen -> Generator {
+            for (idx, name) in enumerate(model_names) {
+                yielded: bool = False;
+                try {
+                    call_params: dict = dict(params);
+                    call_params.pop("model", None);
+                    messages: list = call_params.pop("messages", []);
+                    response = router._completion(
+                        model=name,
+                        messages=messages,
+                        stream=True,
+                        fallbacks=[],
+                        **call_params
+                    );
+                    for chunk in response {
+                        yielded = True;
+                        yield chunk;
+                    }
+                    return;
+                } except Exception as exc {
+                    logger.warning(
+                        f"ModelPool streaming fallback: {name} failed — {exc}"
+                    );
+                    # If any chunks were already sent to the caller, re-raise.
+                    # Falling back now would concatenate a partial response from
+                    # this model with a full response from the next — corrupted output.
+                    if yielded or idx >= len(model_names) - 1 {
+                        raise;
+                    }
+                }
+            }
+        }
+        return _fallback_gen();
     }
     return self._router.completion(stream=True, **params);  # type: ignore
 
