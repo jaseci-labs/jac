@@ -2313,22 +2313,39 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
             removed.add(id(stmt));  # useState was the only import — drop whole stmt
             continue;
         }
-        # Partial removal — rebuild kids dropping useState items and their trailing comma
-        new_kid = [];
-        skip_comma = False;
-        for kid in stmt.kid {
-            if kid in usestate_items {
-                skip_comma = True;
-                continue;
+        # Partial removal — strip useState items then fix orphaned commas.
+        # Handles all 3 positions: ({ useState, X }), ({ X, useState }), ({ X, useState, Y })
+        new_kid = [
+            kid
+            for kid in stmt.kid
+            if kid not in usestate_items
+        ];
+        # Strip all commas, reinsert one between each adjacent pair of ModuleItems
+        commas = [
+            k
+            for k in new_kid
+            if isinstance(k, uni.Token) and k.name == Tok.COMMA
+        ];
+        no_commas = [
+            k
+            for k in new_kid
+            if not (isinstance(k, uni.Token) and k.name == Tok.COMMA)
+        ];
+        result: list[uni.UniNode] = [];
+        ci = 0;
+        for (i, kid) in enumerate(no_commas) {
+            result.append(kid);
+            if (
+                i + 1 < len(no_commas)
+                and isinstance(kid, uni.ModuleItem)
+                and isinstance(no_commas[i + 1], uni.ModuleItem)
+                and ci < len(commas)
+            ) {
+                result.append(commas[ci]);
+                ci += 1;
             }
-            if skip_comma and isinstance(kid, uni.Token) and kid.name == Tok.COMMA {
-                skip_comma = False;
-                continue;
-            }
-            skip_comma = False;
-            new_kid.append(kid);
         }
-        stmt.set_kids(nodes=new_kid);
+        stmt.set_kids(nodes=result);
         new_body.append(stmt);
     }
     if len(new_body) == len(nd.body) {
