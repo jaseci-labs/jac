@@ -41,9 +41,7 @@ test "pyinstaller spec uses onedir mode with utf8 runtime hook" {
     assert re.search(
         r"runtime_hooks\s*=\s*\[str\(Path\(r'\{entry_script\}'\)\.parent / 'rthook_utf8\.py'\)\]",
         content
-    ) is not None , (
-        "Analysis(runtime_hooks=...) should reference rthook_utf8.py"
-    );
+    ) is not None , ("Analysis(runtime_hooks=...) should reference rthook_utf8.py");
 
     # Spec must use onedir mode: EXE(..., exclude_binaries=True, ...) + COLLECT(...)
     assert 'exclude_binaries=True' in content , (
