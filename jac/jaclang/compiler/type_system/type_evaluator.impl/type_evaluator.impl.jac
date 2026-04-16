@@ -3399,37 +3399,24 @@ impl TypeEvaluator._get_type_from_flow_node(
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""
 impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {
-    # True branch: succ is the first statement in pred.body.
-    if pred.body and succ is pred.body[0] {
-        return "true";
-    }
-    if not pred.body and pred.else_body is not None {
-        is_else_entry = (
-            (isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body)
-            or (
-                isinstance(pred.else_body, uni.ElseStmt)
-                and pred.else_body.body
-                and succ is pred.else_body.body[0]
-            )
-        );
-        if not is_else_entry {
-            return "true";
-        }
-    }
-    # False branch: ElseIf (which IS a CodeBlockStmt/UniCFGNode).
-    if isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body {
-        return "false";
-    }
-    # False branch: ElseStmt (NOT a CFG node) -- edge goes to its body[0].
-    if isinstance(pred.else_body, uni.ElseStmt) {
-        if pred.else_body.body and succ is pred.else_body.body[0] {
-            return "false";
-        }
-    }
-    # False branch: no else_body (fall-through to next sibling).
-    if pred.else_body is None and succ not in pred.body {
-        return "false";
-    }
+    is_else_entry = (
+        (isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body)
+        or (
+            isinstance(pred.else_body, uni.ElseStmt)
+            and pred.else_body.body
+            and succ is pred.else_body.body[0]
+        )
+    );
+    # True branch entry: either succ is first in body, or body is empty and
+    # succ is the fall-through (not the else entry).
+    is_true_entry = (
+        (pred.body and succ is pred.body[0])
+        or (not pred.body and pred.else_body is not None and not is_else_entry)
+    );
+
+    if is_true_entry { return "true"; }
+    if is_else_entry { return "false"; }
+    if pred.else_body is None and succ not in pred.body { return "false"; }
     return "unconditional";
 }
 
