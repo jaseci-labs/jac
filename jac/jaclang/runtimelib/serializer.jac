@@ -2,10 +2,13 @@
 
 import logging;
 import from dataclasses { fields, is_dataclass }
+import from datetime { date, datetime, time }
 import from enum { Enum }
 import from hashlib { sha256 }
 import from json { dumps as _json_dumps }
-import from typing { cast }
+import from typing { cast, get_args, get_origin, get_type_hints }
+import from types { NoneType, UnionType }
+import from typing { Union }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
     Anchor,
@@ -37,10 +40,24 @@ Only classes registered via Archetype subclassing can be deserialized,
 preventing arbitrary code execution from untrusted data.
 """
 obj Serializer {
-    static has _registry: dict[str, type] = {};
+    static has _registry: dict[str, type] = {},
+        # Alias map: old "module.ClassName" key -> new "module.ClassName" key.
+        # Populated by `register_alias` / `archetype_alias` decorator. Used by
+        # `_get_class` to resolve renamed or moved archetypes without losing
+        # previously persisted anchors.
+        _aliases: dict[str, str] = {};
 
     """Register a class for deserialization and attach its schema fingerprint."""
     static def register(cls: type) -> None;
+
+    """Register `old_name` as an alias for `cls` in the deserialization registry.
+
+    Use when an archetype class is renamed or moved to a different module.
+    Stored anchors with `arch_module.arch_type == old_name` will now resolve
+    to `cls`, instead of quarantining on load. `old_name` must be the fully
+    qualified form (`module.ClassName`); `cls` must already be registered.
+    """
+    static def register_alias(old_name: str, cls: type) -> None;
 
     """Compute a stable schema fingerprint for an archetype class.
 
@@ -51,6 +68,27 @@ obj Serializer {
     schema of previously persisted anchors.
     """
     static def fingerprint(cls: type) -> str;
+
+    """Best-effort value coercion for Layer 3 schema migration.
+
+    Attempts to convert `val` to `target_type` for stored anchor fields
+    whose declared type changed (e.g. `str -> int`, ISO string -> datetime,
+    `str -> UUID`, `int <-> bool`, list <-> tuple). Returns
+    (value, success): on success, `value` is the coerced form safe to
+    assign; on failure, `value` is the original and the caller can choose
+    to fall back (we log + setattr raw, so data is never lost silently).
+    Handles `Optional[T]` / `T | None` by unwrapping, and Union types by
+    trying each variant in order.
+    """
+    static def coerce(val: object, target_type: object) -> tuple;
+
+    """Return a {field_name: resolved_annotation} map for a dataclass.
+
+    Uses typing.get_type_hints for forward-ref resolution, falling back to
+    raw __annotations__ if hints resolution fails (e.g. circular imports).
+    Non-dataclass classes return empty.
+    """
+    static def _get_field_types(cls: type) -> dict[str, object];
 
     """Convert object to JSON-compatible dict.
 
@@ -113,3 +151,9 @@ glob _register_hook: object = Archetype._subclass_hooks.append(
      ),
      _register_root: object = Serializer.register(cast(type, Root)),
      _register_generic_edge: object = Serializer.register(cast(type, GenericEdge));
+# The `archetype_alias` decorator is an ambient Jac builtin provided by
+# `jaclang.runtimelib.builtin` — user code accesses it without an import.
+# The builtin implementation lives there (not here) to avoid a circular
+# import: loading this module's aliasing helpers happens mid-init of the
+# serializer itself, and a call-time-deferred closure in `builtin.impl`
+# lets Serializer finish loading before the decorator ever fires.

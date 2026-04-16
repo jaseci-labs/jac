@@ -731,6 +731,8 @@ walker:priv DeleteWithChildren {
 | `commit()` | Commit pending changes |
 | `printgraph(root)` | Print graph structure to stdout (output depends on graph size; may require logging configuration to see results) |
 
+> See [Persistence & Schema Migration](../persistence.md) for how persisted graph data tolerates schema changes across runs (added/removed fields, type changes, class renames) and how to inspect or rescue data with [`jac db`](../cli/index.md#database-operations).
+
 ```jac
 node Person { has name: str; }
 

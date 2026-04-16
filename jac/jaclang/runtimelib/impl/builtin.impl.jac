@@ -90,6 +90,8 @@ impl __getattr__(name: str) -> object {
         return _get_store();
     } elif (name == 'llm') {
         return _get_llm();
+    } elif (name == 'archetype_alias') {
+        return _get_archetype_alias();
     }
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}");
 }
@@ -107,6 +109,30 @@ impl _get_store -> Callable[..., Any] {
 """Get default LLM model instance lazily."""
 impl _get_llm -> LLMModel {
     return _get_jac().default_llm();
+}
+
+"""Get archetype_alias decorator factory lazily.
+
+Returns a closure that defers the `Serializer` import to
+decorator-application time (not module-attribute-access time).
+Importing the serializer at the moment `from jaclang.runtimelib.builtin
+import archetype_alias` is resolved would race with serializer's own
+module-level init (serializer defines its alias decorator near the
+bottom, and `register(Root)` runs earlier), producing a circular
+"partially initialized module" ImportError for any user app that uses
+`@archetype_alias`. Deferring the Serializer import past preamble-time
+lets the module finish loading through the normal path.
+"""
+impl _get_archetype_alias -> Callable[..., Any] {
+    def factory(old_name: str) -> Callable {
+        def decorator(cls: type) -> type {
+            import from jaclang.runtimelib.serializer { Serializer }
+            Serializer.register_alias(old_name, cls);
+            return cls;
+        }
+        return decorator;
+    }
+    return factory;
 }
 
 """Get save lazily."""

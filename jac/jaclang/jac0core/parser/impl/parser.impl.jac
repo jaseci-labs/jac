@@ -3165,15 +3165,18 @@ impl Parser.parse_jsx_element -> Expr {
     # Regular element: <Tag>...</Tag> or <Tag />
     open_start_uni = self.consume_uni(TokenKind.JSX_OPEN_START);
     open_kid: list = [open_start_uni];
-    # Parse tag name (may be dotted: UI.Button, Form.Input.Text)
+    # Parse tag name (may be dotted: UI.Button, Form.Input.Text).
+    # Name parts are emitted as `Name` nodes (not bare tokens) so the
+    # symbol resolver, semantic-token emitter, and goto-definition in
+    # the LSP can link a JSX tag to its component declaration.
     name_tok = self.expect(TokenKind.JSX_NAME);
-    name = self.make_uni_token(name_tok);
+    name = self.make_name(name_tok);
     name_parts: list = [name];
     name_kid: list = [name];
     while self.match_tok(TokenKind.DOT) {
         name_kid.append(self.make_uni_token(self.previous()));
         next_name_tok = self.expect(TokenKind.JSX_NAME);
-        next_name = self.make_uni_token(next_name_tok);
+        next_name = self.make_name(next_name_tok);
         name_parts.append(next_name);
         name_kid.append(next_name);
     }
@@ -3214,13 +3217,13 @@ impl Parser.parse_jsx_element -> Expr {
     close_start_uni = self.consume_uni(TokenKind.JSX_CLOSE_START);
     close_kid: list = [close_start_uni];
     close_name_tok = self.expect(TokenKind.JSX_NAME);
-    close_name_node = self.make_uni_token(close_name_tok);
+    close_name_node = self.make_name(close_name_tok);
     close_parts: list = [close_name_node];
     close_name_kid: list = [close_name_node];
     while self.match_tok(TokenKind.DOT) {
         close_name_kid.append(self.make_uni_token(self.previous()));
         cn_tok = self.expect(TokenKind.JSX_NAME);
-        cn = self.make_uni_token(cn_tok);
+        cn = self.make_name(cn_tok);
         close_parts.append(cn);
         close_name_kid.append(cn);
     }

@@ -86,6 +86,7 @@ import from jaclang.jac0core.diagnostics {
     E1102,
     E1103,
     E1104,
+    W1050,
     W1100,
     W1101,
     W1102
@@ -131,6 +132,7 @@ obj PrefetchedTypes {
         jsx_element_class: types.ClassType | None = None,
         # Intrinsic element prop types (from dom_types.pyi)
         html_common_props_class: types.ClassType | None = None,
+        jsx_intrinsic_elements_class: types.ClassType | None = None,
         # Fixed-width numeric types
         i8_class: types.ClassType | None = None,
         u8_class: types.ClassType | None = None,
@@ -536,6 +538,7 @@ obj TypeEvaluator {
     ) -> None;
 
     def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;
+    def _resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> None;
     # -------------------------------------------------------------------------
     # TypeVar scope validation (Pyright: validateTypeVarUsage)
     # -------------------------------------------------------------------------

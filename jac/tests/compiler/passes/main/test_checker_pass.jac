@@ -3641,6 +3641,30 @@ test "jsx_step6_spread_props" {
     );
 }
 
+test "jsx_reserved_props_key_ref" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_reserved_props.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    e1101_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1101"
+    ];
+    # Only 'bogus' should trigger E1101. key and ref must be silently accepted.
+    assert len(e1101_errors) == 1 , f"Expected exactly 1 E1101 (for 'bogus'), got {len(
+        e1101_errors
+    )}:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in e1101_errors
+    );
+    # Verify it's specifically the 'bogus' prop.
+    assert "bogus" in e1101_errors[0].pretty_print() , f"Expected E1101 for 'bogus', got: {e1101_errors[
+        0
+    ].pretty_print()}";
+}
+
 test "lambda_block_body_return_type_inference" {
     path = os.path.join(CHECKER_FIXTURES, "checker_lambda_block_body_return.jac");
     program = JacProgram();

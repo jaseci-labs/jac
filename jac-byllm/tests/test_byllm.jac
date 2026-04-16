@@ -569,6 +569,45 @@ test "builtin llm compiles without glob" {
     sys.stdout = sys.__stdout__;
 }
 
+import from pathlib { Path }
+import from byllm.config_loader { get_byllm_config, reset_byllm_config }
+import from jaclang.jac0core.runtime { JacRuntime }
+
+glob GEMINI_FIXTURE = os.path.join(FIXTURE_DIR, "jac_toml_gemini");
+
+
+test "byllm config reads model from jac.toml" {
+    # Explicit project_dir pointing at a jac.toml with gemini model
+    reset_byllm_config();
+    config = get_byllm_config(Path(GEMINI_FIXTURE));
+    assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
+}
+
+test "byllm config defaults to gpt-4o-mini when no jac.toml" {
+    # fixtures/ dir has no jac.toml, so built-in defaults apply
+    reset_byllm_config();
+    config = get_byllm_config(Path(FIXTURE_DIR));
+    assert config.get_model_config()['default_model'] == "gpt-4o-mini";
+}
+
+test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
+    # cwd is /tmp, but full_target_path points at the gemini fixture —
+    # the correct jac.toml must still be picked up
+    orig = JacRuntime.full_target_path;
+    orig_cwd = os.getcwd();
+    JacRuntime.full_target_path = os.path.join(GEMINI_FIXTURE, "main.jac");
+    reset_byllm_config();
+    os.chdir("/tmp");
+    try {
+        config = get_byllm_config();
+        assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
+    } finally {
+        os.chdir(orig_cwd);
+        JacRuntime.full_target_path = orig;
+        reset_byllm_config();
+    }
+}
+
 # Note: OutputConversionError tests call MTRuntime.parse_response directly because
 # MockLLM.dispatch_no_streaming bypasses parse_response, returning the pre-built
 # output object straight from CompletionResult. The error lives in parse_response,
@@ -1013,7 +1052,6 @@ test "model pool router fallback" {
     assert "fallback_success" in stdout_value;
 }
 
-
 """Test ModelPool load-balancing (simple-shuffle): all three deployments share the
 pool-model alias; three independent calls all succeed and the alias is pool-model."""
 test "model pool router load balance" {
@@ -1027,7 +1065,6 @@ test "model pool router load balance" {
     assert "pool_alias:pool-model" in stdout_value;
     assert stdout_value.count("load_balance_response") == 3;
 }
-
 
 """Test ModelPool propagates router exceptions: when the LiteLLM Router
 raises (all deployments exhausted) the exception reaches the caller."""
@@ -1043,7 +1080,6 @@ test "model pool router all fail" {
     assert "UNEXPECTED" not in stdout_value;
 }
 
-
 """Test ModelPool cost-based-routing uses the async path (acompletion).
 LiteLLM Router only supports cost-based-routing via acompletion(); ModelPool
 bridges this via ThreadPoolExecutor to stay safe in async frameworks."""
@@ -1057,7 +1093,6 @@ test "model pool router cost based" {
     stdout_value = captured_output.getvalue();
     assert "cost_based_success" in stdout_value;
 }
-
 
 """Test ModelPool LiteLLM Router model_list initialisation.
 Fallback strategy: unique per-model aliases + fallbacks list.
@@ -1154,6 +1189,26 @@ test "McpClient errors when neither command nor url is set" {
         err = e;
     }
     assert err is not None , "McpClient must require command or url";
+"""Test ModelPool streaming fallback path."""
+test "model pool streaming fallback" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_pool_streaming_fallback", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "output:stream_fallback_success" in stdout_value;
+    assert "primary_tried:True" in stdout_value;
+    assert "fallback_tried:True" in stdout_value;
+    assert "order_correct:True" in stdout_value;
+    # Scenario B: mid-stream failure — exception must propagate, no fallback
+    assert "mid_raised:True" in stdout_value;
+    assert "mid_partial_received:True" in stdout_value;
+    assert "mid_fallback_not_tried:True" in stdout_value;
+    assert "mid_should_not_appear:True" in stdout_value;
+}
+
 import from byllm.llm {
     _is_prompt_caching_eligible,
     _apply_prompt_caching,

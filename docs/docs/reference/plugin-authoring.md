@@ -515,6 +515,56 @@ This adds a `[dependencies.cargo]` section to `jac.toml`, a `--cargo` flag to `j
 
 **Real reference**: [jac-client's npm dependency type](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-client/jac_client/plugin/plugin_config.jac#L106-L117) is the only dependency type currently in the monorepo. Its handlers shell out to `bun` (or `npm` if Bun isn't available) to manage the project's frontend packages.
 
+### Recipe 7: Custom persistence backends
+
+Backends that store the object-spatial graph (the L3 tier in the memory hierarchy) implement `jaclang.runtimelib.memory.PersistentMemory`. Implementing the interface gives your backend the full Layer 1+2+3 feature set automatically -- schema fingerprints, drift detection, quarantine-on-failure, alias-based class rename resolution -- and makes [`jac db`](cli/index.md#database-operations) work against it with no CLI changes.
+
+The interface has two groups of methods:
+
+```jac
+obj PersistentMemory(Memory) {
+    # Storage primitives (existing).
+    def sync -> None abs;
+    def bulk_put(anchors: Iterable[Anchor]) -> None abs;
+
+    # Layer 1+2+3 operator surface.
+    def inspect_summary -> dict abs;
+    def list_quarantined(limit: int = 50) -> list abs;
+    def show_quarantined(id_prefix: str) -> (dict | None) abs;
+    def recover_one(id_prefix: str) -> tuple abs;          # (ok, reason)
+    def recover_all -> tuple abs;                           # (n_recovered, [(id, reason)])
+    def list_aliases -> list abs;
+    def add_alias(old_name: str, new_name: str) -> None abs;
+    def remove_alias(old_name: str) -> bool abs;
+}
+```
+
+**What each method must do.** See [Persistence & Schema Migration](persistence.md) for the full conceptual model. The contract per method:
+
+| Method | Returns / Effect |
+|---|---|
+| `inspect_summary` | `dict` with keys `format_version`, `anchors_total`, `anchors_by_type` (list of `(name, count)`), `quarantine_total`, `quarantine_by_type`, `aliases_total`, `location` (URI / path for display) |
+| `list_quarantined(limit)` | List of `{'id', 'arch', 'fingerprint', 'error', 'quarantined_at'}` dicts, newest-first |
+| `show_quarantined(id_prefix)` | Full row dict with `data` parsed; `None` if no match; `{'error': 'ambiguous', 'count': N}` if prefix is non-unique |
+| `recover_one(id_prefix)` | `(True, 'recovered')` on success, else `(False, reason)`. Re-stamp the recovered row with the live class's identity + fingerprint so subsequent reads bypass alias resolution |
+| `recover_all` | `(n_recovered: int, still_stuck: list[(id, reason)])` |
+| `list_aliases` | List of `{'old_name', 'new_name', 'created_at'}` dicts |
+| `add_alias(old, new)` | Persist the mapping AND merge into `Serializer._aliases` so it applies on the next read |
+| `remove_alias(old)` | `True` if an entry was deleted; also `pop` from `Serializer._aliases` |
+
+**Required guarantees:**
+
+- **Quarantine, never delete.** When `get` / `_load_anchor` (or whatever your read path is) hits a deserialization failure or unresolvable archetype class, move the row to a quarantine sidecar with the original payload and an error message. Never silently drop.
+- **Stamp every persisted row** with `arch_module`, `arch_type`, `fingerprint`, and `format_version` so drift detection works. The fingerprint comes from `cls.__jac_fingerprint__`.
+- **Load DB-resident aliases at connect time** into `Serializer._aliases` so operator-driven rescues apply on the next read.
+
+**Reference implementations:**
+
+- `jac/jaclang/runtimelib/impl/memory.impl.jac` -- `SqliteMemory`. The simplest backend; uses three tables (`anchors`, `anchors_quarantine`, `aliases`).
+- `jac-scale/jac_scale/impl/memory_hierarchy.mongo.impl.jac` -- `MongoBackend`. Document-store version; uses a main collection plus `<collection>_quarantine` and `<collection>_aliases` sidecars. Worth reading alongside SqliteMemory to see the same contract expressed against a different storage shape.
+
+Once your backend implements the interface, users get `jac db inspect`, `jac db quarantine list/show`, `jac db alias add/list/remove`, and `jac db recover/recover-all` against it for free. No CLI registration required -- `jac db` discovers your backend through the runtime context (`ctx.mem.l3`) at command time.
+
 ## API reference
 
 ### `jaclang.cli.registry.CommandRegistry`
