@@ -3414,9 +3414,15 @@ impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str
         or (not pred.body and pred.else_body is not None and not is_else_entry)
     );
 
-    if is_true_entry { return "true"; }
-    if is_else_entry { return "false"; }
-    if pred.else_body is None and succ not in pred.body { return "false"; }
+    if is_true_entry {
+        return "true";
+    }
+    if is_else_entry {
+        return "false";
+    }
+    if pred.else_body is None and succ not in pred.body {
+        return "false";
+    }
     return "unconditional";
 }
 
