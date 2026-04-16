@@ -315,7 +315,13 @@ See the [Webhooks](#webhooks) section below.
 ```bash
 curl -X POST http://localhost:8000/user/register \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "secret"}'
+  -d '{
+    "identities": [
+      {"type": "username", "value": "myuser"},
+      {"type": "email", "value": "user@example.com"}
+    ],
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
 ### User Login
@@ -323,15 +329,22 @@ curl -X POST http://localhost:8000/user/register \
 ```bash
 curl -X POST http://localhost:8000/user/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "secret"}'
+  -d '{
+    "identity": {"type": "username", "value": "myuser"},
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
 Returns:
 
 ```json
 {
-  "access_token": "eyJ...",
-  "token_type": "bearer"
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-...",
+    "token": "eyJ...",
+    "root_id": "a1b2c3d4..."
+  }
 }
 ```
 
