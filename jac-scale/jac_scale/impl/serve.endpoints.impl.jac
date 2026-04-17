@@ -97,25 +97,15 @@ impl JacAPIServerEndpoints.create_walker_callback(
     async def callback(
         request: Request, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
-        username: (str | None) = None;
-        if requires_auth {
-            authorization = request.headers.get('Authorization');
-            token: (str | None) = None;
-            if (
-                authorization
-                and isinstance(authorization, str)
-                and authorization.startswith('Bearer ')
-            ) {
-                token = authorization[7:];
-            }
-            username = self.user_manager.validate_jwt_token(token) if token else None;
-            if not username {
-                return TransportResponse.fail(
-                    code='UNAUTHORIZED',
-                    message='Unauthorized',
-                    meta=Meta(extra={'http_status': 401})
-                );
-            }
+        username: (str | None) = getattr(request.state, 'username', None)
+            if request?.state
+            else None;
+        if requires_auth and not username {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Unauthorized',
+                meta=Meta(extra={'http_status': 401})
+            );
         }
         if nd {
             kwargs['_jac_spawn_node'] = nd;
@@ -226,25 +216,15 @@ impl JacAPIServerEndpoints.create_function_callback(
     async def callback(
         request: Request, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
-        username: (str | None) = None;
-        if requires_auth {
-            authorization = request.headers.get('Authorization');
-            token: (str | None) = None;
-            if (
-                authorization
-                and isinstance(authorization, str)
-                and authorization.startswith('Bearer ')
-            ) {
-                token = authorization[7:];
-            }
-            username = self.user_manager.validate_jwt_token(token) if token else None;
-            if not username {
-                return TransportResponse.fail(
-                    code='UNAUTHORIZED',
-                    message='Unauthorized',
-                    meta=Meta(extra={'http_status': 401})
-                );
-            }
+        username: (str | None) = getattr(request.state, 'username', None)
+            if request?.state
+            else None;
+        if requires_auth and not username {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Unauthorized',
+                meta=Meta(extra={'http_status': 401})
+            );
         }
         console.print(f"Executing function '{func_name}' with params: {kwargs}");
         result = await self.execution_manager.execute_function(

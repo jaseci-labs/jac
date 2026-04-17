@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Pre-commit hook to check that release notes are updated when code changes.
+# Pre-commit hook to check that release note fragments are added when code changes.
 # Works in two modes:
 #   - Local commit: uses git diff --cached to get staged files
 #   - CI (pre-commit.ci / GitHub Actions): uses git diff against main branch
 
 set -euo pipefail
 
-declare -A FOLDER_TO_NOTES=(
-    ["jac/jaclang/"]="docs/docs/community/release_notes/jaclang.md"
-    ["jac-scale/jac_scale/"]="docs/docs/community/release_notes/jac-scale.md"
-    ["jac-client/jac_client/"]="docs/docs/community/release_notes/jac-client.md"
-    ["jac-byllm/byllm/"]="docs/docs/community/release_notes/byllm.md"
-    ["jac-super/jac_super/"]="docs/docs/community/release_notes/jac-super.md"
-    ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/jac-mcp.md"
+# Maps code folders to their corresponding unreleased fragment directories
+declare -A FOLDER_TO_FRAGMENTS=(
+    ["jac/jaclang/"]="docs/docs/community/release_notes/unreleased/jaclang/"
+    ["jac-scale/jac_scale/"]="docs/docs/community/release_notes/unreleased/jac-scale/"
+    ["jac-client/jac_client/"]="docs/docs/community/release_notes/unreleased/jac-client/"
+    ["jac-byllm/byllm/"]="docs/docs/community/release_notes/unreleased/byllm/"
+    ["jac-super/jac_super/"]="docs/docs/community/release_notes/unreleased/jac-super/"
+    ["jac-mcp/jac_mcp/"]="docs/docs/community/release_notes/unreleased/jac-mcp/"
 )
 
 # Determine changed files based on context
@@ -39,39 +40,46 @@ fi
 
 MISSING_NOTES=()
 
-for folder in "${!FOLDER_TO_NOTES[@]}"; do
-    notes_file="${FOLDER_TO_NOTES[$folder]}"
+for folder in "${!FOLDER_TO_FRAGMENTS[@]}"; do
+    fragments_dir="${FOLDER_TO_FRAGMENTS[$folder]}"
     folder_changed=false
-    notes_changed=false
+    fragment_added=false
 
     while IFS= read -r file; do
         [ -z "$file" ] && continue
         if [[ "$file" == "${folder}"* ]] && [[ "$file" != */tests/* ]]; then
             folder_changed=true
         fi
-        if [[ "$file" == "$notes_file" ]]; then
-            notes_changed=true
+        if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" =~ /[0-9]+\.(feature|bugfix|breaking)\.md$ ]]; then
+            fragment_added=true
         fi
     done <<< "$CHANGED_FILES"
 
-    if $folder_changed && ! $notes_changed; then
-        MISSING_NOTES+=("${folder} -> ${notes_file}")
+    if $folder_changed && ! $fragment_added; then
+        MISSING_NOTES+=("${folder} -> ${fragments_dir}<PR#>.<feature|bugfix|breaking>.md")
     fi
 done
 
 if [ ${#MISSING_NOTES[@]} -gt 0 ]; then
     echo ""
     echo "=========================================="
-    echo "ERROR: Release notes not updated!"
+    echo "ERROR: Release note fragment not added!"
     echo "=========================================="
     echo ""
-    echo "The following folders were modified but their release notes were not updated:"
+    echo "The following folders were modified but no release note fragment was added:"
     echo ""
     for item in "${MISSING_NOTES[@]}"; do
         echo "  - $item"
     done
     echo ""
-    echo "Please update the corresponding release notes file(s)."
-    echo "To skip this check, use: SKIP=check-release-notes git commit ..."
+    echo "Please add a release note fragment file."
+    echo "Example: docs/docs/community/release_notes/unreleased/<package>/1234.bugfix.md"
+    echo "         docs/docs/community/release_notes/unreleased/<package>/1234.breaking.md"
+    echo ""
+    echo "Fragment content should be a single bullet point, e.g.:"
+    echo '  - **Fix: Brief title**: Description of the change.'
+    echo ""
+    echo "To skip this check, add the 'skip-release-notes-check' label to your PR."
+    echo ""
     exit 1
 fi
