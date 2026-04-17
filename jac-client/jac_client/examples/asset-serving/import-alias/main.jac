@@ -18,14 +18,10 @@ cl {
                     fontFamily: "Arial, sans-serif"
                 }}
             >
-                <h1>
-                    🍔 Import Alias Example
-                </h1>
+                <h1>🍔 Import Alias Example</h1>
                 <p style={{color: "#666", marginBottom: "20px"}}>
                     Using
-                    <code>
-                        @jac-client/assets
-                    </code>
+                    <code>@jac-client/assets</code>
                     alias to import assets
                 </p>
                 <img
@@ -41,9 +37,7 @@ cl {
                 />
                 <p style={{fontSize: "18px", margin: "20px 0"}}>
                     You've clicked the burger
-                    <strong>
-                        {count}
-                    </strong>
+                    <strong>{count}</strong>
                     times!
                 </p>
                 <button
@@ -73,33 +67,21 @@ cl {
                         margin: "30px auto"
                     }}
                 >
-                    <strong>
-                        How it works:
-                    </strong>
+                    <strong>How it works:</strong>
                     <ul style={{marginTop: "10px", paddingLeft: "20px"}}>
                         <li>
                             Import using:
-                            <code>
-                                climportfrom'@jac-client/assets/burger.png'
-                            </code>
+                            <code>climportfrom'@jac-client/assets/burger.png'</code>
                         </li>
-                        <li>
-                            Vite processes the import and generates optimized URLs
-                        </li>
+                        <li>Vite processes the import and generates optimized URLs</li>
                         <li>
                             Assets are automatically copied from
-                            <code>
-                                assets/
-                            </code>
+                            <code>assets/</code>
                             to
-                            <code>
-                                compiled/assets/
-                            </code>
+                            <code>compiled/assets/</code>
                             during build
                         </li>
-                        <li>
-                            Automatic hash generation for cache busting
-                        </li>
+                        <li>Automatic hash generation for cache busting</li>
                     </ul>
                 </div>
             </div>;

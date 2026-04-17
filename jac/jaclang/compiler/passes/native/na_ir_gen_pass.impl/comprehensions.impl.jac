@@ -364,14 +364,7 @@ impl NaIRGenPass._codegen_dict_compr_loops(
         call_name = self._get_name(collection.target);
         if call_name == "range" {
             self._codegen_dict_compr_range_loop(
-                inner,
-                comprs,
-                idx,
-                dict_val,
-                key_expr,
-                val_expr,
-                dict_key,
-                conditionals
+                inner, comprs, idx, dict_val, key_expr, val_expr, dict_key, conditionals
             );
             return;
         }

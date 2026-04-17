@@ -560,7 +560,9 @@ def _update_html_for_pwa(dist_dir: Path, pwa_config: dict) -> None {
             sw_script = _build_sw_registration_script();
             banner_script = _build_pwa_install_banner_script(pwa_config);
             body_scripts = sw_script + banner_script;
-            html_content = html_content.replace('</body>', f'{body_scripts}\n  </body>');
+            html_content = html_content.replace(
+                '</body>', f'{body_scripts}\n  </body>'
+            );
             modified = True;
         } else {
             console.warning(

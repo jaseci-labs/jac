@@ -1,7 +1,6 @@
 """Core constructs for Jac Language."""
 import from collections.abc { Callable }
 import from dataclasses { asdict, dataclass, field, fields, is_dataclass }
-import from enum { IntEnum }
 import from functools { cached_property }
 import from inspect { _empty, signature }
 import from logging { getLogger }
@@ -16,23 +15,32 @@ glob logger = getLogger(__name__),
      T = TypeVar('T');
 
 """Access level enum."""
-class AccessLevel(IntEnum) {
-    with entry {
-        NO_ACCESS = -1;
-        READ = 0;
-        CONNECT = 1;
-        WRITE = 2;
-    }
+enum AccessLevel {
+    NO_ACCESS = -1,
+    READ = 0,
+    CONNECT = 1,
+    WRITE = 2
+}
 
-    static def cast(val: int | str | AccessLevel) -> AccessLevel {
-        if isinstance(val, int) {
-            return AccessLevel(val);
-        } elif isinstance(val, str) {
-            return AccessLevel[val.upper()];
-        } else {
-            return val;
-        }
+"""Cast an int, str, or AccessLevel to AccessLevel."""
+def access_level_cast(val: int | str | AccessLevel) -> AccessLevel {
+    if isinstance(val, AccessLevel) {
+        return val;
     }
+    if isinstance(val, str) {
+        val = val.upper();
+    }
+    _map: dict = {
+        -1: AccessLevel.NO_ACCESS,
+        0: AccessLevel.READ,
+        1: AccessLevel.CONNECT,
+        2: AccessLevel.WRITE,
+        "NO_ACCESS": AccessLevel.NO_ACCESS,
+        "READ": AccessLevel.READ,
+        "CONNECT": AccessLevel.CONNECT,
+        "WRITE": AccessLevel.WRITE
+    };
+    return _map[val];
 }
 
 """Access Structure."""
@@ -54,65 +62,6 @@ obj AnchorReport {
         context: dict[(str, Any)];
 }
 
-glob ObjectSpatialFilter: TypeAlias = 'Callable[[Archetype], bool] | Archetype | list[Archetype] | None';
-
-"""Object-Spatial Destination."""
-obj ObjectSpatialDestination {
-    has direction: EdgeDir,
-        `edge: (Callable[([Archetype], bool)] | None) = None,
-        nd: (Callable[([Archetype], bool)] | None) = None;
-
-    def edge_filter(arch: Archetype) -> bool;
-    def node_filter(arch: Archetype) -> bool;
-}
-
-"""Object-Spatial Path."""
-obj ObjectSpatialPath {
-    has origin: list[NodeArchetype],
-        destinations: list[ObjectSpatialDestination],
-        edge_only: bool,
-        from_visit: bool;
-
-    def init(
-        origin: (NodeArchetype | list[NodeArchetype]),
-        destinations: (list[ObjectSpatialDestination] | None) = None
-    ) -> None;
-
-    def convert(filter: ObjectSpatialFilter) -> (Callable[([Archetype], bool)] | None);
-    def append(
-        direction: EdgeDir, `edge: ObjectSpatialFilter, nd: ObjectSpatialFilter
-    ) -> ObjectSpatialPath;
-
-    def edge_out(
-        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath;
-
-    def edge_in(
-        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath;
-
-    def edge_any(
-        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
-    ) -> ObjectSpatialPath;
-
-    def set_edge_only -> ObjectSpatialPath;
-    def `edge -> ObjectSpatialPath {
-        self.edge_only = True;
-        return self;
-    }
-
-    def `visit -> ObjectSpatialPath {
-        self.from_visit = True;
-        return self;
-    }
-
-    with entry {
-        set_visit = `visit;
-    }
-
-    def repr_builder(repr_str: str, dest: ObjectSpatialDestination, mark: str) -> str;
-    def __repr__ -> str;
-}
 
 """Object Anchor."""
 obj Anchor {
@@ -192,7 +141,7 @@ obj Archetype {
 """Node Archetype Protocol."""
 class NodeArchetype(Archetype) {
     with entry {
-        __jac_base__: ClassVar = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     @cached_property
@@ -204,7 +153,7 @@ class NodeArchetype(Archetype) {
 """Edge Archetype Protocol."""
 class EdgeArchetype(Archetype) {
     with entry {
-        __jac_base__: ClassVar = True;
+        __jac_base__: ClassVar[bool] = True;
         __jac__: EdgeAnchor;
     }
 }
@@ -212,8 +161,8 @@ class EdgeArchetype(Archetype) {
 """Walker Archetype Protocol."""
 class WalkerArchetype(Archetype) {
     with entry {
-        __jac_async__: ClassVar = False;
-        __jac_base__: ClassVar = True;
+        __jac_async__: ClassVar[bool] = False;
+        __jac_base__: ClassVar[bool] = True;
         reports: list[Any] = field(default_factory=`list);
     }
 
@@ -226,7 +175,7 @@ class WalkerArchetype(Archetype) {
 """Object Archetype Protocol."""
 class ObjectArchetype(Archetype) {
     with entry {
-        __jac_base__: ClassVar = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     @cached_property
@@ -238,7 +187,7 @@ class ObjectArchetype(Archetype) {
 """Generic Edge."""
 obj GenericEdge(EdgeArchetype) {
     with entry {
-        __jac_base__: ClassVar = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     def __repr__ -> str;
@@ -247,7 +196,7 @@ obj GenericEdge(EdgeArchetype) {
 """Generic Root Node."""
 obj Root(NodeArchetype) {
     with entry {
-        __jac_base__: ClassVar = True;
+        __jac_base__: ClassVar[bool] = True;
     }
 
     @cached_property
@@ -270,4 +219,66 @@ obj JsxElement {
     has tag: object,
         `props: dict[(str, object)],
         children: list;
+}
+
+glob ObjectSpatialFilter: TypeAlias = Callable[[Archetype], bool] | Archetype | list[
+         Archetype
+     ] | None;
+
+"""Object-Spatial Destination."""
+obj ObjectSpatialDestination {
+    has direction: EdgeDir,
+        `edge: (Callable[([Archetype], bool)] | None) = None,
+        nd: (Callable[([Archetype], bool)] | None) = None;
+
+    def edge_filter(arch: Archetype) -> bool;
+    def node_filter(arch: Archetype) -> bool;
+}
+
+"""Object-Spatial Path."""
+obj ObjectSpatialPath {
+    has origin: list[NodeArchetype],
+        destinations: list[ObjectSpatialDestination],
+        edge_only: bool,
+        from_visit: bool;
+
+    def init(
+        origin: (NodeArchetype | list[NodeArchetype]),
+        destinations: (list[ObjectSpatialDestination] | None) = None
+    ) -> None;
+
+    def convert(filter: ObjectSpatialFilter) -> (Callable[([Archetype], bool)] | None);
+    def append(
+        direction: EdgeDir, `edge: ObjectSpatialFilter, nd: ObjectSpatialFilter
+    ) -> ObjectSpatialPath;
+
+    def edge_out(
+        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
+    ) -> ObjectSpatialPath;
+
+    def edge_in(
+        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
+    ) -> ObjectSpatialPath;
+
+    def edge_any(
+        `edge: ObjectSpatialFilter = None, nd: ObjectSpatialFilter = None
+    ) -> ObjectSpatialPath;
+
+    def set_edge_only -> ObjectSpatialPath;
+    def `edge -> ObjectSpatialPath {
+        self.edge_only = True;
+        return self;
+    }
+
+    def `visit -> ObjectSpatialPath {
+        self.from_visit = True;
+        return self;
+    }
+
+    with entry {
+        set_visit = `visit;
+    }
+
+    def repr_builder(repr_str: str, dest: ObjectSpatialDestination, mark: str) -> str;
+    def __repr__ -> str;
 }

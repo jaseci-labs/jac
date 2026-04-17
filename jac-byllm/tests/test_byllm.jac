@@ -567,6 +567,45 @@ test "builtin llm compiles without glob" {
     sys.stdout = sys.__stdout__;
 }
 
+import from pathlib { Path }
+import from byllm.config_loader { get_byllm_config, reset_byllm_config }
+import from jaclang.jac0core.runtime { JacRuntime }
+
+glob GEMINI_FIXTURE = os.path.join(FIXTURE_DIR, "jac_toml_gemini");
+
+
+test "byllm config reads model from jac.toml" {
+    # Explicit project_dir pointing at a jac.toml with gemini model
+    reset_byllm_config();
+    config = get_byllm_config(Path(GEMINI_FIXTURE));
+    assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
+}
+
+test "byllm config defaults to gpt-4o-mini when no jac.toml" {
+    # fixtures/ dir has no jac.toml, so built-in defaults apply
+    reset_byllm_config();
+    config = get_byllm_config(Path(FIXTURE_DIR));
+    assert config.get_model_config()['default_model'] == "gpt-4o-mini";
+}
+
+test "byllm config uses full_target_path to find jac.toml regardless of cwd" {
+    # cwd is /tmp, but full_target_path points at the gemini fixture —
+    # the correct jac.toml must still be picked up
+    orig = JacRuntime.full_target_path;
+    orig_cwd = os.getcwd();
+    JacRuntime.full_target_path = os.path.join(GEMINI_FIXTURE, "main.jac");
+    reset_byllm_config();
+    os.chdir("/tmp");
+    try {
+        config = get_byllm_config();
+        assert config.get_model_config()['default_model'] == "gemini/gemini-1.5-pro";
+    } finally {
+        os.chdir(orig_cwd);
+        JacRuntime.full_target_path = orig;
+        reset_byllm_config();
+    }
+}
+
 # Note: OutputConversionError tests call MTRuntime.parse_response directly because
 # MockLLM.dispatch_no_streaming bypasses parse_response, returning the pre-built
 # output object straight from CompletionResult. The error lives in parse_response,
@@ -820,9 +859,7 @@ test "litellm debug enabled via config" {
     verbose_proxy_logger.disabled = False;
 
     with unittest.mock.patch.dict(
-        _byllm_llm_mod._litellm_config,
-        {"debug": True, "drop_params": True},
-        clear=True
+        _byllm_llm_mod._litellm_config, {"debug": True, "drop_params": True}, clear=True
     ) {
         model = Model(model_name="gpt-4o-mini");
         assert not verbose_logger.disabled , "verbose_logger should remain enabled when debug=True";
@@ -961,9 +998,7 @@ test "all exception types log and propagate regardless of debug" {
             with unittest.mock.patch(
                 "litellm.completion",
                 side_effect=litellm.exceptions.RateLimitError(
-                    message="quota exceeded",
-                    llm_provider="openai",
-                    model="gpt-4o-mini"
+                    message="quota exceeded", llm_provider="openai", model="gpt-4o-mini"
                 )
             ) {
                 raised = False;
@@ -1015,7 +1050,6 @@ test "model pool router fallback" {
     assert "fallback_success" in stdout_value;
 }
 
-
 """Test ModelPool load-balancing (simple-shuffle): all three deployments share the
 pool-model alias; three independent calls all succeed and the alias is pool-model."""
 test "model pool router load balance" {
@@ -1029,7 +1063,6 @@ test "model pool router load balance" {
     assert "pool_alias:pool-model" in stdout_value;
     assert stdout_value.count("load_balance_response") == 3;
 }
-
 
 """Test ModelPool propagates router exceptions: when the LiteLLM Router
 raises (all deployments exhausted) the exception reaches the caller."""
@@ -1045,7 +1078,6 @@ test "model pool router all fail" {
     assert "UNEXPECTED" not in stdout_value;
 }
 
-
 """Test ModelPool cost-based-routing uses the async path (acompletion).
 LiteLLM Router only supports cost-based-routing via acompletion(); ModelPool
 bridges this via ThreadPoolExecutor to stay safe in async frameworks."""
@@ -1059,7 +1091,6 @@ test "model pool router cost based" {
     stdout_value = captured_output.getvalue();
     assert "cost_based_success" in stdout_value;
 }
-
 
 """Test ModelPool LiteLLM Router model_list initialisation.
 Fallback strategy: unique per-model aliases + fallbacks list.
@@ -1079,4 +1110,80 @@ test "model pool router init" {
     assert "lb_pool_alias:pool-model" in stdout_value;
     assert "lb_deploy_count:3" in stdout_value;
     assert "lb_all_share_alias:True" in stdout_value;
+}
+
+"""Test ModelPool streaming fallback path."""
+test "model pool streaming fallback" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    jac_import("model_pool_streaming_fallback", base_path=FIXTURE_DIR + "/");
+
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "output:stream_fallback_success" in stdout_value;
+    assert "primary_tried:True" in stdout_value;
+    assert "fallback_tried:True" in stdout_value;
+    assert "order_correct:True" in stdout_value;
+    # Scenario B: mid-stream failure — exception must propagate, no fallback
+    assert "mid_raised:True" in stdout_value;
+    assert "mid_partial_received:True" in stdout_value;
+    assert "mid_fallback_not_tried:True" in stdout_value;
+    assert "mid_should_not_appear:True" in stdout_value;
+}
+
+import from byllm.llm {
+    _is_prompt_caching_eligible,
+    _apply_prompt_caching,
+    _CACHE_CONTROL_EPHEMERAL
+}
+
+test "prompt caching marks system, last non-system message, and last tool for anthropic models" {
+    # Eligibility: Anthropic yes, others no
+    assert _is_prompt_caching_eligible("anthropic/claude-sonnet-4-20250514") == True;
+    assert _is_prompt_caching_eligible("claude-3-opus-20240229") == True;
+    assert _is_prompt_caching_eligible("gpt-4o") == False;
+
+    # Multi-turn ReAct conversation, with list-content on the last message
+    messages = [
+        {"role": "system", "content": "You are an agent."},
+        {"role": "user", "content": "Do something"},
+        {"role": "assistant", "content": "Calling a tool."},
+        {
+            "role": "tool",
+            "content": [
+                {"type": "text", "text": "first"},
+                {"type": "text", "text": "last"}
+            ]
+        }
+    ];
+    tools = [
+        {"type": "function", "function": {"name": "read_file"}},
+        {"type": "function", "function": {"name": "finish_tool"}}
+    ];
+    _apply_prompt_caching(messages, tools);
+
+    # System marked, intermediate messages NOT marked, last message's last block marked
+    assert messages[0].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+    assert "cache_control" not in messages[1];
+    assert "cache_control" not in messages[2];
+    assert "cache_control" not in messages[3].get("content")[0];
+    assert messages[3].get("content")[-1].get(
+        "cache_control"
+    ) == _CACHE_CONTROL_EPHEMERAL;
+    # Only last tool marked
+    assert "cache_control" not in tools[0];
+    assert tools[-1].get("cache_control") == _CACHE_CONTROL_EPHEMERAL;
+}
+
+test "prompt caching disabled via config" {
+    with unittest.mock.patch.object(
+        _byllm_llm_mod._byllm_config,
+        'get_prompt_caching_config',
+        return_value={'enabled': False}
+    ) {
+        assert _is_prompt_caching_eligible(
+            "anthropic/claude-sonnet-4-20250514"
+        ) == False;
+    }
 }

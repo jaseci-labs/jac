@@ -8,6 +8,27 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.unitree { Symbol }
 import from . { types }
+"""Result of get_property_write_type: classifies the assignment target.
+
+NOT_PROPERTY  — symbol is not @property / @cached_property; fall through
+               to the normal declared-type path.
+READ_ONLY     — @property with no setter; assignment is illegal.
+WRITABLE      — @cached_property or @property with setter; `write_type`
+               holds the type that values must match.
+"""
+class PropertyWriteKind(Enum) {
+    with entry {
+        NOT_PROPERTY = 0;
+        READ_ONLY = 1;
+        WRITABLE = 2;
+    }
+}
+
+obj PropertyWriteResult {
+    has kind: PropertyWriteKind,
+        write_type: (types.TypeBase | None) = None;
+}
+
 """Represents a member of a class."""
 obj ClassMember {
     has symbol: Symbol,

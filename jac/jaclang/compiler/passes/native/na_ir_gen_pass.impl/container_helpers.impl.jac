@@ -210,10 +210,7 @@ Returns:
     and the stored data array pointers.
 """
 impl NaIRGenPass._emit_rc_alloc_container(
-    b: ir.IRBuilder,
-    container_ptr_type: ir.Type,
-    data_types: list,
-    initial_cap: int = 8
+    b: ir.IRBuilder, container_ptr_type: ir.Type, data_types: list, initial_cap: int = 8
 ) -> tuple {
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
@@ -391,9 +388,7 @@ impl NaIRGenPass._emit_rc_release_elem_loop(
     ev = b.load(ep, name="elem.val.rel");
     b.call(self.rc_release_simple_fn, [b.bitcast(ev, i8_ptr, name="elem.cast.rel")]);
     b.store(
-        b.add(
-            b.load(loop_alloca, name="li3.rel"), ir.Constant(i64, 1), name="inc.rel"
-        ),
+        b.add(b.load(loop_alloca, name="li3.rel"), ir.Constant(i64, 1), name="inc.rel"),
         loop_alloca
     );
     b.branch(lcond);

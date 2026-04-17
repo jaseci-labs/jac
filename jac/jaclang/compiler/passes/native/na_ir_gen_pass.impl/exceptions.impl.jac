@@ -76,10 +76,14 @@ impl NaIRGenPass._emit_exc_push_helper -> None {
     # state.prev_handler = __jac_current_handler
     prev_handler = b.load(self._exc_handler_global, name="prev");
     prev_as_i8p = b.bitcast(prev_handler, i8p, name="prev.i8p");
-    prev_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="prev.ptr");
+    prev_ptr = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 3)], name="prev.ptr"
+    );
     b.store(prev_as_i8p, prev_ptr);
     # state.exception_type = 0
-    type_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="type.ptr");
+    type_ptr = b.gep(
+        state, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="type.ptr"
+    );
     b.store(ir.Constant(i32, 0), type_ptr);
     # state.exception_obj = null
     obj_ptr = b.gep(state, [ir.Constant(i32, 0), ir.Constant(i32, 1)], name="obj.ptr");

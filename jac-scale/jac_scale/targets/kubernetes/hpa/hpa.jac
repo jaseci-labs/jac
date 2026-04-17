@@ -1,4 +1,4 @@
-import from kubernetes.client {
+import from jac_scale._optdeps.kubernetes {
     AutoscalingV2Api,
     V2CrossVersionObjectReference,
     V2HorizontalPodAutoscaler,
@@ -6,9 +6,10 @@ import from kubernetes.client {
     V2HorizontalPodAutoscalerSpec,
     V2HPAScalingRules,
     V2MetricSpec,
-    V2ResourceMetricSource
+    V2ResourceMetricSource,
+    ApiException
 }
-import from kubernetes.client.exceptions { ApiException }
+
 def create_hpa(
     namespace: str,
     deployment_name: str,

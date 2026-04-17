@@ -240,3 +240,95 @@ test "class reassignment impl match" {
     ];
     assert "impl.MyClass.get_value" in state.sym_tab.names_in_scope;
 }
+
+test "E2016 impl for method with full body" {
+    state = (out := JacProgram()).compile(
+        os.path.join(FIXTURES, "fullbody_impl_error.jac")
+    );
+
+    e2016_errors = [
+        e
+        for e in out.errors_had
+        if "E2016" in e.pretty_print()
+    ];
+    assert len(e2016_errors) == 2 , (
+        f"Expected 2 E2016 errors (make + clone), got {len(e2016_errors)}"
+    );
+
+    errors_output = "";
+    for error in e2016_errors {
+        errors_output += error.pretty_print() + "\n";
+    }
+
+    # Find the Foo archetype's abilities
+    for node in state.get_all_sub_nodes(uni.Ability) {
+        if isinstance(node, uni.Ability) and node.sym_name in ("make", "clone") {
+            assert not isinstance(node.body, uni.ImplDef) , (
+                f"Ability '{node.sym_name}' body was overwritten by impl"
+            );
+        }
+    }
+
+    assert "E2016" in errors_output;
+    assert "Cannot provide implementation for a method that already has a body" in errors_output;
+    assert "impl Foo.make()" in errors_output;
+    assert "impl Foo.clone()" in errors_output;
+}
+
+test "E2017 duplicate impl for stub" {
+    (out := JacProgram()).compile(os.path.join(FIXTURES, "duplicate_impl_error.jac"));
+
+    e2017_errors = [
+        e
+        for e in out.errors_had
+        if "E2017" in e.pretty_print()
+    ];
+    assert len(e2017_errors) == 2 , (
+        f"Expected 2 E2017 errors (make + clone from .impl file), got {len(
+            e2017_errors
+        )}"
+    );
+
+    errors_output = "";
+    for error in e2017_errors {
+        errors_output += error.pretty_print() + "\n";
+    }
+
+    assert "E2017" in errors_output;
+    assert "Duplicate implementation" in errors_output;
+}
+
+test "standalone def/obj/node/walker in .impl.jac get symbol resolution" {
+    # Regression: the DeclImplMatchPass used to only resolve Load-context
+    # names in (TypeAlias, GlobalVars, ModuleCode) subtrees of annex modules,
+    # so standalone top-level constructs in a .impl.jac file had their body
+    # reads left unresolved — breaking type inference and producing spurious
+    # "may be undefined" warnings.
+    state = (out := JacProgram()).compile(
+        os.path.join(FIXTURES, "standalone_def_in_annex.jac")
+    );
+    assert len(state.impl_mod) == 1;
+    impl_mod = state.impl_mod[0];
+
+    # Collect every Load-context read in the annex whose target is a local
+    # assignment (msg / local_label / v / n) and assert each has a resolved sym.
+    resolvable = {"msg","local_label","v","n"};
+    reads_checked = 0;
+    for nm in impl_mod.get_all_sub_nodes(uni.Name, brute_force=True) {
+        if nm.value not in resolvable {
+            continue;
+        }
+        is_target = isinstance(nm.parent, uni.Assignment) and nm in nm.parent.target;
+        if is_target {
+            continue;
+        }
+        assert nm.sym is not None , (
+            f"Read of local '{nm.value}' at line {nm.loc.first_line} "
+            f"in .impl.jac has unresolved .sym — resolver skipped this subtree"
+        );
+        reads_checked += 1;
+    }
+    assert reads_checked >= 4 , (
+        f"Expected >=4 local reads checked (one per construct), got {reads_checked}"
+    );
+}

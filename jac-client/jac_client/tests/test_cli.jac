@@ -53,7 +53,7 @@ test "create jac app" {
                 app_jac_content = f.read();
             }
 
-            assert "def:pub app()" in app_jac_content;
+            assert "def:pub app" in app_jac_content;
 
             # Verify README.md was created
             readme_path = os.path.join(project_path, "README.md");

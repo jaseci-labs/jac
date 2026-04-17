@@ -19,7 +19,6 @@ jac-scale extends this to override L2 (Redis) and L3 (database).
 import logging;
 import sqlite3;
 import from collections.abc { Callable, Generator, Iterable }
-import from pickle { dumps, loads }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
@@ -56,13 +55,11 @@ obj Memory {
 
     def get_roots -> Generator[Root, None, None] abs;
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None] abs;
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None) abs;
 
     def commit(anchor: (Anchor | None) = None) -> None abs;
@@ -87,10 +84,75 @@ obj CacheMemory(Memory) {
 
 Extends Memory with operations specific to durable storage.
 Implementations must guarantee data durability after sync().
+
+The second block of abstract methods (`inspect_summary` onward) is the
+backend-agnostic surface that the `jac db` CLI calls into. Any backend
+plugin that implements PersistentMemory automatically gets the full
+Layer 1+2+3 feature set — schema fingerprints, quarantine-on-failure,
+alias-based class rename resolution, operator rescue — exposed via a
+uniform CLI, regardless of whether the underlying store is SQLite,
+MongoDB, Postgres, or anything else.
 """
 obj PersistentMemory(Memory) {
     def sync -> None abs;
     def bulk_put(anchors: Iterable[Anchor]) -> None abs;
+    # ---- Layer 1+2+3 operator/inspection surface ----
+    """Summary for `jac db inspect`: format version, live row count,
+    quarantine count, alias count, and per-archetype breakdowns.
+
+    Expected shape:
+        {
+            'format_version': str,
+            'anchors_total': int,
+            'anchors_by_type': list[(str, int)],
+            'quarantine_total': int,
+            'quarantine_by_type': list[(str, int)],
+            'aliases_total': int,
+            'location': str,  # path / URI / collection name — for display
+        }
+    """
+    def inspect_summary -> dict abs;
+
+    """List the N most recent quarantined anchors.
+
+    Each entry: {'id', 'arch', 'fingerprint', 'error', 'quarantined_at'}.
+    Sorted newest-first. `limit` bounds the result size.
+    """
+    def list_quarantined(limit: int = 50) -> list abs;
+
+    """Full detail for one quarantined anchor by id (or unique prefix).
+
+    Returns None if no row matches, a multi-hit sentinel {'error': ...}
+    if a prefix is ambiguous, else {'id', 'type', 'arch_module',
+    'arch_type', 'fingerprint', 'error', 'quarantined_at',
+    'from_format_version', 'data': <parsed-json>}.
+    """
+    def show_quarantined(id_prefix: str) -> (dict | None) abs;
+
+    """Attempt to re-deserialize one quarantined row and move it back.
+
+    On success, re-stamps the row with the live class's identity +
+    fingerprint so subsequent reads hit the registry directly.
+    Returns (True, 'recovered') on success; (False, reason) on failure.
+    """
+    def recover_one(id_prefix: str) -> tuple abs;
+
+    """Batch variant: attempts every quarantined row.
+
+    Returns (n_recovered: int, still_stuck: list[(id, reason)]).
+    """
+    def recover_all -> tuple abs;
+
+    """Return all persistent aliases: list of {'old_name', 'new_name',
+    'created_at'}."""
+    def list_aliases -> list abs;
+
+    """Persist an alias mapping `old_name` -> `new_name` and merge into the
+    in-process Serializer registry. Idempotent (INSERT OR REPLACE-style)."""
+    def add_alias(old_name: str, new_name: str) -> None abs;
+
+    """Remove an alias. Returns True if an entry was removed, False otherwise."""
+    def remove_alias(old_name: str) -> bool abs;
 }
 
 # =============================================================================
@@ -118,13 +180,11 @@ obj VolatileMemory(Memory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
@@ -173,19 +233,25 @@ obj SqliteMemory(PersistentMemory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
     # PersistentMemory interface
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
+    def inspect_summary -> dict;
+    def list_quarantined(limit: int = 50) -> list;
+    def show_quarantined(id_prefix: str) -> (dict | None);
+    def recover_one(id_prefix: str) -> tuple;
+    def recover_all -> tuple;
+    def list_aliases -> list;
+    def add_alias(old_name: str, new_name: str) -> None;
+    def remove_alias(old_name: str) -> bool;
     def get_gc -> list[Anchor];
     def remove_from_gc(anchor: Anchor) -> None;
     def get_mem -> dict[UUID, Anchor];

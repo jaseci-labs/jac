@@ -49,4 +49,6 @@ impl MockLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
             output = output[chunk_len:];
         }
     }
+    # Record a usage entry so the end-of-stream usage event fires.
+    self._usage_history.append({});
 }

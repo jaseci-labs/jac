@@ -54,6 +54,13 @@ impl create_hpa(
                 ),
                 scale_down=V2HPAScalingRules(
                     stabilization_window_seconds=scale_down_stabilization_window
+            metrics=[
+                V2MetricSpec(
+                    `type='Resource',
+                    resource=V2ResourceMetricSource(
+                        name='cpu',
+                        target={'type': 'Utilization', 'averageUtilization': cpu_target}
+                    )
                 )
             )
         )

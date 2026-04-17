@@ -473,9 +473,7 @@ export default defineConfig({{
 {define_str}
   }},
   plugins: [
-    jacErrorReporter(),{(
-            newline + plugins_str + newline + '  '
-        )
+    jacErrorReporter(),{(newline + plugins_str + newline + '  ')
             if plugins_str
             else ''}],
   root: buildDir,
@@ -633,9 +631,7 @@ export default defineConfig({{
 {define_str}
   }},
   plugins: [
-    jacSourceMapper(),{(
-            newline + plugins_str + newline + '  '
-        )
+    jacSourceMapper(),{(newline + plugins_str + newline + '  ')
             if plugins_str
             else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
@@ -1025,10 +1021,7 @@ This runs in a separate thread to avoid blocking the main thread.
 Buffers output before ready so errors can be shown if startup fails.
 """
 def _forward_vite_output(
-    proc: Any,
-    ready_event: "threading.Event",
-    sys_module: Any,
-    output_buffer: list[str]
+    proc: Any, ready_event: "threading.Event", sys_module: Any, output_buffer: list[str]
 ) {
     try {
         for line in iter(proc.stdout.readline, '') {
@@ -1166,7 +1159,9 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
     try {
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
-        result = subprocess.run([bun, 'install'], cwd=build_dir, check=False, text=True);
+        result = subprocess.run(
+            [bun, 'install'], cwd=build_dir, check=False, text=True
+        );
         elapsed = time.time() - start_time;
 
         if result.returncode != 0 {

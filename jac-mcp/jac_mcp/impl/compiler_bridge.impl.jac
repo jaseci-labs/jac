@@ -445,7 +445,9 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, Any] {
 
         Jac.setup();
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cl.jac", delete=False) as f {
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".cl.jac", delete=False
+        ) as f {
             f.write(code);
             tmp_path = f.name;
         }

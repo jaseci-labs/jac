@@ -80,8 +80,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     mem_anchor
                     for (_, mem_anchor) in list(self.__mem__.items())
                     if mem_anchor.persistent
-                    and Jac.check_write_access(mem_anchor)
                     and Serializer._compute_hash(mem_anchor) != mem_anchor.hash
+                    and Jac.check_write_access(mem_anchor)
                 ];
             }
             self.l3.sync();

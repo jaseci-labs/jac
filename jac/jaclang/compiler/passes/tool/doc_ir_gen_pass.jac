@@ -61,6 +61,9 @@ obj DocIRGenPass(UniPass) {
 
     def is_within(kid_node: uni.UniNode, block: Sequence[uni.UniNode]) -> bool;
     def trim_trailing_line(parts: list[doc.DocType]) -> None;
+    """Emit 'to cl:/sv:/na:' section-header form for an implicit context block."""
+    def emit_section_header_block(nd: uni.UniNode) -> None;
+
     def remove_all_spaces(doc_node: doc.DocType) -> doc.DocType;
     def exit_module(nd: uni.Module) -> None;
     def exit_import(nd: uni.Import) -> None;

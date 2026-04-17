@@ -166,8 +166,9 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 module        : STRING? element*              # Optional module docstring
 element       : STRING? toplevel_stmt         # Optional statement docstring
 toplevel_stmt : import | archetype | ability | impl | test | entry
-              | (cl | sv | na) toplevel_stmt       # Client/server/native prefix
-              | (cl | sv | na) "{" toplevel_stmt* "}"  # Client/server/native block
+              | "to" (cl | sv | na) ":"              # Section header (preferred at module scope)
+              | (cl | sv | na) toplevel_stmt         # Single-statement prefix
+              | (cl | sv | na) "{" toplevel_stmt* "}"  # Braced block (W0064 at module scope)
 
 archetype     : async? (obj | node | edge | walker | enum) NAME inheritance? body
 inheritance   : "(" NAME ("," NAME)* ")"

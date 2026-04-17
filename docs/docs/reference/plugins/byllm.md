@@ -305,6 +305,9 @@ debug = false                     # Enable verbose LiteLLM logging
 strategy = "fallback"             # Default ModelPool routing strategy
 num_retries = 1                   # Retries per deployment
 timeout = 60.0                    # Per-request timeout in seconds
+
+[plugins.byllm.prompt_caching]
+enabled = true                    # Anthropic prompt caching (auto for Claude models)
 ```
 
 **`[plugins.byllm.model]` options:**
@@ -331,6 +334,12 @@ timeout = 60.0                    # Per-request timeout in seconds
 | `local_cost_map` | bool | `true` | Use local cost map instead of fetching from remote |
 | `drop_params` | bool | `true` | Silently drop parameters unsupported by the chosen provider |
 | `debug` | bool | `false` | Enable verbose LiteLLM logging (HTTP requests, retries, headers). When `false`, LiteLLM's internal loggers are silenced. Exceptions are always logged via byLLM's own logger regardless of this setting |
+
+**`[plugins.byllm.prompt_caching]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Automatically add Anthropic `cache_control` markers to the system prompt and tool schemas. Caches the static prefix across ReAct iterations for up to 90% input token savings. Only applies to Claude models; no effect on other providers |
 
 **Minimal setup** -- just set your API key and go:
 
