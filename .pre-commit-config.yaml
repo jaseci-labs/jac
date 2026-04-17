@@ -72,7 +72,7 @@ repos:
 
       - id: validate-fragments
         name: Validate release note fragment filenames
-        entry: python scripts/validate_fragments.py
+        entry: jac run scripts/validate_fragments.jac
         language: python
         files: ^docs/docs/community/release_notes/unreleased/.*\.md$
         exclude: README\.md
