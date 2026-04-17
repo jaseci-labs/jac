@@ -159,21 +159,24 @@ jobs:
         timeout-minutes: 90
 
       # ── Upload artifacts ─────────────────────────────────────
+      # jac build --platform <x> passes an explicit --target <triple> to Cargo,
+      # so bundles land under src-tauri/target/<triple>/release/bundle/ rather
+      # than src-tauri/target/release/bundle/. The glob uses target/**/bundle
+      # to match either layout.
       - name: List build output
         if: always()
         working-directory: ${{ env.EXAMPLE_DIR }}
         shell: bash
         run: |
-          BUNDLE_DIR="src-tauri/target/release/bundle"
-          if [ -d "$BUNDLE_DIR" ]; then
-            find "$BUNDLE_DIR" -type f \( \
+          if compgen -G "src-tauri/target/**/release/bundle" > /dev/null; then
+            find src-tauri/target -type d -name bundle -exec find {} -type f \( \
               -name "*.exe" -o -name "*.msi" -o \
               -name "*.dmg" -o \
               -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \
-            \)
+            \) \;
           else
             echo "No bundle directory found"
-            ls -la src-tauri/target/release/ 2>/dev/null || echo "No release dir"
+            find src-tauri/target -maxdepth 3 -type d 2>/dev/null || echo "No target dir"
           fi
 
       - name: Upload installer artifacts
@@ -181,10 +184,11 @@ jobs:
         with:
           name: desktop-${{ matrix.artifact_name }}
           path: |
-            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.exe
-            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.msi
-            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.dmg
-            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.AppImage
-            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.deb
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/**/release/bundle/**/*.exe
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/**/release/bundle/**/*.msi
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/**/release/bundle/**/*.dmg
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/**/release/bundle/**/*.AppImage
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/**/release/bundle/**/*.deb
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/**/release/bundle/**/*.rpm
           if-no-files-found: warn
           retention-days: 14
