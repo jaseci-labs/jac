@@ -1,0 +1,150 @@
+name: Build Desktop App (All-in-One Example)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build (comma-separated: windows,macos,linux)"
+        required: false
+        default: "windows,macos,linux"
+        type: string
+      app_name:
+        description: "Application name"
+        required: false
+        default: "all-in-one"
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  EXAMPLE_DIR: jac-client/jac_client/examples/all-in-one
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact_name: windows-installer
+          - os: macos-latest
+            platform: macos
+            artifact_name: macos-dmg
+          - os: ubuntu-22.04
+            platform: linux
+            artifact_name: linux-appimage
+
+    runs-on: ${{ matrix.os }}
+    if: contains(inputs.platforms, matrix.platform)
+
+    steps:
+      # ── Checkout ──────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── System dependencies (Linux only) ─────────────────────
+      # Tauri v2 on Linux needs webkit2gtk-4.1, GTK3, libsoup3,
+      # plus patchelf/libfuse2 for AppImage generation.
+      - name: Install Linux system deps
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libfuse2 \
+            libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      # ── Rust toolchain ───────────────────────────────────────
+      # Not pre-installed on GitHub runners. Required for
+      # compiling the Tauri Rust shell (src-tauri/).
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry + Tauri build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target
+          key: cargo-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-${{ matrix.os }}-
+
+      # ── Python + Jac ecosystem ───────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Jac packages
+        run: |
+          pip install --upgrade pip
+          pip install -e ./jac
+          pip install -e ./jac-client
+          pip install -e ./jac-scale
+          pip install pyinstaller Pillow
+
+      # ── Bun (frontend bundler) ───────────────────────────────
+      # jac-client uses bun for npm installs and Vite builds.
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ── Tauri CLI ────────────────────────────────────────────
+      # Use pre-built binary via bun (seconds) instead of
+      # `cargo install tauri-cli` which compiles from source (~8 min).
+      - name: Install Tauri CLI
+        run: bun install -g @tauri-apps/cli
+
+      # ── Desktop setup ────────────────────────────────────────
+      # Scaffolds src-tauri/ (Cargo.toml, tauri.conf.json,
+      # main.rs, icons). Required before build.
+      - name: Setup desktop target
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        run: jac setup desktop
+
+      # ── Build ────────────────────────────────────────────────
+      # Compiles web bundle (Vite), bundles sidecar (PyInstaller),
+      # then runs `cargo tauri build` to produce platform installers.
+      - name: Build desktop app
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        env:
+          JAC_BUILD: "1"
+        run: jac build --client desktop --platform ${{ matrix.platform }}
+        timeout-minutes: 90
+
+      # ── Upload artifacts ─────────────────────────────────────
+      - name: List build output
+        if: always()
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        run: |
+          BUNDLE_DIR="src-tauri/target/release/bundle"
+          if [ -d "$BUNDLE_DIR" ]; then
+            find "$BUNDLE_DIR" -type f \( \
+              -name "*.exe" -o -name "*.msi" -o \
+              -name "*.dmg" -o \
+              -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \
+            \)
+          else
+            echo "No bundle directory found"
+            ls -la src-tauri/target/release/ 2>/dev/null || echo "No release dir"
+          fi
+
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.artifact_name }}
+          path: |
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.exe
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.msi
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.dmg
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.AppImage
+            ${{ env.EXAMPLE_DIR }}/src-tauri/target/release/bundle/**/*.deb
+          if-no-files-found: warn
+          retention-days: 14
