@@ -111,6 +111,22 @@ jobs:
         working-directory: ${{ env.EXAMPLE_DIR }}
         run: jac setup desktop
 
+      # ── Generate platform icons ──────────────────────────────
+      # jac setup generates a 1024x1024 icon.png but Tauri needs
+      # platform-specific formats: .ico (Windows), .icns (macOS),
+      # and multiple PNG sizes (Linux). `cargo tauri icon` generates
+      # all of them from the source PNG.
+      - name: Generate platform icons
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        run: cargo tauri icon src-tauri/icons/icon.png
+
+      # ── Linux AppImage workaround ────────────────────────────
+      # GitHub runners don't have FUSE device access. Tell
+      # linuxdeploy/AppImage tools to extract-and-run instead.
+      - name: Set AppImage extract flag
+        if: matrix.platform == 'linux'
+        run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+
       # ── Build ────────────────────────────────────────────────
       # Compiles web bundle (Vite), bundles sidecar (PyInstaller),
       # then runs `cargo tauri build` to produce platform installers.
