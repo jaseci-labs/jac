@@ -2,10 +2,6 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.13 (Unreleased)
-
-- **Feat: Generate All Platform Icons for Desktop Bundles**: `_generate_default_icons` now produces all icon formats Tauri needs: `icon.ico` (Windows NSIS/MSI), `icon.icns` (macOS .app), and standard PNG sizes (`32x32.png`, `128x128.png`, `128x128@2x.png`, `256x256.png`) for Linux. Previously only `icon.png` was generated, causing `cargo tauri build` to fail on Windows (missing `.ico`) and macOS (missing `.icns` / `No matching IconType`). Uses Pillow in-process with a subprocess fallback. Warns if Pillow is unavailable.
-
 ## jac-client 0.3.12 (Latest Release)
 
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.
