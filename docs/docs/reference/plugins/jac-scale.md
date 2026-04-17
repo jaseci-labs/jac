@@ -2371,7 +2371,7 @@ Requests to the metrics endpoint itself are excluded from tracking.
 
 ## Per-User LLM Rate Limiting
 
-jac-scale can enforce per-user rate and budget limits on all `by llm()` calls. When enabled, every LiteLLM request is checked before it fires — exceeding any limit raises an exception and aborts the call.
+jac-scale can enforce per-user rate and budget limits on all `by llm()` calls. When enabled, every LiteLLM request is checked before it fires. Exceeding any limit raises an exception and aborts the call.
 
 Limits are tracked in Redis (ephemeral counters) and MongoDB (persistent usage logs). Daily and monthly budgets survive a Redis restart: on cache miss, jac-scale rebuilds the total from MongoDB and re-caches for 60 seconds.
 
@@ -2391,7 +2391,7 @@ Both a `redis_url` and a `mongodb_uri` must be configured under `[plugins.scale.
 [plugins.scale.llm_limits]
 enabled = true
 
-# Request-rate limits (optional — omit or set to null to disable each one)
+# Request-rate limits (optional, omit or set to null to disable each one)
 rpm = 60          # max requests per minute per user
 rpd = 1000        # max requests per day per user
 
@@ -2420,12 +2420,12 @@ All fields default to `null` (disabled). Setting `enabled = false` turns off the
 
 1. When a `by llm()` call is made, the current user's username is read from the Jac execution context (set by the request middleware from the JWT token).
 2. jac-scale checks all configured limits against Redis counters and (for budgets) MongoDB aggregates.
-3. If any limit is exceeded, an exception is raised with a human-readable message — e.g. `"Rate limit exceeded: rpm (60/min) for user alice"`.
+3. If any limit is exceeded, an exception is raised with a human-readable message, e.g. `"Rate limit exceeded: rpm (60/min) for user alice"`.
 4. On success, counters are incremented atomically and a usage record is written to the `jac_scale.llm_usage` MongoDB collection.
 
 ### Unauthenticated Requests
 
-If a request arrives without a valid JWT (no user context), limits are skipped entirely — the call proceeds unchecked. Apply authentication guards (`:priv` walkers) if you need to enforce limits on all traffic.
+If a request arrives without a valid JWT (no user context), limits are skipped entirely and the call proceeds unchecked. Apply authentication guards (`:priv` walkers) if you need to enforce limits on all traffic.
 
 ### Usage Records
 
