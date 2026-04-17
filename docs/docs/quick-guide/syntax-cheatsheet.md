@@ -68,7 +68,7 @@ with entry {
     nothing: None = None;
 
     # Jac has the same built-in types as Python:
-    # int, float, str, bool, list, tuple, set, dict, bytes, Any
+    # int, float, str, bool, list, tuple, set, dict, bytes
 
     # Union types
     maybe: str | None = None;
@@ -1271,7 +1271,7 @@ def:pub DataView() -> JsxElement {
     # Mount effect (runs once on component mount)
     async can with entry {
         data = await fetch("/api/data").then(
-            lambda r: Any -> Any { return r.json(); }
+            lambda r: any -> any { return r.json(); }
         );
         loading = False;
     }
@@ -1366,7 +1366,7 @@ def:pub TodoApp() -> JsxElement {
 # ============================================================
 # Keywords Reference
 # ============================================================
-# Types:    str, int, float, bool, list, tuple, set, dict, bytes, Any, type
+# Types:    str, int, float, bool, list, tuple, set, dict, bytes, type
 # Decl:     obj, class, node, edge, walker, enum, has, can, def, impl,
 #           glob, test, type
 # Modifiers: pub, priv, protect, static, override, abs, async
