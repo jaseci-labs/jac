@@ -3,7 +3,7 @@
 Fragment files must follow the naming convention:
     <PR_number>.<category>.md
 
-Valid categories: feature, bugfix
+Valid categories: feature, bugfix, breaking, refactor, docs
 
 Example valid filenames:
     1234.feature.md
@@ -15,8 +15,8 @@ import sys;
 import from pathlib { Path }
 
 with entry {
-    VALID_CATEGORIES = {"feature", "bugfix", "breaking"};
-    PATTERN = re.compile(r"^\d+\.(feature|bugfix|breaking)\.md$");
+    VALID_CATEGORIES = {"feature", "bugfix", "breaking", "refactor", "docs"};
+    PATTERN = re.compile(r"^\d+\.(feature|bugfix|breaking|refactor|docs)\.md$");
 }
 
 def validate(files: list[str]) -> int {
