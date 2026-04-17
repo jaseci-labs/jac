@@ -95,10 +95,14 @@ jobs:
           bun-version: latest
 
       # ── Tauri CLI ────────────────────────────────────────────
-      # Use pre-built binary via bun (seconds) instead of
-      # `cargo install tauri-cli` which compiles from source (~8 min).
+      # jac-client invokes `cargo tauri build`, so tauri-cli must
+      # be a Cargo subcommand. cargo-binstall downloads pre-built
+      # binaries (~10s) instead of compiling from source (~8 min).
+      - name: Install cargo-binstall
+        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+
       - name: Install Tauri CLI
-        run: bun install -g @tauri-apps/cli
+        run: cargo binstall tauri-cli --no-confirm
 
       # ── Desktop setup ────────────────────────────────────────
       # Scaffolds src-tauri/ (Cargo.toml, tauri.conf.json,
