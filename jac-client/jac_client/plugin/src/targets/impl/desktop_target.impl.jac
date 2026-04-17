@@ -719,75 +719,113 @@ except ImportError:
         "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
     );
 
-    # Generate ICO for Windows (required by tauri-build)
-    _generate_ico_from_png(icons_dir);
+    # Generate all platform-specific icon formats from icon.png.
+    # Tauri requires .ico (Windows), .icns (macOS), and multiple PNG
+    # sizes (Linux) -- without them cargo tauri build fails.
+    _generate_platform_icons(icons_dir);
 }
 
-"""Generate ICO file from PNG for Windows builds."""
-def _generate_ico_from_png(icons_dir: Path) -> None {
+
+"""Generate all platform icon formats from icon.png.
+
+Produces icon.ico (Windows), icon.icns (macOS), and standard PNG sizes.
+Uses Pillow in-process first, with a subprocess fallback.
+"""
+def _generate_platform_icons(icons_dir: Path) -> None {
     import sys;
     png_path = icons_dir / "icon.png";
-    ico_path = icons_dir / "icon.ico";
 
     if not png_path.exists() {
         return;
     }
 
-    # Try using PIL directly first (faster, better error messages)
+    # Try Pillow in-process first.
     try {
         import from PIL {Image}
-        img = Image.open(str(png_path));
-        # ICO needs multiple sizes - use common Windows icon sizes
-        sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
-        img.save(str(ico_path), format="ICO", sizes=sizes);
-        console.print("  ✔ Generated icon.ico for Windows", style="success");
+        _generate_icons_with_pillow(icons_dir, Image);
         return;
     } except ImportError {
-        # PIL not available, try subprocess fallback
-
+        pass;
     } except Exception as e {
-        console.warning(f"  Could not generate icon.ico: {e}");
-        return;
+        console.warning(f"  Icon generation error: {e}");
     }
 
-    # Fallback: try subprocess (in case PIL is in different Python env)
+    # Subprocess fallback.
     try {
-        import subprocess;
+        python_cmd = "python" if sys.platform == "win32" else "python3";
         python_code = '''
-import sys
+import sys, os
 try:
     from PIL import Image
-    img = Image.open(sys.argv[1])
-    sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
-    img.save(sys.argv[2], format="ICO", sizes=sizes)
+    icons_dir = sys.argv[1]
+    png_path = os.path.join(icons_dir, "icon.png")
+    img = Image.open(png_path).convert("RGBA")
+    ico_sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+    img.save(os.path.join(icons_dir, "icon.ico"), format="ICO", sizes=ico_sizes)
+    try:
+        img.save(os.path.join(icons_dir, "icon.icns"), format="ICNS")
+    except Exception:
+        pass
+    for size in [32, 128, 256]:
+        resized = img.resize((size, size), Image.LANCZOS)
+        resized.save(os.path.join(icons_dir, f"{size}x{size}.png"))
+    img.resize((256, 256), Image.LANCZOS).save(
+        os.path.join(icons_dir, "128x128@2x.png")
+    )
     sys.exit(0)
 except Exception as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
 ''';
-        python_cmd = "python" if sys.platform == "win32" else "python3";
         result = subprocess.run(
-            [python_cmd, "-c", python_code, str(png_path), str(ico_path)],
+            [python_cmd, "-c", python_code, str(icons_dir)],
             capture_output=True,
             text=True,
             timeout=SUBPROCESS_TIMEOUT_SHORT
         );
         if result.returncode == 0 {
-            console.print("  ✔ Generated icon.ico for Windows", style="success");
+            console.print("  ✔ Generated platform icons (ico, icns, png sizes)", style="success");
             return;
         } else {
-            console.warning(f"  ICO generation failed: {result.stderr}");
+            console.warning(f"  Icon generation failed: {result.stderr}");
         }
     } except Exception as e {
-        console.warning(f"  ICO generation error: {e}");
+        console.warning(f"  Icon generation error: {e}");
     }
 
-    # Final fallback: warn user
-    if sys.platform == "win32" {
-        console.warning(
-            "  Could not generate icon.ico - install Pillow: pip install Pillow"
-        );
+    console.warning(
+        "  Could not generate platform icons. Install Pillow: pip install Pillow"
+    );
+}
+
+
+"""Generate all icon formats using Pillow (in-process)."""
+def _generate_icons_with_pillow(icons_dir: Path, Image: type) -> None {
+    png_path = icons_dir / "icon.png";
+    img = Image.open(str(png_path)).convert("RGBA");
+
+    # ICO (Windows)
+    ico_sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
+    img.save(str(icons_dir / "icon.ico"), format="ICO", sizes=ico_sizes);
+    console.print("  ✔ Generated icon.ico (Windows)", style="success");
+
+    # ICNS (macOS)
+    try {
+        img.save(str(icons_dir / "icon.icns"), format="ICNS");
+        console.print("  ✔ Generated icon.icns (macOS)", style="success");
+    } except Exception as e {
+        console.warning(f"  Could not generate icon.icns: {e}");
     }
+
+    # Tauri standard PNG sizes
+    for size in [32, 128, 256] {
+        resized = img.resize((size, size), Image.LANCZOS);
+        resized.save(str(icons_dir / f"{size}x{size}.png"));
+    }
+    img.resize((256, 256), Image.LANCZOS).save(
+        str(icons_dir / "128x128@2x.png")
+    );
+    console.print("  ✔ Generated PNG sizes (32, 128, 256, 128@2x)", style="success");
 }
 
 """Generate main.rs.
