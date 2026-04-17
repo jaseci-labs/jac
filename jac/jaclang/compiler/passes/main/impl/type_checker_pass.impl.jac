@@ -563,7 +563,15 @@ impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> Non
 
 """Exit an enum node - build enum type eagerly and traverse ImplDef body if present."""
 impl TypeCheckPass.exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None {
-    self.evaluator.get_type_of_enum(nd);
+    cls_type = self.evaluator.get_type_of_enum(nd);
+    # Type-check each enum member name so W1051 fires for unresolved members.
+    for child in nd.kid {
+        if isinstance(child, uni.Assignment) {
+            for target in child.target {
+                self.evaluator.get_type_of_expression(target);
+            }
+        }
+    }
     if isinstance(nd.body, uni.ImplDef) {
         self.traverse(nd.body);
     }
