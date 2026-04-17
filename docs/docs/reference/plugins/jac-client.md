@@ -1087,7 +1087,7 @@ def:pub StylingExamples() -> JsxElement {
 >
 > ```jac
 >
-
+>
 > # lib/utils.cl.jac
 >
 > import from "clsx" { clsx }
