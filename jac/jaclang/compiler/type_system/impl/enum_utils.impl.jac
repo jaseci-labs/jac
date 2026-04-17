@@ -57,6 +57,30 @@ impl create_enum_member_info(
     );
 }
 
+"""Validate a per-member type annotation against the member's value type."""
+impl validate_enum_member_annotation(
+    assignment: uni.Assignment,
+    member_info: types.EnumMemberInfo,
+    evaluator: "TypeEvaluator"
+) -> None {
+    if assignment.type_tag is None or member_info.value_type is None {
+        return;
+    }
+    annotation_type = evaluator.get_type_of_expression(assignment.type_tag.tag);
+    if (
+        isinstance(annotation_type, types.ClassType)
+        and isinstance(member_info.value_type, types.ClassType)
+        and annotation_type.shared != member_info.value_type.shared
+    ) {
+        evaluator.emit_diag(
+            E1001,
+            assignment,
+            actual=str(member_info.value_type),
+            expected=str(annotation_type)
+        );
+    }
+}
+
 """Build enum members map for an enum or class-based enum."""
 impl build_enum_members(
     enum_node: uni.Enum | uni.Archetype,
@@ -99,6 +123,11 @@ impl build_enum_members(
                         expected=str(enum_value_type)
                     );
                 }
+                # Validate per-member type annotation (e.g., PENDING: int = "wrong").
+                # The member's resolved type is EnumMemberType, so the generic
+                # exit_assignment path cannot perform this check; we validate it
+                # here where the member's declared value-type context is known.
+                validate_enum_member_annotation(stmt, member_info, evaluator);
                 members[member_info.member_name] = member_info;
                 # Next member should get current value + 1
                 # Example: FIRST=1, SECOND=2, THIRD=10, FOURTH → FOURTH gets 11 (not 3)
