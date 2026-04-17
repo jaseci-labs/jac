@@ -2,10 +2,6 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.13 (Unreleased)
-
-- **Perf: Skip PyInstaller `--clean` for Faster Incremental Sidecar Builds**: The PyInstaller invocation for the desktop sidecar no longer passes `--clean`, so incremental rebuilds reuse the previous build cache instead of wiping it on every run. This significantly cuts rebuild time during iterative development. Use `jac clean` if a fully fresh build is ever needed.
-
 ## jac-client 0.3.12 (Latest Release)
 
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.
