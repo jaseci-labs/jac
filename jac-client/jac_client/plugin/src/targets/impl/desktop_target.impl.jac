@@ -2309,7 +2309,7 @@ def _populate_icon_array(tauri_dir: Path, config: dict) -> None {
         icon_files = [];
         if icons_dir.exists() {
             for icon_file in icons_dir.iterdir() {
-                if icon_file.is_file() and icon_file.suffix.lower() in (".png", ".ico") {
+                if icon_file.is_file() and icon_file.suffix.lower() in (".png", ".ico", ".icns") {
                     # Path relative to tauri.conf.json (which is in tauri_dir)
                     icon_rel_path = icon_file.relative_to(tauri_dir);
                     icon_files.append(str(icon_rel_path.as_posix()));
