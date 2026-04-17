@@ -6,6 +6,7 @@ This tutorial walks you through shipping an existing Jac full-stack app as a nat
 >
 > - Completed: [Project Setup](setup.md) -- you have a working `jac start` web app
 > - Installed: [Rust toolchain](https://rustup.rs) (`cargo --version` should work)
+> - Installed: `pip install pyinstaller Pillow` -- PyInstaller freezes the sidecar; Pillow is required on Windows so `jac setup desktop` can produce `icon.ico` for the NSIS/MSI bundler (without it, `cargo tauri build` fails on Windows with a missing-icon error)
 > - Installed: Platform build tools
 >   - **Windows**: Visual Studio Build Tools (with the C++ workload)
 >   - **macOS**: `xcode-select --install`
@@ -21,7 +22,7 @@ When you run `jac build --client desktop`, the build does five things:
 1. **Compiles the client bundle** -- the same Vite build the web target produces.
 2. **Bundles a sidecar** -- PyInstaller freezes Python, jaclang, jac-client, and any plugins you enabled into a single executable. Your `.jac` sources, `jac.toml`, and `assets/` are copied alongside it as bundle resources.
 3. **Generates the Tauri shell** -- regenerates `src-tauri/tauri.conf.json` and `main.rs` from `[desktop]` in your `jac.toml`.
-4. **Builds the installer with Tauri** -- produces a platform-native installer (`.msi`, `.dmg`, `.AppImage`, `.deb`, `.rpm`) under `src-tauri/target/release/bundle/`.
+4. **Builds the installer with Tauri** -- produces a platform-native installer (`.msi`, `.dmg`, `.AppImage`, `.deb`, `.rpm`) under `src-tauri/target/<triple>/release/bundle/` (e.g. `target/x86_64-pc-windows-msvc/release/bundle/`). `jac build --platform <x>` passes `--target <triple>` to Cargo, so the triple subdirectory is part of the path on every platform.
 
 At runtime, the Tauri shell launches the sidecar on a free local port, reads `JAC_SIDECAR_PORT=<port>` from its stdout, and injects the resulting URL into the webview as `window.__JAC_API_BASE_URL__` before any page JavaScript runs. From the user's perspective it's a single double-click; under the hood it's just `jac start` running inside a webview shell.
 
@@ -84,11 +85,13 @@ For a full installer build:
 jac build --client desktop
 ```
 
-When this finishes, look in `src-tauri/target/release/bundle/`. You'll find one subdirectory per format your platform produces:
+When this finishes, look in `src-tauri/target/<triple>/release/bundle/` (the `<triple>` is the Rust target triple for your platform -- e.g. `x86_64-pc-windows-msvc`, `aarch64-apple-darwin`, `x86_64-unknown-linux-gnu`). You'll find one subdirectory per format your platform produces:
 
 - `nsis/` and `msi/` on Windows
 - `dmg/` and `macos/` on macOS
 - `appimage/`, `deb/`, and `rpm/` on Linux
+
+If you're scripting against these paths (CI uploads, release tooling), use a glob like `target/**/release/bundle/**/*.msi` so it works regardless of which triple Cargo picked.
 
 ---
 
@@ -311,6 +314,25 @@ A few rules to know:
 - The plugins you list must already be installed in the **build environment** (`pip show jac-scale`, etc.) -- the build collects them from your current Python environment, not from PyPI.
 - `jac_client` is **always** bundled regardless of this section, because the sidecar entry point imports it directly. Setting `jac_client = false` is silently ignored.
 - Python dependencies declared under `[dependencies]` in `jac.toml` are auto-installed before PyInstaller runs -- you don't need to pre-install them yourself.
+
+---
+
+## Bundling Extra Data Files
+
+Some apps need data files that aren't picked up automatically -- YAML schemas, prompt templates, seed data, TOML configs -- things loaded at runtime with `open(Path(__file__).parent / "config/prompts.yaml")` or similar. Declare them under `[desktop.bundle] extra_data` as a list of glob patterns rooted at the project directory:
+
+```toml
+[desktop.bundle]
+extra_data = [
+    "config/**/*.yaml",
+    "prompts/*.txt",
+    "data/seed.sqlite",
+]
+```
+
+The build resolves each glob relative to your project root and copies matches into the PyInstaller bundle, preserving the relative path. So `config/prompts.yaml` in your source tree lands at `config/prompts.yaml` inside the frozen sidecar, and `Path(__file__).parent / "config/prompts.yaml"` resolves correctly at runtime.
+
+Use this for anything the sidecar reads from disk that isn't Python code or a Jac source file -- those are already handled automatically.
 
 ---
 
