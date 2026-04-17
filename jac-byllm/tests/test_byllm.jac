@@ -1191,6 +1191,22 @@ test "McpClient errors when neither command nor url is set" {
     assert err is not None , "McpClient must require command or url";
 }
 
+test "McpClient raises McpError when mcp package is missing" {
+    with unittest.mock.patch.dict(
+        sys.modules, {"mcp": None, "mcp.client": None, "mcp.client.session": None}
+    ) {
+        client = McpClient(command="echo", args=["test"]);
+        err: McpError | None = None;
+        try {
+            client.connect();
+        } except McpError as e {
+            err = e;
+        }
+        assert err is not None , "connect() must raise McpError when mcp is not installed";
+        assert "pip install" in str(err);
+    }
+}
+
 """Test ModelPool streaming fallback path."""
 test "model pool streaming fallback" {
     captured_output = io.StringIO();

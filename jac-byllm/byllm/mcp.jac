@@ -7,6 +7,7 @@ in by llm() calls, alongside local tools.
 import asyncio;
 import logging;
 import threading;
+import uuid;
 import from typing { Any }
 import from byllm.exceptions { McpError }
 
@@ -20,8 +21,10 @@ obj McpClient {
         url: str = "",
         headers: dict[str, str] = {},
         transport: str = "auto",
-        timeout: int = 30;
+        timeout: int = 30,
+        _id: str by postinit;
 
+    def postinit -> None;
     def connect -> None;
     def get_tools(names: list[str] | None = None) -> list;
     def call_tool(name: str, arguments: dict[str, Any]) -> str;

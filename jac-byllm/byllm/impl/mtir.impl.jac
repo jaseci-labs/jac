@@ -36,18 +36,20 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Prepare tools with or without MTIR info
     raw_tools = call_params.get("tools", []);
     tools = [];
-    for (i, func) in enumerate(raw_tools) {
+    local_idx = 0;
+    for func in raw_tools {
         # Already tool-like (e.g., McpTool) — pass through unchanged.
         if func?.get_json_schema and func?.get_name and func?.is_finish_tool {
             tools.append(func);
             continue;
         }
         if has_mtir {
-            info = ir_info.tools[i] if i < len(ir_info.tools) else None;
+            info = ir_info.tools[local_idx] if local_idx < len(ir_info.tools) else None;
             tools.append(Tool(func, info=info));  # type: ignore
         } else {
             tools.append(Tool(func));  # type: ignore
         }
+        local_idx += 1;
     }
     # Construct the input information from the arguments.
     inputs_detail: list[str] = [];

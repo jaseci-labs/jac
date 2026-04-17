@@ -18,11 +18,17 @@ obj _McpState {
         session_ctx: object = None,
         transport_ctx: object = None,
         tools_cache: list = [],
-        connected: bool = False;
+        connected: bool = False,
+        _lock: object by postinit;
 
+    def postinit -> None;
     def start_loop -> None;
     def run(coro: object) -> str;
     def stop -> None;
+}
+
+impl _McpState.postinit -> None {
+    self._lock = threading.Lock();
 }
 
 impl _McpState.start_loop -> None {
@@ -32,8 +38,10 @@ impl _McpState.start_loop -> None {
 }
 
 impl _McpState.run(coro: object) -> str {
-    future = asyncio.run_coroutine_threadsafe(coro, self.loop);
-    return future.result(timeout=120);
+    with self._lock {
+        future = asyncio.run_coroutine_threadsafe(coro, self.loop);
+        return future.result(timeout=120);
+    }
 }
 
 impl _McpState.stop -> None {
@@ -78,16 +86,17 @@ async def _async_cleanup(state: _McpState) {
     }
 }
 
-# Module-level dict mapping McpClient id -> _McpState.
-# This avoids adding internal state fields to the public McpClient obj.
+impl McpClient.postinit -> None {
+    self._id = str(uuid.uuid4());
+}
+
 glob _states: dict = {};
 
 def _get_state(client: McpClient) -> _McpState {
-    cid = id(client);
-    if cid not in _states {
-        _states[cid] = _McpState();
+    if client._id not in _states {
+        _states[client._id] = _McpState();
     }
-    return _states[cid];
+    return _states[client._id];
 }
 
 # ─── Async internals ────────────────────────────────────────────────────────
@@ -204,7 +213,11 @@ impl McpClient.connect -> None {
         raise;
     } except Exception as e {
         state.stop();
-        raise McpError(message=f"Failed to connect to MCP server: {e}") from e;
+        hint = "";
+        if transport_type == "streamable-http" and self.transport == "auto" {
+            hint = " If this is an SSE server, pass transport='sse' explicitly.";
+        }
+        raise McpError(message=f"Failed to connect to MCP server: {e}{hint}") from e;
     }
 }
 
@@ -244,10 +257,7 @@ impl McpClient.close -> None {
         return;
     }
     state.stop();
-    cid = id(self);
-    if cid in _states {
-        del _states[cid];
-    }
+    _states.pop(self._id, None);
 }
 
 # ─── McpTool ────────────────────────────────────────────────────────────────
