@@ -2369,6 +2369,92 @@ Requests to the metrics endpoint itself are excluded from tracking.
 
 ---
 
+## Per-User LLM Rate Limiting
+
+jac-scale can enforce per-user rate and budget limits on all `by llm()` calls. When enabled, every LiteLLM request is checked before it fires — exceeding any limit raises an exception and aborts the call.
+
+Limits are tracked in Redis (ephemeral counters) and MongoDB (persistent usage logs). Daily and monthly budgets survive a Redis restart: on cache miss, jac-scale rebuilds the total from MongoDB and re-caches for 60 seconds.
+
+### Requirements
+
+This feature requires the `[data]` install group (Redis + MongoDB):
+
+```bash
+pip install jac-scale[data]
+```
+
+Both a `redis_url` and a `mongodb_uri` must be configured under `[plugins.scale.database]`.
+
+### Configuration
+
+```toml
+[plugins.scale.llm_limits]
+enabled = true
+
+# Request-rate limits (optional — omit or set to null to disable each one)
+rpm = 60          # max requests per minute per user
+rpd = 1000        # max requests per day per user
+
+# Token limits (optional)
+tpm = 100000      # max tokens per minute per user
+tpd = 500000      # max tokens per day per user
+
+# Spend limits (optional)
+daily_budget_usd  = 5.00    # max spend per day per user (USD)
+monthly_budget_usd = 50.00  # max spend per month per user (USD)
+```
+
+All fields default to `null` (disabled). Setting `enabled = false` turns off the entire feature regardless of other values.
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `enabled` | bool | `false` | Enable per-user LLM limiting |
+| `rpm` | int \| null | `null` | Max `by llm()` requests per minute per user |
+| `rpd` | int \| null | `null` | Max requests per day per user |
+| `tpm` | int \| null | `null` | Max tokens per minute per user |
+| `tpd` | int \| null | `null` | Max tokens per day per user |
+| `daily_budget_usd` | float \| null | `null` | Max USD spend per day per user |
+| `monthly_budget_usd` | float \| null | `null` | Max USD spend per month per user |
+
+### How It Works
+
+1. When a `by llm()` call is made, the current user's username is read from the Jac execution context (set by the request middleware from the JWT token).
+2. jac-scale checks all configured limits against Redis counters and (for budgets) MongoDB aggregates.
+3. If any limit is exceeded, an exception is raised with a human-readable message — e.g. `"Rate limit exceeded: rpm (60/min) for user alice"`.
+4. On success, counters are incremented atomically and a usage record is written to the `jac_scale.llm_usage` MongoDB collection.
+
+### Unauthenticated Requests
+
+If a request arrives without a valid JWT (no user context), limits are skipped entirely — the call proceeds unchecked. Apply authentication guards (`:priv` walkers) if you need to enforce limits on all traffic.
+
+### Usage Records
+
+Every successful `by llm()` call appends a document to `jac_scale.llm_usage`:
+
+```json
+{
+  "username": "alice",
+  "ts": 1713000000.0,
+  "tokens": 1500,
+  "cost_usd": 0.045,
+  "model": "gpt-4o"
+}
+```
+
+These records are the source of truth for budget calculations and can be queried directly for billing or audit purposes.
+
+### Example: Daily-Budget-Only Config
+
+You can enable only the limits you care about. To cap each user at $5/day without any request-rate restrictions:
+
+```toml
+[plugins.scale.llm_limits]
+enabled = true
+daily_budget_usd = 5.00
+```
+
+---
+
 ## Kubernetes Secrets
 
 Manage sensitive environment variables securely in Kubernetes deployments using the `[plugins.scale.secrets]` section.
