@@ -35,7 +35,7 @@ jobs:
             artifact_name: macos-dmg
           - os: ubuntu-22.04
             platform: linux
-            artifact_name: linux-appimage
+            artifact_name: linux-deb-rpm
 
     runs-on: ${{ matrix.os }}
 
@@ -119,6 +119,22 @@ jobs:
         run: |
           rm -rf src-tauri
           jac setup desktop
+
+      # On Linux, skip AppImage bundling -- linuxdeploy requires FUSE
+      # which GitHub runners don't provide. deb + rpm still work fine.
+      - name: Disable AppImage on Linux
+        if: matrix.platform == 'linux'
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        run: |
+          python3 -c "
+          import json
+          conf = 'src-tauri/tauri.conf.json'
+          with open(conf) as f: c = json.load(f)
+          c['bundle']['targets'] = ['deb', 'rpm']
+          with open(conf, 'w') as f: json.dump(c, f, indent=2)
+          print('Set bundle targets to deb + rpm (skipped appimage)')
+          "
 
       # ── Build ────────────────────────────────────────────────
       # Compiles web bundle (Vite), bundles sidecar (PyInstaller),
