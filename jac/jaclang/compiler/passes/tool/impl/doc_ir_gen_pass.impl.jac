@@ -284,10 +284,37 @@ impl DocIRGenPass.exit_int(nd: uni.Int) -> None {
 
 """Generate DocIR for names."""
 impl DocIRGenPass.exit_name(nd: uni.Name) -> None {
-    if nd.is_kwesc {
-        nd.gen.doc_ir = self.text(f"`{nd.value}", source_token=nd);
+    name_text = f"`{nd.value}" if nd.is_kwesc else nd.value;
+    by_kid = next(
+        (
+            k
+            for k in nd.kid
+            if isinstance(k, uni.Token) and k.name == Tok.KW_BY
+        ),
+        None
+    );
+    if by_kid is not None {
+        # Bare genai body (`by <name>;`): the parser attaches `by` and `;`
+        # as kids of this Name node. Render them so they are not lost.
+        semi_kid = next(
+            (
+                k
+                for k in nd.kid
+                if isinstance(k, uni.Semi)
+            ),
+            None
+        );
+        parts: list[doc.DocType] = [
+            by_kid.gen.doc_ir,
+            self.space(),
+            self.text(name_text, source_token=nd)
+        ];
+        if semi_kid is not None {
+            parts.append(semi_kid.gen.doc_ir);
+        }
+        nd.gen.doc_ir = self.concat(parts, ast_node=nd);
     } else {
-        nd.gen.doc_ir = self.text(nd.value, source_token=nd);
+        nd.gen.doc_ir = self.text(name_text, source_token=nd);
     }
 }
 
