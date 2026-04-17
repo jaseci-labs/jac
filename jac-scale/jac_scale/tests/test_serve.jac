@@ -1950,3 +1950,96 @@ theme_color = "#000000"
         }
     }
 }
+
+# =============================================================================
+# GROUP 8: JWT MIDDLEWARE
+# =============================================================================
+test "jwt middleware: per-user isolation and token rejection" {
+    client = make_client();
+    try {
+        def reg(name: str) -> str {
+            r = client.post(
+                "/user/register",
+                json={
+                    "identities": [{"type": "username", "value": name}],
+                    "credential": {"type": "password", "password": "Pass!99"}
+                }
+            );
+            assert r.status_code == 201;
+            login = client.post(
+                "/user/login",
+                json={
+                    "identity": {"type": "username", "value": name},
+                    "credential": {"type": "password", "password": "Pass!99"}
+                }
+            );
+            assert login.status_code == 200;
+            return extract_data(login.json())["token"];
+        }
+        def task_titles(tok: str) -> set[str] {
+            r = client.post(
+                "/walker/ListTasks",
+                json={},
+                headers={"Authorization": f"Bearer {tok}"}
+            );
+            assert r.status_code == 200;
+            raw = extract_data(r.json())["reports"][0];
+            items = raw if isinstance(raw, list) else [raw];
+            return {
+                t.get("title") or t.get("context", {}).get("title")
+                for t in items
+                if isinstance(t, dict)
+            };
+        }
+
+        tok_a = reg(f"alice_{uuid.uuid4().hex[:6]}");
+        tok_b = reg(f"bob_{uuid.uuid4().hex[:6]}");
+
+        for (tok, title) in [(tok_a, "task_alice"), (tok_b, "task_bob")] {
+            r = client.post(
+                "/walker/CreateTask",
+                json={"title": title, "priority": 1},
+                headers={"Authorization": f"Bearer {tok}"}
+            );
+            assert r.status_code == 200 , f"CreateTask failed for {title}: {r.text}";
+        }
+
+        assert task_titles(tok_a) == {"task_alice"} , f"Isolation failure: {task_titles(
+            tok_a
+        )}";
+        assert task_titles(tok_b) == {"task_bob"} , f"Isolation failure: {task_titles(
+            tok_b
+        )}";
+
+        forged = pyjwt.encode(
+            {"username": "x", "exp": datetime.now(UTC) + timedelta(hours=1)},
+            "wrong_key",
+            algorithm="HS256"
+        );
+        bad_token_cases = [
+            ({"Authorization": f"Bearer {forged}"}, "forged secret"),
+            ({"Authorization": f"Bearer {_create_expired_token('x')}"}, "expired"),
+            ({"Authorization": "Bearer not.a.jwt"}, "malformed"),
+
+        ];
+
+        # Bad tokens must be rejected on auth-required endpoints.
+        for (hdrs, label) in bad_token_cases {
+            r = client.post("/walker/CreateTask", json={"title": "x"}, headers=hdrs);
+            assert r.status_code == 401 , f"{label} on auth endpoint: expected 401, got {r.status_code}";
+        }
+
+        # No token on auth-required endpoint must also be rejected.
+        r = client.post("/walker/CreateTask", json={"title": "x"});
+        assert r.status_code == 401 , f"no token on auth endpoint: expected 401, got {r.status_code}";
+
+        for (hdrs, label) in bad_token_cases {
+            r = client.post("/walker/PublicInfo", json={}, headers=hdrs);
+            assert r.status_code == 401 , f"{label} on public endpoint: expected 401, got {r.status_code}";
+        }
+        # No token on a public endpoint must still work (anonymous access).
+        assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "public endpoint broken for anonymous requests";
+    } finally {
+        client.close();
+    }
+}
