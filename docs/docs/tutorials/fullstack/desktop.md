@@ -109,80 +109,188 @@ Cross-compilation has the same caveats as any Rust+Tauri project: targeting macO
 
 ## CI Builds (GitHub Actions)
 
-For releases, build on hosted runners so each installer is produced on a clean matching OS -- no cross-compilation quirks, no "works on my machine." The repo ships a reference workflow at [`.github/workflows/build-desktop.yml`](https://github.com/jaseci-labs/jaseci/blob/main/.github/workflows/build-desktop.yml) that builds the `all-in-one` example on Windows, macOS, and Linux in parallel. Copy it into your own repo and adjust the `EXAMPLE_DIR` and `Install Jac packages` step to match your project.
-
-### The Matrix
+For releases, build on hosted runners so each installer is produced on a clean matching OS -- no cross-compilation quirks, no "works on my machine." Drop the workflow below into `.github/workflows/build-desktop.yml` in your project, change the three lines marked **CONFIGURE**, and you can trigger builds for all three platforms from the Actions tab.
 
 ```yaml
-strategy:
-  fail-fast: false
-  matrix:
-    include:
-      - os: windows-latest
-        platform: windows
-      - os: macos-latest
-        platform: macos
-      - os: ubuntu-22.04
-        platform: linux
-```
+name: Build Desktop App
 
-`fail-fast: false` keeps the other platforms building when one fails -- useful when a regression only hits one OS.
-
-`ubuntu-22.04` (not `ubuntu-latest`) is deliberate. AppImages built against a newer GLIBC won't run on older Linux distributions; pinning to 22.04 keeps installers compatible with most distros from 2022 onward.
-
-### What Each Step Does
-
-**Install Linux system deps** (Linux job only). Tauri v2 on Linux needs `libwebkit2gtk-4.1`, GTK3, and libsoup3. The reference workflow also installs `patchelf` and `libfuse2` for AppImage generation.
-
-**Install Rust** via `dtolnay/rust-toolchain@stable`. Not pre-installed on GitHub runners.
-
-**Cache Cargo registry** keyed on `Cargo.lock`. Saves ~2 minutes on warm runs; invalidates when dependencies change. Note the reference workflow deliberately does **not** cache `src-tauri/target/` -- a stale target cache can cause `jac setup desktop` to skip regeneration and ship an outdated config.
-
-**Install Python + Jac packages.** The reference workflow does editable installs of `./jac`, `./jac-client`, and `./jac-scale` because it builds the monorepo's own example. For your own app, `pip install jaseci jac-client` from PyPI is simpler.
-
-**Install Bun** (`oven-sh/setup-bun@v2`). jac-client uses bun for npm installs and Vite builds.
-
-**Install Tauri CLI.** Tries `cargo-binstall` first (pre-built binary, ~10s); falls back to `cargo install --locked` (~8 min).
-
-**`jac setup desktop`.** The workflow removes any pre-existing `src-tauri/` before running this so setup doesn't skip thinking scaffolding is already in place.
-
-**Disable AppImage on Linux.** The reference workflow patches `tauri.conf.json` to build only `deb` + `rpm` on Linux. AppImage bundling uses `linuxdeploy`, which needs FUSE; GitHub runners don't provide FUSE, and the `APPIMAGE_EXTRACT_AND_RUN=1` / `NO_STRIP=true` workaround adds enough flakiness that it's simpler to skip AppImage in CI and produce it locally or on a self-hosted runner.
-
-**Build.** `jac build --client desktop --platform <platform>` with `JAC_BUILD=1` set and a generous `timeout-minutes: 90` -- the first Rust build exceeds the default 60-minute runner timeout on a cold cache.
-
-**Upload artifacts.** Per-platform installers upload with `actions/upload-artifact@v4` and a 14-day retention. Filter on `*.exe`, `*.msi`, `*.dmg`, `*.deb`, `*.rpm`, (`*.AppImage` if enabled) so build intermediates don't get uploaded.
-
-### Adapting the Workflow
-
-Two fields usually need changing:
-
-```yaml
-env:
-  EXAMPLE_DIR: path/to/your/app      # (1) where your jac.toml lives
-
-# ...
-
-- name: Install Jac packages
-  run: |
-    pip install jaseci jac-client    # (2) release wheels instead of editable
-    pip install pyinstaller Pillow
-```
-
-1. Point `EXAMPLE_DIR` at the folder containing your `jac.toml` and `main.jac`.
-2. Unless you're working inside the jaseci monorepo, install from PyPI rather than editable from source.
-
-### Triggering
-
-The reference workflow uses `workflow_dispatch` -- "Run workflow" button in the Actions tab. For release flows, add a tag trigger:
-
-```yaml
 on:
-  push:
-    tags: ['v*']          # build on every version tag
-  workflow_dispatch:      # keep the manual button too
+  workflow_dispatch:        # manual trigger from the Actions tab
+  # push:
+  #   tags: ['v*']          # uncomment to also build on version tags
+
+permissions:
+  contents: read
+
+env:
+  # CONFIGURE (1): path to the folder containing your jac.toml and main.jac.
+  # For a standard `jac create` project at the repo root, use ".".
+  APP_DIR: "."
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            artifact_name: windows-installer
+          - os: macos-latest
+            platform: macos
+            artifact_name: macos-dmg
+          - os: ubuntu-22.04        # pinned: newer GLIBC breaks .deb/.rpm on older distros
+            platform: linux
+            artifact_name: linux-deb-rpm
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── System deps (Linux only) ──────────────────────────────
+      - name: Install Linux system deps
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            patchelf libfuse2
+
+      # ── Rust (not pre-installed on runners) ──────────────────
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-reg-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-reg-${{ matrix.os }}-
+
+      # ── Python + Jac ─────────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Jac packages
+        run: |
+          pip install --upgrade pip
+          # CONFIGURE (2): install your Jac stack. For most projects, PyPI
+          # wheels are fine. If you need plugins (byllm, jac-mcp, etc.), add
+          # them here so they're available when PyInstaller freezes the sidecar.
+          pip install jaseci jac-client jac-scale
+          pip install pyinstaller Pillow
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # ── Tauri CLI ────────────────────────────────────────────
+      - name: Install Tauri CLI
+        shell: bash
+        run: |
+          if command -v cargo-tauri &>/dev/null; then
+            echo "already installed"
+          elif command -v cargo-binstall &>/dev/null || \
+               (curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash); then
+            cargo binstall tauri-cli --no-confirm --force || cargo install tauri-cli --locked
+          else
+            cargo install tauri-cli --locked
+          fi
+
+      # ── Scaffold src-tauri/ fresh so setup doesn't skip ──────
+      - name: Setup desktop target
+        working-directory: ${{ env.APP_DIR }}
+        shell: bash
+        run: |
+          rm -rf src-tauri
+          jac setup desktop
+
+      # ── Disable AppImage on Linux (GitHub runners lack FUSE) ─
+      - name: Disable AppImage on Linux
+        if: matrix.platform == 'linux'
+        working-directory: ${{ env.APP_DIR }}
+        shell: bash
+        run: |
+          python3 -c "
+          import json
+          with open('src-tauri/tauri.conf.json') as f: c = json.load(f)
+          c['bundle']['targets'] = ['deb', 'rpm']
+          with open('src-tauri/tauri.conf.json', 'w') as f: json.dump(c, f, indent=2)
+          "
+
+      # ── Build ────────────────────────────────────────────────
+      - name: Build desktop app
+        working-directory: ${{ env.APP_DIR }}
+        env:
+          JAC_BUILD: "1"
+        run: jac build --client desktop --platform ${{ matrix.platform }}
+        timeout-minutes: 90
+
+      # ── Upload artifacts ─────────────────────────────────────
+      # `jac build --platform <x>` passes `--target <triple>` to Cargo, so
+      # bundles land under target/<triple>/release/bundle/ -- the `**` in the
+      # glob matches that triple subdirectory.
+      - name: Upload installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.artifact_name }}
+          path: |
+            ${{ env.APP_DIR }}/src-tauri/target/**/release/bundle/**/*.exe
+            ${{ env.APP_DIR }}/src-tauri/target/**/release/bundle/**/*.msi
+            ${{ env.APP_DIR }}/src-tauri/target/**/release/bundle/**/*.dmg
+            ${{ env.APP_DIR }}/src-tauri/target/**/release/bundle/**/*.deb
+            ${{ env.APP_DIR }}/src-tauri/target/**/release/bundle/**/*.rpm
+          if-no-files-found: warn
+          retention-days: 14
 ```
 
-Pair this with a release job that downloads the artifacts and attaches them to a GitHub Release.
+### What to Configure
+
+Three places in the workflow need to match your project:
+
+1. **`APP_DIR`** (line 15) -- folder containing your `jac.toml` and `main.jac`. For a standard `jac create myapp` project where you committed `myapp/` at the repo root, use `APP_DIR: myapp`. For a project where `jac.toml` lives in the repo root, use `APP_DIR: "."`.
+
+2. **`Install Jac packages` step** -- add any Jac plugins your app imports (`byllm`, `jac-mcp`, `jac-coder`, etc.) so PyInstaller can freeze them into the sidecar. The build collects plugins from the Python environment it runs in, not from PyPI.
+
+3. **Trigger** (the `on:` block at the top) -- the template uses `workflow_dispatch` (manual "Run workflow" button). Uncomment the `push.tags` block to also build automatically on version tags like `v1.0.0`.
+
+### Why These Choices
+
+- **`fail-fast: false`** keeps the other platforms building when one fails -- useful when a regression only hits one OS.
+- **`ubuntu-22.04`** (not `ubuntu-latest`) is deliberate: AppImages built against a newer GLIBC won't run on older Linux distributions; 22.04 keeps installers compatible with most distros from 2022 onward.
+- **Cargo registry is cached, `src-tauri/target/` is not.** A stale target cache can cause `jac setup desktop` to skip regeneration and ship an outdated config -- safer to recompile.
+- **AppImage is disabled on Linux in CI** because AppImage bundling uses `linuxdeploy`, which needs FUSE. GitHub runners don't provide FUSE, and the available workarounds are flaky. If you need AppImages, build them locally or on a self-hosted runner.
+- **`timeout-minutes: 90`** -- the first Rust build on a cold cache exceeds the default 60-minute runner timeout.
+
+### Triggering a Build
+
+Once the workflow is on your default branch:
+
+- **From the UI:** Actions tab → "Build Desktop App" → "Run workflow" button.
+- **From the CLI:** `gh workflow run build-desktop.yml`.
+- **Automatically on release:** uncomment the `push.tags` trigger block and push a `v*` tag.
+
+### Where the Artifacts Land
+
+After the run finishes, open the run summary page and scroll to the "Artifacts" section at the bottom. You'll see three zips:
+
+- `desktop-windows-installer` -- contains `.exe` and `.msi`
+- `desktop-macos-dmg` -- contains `.dmg`
+- `desktop-linux-deb-rpm` -- contains `.deb` and `.rpm`
+
+They're retained for 14 days. Download from the web UI, or use the CLI:
+
+```bash
+gh run download <run-id>                          # all three
+gh run download <run-id> -n desktop-windows-installer   # just Windows
+```
+
+To attach these to a GitHub Release automatically, add a second job that runs after `build`, uses `actions/download-artifact@v4` to pull all three, and `softprops/action-gh-release@v2` to upload them against the current tag.
 
 ---
 
