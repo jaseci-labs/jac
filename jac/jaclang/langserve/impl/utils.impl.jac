@@ -365,9 +365,7 @@ impl find_deepest_symbol_node_at_pos(
 """Iterate through symbol table."""
 impl sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode] {
     sym_tabs = [sym_tab]
-        if not (
-            isinstance(sym_tab, uni.Module) and sym_tab.loc.mod_path != file_path
-        )
+        if not (isinstance(sym_tab, uni.Module) and sym_tab.loc.mod_path != file_path)
         else [];
     for i in sym_tab.kid_scope {
         sym_tabs += sym_tab_list(i, file_path=file_path);

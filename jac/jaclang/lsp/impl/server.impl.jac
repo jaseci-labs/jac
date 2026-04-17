@@ -251,8 +251,7 @@ impl TextDocument.apply_change(change: Any) -> None {
                 character=range_data["start"]["character"]
             ),
             end=Position(
-                line=range_data["end"]["line"],
-                character=range_data["end"]["character"]
+                line=range_data["end"]["line"], character=range_data["end"]["character"]
             )
         );
         typed_change = TextDocumentContentChangeEvent_Type1(

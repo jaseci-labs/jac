@@ -334,6 +334,13 @@ def main():
         sys.stdout.write(f"JAC_SIDECAR_PORT={port}\n")
         sys.stdout.flush()
 
+        # Redirect stdout to stderr after port discovery.
+        # Tauri drops the stdout pipe after reading JAC_SIDECAR_PORT, so any
+        # subsequent stdout writes (e.g. console.print, sys.stdout.flush) would
+        # crash with OSError: [Errno 22] Invalid argument. Redirecting to stderr
+        # keeps all server logs visible in Tauri's stderr stream.
+        sys.stdout = sys.stderr
+
         # Check if server was created properly
         if server.server is None:
             console.error("Server socket not created")

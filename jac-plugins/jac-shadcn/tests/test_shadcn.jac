@@ -9,7 +9,6 @@ import from jac_shadcn.shadcn_handler { _update_npm_deps }
 import from jac_shadcn.shadcn_handler { add_shadcn_components }
 import from jac_shadcn.shadcn_handler { remove_shadcn_components }
 import from jac_shadcn.shadcn_handler { _fetch_json }
-import json;
 import from jac_shadcn.plugin { JacShadcnPlugin }
 
 
@@ -226,34 +225,31 @@ test "remove multiple components" {
 
 
 # ── Jacpack Template Tests ──
-test "jacpack template file exists and is valid json" {
-    template_path = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn.jacpack";
-    assert template_path.exists();
-    with open(template_path, "r") as f {
-        template = json.load(f);
-    }
-    assert isinstance(template, dict);
+test "jacpack template directory exists and loads" {
+    import from jaclang.project.template_loader { load_template_from_directory }
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    assert template_dir.exists();
+    assert template_dir.is_dir();
+    template = load_template_from_directory(template_dir);
+    assert template is not None;
 }
 
 test "jacpack template has required fields" {
-    template_path = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn.jacpack";
-    with open(template_path, "r") as f {
-        template = json.load(f);
-    }
-    assert "name" in template;
-    assert template["name"] == "jac-shadcn";
-    assert "description" in template;
-    assert "config" in template;
-    assert "files" in template;
-    assert "directories" in template;
+    import from jaclang.project.template_loader { load_template_from_directory }
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template = load_template_from_directory(template_dir);
+    assert template.name == "jac-shadcn";
+    assert template.description != "";
+    assert template.config is not None;
+    assert len(template.files) > 0;
+    assert len(template.directories) > 0;
 }
 
 test "jacpack template config has shadcn section" {
-    template_path = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn.jacpack";
-    with open(template_path, "r") as f {
-        template = json.load(f);
-    }
-    config = template["config"];
+    import from jaclang.project.template_loader { load_template_from_directory }
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template = load_template_from_directory(template_dir);
+    config = template.config;
     assert "jac-shadcn" in config;
     shadcn = config["jac-shadcn"];
     assert "style" in shadcn;
@@ -263,25 +259,22 @@ test "jacpack template config has shadcn section" {
 }
 
 test "jacpack template has npm dependencies" {
-    template_path = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn.jacpack";
-    with open(template_path, "r") as f {
-        template = json.load(f);
-    }
-    npm = template["config"]["dependencies"]["npm"];
+    import from jaclang.project.template_loader { load_template_from_directory }
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template = load_template_from_directory(template_dir);
+    npm = template.config["dependencies"]["npm"];
     assert "clsx" in npm;
     assert "tailwind-merge" in npm;
     assert "tw-animate-css" in npm;
 }
 
 test "jacpack template has required files" {
-    template_path = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn.jacpack";
-    with open(template_path, "r") as f {
-        template = json.load(f);
-    }
-    files = template["files"];
-    assert "main.jac" in files;
-    assert "global.css" in files;
-    assert "lib/utils.cl.jac" in files;
+    import from jaclang.project.template_loader { load_template_from_directory }
+    template_dir = Path(__file__).resolve().parent.parent / "jac_shadcn" / "templates" / "jac-shadcn";
+    template = load_template_from_directory(template_dir);
+    assert "main.jac" in template.files;
+    assert "global.css" in template.files;
+    assert "lib/utils.cl.jac" in template.files;
 }
 
 

@@ -334,7 +334,7 @@ impl ClassType.specialize_generics(type_args: list[TypeBase]) -> ClassType {
         alias_name=self.private.alias_name,  # Preserve alias_name
         literal_value=self.private.literal_value  # Preserve literal_value
     );
-    return ClassType(shared=self.shared, private=new_private, flags=self.flags);
+    return ClassType(_shared=self.shared, private=new_private, flags=self.flags);
 }
 
 impl ClassType.clone_as_class -> ClassType {
@@ -349,7 +349,7 @@ impl ClassType.clone_as_class -> ClassType {
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instance));
     new_flags = TypeFlags((new_flag | TypeFlags.Instantiable));
-    new_class = ClassType(shared=self.shared, private=private, flags=new_flags);
+    new_class = ClassType(_shared=self.shared, private=private, flags=new_flags);
     return new_class;
 }
 
@@ -363,7 +363,7 @@ impl ClassType.clone_as_instance -> ClassType {
         alias_name=self.private.alias_name,  # Preserve alias_name
         literal_value=self.private.literal_value  # Preserve literal_value
     );
-    new_instance = ClassType(shared=self.shared, private=private, flags=self.flags);
+    new_instance = ClassType(_shared=self.shared, private=private, flags=self.flags);
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));
     new_flags = TypeFlags((new_flag | TypeFlags.Instance));
@@ -379,7 +379,7 @@ Callable, Union, Optional are all _SpecialForm in typing.pyi but have
 different alias_names to distinguish them.
 """
 impl ClassType.is_special_form(name: str | None = None) -> bool {
-    if self.private is None or self.private.alias_name is None {
+    if self.private.alias_name is None {
         return False;
     }
     if name is None {
@@ -395,46 +395,35 @@ Creates a new ClassType instance representing a Literal type like Literal["hello
 Similar to Pyright's creating a class type with literalValue set.
 """
 impl ClassType.clone_with_literal(value: (str | int | bool | None)) -> ClassType {
-    private = ClassType.ClassDetailsPrivate(
+    new_private = ClassType.ClassDetailsPrivate(
         type_args=self.private.type_args[:],
         alias_name=None,  # Clear alias_name for literal types
         literal_value=value
     );
-    return ClassType(shared=self.shared, private=private, flags=self.flags);
+    return ClassType(_shared=self.shared, private=new_private, flags=self.flags);
 }
 
 """Check if this class type is a literal type (has a literal value)."""
 impl ClassType.is_literal_type -> bool {
-    return self.private is not None and self.private.literal_value is not None;
+    return self.private.literal_value is not None;
 }
 
 """Get the literal value of this type, or None if not a literal type."""
 impl ClassType.get_literal_value -> (str | int | bool | None) {
-    if self.private is None {
-        return None;
-    }
     return self.private.literal_value;
 }
 
 """Check if this ClassType is a property class (@property or @cached_property)."""
 impl ClassType.is_property_class -> bool {
-    priv = self.private;
-    if priv is None {
-        return False;
-    }
-    return priv.is_property_class;
+    return self.private.is_property_class;
 }
 
 """Get the return type of the property getter, or None if not a property."""
 impl ClassType.get_getter_type_from_property -> (TypeBase | None) {
-    priv = self.private;
-    if priv is None {
+    if not self.private.is_property_class {
         return None;
     }
-    if not priv.is_property_class {
-        return None;
-    }
-    fget = priv.fget_info;
+    fget = self.private.fget_info;
     if fget is None {
         return None;
     }
@@ -444,24 +433,28 @@ impl ClassType.get_getter_type_from_property -> (TypeBase | None) {
 """Return a string representation of the class type."""
 impl ClassType.__str__ -> str {
     # Display literal types as Literal[value]
-    if self.private is not None and self.private.literal_value is not None {
+    if self.private.literal_value is not None {
         lit_val = self.private.literal_value;
         if isinstance(lit_val, str) {
             return f"Literal[\"{lit_val}\"]";
         }
         return f"Literal[{lit_val}]";
     }
+    # `_shared` can legitimately be None for detached property ClassTypes
+    # produced by create_property without an enclosing class context.
+    class_name = self._shared.class_name if self._shared is not None else "<unbound>";
     # Include type_args in display for parameterized types (e.g., list[int], dict[str, bool])
-    if self.private and self.private.type_args {
+    if self.private.type_args {
         args_str = ", ".join(str(arg) for arg in self.private.type_args);
-        return f"{self.shared.class_name}[{args_str}]";
+        return f"{class_name}[{args_str}]";
     }
-    return f"{self.shared.class_name}";
+    return f"{class_name}";
 }
 
-"""Initialize the class type."""
-impl ClassType.postinit -> None {
-    self.private = self.private or ClassType.ClassDetailsPrivate();
+"""Non-null view of the shared details (asserted)."""
+impl ClassType.shared -> ClassType.ClassDetailsShared {
+    assert self._shared is not None , "ClassType.shared accessed before construction (detached property ClassType?)";
+    return self._shared;
 }
 
 """Initialize obviously."""

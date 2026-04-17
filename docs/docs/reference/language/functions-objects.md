@@ -720,11 +720,11 @@ impl CircleService.describe -> str {
 
 #### Native Variant Files (`.na.jac`)
 
-Native variant files compile to LLVM IR and execute via JIT (MCJIT). Code in `.na.jac` files runs as native machine code, bypassing the Python runtime entirely. This is useful for performance-critical code and for calling C libraries directly. The same functionality is available inside `na {}` blocks in regular `.jac` files.
+Native variant files compile to LLVM IR and execute via JIT (MCJIT). Code in `.na.jac` files runs as native machine code, bypassing the Python runtime entirely. This is useful for performance-critical code and for calling C libraries directly. The same functionality is available in `to na:` sections (or `na` statement prefixes) within regular `.jac` files.
 
 **C Library Imports:**
 
-Native code can import C shared libraries using the `import from` syntax with a library path and extern function declarations, either at the top level of a `.na.jac` file or inside a `na {}` block:
+Native code can import C shared libraries using the `import from` syntax with a library path and extern function declarations, either at the top level of a `.na.jac` file or under a `to na:` section in a regular `.jac` file:
 
 <!-- jac-skip -->
 ```jac

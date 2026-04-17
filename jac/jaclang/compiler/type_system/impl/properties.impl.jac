@@ -16,14 +16,10 @@ impl is_cached_property_decorator_type(decorator_type: types.TypeBase) -> bool {
     if not isinstance(decorator_type, types.ClassType) {
         return False;
     }
-    shared = decorator_type.shared;
-    if shared is None {
-        return False;
-    }
-    if shared.class_name == "cached_property" and shared.is_from_stdlib_stub {
-        return True;
-    }
-    return False;
+    return (
+        decorator_type.shared.class_name == "cached_property"
+        and decorator_type.shared.is_from_stdlib_stub
+    );
 }
 
 # =============================================================================
@@ -33,19 +29,16 @@ impl is_cached_property_decorator_type(decorator_type: types.TypeBase) -> bool {
 impl create_property(
     fget: types.FunctionType, class_type: (types.ClassType | None) = None
 ) -> types.ClassType {
-    private = types.ClassType.ClassDetailsPrivate();
-    private.is_property_class = True;
-    private.fget_info = fget;
+    new_private = types.ClassType.ClassDetailsPrivate();
+    new_private.is_property_class = True;
+    new_private.fget_info = fget;
 
-    shared: types.ClassType.ClassDetailsShared;
-    if class_type and class_type.shared {
-        shared = class_type.shared;
-    } else {
-        return types.ClassType(private=private, flags=types.TypeFlags.Instance);
+    if class_type is None {
+        # Detached property — no enclosing class context available.
+        return types.ClassType(private=new_private, flags=types.TypeFlags.Instance);
     }
-
     return types.ClassType(
-        shared=shared, private=private, flags=types.TypeFlags.Instance
+        _shared=class_type.shared, private=new_private, flags=types.TypeFlags.Instance
     );
 }
 
@@ -53,34 +46,30 @@ impl create_property(
 impl clone_property_with_setter(
     prop: types.ClassType, fset: types.FunctionType
 ) -> types.ClassType {
-    private = types.ClassType.ClassDetailsPrivate();
-    private.is_property_class = True;
-    private.fset_info = fset;
+    new_private = types.ClassType.ClassDetailsPrivate();
+    new_private.is_property_class = True;
+    new_private.fset_info = fset;
+    new_private.fget_info = prop.private.fget_info;
+    new_private.fdel_info = prop.private.fdel_info;
 
-    priv = prop.private;
-    if priv {
-        private.fget_info = priv.fget_info;
-        private.fdel_info = priv.fdel_info;
-    }
-
-    return types.ClassType(shared=prop.shared, private=private, flags=prop.flags);
+    return types.ClassType(
+        _shared=prop._shared, private=new_private, flags=prop.flags
+    );
 }
 
 """Clone a property and add a deleter."""
 impl clone_property_with_deleter(
     prop: types.ClassType, fdel: types.FunctionType
 ) -> types.ClassType {
-    private = types.ClassType.ClassDetailsPrivate();
-    private.is_property_class = True;
-    private.fdel_info = fdel;
+    new_private = types.ClassType.ClassDetailsPrivate();
+    new_private.is_property_class = True;
+    new_private.fdel_info = fdel;
+    new_private.fget_info = prop.private.fget_info;
+    new_private.fset_info = prop.private.fset_info;
 
-    priv = prop.private;
-    if priv {
-        private.fget_info = priv.fget_info;
-        private.fset_info = priv.fset_info;
-    }
-
-    return types.ClassType(shared=prop.shared, private=private, flags=prop.flags);
+    return types.ClassType(
+        _shared=prop._shared, private=new_private, flags=prop.flags
+    );
 }
 
 # =============================================================================

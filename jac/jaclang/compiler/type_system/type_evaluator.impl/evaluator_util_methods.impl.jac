@@ -134,7 +134,6 @@ impl TypeEvaluator._lookup_class_member(
 impl TypeEvaluator._is_type_subscript(class_type: types.ClassType) -> bool {
     return (
         class_type.is_builtin("type")
-        and class_type.private is not None
         and class_type.private.type_args is not None
         and len(class_type.private.type_args) >= 1
     );
@@ -279,7 +278,6 @@ impl TypeEvaluator._get_expected_element_type(
         isinstance(expected_type, types.ClassType)
         and isinstance(container_class, types.ClassType)
         and expected_type.shared == container_class.shared
-        and expected_type.private
         and expected_type.private.type_args
         and len(expected_type.private.type_args) >= 1
     ) {
@@ -303,7 +301,6 @@ impl TypeEvaluator._get_expected_kv_types(
         isinstance(expected_type, types.ClassType)
         and isinstance(dict_class, types.ClassType)
         and expected_type.shared == dict_class.shared
-        and expected_type.private
         and expected_type.private.type_args
         and len(expected_type.private.type_args) >= 2
     ) {
@@ -473,7 +470,9 @@ impl TypeEvaluator._set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeB
 
 """Resolve the imported symbols to the actual symbol."""
 impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
-    if (isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)) {
+    if (
+        isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)
+    ) {
         mod_item = sym.decl.find_parent_of_type(uni.ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
@@ -683,31 +682,138 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
-"""Check if a symbol represents a property (@property or @cached_property)."""
-impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
+"""Classify a symbol as @property, @cached_property, or not a property.
+
+Single decorator walk shared by both the read path (get_getter_type_from_property)
+and the write path (get_property_write_type).
+
+Returns:
+  WRITABLE      — @cached_property (non-data descriptor, assignment is legal)
+  READ_ONLY     — @property (data descriptor, needs setter check by caller)
+  NOT_PROPERTY  — not decorated with @property or @cached_property
+"""
+impl TypeEvaluator._classify_property_symbol(
+    symbol: uni.Symbol
+) -> type_utils.PropertyWriteKind {
+    import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
     node_ = symbol.decl.name_of;
     if not isinstance(node_, uni.Ability) {
-        return False;
+        return PropertyWriteKind.NOT_PROPERTY;
     }
     ability = node_;
     if not ability.decorators {
-        return False;
+        return PropertyWriteKind.NOT_PROPERTY;
     }
     for decorator in ability.decorators {
         decorator_type = self.get_type_of_expression(decorator);
-        if properties.is_property_decorator_type(decorator_type) {
-            return True;
-        }
         if properties.is_cached_property_decorator_type(decorator_type) {
-            return True;
+            return PropertyWriteKind.WRITABLE;
+        }
+        if properties.is_property_decorator_type(decorator_type) {
+            return PropertyWriteKind.READ_ONLY;
         }
     }
-    return False;
+    return PropertyWriteKind.NOT_PROPERTY;
 }
 
-"""Get the return type of a property's getter."""
+"""Get the return type of a property's getter (read path).
+
+Used by atom-trailer evaluation to unwrap @property / @cached_property
+into the getter's return type. Returns None for non-property symbols.
+"""
 impl TypeEvaluator.get_getter_type_from_property(
     symbol: uni.Symbol
+) -> (TypeBase | None) {
+    import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
+    kind = self._classify_property_symbol(symbol);
+    if kind == PropertyWriteKind.NOT_PROPERTY {
+        return None;
+    }
+    node_ = symbol.decl.name_of;
+    if not isinstance(node_, uni.Ability) {
+        return None;
+    }
+    func_type = self.get_type_of_ability(node_);
+    if not isinstance(func_type, types.FunctionType) {
+        return None;
+    }
+    return func_type.return_type;
+}
+
+"""Classify a symbol's writability for property-aware assignment checking.
+
+Delegates to _classify_property_symbol for the decorator walk, then
+determines the concrete write type:
+
+  NOT_PROPERTY  — not @property / @cached_property; use the normal
+                  declared-type path.
+  READ_ONLY     — @property with no setter; the assignment is illegal.
+  WRITABLE      — @cached_property or @property with a @name.setter
+                  sibling; `write_type` holds the type values must match.
+"""
+impl TypeEvaluator.get_property_write_type(
+    symbol: uni.Symbol
+) -> type_utils.PropertyWriteResult {
+    import from jaclang.compiler.type_system.type_utils {
+        PropertyWriteKind,
+        PropertyWriteResult
+    }
+    kind = self._classify_property_symbol(symbol);
+    if kind == PropertyWriteKind.NOT_PROPERTY {
+        return PropertyWriteResult(kind=PropertyWriteKind.NOT_PROPERTY);
+    }
+
+    # @cached_property (WRITABLE from classifier): write type = getter return type.
+    if kind == PropertyWriteKind.WRITABLE {
+        node_ = symbol.decl.name_of;
+        if isinstance(node_, uni.Ability) {
+            func_type = self.get_type_of_ability(node_);
+            if isinstance(func_type, types.FunctionType)
+            and func_type.return_type is not None {
+                return PropertyWriteResult(
+                    kind=PropertyWriteKind.WRITABLE, write_type=func_type.return_type
+                );
+            }
+        }
+        # Getter return type couldn't be resolved — treat as writable
+        # with unknown type to avoid a false "read-only" diagnostic.
+        return PropertyWriteResult(
+            kind=PropertyWriteKind.WRITABLE, write_type=types.UnknownType()
+        );
+    }
+
+    # @property (READ_ONLY from classifier): look for a @<name>.setter
+    # sibling in the enclosing class scope. The symbol_table of a method
+    # points to the Ability's own scope; the overloads live one level up
+    # in the parent (Archetype/class) scope.
+    prop_name = symbol.sym_name;
+    method_scope = symbol.symbol_table;
+    class_scope = method_scope.parent_scope if method_scope is not None else None;
+    if class_scope is not None {
+        overload_syms = class_scope.names_in_scope_overload.get(prop_name);
+        if overload_syms {
+            for overload_sym in overload_syms {
+                setter_type = self._get_setter_value_type(overload_sym, prop_name);
+                if setter_type is not None {
+                    return PropertyWriteResult(
+                        kind=PropertyWriteKind.WRITABLE, write_type=setter_type
+                    );
+                }
+            }
+        }
+    }
+    # No setter found — read-only.
+    return PropertyWriteResult(kind=PropertyWriteKind.READ_ONLY);
+}
+
+"""Extract the value-parameter type from a @name.setter decorated method.
+
+Given a symbol that may be decorated with `@<prop_name>.setter`, inspect
+its decorators. If a matching setter decorator is found, return the type
+of the setter's first non-self/cls parameter (i.e., the value type).
+"""
+impl TypeEvaluator._get_setter_value_type(
+    symbol: uni.Symbol, prop_name: str
 ) -> (TypeBase | None) {
     node_ = symbol.decl.name_of;
     if not isinstance(node_, uni.Ability) {
@@ -717,23 +823,30 @@ impl TypeEvaluator.get_getter_type_from_property(
     if not ability.decorators {
         return None;
     }
-    is_property_decorated = False;
     for decorator in ability.decorators {
-        decorator_type = self.get_type_of_expression(decorator);
-        if properties.is_property_decorator_type(decorator_type)
-        or properties.is_cached_property_decorator_type(decorator_type) {
-            is_property_decorated = True;
-            break;
+        # @<prop_name>.setter is an AtomTrailer: target=Name(prop_name), right=Name("setter")
+        if isinstance(decorator, uni.AtomTrailer) and decorator.is_attr {
+            if (
+                isinstance(decorator.right, uni.Name)
+                and decorator.right.value == "setter"
+                and isinstance(decorator.target, uni.Name)
+                and decorator.target.value == prop_name
+            ) {
+                func_type = self.get_type_of_ability(ability);
+                if isinstance(func_type, types.FunctionType) and func_type.parameters {
+                    # The setter signature is (self, value). FunctionType
+                    # parameters include self for methods, so skip it.
+                    for param in func_type.parameters {
+                        if not param.is_self and not param.is_cls {
+                            return param.param_type;
+                        }
+                    }
+                }
+                return None;
+            }
         }
     }
-    if not is_property_decorated {
-        return None;
-    }
-    func_type = self.get_type_of_ability(ability);
-    if not isinstance(func_type, types.FunctionType) {
-        return None;
-    }
-    return func_type.return_type;
+    return None;
 }
 
 """
@@ -1058,7 +1171,7 @@ impl TypeEvaluator._create_special_builtin_type(
         mro=[],
         is_builtin_class=True
     );
-    special_type = types.ClassType(shared=shared, flags=base_class.flags);
+    special_type = types.ClassType(_shared=shared, flags=base_class.flags);
     # Compute MRO: [SpecialType, BaseClass, ...]
     special_type.shared.mro = [special_type] + base_class.shared.mro;
     return special_type;
@@ -1196,7 +1309,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
 
     # Get the class's type parameters
     class_type = self.get_type_of_class(enclosing_class);
-    if not class_type or not class_type.shared or not class_type.shared.type_params {
+    if not class_type or not class_type.shared.type_params {
         return;
     }
 
@@ -1303,7 +1416,9 @@ impl TypeEvaluator.validate_typevar_scope(
                         return;  # Valid: module-level TypeVar in function signature
 
                     }
-                    if isinstance(sig_check, (uni.Ability, uni.Archetype, uni.Module)) {
+                    if isinstance(
+                        sig_check, (uni.Ability, uni.Archetype, uni.Module)
+                    ) {
                         break;  # Reached a scope boundary without finding signature
                     }
                     sig_check = sig_check.parent;
@@ -1407,4 +1522,176 @@ impl TypeEvaluator._is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool
         return False;
     }
     return has_ellipsis;
+}
+
+"""Infer return type for a block-body lambda from its return statements.
+
+Walks the body collecting ReturnStmt nodes (without descending into nested
+Ability or LambdaExpr scopes). Accounts for implicit None on fall-through
+paths: if not every code path returns a value, NoneType is included in the
+result. If no return-with-value is found at all, returns NoneType."""
+impl TypeEvaluator._infer_lambda_block_return_type(
+    body: list[uni.CodeBlockStmt]
+) -> TypeBase {
+    import from jaclang.compiler.type_system { types }
+
+    none_type = self._convert_to_instance(self.get_none_type());
+    return_types: list[TypeBase] = [];
+    always_returns = self._collect_return_types(body, return_types);
+
+    if not return_types {
+        # No return-with-value found → implicit None return.
+        return none_type;
+    }
+
+    # If not all code paths return a value, the function can fall through
+    # to an implicit None return.
+    if not always_returns {
+        return_types.append(none_type);
+    }
+
+    # Deduplicate: remove NoneType duplicates and collapse single-type results.
+    seen: list[TypeBase] = [];
+    for rt in return_types {
+        is_dup = False;
+        for s in seen {
+            if str(rt) == str(s) {
+                is_dup = True;
+                break;
+            }
+        }
+        if not is_dup {
+            seen.append(rt);
+        }
+    }
+
+    if len(seen) == 1 {
+        return seen[0];
+    }
+
+    return types.UnionType(types=seen);
+}
+
+"""Collect return-expression types from a statement block, returning whether
+all code paths return a value. Stops at nested Ability/LambdaExpr boundaries."""
+impl TypeEvaluator._collect_return_types(
+    stmts: list[uni.CodeBlockStmt], out: list[TypeBase]
+) -> bool {
+    for stmt in stmts {
+        # Nested scopes own their own returns.
+        if isinstance(stmt, (uni.Ability, uni.LambdaExpr)) {
+            continue;
+        }
+
+        if isinstance(stmt, uni.ReturnStmt) {
+            if stmt.expr and not isinstance(stmt.expr, uni.Null) {
+                out.append(self.get_type_of_expression(stmt.expr));
+            }
+            # Any return (bare or with value) means this path terminates.
+            return True;
+        }
+
+        if isinstance(stmt, uni.RaiseStmt) {
+            return True;
+        }
+
+        # --- Compound statements: recurse into their specific body fields ---
+        if isinstance(stmt, uni.IfStmt) {
+            if_returns = self._collect_return_types(list(stmt.body), out);
+            else_returns = self._collect_if_else_returns(stmt.else_body, out);
+            if if_returns and else_returns {
+                return True;
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.MatchStmt) {
+            if stmt.cases {
+                all_return = True;
+                for case in stmt.cases {
+                    mc: uni.MatchCase = case;
+                    if not self._collect_return_types(list(mc.body), out) {
+                        all_return = False;
+                    }
+                }
+                if all_return {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.SwitchStmt) {
+            if stmt.cases {
+                has_default = False;
+                all_return = True;
+                for case in stmt.cases {
+                    sc: uni.SwitchCase = case;
+                    if sc.pattern is None {
+                        has_default = True;
+                    }
+                    if not self._collect_return_types(list(sc.body), out) {
+                        all_return = False;
+                    }
+                }
+                if has_default and all_return {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.TryStmt) {
+            try_returns = self._collect_return_types(list(stmt.body), out);
+            if try_returns {
+                if not stmt.excepts or len(stmt.excepts) == 0 {
+                    return True;
+                }
+                all_except = True;
+                for exc in stmt.excepts {
+                    ex: uni.Except = exc;
+                    if not self._collect_return_types(list(ex.body), out) {
+                        all_except = False;
+                    }
+                }
+                if all_except {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.WithStmt) {
+            if self._collect_return_types(list(stmt.body), out) {
+                return True;
+            }
+            continue;
+        }
+
+        # For/while loops: collect returns inside but a loop never guarantees
+        # all paths return (it might iterate zero times).
+        if isinstance(stmt, (uni.IterForStmt, uni.InForStmt, uni.WhileStmt)) {
+            self._collect_return_types(list(stmt.body), out);
+            continue;
+        }
+    }
+    return False;
+}
+
+"""Helper: collect return types from the else branch of an IfStmt."""
+impl TypeEvaluator._collect_if_else_returns(
+    else_body: uni.ElseIf | uni.ElseStmt | None, out: list[TypeBase]
+) -> bool {
+    if else_body is None {
+        return False;
+    }
+    if isinstance(else_body, uni.ElseStmt) {
+        return self._collect_return_types(list(else_body.body), out);
+    }
+    if isinstance(else_body, uni.ElseIf) {
+        if_returns = self._collect_return_types(list(else_body.body), out);
+        else_returns = self._collect_if_else_returns(else_body.else_body, out);
+        return if_returns and else_returns;
+    }
+    return False;
 }

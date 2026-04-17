@@ -16,17 +16,17 @@ This tutorial covers declaring reactive state, handling user input, sharing stat
 Inside `cl { }` blocks, `has` creates reactive state (like React's `useState`). Declaring `has count: int = 0;` inside a component function creates a stateful variable that persists across re-renders and triggers a UI update whenever its value changes:
 
 ```jac
-cl {
-    def:pub Counter() -> JsxElement {
-        has count: int = 0;  # Reactive state
+to cl:
 
-        return <div>
-            <p>Count: {count}</p>
-            <button onClick={lambda -> None { count = count + 1; }}>
-                Increment
-            </button>
-        </div>;
-    }
+def:pub Counter() -> JsxElement {
+    has count: int = 0;  # Reactive state
+
+    return <div>
+        <p>Count: {count}</p>
+        <button onClick={lambda -> None { count = count + 1; }}>
+            Increment
+        </button>
+    </div>;
 }
 ```
 
@@ -41,40 +41,40 @@ cl {
 ## Multiple State Variables
 
 ```jac
-cl {
-    def:pub Form() -> JsxElement {
-        has name: str = "";
-        has email: str = "";
-        has submitted: bool = False;
+to cl:
 
-        def handle_submit() -> None {
-            print(f"Submitting: {name}, {email}");
-            submitted = True;
-        }
+def:pub Form() -> JsxElement {
+    has name: str = "";
+    has email: str = "";
+    has submitted: bool = False;
 
-        if submitted {
-            return <p>Thanks, {name}!</p>;
-        }
-
-        return <form>
-            <input
-                value={name}
-                onChange={lambda e: ChangeEvent { name = e.target.value; }}
-                placeholder="Name"
-            />
-            <input
-                value={email}
-                onChange={lambda e: ChangeEvent { email = e.target.value; }}
-                placeholder="Email"
-            />
-            <button
-                type="button"
-                onClick={lambda -> None { handle_submit(); }}
-            >
-                Submit
-            </button>
-        </form>;
+    def handle_submit() -> None {
+        print(f"Submitting: {name}, {email}");
+        submitted = True;
     }
+
+    if submitted {
+        return <p>Thanks, {name}!</p>;
+    }
+
+    return <form>
+        <input
+            value={name}
+            onChange={lambda e: ChangeEvent { name = e.target.value; }}
+            placeholder="Name"
+        />
+        <input
+            value={email}
+            onChange={lambda e: ChangeEvent { email = e.target.value; }}
+            placeholder="Email"
+        />
+        <button
+            type="button"
+            onClick={lambda -> None { handle_submit(); }}
+        >
+            Submit
+        </button>
+    </form>;
 }
 ```
 
@@ -83,42 +83,42 @@ cl {
 ## Complex State (Objects/Lists)
 
 ```jac
-cl {
-    def:pub TodoApp() -> JsxElement {
-        has todos: list = [];
-        has input_text: str = "";
+to cl:
 
-        def add_todo() -> None {
-            if input_text {
-                todos = todos + [{"id": len(todos), "text": input_text}];
-                input_text = "";
-            }
+def:pub TodoApp() -> JsxElement {
+    has todos: list = [];
+    has input_text: str = "";
+
+    def add_todo() -> None {
+        if input_text {
+            todos = todos + [{"id": len(todos), "text": input_text}];
+            input_text = "";
         }
-
-        def remove_todo(id: int) -> None {
-            todos = [t for t in todos if t["id"] != id];
-        }
-
-        return <div>
-            <input
-                value={input_text}
-                onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
-            />
-            <button onClick={lambda -> None { add_todo(); }}>Add</button>
-
-            <ul>
-                {[
-                    <li key={todo["id"]}>
-                        {todo["text"]}
-                        <button onClick={lambda -> None { remove_todo(todo["id"]); }}>
-                            X
-                        </button>
-                    </li>
-                    for todo in todos
-                ]}
-            </ul>
-        </div>;
     }
+
+    def remove_todo(id: int) -> None {
+        todos = [t for t in todos if t["id"] != id];
+    }
+
+    return <div>
+        <input
+            value={input_text}
+            onChange={lambda e: ChangeEvent { input_text = e.target.value; }}
+        />
+        <button onClick={lambda -> None { add_todo(); }}>Add</button>
+
+        <ul>
+            {[
+                <li key={todo["id"]}>
+                    {todo["text"]}
+                    <button onClick={lambda -> None { remove_todo(todo["id"]); }}>
+                        X
+                    </button>
+                </li>
+                for todo in todos
+            ]}
+        </ul>
+    </div>;
 }
 ```
 
@@ -136,26 +136,26 @@ cl {
 Similar to how `has` automatically generates `useState`, you can use `can with entry` and `can with exit` to automatically generate `useEffect` hooks:
 
 ```jac
-cl {
-    def:pub DataFetcher() -> JsxElement {
-        has data: list = [];
-        has loading: bool = True;
+to cl:
 
-        # Run once on mount - async effects are wrapped in IIFE automatically
-        async can with entry {
-            result = await some_async_operation();
-            data = result;
-            loading = False;
-        }
+def:pub DataFetcher() -> JsxElement {
+    has data: list = [];
+    has loading: bool = True;
 
-        if loading {
-            return <p>Loading...</p>;
-        }
-
-        return <ul>
-            {[<li key={item.id}>{item.name}</li> for item in data]}
-        </ul>;
+    # Run once on mount - async effects are wrapped in IIFE automatically
+    async can with entry {
+        result = await some_async_operation();
+        data = result;
+        loading = False;
     }
+
+    if loading {
+        return <p>Loading...</p>;
+    }
+
+    return <ul>
+        {[<li key={item.id}>{item.name}</li> for item in data]}
+    </ul>;
 }
 ```
 
@@ -164,28 +164,28 @@ cl {
 Use list syntax `[dep1, dep2]` to specify dependencies (similar to React's dependency arrays):
 
 ```jac
-cl {
-    def:pub SearchResults() -> JsxElement {
-        has query: str = "";
-        has results: list = [];
+to cl:
 
-        # Run when query changes
-        async can with [query] entry {
-            if query {
-                results = await search_api(query);
-            }
+def:pub SearchResults() -> JsxElement {
+    has query: str = "";
+    has results: list = [];
+
+    # Run when query changes
+    async can with [query] entry {
+        if query {
+            results = await search_api(query);
         }
-
-        return <div>
-            <input
-                value={query}
-                onChange={lambda e: ChangeEvent { query = e.target.value; }}
-            />
-            <ul>
-                {[<li>{r}</li> for r in results]}
-            </ul>
-        </div>;
     }
+
+    return <div>
+        <input
+            value={query}
+            onChange={lambda e: ChangeEvent { query = e.target.value; }}
+        />
+        <ul>
+            {[<li>{r}</li> for r in results]}
+        </ul>
+    </div>;
 }
 ```
 
@@ -194,24 +194,24 @@ cl {
 Use `can with exit` for cleanup logic (runs on unmount):
 
 ```jac
-cl {
-    def:pub Timer() -> JsxElement {
-        has seconds: int = 0;
+to cl:
 
-        # Setup interval on mount
-        can with entry {
-            intervalId = setInterval(lambda -> None {
-                seconds = seconds + 1;
-            }, 1000);
-        }
+def:pub Timer() -> JsxElement {
+    has seconds: int = 0;
 
-        # Cleanup on unmount
-        can with exit {
-            clearInterval(intervalId);
-        }
-
-        return <p>Seconds: {seconds}</p>;
+    # Setup interval on mount
+    can with entry {
+        intervalId = setInterval(lambda -> None {
+            seconds = seconds + 1;
+        }, 1000);
     }
+
+    # Cleanup on unmount
+    can with exit {
+        clearInterval(intervalId);
+    }
+
+    return <p>Seconds: {seconds}</p>;
 }
 ```
 
@@ -220,18 +220,18 @@ cl {
 The `can with entry/exit` syntax above is the idiomatic approach and should be preferred. However, you can also use `useEffect` manually by importing from React -- this is useful for complex patterns involving `useRef` or `useCallback`:
 
 ```jac
-cl {
-    import from react { useEffect }
+to cl:
 
-    def:pub DataFetcher() -> JsxElement {
-        has data: list = [];
+import from react { useEffect }
 
-        useEffect(lambda -> None {
-            fetch_data();
-        }, []);
+def:pub DataFetcher() -> JsxElement {
+    has data: list = [];
 
-        return <div>...</div>;
-    }
+    useEffect(lambda -> None {
+        fetch_data();
+    }, []);
+
+    return <div>...</div>;
 }
 ```
 
@@ -242,55 +242,55 @@ cl {
 ### Creating Context
 
 ```jac
-cl {
-    import from react { createContext, useContext }
+to cl:
 
-    # Create context
-    glob AppContext = createContext(None);
+import from react { createContext, useContext }
 
-    # Provider component
-    def:pub AppProvider(props: dict) -> JsxElement {
-        has user: any = None;
-        has theme: str = "light";
+# Create context
+glob AppContext = createContext(None);
 
-        value = {
-            "user": user,
-            "theme": theme,
-            "setUser": lambda u: any -> None { user = u; },
-            "setTheme": lambda t: str -> None { theme = t; }
-        };
+# Provider component
+def:pub AppProvider(props: dict) -> JsxElement {
+    has user: any = None;
+    has theme: str = "light";
 
-        return <AppContext.Provider value={value}>
-            {props.children}
-        </AppContext.Provider>;
+    value = {
+        "user": user,
+        "theme": theme,
+        "setUser": lambda u: any -> None { user = u; },
+        "setTheme": lambda t: str -> None { theme = t; }
+    };
+
+    return <AppContext.Provider value={value}>
+        {props.children}
+    </AppContext.Provider>;
+}
+
+# Consumer component
+def:pub UserDisplay() -> JsxElement {
+    ctx = useContext(AppContext);
+
+    if ctx.user {
+        return <p>Welcome, {ctx.user.name}!</p>;
     }
+    return <p>Not logged in</p>;
+}
 
-    # Consumer component
-    def:pub UserDisplay() -> JsxElement {
-        ctx = useContext(AppContext);
+def:pub ThemeToggle() -> JsxElement {
+    ctx = useContext(AppContext);
 
-        if ctx.user {
-            return <p>Welcome, {ctx.user.name}!</p>;
-        }
-        return <p>Not logged in</p>;
-    }
+    return <button onClick={lambda -> None {
+        ctx.setTheme("dark" if ctx.theme == "light" else "light");
+    }}>
+        Toggle Theme ({ctx.theme})
+    </button>;
+}
 
-    def:pub ThemeToggle() -> JsxElement {
-        ctx = useContext(AppContext);
-
-        return <button onClick={lambda -> None {
-            ctx.setTheme("dark" if ctx.theme == "light" else "light");
-        }}>
-            Toggle Theme ({ctx.theme})
-        </button>;
-    }
-
-    def:pub app() -> JsxElement {
-        return <AppProvider>
-            <UserDisplay />
-            <ThemeToggle />
-        </AppProvider>;
-    }
+def:pub app() -> JsxElement {
+    return <AppProvider>
+        <UserDisplay />
+        <ThemeToggle />
+    </AppProvider>;
 }
 ```
 
@@ -301,42 +301,42 @@ cl {
 Create reusable state logic:
 
 ```jac
-cl {
-    import from react { useEffect }
+to cl:
 
-    # Custom hook
-    def use_local_storage(key: str, initial_value: any) -> tuple {
-        has value: any = initial_value;
+import from react { useEffect }
 
-        # Load from localStorage on mount
-        useEffect(lambda -> None {
-            stored = localStorage.getItem(key);
-            if stored {
-                value = JSON.parse(stored);
-            }
-        }, []);
+# Custom hook
+def use_local_storage(key: str, initial_value: any) -> tuple {
+    has value: any = initial_value;
 
-        # Save to localStorage when value changes
-        useEffect(lambda -> None {
-            localStorage.setItem(key, JSON.stringify(value));
-        }, [value]);
+    # Load from localStorage on mount
+    useEffect(lambda -> None {
+        stored = localStorage.getItem(key);
+        if stored {
+            value = JSON.parse(stored);
+        }
+    }, []);
 
-        return (value, lambda v: any -> None { value = v; });
-    }
+    # Save to localStorage when value changes
+    useEffect(lambda -> None {
+        localStorage.setItem(key, JSON.stringify(value));
+    }, [value]);
 
-    def:pub Settings() -> JsxElement {
-        (theme, set_theme) = use_local_storage("theme", "light");
+    return (value, lambda v: any -> None { value = v; });
+}
 
-        return <div>
-            <p>Current theme: {theme}</p>
-            <button onClick={lambda -> None { set_theme("dark"); }}>
-                Dark
-            </button>
-            <button onClick={lambda -> None { set_theme("light"); }}>
-                Light
-            </button>
-        </div>;
-    }
+def:pub Settings() -> JsxElement {
+    (theme, set_theme) = use_local_storage("theme", "light");
+
+    return <div>
+        <p>Current theme: {theme}</p>
+        <button onClick={lambda -> None { set_theme("dark"); }}>
+            Dark
+        </button>
+        <button onClick={lambda -> None { set_theme("light"); }}>
+            Light
+        </button>
+    </div>;
 }
 ```
 
@@ -347,71 +347,71 @@ cl {
 ### Loading State Pattern
 
 ```jac
-cl {
-    def:pub DataComponent() -> JsxElement {
-        has data: any = None;
-        has loading: bool = True;
-        has error: str = "";
+to cl:
 
-        # ... fetch data ...
+def:pub DataComponent() -> JsxElement {
+    has data: any = None;
+    has loading: bool = True;
+    has error: str = "";
 
-        if loading {
-            return <div className="spinner">Loading...</div>;
-        }
+    # ... fetch data ...
 
-        if error {
-            return <div className="error">{error}</div>;
-        }
-
-        return <div>{data}</div>;
+    if loading {
+        return <div className="spinner">Loading...</div>;
     }
+
+    if error {
+        return <div className="error">{error}</div>;
+    }
+
+    return <div>{data}</div>;
 }
 ```
 
 ### Form State Pattern
 
 ```jac
-cl {
-    def:pub ContactForm() -> JsxElement {
-        has form_data: dict = {
-            "name": "",
-            "email": "",
-            "message": ""
-        };
-        has errors: dict = {};
-        has submitting: bool = False;
+to cl:
 
-        def update_field(field: str, value: str) -> None {
-            form_data = {**form_data, field: value};
-        }
+def:pub ContactForm() -> JsxElement {
+    has form_data: dict = {
+        "name": "",
+        "email": "",
+        "message": ""
+    };
+    has errors: dict = {};
+    has submitting: bool = False;
 
-        def validate() -> bool {
-            new_errors = {};
-            if not form_data["name"] {
-                new_errors["name"] = "Name is required";
-            }
-            if "@" not in form_data["email"] {
-                new_errors["email"] = "Invalid email";
-            }
-            errors = new_errors;
-            return len(new_errors) == 0;
-        }
-
-        def handle_submit() -> None {
-            if validate() {
-                submitting = True;
-                # ... submit form ...
-            }
-        }
-
-        return <form>
-            <input
-                value={form_data["name"]}
-                onChange={lambda e: ChangeEvent { update_field("name", e.target.value); }}
-            />
-            {errors.get("name") and <span className="error">{errors["name"]}</span>}
-        </form>;
+    def update_field(field: str, value: str) -> None {
+        form_data = {**form_data, field: value};
     }
+
+    def validate() -> bool {
+        new_errors = {};
+        if not form_data["name"] {
+            new_errors["name"] = "Name is required";
+        }
+        if "@" not in form_data["email"] {
+            new_errors["email"] = "Invalid email";
+        }
+        errors = new_errors;
+        return len(new_errors) == 0;
+    }
+
+    def handle_submit() -> None {
+        if validate() {
+            submitting = True;
+            # ... submit form ...
+        }
+    }
+
+    return <form>
+        <input
+            value={form_data["name"]}
+            onChange={lambda e: ChangeEvent { update_field("name", e.target.value); }}
+        />
+        {errors.get("name") and <span className="error">{errors["name"]}</span>}
+    </form>;
 }
 ```
 

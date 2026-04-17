@@ -31,15 +31,17 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac jacpack` | Manage project templates (.jacpack files) |
+| `jac eject` | Compile a project to standalone Python + JavaScript (zero `.jac` files) |
 | `jac grammar` | Extract and print the Jac grammar |
 | `jac script` | Run project scripts |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
 | `jac tool` | Language tools (IR, AST) |
 | `jac lsp` | Language server |
-| `jac js` | JavaScript output |
+| `jac jac2js` | Convert Jac to JavaScript |
 | `jac build` | Build for target platform (jac-client) |
 | `jac setup` | Setup build target (jac-client) |
+| `jac db` | Inspect persistence DB, manage rescue aliases, recover quarantined data |
 
 ---
 
@@ -613,6 +615,157 @@ jac plugins disabled
 
 ---
 
+## Database Operations
+
+The `jac db` command group inspects the live persistence backend, manages DB-resident rescue aliases, and recovers quarantined anchors. It works against any `PersistentMemory` backend -- `SqliteMemory` (default), `MongoBackend` (with `jac-scale`), or any plugin-provided backend that implements the interface -- through the same set of subcommands.
+
+For the architectural background (fingerprints, drift detection, quarantine philosophy, alias decorator), see [Persistence & Schema Migration](../persistence.md).
+
+### Backend dispatch
+
+`jac db` always operates on the backend the user's app is configured to use:
+
+- Pass `--app PATH` to point at the entry `.jac` file.
+- Or run the command from the app's directory; if there's exactly one `.jac` in the current directory, it's picked automatically.
+
+The command imports the user's app to set up the runtime context, then talks to whatever `PersistentMemory` backend the configuration installs -- SQLite locally, Mongo in production, etc. There is no separate mode for each backend.
+
+```bash
+# Explicit
+jac db inspect --app path/to/app.jac
+
+# Implicit when there's one .jac in cwd
+cd my_app/
+jac db inspect
+```
+
+### jac db inspect
+
+Print a one-line summary of the live persistence backend plus per-archetype count tables for both anchors and quarantine.
+
+```bash
+jac db inspect
+```
+
+**Output:**
+
+```
+Jac DB: /tmp/myapp/.jac/data/anchor_store.db
+[INFO] format_version=1   anchors=5   quarantined=0   aliases=0
+        Anchors
+┏━━━━━━━━━━━━━┳━━━━━━━┓
+┃ arch_type   ┃ count ┃
+┡━━━━━━━━━━━━━╇━━━━━━━┩
+│ Person      │ 2     │
+│ GenericEdge │ 2     │
+│ Root        │ 1     │
+└─────────────┴───────┘
+```
+
+The summary line covers: storage format version, total live anchor count, total quarantined count, and total alias count. Quarantine + Anchors tables only print when non-empty.
+
+### jac db quarantine list
+
+List the most recent quarantined anchors with their class, fingerprint, error, and timestamp.
+
+```bash
+jac db quarantine list           # default limit: 50
+jac db quarantine list -n 200    # raise limit
+```
+
+Sorted newest first. UUID columns are truncated to a recognizable prefix; pass any unique prefix to `quarantine show` or `recover`.
+
+### jac db quarantine show \<id-prefix\>
+
+Dump one quarantined row in full (parsed JSON), including the original `data` payload -- useful for understanding why a row failed to load.
+
+```bash
+jac db quarantine show 86092d34
+```
+
+A unique prefix is sufficient. If the prefix is ambiguous, the command tells you and asks for a longer prefix.
+
+### jac db alias add / list / remove
+
+DB-resident rescue aliases. Persisted in an `aliases` table (SQLite) or `<collection>_aliases` companion collection (Mongo, e.g. `_anchors_aliases`) and merged into the in-process `Serializer._aliases` map at backend connect time. Survives across process restarts; affects every consumer of that database.
+
+```bash
+# List current aliases.
+jac db alias list
+
+# Register a rescue alias for a class rename / module move.
+jac db alias add "old.module.LegacyName" "new.module.NewName"
+
+# Remove one.
+jac db alias remove "old.module.LegacyName"
+```
+
+Both arguments to `alias add` are fully-qualified `module.ClassName` strings -- the `module` part is what would have appeared in the stored row's `arch_module` field. For files imported via `jac enter app.jac`, the module is `__main__`.
+
+> **When to use this vs. the decorator.** The [`@archetype_alias`](../persistence.md#class-renames-the-alias-decorator) decorator is the normal path: it's code-resident, travels through git, applies wherever the code runs. `jac db alias add` is the rescue path: emergency recovery in production without a code deploy. Decorator first, CLI as the safety net.
+
+### jac db recover \<id-prefix\>
+
+Re-attempt deserialization on one quarantined row. On success, the row is moved back to the live anchors collection and **re-stamped with the live class's identity + fingerprint** so subsequent reads bypass alias resolution and drift detection.
+
+```bash
+jac db recover 86092d34 --app app.jac
+```
+
+Recovery only succeeds when the user's archetype classes (and any `@archetype_alias` decorators) are registered, so the user app must be discoverable -- via `--app PATH` or the cwd auto-discovery described above. Without it, every quarantined row will be reported as `class X.Y still unresolvable`.
+
+### jac db recover-all
+
+Batch variant. Re-attempts every quarantined row and reports counts, plus a per-row reason for whatever still can't be recovered.
+
+```bash
+jac db recover-all --app app.jac
+```
+
+Typical output:
+
+```
+✔ Recovered 2 of 2 quarantined rows.
+```
+
+Or, when some rows are still stuck (often because the class involved isn't covered by any alias yet):
+
+```
+✔ Recovered 3 of 5 quarantined rows.
+[WARN] 2 rows still quarantined.
+                Still quarantined
+┏━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ id        ┃ reason                                          ┃
+┡━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ d44e2c7a… │ class oldmod.GoneAway still unresolvable       │
+│ 902b14ee… │ deserialize raised: ValueError: bad enum value │
+└───────────┴─────────────────────────────────────────────────┘
+```
+
+### Typical rescue workflow
+
+```bash
+# 1. Discover what's quarantined.
+jac db inspect --app app.jac
+jac db quarantine list --app app.jac
+
+# 2. Drill into one row to understand why.
+jac db quarantine show <prefix> --app app.jac
+
+# 3. If it's a class rename: register an alias.
+jac db alias add "__main__.OldName" "__main__.NewName"
+
+# 4. Re-attempt every stuck row.
+jac db recover-all --app app.jac
+
+# 5. Confirm.
+jac db inspect --app app.jac
+```
+
+After step 5 the quarantine count should be zero (or list only rows that genuinely need a different fix -- type changes too aggressive for the coercion table, etc.).
+
+---
+
 ## Configuration Management
 
 ### jac config
@@ -1069,12 +1222,100 @@ jac create myproject --use mytemplate
 
 ---
 
-### jac js
+### jac eject
+
+Compile a Jac project to a self-contained output folder containing only Python and JavaScript files. The ejected project has **zero `.jac` files** and can be run, edited, and deployed without invoking the Jac compiler. Use it when you want to hand off a Jac-built application to a team that doesn't use Jac, freeze a snapshot of a project, or deploy on infrastructure where installing the toolchain is impractical.
+
+```bash
+jac eject [-h] [-o OUTPUT] [-f] [source]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `source` | Project directory to eject (must contain `jac.toml`) | `.` |
+| `-o, --output` | Output directory | `<source>-ejected` next to source |
+| `-f, --force` | Overwrite the output directory if it already exists | `False` |
+
+**What gets emitted**
+
+- Server-side `.sv.jac` modules become plain Python via the compiler's existing `gen.py` output (walkers compile to classes with `@on_entry`/`@on_exit`, spatial operations like `-->` and `visit` lower to `connect`/`refs`/`visit` calls).
+- Client-side `.cl.jac` modules become plain JavaScript via `gen.js` (JSX lowers to `__jacJsx(...)` calls, `has` declarations to `useState` hooks, `sv import` to auto-generated HTTP RPC stubs).
+- `.impl.jac` files merge automatically into their declaration sibling at compile time, so the eject pipeline never processes them directly.
+- Filenames drop the `.sv` / `.cl` context tag (`endpoints.sv.jac` → `endpoints.py`, `frontend.cl.jac` → `frontend.js`), matching what the compiler already emits in cross-module imports.
+- Static assets under `assets/` are copied verbatim into `frontend/src/assets/`.
+
+**Output layout**
+
+```
+<name>-ejected/
+├── README.md             how to run, layout, caveats
+├── run.sh                starts backend + frontend dev server
+├── backend/
+│   ├── serve.py          entry script (python serve.py)
+│   ├── requirements.txt  pip dependencies (includes jaclang)
+│   ├── main.py           ejected entry module
+│   └── ...               other ejected server modules
+└── frontend/
+    ├── package.json      npm dependencies (includes Vite)
+    ├── vite.config.js    dev server with backend proxy
+    ├── index.html        SPA shell loading src/main.js
+    └── src/
+        ├── main.js
+        ├── components/   ejected client components
+        └── assets/       static files
+```
+
+The generated `backend/serve.py` boots the existing `JacAPIServer` HTTP request handler against the ejected modules: it loads the entry module via `importlib`, injects it into `Jac.loaded_modules` so the introspector skips its own `jac_import`, and constructs `http.server.HTTPServer` directly to bypass the `Jac.create_server` plugin hook. It also forces the base SQLite-backed `UserManager` so register/login/auth work consistently regardless of which jaclang plugins are installed in the runtime environment.
+
+**Examples**
+
+```bash
+# Eject the current project to ./<name>-ejected/
+jac eject
+
+# Eject a specific project to a chosen output directory
+jac eject ./myapp -o /tmp/myapp-standalone
+
+# Overwrite an existing output directory
+jac eject ./myapp -o /tmp/myapp-standalone --force
+```
+
+**Running the ejected project**
+
+```bash
+cd <name>-ejected
+pip install -r backend/requirements.txt
+(cd frontend && npm install)
+./run.sh
+```
+
+The backend listens on `PORT` (default 8000) and the Vite dev server listens on `FRONTEND_PORT` (default 5173); the Vite config proxies `/walker`, `/walkers`, `/function`, `/functions`, `/user`, and `/cl` to the backend so the SPA can call API endpoints without CORS plumbing.
+
+**Caveats**
+
+- This first version still requires `jaclang` to be installed at runtime. The ejected backend imports walker primitives from `jaclang.jac0core.jaclib` and the HTTP request handler from `jaclang.runtimelib.server`. The goal is *zero `.jac` files in the output*, not *zero `jaclang` dependency*.
+- `.impl.jac` and `.test.jac` files are skipped (they have no standalone meaning); so are well-known build directories (`.jac`, `.git`, `.venv`, `node_modules`, `__pycache__`, `dist`, `build`, etc.).
+- Persistent state (users, root nodes, graph data) lives under `backend/.jac/data/` after first run, just as it would for `jac start`.
+
+**Extending eject from a plugin**
+
+Like every other command, `jac eject` is extensible through the standard plugin hook mechanism -- a plugin can add flags via `registry.extend_command("eject", ...)` and either replace the default behavior in a pre-hook (`jac-scale --scale` style) or augment the output in a post-hook (`jac-client --client desktop` style). See the [Plugin Authoring Guide](../plugin-authoring.md) for the full extension model.
+
+For eject specifically, `jaclang.cli.commands.impl.eject` exports two helpers so plugin pre/post hooks can stay in sync with whatever the default command produces:
+
+| Helper | Purpose |
+|--------|---------|
+| `resolve_eject_output(src: Path, output: str) -> Path` | Returns the resolved output directory, applying the same `<source>-ejected` fallback the command uses when `--output` is not given. |
+| `load_eject_project_metadata(src: Path) -> dict` | Parses `jac.toml` and returns a dict with `project_name`, `entry_point`, `entry_module`, and the raw `toml_data` so plugins can read sections like `[plugins.scale]` or `[dependencies.npm]` without re-parsing. |
+
+---
+
+### jac jac2js
 
 Generate JavaScript output from Jac code (used for jac-client frontend compilation).
 
 ```bash
-jac js [-h] filename
+jac jac2js [-h] filename
 ```
 
 | Option | Description | Default |
@@ -1085,8 +1326,12 @@ jac js [-h] filename
 
 ```bash
 # Generate JS from Jac file
-jac js app.jac
+jac jac2js app.jac
 ```
+
+> **Deprecated:** `jac js` is a deprecated alias for `jac jac2js` and will be
+> removed in a future release. It still works but emits a deprecation warning
+> on stderr; update scripts to use `jac jac2js`.
 
 ---
 

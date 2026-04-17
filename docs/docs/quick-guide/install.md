@@ -103,7 +103,8 @@ pip install byllm
 pip install jac-client
 
 # Production deployment & scaling
-pip install jac-scale
+pip install jac-scale              # Core only (lightweight)
+pip install jac-scale[all]         # Full install with all features
 
 # Enhanced console output
 pip install jac-super

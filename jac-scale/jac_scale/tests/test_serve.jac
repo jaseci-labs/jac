@@ -32,6 +32,42 @@ import from jac_scale.tests.scale_test_client {
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
+
+"""Build identity-based register payload."""
+def register_payload(username: str, password: str) -> dict[str, Any] {
+    return {
+        "identities": [{"type": "username", "value": username}],
+        "credential": {"type": "password", "password": password}
+    };
+}
+
+"""Build identity-based login payload."""
+def login_payload(username: str, password: str) -> dict[str, Any] {
+    return {
+        "identity": {"type": "username", "value": username},
+        "credential": {"type": "password", "password": password}
+    };
+}
+
+"""Register a user via the test client, return the response data."""
+def do_register(client: Any, username: str, password: str) -> dict[str, Any] {
+    response = client.post("/user/register", json=register_payload(username, password));
+    return extract_data(response.json());
+}
+
+"""Login a user via the test client, return the response data (includes token)."""
+def do_login(client: Any, username: str, password: str) -> dict[str, Any] {
+    response = client.post("/user/login", json=login_payload(username, password));
+    return extract_data(response.json());
+}
+
+"""Register + login, return token."""
+def register_and_get_token(client: Any, username: str, password: str) -> str {
+    do_register(client, username, password);
+    result = do_login(client, username, password);
+    return result["token"];
+}
+
 """Get a free port by binding to port 0 and releasing it."""
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
@@ -350,52 +386,71 @@ test "static and schema endpoints" {
 test "user registration and login" {
     client = make_client();
     try {
-        # Test: user creation
+        # Test: user creation (identity-based)
         test_username = f"testuser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
-            json={"username": test_username, "password": "testpass123"}
+            json={
+                "identities": [{"type": "username", "value": test_username}],
+                "credential": {"type": "password", "password": "testpass123"}
+            }
         );
         result = extract_data(response.json());
-        assert "username" in result;
-        assert "token" in result;
-        assert "root_id" in result;
-        assert result["username"] == test_username;
+        assert "user_id" in result;
+        assert "message" in result;
 
         # Test: status code 201 for successful registration
         status_user = f"status_{uuid.uuid4().hex[:8]}";
         response = client.post(
-            "/user/register", json={"username": status_user, "password": "password123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": status_user}],
+                "credential": {"type": "password", "password": "password123"}
+            }
         );
         assert response.status_code == 201;
         data = extract_data(response.json());
-        assert "token" in data;
-        assert data["username"] == status_user;
+        assert "user_id" in data;
 
         # Test: status code 400 for duplicate registration
         response = client.post(
-            "/user/register", json={"username": status_user, "password": "password123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": status_user}],
+                "credential": {"type": "password", "password": "password123"}
+            }
         );
         assert response.status_code == 400;
 
-        # Test: user login
+        # Test: user login (identity-based)
         login_username = f"login_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
-            json={"username": login_username, "password": "loginpass"}
+            json={
+                "identities": [{"type": "username", "value": login_username}],
+                "credential": {"type": "password", "password": "loginpass"}
+            }
         );
         create_result = extract_data(response.json());
         response = client.post(
-            "/user/login", json={"username": login_username, "password": "loginpass"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": login_username},
+                "credential": {"type": "password", "password": "loginpass"}
+            }
         );
         login_result = extract_data(response.json());
         assert "token" in login_result;
-        assert login_result["username"] == login_username;
-        assert login_result["root_id"] == create_result["root_id"];
+        assert "user_id" in login_result;
+        assert "root_id" in login_result;
 
         # Test: status code 200 for successful login
         response = client.post(
-            "/user/login", json={"username": login_username, "password": "loginpass"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": login_username},
+                "credential": {"type": "password", "password": "loginpass"}
+            }
         );
         assert response.status_code == 200;
 
@@ -403,42 +458,59 @@ test "user registration and login" {
         fail_username = f"fail_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
-            json={"username": fail_username, "password": "correctpass"}
+            json={
+                "identities": [{"type": "username", "value": fail_username}],
+                "credential": {"type": "password", "password": "correctpass"}
+            }
         );
         response = client.post(
-            "/user/login", json={"username": fail_username, "password": "wrongpass"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": fail_username},
+                "credential": {"type": "password", "password": "wrongpass"}
+            }
         );
         login_result = extract_data(response.json());
         assert "error" in login_result;
 
         # Test: status code 401 for invalid credentials
         response = client.post(
-            "/user/login", json={"username": fail_username, "password": "wrongpass"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": fail_username},
+                "credential": {"type": "password", "password": "wrongpass"}
+            }
         );
         assert response.status_code == 401;
         data = extract_data(response.json());
         assert data["error"] == "Invalid credentials";
 
-        # Test: status code 400/422 for missing credentials
-        response = client.post("/user/login", json={"username": "test"});
-        assert response.status_code in [400, 422];
-
-        response = client.post("/user/login", json={"password": "password123"});
-        assert response.status_code in [400, 422];
-
+        # Test: validation error for missing/invalid structure (422 from FastAPI Pydantic validation)
         response = client.post("/user/login", json={});
-        assert response.status_code in [400, 422];
+        assert response.status_code in (400, 422);
 
         response = client.post(
-            "/user/login", json={"username": "", "password": "password123"}
+            "/user/login",
+            json={"identity": {}, "credential": {"type": "password", "password": "x"}}
         );
-        assert response.status_code == 400;
-        data = extract_data(response.json());
-        assert data["error"] == "Username and password required";
+        assert response.status_code in (400, 422);
+
+        response = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": ""},
+                "credential": {"type": "password", "password": "x"}
+            }
+        );
+        assert response.status_code in (400, 422);
 
         # Test: nonexistent user returns 401
         response = client.post(
-            "/user/login", json={"username": "nonexistent", "password": "password"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "nonexistent"},
+                "credential": {"type": "password", "password": "password"}
+            }
         );
         assert response.status_code == 401;
     } finally {
@@ -491,15 +563,8 @@ test "token refresh functionality" {
         assert response.status_code == 401;
 
         # Test: refresh token with bearer prefix
-        response = client.post(
-            "/user/register",
-            json={
-                "username": f"refresh_bearer_{uuid.uuid4().hex[:8]}",
-                "password": "password123"
-            }
-        );
-        create_result = extract_data(response.json());
-        original_token = create_result["token"];
+        refresh_bearer_user = f"refresh_bearer_{uuid.uuid4().hex[:8]}";
+        original_token = register_and_get_token(client, refresh_bearer_user, "password123");
 
         response = client.post(
             "/user/refresh-token", json={"token": f"Bearer {original_token}"}
@@ -518,9 +583,7 @@ test "token refresh functionality" {
 
         # Test: refresh token too old
         old_user = f"refresh_old_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": old_user, "password": "password123"}
-        );
+        do_register(client, old_user, "password123");
         very_old_token = _create_very_old_token(old_user, days_ago=15);
         response = client.post("/user/refresh-token", json={"token": very_old_token});
         refresh_result = extract_data(response.json());
@@ -535,15 +598,8 @@ test "token refresh functionality" {
         assert refresh_result["error"] == "Invalid or expired token";
 
         # Test: refresh token multiple times
-        response = client.post(
-            "/user/register",
-            json={
-                "username": f"refresh_multi_{uuid.uuid4().hex[:8]}",
-                "password": "password123"
-            }
-        );
-        create_result = extract_data(response.json());
-        token1 = create_result["token"];
+        refresh_multi_user = f"refresh_multi_{uuid.uuid4().hex[:8]}";
+        token1 = register_and_get_token(client, refresh_multi_user, "password123");
 
         response = client.post("/user/refresh-token", json={"token": token1});
         refresh_result1 = extract_data(response.json());
@@ -556,27 +612,21 @@ test "token refresh functionality" {
         assert token3 != token2;
         assert token3 != token1;
 
-        # Test: refresh token preserves username
+        # Test: refresh token preserves user_id
         username = f"refresh_preserve_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "password123"}
-        );
-        create_result = extract_data(response.json());
-        original_token = create_result["token"];
+        token = register_and_get_token(client, username, "password123");
 
-        response = client.post("/user/refresh-token", json={"token": original_token});
+        response = client.post("/user/refresh-token", json={"token": token});
         refresh_result = extract_data(response.json());
         new_token = refresh_result["token"];
 
         secret = "supersecretkey_for_testing_only!";
         algorithm = "HS256";
 
-        original_payload = pyjwt.decode(original_token, secret, algorithms=[algorithm]);
+        original_payload = pyjwt.decode(token, secret, algorithms=[algorithm]);
         new_payload = pyjwt.decode(new_token, secret, algorithms=[algorithm]);
 
-        assert original_payload["username"] == username;
-        assert new_payload["username"] == username;
-        assert original_payload["username"] == new_payload["username"];
+        assert original_payload["user_id"] == new_payload["user_id"];
     } finally {
         client.close();
     }
@@ -589,18 +639,38 @@ test "integration auth flow" {
 
         # Register
         register_response = client.post(
-            "/user/register", json={"username": username, "password": "secure123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": username}],
+                "credential": {"type": "password", "password": "secure123"}
+            }
         );
         assert register_response.status_code == 201;
         data = extract_data(register_response.json());
-        token1 = data["token"];
+        assert "user_id" in data;
 
-        # Login
+        # Login (first time)
         login_response = client.post(
-            "/user/login", json={"username": username, "password": "secure123"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": username},
+                "credential": {"type": "password", "password": "secure123"}
+            }
         );
         assert login_response.status_code == 200;
         data = extract_data(login_response.json());
+        token1 = data["token"];
+
+        # Login (second time)
+        login_response2 = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": username},
+                "credential": {"type": "password", "password": "secure123"}
+            }
+        );
+        assert login_response2.status_code == 200;
+        data = extract_data(login_response2.json());
         token2 = data["token"];
 
         # Refresh
@@ -611,7 +681,11 @@ test "integration auth flow" {
 
         # Failed login
         fail_response = client.post(
-            "/user/login", json={"username": username, "password": "wrongpass"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": username},
+                "credential": {"type": "password", "password": "wrongpass"}
+            }
         );
         assert fail_response.status_code == 401;
 
@@ -631,12 +705,25 @@ test "function calls" {
     client = make_client();
     try {
         # Create a user for authenticated calls
+        func_user = f"funcuser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
-            json={"username": f"funcuser_{uuid.uuid4().hex[:8]}", "password": "pass"}
+            json={
+                "identities": [{"type": "username", "value": func_user}],
+                "credential": {"type": "password", "password": "pass"}
+            }
         );
         create_result = extract_data(response.json());
-        token = create_result["token"];
+        assert "user_id" in create_result;
+        response = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": func_user},
+                "credential": {"type": "password", "password": "pass"}
+            }
+        );
+        login_result = extract_data(response.json());
+        token = login_result["token"];
 
         # Test: call function add_numbers
         response = client.post(
@@ -704,12 +791,25 @@ test "walker calls" {
     client = make_client();
     try {
         # Create a user for authenticated calls
+        walker_user = f"walkeruser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
-            json={"username": f"walkeruser_{uuid.uuid4().hex[:8]}", "password": "pass"}
+            json={
+                "identities": [{"type": "username", "value": walker_user}],
+                "credential": {"type": "password", "password": "pass"}
+            }
         );
         create_result = extract_data(response.json());
-        token = create_result["token"];
+        assert "user_id" in create_result;
+        response = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": walker_user},
+                "credential": {"type": "password", "password": "pass"}
+            }
+        );
+        login_result = extract_data(response.json());
+        token = login_result["token"];
 
         # Test: status code 200 for walker success
         response = client.post(
@@ -778,18 +878,31 @@ test "walker calls" {
         assert "nodes" in data and "edges" in data;
 
         # Create a node and verify it appears for authenticated user
+        g_user = f"guser_{uuid.uuid4().hex[:8]}";
         response = client.post(
             "/user/register",
-            json={"username": f"guser_{uuid.uuid4().hex[:8]}", "password": "gpass"}
+            json={
+                "identities": [{"type": "username", "value": g_user}],
+                "credential": {"type": "password", "password": "gpass"}
+            }
         );
         reg = extract_data(response.json());
+        assert "user_id" in reg;
+        response = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": g_user},
+                "credential": {"type": "password", "password": "gpass"}
+            }
+        );
+        reg_login = extract_data(response.json());
         response = client.post(
             "/walker/CreateTask",
             json={"title": "T1", "priority": 1},
-            headers={"Authorization": f"Bearer {reg['token']}"}
+            headers={"Authorization": f"Bearer {reg_login['token']}"}
         );
         auth_resp = client.get(
-            "/graph/data", headers={"Authorization": f"Bearer {reg['token']}"}
+            "/graph/data", headers={"Authorization": f"Bearer {reg_login['token']}"}
         );
         auth_data = auth_resp.json();
         assert len(auth_data["nodes"]) == 2;
@@ -805,272 +918,86 @@ test "walker calls" {
 test "user management operations" {
     client = make_client();
     try {
-        # Test: update username success
-        username = f"olduser_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "password123"}
-        );
-        create_result = extract_data(response.json());
-        original_token = create_result["token"];
-        original_root_id = create_result["root_id"];
-
-        new_username = f"newuser_{uuid.uuid4().hex[:8]}";
-        response = client.put(
-            "/user/username",
-            json={"current_username": username, "new_username": new_username},
-            headers={"Authorization": f"Bearer {original_token}"}
-        );
-        update_result = extract_data(response.json());
-
-        assert "username" in update_result;
-        assert update_result["username"] == new_username;
-        assert "token" in update_result;
-        assert "root_id" in update_result;
-        assert update_result["root_id"] == original_root_id;
-
-        # Verify login with new username works
-        response = client.post(
-            "/user/login", json={"username": new_username, "password": "password123"}
-        );
-        login_result = extract_data(response.json());
-        assert login_result["username"] == new_username;
-        assert "token" in login_result;
-
-        # Verify login with old username fails
-        login_response = client.post(
-            "/user/login", json={"username": username, "password": "password123"}
-        );
-        assert login_response.status_code == 401;
-
-        # Test: update username requires auth
-        username = f"authtest_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "password123"}
-        );
-        response = client.put(
-            "/user/username",
-            json={"current_username": username, "new_username": "newname"}
-        );
-        assert response.status_code == 401;
-
-        # Test: update username cannot update other users
-        user1_name = f"user1_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": user1_name, "password": "pass1"}
-        );
-        user1_result = extract_data(response.json());
-        user1_token = user1_result["token"];
-
-        user2_name = f"user2_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": user2_name, "password": "pass2"}
-        );
-
-        response = client.put(
-            "/user/username",
-            json={"current_username": user2_name, "new_username": "hacked"},
-            headers={"Authorization": f"Bearer {user1_token}"}
-        );
-        assert response.status_code == 403;
-
-        # Test: update username duplicate fails
-        user1_name = f"dup1_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": user1_name, "password": "pass1"}
-        );
-        user1_result = extract_data(response.json());
-        user1_token = user1_result["token"];
-
-        user2_name = f"dup2_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": user2_name, "password": "pass2"}
-        );
-
-        response = client.put(
-            "/user/username",
-            json={"current_username": user1_name, "new_username": user2_name},
-            headers={"Authorization": f"Bearer {user1_token}"}
-        );
-        assert response.status_code == 400;
-
-        # Test: update username empty validation
-        username = f"testuser_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "password123"}
-        );
-        user_result = extract_data(response.json());
-        token = user_result["token"];
-
-        response = client.put(
-            "/user/username",
-            json={"current_username": username, "new_username": ""},
-            headers={"Authorization": f"Bearer {token}"}
-        );
-        assert response.status_code == 400;
-
         # Test: update password success
         username = f"passuser_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "oldpass123"}
-        );
-        create_result = extract_data(response.json());
-        token = create_result["token"];
+        token = register_and_get_token(client, username, "oldpass123");
 
         response = client.put(
             "/user/password",
-            json={
-                "username": username,
-                "current_password": "oldpass123",
-                "new_password": "newpass456"
-            },
+            json={"current_password": "oldpass123", "new_password": "newpass456"},
             headers={"Authorization": f"Bearer {token}"}
         );
         update_result = extract_data(response.json());
-
-        assert "username" in update_result;
-        assert update_result["username"] == username;
-        assert "message" in update_result or "success" in str(update_result).lower();
+        assert "message" in update_result;
 
         # Verify login with new password works
-        response = client.post(
-            "/user/login", json={"username": username, "password": "newpass456"}
-        );
-        login_result = extract_data(response.json());
-        assert login_result["username"] == username;
+        login_result = do_login(client, username, "newpass456");
+        assert "user_id" in login_result;
 
         # Verify login with old password fails
-        login_response = client.post(
-            "/user/login", json={"username": username, "password": "oldpass123"}
-        );
-        assert login_response.status_code == 401;
+        response = client.post("/user/login", json=login_payload(username, "oldpass123"));
+        assert response.status_code == 401;
 
         # Test: update password requires auth
         username = f"noauthuser_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "password123"}
-        );
-
+        do_register(client, username, "password123");
         response = client.put(
             "/user/password",
-            json={
-                "username": username,
-                "current_password": "password123",
-                "new_password": "newpass"
-            }
+            json={"current_password": "password123", "new_password": "newpass"}
         );
         assert response.status_code == 401;
 
         # Test: update password wrong current password
         username = f"wrongpass_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "correctpass"}
-        );
-        user_result = extract_data(response.json());
-        token = user_result["token"];
-
+        token = register_and_get_token(client, username, "correctpass");
         response = client.put(
             "/user/password",
-            json={
-                "username": username,
-                "current_password": "wrongpass",
-                "new_password": "newpass"
-            },
+            json={"current_password": "wrongpass", "new_password": "newpass"},
             headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 400;
 
-        # Test: update password cannot update other users
+        # Test: update password with other user's token (wrong current password returns 400)
         user1_name = f"passuser1_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": user1_name, "password": "pass1"}
-        );
-        user1_result = extract_data(response.json());
-        user1_token = user1_result["token"];
-
+        user1_token = register_and_get_token(client, user1_name, "pass1");
         user2_name = f"passuser2_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": user2_name, "password": "pass2"}
-        );
-
+        do_register(client, user2_name, "pass2");
         response = client.put(
             "/user/password",
-            json={
-                "username": user2_name,
-                "current_password": "pass2",
-                "new_password": "hacked"
-            },
+            json={"current_password": "pass2", "new_password": "hacked"},
             headers={"Authorization": f"Bearer {user1_token}"}
         );
-        assert response.status_code == 403;
-
-        # Test: update password empty validation
-        username = f"emptypass_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "oldpass"}
-        );
-        user_result = extract_data(response.json());
-        token = user_result["token"];
-
-        response = client.put(
-            "/user/password",
-            json={
-                "username": username,
-                "current_password": "oldpass",
-                "new_password": ""
-            },
-            headers={"Authorization": f"Bearer {token}"}
-        );
         assert response.status_code == 400;
 
-        # Test: username and password update flow (combined)
-        username = f"original_{uuid.uuid4().hex[:8]}";
-        response = client.post(
-            "/user/register", json={"username": username, "password": "oldpass"}
-        );
-        create_result = extract_data(response.json());
-        token = create_result["token"];
-        root_id = create_result["root_id"];
-
-        new_username = f"updated_{uuid.uuid4().hex[:8]}";
+        # Test: update password empty validation (Pydantic rejects empty strings)
+        username = f"emptypass_{uuid.uuid4().hex[:8]}";
+        token = register_and_get_token(client, username, "oldpass");
         response = client.put(
-            "/user/username",
-            json={"current_username": username, "new_username": new_username},
+            "/user/password",
+            json={"current_password": "oldpass", "new_password": ""},
             headers={"Authorization": f"Bearer {token}"}
         );
-        username_update = extract_data(response.json());
-        new_token = username_update["token"];
-        assert username_update["root_id"] == root_id;
+        assert response.status_code in (400, 422);
+
+        # Test: password update then login with new password
+        username = f"combined_{uuid.uuid4().hex[:8]}";
+        token = register_and_get_token(client, username, "oldpass");
+        login_result = do_login(client, username, "oldpass");
+        root_id = login_result["root_id"];
 
         response = client.put(
             "/user/password",
-            json={
-                "username": new_username,
-                "current_password": "oldpass",
-                "new_password": "newpass"
-            },
-            headers={"Authorization": f"Bearer {new_token}"}
+            json={"current_password": "oldpass", "new_password": "newpass"},
+            headers={"Authorization": f"Bearer {token}"}
         );
-        password_update = extract_data(response.json());
-        assert password_update["username"] == new_username;
+        assert "message" in extract_data(response.json());
 
-        response = client.post(
-            "/user/login", json={"username": new_username, "password": "newpass"}
-        );
-        login_result = extract_data(response.json());
-        assert login_result["username"] == new_username;
+        # New password works, old fails
+        login_result = do_login(client, username, "newpass");
         assert login_result["root_id"] == root_id;
 
-        # Old username should fail
-        old_username_response = client.post(
-            "/user/login", json={"username": username, "password": "newpass"}
-        );
-        assert old_username_response.status_code == 401;
-
-        # Old password should fail
-        old_password_response = client.post(
-            "/user/login", json={"username": new_username, "password": "oldpass"}
-        );
-        assert old_password_response.status_code == 401;
+        response = client.post("/user/login", json=login_payload(username, "oldpass"));
+        assert response.status_code == 401;
     } finally {
         client.close();
     }
@@ -1195,14 +1122,20 @@ test "websocket functionality" {
 
         response = requests.post(
             f"{sv_base_url}/user/register",
-            json={"username": username, "password": password},
+            json={
+                "identities": [{"type": "username", "value": username}],
+                "credential": {"type": "password", "password": password}
+            },
             timeout=10
         );
         assert response.status_code in (200, 201) , f"Failed to create user: {response.text}";
 
         response = requests.post(
             f"{sv_base_url}/user/login",
-            json={"username": username, "password": password},
+            json={
+                "identity": {"type": "username", "value": username},
+                "credential": {"type": "password", "password": password}
+            },
             timeout=10
         );
         assert response.status_code == 200 , f"Failed to login: {response.text}";
@@ -1231,14 +1164,20 @@ test "websocket functionality" {
         username = f"ws_query_user_{uuid.uuid4().hex[:8]}";
         response = requests.post(
             f"{sv_base_url}/user/register",
-            json={"username": username, "password": password},
+            json={
+                "identities": [{"type": "username", "value": username}],
+                "credential": {"type": "password", "password": password}
+            },
             timeout=10
         );
         assert response.status_code in (200, 201);
 
         response = requests.post(
             f"{sv_base_url}/user/login",
-            json={"username": username, "password": password},
+            json={
+                "identity": {"type": "username", "value": username},
+                "credential": {"type": "password", "password": password}
+            },
             timeout=10
         );
         assert response.status_code == 200;
@@ -1319,14 +1258,20 @@ test "websocket functionality" {
 
             response = requests.post(
                 f"{sv_base_url}/user/register",
-                json={"username": username, "password": password},
+                json={
+                    "identities": [{"type": "username", "value": username}],
+                    "credential": {"type": "password", "password": password}
+                },
                 timeout=10
             );
             assert response.status_code in (200, 201);
 
             response = requests.post(
                 f"{sv_base_url}/user/login",
-                json={"username": username, "password": password},
+                json={
+                    "identity": {"type": "username", "value": username},
+                    "credential": {"type": "password", "password": password}
+                },
                 timeout=10
             );
             assert response.status_code == 200;
@@ -1475,13 +1420,25 @@ test "dev mode operations" {
     sp = setup_dev_mode_server();
     try {
         # Test: dev mode walker body parsing
+        devtest_user = f"devtest_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
-            json={"username": f"devtest_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={
+                "identities": [{"type": "username", "value": devtest_user}],
+                "credential": {"type": "password", "password": "pass"}
+            },
             timeout=10
         );
         assert register_response.status_code == 201;
-        token = _extract_data_dev(register_response.json())["token"];
+        login_response = requests.post(
+            f"{dm_base_url}/user/login",
+            json={
+                "identity": {"type": "username", "value": devtest_user},
+                "credential": {"type": "password", "password": "pass"}
+            },
+            timeout=10
+        );
+        token = _extract_data_dev(login_response.json())["token"];
 
         response = requests.post(
             f"{dm_base_url}/walker/CreateTask",
@@ -1497,13 +1454,25 @@ test "dev mode operations" {
         assert "result" in data or "reports" in data , f"Unexpected response: {data}";
 
         # Test: dev mode function body parsing
+        devfunc_user = f"devfunc_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
-            json={"username": f"devfunc_{uuid.uuid4().hex[:8]}", "password": "pass"},
+            json={
+                "identities": [{"type": "username", "value": devfunc_user}],
+                "credential": {"type": "password", "password": "pass"}
+            },
             timeout=10
         );
         assert register_response.status_code == 201;
-        token = _extract_data_dev(register_response.json())["token"];
+        login_response = requests.post(
+            f"{dm_base_url}/user/login",
+            json={
+                "identity": {"type": "username", "value": devfunc_user},
+                "credential": {"type": "password", "password": "pass"}
+            },
+            timeout=10
+        );
+        token = _extract_data_dev(login_response.json())["token"];
 
         response = requests.post(
             f"{dm_base_url}/function/add_numbers",
@@ -1540,11 +1509,22 @@ test "dev mode operations" {
         username = f"asyncuser_{uuid.uuid4().hex[:8]}";
         register_response = requests.post(
             f"{dm_base_url}/user/register",
-            json={"username": username, "password": "password123"},
+            json={
+                "identities": [{"type": "username", "value": username}],
+                "credential": {"type": "password", "password": "password123"}
+            },
             timeout=10
         );
         assert register_response.status_code == 201;
-        token = _extract_data_dev(register_response.json())["token"];
+        login_response = requests.post(
+            f"{dm_base_url}/user/login",
+            json={
+                "identity": {"type": "username", "value": username},
+                "credential": {"type": "password", "password": "password123"}
+            },
+            timeout=10
+        );
+        token = _extract_data_dev(login_response.json())["token"];
 
         response = requests.post(
             f"{dm_base_url}/walker/AsyncCreateTask",
@@ -1946,7 +1926,7 @@ theme_color = "#000000"
                     resp = requests.post(
                         f"http://127.0.0.1:{port}/user/login", json={}, timeout=2
                     );
-                    if resp.status_code == 422 {
+                    if resp.status_code in [400, 422] {
                         return;  # Test passed — jac-scale's FastAPI is running
 
                     }
@@ -1968,5 +1948,98 @@ theme_color = "#000000"
                 server.kill();
             }
         }
+    }
+}
+
+# =============================================================================
+# GROUP 8: JWT MIDDLEWARE
+# =============================================================================
+test "jwt middleware: per-user isolation and token rejection" {
+    client = make_client();
+    try {
+        def reg(name: str) -> str {
+            r = client.post(
+                "/user/register",
+                json={
+                    "identities": [{"type": "username", "value": name}],
+                    "credential": {"type": "password", "password": "Pass!99"}
+                }
+            );
+            assert r.status_code == 201;
+            login = client.post(
+                "/user/login",
+                json={
+                    "identity": {"type": "username", "value": name},
+                    "credential": {"type": "password", "password": "Pass!99"}
+                }
+            );
+            assert login.status_code == 200;
+            return extract_data(login.json())["token"];
+        }
+        def task_titles(tok: str) -> set[str] {
+            r = client.post(
+                "/walker/ListTasks",
+                json={},
+                headers={"Authorization": f"Bearer {tok}"}
+            );
+            assert r.status_code == 200;
+            raw = extract_data(r.json())["reports"][0];
+            items = raw if isinstance(raw, list) else [raw];
+            return {
+                t.get("title") or t.get("context", {}).get("title")
+                for t in items
+                if isinstance(t, dict)
+            };
+        }
+
+        tok_a = reg(f"alice_{uuid.uuid4().hex[:6]}");
+        tok_b = reg(f"bob_{uuid.uuid4().hex[:6]}");
+
+        for (tok, title) in [(tok_a, "task_alice"), (tok_b, "task_bob")] {
+            r = client.post(
+                "/walker/CreateTask",
+                json={"title": title, "priority": 1},
+                headers={"Authorization": f"Bearer {tok}"}
+            );
+            assert r.status_code == 200 , f"CreateTask failed for {title}: {r.text}";
+        }
+
+        assert task_titles(tok_a) == {"task_alice"} , f"Isolation failure: {task_titles(
+            tok_a
+        )}";
+        assert task_titles(tok_b) == {"task_bob"} , f"Isolation failure: {task_titles(
+            tok_b
+        )}";
+
+        forged = pyjwt.encode(
+            {"username": "x", "exp": datetime.now(UTC) + timedelta(hours=1)},
+            "wrong_key",
+            algorithm="HS256"
+        );
+        bad_token_cases = [
+            ({"Authorization": f"Bearer {forged}"}, "forged secret"),
+            ({"Authorization": f"Bearer {_create_expired_token('x')}"}, "expired"),
+            ({"Authorization": "Bearer not.a.jwt"}, "malformed"),
+
+        ];
+
+        # Bad tokens must be rejected on auth-required endpoints.
+        for (hdrs, label) in bad_token_cases {
+            r = client.post("/walker/CreateTask", json={"title": "x"}, headers=hdrs);
+            assert r.status_code == 401 , f"{label} on auth endpoint: expected 401, got {r.status_code}";
+        }
+
+        # No token on auth-required endpoint must also be rejected.
+        r = client.post("/walker/CreateTask", json={"title": "x"});
+        assert r.status_code == 401 , f"no token on auth endpoint: expected 401, got {r.status_code}";
+
+        for (hdrs, label) in bad_token_cases {
+            r = client.post("/walker/PublicInfo", json={}, headers=hdrs);
+            assert r.status_code == 401 , f"{label} on public endpoint: expected 401, got {r.status_code}";
+        }
+        # No token on a public endpoint must still work (anonymous access).
+        assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "public endpoint broken for anonymous requests";
+    } finally {
+        client.close();
     }
 }

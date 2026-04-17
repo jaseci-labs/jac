@@ -196,9 +196,7 @@ impl Anchor.`report -> AnchorReport {
     return AnchorReport(
         id=self.id.hex,
         context=asdict(self.archetype)
-            if (
-                is_dataclass(self.archetype) and not isinstance(self.archetype, `type)
-            )
+            if (is_dataclass(self.archetype) and not isinstance(self.archetype, `type))
             else {}
     );
 }

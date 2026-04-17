@@ -44,7 +44,13 @@ cl {
             }
         }
 
-        useEffect(lambda { loadUsers();loadSSO();}, []);
+        useEffect(
+            lambda {
+                loadUsers();
+                loadSSO();
+            },
+            []
+        );
 
         async def handleCreate(username: str, password: str, role: str) -> dict {
             result = await createUser(username, password, role, auth["authToken"]);

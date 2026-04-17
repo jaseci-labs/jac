@@ -30,7 +30,7 @@ def examples_path(path: str) -> str {
     return os.path.join(EXAMPLES, path);
 }
 
-def _assert_error_pretty_found(needle: str, haystack: str) -> None {
+def _assert_error_pretty_found(needle: str, haystack: str) {
     for line in [
         line.strip()
         for line in needle.splitlines()
@@ -91,19 +91,19 @@ def _capture_output -> tuple {
 }
 
 """Restore original stdout/stderr."""
-def _restore_output(old_stdout: object, old_stderr: object) -> None {
+def _restore_output(old_stdout: object, old_stderr: object) {
     sys.stdout = old_stdout;
     sys.stderr = old_stderr;
 }
 
 """Reset the global config cache to force rediscovery."""
-def _reset_config -> None {
+def _reset_config {
     import from jaclang.project { config as config_module }
     config_module._config = None;
 }
 
 """Ensure template registry is initialized once."""
-def _ensure_template_registry -> None {
+def _ensure_template_registry {
     initialized = _template_state.get("initialized", False);
     if not initialized {
         import from jaclang.project.template_registry { initialize_template_registry }
@@ -905,6 +905,57 @@ test "format tracks changed files" {
         combined_output = stdout + stderr;
         assert "2/2" in combined_output;
         assert "(1 changed)" in combined_output;
+    }
+}
+
+test "format -s preserves bracketed Jac syntax through Rich console" {
+    # Regression: `jac format -s` prints formatted source via `console.print`.
+    # Under the jac-super (Rich-backed) console — which is what real users see
+    # when they run the `jac` CLI — bracketed Jac syntax like `[root()-->]` or
+    # `todos + [t]` looks like Rich markup and gets silently stripped unless
+    # the call passes `markup=False, highlight=False`. This test must invoke
+    # the `jac` binary via subprocess so that the jac-super plugin's console
+    # is installed (calling `analysis.format` from inside pytest hits the
+    # plain JacConsole and would not catch the regression).
+    with tempfile.TemporaryDirectory() as tmpdir {
+        src_path = os.path.join(tmpdir, "brackets.jac");
+        # Deliberately unformatted so --to_screen has something to print.
+        src = (
+            "node Todo { has title: str; }\n"
+            "with entry {\n"
+            "    t: Todo = Todo(title=\"x\");\n"
+            "    todos: list[Todo] = [];\n"
+            "    todos = todos + [t];\n"
+            "    ancestors = [root()-->];\n"
+            "}\n"
+        );
+        with open(src_path, "w") as f {
+            f.write(src);
+        }
+        process = subprocess.Popen(
+            ["jac", "format", "-s", src_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True
+        );
+        (stdout, stderr) = process.communicate();
+        combined = stdout + stderr;
+        # Both bracket forms must appear verbatim in the -s output. If Rich
+        # markup interpretation ever leaks back in, these get stripped
+        # (producing `todos = todos + ;` and `ancestors = ;`) and this test
+        # fails loudly.
+        assert "[root()-->]" in combined , (
+            f"edge-walk literal was stripped by Rich markup parser:\n{combined}"
+        );
+        assert "+ [t]" in combined , (
+            f"list literal RHS was stripped by Rich markup parser:\n{combined}"
+        );
+        # Sanity check: the file on disk must be unchanged under --to_screen.
+        with open(src_path) as f {
+            assert f.read() == src , (
+                "jac format -s must not write back to the source file"
+            );
+        }
     }
 }
 

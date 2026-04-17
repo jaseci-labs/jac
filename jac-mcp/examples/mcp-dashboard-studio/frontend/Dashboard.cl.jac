@@ -139,7 +139,9 @@ def:pub DashboardPage -> JsxElement {
                             className="flex-1 bg-transparent px-4 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none"
                         />
                         <button
-                            onClick={lambda { runTool("search_docs", {"query": query});}}
+                            onClick={lambda { runTool(
+                                "search_docs", {"query": query}
+                            );}}
                             disabled={loading != "" or not connected}
                             className={"px-5 py-2 text-sm rounded-xl font-medium transition disabled:opacity-30 disabled:cursor-not-allowed " + (
                                 "bg-orange-500/80 animate-pulse text-white"
@@ -298,9 +300,7 @@ def:pub DashboardPage -> JsxElement {
                     >
                         <div className={panelCls}>
                             <div className="flex items-center justify-between">
-                                <div className={sectionLabel}>
-                                    Python to Jac
-                                </div>
+                                <div className={sectionLabel}>Python to Jac</div>
                                 <button
                                     onClick={lambda { runTool(
                                         "py_to_jac", {"code": python_input}
@@ -337,11 +337,15 @@ def:pub DashboardPage -> JsxElement {
                                         Converted Jac
                                     </span>
                                     <button
-                                        onClick={lambda { navigator.clipboard.writeText(
-                                            current_result["data"]["jac_code"]
-                                        );jac_copied = True;setTimeout(
-                                            lambda { jac_copied = False;}, 2000
-                                        );}}
+                                        onClick={lambda {
+                                            navigator.clipboard.writeText(
+                                                current_result["data"]["jac_code"]
+                                            );
+                                            jac_copied = True;
+                                            setTimeout(
+                                                lambda { jac_copied = False;}, 2000
+                                            );
+                                        }}
                                         className={"px-2 py-1 text-[9px] rounded-md border transition " + (
                                             "bg-green-500/20 border-green-500/40 text-green-400"
                                                 if jac_copied
@@ -378,9 +382,7 @@ def:pub DashboardPage -> JsxElement {
                         </div>
                         <div className={panelCls}>
                             <div className="flex items-center justify-between">
-                                <div className={sectionLabel}>
-                                    Explain Error
-                                </div>
+                                <div className={sectionLabel}>Explain Error</div>
                             </div>
                             <input
                                 type="text"
@@ -402,9 +404,7 @@ def:pub DashboardPage -> JsxElement {
                             </button>
                         </div>
                         <div className={panelCls}>
-                            <div className={sectionLabel}>
-                                Examples
-                            </div>
+                            <div className={sectionLabel}>Examples</div>
                             <button
                                 onClick={lambda { runTool("list_examples", {});}}
                                 disabled={loading != "" or not connected}
@@ -443,9 +443,7 @@ def:pub DashboardPage -> JsxElement {
                     <div className="space-y-4 xl:sticky xl:top-6">
                         <div className={panelCls}>
                             <div className="flex items-center justify-between">
-                                <div className={sectionLabel}>
-                                    Output
-                                </div>
+                                <div className={sectionLabel}>Output</div>
                                 <div className="flex items-center gap-2">
                                     {loading != ""
                                     and <span

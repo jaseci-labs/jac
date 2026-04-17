@@ -64,7 +64,9 @@ impl SymTabBuildPass.exit_module(self: SymTabBuildPass, nd: uni.Module) -> None 
     self.pop_scope();
 }
 
-impl SymTabBuildPass.enter_type_alias(self: SymTabBuildPass, nd: uni.TypeAlias) -> None {
+impl SymTabBuildPass.enter_type_alias(
+    self: SymTabBuildPass, nd: uni.TypeAlias
+) -> None {
     self.push_scope_and_link(nd);
     assert (nd.parent_scope is not None);
     nd.parent_scope.def_insert(nd, access_spec=nd, single_decl='type_alias');
@@ -74,7 +76,9 @@ impl SymTabBuildPass.exit_type_alias(self: SymTabBuildPass, nd: uni.TypeAlias) -
     self.pop_scope();
 }
 
-impl SymTabBuildPass.enter_type_param(self: SymTabBuildPass, nd: uni.TypeParam) -> None {
+impl SymTabBuildPass.enter_type_param(
+    self: SymTabBuildPass, nd: uni.TypeParam
+) -> None {
     if nd.sym_tab is not None {
         nd.sym_tab.def_insert(nd, single_decl='type_param');
     }
@@ -96,19 +100,19 @@ impl SymTabBuildPass.exit_global_vars(
     }
 }
 
-impl SymTabBuildPass.exit_assignment(self: SymTabBuildPass, nd: uni.Assignment) -> None {
+impl SymTabBuildPass.exit_assignment(
+    self: SymTabBuildPass, nd: uni.Assignment
+) -> None {
     import from jaclang.jac0core.constant { SymbolType }
     for i in nd.target {
         if isinstance(i, uni.AstSymbolNode) {
             if isinstance(i, (uni.ListVal, uni.TupleVal)) {
-                self._def_insert_unpacking(i, i.sym_tab);
+                self._def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
             } elif ((sym := i.sym_tab.lookup(i.sym_name, deep=False)) is not None) {
                 sym.add_use(i.name_spec);
             } elif (
                 (nd.type_tag is None)
-                and (
-                    (outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None
-                )
+                and ((outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None)
                 and outer_has.sym_type == SymbolType.HAS_VAR
                 and isinstance(outer_has.parent_tab, uni.Ability)
             ) {
@@ -198,7 +202,9 @@ impl SymTabBuildPass.exit_test(self: SymTabBuildPass, nd: uni.Test) -> None {
     self.pop_scope();
 }
 
-impl SymTabBuildPass._exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) -> None {
+impl SymTabBuildPass._exit_import_absorb(
+    self: SymTabBuildPass, nd: uni.Import
+) -> None {
     sym_table_to_update = self.find_python_scope_node_of(nd);
     if (sym_table_to_update is None) {
         return;
@@ -559,20 +565,53 @@ impl SymTabBuildPass.exit_iter_for_stmt(
     self.pop_scope();
 }
 
-"""Recursively define symbols in unpacking expressions."""
+"""Recursively define symbols in unpacking expressions.
+
+The two call sites want different scoping:
+
+- `for (x, y) in items:` binds `x` and `y` in the for-loop's own
+  scope. This is Jac-specific (Python has no loop scopes) but the
+  symbol table and test suite depend on it.
+- `(x, y) = f()` as a statement must rebind an existing local
+  when one is in scope, otherwise bind in the nearest Python
+  scope — same Python-semantics path that plain assignments use.
+  Without this, unpack targets shadow the parameter they should
+  be writing, and the narrowing engine can't see the assignment
+  as a barrier.
+
+`rebind_in_python_scope=True` selects the second behavior.
+"""
 impl SymTabBuildPass._def_insert_unpacking(
-    self: SymTabBuildPass, nd: uni.Expr, sym_tab: UniScopeNode
+    self: SymTabBuildPass,
+    nd: uni.Expr,
+    sym_tab: UniScopeNode,
+    rebind_in_python_scope: bool = False
 ) -> None {
     if isinstance(nd, uni.Name) {
+        if rebind_in_python_scope {
+            if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
+                existing.add_use(nd.name_spec);
+                return;
+            }
+            py_scope = self.find_python_scope_node_of(nd);
+            if py_scope is not None {
+                if ((outer := py_scope.lookup(nd.sym_name, deep=False)) is not None) {
+                    outer.add_use(nd.name_spec);
+                } else {
+                    py_scope.def_insert(nd, single_decl='local var');
+                }
+                return;
+            }
+        }
         sym_tab.def_insert(nd, single_decl='iterator');
     } elif isinstance(nd, (uni.TupleVal, uni.ListVal)) {
         for target_var in nd.values {
             if isinstance(target_var, uni.Expr) {
-                self._def_insert_unpacking(target_var, sym_tab);
+                self._def_insert_unpacking(target_var, sym_tab, rebind_in_python_scope);
             }
         }
     } elif (isinstance(nd, uni.UnaryExpr) and (nd.op.name == Tokens.STAR_MUL)) {
-        self._def_insert_unpacking(nd.operand, sym_tab);
+        self._def_insert_unpacking(nd.operand, sym_tab, rebind_in_python_scope);
     }
 }
 
@@ -583,11 +622,15 @@ impl SymTabBuildPass.enter_in_for_stmt(
     self._def_insert_unpacking(nd.target, nd.sym_tab);
 }
 
-impl SymTabBuildPass.exit_in_for_stmt(self: SymTabBuildPass, nd: uni.InForStmt) -> None {
+impl SymTabBuildPass.exit_in_for_stmt(
+    self: SymTabBuildPass, nd: uni.InForStmt
+) -> None {
     self.pop_scope();
 }
 
-impl SymTabBuildPass.enter_while_stmt(self: SymTabBuildPass, nd: uni.WhileStmt) -> None {
+impl SymTabBuildPass.enter_while_stmt(
+    self: SymTabBuildPass, nd: uni.WhileStmt
+) -> None {
     self.push_scope_and_link(nd);
 }
 
@@ -623,7 +666,9 @@ impl SymTabBuildPass.exit_lambda_expr(
     self.pop_scope();
 }
 
-impl SymTabBuildPass.enter_list_compr(self: SymTabBuildPass, nd: uni.ListCompr) -> None {
+impl SymTabBuildPass.enter_list_compr(
+    self: SymTabBuildPass, nd: uni.ListCompr
+) -> None {
     self.push_scope_and_link(nd);
     for i in nd.compr {
         self._def_insert_unpacking(i.target, nd.sym_tab);
@@ -656,7 +701,9 @@ impl SymTabBuildPass.exit_gen_compr(self: SymTabBuildPass, nd: uni.GenCompr) -> 
     self.pop_scope();
 }
 
-impl SymTabBuildPass.enter_dict_compr(self: SymTabBuildPass, nd: uni.DictCompr) -> None {
+impl SymTabBuildPass.enter_dict_compr(
+    self: SymTabBuildPass, nd: uni.DictCompr
+) -> None {
     self.push_scope_and_link(nd);
     for i in nd.compr {
         self._def_insert_unpacking(i.target, nd.sym_tab);
@@ -679,7 +726,9 @@ impl SymTabBuildPass.exit_inner_compr(
     self.pop_scope();
 }
 
-impl SymTabBuildPass.enter_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None {
+impl SymTabBuildPass.enter_match_case(
+    self: SymTabBuildPass, nd: uni.MatchCase
+) -> None {
     self.push_scope_and_link(nd);
 }
 
