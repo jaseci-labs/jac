@@ -321,10 +321,9 @@ def readAllEntries(reader: Any) -> Any {
 ### Debounced Auto-Save
 
 ```jac
-import from typing { Any }
 import from react { useRef }
 
-def:pub useAutoSave() -> Any {
+def:pub useAutoSave() -> any {
     timerRef = useRef(None);
 
     def save(path: str, content: str) -> None {
@@ -353,15 +352,14 @@ def:pub useAutoSave() -> Any {
 ### requestAnimationFrame for Smooth UI
 
 ```jac
-import from typing { Any }
 import from react { useRef }
 
-def:pub useDrag() -> Any {
+def:pub useDrag() -> any {
     isDraggingRef = useRef(False);
     rafRef = useRef(None);
     lastXRef = useRef(0);
 
-    def onMouseMove(e: Any) -> None {
+    def onMouseMove(e: any) -> None {
         if not isDraggingRef.current { return; }
         lastXRef.current = e.clientX;
 
@@ -420,13 +418,12 @@ def handleError(context: str, err: Any) -> None {
 ### Preventing Duplicate Operations
 
 ```jac
-import from typing { Any }
 import from react { useRef }
 
-def:pub useSafeSubmit() -> Any {
+def:pub useSafeSubmit() -> any {
     sendingRef = useRef(False);
 
-    async def submit(data: Any) -> Any {
+    async def submit(data: any) -> any {
         if sendingRef.current {
             console.warn("[submit] Already in progress, skipping");
             return None;
@@ -514,11 +511,11 @@ myapp/
 Extract reusable stateful logic into custom hooks (functions starting with `use`):
 
 ```jac
-import from typing { Any }
+
 # hooks/usePolling.cl.jac
 import from react { useRef, useEffect }
 
-def:pub usePolling(callback: Any, intervalMs: int, enabled: bool) -> None {
+def:pub usePolling(callback: any, intervalMs: int, enabled: bool) -> None {
     timerRef = useRef(None);
     callbackRef = useRef(callback);
     callbackRef.current = callback;
