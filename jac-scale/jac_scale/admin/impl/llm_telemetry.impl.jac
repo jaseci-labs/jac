@@ -19,6 +19,165 @@ import json as json_module;
 
 glob logger = logging.getLogger(__name__);
 
+"""Initialize JacUserRateLimiter with Redis client, MongoDB collection, and config dict."""
+impl JacUserRateLimiter.init(
+    self: JacUserRateLimiter, rc: Any, col: Any, cfg: dict
+) -> None {
+    self.rc = rc;
+    self.col = col;
+    self.rpm = cfg.get('rpm');
+    self.rpd = cfg.get('rpd');
+    self.tpm = cfg.get('tpm');
+    self.tpd = cfg.get('tpd');
+    self.daily_budget = cfg.get('daily_budget_usd');
+    self.monthly_budget = cfg.get('monthly_budget_usd');
+}
+
+"""Atomically increment a Redis counter and raise if the limit is exceeded."""
+impl JacUserRateLimiter._check_and_incr(
+    self: JacUserRateLimiter, key: str, limit: int, ttl: int
+) -> None {
+    count = self.rc.incr(key);
+    if count == 1 {
+        self.rc.expire(key, ttl);
+    }
+    if count > limit {
+        raise Exception("LLM rate limit exceeded. Retry after window resets.");
+    }
+}
+
+"""Return cumulative cost for a user in the given period.
+
+Checks Redis cache first; on miss aggregates from MongoDB and populates the cache.
+"""
+impl JacUserRateLimiter._get_budget_spent(
+    self: JacUserRateLimiter, username: str, period: str, cache_key: str, ttl: int
+) -> float {
+    cached = self.rc.get(cache_key) if self.rc else None;
+    if cached is not None {
+        return float(cached);
+    }
+    if not self.col {
+        return 0.0;
+    }
+    import from datetime { datetime, timezone }
+    now = datetime.now(timezone.utc);
+    if period == 'day' {
+        since = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp();
+    } else {
+        since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp();
+    }
+    result = list(self.col.aggregate([
+        {'$match': {'username': username, 'ts': {'$gte': since}}},
+        {'$group': {'_id': None, 'total': {'$sum': '$cost_usd'}}}
+    ]));
+    spent = float(result[0]['total']) if result else 0.0;
+    if self.rc {
+        self.rc.set(cache_key, spent, ex=ttl);
+    }
+    return spent;
+}
+
+"""Check all configured limits for a user before an LLM call. Raises on violation."""
+impl JacUserRateLimiter.check_pre_call(
+    self: JacUserRateLimiter, username: str
+) -> None {
+    if not self.rc {
+        return;
+    }
+    import time as _time;
+    import from datetime { date, datetime, timezone }
+    ts = int(_time.time());
+    min_bucket = ts // 60;
+
+    if self.rpm {
+        self._check_and_incr(f"llm:rpm:{username}:{min_bucket}", int(self.rpm), 120);
+    }
+    if self.rpd {
+        self._check_and_incr(f"llm:rpd:{username}:{ts // 86400}", int(self.rpd), 172800);
+    }
+    if self.tpm {
+        current = int(self.rc.get(f"llm:tpm:{username}:{min_bucket}") or 0);
+        if current >= int(self.tpm) {
+            raise Exception("LLM token-per-minute limit exceeded. Retry next minute.");
+        }
+    }
+    if self.tpd {
+        current = int(self.rc.get(f"llm:tpd:{username}:{ts // 86400}") or 0);
+        if current >= int(self.tpd) {
+            raise Exception("LLM token-per-day limit exceeded. Retry tomorrow.");
+        }
+    }
+    if self.daily_budget {
+        today = str(date.today());
+        spent = self._get_budget_spent(username, 'day', f"llm:budget_daily:{username}:{today}", 60);
+        if spent >= float(self.daily_budget) {
+            raise Exception(f"Daily LLM budget of ${self.daily_budget} exceeded.");
+        }
+    }
+    if self.monthly_budget {
+        ym = datetime.now(timezone.utc).strftime('%Y-%m');
+        spent = self._get_budget_spent(username, 'month', f"llm:budget_monthly:{username}:{ym}", 60);
+        if spent >= float(self.monthly_budget) {
+            raise Exception(f"Monthly LLM budget of ${self.monthly_budget} exceeded.");
+        }
+    }
+}
+
+"""Record a successful LLM call: update Redis counters and write persistent MongoDB log."""
+impl JacUserRateLimiter.record_success(
+    self: JacUserRateLimiter, username: str, tokens: int, cost_usd: float, model: str
+) -> None {
+    import time as _time;
+    import from datetime { date, datetime, timezone }
+    ts = _time.time();
+    ts_int = int(ts);
+    min_bucket = ts_int // 60;
+
+    if self.rc {
+        if tokens > 0 {
+            if self.tpm {
+                pipe = self.rc.pipeline();
+                pipe.incrby(f"llm:tpm:{username}:{min_bucket}", tokens);
+                pipe.expire(f"llm:tpm:{username}:{min_bucket}", 120);
+                pipe.execute();
+            }
+            if self.tpd {
+                pipe = self.rc.pipeline();
+                pipe.incrby(f"llm:tpd:{username}:{ts_int // 86400}", tokens);
+                pipe.expire(f"llm:tpd:{username}:{ts_int // 86400}", 172800);
+                pipe.execute();
+            }
+        }
+        if cost_usd > 0 {
+            if self.daily_budget {
+                today = str(date.today());
+                pipe = self.rc.pipeline();
+                pipe.incrbyfloat(f"llm:budget_daily:{username}:{today}", cost_usd);
+                pipe.expire(f"llm:budget_daily:{username}:{today}", 90000);
+                pipe.execute();
+            }
+            if self.monthly_budget {
+                ym = datetime.now(timezone.utc).strftime('%Y-%m');
+                pipe = self.rc.pipeline();
+                pipe.incrbyfloat(f"llm:budget_monthly:{username}:{ym}", cost_usd);
+                pipe.expire(f"llm:budget_monthly:{username}:{ym}", 2678400);
+                pipe.execute();
+            }
+        }
+    }
+
+    if self.col {
+        self.col.insert_one({
+            'username': username,
+            'ts': ts,
+            'model': model,
+            'tokens': tokens,
+            'cost_usd': cost_usd
+        });
+    }
+}
+
 
 obj LLMCallRecord {
     """Record for a single LLM API call within an agent invocation."""
@@ -670,6 +829,103 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
         logger.info("LLM telemetry: litellm not available, skipping litellm callback");
     } except Exception as e {
         logger.warning(f"LLM telemetry: failed to register litellm callback: {e}");
+    }
+
+    # --- Register LLM per-user rate limiting ---
+    try {
+        import litellm;
+        import from litellm.integrations.custom_logger { CustomLogger }
+        import from jac_scale.config_loader { get_scale_config }
+        import from jaclang.jac0core.runtime { JacRuntimeInterface }
+
+        limits_cfg = get_scale_config().get_llm_limits_config();
+        if limits_cfg.get('enabled', False) {
+            db_cfg = get_scale_config().get_database_config();
+            redis_url = db_cfg.get('redis_url');
+            _redis_client = None;
+            if redis_url {
+                try {
+                    import redis as _redis_mod;
+                    _redis_client = _redis_mod.from_url(redis_url);
+                } except Exception as e {
+                    logger.warning(f"LLM rate limiting: Redis unavailable, limiting disabled: {e}");
+                }
+            }
+
+            _mongo_col = None;
+            try {
+                import from jac_scale.db { get_mongo_client }
+                _mongo_col = get_mongo_client()['jac_scale']['llm_usage'];
+                _mongo_col.create_index([('username', 1), ('ts', 1)]);
+            } except Exception as e {
+                logger.warning(f"LLM rate limiting: MongoDB unavailable, budget limiting disabled: {e}");
+            }
+
+            rl = JacUserRateLimiter(_redis_client, _mongo_col, limits_cfg);
+
+            # Expose instance so tests can access it via sys.modules
+            import sys as _sys;
+            _llm_mod = _sys.modules.get('jac_scale.admin.llm_telemetry');
+            if _llm_mod {
+                setattr(_llm_mod, '_rate_limiter_instance', rl);
+            }
+
+            # Thin litellm adapter — context lookup + delegation to pure-logic class
+            class _LiteLLMRateLimitAdapter(CustomLogger) {
+                def init(self: _LiteLLMRateLimitAdapter, rate_limiter: Any) {
+                    self.rl = rate_limiter;
+                    CustomLogger.__init__(self);
+                }
+
+                def log_pre_api_call(
+                    self: _LiteLLMRateLimitAdapter, model: Any, messages: Any, kwargs: Any
+                ) -> None {
+                    try {
+                        ctx = JacRuntimeInterface.get_context();
+                        username = getattr(ctx, 'username', None);
+                        if username {
+                            self.rl.check_pre_call(username);
+                        }
+                    } except Exception as e {
+                        if 'limit exceeded' in str(e).lower() or 'budget' in str(e).lower() {
+                            raise;
+                        }
+                        logger.warning(f"LLM rate limiting: pre-call check error: {e}");
+                    }
+                }
+
+                def log_success_event(
+                    self: _LiteLLMRateLimitAdapter,
+                    kwargs: Any,
+                    response_obj: Any,
+                    start_time: Any,
+                    end_time: Any
+                ) -> None {
+                    try {
+                        ctx = JacRuntimeInterface.get_context();
+                        username = getattr(ctx, 'username', None);
+                        if username {
+                            slp = kwargs.get("standard_logging_object", {}) or {};
+                            self.rl.record_success(
+                                username,
+                                int(slp.get("total_tokens") or 0),
+                                float(slp.get("response_cost") or 0.0),
+                                slp.get("model") or kwargs.get("model", "")
+                            );
+                        }
+                    } except Exception as e {
+                        logger.warning(f"LLM rate limiting: post-call tracking error: {e}");
+                    }
+                }
+            }
+
+            litellm.callbacks.append(_LiteLLMRateLimitAdapter(rl));
+            logger.info("LLM rate limiting: per-user limiter registered");
+        }
+    } except ImportError {
+        logger.info("LLM rate limiting: litellm not available, skipping");
+    } except Exception as e {
+        logger.warning(f"LLM rate limiting: setup failed: {e}");
     }
 
     # --- Register byllm agent callback ---
