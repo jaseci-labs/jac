@@ -745,7 +745,7 @@ def _generate_platform_icons(icons_dir: Path) -> None {
         _generate_icons_with_pillow(icons_dir, Image);
         return;
     } except ImportError {
-        pass;
+        # Pillow not in this process; try subprocess fallback.
     } except Exception as e {
         console.warning(f"  Icon generation error: {e}");
     }
