@@ -107,6 +107,85 @@ Cross-compilation has the same caveats as any Rust+Tauri project: targeting macO
 
 ---
 
+## CI Builds (GitHub Actions)
+
+For releases, build on hosted runners so each installer is produced on a clean matching OS -- no cross-compilation quirks, no "works on my machine." The repo ships a reference workflow at [`.github/workflows/build-desktop.yml`](https://github.com/jaseci-labs/jaseci/blob/main/.github/workflows/build-desktop.yml) that builds the `all-in-one` example on Windows, macOS, and Linux in parallel. Copy it into your own repo and adjust the `EXAMPLE_DIR` and `Install Jac packages` step to match your project.
+
+### The Matrix
+
+```yaml
+strategy:
+  fail-fast: false
+  matrix:
+    include:
+      - os: windows-latest
+        platform: windows
+      - os: macos-latest
+        platform: macos
+      - os: ubuntu-22.04
+        platform: linux
+```
+
+`fail-fast: false` keeps the other platforms building when one fails -- useful when a regression only hits one OS.
+
+`ubuntu-22.04` (not `ubuntu-latest`) is deliberate. AppImages built against a newer GLIBC won't run on older Linux distributions; pinning to 22.04 keeps installers compatible with most distros from 2022 onward.
+
+### What Each Step Does
+
+**Install Linux system deps** (Linux job only). Tauri v2 on Linux needs `libwebkit2gtk-4.1`, GTK3, and libsoup3. The reference workflow also installs `patchelf` and `libfuse2` for AppImage generation.
+
+**Install Rust** via `dtolnay/rust-toolchain@stable`. Not pre-installed on GitHub runners.
+
+**Cache Cargo registry** keyed on `Cargo.lock`. Saves ~2 minutes on warm runs; invalidates when dependencies change. Note the reference workflow deliberately does **not** cache `src-tauri/target/` -- a stale target cache can cause `jac setup desktop` to skip regeneration and ship an outdated config.
+
+**Install Python + Jac packages.** The reference workflow does editable installs of `./jac`, `./jac-client`, and `./jac-scale` because it builds the monorepo's own example. For your own app, `pip install jaseci jac-client` from PyPI is simpler.
+
+**Install Bun** (`oven-sh/setup-bun@v2`). jac-client uses bun for npm installs and Vite builds.
+
+**Install Tauri CLI.** Tries `cargo-binstall` first (pre-built binary, ~10s); falls back to `cargo install --locked` (~8 min).
+
+**`jac setup desktop`.** The workflow removes any pre-existing `src-tauri/` before running this so setup doesn't skip thinking scaffolding is already in place.
+
+**Disable AppImage on Linux.** The reference workflow patches `tauri.conf.json` to build only `deb` + `rpm` on Linux. AppImage bundling uses `linuxdeploy`, which needs FUSE; GitHub runners don't provide FUSE, and the `APPIMAGE_EXTRACT_AND_RUN=1` / `NO_STRIP=true` workaround adds enough flakiness that it's simpler to skip AppImage in CI and produce it locally or on a self-hosted runner.
+
+**Build.** `jac build --client desktop --platform <platform>` with `JAC_BUILD=1` set and a generous `timeout-minutes: 90` -- the first Rust build exceeds the default 60-minute runner timeout on a cold cache.
+
+**Upload artifacts.** Per-platform installers upload with `actions/upload-artifact@v4` and a 14-day retention. Filter on `*.exe`, `*.msi`, `*.dmg`, `*.deb`, `*.rpm`, (`*.AppImage` if enabled) so build intermediates don't get uploaded.
+
+### Adapting the Workflow
+
+Two fields usually need changing:
+
+```yaml
+env:
+  EXAMPLE_DIR: path/to/your/app      # (1) where your jac.toml lives
+
+# ...
+
+- name: Install Jac packages
+  run: |
+    pip install jaseci jac-client    # (2) release wheels instead of editable
+    pip install pyinstaller Pillow
+```
+
+1. Point `EXAMPLE_DIR` at the folder containing your `jac.toml` and `main.jac`.
+2. Unless you're working inside the jaseci monorepo, install from PyPI rather than editable from source.
+
+### Triggering
+
+The reference workflow uses `workflow_dispatch` -- "Run workflow" button in the Actions tab. For release flows, add a tag trigger:
+
+```yaml
+on:
+  push:
+    tags: ['v*']          # build on every version tag
+  workflow_dispatch:      # keep the manual button too
+```
+
+Pair this with a release job that downloads the artifacts and attaches them to a GitHub Release.
+
+---
+
 ## Choosing Which Plugins to Bundle
 
 By default the sidecar bundles four Jac plugins: **jac-scale** (FastAPI server, auth, persistence), **byllm** (LLM provider integration), **jac-coder**, and **jac-mcp**. If your app doesn't use one of them, drop it from the bundle to shrink the installer:
