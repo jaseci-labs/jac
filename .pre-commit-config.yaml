@@ -70,6 +70,13 @@ repos:
               ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$
           )
 
+      - id: validate-fragments
+        name: Validate release note fragment filenames
+        entry: python scripts/validate_fragments.py
+        language: python
+        files: ^docs/docs/community/release_notes/unreleased/.*\.md$
+        exclude: README\.md
+
       - id: ban-em-dashes
         name: Ban em-dashes (—)
         language: pygrep

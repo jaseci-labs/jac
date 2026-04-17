@@ -87,6 +87,25 @@ python docs/scripts/mkdocs_serve.py
 > - Run tests locally using the test script above
 > - Keep your PR focused on a single feature or fix
 > - Write clear commit messages and PR descriptions
+> - Add a release note fragment (see below)
+
+**Adding Release Notes**
+
+Every PR that changes package code must include a release note fragment file:
+
+1. Create a file at `docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md`
+   - **Packages**: `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`
+   - **Categories**: `feature`, `bugfix`, or `breaking`
+   - **Example**: `docs/docs/community/release_notes/unreleased/jaclang/1234.bugfix.md`
+
+2. Add one or more bullet points:
+
+   ```markdown
+   - **Fix: Brief title**: Description of what changed.
+   - **Fix: Another fix in same PR**: Description.
+   ```
+
+To skip this check, add the `skip-release-notes-check` label to your PR.
 
 ## Code Rules and Guidelines
 
