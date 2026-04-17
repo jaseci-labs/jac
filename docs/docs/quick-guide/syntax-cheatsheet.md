@@ -5,7 +5,6 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 **Try it:** [Functions](../tutorials/language/basics.md#functions) | [Objects](../tutorials/language/basics.md#objects) | [Walkers & Graphs](../tutorials/language/osp.md) | [AI Integration](../tutorials/ai/quickstart.md) | [Full Reference](../reference/language/foundation.md)
 
 ```jac
-import from typing { Any }
 # ============================================================
 # Learn Jac in 5 Minutes
 # ============================================================
@@ -28,6 +27,7 @@ import from typing { Any }
 
 # Module-level docstring (no semicolon needed)
 """This module does something useful."""
+import from typing { Any }
 
 # Docstrings go BEFORE the declaration they document
 """Object-level docstring."""
