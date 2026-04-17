@@ -242,7 +242,6 @@ def:pub DataFetcher() -> JsxElement {
 ### Creating Context
 
 ```jac
-import from typing { Any }
 to cl:
 
 import from react { createContext, useContext }
@@ -252,13 +251,13 @@ glob AppContext = createContext(None);
 
 # Provider component
 def:pub AppProvider(props: dict) -> JsxElement {
-    has user: Any = None;
+    has user: any = None;
     has theme: str = "light";
 
     value = {
         "user": user,
         "theme": theme,
-        "setUser": lambda u: Any -> None { user = u; },
+        "setUser": lambda u: any -> None { user = u; },
         "setTheme": lambda t: str -> None { theme = t; }
     };
 
@@ -302,14 +301,13 @@ def:pub app() -> JsxElement {
 Create reusable state logic:
 
 ```jac
-import from typing { Any }
 to cl:
 
 import from react { useEffect }
 
 # Custom hook
-def use_local_storage(key: str, initial_value: Any) -> tuple {
-    has value: Any = initial_value;
+def use_local_storage(key: str, initial_value: any) -> tuple {
+    has value: any = initial_value;
 
     # Load from localStorage on mount
     useEffect(lambda -> None {
@@ -324,7 +322,7 @@ def use_local_storage(key: str, initial_value: Any) -> tuple {
         localStorage.setItem(key, JSON.stringify(value));
     }, [value]);
 
-    return (value, lambda v: Any -> None { value = v; });
+    return (value, lambda v: any -> None { value = v; });
 }
 
 def:pub Settings() -> JsxElement {
@@ -349,11 +347,10 @@ def:pub Settings() -> JsxElement {
 ### Loading State Pattern
 
 ```jac
-import from typing { Any }
 to cl:
 
 def:pub DataComponent() -> JsxElement {
-    has data: Any = None;
+    has data: any = None;
     has loading: bool = True;
     has error: str = "";
 
