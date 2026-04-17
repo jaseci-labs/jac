@@ -29,10 +29,10 @@ variable "availability_zones" {
 }
 
 # Managed nodegroup — system / always-on nodes
-variable "node_instance_type" {
-  description = "EC2 instance type for the managed nodegroup"
-  type        = string
-  default     = "t3.medium"
+variable "node_instance_types" {
+  description = "EC2 instance types for the managed nodegroup (first available wins)"
+  type        = list(string)
+  default     = ["t3.medium", "t3a.medium", "t3.large", "t3a.large"]
 }
 
 variable "node_min_size" {
