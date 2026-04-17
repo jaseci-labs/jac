@@ -2,8 +2,6 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.5 (Unreleased)
-
 ## byllm 0.6.4 (Latest Release)
 
 - **Fix: `ModelPool` streaming fallback infinite recursion**: Fixed a bug where `ModelPool` with `strategy="fallback"` and `stream=True` caused LiteLLM Router's `stream_with_fallbacks` to recurse infinitely on primary model failure. The fix calls `Router._completion()` directly per model with `fallbacks=[]`, avoiding recursive re-entry. A `yielded` guard prevents corrupted output on mid-stream failures by propagating the exception instead of silently falling back. Fallback alias construction is deduplicated into a `_fallback_model_names` field populated in `postinit`.
