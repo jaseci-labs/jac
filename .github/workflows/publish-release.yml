@@ -37,6 +37,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Parse release info
         id: parse
         env:
