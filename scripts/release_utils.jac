@@ -201,4 +201,3 @@ def set_output(name: str, value: str) -> None {
         print(f"  [output] {name}={value}");
     }
 }
-
