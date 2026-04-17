@@ -102,7 +102,7 @@ jobs:
         run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
       - name: Install Tauri CLI
-        run: cargo binstall tauri-cli --no-confirm
+        run: cargo binstall tauri-cli --no-confirm --force
 
       # ── Desktop setup ────────────────────────────────────────
       # Scaffolds src-tauri/ (Cargo.toml, tauri.conf.json,
@@ -120,12 +120,16 @@ jobs:
       #     linuxdeploy AppImages to extract instead of mount.
       #   NO_STRIP=true -- prevents linuxdeploy from stripping binaries,
       #     which fails on some runner configurations.
+      - name: Set Linux AppImage env vars
+        if: matrix.platform == 'linux'
+        run: |
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+          echo "NO_STRIP=true" >> "$GITHUB_ENV"
+
       - name: Build desktop app
         working-directory: ${{ env.EXAMPLE_DIR }}
         env:
           JAC_BUILD: "1"
-          APPIMAGE_EXTRACT_AND_RUN: ${{ matrix.platform == 'linux' && '1' || '' }}
-          NO_STRIP: ${{ matrix.platform == 'linux' && 'true' || '' }}
         run: jac build --client desktop --platform ${{ matrix.platform }}
         timeout-minutes: 90
 
