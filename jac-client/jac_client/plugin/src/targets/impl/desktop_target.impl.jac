@@ -625,86 +625,129 @@ except ImportError:
         "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
     );
 
-    # Generate platform-specific derivatives. Tauri's Windows bundler (NSIS/MSI)
-    # requires icon.ico; without it `cargo tauri build` fails on Windows even
-    # when icon.png is present.
-    _generate_ico_from_png(icons_dir);
+    # Generate all platform-specific icon formats from icon.png.
+    # Tauri requires .ico (Windows), .icns (macOS), and multiple PNG
+    # sizes (Linux) -- without them cargo tauri build fails.
+    _generate_platform_icons(icons_dir);
 }
 
 
-"""Generate icon.ico from icon.png for the Windows bundler.
+"""Generate all platform icon formats from icon.png.
 
-Tauri's Windows bundler expects icons/icon.ico. Tries Pillow in-process first
-for speed and clearer errors, and falls back to a subprocess invocation so a
-Pillow install in a different Python environment still satisfies the need.
-On non-Windows hosts the missing Pillow case is silent (tauri may still bundle
-fine when cross-compiling via `cargo tauri icon`), but on Windows we surface a
-warning so the user knows to install Pillow.
+Produces:
+  - icon.ico   (Windows NSIS/MSI bundler)
+  - icon.icns  (macOS .app bundler)
+  - 32x32.png, 128x128.png, 128x128@2x.png (Tauri standard sizes)
+
+Uses Pillow in-process first. Falls back to a subprocess invocation so a
+Pillow install in a different Python environment still works. If Pillow
+is completely unavailable, warns the user.
 """
-def _generate_ico_from_png(icons_dir: Path) -> None {
+def _generate_platform_icons(icons_dir: Path) -> None {
     import sys;
     png_path = icons_dir / "icon.png";
-    ico_path = icons_dir / "icon.ico";
 
     if not png_path.exists() {
         return;
     }
 
-    # Try Pillow in-process first.
+    # Try Pillow in-process first (fast, best error messages).
     try {
         import from PIL { Image }
-        img = Image.open(str(png_path));
-        # Ship common Windows icon sizes; tauri picks the best fit.
-        sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
-        img.save(str(ico_path), format="ICO", sizes=sizes);
-        console.print("  ✔ Generated icon.ico for Windows", style="success");
+        _generate_icons_with_pillow(icons_dir, Image);
         return;
     } except ImportError {
-    # Pillow not available in this process; try subprocess fallback.
+    # Pillow not in this process; try subprocess fallback.
     } except Exception as e {
-        console.warning(f"  Could not generate icon.ico: {e}");
-        return;
+        console.warning(f"  Icon generation error: {e}");
     }
 
-    # Subprocess fallback in case Pillow is installed in a different env.
+    # Subprocess fallback: call Python with Pillow from PATH.
     try {
+        python_cmd = "python" if sys.platform == "win32" else "python3";
         python_code = '''
-import sys
+import sys, os
 try:
     from PIL import Image
-    img = Image.open(sys.argv[1])
-    sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
-    img.save(sys.argv[2], format="ICO", sizes=sizes)
+    icons_dir = sys.argv[1]
+    png_path = os.path.join(icons_dir, "icon.png")
+    img = Image.open(png_path).convert("RGBA")
+
+    # ICO (Windows)
+    ico_sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+    img.save(os.path.join(icons_dir, "icon.ico"), format="ICO", sizes=ico_sizes)
+
+    # ICNS (macOS)
+    try:
+        img.save(os.path.join(icons_dir, "icon.icns"), format="ICNS")
+    except Exception:
+        pass  # ICNS support is optional in some Pillow builds
+
+    # Tauri standard PNG sizes
+    for size in [32, 128, 256]:
+        resized = img.resize((size, size), Image.LANCZOS)
+        resized.save(os.path.join(icons_dir, f"{size}x{size}.png"))
+    # 128x128@2x is 256x256 pixels
+    img.resize((256, 256), Image.LANCZOS).save(
+        os.path.join(icons_dir, "128x128@2x.png")
+    )
+
     sys.exit(0)
 except Exception as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
 ''';
-        # Windows: "python" is the canonical command (py launcher or PATH).
-        # Unix: "python3" to avoid matching an ancient /usr/bin/python.
-        python_cmd = "python" if sys.platform == "win32" else "python3";
         result = subprocess.run(
-            [python_cmd, "-c", python_code, str(png_path), str(ico_path)],
+            [python_cmd, "-c", python_code, str(icons_dir)],
             capture_output=True,
             text=True,
             timeout=SUBPROCESS_TIMEOUT_SHORT
         );
         if result.returncode == 0 {
-            console.print("  ✔ Generated icon.ico for Windows", style="success");
+            console.print(
+                "  ✔ Generated platform icons (ico, icns, png sizes)", style="success"
+            );
             return;
         } else {
-            console.warning(f"  ICO generation failed: {result.stderr}");
+            console.warning(f"  Icon generation failed: {result.stderr}");
         }
     } except Exception as e {
-        console.warning(f"  ICO generation error: {e}");
+        console.warning(f"  Icon generation error: {e}");
     }
 
-    # Only warn loudly on Windows where ICO is mandatory for bundling.
-    if sys.platform == "win32" {
-        console.warning(
-            "  Could not generate icon.ico - install Pillow: pip install Pillow"
-        );
+    console.warning(
+        "  Could not generate platform icons. Install Pillow: pip install Pillow"
+    );
+}
+
+
+"""Generate all icon formats using Pillow (in-process)."""
+def _generate_icons_with_pillow(icons_dir: Path, Image: type) {
+    png_path = icons_dir / "icon.png";
+    img = Image.open(str(png_path)).convert("RGBA");
+
+    # ICO (Windows) -- multiple sizes embedded in one file
+    ico_sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
+    img.save(str(icons_dir / "icon.ico"), format="ICO", sizes=ico_sizes);
+    console.print("  ✔ Generated icon.ico (Windows)", style="success");
+
+    # ICNS (macOS) -- Pillow handles the internal size table
+    try {
+        img.save(str(icons_dir / "icon.icns"), format="ICNS");
+        console.print("  ✔ Generated icon.icns (macOS)", style="success");
+    } except Exception as e {
+        # Some Pillow builds lack ICNS write support; not fatal.
+        console.warning(f"  Could not generate icon.icns: {e}");
     }
+
+    # Tauri standard PNG sizes for Linux and general use
+    for size in [32, 128, 256] {
+        resized = img.resize((size, size), Image.LANCZOS);
+        resized.save(str(icons_dir / f"{size}x{size}.png"));
+    }
+    # 128x128@2x is a 256px image with @2x naming convention
+    img.resize((256, 256), Image.LANCZOS).save(str(icons_dir / "128x128@2x.png"));
+    console.print("  ✔ Generated PNG sizes (32, 128, 256, 128@2x)", style="success");
 }
 
 

@@ -1,65 +1,72 @@
-"""Tests for Windows ICO generation in the desktop icon pipeline.
+"""Tests for platform icon generation in the desktop build pipeline.
 
-Validates that _generate_default_icons calls _generate_ico_from_png, that
-the helper exists, and that its subprocess fallback picks the right Python
-command per platform.
+Validates that _generate_default_icons calls _generate_platform_icons to
+produce .ico (Windows), .icns (macOS), and standard PNG sizes (Linux).
 """
 
-import re;
 import from pathlib { Path }
 
 glob _plugin_src = Path(__file__).parent.parent / "plugin" / "src",
      _desktop_target_impl_path = _plugin_src / "targets" / "impl" / "desktop_target.impl.jac";
 
 
-test "generate default icons also produces windows ico" {
+test "generate default icons calls platform icon generator" {
     assert _desktop_target_impl_path.exists();
 
     content = _desktop_target_impl_path.read_text();
 
-    # Isolate the _generate_default_icons function body so we don't match
-    # other call sites.
+    # Isolate _generate_default_icons body.
     start = content.index("def _generate_default_icons");
     end = content.find("\ndef ", start + 10);
     assert end != -1 , "Could not find end of _generate_default_icons";
     section = content[start:end];
 
-    assert "_generate_ico_from_png(icons_dir)" in section , (
-        "_generate_default_icons should call _generate_ico_from_png(icons_dir) "
-        "so Tauri's Windows bundler has an icon.ico to ship"
+    assert "_generate_platform_icons(icons_dir)" in section , (
+        "_generate_default_icons should call _generate_platform_icons"
     );
 }
 
 
-test "ico helper exists and uses correct python per platform" {
+test "platform icon generator produces ico icns and png sizes" {
     content = _desktop_target_impl_path.read_text();
 
-    # The helper itself must exist.
-    assert "def _generate_ico_from_png(" in content , (
-        "_generate_ico_from_png helper should be defined"
+    assert "def _generate_platform_icons(" in content , (
+        "_generate_platform_icons should be defined"
+    );
+    assert "def _generate_icons_with_pillow(" in content , (
+        "_generate_icons_with_pillow helper should be defined"
     );
 
-    # Isolate the helper body.
-    start = content.index("def _generate_ico_from_png(");
-    end = content.find("\ndef ", start + 10);
-    assert end != -1 , "Could not find end of _generate_ico_from_png";
+    # Isolate _generate_icons_with_pillow body.
+    start = content.index("def _generate_icons_with_pillow(");
+    end = content.find("\n}", start + 10);
+    assert end != -1 , "Could not find end of _generate_icons_with_pillow";
     section = content[start:end];
 
-    # Tries Pillow in-process first (fast path, clearer errors).
-    assert "from PIL {Image}" in section or "from PIL import Image" in section , (
-        "ICO helper should try PIL in-process first"
+    # Must produce all three platform formats.
+    assert 'format="ICO"' in section , ("Should save icon.ico for Windows");
+    assert 'format="ICNS"' in section , ("Should save icon.icns for macOS");
+    assert '"128x128@2x.png"' in section , ("Should generate 128x128@2x.png for Tauri");
+    assert '.convert("RGBA")' in section , (
+        "Should convert source to RGBA before generating derivatives"
     );
+}
 
-    # The subprocess fallback must pick 'python' on Windows and 'python3'
-    # elsewhere: /usr/bin/python on old Unix systems is often Python 2, and
-    # the Windows py launcher exposes only 'python'.
+
+test "platform icon generator has subprocess fallback" {
+    content = _desktop_target_impl_path.read_text();
+
+    start = content.index("def _generate_platform_icons(");
+    end = content.find("\ndef ", start + 10);
+    assert end != -1;
+    section = content[start:end];
+
+    # Subprocess fallback for when Pillow is in a different env.
     assert 'python_cmd = "python" if sys.platform == "win32" else "python3"' in section , (
-        "ICO subprocess fallback should select python vs python3 per platform"
+        "Subprocess fallback should pick python vs python3 per platform"
     );
-
-    # Writes icon.ico with multiple Windows sizes.
-    assert '(256, 256)' in section and '(16, 16)' in section , (
-        "ICO output should include standard Windows icon sizes"
+    assert 'format="ICO"' in section , ("Subprocess fallback should also generate ICO");
+    assert 'format="ICNS"' in section , (
+        "Subprocess fallback should also attempt ICNS"
     );
-    assert 'format="ICO"' in section , ("ICO helper should save with format='ICO'");
 }
