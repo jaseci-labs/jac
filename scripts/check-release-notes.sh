@@ -50,13 +50,13 @@ for folder in "${!FOLDER_TO_FRAGMENTS[@]}"; do
         if [[ "$file" == "${folder}"* ]] && [[ "$file" != */tests/* ]]; then
             folder_changed=true
         fi
-        if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" =~ /[0-9]+\.(feature|bugfix|breaking)\.md$ ]]; then
+        if [[ "$file" == "${fragments_dir}"* ]] && [[ "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ ]]; then
             fragment_added=true
         fi
     done <<< "$CHANGED_FILES"
 
     if $folder_changed && ! $fragment_added; then
-        MISSING_NOTES+=("${folder} -> ${fragments_dir}<PR#>.<feature|bugfix|breaking>.md")
+        MISSING_NOTES+=("${folder} -> ${fragments_dir}<PR#>.<feature|bugfix|breaking|refactor|docs>.md")
     fi
 done
 
