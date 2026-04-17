@@ -62,14 +62,13 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Cache Cargo registry + Tauri build
+      - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             ~/.cargo/bin
-            ${{ env.EXAMPLE_DIR }}/src-tauri/target
           key: cargo-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: cargo-${{ matrix.os }}-
 
