@@ -591,88 +591,50 @@ def _generate_build_rs(tauri_dir: Path) -> None {
     }
 }
 
-"""Generate default placeholder icons for Tauri."""
+"""Generate default placeholder icons for Tauri.
+
+Creates a 1024x1024 RGBA placeholder icon.png and then generates all
+platform-specific derivatives (.ico, .icns, sized PNGs) that Tauri
+needs. Uses Pillow in-process when available for the highest quality
+output; falls back to a minimal hand-crafted PNG otherwise.
+"""
 def _generate_default_icons(tauri_dir: Path) -> None {
     icons_dir = tauri_dir / "icons";
     icons_dir.mkdir(exist_ok=True);
-
-    # Create a 1024x1024 PNG icon as placeholder (AppImage requires square icons, 1024x1024 recommended)
-    # Try using PIL/Pillow first (most common), then fallback to subprocess with ImageMagick/convert,
-    # finally use a simple Python-based PNG generator
     icon_path = icons_dir / "icon.png";
 
-    # Method 1: Try using Python with PIL to generate icon
+    # Try Pillow in-process first (best quality, no subprocess overhead).
     try {
-        import subprocess;
-        # Use Python to create a 1024x1024 PNG using PIL if available
-        python_code = '''
-import sys
-try:
-    from PIL import Image, ImageDraw
-    size = 1024
-    img = Image.new("RGBA", (size, size), color=(66, 139, 202, 255))
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([20, 20, size-20, size-20], outline=(255, 255, 255, 255), width=10)
-    img.save(sys.argv[1], "PNG")
-    sys.exit(0)
-except ImportError:
-    sys.exit(1)
-''';
-        python_cmd = "python" if sys.platform == "win32" else "python3";
-        result = subprocess.run(
-            [python_cmd, "-c", python_code, str(icon_path)],
-            capture_output=True,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
-        );
+        import from PIL {Image, ImageDraw}
+        size = 1024;
+        img = Image.new("RGBA", (size, size), color=(66, 139, 202, 255));
+        draw = ImageDraw.Draw(img);
+        # White border to make it look intentional
+        draw.rectangle([20, 20, size - 20, size - 20], outline=(255, 255, 255, 255), width=10);
+        img.save(str(icon_path), "PNG");
         console.print("  ✔ Generated default icon (1024x1024)", style="success");
-        console.warning(
-            "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
-        );
-        return;
-    } except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired
-    ) {
-    # PIL not available, try next method
+    } except ImportError {
+        # Pillow not installed -- use hand-crafted PNG as fallback.
+        _generate_fallback_png(icon_path);
+        console.print("  ✔ Generated default icon (1024x1024, fallback)", style="success");
+    } except Exception as e {
+        _generate_fallback_png(icon_path);
+        console.warning(f"  Pillow icon generation failed ({e}), used fallback");
     }
 
-    # Method 2: Try ImageMagick convert command
-    try {
-        import subprocess;
-        # Create a 1024x1024 solid blue PNG with alpha channel using ImageMagick
-        result = subprocess.run(
-            [
-                "convert",
-                "-size",
-                "1024x1024",
-                "xc:#428BCA",
-                "-alpha",
-                "set",
-                "-channel",
-                "RGBA",
-                str(icon_path)
-            ],
-            capture_output=True,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
-        );
-        console.print("  ✔ Generated default icon (1024x1024)", style="success");
-        console.warning(
-            "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
-        );
-        return;
-    } except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired
-    ) {
-    # ImageMagick not available, try next method
-    }
+    console.warning(
+        "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
+    );
 
-    # Method 3: Fallback - create a minimal but valid 1024x1024 PNG using Python
-    # This creates a simple solid color PNG
+    # Always generate platform-specific derivatives from whatever icon.png
+    # was created. Tauri requires .ico (Windows), .icns (macOS), and
+    # multiple PNG sizes (Linux).
+    _generate_platform_icons(icons_dir);
+}
+
+
+"""Create a minimal valid 1024x1024 RGBA PNG without any dependencies."""
+def _generate_fallback_png(icon_path: Path) -> None {
     import struct;
     import zlib;
 
@@ -682,7 +644,7 @@ except ImportError:
     # PNG signature
     png = bytearray([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
 
-    # IHDR chunk - RGBA, 8-bit per channel (color type 6 = RGBA)
+    # IHDR chunk (color type 6 = RGBA, 8-bit)
     ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0);
     ihdr_crc = zlib.crc32(b"IHDR" + ihdr_data) & 0xffffffff;
     png.extend(struct.pack(">I", 13));
@@ -690,13 +652,9 @@ except ImportError:
     png.extend(ihdr_data);
     png.extend(struct.pack(">I", ihdr_crc));
 
-    # IDAT chunk - solid blue color with alpha (RGBA: 66, 139, 202, 255 = #428BCA)
-    # PNG scanlines: each row is prefixed with filter byte (0 = none)
-    row_size = width * 4;  # RGBA = 4 bytes per pixel
-    scanline = bytes([0]) + bytes([66, 139, 202, 255]) * width;  # Filter byte + RGBA data
+    # IDAT chunk (solid blue RGBA: 66, 139, 202, 255 = #428BCA)
+    scanline = bytes([0]) + bytes([66, 139, 202, 255]) * width;
     image_data = scanline * height;
-
-    # Compress
     compressed = zlib.compress(image_data, level=9);
     idat_crc = zlib.crc32(b"IDAT" + compressed) & 0xffffffff;
     png.extend(struct.pack(">I", len(compressed)));
@@ -709,20 +667,9 @@ except ImportError:
     png.extend(b"IEND");
     png.extend(struct.pack(">I", 0xAE426082));
 
-    # Write icon.png
     with open(icon_path, "wb") as f {
         f.write(png);
     }
-
-    console.print("  ✔ Generated default icon (1024x1024)", style="success");
-    console.warning(
-        "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
-    );
-
-    # Generate all platform-specific icon formats from icon.png.
-    # Tauri requires .ico (Windows), .icns (macOS), and multiple PNG
-    # sizes (Linux) -- without them cargo tauri build fails.
-    _generate_platform_icons(icons_dir);
 }
 
 
