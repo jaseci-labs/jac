@@ -497,24 +497,28 @@ def _generate_build_rs(tauri_dir: Path) {
 }
 
 """Generate default placeholder icons for Tauri."""
-def _generate_default_icons(tauri_dir: Path) -> None {
+def _generate_default_icons(tauri_dir: Path) {
     icons_dir = tauri_dir / "icons";
     icons_dir.mkdir(exist_ok=True);
     icon_path = icons_dir / "icon.png";
 
     # Try Pillow in-process first (best quality, no subprocess overhead).
     try {
-        import from PIL {Image, ImageDraw}
+        import from PIL { Image, ImageDraw }
         size = 1024;
         img = Image.new("RGBA", (size, size), color=(66, 139, 202, 255));
         draw = ImageDraw.Draw(img);
-        draw.rectangle([20, 20, size - 20, size - 20], outline=(255, 255, 255, 255), width=10);
+        draw.rectangle(
+            [20, 20, size - 20, size - 20], outline=(255, 255, 255, 255), width=10
+        );
         img.save(str(icon_path), "PNG");
         console.print("  ✔ Generated default icon (1024x1024)", style="success");
     } except ImportError {
         # Pillow not installed; use hand-crafted PNG as fallback.
         _generate_fallback_png(icon_path);
-        console.print("  ✔ Generated default icon (1024x1024, fallback)", style="success");
+        console.print(
+            "  ✔ Generated default icon (1024x1024, fallback)", style="success"
+        );
     } except Exception as e {
         _generate_fallback_png(icon_path);
         console.warning(f"  Pillow icon generation failed ({e}), used fallback");
@@ -532,7 +536,7 @@ def _generate_default_icons(tauri_dir: Path) -> None {
 
 
 """Create a minimal valid 1024x1024 RGBA PNG without any dependencies."""
-def _generate_fallback_png(icon_path: Path) -> None {
+def _generate_fallback_png(icon_path: Path) {
     import struct;
     import zlib;
 
@@ -2134,7 +2138,8 @@ def _populate_icon_array(tauri_dir: Path, config: dict) {
         icon_files = [];
         if icons_dir.exists() {
             for icon_file in icons_dir.iterdir() {
-                if icon_file.is_file() and icon_file.suffix.lower() in (".png", ".ico", ".icns") {
+                if icon_file.is_file()
+                and icon_file.suffix.lower() in (".png", ".ico", ".icns") {
                     # Path relative to tauri.conf.json (which is in tauri_dir)
                     # So icons/icon.png is the correct relative path
                     icon_rel_path = icon_file.relative_to(tauri_dir);
