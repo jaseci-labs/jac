@@ -308,10 +308,16 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
         and isinstance(
             prev, (uni.IfStmt, uni.WhileStmt, uni.InForStmt, uni.IterForStmt)
         ) {
-            # All exit paths covered (if/elif/else or loop-else) -- no direct prev→next edge.
-            # Only connect internal tails (body ends) to next.
+            # Exit paths covered -- no direct prev→next edge, unless an
+            # empty true body or empty ElseStmt body creates a fall-through.
             self._connect_tails(prev, next);
-            if isinstance(prev, uni.IfStmt) and not prev.body {
+            if isinstance(prev, uni.IfStmt)
+            and (
+                not prev.body
+                or (
+                    isinstance(prev.else_body, uni.ElseStmt) and not prev.else_body.body
+                )
+            ) {
                 self.link_bbs(prev, next);
             }
         } elif has_bool_sc {

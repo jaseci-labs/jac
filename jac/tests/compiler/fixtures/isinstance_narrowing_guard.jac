@@ -16,3 +16,10 @@ def describe(pet: Dog | Cat) -> str {
     }
     return pet.breed;
 }
+
+def describe_mirror(pet: Dog | Cat) -> str {
+    if isinstance(pet, Cat) {
+        return "cat";
+    } else { }
+    return pet.breed;
+}

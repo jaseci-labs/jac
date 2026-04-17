@@ -3399,28 +3399,33 @@ impl TypeEvaluator._get_type_from_flow_node(
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""
 impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {
-    is_else_entry = (
-        (isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body)
-        or (
-            isinstance(pred.else_body, uni.ElseStmt)
-            and pred.else_body.body
-            and succ is pred.else_body.body[0]
-        )
-    );
-    # True branch entry: either succ is first in body, or body is empty and
-    # succ is the fall-through (not the else entry).
-    is_true_entry = (
-        (pred.body and succ is pred.body[0])
-        or (not pred.body and pred.else_body is not None and not is_else_entry)
-    );
-
-    if is_true_entry {
+    # Direct entry into the true branch.
+    if pred.body and succ is pred.body[0] {
         return "true";
     }
-    if is_else_entry {
+    # Direct entry into the false branch.
+    if isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body {
         return "false";
     }
-    if pred.else_body is None and succ not in pred.body {
+    if isinstance(pred.else_body, uni.ElseStmt)
+    and pred.else_body.body
+    and succ is pred.else_body.body[0] {
+        return "false";
+    }
+    # Fall-through to next sibling: which branch is the empty one?
+    body_empty = not pred.body;
+    else_empty = isinstance(pred.else_body, uni.ElseStmt) and not pred.else_body.body;
+    has_else_branch = pred.else_body is not None;
+    if body_empty and (else_empty or not has_else_branch) {
+        # Both paths fall through -- no narrowing.
+        return "unconditional";
+    }
+    if body_empty {
+        # Only the true branch is empty; fall-through is the true path.
+        return "true";
+    }
+    if else_empty or not has_else_branch {
+        # False branch is empty or absent; fall-through is the false path.
         return "false";
     }
     return "unconditional";
