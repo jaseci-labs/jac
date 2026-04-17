@@ -93,16 +93,24 @@ impl JacScaleUserManager.get_root_id(user_id: str) -> str | None {
     if user_id == '__system__' {
         return Con.SUPER_ROOT_UUID;
     }
+    cache = _root_id_request_cache.get();
+    if cache is not None and user_id in cache {
+        return cache[user_id];
+    }
     result = self._identity_storage.get_root_id(user_id);
-    if result {
-        return result;
+    if not result {
+        # Fallback: look up by identity value (handles __guest__, etc.)
+        user = self._identity_storage.find_user_by_identity(user_id);
+        if user {
+            result = user.get('root_id');
+        }
     }
-    # Fallback: look up by identity value (handles __guest__, etc.)
-    user = self._identity_storage.find_user_by_identity(user_id);
-    if user {
-        return user.get('root_id');
+    if result is not None {
+        new_cache = dict(cache) if cache is not None else {};
+        new_cache[user_id] = result;
+        _root_id_request_cache.set(new_cache);
     }
-    return None;
+    return result;
 }
 
 """Update password by user_id."""

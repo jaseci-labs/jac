@@ -1,7 +1,5 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.12 (Unreleased)
-
 ## jac-mcp 0.1.11 (Latest Release)
 
 - 1 small refactor/change.
