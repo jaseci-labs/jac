@@ -1803,6 +1803,15 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             if node_.type is not None {
                 return node_.type;
             }
+            # ---- Handle enum member declarations ----
+            # A Name declared inside an enum body (either as the target of an
+            # Assignment — `RED = 1` — or as a bare name — `RED,`) represents
+            # a specific enum member, not the enum class. Return EnumMemberType
+            # so hover, assignment checks, and attribute access all see the
+            # correct per-member type.
+            if enum_member_type := self._get_enum_member_type_for_decl(node_) {
+                return enum_member_type;
+            }
             # ---- Handle tuple/list unpacking targets ----
             # When a Name is inside a TupleVal/ListVal that is the target
             # of an Assignment, infer its type from the RHS tuple element.
@@ -2067,6 +2076,52 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     # TODO: Implement for functions, parameters, explicit type
     # annotations in assignment etc.
     return types.UnknownType();
+}
+
+"""Return EnumMemberType if node_ is an enum member declaration Name.
+
+Uses the parser-set `Assignment.is_enum_stmt` flag as the structural
+discriminator — it is set for both inline (`enum Color { RED = 1 }`) and
+impl-based (`enum Color; impl Color { RED = 1 }`) forms, so enum members
+are identified uniformly without AST shape probing. To resolve the owning
+Enum, the Assignment's parent is either the Enum itself (inline) or the
+ImplDef that implements it; DeclImplMatchPass sets ImplDef.decl_link to
+the declaring Enum before TypeCheckPass runs. The member's EnumMemberInfo
+is built eagerly by get_type_of_enum and wrapped in EnumMemberType here.
+Returns None when node_ is not an enum member declaration Name.
+"""
+impl TypeEvaluator._get_enum_member_type_for_decl(
+    node_: uni.Name
+) -> (types.EnumMemberType | None) {
+    assignment = node_.parent;
+    if not isinstance(assignment, uni.Assignment) or not assignment.is_enum_stmt {
+        return None;
+    }
+    # Guard against non-target positions (the Assignment holds only the
+    # member Name(s) in `target`, so this is typically redundant — but
+    # guards against future AST shapes that reuse is_enum_stmt).
+    if node_ not in assignment.target {
+        return None;
+    }
+    container = assignment.parent;
+    enum_node: uni.Enum | None = None;
+    if isinstance(container, uni.Enum) {
+        enum_node = container;
+    } elif isinstance(container, uni.ImplDef)
+    and isinstance(container.decl_link, uni.Enum) {
+        enum_node = container.decl_link;
+    }
+    if enum_node is None {
+        return None;
+    }
+    enum_type = self.get_type_of_enum(enum_node);
+    member_info = enum_type.shared.enum_members.get(node_.sym_name)
+        if enum_type.shared.enum_members
+        else None;
+    if member_info is None {
+        return None;
+    }
+    return types.EnumMemberType(enum_class=enum_type, member_info=member_info);
 }
 
 """
@@ -2821,7 +2876,14 @@ impl TypeEvaluator.get_type_of_expression(
     }
     result = self._get_type_of_expression_core(node_, expected_type);
     if isinstance(result, types.UnknownType) {
-        self.emit_diag(W1051, node_);
+        # Suppress W1051 inside stub modules (typeshed .pyi files). Stubs
+        # may contain forward references and cross-stub types that can't
+        # be fully resolved in Jac; surfacing them produces noise for
+        # users who only care about diagnostics on their own source.
+        mod = node_.find_parent_of_type(uni.Module);
+        if mod is None or not mod.is_raised_from_py {
+            self.emit_diag(W1051, node_);
+        }
     }
     node_.type = result;
     return result;
