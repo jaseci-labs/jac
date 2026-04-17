@@ -292,3 +292,182 @@ test "emit handles missing mt_run fields gracefully" {
         _agent_callbacks.extend(original);
     }
 }
+
+#  5. parent_invocation_id — ContextVar propagation
+
+test "emit record includes parent_invocation_id when set on mt_run" {
+    original = _agent_callbacks.copy();
+    _agent_callbacks.clear();
+    captured: list = [];
+    try {
+        def capture_cb(record: dict) -> None {
+            captured.append(record);
+        }
+        _agent_callbacks.append(capture_cb);
+
+        mt = make_fake_mt_run(invocation_id="child-inv-001");
+        mt._parent_invocation_id = "parent-inv-001";
+
+        _emit_agent_telemetry(mt, "result", "gpt-4o", 100.0, "success", None);
+
+        assert len(captured) == 1;
+        assert captured[0]["parent_invocation_id"] == "parent-inv-001";
+        assert captured[0]["invocation_id"] == "child-inv-001";
+    } finally {
+        _agent_callbacks.clear();
+        _agent_callbacks.extend(original);
+    }
+}
+
+test "emit record has None parent_invocation_id for root calls" {
+    original = _agent_callbacks.copy();
+    _agent_callbacks.clear();
+    captured: list = [];
+    try {
+        def capture_cb(record: dict) -> None {
+            captured.append(record);
+        }
+        _agent_callbacks.append(capture_cb);
+
+        mt = make_fake_mt_run(invocation_id="root-inv-001");
+        # No _parent_invocation_id set — simulates root call
+
+        _emit_agent_telemetry(mt, "result", "gpt-4o", 100.0, "success", None);
+
+        assert len(captured) == 1;
+        assert captured[0]["parent_invocation_id"] is None;
+        assert captured[0]["invocation_id"] == "root-inv-001";
+    } finally {
+        _agent_callbacks.clear();
+        _agent_callbacks.extend(original);
+    }
+}
+
+#  6. ContextVar integration — verifies get/set/reset cycle across nested invocations
+
+test "ContextVar chains correctly across simulated nested Model.invoke calls" {
+    import from byllm.telemetry { _current_invocation_id }
+    import uuid;
+
+    original = _agent_callbacks.copy();
+    _agent_callbacks.clear();
+    captured: list = [];
+    try {
+        def capture_cb(record: dict) -> None {
+            captured.append(record);
+        }
+        _agent_callbacks.append(capture_cb);
+
+        # --- Simulate outer Model.invoke ---
+        outer_mt = make_fake_mt_run(caller_name="outer_agent");
+        outer_mt._parent_invocation_id = _current_invocation_id.get(None);
+        outer_mt._invocation_id = "outer-id-001";
+        outer_token = _current_invocation_id.set(outer_mt._invocation_id);
+
+        # At this point, ContextVar == "outer-id-001"
+        assert _current_invocation_id.get() == "outer-id-001";
+        assert outer_mt._parent_invocation_id is None;  # root call
+
+        # --- Simulate inner Model.invoke (nested by llm() tool call) ---
+        inner_mt = make_fake_mt_run(caller_name="inner_agent");
+        inner_mt._parent_invocation_id = _current_invocation_id.get(None);
+        inner_mt._invocation_id = "inner-id-001";
+        inner_token = _current_invocation_id.set(inner_mt._invocation_id);
+
+        # Inner should see outer as parent
+        assert inner_mt._parent_invocation_id == "outer-id-001";
+        assert _current_invocation_id.get() == "inner-id-001";
+
+        # --- Simulate deepest Model.invoke (3-level nesting) ---
+        deep_mt = make_fake_mt_run(caller_name="deep_agent");
+        deep_mt._parent_invocation_id = _current_invocation_id.get(None);
+        deep_mt._invocation_id = "deep-id-001";
+        deep_token = _current_invocation_id.set(deep_mt._invocation_id);
+
+        assert deep_mt._parent_invocation_id == "inner-id-001";
+        assert _current_invocation_id.get() == "deep-id-001";
+
+        # Emit deepest, then unwind
+        _emit_agent_telemetry(deep_mt, "deep-result", "gpt-4o", 50.0, "success", None);
+        _current_invocation_id.reset(deep_token);
+        assert _current_invocation_id.get() == "inner-id-001";  # restored
+
+        # Emit inner, then unwind
+        _emit_agent_telemetry(inner_mt, "inner-result", "gpt-4o", 100.0, "success", None);
+        _current_invocation_id.reset(inner_token);
+        assert _current_invocation_id.get() == "outer-id-001";  # restored
+
+        # Emit outer, then unwind
+        _emit_agent_telemetry(outer_mt, "outer-result", "gpt-4o", 200.0, "success", None);
+        _current_invocation_id.reset(outer_token);
+        assert _current_invocation_id.get(None) is None;  # fully restored
+
+        # --- Verify the emitted records ---
+        assert len(captured) == 3;
+
+        deep_rec = [r for r in captured if r["invocation_id"] == "deep-id-001"][0];
+        inner_rec = [r for r in captured if r["invocation_id"] == "inner-id-001"][0];
+        outer_rec = [r for r in captured if r["invocation_id"] == "outer-id-001"][0];
+
+        # Parent chain: deep → inner → outer → None
+        assert deep_rec["parent_invocation_id"] == "inner-id-001";
+        assert inner_rec["parent_invocation_id"] == "outer-id-001";
+        assert outer_rec["parent_invocation_id"] is None;
+    } finally {
+        _agent_callbacks.clear();
+        _agent_callbacks.extend(original);
+        # Safety: ensure ContextVar is clean even if test fails mid-way
+        _current_invocation_id.set(None);  # type: ignore
+    }
+}
+
+test "ContextVar resets correctly even when inner invocation raises" {
+    import from byllm.telemetry { _current_invocation_id }
+
+    original = _agent_callbacks.copy();
+    _agent_callbacks.clear();
+    captured: list = [];
+    try {
+        def capture_cb(record: dict) -> None {
+            captured.append(record);
+        }
+        _agent_callbacks.append(capture_cb);
+
+        # Outer invoke
+        outer_mt = make_fake_mt_run(caller_name="outer");
+        outer_mt._parent_invocation_id = _current_invocation_id.get(None);
+        outer_mt._invocation_id = "outer-err-001";
+        outer_token = _current_invocation_id.set(outer_mt._invocation_id);
+
+        # Inner invoke that "fails"
+        inner_mt = make_fake_mt_run(caller_name="inner");
+        inner_mt._parent_invocation_id = _current_invocation_id.get(None);
+        inner_mt._invocation_id = "inner-err-001";
+        inner_token = _current_invocation_id.set(inner_mt._invocation_id);
+
+        # Simulate error path: emit with error, then reset (like finally block)
+        _emit_agent_telemetry(inner_mt, None, "gpt-4o", 30.0, "error", ValueError("boom"));
+        _current_invocation_id.reset(inner_token);
+
+        # Outer should still be active
+        assert _current_invocation_id.get() == "outer-err-001";
+
+        _emit_agent_telemetry(outer_mt, "ok", "gpt-4o", 100.0, "success", None);
+        _current_invocation_id.reset(outer_token);
+
+        assert _current_invocation_id.get(None) is None;
+
+        # Check records
+        inner_rec = [r for r in captured if r["invocation_id"] == "inner-err-001"][0];
+        outer_rec = [r for r in captured if r["invocation_id"] == "outer-err-001"][0];
+
+        assert inner_rec["parent_invocation_id"] == "outer-err-001";
+        assert inner_rec["status"] == "error";
+        assert outer_rec["parent_invocation_id"] is None;
+        assert outer_rec["status"] == "success";
+    } finally {
+        _agent_callbacks.clear();
+        _agent_callbacks.extend(original);
+        _current_invocation_id.set(None);  # type: ignore
+    }
+}
