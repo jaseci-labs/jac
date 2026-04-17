@@ -68,9 +68,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ~/.cargo/bin
-          key: cargo-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: cargo-${{ matrix.os }}-
+          key: cargo-reg-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-reg-${{ matrix.os }}-
 
       # ── Python + Jac ecosystem ───────────────────────────────
       - name: Set up Python
@@ -95,20 +94,31 @@ jobs:
 
       # ── Tauri CLI ────────────────────────────────────────────
       # jac-client invokes `cargo tauri build`, so tauri-cli must
-      # be a Cargo subcommand. cargo-binstall downloads pre-built
-      # binaries (~10s) instead of compiling from source (~8 min).
-      - name: Install cargo-binstall
-        run: curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-
+      # be a Cargo subcommand. Try cargo-binstall for pre-built
+      # binary (~10s); fall back to cargo install (~8 min).
       - name: Install Tauri CLI
-        run: cargo binstall tauri-cli --no-confirm --force
+        shell: bash
+        run: |
+          if command -v cargo-tauri &>/dev/null; then
+            echo "cargo-tauri already installed, skipping"
+          elif command -v cargo-binstall &>/dev/null || \
+               (curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash); then
+            cargo binstall tauri-cli --no-confirm --no-discover-github-token || \
+              cargo install tauri-cli --locked
+          else
+            cargo install tauri-cli --locked
+          fi
 
       # ── Desktop setup ────────────────────────────────────────
       # Scaffolds src-tauri/ (Cargo.toml, tauri.conf.json,
-      # main.rs, icons). Required before build.
+      # main.rs, icons). Remove stale src-tauri/ first so setup
+      # doesn't skip thinking it's already done.
       - name: Setup desktop target
         working-directory: ${{ env.EXAMPLE_DIR }}
-        run: jac setup desktop
+        shell: bash
+        run: |
+          rm -rf src-tauri
+          jac setup desktop
 
       # ── Build ────────────────────────────────────────────────
       # Compiles web bundle (Vite), bundles sidecar (PyInstaller),
