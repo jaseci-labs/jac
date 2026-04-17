@@ -8,9 +8,12 @@ import from pathlib { Path }
 import requests;
 import urllib3;
 import from dotenv { dotenv_values }
-import from kubernetes { client, config }
-import from kubernetes.client.rest { ApiException }
-import from kubernetes.config.config_exception { ConfigException }
+import from jac_scale._optdeps.kubernetes {
+    client,
+    config,
+    ApiException,
+    ConfigException
+}
 import from requests.exceptions { RequestException }
 
 """Each companion component: (suffix, display_name, is_statefulset).

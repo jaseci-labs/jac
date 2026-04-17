@@ -193,7 +193,9 @@ impl ESFloatEmitter.emit_hex(
     return _rt("float", "hex", [target]);
 }
 
-impl ESFloatEmitter.emit_fromhex(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESFloatEmitter.emit_fromhex(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("float", "fromhex", args);
 }
 
@@ -698,7 +700,9 @@ impl ESStrEmitter.emit_translate(
     return _rt("str", "translate", [target] + args);
 }
 
-impl ESStrEmitter.emit_maketrans(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESStrEmitter.emit_maketrans(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("str", "maketrans", args);
 }
 
@@ -778,7 +782,9 @@ impl ESBytesEmitter.emit_hex(
     return _rt("bytes", "hex", [target] + args);
 }
 
-impl ESBytesEmitter.emit_fromhex(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBytesEmitter.emit_fromhex(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("bytes", "fromhex", args);
 }
 
@@ -1294,7 +1300,9 @@ impl ESDictEmitter.emit_copy(
     return "{..." + target + "}";
 }
 
-impl ESDictEmitter.emit_fromkeys(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESDictEmitter.emit_fromkeys(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("dict", "fromkeys", args);
 }
 
@@ -1753,11 +1761,15 @@ impl ESRangeEmitter.emit_op_contains(
     return _rt("range", "contains", [target, args[0]]);
 }
 
-impl ESBuiltinEmitter.emit_print(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_print(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _fcall("console.log", args);
 }
 
-impl ESBuiltinEmitter.emit_input(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_input(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _fcall("prompt", args);
 }
 
@@ -1769,7 +1781,9 @@ impl ESBuiltinEmitter.emit_abs(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
     return "Math.abs(" + args[0] + ")";
 }
 
-impl ESBuiltinEmitter.emit_round(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_round(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 1 {
         return "Math.round(" + args[0] + ")";
     }
@@ -1963,7 +1977,9 @@ impl ESBuiltinEmitter.emit_format(
     return _rt("builtin", "format", args);
 }
 
-impl ESBuiltinEmitter.emit_ascii(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_ascii(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "ascii", args);
 }
 
@@ -1988,7 +2004,9 @@ impl ESBuiltinEmitter.emit_int(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
     return "parseInt(" + args[0] + ", " + args[1] + ")";
 }
 
-impl ESBuiltinEmitter.emit_float(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_float(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "0.0";
     }
@@ -2026,7 +2044,9 @@ impl ESBuiltinEmitter.emit_set(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
     return "new Set(" + args[0] + ")";
 }
 
-impl ESBuiltinEmitter.emit_tuple(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_tuple(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "Object.freeze([])";
     }
@@ -2042,7 +2062,9 @@ impl ESBuiltinEmitter.emit_frozenset(
     return "Object.freeze(new Set(" + args[0] + "))";
 }
 
-impl ESBuiltinEmitter.emit_bytes(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_bytes(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     if len(args) == 0 {
         return "new Uint8Array()";
     }
@@ -2055,11 +2077,15 @@ impl ESBuiltinEmitter.emit_complex(
     return _rt("builtin", "complex", args);
 }
 
-impl ESBuiltinEmitter.emit_range(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_range(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "range", args);
 }
 
-impl ESBuiltinEmitter.emit_slice(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+impl ESBuiltinEmitter.emit_slice(
+    self, ctx: ESEmitCtx, args: list[str]
+) -> (str | None) {
     return _rt("builtin", "slice", args);
 }
 

@@ -41,9 +41,9 @@ import from jaclang.runtimelib.transport { TransportResponse }
 import from jaclang.jac0core.runtime { JacRuntime, JacRuntimeInterface }
 
 glob logger = logging.getLogger(__name__),
-     EndpointResponse: TypeAlias = Response | BaseModel | dict[
-         (str, object)
-     ] | list[object] | str | `bytes | None;
+     EndpointResponse: TypeAlias = Response | BaseModel | dict[(str, object)] | list[
+         object
+     ] | str | `bytes | None;
 
 """Base protocol for parameter handlers."""
 obj ParameterHandler {
@@ -123,6 +123,9 @@ This class implements the JServer interface by:
         app (FastAPI): The underlying FastAPI application instance
 """
 class JFastApiServer(JServer[FastAPI]) {
+    has _user_manager: Any | None = None;
+
+    def set_user_manager(self: JFastApiServer, user_manager: Any) -> None;
     def init(
         self: JFastApiServer,
         endpoints: (list[JEndPoint] | None) = None,
@@ -149,7 +152,8 @@ class JFastApiServer(JServer[FastAPI]) {
         self: JFastApiServer,
         callback: Callable[(..., Any)],
         parameters: list[APIParameter],
-        dependencies: list[Any]
+        dependencies: list[Any],
+        request_model: (type[BaseModel] | None) = None
     ) -> Callable[..., Any];
 
     def _get_python_type(self: JFastApiServer, type_string: str) -> type[Any];

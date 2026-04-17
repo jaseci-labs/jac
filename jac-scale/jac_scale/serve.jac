@@ -41,6 +41,15 @@ import from jac_scale.enums { Platforms, Operations }
 import from jac_scale.scheduler { JacScaleScheduler }
 import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
+import traceback;
+import from urllib.parse { quote }
+import from jac_scale.utils { extract_bearer_token }
+import from jac_scale.auth_models {
+    RegisterRequest,
+    LoginRequest,
+    UpdatePasswordRequest
+}
+import from pydantic { ValidationError }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -60,48 +69,19 @@ def _find_available_port(start_port: int, max_retries: int = PORT_RETRY_LIMIT) -
 """Get local network IP addresses (non-localhost)."""
 def _get_network_ips -> list[str];
 
-"""Core auth, user management, JWT, API keys, server start/postinit."""
-obj JacAPIServerCore {
-    def postinit -> None;
-    def start(
-        dev: bool = False,
-        no_client: bool = False,
-        on_ready: Callable[..., None] | None = None
-    ) -> None;
-
-    def _configure_openapi_security -> None;
-    def _print_startup_banner(dev: bool, no_client: bool) -> None;
-    # User/Auth endpoints
-    def login(username: str, password: str) -> TransportResponse;
+"""Auth endpoints: register, login, token refresh, update password, SSO, API keys."""
+obj JacAPIServerAuth {
+    def register_auth_endpoints -> None;
+    # Registration & Login
+    def register_register_endpoint -> None;
     def register_login_endpoint -> None;
-    def create_user(username: str, password: str) -> TransportResponse;
-    def register_create_user_endpoint -> None;
-    def refresh_token(token: (str | None) = None) -> TransportResponse;
+    # Token
     def register_refresh_token_endpoint -> None;
-    def update_username(
-        current_username: str, new_username: str, Authorization: (str | None) = None
-    ) -> TransportResponse;
-
-    def update_password(
-        username: str,
-        current_password: str,
-        new_password: str,
-        Authorization: (str | None) = None
-    ) -> TransportResponse;
-
-    def register_update_username_endpoint -> None;
+    # Update password
     def register_update_password_endpoint -> None;
+    # SSO
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
-    # Health check
-    def register_health_endpoint -> None;
-    # Client error reporting
-    def _register_client_error_endpoint -> None;
-    # HMR support
-    def enable_hmr(hot_reloader: Any) -> None;
-    def _register_endpoints -> None;
-    def _refresh_dev_endpoints -> None;
-    def _setup_scheduler -> None;
     # API key management
     def get_api_key_manager -> ApiKeyManager;
     def create_api_key(
@@ -114,6 +94,28 @@ obj JacAPIServerCore {
     ) -> TransportResponse;
 
     def register_api_key_endpoints -> None;
+}
+
+"""Core server lifecycle: start/postinit, health, HMR, scheduler, metrics."""
+obj JacAPIServerCore {
+    def postinit -> None;
+    def start(
+        dev: bool = False,
+        no_client: bool = False,
+        on_ready: Callable[..., None] | None = None
+    ) -> None;
+
+    def _configure_openapi_security -> None;
+    def _print_startup_banner(dev: bool, no_client: bool) -> None;
+    # Health check
+    def register_health_endpoint -> None;
+    # Client error reporting
+    def _register_client_error_endpoint -> None;
+    # HMR support
+    def enable_hmr(hot_reloader: Any) -> None;
+    def _register_endpoints -> None;
+    def _refresh_dev_endpoints -> None;
+    def _setup_scheduler -> None;
     # Metrics endpoint wrapper for admin-only access
     def _create_admin_metrics_handler(
         original_handler: Callable[..., Any]
@@ -184,22 +186,11 @@ obj JacAPIServerStatic {
 }
 
 """Composed JacAPIServer class combining all mixins with JServer base."""
-obj JacAPIServer(JacAPIServerCore, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JServer) {
+obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
         _hot_reloader: Any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
         _metrics: MetricsCollector | None = None,
         _ws_manager: WebSocketConnectionManager | None = None;
-}
-
-class UpdateUsernameRequest(BaseModel) {
-    has current_username: str = Field(..., description='Current username'),
-        new_username: str = Field(..., description='New username');
-}
-
-class UpdatePasswordRequest(BaseModel) {
-    has username: str = Field(..., description='Username'),
-        current_password: str = Field(..., description='Current password'),
-        new_password: str = Field(..., description='New password');
 }

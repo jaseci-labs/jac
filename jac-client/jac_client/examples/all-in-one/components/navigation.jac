@@ -49,12 +49,8 @@ cl {
             </button>;
         } else {
             authButtons = <>
-                <Link to="/login" style={linkStyle("/login")}>
-                    Login
-                </Link>
-                <Link to="/signup" style={linkStyle("/signup")}>
-                    Sign Up
-                </Link>
+                <Link to="/login" style={linkStyle("/login")}>Login</Link>
+                <Link to="/signup" style={linkStyle("/signup")}>Sign Up</Link>
             </>;
         }
 
@@ -87,9 +83,7 @@ cl {
                         {isLoggedIn
                         and (
                             <>
-                                <Link to="/" style={linkStyle("/")}>
-                                    Home
-                                </Link>
+                                <Link to="/" style={linkStyle("/")}>Home</Link>
                                 <Link to="/nested" style={linkStyle("/nested")}>
                                     Nested Imports
                                 </Link>

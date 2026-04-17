@@ -202,9 +202,7 @@ impl DashboardPage.renderErr -> JsxElement {
 
 impl DashboardPage.renderEmpty -> JsxElement {
     return
-        <div className="text-xs text-zinc-600">
-            No result yet.
-        </div>;
+        <div className="text-xs text-zinc-600">No result yet.</div>;
 }
 
 impl DashboardPage.renderValidationOutput -> JsxElement {
@@ -221,12 +219,8 @@ impl DashboardPage.renderValidationOutput -> JsxElement {
             <div
                 className="flex items-center gap-2 text-xs text-green-400 bg-green-500/10 border border-green-500/20 p-3 rounded-lg"
             >
-                <span>
-                    ✓
-                </span>
-                <span>
-                    No errors found.
-                </span>
+                <span>✓</span>
+                <span>No errors found.</span>
             </div>;
     }
     return
@@ -260,9 +254,7 @@ impl DashboardPage.renderFormatOutput -> JsxElement {
     changed: bool = data["changed"] if "changed" in data else False;
     if not formatted {
         return
-            <div className="text-xs text-zinc-600">
-                No output returned.
-            </div>;
+            <div className="text-xs text-zinc-600">No output returned.</div>;
     }
     return
         <div className="space-y-1">
@@ -275,9 +267,11 @@ impl DashboardPage.renderFormatOutput -> JsxElement {
                     {("Modified" if changed else "No changes")}
                 </span>
                 <button
-                    onClick={lambda { navigator.clipboard.writeText(formatted);output_copied = True;setTimeout(
-                        lambda { output_copied = False;}, 2000
-                    );}}
+                    onClick={lambda {
+                        navigator.clipboard.writeText(formatted);
+                        output_copied = True;
+                        setTimeout(lambda { output_copied = False;}, 2000);
+                    }}
                     className={"px-2 py-1 text-[9px] rounded-md border transition " + (
                         "bg-green-500/20 border-green-500/40 text-green-400"
                             if output_copied
@@ -335,9 +329,11 @@ impl DashboardPage.renderAstOutput -> JsxElement {
                     </span>
                 </div>
                 <button
-                    onClick={lambda { navigator.clipboard.writeText(json_str);ast_copied = True;setTimeout(
-                        lambda { ast_copied = False;}, 2000
-                    );}}
+                    onClick={lambda {
+                        navigator.clipboard.writeText(json_str);
+                        ast_copied = True;
+                        setTimeout(lambda { ast_copied = False;}, 2000);
+                    }}
                     className={"px-2 py-0.5 text-[9px] rounded border transition " + (
                         "bg-green-500/20 border-green-500/30 text-green-400"
                             if ast_copied
@@ -366,9 +362,7 @@ impl DashboardPage.renderAstOutput -> JsxElement {
                         </div> for i in range(len(lines))
                     ]}
                 </div>
-                <pre className={pre_cls + " flex-1 px-4 py-3"}>
-                    {json_str}
-                </pre>
+                <pre className={pre_cls + " flex-1 px-4 py-3"}>{json_str}</pre>
             </div>
         </div>;
 }
@@ -386,13 +380,8 @@ impl DashboardPage.renderExplainOutput -> JsxElement {
     example = data["example"] if "example" in data else "";
     return
         <div className="space-y-3">
-            {title
-            and <p className="text-sm font-semibold text-white">
-                {title}
-            </p>}{explanation
-            and <p className="text-xs text-zinc-400 leading-relaxed">
-                {explanation}
-            </p>}{example
+            {title and <p className="text-sm font-semibold text-white">{title}</p>}{explanation
+            and <p className="text-xs text-zinc-400 leading-relaxed">{explanation}</p>}{example
             and <pre
                 className="text-[11px] text-zinc-300 max-h-[200px] overflow-auto bg-[#0d0e10] p-3 rounded-lg border border-white/5"
             >
@@ -418,18 +407,17 @@ impl DashboardPage.renderExamplesOutput -> JsxElement {
         );
     if len(cats) == 0 {
         return
-            <div className="text-xs text-zinc-500">
-                No categories found.
-            </div>;
+            <div className="text-xs text-zinc-500">No categories found.</div>;
     }
     return
         <div className="flex flex-wrap gap-1.5">
             {[
                 <button
                     key={c["name"]}
-                    onClick={lambda { example_name = str(c["name"]);runTool(
-                        "get_example", {"name": str(c["name"])}
-                    );}}
+                    onClick={lambda {
+                        example_name = str(c["name"]);
+                        runTool("get_example", {"name": str(c["name"])});
+                    }}
                     className="px-2 py-0.5 text-[11px] rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-300 hover:bg-orange-500/30 transition cursor-pointer"
                 >
                     {c["name"]}
@@ -449,9 +437,7 @@ impl DashboardPage.renderGetExampleOutput -> JsxElement {
     content: str = str(data["content"]) if "content" in data else "";
     if not content {
         return
-            <div className="text-xs text-zinc-500">
-                No content found.
-            </div>;
+            <div className="text-xs text-zinc-500">No content found.</div>;
     }
     sections: list = [
         s
@@ -468,9 +454,7 @@ impl DashboardPage.renderGetExampleOutput -> JsxElement {
                 >
                     EXAMPLE
                 </span>
-                <span className="text-[11px] font-mono text-zinc-300">
-                    {ex_name}
-                </span>
+                <span className="text-[11px] font-mono text-zinc-300">{ex_name}</span>
                 <span className="text-[10px] text-zinc-600">
                     {str(len(sections)) + " file(s)"}
                 </span>
@@ -529,9 +513,7 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
         else (data["results"] if "results" in data else []);
     if len(matches) == 0 {
         return
-            <div className="text-xs text-zinc-500">
-                No results found.
-            </div>;
+            <div className="text-xs text-zinc-500">No results found.</div>;
     }
     return
         <div className="space-y-3">
@@ -550,9 +532,7 @@ impl DashboardPage.renderSearchDocsOutput -> JsxElement {
                         </span>}
                     </div>
                     {("description" in m)
-                    and <p className="text-[10px] text-zinc-500">
-                        {m["description"]}
-                    </p>}
+                    and <p className="text-[10px] text-zinc-500">{m["description"]}</p>}
                     {("snippet" in m)
                     and <p
                         className="text-[11px] text-zinc-400 font-mono leading-5 whitespace-pre-wrap"
@@ -584,7 +564,5 @@ impl DashboardPage.renderActiveOutput -> JsxElement {
         return renderSearchDocsOutput();
     }
     return
-        <div className="text-xs text-zinc-600">
-            Run a tool to see output here.
-        </div>;
+        <div className="text-xs text-zinc-600">Run a tool to see output here.</div>;
 }

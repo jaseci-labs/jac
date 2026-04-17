@@ -145,9 +145,7 @@ cl {
                         type="text"
                         value={inputValue}
                         onChange={lambda e: Any { inputValue = e.target.value;}}
-                        onKeyPress={lambda e: Any { if e.key == "Enter" {
-                            addTodo();
-                        }}}
+                        onKeyPress={lambda e: Any { if e.key == "Enter" { addTodo(); }}}
                         placeholder="What needs to be done?"
                         style={{
                             "flex": "1",

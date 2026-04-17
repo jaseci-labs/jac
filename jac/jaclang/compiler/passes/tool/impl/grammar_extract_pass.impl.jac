@@ -763,7 +763,9 @@ impl GrammarExtractPass.is_negated_check(cond: uni.Expr) -> bool {
                 if method is not None {
                     sem = METHOD_TABLE.get(method);
                     if sem is not None
-                    and (sem.kind.startswith("lookahead") or sem.kind == "consume_opt") {
+                    and (
+                        sem.kind.startswith("lookahead") or sem.kind == "consume_opt"
+                    ) {
                         return True;
                     }
                 }

@@ -15,18 +15,14 @@ cl {
             <div
                 className="flex items-center justify-between px-4 py-3 border-b border-slate-800"
             >
-                <h2 className="text-sm font-medium text-white">
-                    {title}
-                </h2>
+                <h2 className="text-sm font-medium text-white">{title}</h2>
                 {action}
             </div>;
     }
 
     def:pub CardBody(children: Any, className: str = "p-4") -> JsxElement {
         return
-            <div className={className}>
-                {children}
-            </div>;
+            <div className={className}>{children}</div>;
     }
 
     def:pub StatsCard(label: str, value: Any, color: str = "white") -> JsxElement {
@@ -47,9 +43,7 @@ cl {
                 <p className="text-xs text-slate-500 uppercase tracking-wider">
                     {label}
                 </p>
-                <p className={valueClass}>
-                    {value}
-                </p>
+                <p className={valueClass}>{value}</p>
             </div>;
     }
 }

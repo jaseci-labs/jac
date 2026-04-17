@@ -142,11 +142,11 @@ Jac introduces **codespaces** -- regions of code that target different execution
 
 | Codespace | Target | Ecosystem | Syntax |
 |-----------|--------|-----------|--------|
-| **Server** | Python runtime | PyPI (`numpy`, `pandas`, `fastapi`) | `sv { }` or `.sv.jac` |
-| **Client** | Browser/JavaScript | npm (`react`, `tailwind`, `@mui`) | `cl { }` or `.cl.jac` |
-| **Native** | Compiled binary | C ABI | `na { }` or `.na.jac` |
+| **Server** | Python runtime | PyPI (`numpy`, `pandas`, `fastapi`) | `to sv:` or `.sv.jac` |
+| **Client** | Browser/JavaScript | npm (`react`, `tailwind`, `@mui`) | `to cl:` or `.cl.jac` |
+| **Native** | Compiled binary | C ABI | `to na:` or `.na.jac` |
 
-Server definitions are visible to client blocks. When the client calls a server function, the compiler generates the HTTP request, serialization, and routing automatically. You write one language; the compiler produces the interop layer.
+Server definitions are visible to client sections. When the client calls a server function, the compiler generates the HTTP request, serialization, and routing automatically. You write one language; the compiler produces the interop layer.
 
 !!! example "See it in action"
     Want to see exactly how much code Jac eliminates? Check out [Jac vs Traditional Stack](jac-vs-traditional-stack.md) -- a side-by-side comparison showing **~30 lines of Jac** vs **>300 lines** of Python + FastAPI + SQLite + TypeScript + React for the same Todo app.

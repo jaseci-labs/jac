@@ -99,25 +99,25 @@ test "bug_6_mro_not_c3_diamond" {
     a_shared = ClassType.ClassDetailsShared(
         class_name="A", symbol_table=None, mro=[], base_classes=[]
     );
-    a_type = ClassType(shared=a_shared, flags=TypeFlags.Instantiable);
+    a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
     a_type.shared.mro = [a_type];
 
     b_shared = ClassType.ClassDetailsShared(
         class_name="B", symbol_table=None, mro=[], base_classes=[a_type]
     );
-    b_type = ClassType(shared=b_shared, flags=TypeFlags.Instantiable);
+    b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(b_type);
 
     c_shared = ClassType.ClassDetailsShared(
         class_name="C", symbol_table=None, mro=[], base_classes=[a_type]
     );
-    c_type = ClassType(shared=c_shared, flags=TypeFlags.Instantiable);
+    c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(c_type);
 
     d_shared = ClassType.ClassDetailsShared(
         class_name="D", symbol_table=None, mro=[], base_classes=[b_type, c_type]
     );
-    d_type = ClassType(shared=d_shared, flags=TypeFlags.Instantiable);
+    d_type = ClassType(_shared=d_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(d_type);
 
     mro_names = [cls.shared.class_name for cls in d_type.shared.mro];

@@ -13,10 +13,10 @@ Each package flag accepts: skip (default), patch, minor, major.
 from __future__ import annotations
 
 import argparse
-import re
 from pathlib import Path
 
 import tomlkit
+from collect_release_notes import assemble_package
 from release_utils import DEPENDENTS, PACKAGES, bump_version, set_output
 
 # ---------------------------------------------------------------------------
@@ -97,46 +97,18 @@ def sync_dependents(
 
 
 def update_release_notes(
-    release_notes_path: Path, display_name: str, new_version: str
+    repo_root: Path,
+    pkg_name: str,
+    new_version: str,
+    dry_run: bool = False,
 ) -> None:
-    """Update the release notes markdown file.
+    """Collect release note fragments and assemble into the release notes file.
 
-    Transforms:
-        ## <name> X.Y.Z (Unreleased)
-        ## <name> A.B.C (Latest Release)
-    Into:
-        ## <name> <next_unreleased> (Unreleased)
-        ## <name> <new_version> (Latest Release)
-        ## <name> A.B.C
+    Reads fragments from docs/docs/community/release_notes/unreleased/<package>/,
+    inserts a new (Latest Release) section, demotes the old one, and deletes
+    the consumed fragment files.
     """
-    content = release_notes_path.read_text()
-
-    # Compute next unreleased version (new_version + patch)
-    next_unreleased = bump_version(new_version, "patch")
-
-    # Replace the current (Unreleased) line with the new version as (Latest Release)
-    unreleased_pattern = rf"(## {re.escape(display_name)} )\S+( \(Unreleased\))"
-    match = re.search(unreleased_pattern, content)
-    if not match:
-        print(f"  Warning: No (Unreleased) section found in {release_notes_path}")
-        return
-
-    # Remove (Latest Release) from the previous latest
-    content = content.replace(" (Latest Release)", "")
-
-    # Replace (Unreleased) version with new version as (Latest Release)
-    content = re.sub(
-        unreleased_pattern,
-        rf"\g<1>{new_version} (Latest Release)",
-        content,
-    )
-
-    # Insert new unreleased section above the new latest release line
-    new_unreleased_header = f"## {display_name} {next_unreleased} (Unreleased)\n\n"
-    latest_line = f"## {display_name} {new_version} (Latest Release)"
-    content = content.replace(latest_line, new_unreleased_header + latest_line)
-
-    release_notes_path.write_text(content)
+    assemble_package(repo_root, pkg_name, new_version, dry_run=dry_run)
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +201,8 @@ def main() -> None:
                         f"[dry-run] Would update {dep_pyproject} -> {rel['pypi_name']}>={new_version}"
                     )
             if rel["release_notes"]:
-                print(f"[dry-run] Would update {rel['release_notes']}")
+                print(f"[dry-run] Would collect fragments for {rel['name']}")
+                update_release_notes(repo_root, rel["name"], new_version, dry_run=True)
             print()
             continue
 
@@ -247,11 +220,10 @@ def main() -> None:
             if dep_file not in modified_files:
                 modified_files.append(dep_file)
 
-        # 3. Update release notes (if applicable)
+        # 3. Collect fragments and update release notes (if applicable)
         if rel["release_notes"]:
-            print("Updating release notes...")
-            release_notes_path = repo_root / rel["release_notes"]
-            update_release_notes(release_notes_path, rel["notes_display"], new_version)
+            print("Collecting release note fragments...")
+            update_release_notes(repo_root, rel["name"], new_version)
             if rel["release_notes"] not in modified_files:
                 modified_files.append(rel["release_notes"])
         print()

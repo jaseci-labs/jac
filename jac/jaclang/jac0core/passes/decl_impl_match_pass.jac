@@ -21,7 +21,15 @@ their behavior in separate files.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
-import from jaclang.jac0core.diagnostics { E2009, W2010, E2011, E2012, W2013 }
+import from jaclang.jac0core.diagnostics {
+    E2009,
+    W2010,
+    E2011,
+    E2012,
+    W2013,
+    E2016,
+    E2017
+}
 
 """Decls and Def matching pass."""
 class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {

@@ -109,13 +109,7 @@ obj ScaleTestClient {
 
         # Register all endpoints (same as start() but without run_server)
         self._server.register_health_endpoint();
-        self._server.register_create_user_endpoint();
-        self._server.register_login_endpoint();
-        self._server.register_refresh_token_endpoint();
-        self._server.register_update_username_endpoint();
-        self._server.register_update_password_endpoint();
-        self._server.register_sso_endpoints();
-        self._server.register_api_key_endpoints();
+        self._server.register_auth_endpoints();
         self._server.register_graph_endpoint();
         self._server.register_admin_endpoints();
         self._server.register_llm_telemetry_endpoints();
@@ -125,7 +119,7 @@ obj ScaleTestClient {
         self._server.register_static_file_endpoint();
         self._server.register_page_endpoint();
         self._server.register_client_js_endpoint();
-        self._server.user_manager.create_user(Con.GUEST.value, '__no_password__');
+        self._server.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
 
         # Execute endpoint registration (compiles JEndPoints into FastAPI routes)
         self._server.server.create_server();
@@ -190,14 +184,24 @@ obj ScaleTestClient {
         return self._client.delete(path, headers=headers or {});
     }
 
-    """Register a user and return (username, token) tuple."""
+    """Register a user and return (user_id, message) tuple.
+    If the user already exists, returns the username as user_id."""
     def register_user(username: str, password: str) -> tuple[str, str] {
         response = self.post(
-            "/user/register", json={"username": username, "password": password}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": username}],
+                "credential": {"type": "password", "password": password}
+            }
         );
         data = response.json();
         if data.get("ok") and data.get("data") {
-            return (data["data"]["username"], data["data"]["token"]);
+            return (data["data"].get("user_id", username), data["data"].get("message", ""));
+        }
+        # If user already exists, treat as success
+        error = data.get("error", {});
+        if error.get("code") == "IDENTITY_TAKEN" {
+            return (username, "User already exists");
         }
         raise RuntimeError(f"User registration failed: {data}");
     }
@@ -205,7 +209,11 @@ obj ScaleTestClient {
     """Login a user and return the token."""
     def login_user(username: str, password: str) -> str {
         response = self.post(
-            "/user/login", json={"username": username, "password": password}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": username},
+                "credential": {"type": "password", "password": password}
+            }
         );
         data = response.json();
         if data.get("ok") and data.get("data") and "token" in data["data"] {

@@ -208,9 +208,7 @@ impl NaIRGenPass._emit_dict_helpers(
         contains_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="len.ptr"
     );
     keys_pc = b.gep(
-        contains_fn.args[0],
-        [ir.Constant(i32, 0), ir.Constant(i32, 2)],
-        name="keys.ptr"
+        contains_fn.args[0], [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="keys.ptr"
     );
     len_c = b.load(len_pc, name="len");
     keys_c = b.load(keys_pc, name="keys");

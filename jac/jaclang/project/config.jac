@@ -184,7 +184,10 @@ obj JacConfig {
     ) -> JacConfig | None;
 
     static def load(toml_path: Path) -> JacConfig;
-    static def from_toml_str(toml_str: str, toml_path: Path | None = None) -> JacConfig;
+    static def from_toml_str(
+        toml_str: str, toml_path: Path | None = None
+    ) -> JacConfig;
+
     def apply_env_interpolation -> None;
     def apply_cli_overrides(args: dict[(str, Any)]) -> None;
     def apply_profile(profile_name: str, _visited: set | None = None) -> None;
@@ -211,7 +214,9 @@ obj JacConfig {
 
 # Discover config files for a project in load order.
 # Returns list of paths: [jac.toml, jac.<profile>.toml?, jac.local.toml?]
-def discover_config_files(project_root: Path, profile: str | None = None) -> list[Path];
+def discover_config_files(
+    project_root: Path, profile: str | None = None
+) -> list[Path];
 
 # Parse TOML data into JacConfig object
 def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;

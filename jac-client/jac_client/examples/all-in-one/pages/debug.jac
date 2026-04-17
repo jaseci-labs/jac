@@ -428,9 +428,7 @@ cl {
                             CORS or sidecar not running
                         </li>
                         <li>
-                            <strong style={{"color": "#4ade80"}}>
-                                All green:
-                            </strong>
+                            <strong style={{"color": "#4ade80"}}>All green:</strong>
                             Sidecar is working correctly!
                         </li>
                     </ul>

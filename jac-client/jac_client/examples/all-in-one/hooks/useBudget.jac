@@ -6,7 +6,7 @@ cl {
     # Main budget management hook
     def:pub useBudget -> dict {
         # Simple useState - no complex localStorage hook
-        [transactions, setTransactions] = useState([]);
+        has transactions: list = [];
 
         # Add a new transaction
         def addTransaction(
@@ -27,7 +27,7 @@ cl {
                 "isBusinessTransaction": isBusiness,
                 "clientName": clientName if clientName != "" else None
             };
-            setTransactions(transactions.concat([newTx]));
+            transactions = transactions.concat([newTx]);
         }
 
         # Delete a transaction by ID
@@ -37,7 +37,7 @@ cl {
                 for tx in transactions
                 if tx["id"] != id
             ];
-            setTransactions(filtered);
+            transactions = filtered;
         }
 
         # Calculate totals

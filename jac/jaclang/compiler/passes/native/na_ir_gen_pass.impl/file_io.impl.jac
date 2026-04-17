@@ -20,7 +20,12 @@ impl NaIRGenPass._get_file_struct_type -> ir.Type {
     self._file_struct_type = file_struct;
     # Register as a known struct type for method calls and field access
     self.struct_types["File"] = file_struct;
-    self.struct_field_indices["File"] = {"handle": 0, "path": 1, "mode": 2, "closed": 3};
+    self.struct_field_indices["File"] = {
+        "handle": 0,
+        "path": 1,
+        "mode": 2,
+        "closed": 3
+    };
     self.struct_field_types["File"] = {
         "handle": i8p,
         "path": i8p,
@@ -71,9 +76,13 @@ impl NaIRGenPass._emit_file_helpers -> None {
     );
     handle = b.load(handle_ptr, name="handle");
     # Seek to end to get file size
-    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]);  # SEEK_END = 2
+    b.call(
+        fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 2)]
+    );  # SEEK_END = 2
     file_size = b.call(ftell_fn, [handle], name="file.size");
-    b.call(fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]);  # SEEK_SET = 0
+    b.call(
+        fseek_fn, [handle, ir.Constant(i64, 0), ir.Constant(i32, 0)]
+    );  # SEEK_SET = 0
     # Allocate buffer (size + 1 for null terminator) via rc_alloc
     buf_size = b.add(file_size, ir.Constant(i64, 1), name="buf.size");
     buffer = b.call(rc_alloc_fn, [buf_size], name="read.buf");
@@ -255,7 +264,9 @@ impl NaIRGenPass._emit_open(nd: uni.FuncCall) -> (ir.Value | None) {
     }
     # Call fopen(path, mode)
     fopen_fn = self._get_or_declare_extern("fopen", i8p, [i8p, i8p]);
-    file_handle = self.builder.call(fopen_fn, [path_val, mode_val], name="fopen.result");
+    file_handle = self.builder.call(
+        fopen_fn, [path_val, mode_val], name="fopen.result"
+    );
     # Check for NULL (file open failure)
     func = self.builder.function;
     null_bb = func.append_basic_block(name="open.null");
