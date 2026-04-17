@@ -66,6 +66,9 @@ jobs:
       - name: Install dependencies
         run: pip install tomlkit==0.14.0
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Validate versions against PyPI
         run: |
           jac run scripts/validate_release.jac \

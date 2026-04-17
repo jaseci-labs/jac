@@ -235,6 +235,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Wait for tier 1 on PyPI
         env:
           MATRIX: ${{ needs.parse-release.outputs.matrix }}
@@ -290,6 +293,9 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Wait for tier 2 on PyPI
         env:
           MATRIX: ${{ needs.parse-release.outputs.matrix }}
@@ -344,6 +350,9 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Install jaclang
+        run: pip install -e ./jac
 
       - name: Wait for tier 3 on PyPI
         env:
