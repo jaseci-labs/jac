@@ -682,6 +682,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "functions without a return statement implicitly return None "
          "[unnecessary-none-return]"
      ),
+     W3038 = _warn(
+         "W3038",
+         Category.LINT,
+         "useState hook for '{name}' can be replaced with "
+         "'has {name}: {type_name} = {init}' [usestate-to-has]"
+         "setter can be replaced with direct assignment to the field in the ability body"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -704,6 +711,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "identical-branches": "W3025",
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
+         "usestate-to-has": "W3038",
          "mutable-default": "W3036",
          "unnecessary-none-return": "W3037"
      },
