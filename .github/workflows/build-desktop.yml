@@ -111,20 +111,21 @@ jobs:
         working-directory: ${{ env.EXAMPLE_DIR }}
         run: jac setup desktop
 
-      # ── Linux AppImage workaround ────────────────────────────
-      # GitHub runners don't have FUSE device access. Tell
-      # linuxdeploy/AppImage tools to extract-and-run instead.
-      - name: Set AppImage extract flag
-        if: matrix.platform == 'linux'
-        run: echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
-
       # ── Build ────────────────────────────────────────────────
       # Compiles web bundle (Vite), bundles sidecar (PyInstaller),
       # then runs `cargo tauri build` to produce platform installers.
+      #
+      # Linux env vars:
+      #   APPIMAGE_EXTRACT_AND_RUN=1 -- GitHub runners lack FUSE; tells
+      #     linuxdeploy AppImages to extract instead of mount.
+      #   NO_STRIP=true -- prevents linuxdeploy from stripping binaries,
+      #     which fails on some runner configurations.
       - name: Build desktop app
         working-directory: ${{ env.EXAMPLE_DIR }}
         env:
           JAC_BUILD: "1"
+          APPIMAGE_EXTRACT_AND_RUN: ${{ matrix.platform == 'linux' && '1' || '' }}
+          NO_STRIP: ${{ matrix.platform == 'linux' && 'true' || '' }}
         run: jac build --client desktop --platform ${{ matrix.platform }}
         timeout-minutes: 90
 
