@@ -2820,6 +2820,9 @@ impl TypeEvaluator.get_type_of_expression(
         }
     }
     result = self._get_type_of_expression_core(node_, expected_type);
+    if isinstance(result, types.UnknownType) {
+        self.emit_diag(W1051, node_);
+    }
     node_.type = result;
     return result;
 }

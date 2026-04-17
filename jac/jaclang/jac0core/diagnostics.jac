@@ -459,6 +459,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot spread type {actual} into '{component}' (expected dict)"
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
+     W1051 = _warn(
+         "W1051", Category.TYPE, "Expression type could not be resolved (Unknown)"
+     ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      W1101 = _warn(
