@@ -66,7 +66,7 @@ def build_precompile_matrix(releases: list[dict]) -> dict {
             }
         }
     }
-    return {"`include": `include};
+    return {"include": `include};
 }
 def main() -> int {
     parser = argparse.ArgumentParser();
@@ -76,8 +76,8 @@ def main() -> int {
     if not releases {
         print("No packages found to release");
         set_output("has_releases", "false");
-        set_output("matrix", json.dumps({"`include": []}));
-        set_output("precompile_matrix", json.dumps({"`include": []}));
+        set_output("matrix", json.dumps({"include": []}));
+        set_output("precompile_matrix", json.dumps({"include": []}));
         set_output("has_precompile", "false");
         set_output("release_summary", "none");
         return 1;
@@ -91,10 +91,10 @@ def main() -> int {
         }
     }
     precompile_matrix = build_precompile_matrix(releases);
-    has_precompile = len(precompile_matrix["`include"]) > 0;
+    has_precompile = len(precompile_matrix["include"]) > 0;
     summary = ", ".join(f"{r['pypi']} {r['version']}" for r in releases);
     set_output("has_releases", "true");
-    set_output("matrix", json.dumps({"`include": releases}));
+    set_output("matrix", json.dumps({"include": releases}));
     set_output("precompile_matrix", json.dumps(precompile_matrix));
     set_output("has_precompile", str(has_precompile).lower());
     set_output("release_summary", summary);
