@@ -1626,6 +1626,31 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return self._get_type_of_super(expr);
             }
 
+            # Handle bare `root` — the deprecated form (not in a FuncCall).
+            # Codegen rewrites bare root to root(), so the type checker must
+            # resolve it as Root instance to avoid false E1096 errors on
+            # connections like `root ++> x`. Only applies when `root` would
+            # resolve from jac_builtins.pyi (not a user-defined local).
+            if isinstance(expr, uni.Name)
+            and expr.value == "root"
+            and not (
+                isinstance(expr.parent, uni.FuncCall) and expr.parent.target is expr
+            )
+            and self.prefetch
+            and self.prefetch.root_class {
+                scope_ = expr.find_parent_of_type(uni.UniScopeNode);
+                local_sym = type_utils.lookup_symtab(scope_, "root", None)
+                    if scope_
+                    else None;
+                if local_sym is None
+                or (
+                    local_sym.decl is not None
+                    and local_sym.decl.loc.mod_path.endswith("jac_builtins.pyi")
+                ) {
+                    return self._convert_to_instance(self.prefetch.root_class);
+                }
+            }
+
             if scope := expr.find_parent_of_type(uni.UniScopeNode) {
                 if symbol := type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module
