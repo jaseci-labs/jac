@@ -3505,7 +3505,7 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
             return;
         }
     }
-    if (name == "root" and nd.py_ctx_func == ast3.Load) {
+    if (name == "root" and nd.py_ctx_func == ast3.Load and nd.sym is None) {
         is_root_call = isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
         if not is_root_call {
             # Bare `root` usage — emit deprecation, compile as root() call
@@ -3517,6 +3517,14 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
         }
         # Explicit root() call — just resolve the name from jaclib
         self.jaclib_imports.add('root');
+    }
+    # root() may also be resolved by the type checker (via jac_builtins.pyi),
+    # in which case nd.sym is set. Still need the jaclib import at runtime.
+    if (name == "root" and nd.py_ctx_func == ast3.Load and nd.sym is not None) {
+        is_root_call = isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
+        if is_root_call {
+            self.jaclib_imports.add('root');
+        }
     }
     if (name in self._get_builtin_names()) {
         self.builtin_imports.add(name);
