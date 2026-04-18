@@ -537,6 +537,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SEMANTIC,
          "Redundant comparison to boolean literal — use the expression directly"
      ),
+     W2080 = _warn(
+         "W2080",
+         Category.SEMANTIC,
+         "Attribute '{attr}' assigned in '{method}' body should be declared as a 'has' field on {arch_type} '{name}'"
+     ),
      E2055 = _err(
          "E2055",
          Category.SEMANTIC,

@@ -3835,3 +3835,42 @@ test "compare_operator_validation" {
     assert '"hello" > 5' in all_errors_str;
     assert "5 in 10" in all_errors_str;
 }
+
+test "undeclared_obj_attr_warns_w2080" {
+    # W2080: annotated self-assignments in init/postinit of obj/node/edge/walker
+    # should warn "declare as 'has' field" while still resolving the attribute
+    # to prevent cascading E1030 errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_undeclared_obj_attr.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Collect warnings
+    all_warnings = [w.pretty_print() for w in program.warnings_had];
+    w2080_warnings = [w for w in all_warnings if "W2080" in w];
+
+    # Should have W2080 for: y (Foo.init), count (Bar.postinit),
+    # label (Bar.postinit), cached (MyNode.postinit)
+    assert len(w2080_warnings) >= 4 , f"Expected >= 4 W2080 warnings, got {len(
+        w2080_warnings
+    )}:\n" + "\n---\n".join(w2080_warnings);
+
+    # Verify the warning messages mention the attribute names
+    w2080_str = "\n".join(w2080_warnings);
+    assert "'y'" in w2080_str or "y" in w2080_str;
+    assert "'count'" in w2080_str;
+    assert "'label'" in w2080_str;
+    assert "'cached'" in w2080_str;
+
+    # Verify no E1030 on resolved attributes (f.y, b.count, b.label should NOT error)
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1030_errors = [e for e in all_errors if "E1030" in e];
+    # Only Baz.secret (unannotated) should produce E1030
+    e1030_names = [e for e in e1030_errors if "secret" in e];
+    assert len(e1030_names) >= 1 , f"Expected E1030 for 'secret', got: {e1030_errors}";
+    # No E1030 for count, label, cached (resolved via W2080 path)
+    for attr in ["count", "label", "cached"] {
+        resolved_errors = [e for e in e1030_errors if attr in e];
+        assert len(resolved_errors) == 0 , f"Attribute '{attr}' should be resolved, but got E1030: {resolved_errors}";
+    }
+}
