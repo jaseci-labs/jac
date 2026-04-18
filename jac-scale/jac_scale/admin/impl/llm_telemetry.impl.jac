@@ -65,12 +65,18 @@ impl JacUserRateLimiter._get_budget_spent(
     if period == 'day' {
         since = now.replace(hour=0, minute=0, second=0, microsecond=0).timestamp();
     } else {
-        since = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).timestamp();
+        since = now.replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        ).timestamp();
     }
-    result = list(self.col.aggregate([
-        {'$match': {'username': username, 'ts': {'$gte': since}}},
-        {'$group': {'_id': None, 'total': {'$sum': '$cost_usd'}}}
-    ]));
+    result = list(
+        self.col.aggregate(
+            [
+                {'$match': {'username': username, 'ts': {'$gte': since}}},
+                {'$group': {'_id': None, 'total': {'$sum': '$cost_usd'}}}
+            ]
+        )
+    );
     spent = float(result[0]['total']) if result else 0.0;
     if self.rc {
         self.rc.set(cache_key, spent, ex=ttl);
@@ -94,7 +100,9 @@ impl JacUserRateLimiter.check_pre_call(
         self._check_and_incr(f"llm:rpm:{username}:{min_bucket}", int(self.rpm), 120);
     }
     if self.rpd {
-        self._check_and_incr(f"llm:rpd:{username}:{ts // 86400}", int(self.rpd), 172800);
+        self._check_and_incr(
+            f"llm:rpd:{username}:{ts // 86400}", int(self.rpd), 172800
+        );
     }
     if self.tpm {
         current = int(self.rc.get(f"llm:tpm:{username}:{min_bucket}") or 0);
@@ -110,14 +118,18 @@ impl JacUserRateLimiter.check_pre_call(
     }
     if self.daily_budget {
         today = str(date.today());
-        spent = self._get_budget_spent(username, 'day', f"llm:budget_daily:{username}:{today}", 60);
+        spent = self._get_budget_spent(
+            username, 'day', f"llm:budget_daily:{username}:{today}", 60
+        );
         if spent >= float(self.daily_budget) {
             raise Exception(f"Daily LLM budget of ${self.daily_budget} exceeded.");
         }
     }
     if self.monthly_budget {
         ym = datetime.now(timezone.utc).strftime('%Y-%m');
-        spent = self._get_budget_spent(username, 'month', f"llm:budget_monthly:{username}:{ym}", 60);
+        spent = self._get_budget_spent(
+            username, 'month', f"llm:budget_monthly:{username}:{ym}", 60
+        );
         if spent >= float(self.monthly_budget) {
             raise Exception(f"Monthly LLM budget of ${self.monthly_budget} exceeded.");
         }
@@ -168,13 +180,15 @@ impl JacUserRateLimiter.record_success(
     }
 
     if self.col {
-        self.col.insert_one({
-            'username': username,
-            'ts': ts,
-            'model': model,
-            'tokens': tokens,
-            'cost_usd': cost_usd
-        });
+        self.col.insert_one(
+            {
+                'username': username,
+                'ts': ts,
+                'model': model,
+                'tokens': tokens,
+                'cost_usd': cost_usd
+            }
+        );
     }
 }
 
@@ -848,7 +862,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                     import redis as _redis_mod;
                     _redis_client = _redis_mod.from_url(redis_url);
                 } except Exception as e {
-                    logger.warning(f"LLM rate limiting: Redis unavailable, limiting disabled: {e}");
+                    logger.warning(
+                        f"LLM rate limiting: Redis unavailable, limiting disabled: {e}"
+                    );
                 }
             }
 
@@ -858,7 +874,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                 _mongo_col = get_mongo_client()['jac_scale']['llm_usage'];
                 _mongo_col.create_index([('username', 1), ('ts', 1)]);
             } except Exception as e {
-                logger.warning(f"LLM rate limiting: MongoDB unavailable, budget limiting disabled: {e}");
+                logger.warning(
+                    f"LLM rate limiting: MongoDB unavailable, budget limiting disabled: {e}"
+                );
             }
 
             rl = JacUserRateLimiter(_redis_client, _mongo_col, limits_cfg);
@@ -878,8 +896,11 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                 }
 
                 def log_pre_api_call(
-                    self: _LiteLLMRateLimitAdapter, model: Any, messages: Any, kwargs: Any
-                ) -> None {
+                    self: _LiteLLMRateLimitAdapter,
+                    model: Any,
+                    messages: Any,
+                    kwargs: Any
+                ) {
                     try {
                         ctx = JacRuntimeInterface.get_context();
                         username = getattr(ctx, 'username', None);
@@ -887,7 +908,8 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                             self.rl.check_pre_call(username);
                         }
                     } except Exception as e {
-                        if 'limit exceeded' in str(e).lower() or 'budget' in str(e).lower() {
+                        if 'limit exceeded' in str(e).lower()
+                        or 'budget' in str(e).lower() {
                             raise;
                         }
                         logger.warning(f"LLM rate limiting: pre-call check error: {e}");
@@ -900,7 +922,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                     response_obj: Any,
                     start_time: Any,
                     end_time: Any
-                ) -> None {
+                ) {
                     try {
                         ctx = JacRuntimeInterface.get_context();
                         username = getattr(ctx, 'username', None);
@@ -914,7 +936,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                             );
                         }
                     } except Exception as e {
-                        logger.warning(f"LLM rate limiting: post-call tracking error: {e}");
+                        logger.warning(
+                            f"LLM rate limiting: post-call tracking error: {e}"
+                        );
                     }
                 }
             }

@@ -39,19 +39,22 @@ class JacUserRateLimiter {
         daily_budget: Any = None,
         monthly_budget: Any = None;
 
-    def init(
-        self: JacUserRateLimiter,
-        rc: Any,
-        col: Any,
-        cfg: dict
+    def init(self: JacUserRateLimiter, rc: Any, col: Any, cfg: dict) -> None;
+
+    def _check_and_incr(
+        self: JacUserRateLimiter, key: str, limit: int, ttl: int
     ) -> None;
-    def _check_and_incr(self: JacUserRateLimiter, key: str, limit: int, ttl: int) -> None;
     def _get_budget_spent(
         self: JacUserRateLimiter, username: str, period: str, cache_key: str, ttl: int
     ) -> float;
+
     def check_pre_call(self: JacUserRateLimiter, username: str) -> None;
     def record_success(
-        self: JacUserRateLimiter, username: str, tokens: int, cost_usd: float, model: str
+        self: JacUserRateLimiter,
+        username: str,
+        tokens: int,
+        cost_usd: float,
+        model: str
     ) -> None;
 }
 
