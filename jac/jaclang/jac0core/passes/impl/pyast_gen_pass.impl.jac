@@ -3505,7 +3505,7 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
             return;
         }
     }
-    if (name == "root" and nd.py_ctx_func == ast3.Load and nd.sym is None) {
+    if (name == "root" and nd.py_ctx_func == ast3.Load) {
         is_root_call = isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
         if not is_root_call {
             # Bare `root` usage — emit deprecation, compile as root() call
