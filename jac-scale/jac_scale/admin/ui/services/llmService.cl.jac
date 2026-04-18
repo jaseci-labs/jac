@@ -13,7 +13,8 @@ cl {
         offset: int = 0,
         caller: str = "",
         model: str = "",
-        status: str = ""
+        status: str = "",
+        root_only: bool = False
     ) -> dict {
         params = f"limit={limit}&offset={offset}";
         if caller {
@@ -24,6 +25,9 @@ cl {
         }
         if status {
             params += f"&status={encodeURIComponent(status)}";
+        }
+        if root_only {
+            params += "&root_only=true";
         }
         return await get("/admin/llm/telemetry/traces?" + params, token);
     }

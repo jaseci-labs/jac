@@ -87,6 +87,7 @@ import from jaclang.jac0core.diagnostics {
     E1103,
     E1104,
     W1050,
+    W1051,
     W1100,
     W1101,
     W1102
@@ -346,6 +347,12 @@ obj TypeEvaluator {
     # type and inferred type, we're going to unify them (if it's required
     # in the future, we can refactor this).
     def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # Return EnumMemberType if `node_` is the Name of an enum member
+    # declaration (either `RED = 1` target or bare `RED,` inside enum body).
+    # Returns None when the Name is not an enum member declaration.
+    def _get_enum_member_type_for_decl(
+        node_: uni.Name
+    ) -> (types.EnumMemberType | None);
     # gets member type and specializes it with class type_args
     def get_type_of_member(member: Any, class_type: types.ClassType) -> TypeBase;
     # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args

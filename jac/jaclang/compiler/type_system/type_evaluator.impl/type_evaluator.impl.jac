@@ -1803,6 +1803,15 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             if node_.type is not None {
                 return node_.type;
             }
+            # ---- Handle enum member declarations ----
+            # A Name declared inside an enum body (either as the target of an
+            # Assignment — `RED = 1` — or as a bare name — `RED,`) represents
+            # a specific enum member, not the enum class. Return EnumMemberType
+            # so hover, assignment checks, and attribute access all see the
+            # correct per-member type.
+            if enum_member_type := self._get_enum_member_type_for_decl(node_) {
+                return enum_member_type;
+            }
             # ---- Handle tuple/list unpacking targets ----
             # When a Name is inside a TupleVal/ListVal that is the target
             # of an Assignment, infer its type from the RHS tuple element.
@@ -2067,6 +2076,52 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     # TODO: Implement for functions, parameters, explicit type
     # annotations in assignment etc.
     return types.UnknownType();
+}
+
+"""Return EnumMemberType if node_ is an enum member declaration Name.
+
+Uses the parser-set `Assignment.is_enum_stmt` flag as the structural
+discriminator — it is set for both inline (`enum Color { RED = 1 }`) and
+impl-based (`enum Color; impl Color { RED = 1 }`) forms, so enum members
+are identified uniformly without AST shape probing. To resolve the owning
+Enum, the Assignment's parent is either the Enum itself (inline) or the
+ImplDef that implements it; DeclImplMatchPass sets ImplDef.decl_link to
+the declaring Enum before TypeCheckPass runs. The member's EnumMemberInfo
+is built eagerly by get_type_of_enum and wrapped in EnumMemberType here.
+Returns None when node_ is not an enum member declaration Name.
+"""
+impl TypeEvaluator._get_enum_member_type_for_decl(
+    node_: uni.Name
+) -> (types.EnumMemberType | None) {
+    assignment = node_.parent;
+    if not isinstance(assignment, uni.Assignment) or not assignment.is_enum_stmt {
+        return None;
+    }
+    # Guard against non-target positions (the Assignment holds only the
+    # member Name(s) in `target`, so this is typically redundant — but
+    # guards against future AST shapes that reuse is_enum_stmt).
+    if node_ not in assignment.target {
+        return None;
+    }
+    container = assignment.parent;
+    enum_node: uni.Enum | None = None;
+    if isinstance(container, uni.Enum) {
+        enum_node = container;
+    } elif isinstance(container, uni.ImplDef)
+    and isinstance(container.decl_link, uni.Enum) {
+        enum_node = container.decl_link;
+    }
+    if enum_node is None {
+        return None;
+    }
+    enum_type = self.get_type_of_enum(enum_node);
+    member_info = enum_type.shared.enum_members.get(node_.sym_name)
+        if enum_type.shared.enum_members
+        else None;
+    if member_info is None {
+        return None;
+    }
+    return types.EnumMemberType(enum_class=enum_type, member_info=member_info);
 }
 
 """
@@ -2820,6 +2875,16 @@ impl TypeEvaluator.get_type_of_expression(
         }
     }
     result = self._get_type_of_expression_core(node_, expected_type);
+    if isinstance(result, types.UnknownType) {
+        # Suppress W1051 inside stub modules (typeshed .pyi files). Stubs
+        # may contain forward references and cross-stub types that can't
+        # be fully resolved in Jac; surfacing them produces noise for
+        # users who only care about diagnostics on their own source.
+        mod = node_.find_parent_of_type(uni.Module);
+        if mod is None or not mod.is_raised_from_py {
+            self.emit_diag(W1051, node_);
+        }
+    }
     node_.type = result;
     return result;
 }
@@ -3399,22 +3464,33 @@ impl TypeEvaluator._get_type_from_flow_node(
 
 """Classify a CFG edge from an IfStmt predecessor to a successor as true/false."""
 impl TypeEvaluator._classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str {
-    # True branch: succ is the first statement in pred.body.
+    # Direct entry into the true branch.
     if pred.body and succ is pred.body[0] {
         return "true";
     }
-    # False branch: ElseIf (which IS a CodeBlockStmt/UniCFGNode).
+    # Direct entry into the false branch.
     if isinstance(pred.else_body, uni.ElseIf) and succ is pred.else_body {
         return "false";
     }
-    # False branch: ElseStmt (NOT a CFG node) -- edge goes to its body[0].
-    if isinstance(pred.else_body, uni.ElseStmt) {
-        if pred.else_body.body and succ is pred.else_body.body[0] {
-            return "false";
-        }
+    if isinstance(pred.else_body, uni.ElseStmt)
+    and pred.else_body.body
+    and succ is pred.else_body.body[0] {
+        return "false";
     }
-    # False branch: no else_body (fall-through to next sibling).
-    if pred.else_body is None and succ not in pred.body {
+    # Fall-through to next sibling: which branch is the empty one?
+    body_empty = not pred.body;
+    else_empty = isinstance(pred.else_body, uni.ElseStmt) and not pred.else_body.body;
+    has_else_branch = pred.else_body is not None;
+    if body_empty and (else_empty or not has_else_branch) {
+        # Both paths fall through -- no narrowing.
+        return "unconditional";
+    }
+    if body_empty {
+        # Only the true branch is empty; fall-through is the true path.
+        return "true";
+    }
+    if else_empty or not has_else_branch {
+        # False branch is empty or absent; fall-through is the false path.
         return "false";
     }
     return "unconditional";

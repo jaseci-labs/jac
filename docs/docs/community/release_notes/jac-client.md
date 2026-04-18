@@ -2,7 +2,7 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.12 (Unreleased)
+## jac-client 0.3.12 (Latest Release)
 
 - **Jacpack Template Migration to `to cl:`**: The `client` scaffold's `main.jac` now uses the flatter `to cl:` section-header form instead of wrapping the entire component in a `cl { ... }` block.
 - **Jacpack Template Cleanup**: The `client` and `fullstack` scaffolds drop their leftover React usage, return `JsxElement` from their component roots, and use idiomatic Jac state/effect/event patterns so freshly-created projects pass `jac check` out of the box.
@@ -24,9 +24,9 @@ This document provides a summary of new features, improvements, and bug fixes in
 - **Standalone Sidecar Bundling via PyInstaller**: Desktop builds now bundle the Jac sidecar as a standalone executable using PyInstaller by default. The bundled sidecar includes Python, jaclang, jac-client, and configured plugins (jac-scale, byllm, jac-coder via `[desktop.plugins]` in `jac.toml`), eliminating the requirement for end users to have Python installed. Auto-installs Python dependencies from `jac.toml` before bundling. Set `JAC_SIDECAR_STANDALONE=0` to fall back to wrapper script mode.
 - **Debug Diagnostic Page**: Added a debug page to the all-in-one example app for diagnosing sidecar/API connectivity issues. Displays API base URL status, Tauri runtime detection, `get_api_url` invoke results, and interactive buttons to test walker spawning and direct HTTP fetch.
 - **Plugin Reference Docs**: Added `reference/plugins/jac-client.md` documenting jac-client CLI commands and configuration options.
-- 4 small refactors/changes.
+- 5 small refactors/changes.
 
-## jac-client 0.3.11 (Latest Release)
+## jac-client 0.3.11
 
 - **Replace npm meta-packages with direct dependencies**: Removed `jac-client-node` and `@jac-client/dev-deps` meta-packages in favor of injecting individual npm dependencies (react, vite, typescript, etc.) directly into `jac.toml`. Users can now see and pin exact dependency versions. Existing projects using meta-packages are automatically migrated on next load.
 - **Improved Error Visibility**: Build and runtime errors that were previously silenced now surface as warnings in the terminal and browser console, making it easier to diagnose issues during development and production.

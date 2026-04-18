@@ -135,6 +135,16 @@ impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -
 """Pyright: Checker.visitAssignment(node: AssignmentNode): boolean."""
 impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> None {
     import from jaclang.compiler.type_system { types }
+    # Enum member declarations reuse the Assignment AST node but are a
+    # distinct construct: the `=` binds the literal value, not for
+    # variable-assignment type compatibility. The parser marks these with
+    # is_enum_stmt=True for both inline (`enum Color { RED = 1 }`) and
+    # impl-based (`enum Color; impl Color { RED = 1 }`) forms. Value-type
+    # validation (against enum_value_type and per-member type annotations)
+    # is owned by build_enum_members.
+    if nd.is_enum_stmt {
+        return;
+    }
     if ((len(nd.target) == 1) and (nd.value is not None)) {
         target = nd.target[0];
         # Track whether this is a reassignment of a variable whose
@@ -563,7 +573,15 @@ impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> Non
 
 """Exit an enum node - build enum type eagerly and traverse ImplDef body if present."""
 impl TypeCheckPass.exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None {
-    self.evaluator.get_type_of_enum(nd);
+    cls_type = self.evaluator.get_type_of_enum(nd);
+    # Type-check each enum member name so W1051 fires for unresolved members.
+    for child in nd.kid {
+        if isinstance(child, uni.Assignment) {
+            for target in child.target {
+                self.evaluator.get_type_of_expression(target);
+            }
+        }
+    }
     if isinstance(nd.body, uni.ImplDef) {
         self.traverse(nd.body);
     }

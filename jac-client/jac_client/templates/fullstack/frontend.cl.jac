@@ -193,7 +193,7 @@ def:pub app -> JsxElement {
             onUsernameChange={lambda e: ChangeEvent { username = e.target.value;}}
             onPasswordChange={lambda e: ChangeEvent { password = e.target.value;}}
             onSubmit={handleSubmit}
-            onToggleMode={lambda {
+            onToggleMode={lambda _e: MouseEvent {
                 isSignup = not isSignup;
                 error = "";
             }}

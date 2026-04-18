@@ -310,29 +310,135 @@ See the [Webhooks](#webhooks) section below.
 
 ## Authentication
 
+jac-scale uses an **identity-based authentication system**. Instead of a flat username/password pair, each user has an array of _identities_ (username, email, SSO) and an array of _credentials_ (password). This allows users to log in with any of their identities and enables SSO accounts to coexist alongside password-based credentials without schema changes.
+
+### Identity Model
+
+A user document has this shape:
+
+```
+user_id        UUID (primary key)
+status         "active" | "disabled"
+role           "admin" | "system" | "user"
+identities     [{type, value_raw, value_normalized, verified, is_recovery}, ...]
+credentials    [{type, password_hash}, ...]
+root_id        hex ID of the user's Jac graph root node
+created_at     ISO 8601 timestamp
+updated_at     ISO 8601 timestamp
+```
+
+**Identity types:**
+
+| Type | Description | Notes |
+|------|-------------|-------|
+| `username` | A unique username | Always verified on creation |
+| `email` | An email address | Marked as recovery identity by default |
+| `sso` | SSO provider link | Added automatically on SSO login; includes `provider` and `external_id` fields |
+
+A user can have at most **one** identity of each non-SSO type (one username, one email). All identity values are normalized (lowercased, stripped) before storage and lookup, preventing case-sensitivity duplicates.
+
+**Credential types:**
+
+| Type | Description |
+|------|-------------|
+| `password` | Bcrypt-hashed password |
+
+Passwords are hashed with [bcrypt](https://en.wikipedia.org/wiki/Bcrypt) (random salt per password). Plain-text passwords never leave the request handler.
+
+### Storage Backends
+
+The identity storage layer is backend-agnostic. jac-scale automatically selects the backend based on your database configuration:
+
+- **SQLite** (default) -- used when no `mongodb_uri` is configured. User data is stored in `.jac/data/users.db` relative to your project root using SQLAlchemy. Good for development and single-instance deployments.
+- **MongoDB** -- used when `mongodb_uri` is set (via `jac.toml` or `MONGODB_URI` environment variable). User data is stored in the `users` collection of the `jac_db` database. Required for multi-instance production deployments.
+
+Both backends implement the same `IdentityStorage` interface. Application code (endpoints, walkers, middleware) is completely unaware of which backend is in use.
+
+```toml
+# jac.toml -- use MongoDB
+[plugins.scale.database]
+mongodb_uri = "mongodb://localhost:27017"
+```
+
+```bash
+# Or via environment variable
+export MONGODB_URI="mongodb://localhost:27017"
+```
+
+When no MongoDB URI is configured, SQLite is used automatically with no additional setup.
+
 ### User Registration
 
 ```bash
 curl -X POST http://localhost:8000/user/register \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "secret"}'
+  -d '{
+    "identities": [
+      {"type": "username", "value": "myuser"},
+      {"type": "email", "value": "user@example.com"}
+    ],
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
+Returns on success (HTTP 201):
+
+```json
+{
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-...",
+    "message": "User registered successfully"
+  }
+}
+```
+
+Registration does **not** return a token. Use `/user/login` after registration to authenticate.
+
+**Validation rules:**
+
+- At least one identity is required
+- Only `username` and `email` types are accepted
+- No duplicate identity types (e.g., two usernames)
+- Identity values must be unique across all users (checked after normalization)
+- Credential type must be `password` with a non-empty password
+
 ### User Login
+
+Log in with **any** identity (username or email) and a password:
 
 ```bash
 curl -X POST http://localhost:8000/user/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "secret"}'
+  -d '{
+    "identity": {"type": "username", "value": "myuser"},
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
-Returns:
+Returns on success (HTTP 200):
 
 ```json
 {
-  "access_token": "eyJ...",
-  "token_type": "bearer"
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-...",
+    "token": "eyJ...",
+    "root_id": "a1b2c3d4...",
+    "role": "user"
+  }
 }
+```
+
+The same user can log in with their email instead:
+
+```bash
+curl -X POST http://localhost:8000/user/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identity": {"type": "email", "value": "user@example.com"},
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
 ### Authenticated Requests
@@ -344,27 +450,157 @@ curl -X POST http://localhost:8000/walker/my_walker \
   -d '{}'
 ```
 
+### Token Refresh
+
+Refresh a JWT token before it expires to get a new token with a fresh expiration window:
+
+```bash
+curl -X POST http://localhost:8000/user/refresh-token \
+  -H "Content-Type: application/json" \
+  -d '{"token": "eyJ..."}'
+```
+
+The `token` value can optionally include the `Bearer` prefix (it will be stripped automatically).
+
+Returns on success:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "token": "eyJ...(new token)...",
+    "message": "Token refreshed successfully"
+  }
+}
+```
+
+Returns HTTP 401 if the token is invalid or expired.
+
+### Password Update
+
+Update the authenticated user's password. Requires the current password for verification:
+
+```bash
+curl -X PUT http://localhost:8000/user/password \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_password": "old_secret",
+    "new_password": "new_secret"
+  }'
+```
+
+Returns on success:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-...",
+    "message": "Password updated successfully"
+  }
+}
+```
+
+Returns HTTP 400 if the current password is incorrect or the new password is empty.
+
 ### JWT Configuration
 
-Configure JWT authentication via environment variables:
+JWT tokens use `user_id` (UUID) as the primary claim, not the username. This means users can change their username or email without invalidating existing tokens.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `JWT_SECRET` | Secret key for JWT signing | `supersecretkey` |
-| `JWT_ALGORITHM` | JWT algorithm | `HS256` |
-| `JWT_EXP_DELTA_DAYS` | Token expiration in days | `7` |
+Configure JWT via `jac.toml` or environment variables:
+
+```toml
+[plugins.scale.jwt]
+secret = "your-secret-key-here"
+algorithm = "HS256"
+exp_delta_days = 7
+```
+
+| Variable | `jac.toml` key | Description | Default |
+|----------|---------------|-------------|---------|
+| `JWT_SECRET` | `secret` | Secret key for JWT signing | `supersecretkey_for_testing_only!` |
+| `JWT_ALGORITHM` | `algorithm` | JWT signing algorithm | `HS256` |
+| `JWT_EXP_DELTA_DAYS` | `exp_delta_days` | Token expiration in days | `7` |
+
+!!! warning "Production: change the JWT secret"
+    The default JWT secret is for development only. In production, set a long, random secret via environment variable or `jac.toml`. Anyone who knows the secret can forge valid tokens for any user.
+
+**JWT claims:**
+
+| Claim | Description |
+|-------|-------------|
+| `user_id` | UUID of the authenticated user |
+| `role` | User role (`admin`, `system`, or `user`) |
+| `exp` | Expiration timestamp |
+| `iat` | Issued-at timestamp |
+
+**Current limitations:**
+
+- No token blacklist or revocation -- tokens remain valid until they expire
+- No refresh token rotation -- the refresh endpoint issues a new token but does not invalidate the old one
+
+### Roles
+
+jac-scale has three built-in roles:
+
+| Role | Value | Description |
+|------|-------|-------------|
+| Admin | `admin` | Full administrative access, including the admin portal |
+| System | `system` | Internal system account (cannot be deleted) |
+| User | `user` | Standard user (default for new registrations) |
+
+Roles are stored in the user document and included in JWT claims. The admin user is bootstrapped automatically on first server start (see [Admin Portal](#admin-portal) for configuration).
+
+**Protected accounts** that cannot be deleted:
+
+- The bootstrap admin (fixed UUID `00000000-0000-0000-0000-000000000000`)
+- System accounts (role `system`)
+- The guest account (identity `__guest__`)
+
+Roles are managed via the admin portal API or programmatically through the `UserManager`:
+
+```bash
+# Set user role via admin API
+curl -X PUT http://localhost:8000/admin/users/{username} \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "admin"}'
+```
 
 ### SSO (Single Sign-On)
 
-jac-scale supports SSO with external identity providers. Currently supported: Google.
+jac-scale supports SSO with **Google**, **Apple**, and **GitHub**. SSO accounts are stored as identities within the user document (type `sso` with a `provider` field), not in a separate collection.
 
-**Configuration:**
+**How SSO login works:**
 
-| Variable | Description |
-|----------|-------------|
-| `SSO_HOST` | SSO callback host URL (default: `http://localhost:8000/sso`) |
-| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+1. User is redirected to the provider's login page
+2. Provider calls back with an authorization code
+3. jac-scale exchanges the code for user info (email, external ID)
+4. If a user with that email exists, the SSO identity is linked and a JWT is returned
+5. If no user exists, a new account is created with a verified email identity, the SSO identity is linked, and a JWT is returned
+
+**Configuration via `jac.toml`:**
+
+```toml
+[plugins.scale.sso]
+host = "http://localhost:8000"  # Your server's public URL
+client_auth_callback_url = ""   # Optional: redirect to frontend after SSO
+
+[plugins.scale.sso.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+
+[plugins.scale.sso.apple]
+client_id = "your-apple-client-id"
+client_secret = "your-apple-client-secret"
+
+[plugins.scale.sso.github]
+client_id = "your-github-client-id"
+client_secret = "your-github-client-secret"
+```
+
+Only providers with both `client_id` and `client_secret` configured are enabled. Unconfigured providers return HTTP 501 with a descriptive message.
 
 **SSO Endpoints:**
 
@@ -372,7 +608,10 @@ jac-scale supports SSO with external identity providers. Currently supported: Go
 |--------|------|-------------|
 | GET | `/sso/{platform}/login` | Redirect to provider login page |
 | GET | `/sso/{platform}/register` | Redirect to provider registration |
-| GET | `/sso/{platform}/login/callback` | OAuth callback handler |
+| GET | `/sso/{platform}/callback` | OAuth callback handler (GET) |
+| POST | `/sso/{platform}/callback` | OAuth callback handler (POST, for Apple Sign In) |
+
+Where `{platform}` is `google`, `apple`, or `github`.
 
 **Frontend Callback Redirect:**
 
@@ -386,16 +625,49 @@ client_auth_callback_url = "http://localhost:3000/auth/callback"
 When set, the callback endpoint redirects to the configured URL with query parameters:
 
 - On success: `{client_auth_callback_url}?token={jwt_token}`
-- On failure: `{client_auth_callback_url}?error={error_message}`
+- On failure: `{client_auth_callback_url}?error={error_code}&message={error_message}`
 
-This enables seamless browser-based OAuth flows where the frontend receives the token via URL parameters.
+**SSO Account Linking/Unlinking:**
+
+SSO accounts can be linked and unlinked programmatically. An SSO identity is automatically linked when a user logs in via SSO. To unlink, use the admin portal API or the `UserManager.unlink_sso_account()` method. Unlinking removes the SSO identity from the user's identity array but does not delete the user account.
 
 **Example:**
 
 ```bash
 # Redirect user to Google login
-curl http://localhost:8000/sso/google/login
+curl -L http://localhost:8000/sso/google/login
+
+# Redirect user to GitHub login
+curl -L http://localhost:8000/sso/github/login
 ```
+
+### Legacy User Migration
+
+If you are upgrading from an older version of jac-scale that used flat username/password user documents, the MongoDB backend automatically migrates legacy users on server startup. This migration:
+
+1. Converts flat `username`/`email`/`password_hash` fields into the identity + credential array format
+2. **Progressively rehashes** old SHA-256 passwords to bcrypt on the next successful login (no user action required)
+3. Handles **case collisions** -- if normalization causes two legacy usernames to collide, the duplicate is marked as `disabled`
+4. Preserves existing `root_id`, `role`, and other fields
+
+The migration runs once during `UserManager` initialization and is idempotent. SQLite deployments do not need migration since they use the new format from the start.
+
+!!! note
+    The legacy SHA-256 migration code is marked as removable. Once all users have logged in at least once (triggering the bcrypt rehash), the migration path can be safely removed in a future release.
+
+### Auth Endpoint Summary
+
+| Method | Path | Auth Required | Description |
+|--------|------|--------------|-------------|
+| POST | `/user/register` | No | Create a new user |
+| POST | `/user/login` | No | Authenticate and get JWT |
+| POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
+| PUT | `/user/password` | Yes (Bearer) | Update password |
+| GET | `/sso/{platform}/{operation}` | No | Initiate SSO flow |
+| GET/POST | `/sso/{platform}/callback` | No | SSO callback handler |
+| POST | `/api-key/create` | Yes (Bearer) | Create an API key |
+| GET | `/api-key/list` | Yes (Bearer) | List API keys |
+| DELETE | `/api-key/{api_key_id}` | Yes (Bearer) | Revoke an API key |
 
 ---
 
@@ -436,8 +708,10 @@ session_expiry_hours = 24
 | Role | Value | Description |
 |------|-------|-------------|
 | `ADMIN` | `admin` | Full administrative access |
-| `MODERATOR` | `moderator` | Limited administrative access |
+| `SYSTEM` | `system` | Internal system account (cannot be deleted) |
 | `USER` | `user` | Standard user access |
+
+See [Roles](#roles) in the Authentication section for details on protected accounts and role management.
 
 ### Admin API Endpoints
 

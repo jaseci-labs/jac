@@ -317,14 +317,15 @@ impl JFastApiServer._create_endpoint_function(
     self: JFastApiServer,
     callback: Callable[(..., Any)],
     parameters: list[APIParameter],
-    dependencies: list[Any]
+    dependencies: list[Any],
+    request_model: (type[BaseModel] | None) = None
 ) -> Callable[..., Any] {
     sig = inspect.signature(callback);
     accepts_kwargs = any(
         (p.kind == inspect.Parameter.VAR_KEYWORD) for p in sig.parameters.values()
     );
     needs_request_no_params = 'request' in sig.parameters;
-    if not parameters {
+    if not parameters and not request_model {
         if accepts_kwargs {
             if inspect.iscoroutinefunction(callback) {
                 async def async_endpoint_wrapper(
@@ -500,7 +501,13 @@ impl JFastApiServer._create_endpoint_function(
     };
     # Handle body parameters using appropriate handler
     body_model: (type[BaseModel] | None) = None;
-    if (len(body_params) >= 1) {
+    use_request_model = request_model is not None;
+    if use_request_model {
+        # Use the provided Pydantic model directly as the request body
+        body_model = request_model;
+        param_strs.append('body_data: RequestBody');
+        param_mapping['body_data'] = 'body_data';
+    } elif (len(body_params) >= 1) {
         if has_file_params {
             # Use Form handler when files are present (multipart/form-data)
             form_handler = FormBodyParameterHandler(type_converter=self);
@@ -545,12 +552,19 @@ impl JFastApiServer._create_endpoint_function(
     params = ', '.join(param_strs);
     callback_args_lines: list[str] = [];
     if body_model {
-        for param in body_params {
-            param_name = param.name;
-            if param_name {
-                callback_args_lines.append(
-                    f"        callback_args['{param_name}'] = body_data.{param_name}"
-                );
+        if use_request_model {
+            # Pass the whole Pydantic model to the callback as body_data
+            callback_args_lines.append(
+                "        callback_args['body_data'] = body_data"
+            );
+        } else {
+            for param in body_params {
+                param_name = param.name;
+                if param_name {
+                    callback_args_lines.append(
+                        f"        callback_args['{param_name}'] = body_data.{param_name}"
+                    );
+                }
             }
         }
         for name in param_mapping {
@@ -671,7 +685,10 @@ impl JFastApiServer._create_fastapi_route(
     self: JFastApiServer, method: HTTPMethod, endpoint: JEndPoint
 ) -> None {
     endpoint_func = self._create_endpoint_function(
-        endpoint.callback, (endpoint.parameters or []), []
+        endpoint.callback,
+        (endpoint.parameters or []),
+        [],
+        request_model=endpoint.request_model
     );
     route_kwargs: dict[(str, Any)] = {
         'response_model': endpoint.response_model,
@@ -833,6 +850,16 @@ impl JFastApiServer._get(
     return self;
 }
 
+impl JFastApiServer.set_user_manager(self: JFastApiServer, user_manager: Any) -> None {
+    if user_manager is None {
+        raise RuntimeError(
+            "set_user_manager() called with None — jwt_validation_middleware will be "
+            "non-functional and all authenticated requests will run as the guest user."
+        );
+    }
+    self._user_manager = user_manager;
+}
+
 impl JFastApiServer.init(
     self: JFastApiServer,
     endpoints: (list[JEndPoint] | None) = None,
@@ -842,6 +869,46 @@ impl JFastApiServer.init(
     self.app = app or FastAPI();
     self._models: dict[(str, type[BaseModel])] = {};
     self.__server_created = False;
+
+    async def jwt_validation_middleware(request: Request, call_next: Callable) {
+        import from fastapi.responses { JSONResponse }
+        authorization = request.headers.get('Authorization');
+        token: (str | None) = None;
+        username: (str | None) = None;
+        user_root_id: (str | None) = None;
+        token_attempted: bool = False;
+
+        if authorization
+        and isinstance(authorization, str)
+        and authorization.startswith('Bearer ') {
+            token = authorization[7:];
+            token_attempted = True;
+
+            if self._user_manager {
+                username = self._user_manager.validate_jwt_token(token);
+
+                if username {
+                    user_root_id = self._user_manager.get_root_id(username);
+                }
+            }
+        }
+
+        if token_attempted and not username {
+            return JSONResponse(
+                status_code=401,
+                content={
+                    'ok': False,
+                    'error': {'code': 'UNAUTHORIZED', 'message': 'Unauthorized'}
+                }
+            );
+        }
+
+        setattr(request.state, 'user_root_id', user_root_id);
+        setattr(request.state, 'username', username);
+
+        response = await call_next(request);
+        return response;
+    }
 
     async def request_context_middleware(request: Request, call_next: Callable) {
         ctx = JacRuntimeInterface.create_j_context(user_root=None);
@@ -880,5 +947,9 @@ impl JFastApiServer.init(
             }
         }
     }
+
+    # Starlette insert(0,...): last registered = index 0 = outermost = runs FIRST.
+    # Register context first so JWT ends up at index 0 and runs before context.
     self.app.middleware('http')(request_context_middleware);
+    self.app.middleware('http')(jwt_validation_middleware);
 }

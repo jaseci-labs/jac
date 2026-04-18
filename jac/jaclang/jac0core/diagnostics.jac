@@ -459,6 +459,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot spread type {actual} into '{component}' (expected dict)"
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
+     W1051 = _warn(
+         "W1051", Category.TYPE, "Expression type could not be resolved (Unknown)"
+     ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      W1101 = _warn(
@@ -682,6 +685,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "functions without a return statement implicitly return None "
          "[unnecessary-none-return]"
      ),
+     W3038 = _warn(
+         "W3038",
+         Category.LINT,
+         "useState hook for '{name}' can be replaced with "
+         "'has {name}: {type_name} = {init}' [usestate-to-has]"
+         "setter can be replaced with direct assignment to the field in the ability body"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -704,6 +714,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "identical-branches": "W3025",
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
+         "usestate-to-has": "W3038",
          "mutable-default": "W3036",
          "unnecessary-none-return": "W3037"
      },
