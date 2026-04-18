@@ -25,7 +25,7 @@ obj JacAPIServerLLMTelemetry {
 
 """Per-user LLM rate and budget limiter.
 
-Pure logic class — no litellm dependency. The litellm CustomLogger adapter
+Pure logic class, no litellm dependency. The litellm CustomLogger adapter
 that delegates to this is created inside register_llm_telemetry_endpoints.
 Exposed at module level so tests can instantiate it directly.
 """
@@ -40,10 +40,10 @@ class JacUserRateLimiter {
         monthly_budget: Any = None;
 
     def init(self: JacUserRateLimiter, rc: Any, col: Any, cfg: dict) -> None;
-
     def _check_and_incr(
         self: JacUserRateLimiter, key: str, limit: int, ttl: int
     ) -> None;
+
     def _get_budget_spent(
         self: JacUserRateLimiter, username: str, period: str, cache_key: str, ttl: int
     ) -> float;
