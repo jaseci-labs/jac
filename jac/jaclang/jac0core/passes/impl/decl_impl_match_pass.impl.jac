@@ -171,6 +171,17 @@ impl DeclImplMatchPass.connect_impls(
             valid_decl.sym_tab.names_in_scope
         );
         valid_decl.sym_tab.names_in_scope = sym.decl.name_of.sym_tab.names_in_scope;
+        # SymTabBuildPass deferred assignment-target binding for impl bodies
+        # because it can't see the decl's scope chain. Now that decl_link is
+        # set and UniScopeNode.lookup follows it into the enclosing scope,
+        # run the same binding decision here — shared helper, single source
+        # of truth. Must run before _resolve_symbols_in_subtree because that
+        # skips Names whose sym is already set.
+        if isinstance(sym.decl.name_of, uni.ImplDef) {
+            for assignment in sym.decl.name_of.get_all_sub_nodes(uni.Assignment) {
+                bind_assignment_targets(assignment);
+            }
+        }
         self._resolve_symbols_in_subtree(sym.decl.name_of);
         # Populate self-member symbols from impl to archetype for method impls
         # (e.g., impl Foo.init { self.x = 1; } should add 'x' to Foo's symbol table)
