@@ -97,6 +97,13 @@ obj UniNode {
 
 """Symbol."""
 obj Symbol {
+    has defn: list[NameAtom] by postinit,
+        uses: list[NameAtom] by postinit,
+        access: SymbolAccess by postinit,
+        parent_tab: (UniScopeNode | None) by postinit,
+        imported: bool by postinit,
+        semstr: str by postinit;
+
     def init(
         defn: NameAtom,
         access: SymbolAccess,
@@ -480,7 +487,9 @@ obj Module(AstDocNode, UniScopeNode) {
 
 """Whole Program node type for Jac Ast."""
 obj ProgramModule(UniNode) {
-    has main_mod: (Module | None) = None;
+    has main_mod: (Module | None) = None,
+        main: Module by postinit,
+        hub: dict[(str, Module)] by postinit;
 
     def postinit -> None;
 }
@@ -586,7 +595,8 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 obj ModulePath(UniNode) {
     has path: (Sequence[(Name | String)] | None),
         level: int,
-        alias: (Name | None);
+        alias: (Name | None),
+        abs_path: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -608,7 +618,8 @@ obj ModulePath(UniNode) {
     """
 obj ModuleItem(UniNode) {
     has name: (Name | Token),
-        alias: (Name | None);
+        alias: (Name | None),
+        abs_path: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -1595,6 +1606,9 @@ obj CommentToken(Token) {
 
 """SourceString node type for Jac Ast."""
 obj Source(EmptyToken) {
+    has comments: list[CommentToken] by postinit,
+        inline_suppressions: dict[int, set[str]] by postinit;
+
     def init(source: str, mod_path: str) -> None;
     @property
     def code -> str;

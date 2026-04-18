@@ -477,7 +477,7 @@ impl ClassType.ClassDetailsPrivate.postinit -> None {
 impl ClassType.ClassDetailsShared.postinit -> None {
     self.type_params = self.type_params or [];
     self.base_classes = self.base_classes or [];
-    self.mro: list[ClassType] = [];
+    self.mro = [];
 }
 
 """Return whether the class is an instance."""
