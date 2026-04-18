@@ -1418,7 +1418,9 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.CompareExpr():
             # Evaluate all operand types and validate each comparison pair.
             # For a chained comparison `a < b < c`, check (a, <, b) and (b, <, c).
-            operand_types: list[types.TypeBase] = [self.get_type_of_expression(expr.left)];
+            operand_types: list[types.TypeBase] = [
+                self.get_type_of_expression(expr.left)
+            ];
             for right in expr.rights {
                 operand_types.append(self.get_type_of_expression(right));
             }
@@ -1445,9 +1447,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                         right_type, "__contains__", [expr.rights[i]], None
                     );
                     if result is None {
-                        self.emit_diag(
-                            E1111, expr, op=op.value, type=str(right_type)
-                        );
+                        self.emit_diag(E1111, expr, op=op.value, type=str(right_type));
                     }
                     continue;
                 }
@@ -1461,13 +1461,19 @@ impl TypeEvaluator._get_type_of_expression_core(
                     );
                     if result is None {
                         result = self.get_type_of_magic_method_call(
-                            right_type, rmagic, [expr.left if i == 0 else expr.rights[i - 1]], None
+                            right_type,
+                            rmagic,
+                            [expr.left if i == 0 else expr.rights[i - 1]],
+                            None
                         );
                     }
                     if result is None {
                         self.emit_diag(
-                            E1110, expr,
-                            op=op.value, left=str(left_type), right=str(right_type)
+                            E1110,
+                            expr,
+                            op=op.value,
+                            left=str(left_type),
+                            right=str(right_type)
                         );
                     }
                 }
