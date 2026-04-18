@@ -1416,10 +1416,61 @@ impl TypeEvaluator._get_type_of_expression_core(
             return operations.get_type_of_binary_operation(self, expr);
 
         case uni.CompareExpr():
-            # Evaluate operands for side effects / error detection
-            self.get_type_of_expression(expr.left);
+            # Evaluate all operand types and validate each comparison pair.
+            # For a chained comparison `a < b < c`, check (a, <, b) and (b, <, c).
+            operand_types: list[types.TypeBase] = [self.get_type_of_expression(expr.left)];
             for right in expr.rights {
-                self.get_type_of_expression(right);
+                operand_types.append(self.get_type_of_expression(right));
+            }
+            for i in range(len(expr.ops)) {
+                op = expr.ops[i];
+                left_type = operand_types[i];
+                right_type = operand_types[i + 1];
+                # Skip validation for unknown/any types (not enough info to diagnose).
+                if (
+                    isinstance(left_type, types.UnknownType)
+                    or isinstance(right_type, types.UnknownType)
+                    or left_type.is_any_type()
+                    or right_type.is_any_type()
+                ) {
+                    continue;
+                }
+                # `is` / `is not` are identity checks — always valid.
+                if op.name in (Tok.KW_IS, Tok.KW_ISN) {
+                    continue;
+                }
+                # `in` / `not in` — check __contains__ on the RIGHT operand.
+                if op.name in (Tok.KW_IN, Tok.KW_NIN) {
+                    result = self.get_type_of_magic_method_call(
+                        right_type, "__contains__", [expr.rights[i]], None
+                    );
+                    if result is None {
+                        self.emit_diag(
+                            E1111, expr, op=op.value, type=str(right_type)
+                        );
+                    }
+                    continue;
+                }
+                # Ordered / equality comparisons: <, <=, >, >=, ==, !=
+                # Reuse BINARY_OPERATOR_MAP which already maps these tokens
+                # to (forward_magic, reflected_magic) pairs.
+                if op.name in operations.BINARY_OPERATOR_MAP {
+                    (magic, rmagic) = operations.BINARY_OPERATOR_MAP[op.name];
+                    result = self.get_type_of_magic_method_call(
+                        left_type, magic, [expr.rights[i]], None
+                    );
+                    if result is None {
+                        result = self.get_type_of_magic_method_call(
+                            right_type, rmagic, [expr.left if i == 0 else expr.rights[i - 1]], None
+                        );
+                    }
+                    if result is None {
+                        self.emit_diag(
+                            E1110, expr,
+                            op=op.value, left=str(left_type), right=str(right_type)
+                        );
+                    }
+                }
             }
             # Comparisons always return bool
             if self.prefetch and self.prefetch.bool_class {

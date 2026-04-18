@@ -458,6 +458,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Cannot spread type {actual} into '{component}' (expected dict)"
      ),
+     # Comparison operator errors
+     E1110 = _err(
+         "E1110",
+         Category.TYPE,
+         "Operator \"{op}\" not supported between types \"{left}\" and \"{right}\""
+     ),
+     E1111 = _err(
+         "E1111",
+         Category.TYPE,
+         "Right operand of \"{op}\" must support \"__contains__\"; \"{type}\" does not"
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051", Category.TYPE, "Expression type could not be resolved (Unknown)"
