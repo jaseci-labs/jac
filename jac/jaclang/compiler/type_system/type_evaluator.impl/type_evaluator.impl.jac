@@ -1442,12 +1442,23 @@ impl TypeEvaluator._get_type_of_expression_core(
                     continue;
                 }
                 # `in` / `not in` — check __contains__ on the RIGHT operand.
+                # Enum classes are iterable/containable via EnumMeta which is
+                # not in the Jac type system's MRO — skip the check for them
+                # (same pattern as exit_in_for_stmt for __iter__).
                 if op.name in (Tok.KW_IN, Tok.KW_NIN) {
-                    result = self.get_type_of_magic_method_call(
-                        right_type, "__contains__", [expr.rights[i]], None
+                    is_enum = (
+                        isinstance(right_type, types.ClassType)
+                        and right_type.is_enum_class()
                     );
-                    if result is None {
-                        self.emit_diag(E1111, expr, op=op.value, type=str(right_type));
+                    if not is_enum {
+                        result = self.get_type_of_magic_method_call(
+                            right_type, "__contains__", [expr.rights[i]], None
+                        );
+                        if result is None {
+                            self.emit_diag(
+                                E1111, expr, op=op.value, type=str(right_type)
+                            );
+                        }
                     }
                     continue;
                 }

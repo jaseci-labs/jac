@@ -49,8 +49,9 @@ def chained_comparisons() {
 }
 
 def equality_comparisons() {
-    # == and != are generally valid on most types (object has __eq__)
-    t = 1 == "hello";        # <-- OK: __eq__ defined on object
-    u = [1] != "abc";        # <-- OK: __eq__ defined on object
-    print(t, u);
+    # == and != between same types are always valid
+    t = 1 == 2;              # <-- OK: int.__eq__(int)
+    u = "abc" != "def";      # <-- OK: str.__ne__(str)
+    v = [1] == [2];          # <-- OK: list.__eq__(list)
+    print(t, u, v);
 }
