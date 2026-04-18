@@ -3783,3 +3783,16 @@ test "walker_reports_attribute_resolves" {
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
+
+test "component_impl_scope_resolves_has_vars" {
+    # Component has variables (e.g. has items: list[dict]) should be visible
+    # in impl method bodies. Previously, assignments to these variables created
+    # untyped local shadows, causing Unknown types and false E1055 errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_component_impl_scope.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors for component impl scope, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}

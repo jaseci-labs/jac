@@ -21,6 +21,7 @@ their behavior in separate files.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
+import from jaclang.jac0core.passes.sym_tab_build_pass { bind_assignment_targets }
 import from jaclang.jac0core.diagnostics {
     E2009,
     W2010,

@@ -29,20 +29,6 @@ impl SymTabBuildPass.cur_scope(self: SymTabBuildPass) -> UniScopeNode {
     return self.cur_sym_tab[-1];
 }
 
-"""Find scope node of a given node."""
-impl SymTabBuildPass.find_python_scope_node_of(
-    self: SymTabBuildPass, nd: uni.UniNode
-) -> (UniScopeNode | None) {
-    scope_types = uni.UniScopeNode.get_python_scoping_nodes();
-    while nd.parent {
-        if isinstance(nd.parent, scope_types) {
-            return nd.parent;
-        }
-        nd = nd.parent;
-    }
-    return None;
-}
-
 """Create symbols for Name nodes in a module path."""
 impl SymTabBuildPass._bind_import_path_symbols(
     self: SymTabBuildPass, module_path: uni.ModulePath
@@ -103,58 +89,18 @@ impl SymTabBuildPass.exit_global_vars(
 impl SymTabBuildPass.exit_assignment(
     self: SymTabBuildPass, nd: uni.Assignment
 ) -> None {
-    import from jaclang.jac0core.constant { SymbolType }
-    for i in nd.target {
-        if isinstance(i, uni.AstSymbolNode) {
-            if isinstance(i, (uni.ListVal, uni.TupleVal)) {
-                self._def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
-            } elif ((sym := i.sym_tab.lookup(i.sym_name, deep=False)) is not None) {
-                sym.add_use(i.name_spec);
-            } elif (
-                (nd.type_tag is None)
-                and ((outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None)
-                and outer_has.sym_type == SymbolType.HAS_VAR
-                and isinstance(outer_has.parent_tab, uni.Ability)
-            ) {
-                # In cl def components, has variables are reactive state owned by
-                # the enclosing ability (not an archetype). Assignments to these
-                # names in nested abilities are state mutations, not new locals.
-                outer_has.add_use(i.name_spec);
-            } elif (
-                (nd.type_tag is None)
-                and not isinstance(
-                    i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
-                )
-            ) {
-                # Python semantics: an unannotated assignment inside a non-scoping
-                # block (try/except/finally, if/else, for/while, match) binds in
-                # the nearest enclosing Python scope, not in the inner block.
-                # Without this, two assignments to the same name in sibling
-                # branches would create separate "shadow" symbols in each faux
-                # scope, fragmenting symbol resolution and producing spurious
-                # "defined but never used" warnings. This mirrors the walrus
-                # handling in exit_binary_expr.
-                py_scope = self.find_python_scope_node_of(i);
-                if py_scope is not None {
-                    if (
-                        (outer := py_scope.lookup(i.sym_name, deep=False)) is not None
-                    ) {
-                        outer.add_use(i.name_spec);
-                    } else {
-                        py_scope.def_insert(i, single_decl='local var');
-                    }
-                } else {
-                    i.sym_tab.def_insert(i, single_decl='local var');
-                }
-            } else {
-                # Tag enum members with the correct sym_category
-                if isinstance(i.sym_tab, uni.Enum) {
-                    i.name_spec._sym_category = SymbolType.ENUM_MEMBER;
-                }
-                i.sym_tab.def_insert(i, single_decl='local var');
-            }
-        }
+    # Impl-body assignments are deferred: the ImplDef's scope chain doesn't
+    # reach its connected decl until DeclImplMatchPass, so any "bare name =
+    # expr" in an impl body would incorrectly fall through the
+    # reactive-has-var / python-scope branches and produce a shadow local.
+    # DeclImplMatchPass.connect_impls calls bind_assignment_targets on every
+    # Assignment in the impl body once decl_link is wired — by then the
+    # decl_link-aware lookup in UniScopeNode.lookup can reach the enclosing
+    # Ability's HasVars and Python scope correctly.
+    if nd.find_parent_of_type(uni.ImplDef) is not None {
+        return;
     }
+    bind_assignment_targets(nd);
 }
 
 """Handle walrus operator (:=) assignments.
@@ -205,7 +151,7 @@ impl SymTabBuildPass.exit_test(self: SymTabBuildPass, nd: uni.Test) -> None {
 impl SymTabBuildPass._exit_import_absorb(
     self: SymTabBuildPass, nd: uni.Import
 ) -> None {
-    sym_table_to_update = self.find_python_scope_node_of(nd);
+    sym_table_to_update = find_python_scope_node_of(nd);
     if (sym_table_to_update is None) {
         return;
     }
@@ -565,61 +511,11 @@ impl SymTabBuildPass.exit_iter_for_stmt(
     self.pop_scope();
 }
 
-"""Recursively define symbols in unpacking expressions.
-
-The two call sites want different scoping:
-
-- `for (x, y) in items:` binds `x` and `y` in the for-loop's own
-  scope. This is Jac-specific (Python has no loop scopes) but the
-  symbol table and test suite depend on it.
-- `(x, y) = f()` as a statement must rebind an existing local
-  when one is in scope, otherwise bind in the nearest Python
-  scope — same Python-semantics path that plain assignments use.
-  Without this, unpack targets shadow the parameter they should
-  be writing, and the narrowing engine can't see the assignment
-  as a barrier.
-
-`rebind_in_python_scope=True` selects the second behavior.
-"""
-impl SymTabBuildPass._def_insert_unpacking(
-    self: SymTabBuildPass,
-    nd: uni.Expr,
-    sym_tab: UniScopeNode,
-    rebind_in_python_scope: bool = False
-) -> None {
-    if isinstance(nd, uni.Name) {
-        if rebind_in_python_scope {
-            if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
-                existing.add_use(nd.name_spec);
-                return;
-            }
-            py_scope = self.find_python_scope_node_of(nd);
-            if py_scope is not None {
-                if ((outer := py_scope.lookup(nd.sym_name, deep=False)) is not None) {
-                    outer.add_use(nd.name_spec);
-                } else {
-                    py_scope.def_insert(nd, single_decl='local var');
-                }
-                return;
-            }
-        }
-        sym_tab.def_insert(nd, single_decl='iterator');
-    } elif isinstance(nd, (uni.TupleVal, uni.ListVal)) {
-        for target_var in nd.values {
-            if isinstance(target_var, uni.Expr) {
-                self._def_insert_unpacking(target_var, sym_tab, rebind_in_python_scope);
-            }
-        }
-    } elif (isinstance(nd, uni.UnaryExpr) and (nd.op.name == Tokens.STAR_MUL)) {
-        self._def_insert_unpacking(nd.operand, sym_tab, rebind_in_python_scope);
-    }
-}
-
 impl SymTabBuildPass.enter_in_for_stmt(
     self: SymTabBuildPass, nd: uni.InForStmt
 ) -> None {
     self.push_scope_and_link(nd);
-    self._def_insert_unpacking(nd.target, nd.sym_tab);
+    def_insert_unpacking(nd.target, nd.sym_tab);
 }
 
 impl SymTabBuildPass.exit_in_for_stmt(
@@ -671,7 +567,7 @@ impl SymTabBuildPass.enter_list_compr(
 ) -> None {
     self.push_scope_and_link(nd);
     for i in nd.compr {
-        self._def_insert_unpacking(i.target, nd.sym_tab);
+        def_insert_unpacking(i.target, nd.sym_tab);
     }
 }
 
@@ -682,7 +578,7 @@ impl SymTabBuildPass.exit_list_compr(self: SymTabBuildPass, nd: uni.ListCompr) -
 impl SymTabBuildPass.enter_set_compr(self: SymTabBuildPass, nd: uni.SetCompr) -> None {
     self.push_scope_and_link(nd);
     for i in nd.compr {
-        self._def_insert_unpacking(i.target, nd.sym_tab);
+        def_insert_unpacking(i.target, nd.sym_tab);
     }
 }
 
@@ -693,7 +589,7 @@ impl SymTabBuildPass.exit_set_compr(self: SymTabBuildPass, nd: uni.SetCompr) -> 
 impl SymTabBuildPass.enter_gen_compr(self: SymTabBuildPass, nd: uni.GenCompr) -> None {
     self.push_scope_and_link(nd);
     for i in nd.compr {
-        self._def_insert_unpacking(i.target, nd.sym_tab);
+        def_insert_unpacking(i.target, nd.sym_tab);
     }
 }
 
@@ -706,7 +602,7 @@ impl SymTabBuildPass.enter_dict_compr(
 ) -> None {
     self.push_scope_and_link(nd);
     for i in nd.compr {
-        self._def_insert_unpacking(i.target, nd.sym_tab);
+        def_insert_unpacking(i.target, nd.sym_tab);
     }
 }
 
@@ -734,4 +630,103 @@ impl SymTabBuildPass.enter_match_case(
 
 impl SymTabBuildPass.exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None {
     self.pop_scope();
+}
+
+impl find_python_scope_node_of(nd: uni.UniNode) -> (UniScopeNode | None) {
+    scope_types = uni.UniScopeNode.get_python_scoping_nodes();
+    while nd.parent {
+        if isinstance(nd.parent, scope_types) {
+            return nd.parent;
+        }
+        nd = nd.parent;
+    }
+    return None;
+}
+
+impl def_insert_unpacking(
+    nd: uni.Expr, sym_tab: UniScopeNode, rebind_in_python_scope: bool = False
+) -> None {
+    if isinstance(nd, uni.Name) {
+        if rebind_in_python_scope {
+            if ((existing := sym_tab.lookup(nd.sym_name, deep=False)) is not None) {
+                existing.add_use(nd.name_spec);
+                return;
+            }
+            py_scope = find_python_scope_node_of(nd);
+            if py_scope is not None {
+                if ((outer := py_scope.lookup(nd.sym_name, deep=False)) is not None) {
+                    outer.add_use(nd.name_spec);
+                } else {
+                    py_scope.def_insert(nd, single_decl='local var');
+                }
+                return;
+            }
+        }
+        sym_tab.def_insert(nd, single_decl='iterator');
+    } elif isinstance(nd, (uni.TupleVal, uni.ListVal)) {
+        for target_var in nd.values {
+            if isinstance(target_var, uni.Expr) {
+                def_insert_unpacking(target_var, sym_tab, rebind_in_python_scope);
+            }
+        }
+    } elif (isinstance(nd, uni.UnaryExpr) and (nd.op.name == Tokens.STAR_MUL)) {
+        def_insert_unpacking(nd.operand, sym_tab, rebind_in_python_scope);
+    }
+}
+
+impl bind_assignment_targets(nd: uni.Assignment) -> None {
+    import from jaclang.jac0core.constant { SymbolType }
+    for i in nd.target {
+        if isinstance(i, uni.AstSymbolNode) {
+            if isinstance(i, (uni.ListVal, uni.TupleVal)) {
+                def_insert_unpacking(i, i.sym_tab, rebind_in_python_scope=True);
+            } elif (
+                (i.sym_name in i.sym_tab.names_in_scope)
+                and ((sym := i.sym_tab.names_in_scope[i.sym_name]) is not None)
+            ) {
+                # Direct names_in_scope check only — bypass the decl_link
+                # fallback in UniScopeNode.lookup so archetype methods get
+                # Python-local scoping and don't silently rebind `has` fields.
+                sym.add_use(i.name_spec);
+            } elif (
+                (nd.type_tag is None)
+                and ((outer_has := i.sym_tab.lookup(i.sym_name, deep=True)) is not None)
+                and outer_has.sym_type == SymbolType.HAS_VAR
+                and isinstance(outer_has.parent_tab, uni.Ability)
+            ) {
+                # In cl def components, has variables are reactive state owned by
+                # the enclosing ability (not an archetype). Assignments to these
+                # names in nested abilities are state mutations, not new locals.
+                outer_has.add_use(i.name_spec);
+            } elif (
+                (nd.type_tag is None)
+                and not isinstance(
+                    i.sym_tab, uni.UniScopeNode.get_python_scoping_nodes()
+                )
+            ) {
+                # Python semantics: an unannotated assignment inside a non-scoping
+                # block (try/except/finally, if/else, for/while, match) binds in
+                # the nearest enclosing Python scope, not in the inner block.
+                # Mirrors the walrus handling in exit_binary_expr.
+                py_scope = find_python_scope_node_of(i);
+                if py_scope is not None {
+                    if (
+                        (outer := py_scope.lookup(i.sym_name, deep=False)) is not None
+                    ) {
+                        outer.add_use(i.name_spec);
+                    } else {
+                        py_scope.def_insert(i, single_decl='local var');
+                    }
+                } else {
+                    i.sym_tab.def_insert(i, single_decl='local var');
+                }
+            } else {
+                # Tag enum members with the correct sym_category
+                if isinstance(i.sym_tab, uni.Enum) {
+                    i.name_spec._sym_category = SymbolType.ENUM_MEMBER;
+                }
+                i.sym_tab.def_insert(i, single_decl='local var');
+            }
+        }
+    }
 }
