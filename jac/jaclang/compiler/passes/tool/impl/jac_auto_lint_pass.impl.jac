@@ -817,6 +817,10 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     self._check_no_print(nd);
+    # W3039: convert arr.map(lambda item -> any { return <jsx>; }) to comprehension
+    if self._convert_map_to_comprehension(nd) {
+        return;
+    }
     if self.report_only or self._is_suppressed(W3007) {
         return;
     }
@@ -2356,4 +2360,173 @@ impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
 """W3038: drop useState from imports after all useState hooks have been converted."""
 impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
     self._strip_usestate_imports(nd);
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# map-lambda-to-comprehension conversion (W3039)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""Build a synthetic Name node anchored to ref_node's source location."""
+impl JacAutoLintPass._make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name {
+    return uni.Name(
+        orig_src=ref_node.loc.orig_src,
+        name=Tok.NAME.value,
+        value=value,
+        line=ref_node.loc.first_line,
+        end_line=ref_node.loc.last_line,
+        col_start=ref_node.loc.col_start,
+        col_end=ref_node.loc.col_start + len(value),
+        pos_start=ref_node.loc.pos_start,
+        pos_end=ref_node.loc.pos_end,
+        is_kwesc=False
+    );
+}
+
+"""W3039: Replace arr.map(lambda item -> any { return <jsx>; }) with [<jsx> for item in arr].
+
+Detects the pattern inline, then builds the ListCompr replacement.
+When the lambda has a second int-typed parameter (the index), wraps the collection
+with enumerate() and uses a tuple target: [<jsx> for (idx, item) in enumerate(arr)].
+"""
+impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
+    if self.report_only or self._is_suppressed(W3039) {
+        return False;
+    }
+    # ── Detection ────────────────────────────────────────────────────────────
+    # Must be <expr>.map(lambda ...)
+    if not isinstance(nd.target, uni.AtomTrailer) {
+        return False;
+    }
+    trailer = nd.target;
+    if not trailer.is_attr
+    or not isinstance(trailer.right, uni.Name)
+    or trailer.right.value != "map" {
+        return False;
+    }
+    if nd.params is None
+    or len(nd.params) != 1
+    or not isinstance(nd.params[0], uni.LambdaExpr) {
+        return False;
+    }
+    lam = nd.params[0];
+    # Lambda body must be a block with exactly one statement: return <JsxElement>
+    if not isinstance(lam.body, list) {
+        return False;
+    }
+    real_stmts = [
+        s
+        for s in lam.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if len(real_stmts) != 1 or not isinstance(real_stmts[0], uni.ReturnStmt) {
+        return False;
+    }
+    ret_stmt = real_stmts[0];
+    if ret_stmt.expr is None or not isinstance(ret_stmt.expr, uni.JsxElement) {
+        return False;
+    }
+    jsx_expr = ret_stmt.expr;
+    # Extract item and optional index parameter names
+    sig = lam.signature;
+    if sig is None {
+        return False;
+    }
+    all_params: list = list(sig.posonly_params or []);
+    if sig.params {
+        all_params.extend(sig.params);
+    }
+    if len(all_params) < 1 or len(all_params) > 2 {
+        return False;
+    }
+    item_name = all_params[0].name.value;
+    idx_name: (str | None) = None;
+    if len(all_params) == 2 {
+        second = all_params[1];
+        if second.type_tag is not None {
+            type_node = second.type_tag.tag;
+            if (
+                isinstance(type_node, uni.BuiltinType)
+                or isinstance(type_node, uni.Name)
+            )
+            and type_node.value == "int" {
+                idx_name = second.name.value;
+            }
+        }
+    }
+    collection = trailer.target;
+    # ── Emit warning (returns False if suppressed by inline comment) ─────────
+    if not self.emit(W3039, node_override=nd, name=item_name) {
+        return False;
+    }
+    # ── Build replacement nodes ───────────────────────────────────────────────
+    item_node = self._make_name_node(nd, item_name);
+    target_node: uni.Expr;
+    iter_expr: uni.Expr;
+    if idx_name is not None {
+        idx_node = self._make_name_node(nd, idx_name);
+        # Tuple target (idx, item) — enumerate returns (index, value)
+        target_node = uni.TupleVal(
+            values=[idx_node, item_node],
+            kid=[
+                nd.gen_token(Tok.LPAREN),
+                idx_node,
+                nd.gen_token(Tok.COMMA),
+                item_node,
+                nd.gen_token(Tok.RPAREN)
+            ]
+        );
+        # enumerate(collection)
+        enum_node = self._make_name_node(nd, "enumerate");
+        iter_expr = uni.FuncCall(
+            target=enum_node,
+            params=[collection],
+            genai_call=None,
+            kid=[
+                enum_node,
+                nd.gen_token(Tok.LPAREN),
+                collection,
+                nd.gen_token(Tok.RPAREN)
+            ]
+        );
+        collection.parent = iter_expr;
+    } else {
+        target_node = item_node;
+        iter_expr = collection;
+    }
+    inner_compr = uni.InnerCompr(
+        is_async=False,
+        target=target_node,
+        collection=iter_expr,
+        conditional=None,
+        kid=[nd.gen_token(Tok.KW_FOR), target_node, nd.gen_token(Tok.KW_IN), iter_expr]
+    );
+    list_compr = uni.ListCompr(
+        out_expr=jsx_expr,
+        compr=[inner_compr],
+        kid=[
+            nd.gen_token(Tok.LSQUARE),
+            jsx_expr,
+            inner_compr,
+            nd.gen_token(Tok.RSQUARE)
+        ]
+    );
+    # ── Wire parent references ────────────────────────────────────────────────
+    jsx_expr.parent = list_compr;
+    inner_compr.parent = list_compr;
+    target_node.parent = inner_compr;
+    iter_expr.parent = inner_compr;
+    parent = nd.parent;
+    if parent is None {
+        return False;
+    }
+    list_compr.parent = parent;
+    # Update the semantic attribute that holds the expression on common parent types
+    if isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr)) {
+        parent.expr = list_compr;
+    } elif isinstance(parent, uni.Assignment) and parent.value is nd {
+        parent.value = list_compr;
+    } elif isinstance(parent, uni.ReturnStmt) and parent.expr is nd {
+        parent.expr = list_compr;
+    }
+    parent.kid = [list_compr if k is nd else k for k in parent.kid];
+    return True;
 }

@@ -46,7 +46,8 @@ import from jaclang.jac0core.diagnostics {
     W3035,
     W3036,
     W3037,
-    W3038
+    W3038,
+    W3039
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
@@ -160,6 +161,9 @@ obj JacAutoLintPass(UniPass) {
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
+    # map-lambda-to-comprehension conversion (W3039)
+    def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
+    def _convert_map_to_comprehension(nd: uni.FuncCall) -> bool;
 }
 
 """Report-only lint pass for use in the standard compile/LSP pipeline.

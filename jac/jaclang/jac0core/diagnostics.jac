@@ -689,6 +689,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'has {name}: {type_name} = {init}' [usestate-to-has]"
          "setter can be replaced with direct assignment to the field in the ability body"
      ),
+     W3039 = _warn(
+         "W3039",
+         Category.LINT,
+         "'.map(lambda {name} -> any {{ return <jsx>; }})' can be replaced with "
+         "'[<jsx> for {name} in collection]' comprehension syntax [map-lambda-to-comprehension]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -712,6 +718,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
          "usestate-to-has": "W3038",
+         "map-lambda-to-comprehension": "W3039",
          "mutable-default": "W3036",
          "unnecessary-none-return": "W3037"
      },
