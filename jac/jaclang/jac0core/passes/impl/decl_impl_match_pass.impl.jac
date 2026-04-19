@@ -40,6 +40,13 @@ impl DeclImplMatchPass.transform(
             self._resolve_symbols_in_subtree(impl_module);
         }
     }
+    # Scan inline init/postinit for annotated self-assignments on obj types.
+    # Must run after symbol resolution so all names are connected.
+    for module in [ir_in] + ir_in.impl_mod + ir_in.variant_mod {
+        for arch in module.get_all_sub_nodes(uni.Archetype) {
+            self._populate_inline_init_symbols(arch);
+        }
+    }
     return ir_in;
 }
 
@@ -289,6 +296,7 @@ impl DeclImplMatchPass._resolve_symbols_in_subtree(
 impl DeclImplMatchPass._populate_self_member_symbols(
     self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
 ) -> None {
+    import from jaclang.jac0core.diagnostics { W2080 }
     # Find all self.x = value assignments in the impl body
     for trailer_node in impl_def.get_all_sub_nodes(uni.AtomTrailer) {
         # Check if this is a self.attr = value assignment
@@ -309,12 +317,98 @@ impl DeclImplMatchPass._populate_self_member_symbols(
         if archetype.sym_tab.lookup(attr_name.sym_name, deep=False) is not None {
             continue;
         }
-        # Only allow dynamic self.attr = value for class archetypes (Python-style).
-        # obj/node/edge/walker have fixed schemas declared via 'has' —
-        # undeclared attrs will be caught by the type checker's "has no attribute" diagnostic.
-        if archetype.arch_type.name != 'KW_CLASS' {
+        assign: uni.Assignment = trailer_node.parent;
+        if archetype.arch_type.name == 'KW_CLASS' {
+            # class archetypes (Python-style): register all self-assignments.
+            archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
+        } elif assign.type_tag is not None {
+            # obj/node/edge/walker with annotated self-assignment
+            # (e.g. self.x: int = 5 in init/postinit).
+            # Register the symbol so downstream code resolves correctly,
+            # but warn the user to declare it as a proper 'has' field.
+            archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
+            # Determine the method name for the diagnostic message.
+            method_name = "init";
+            if (
+                impl_def.decl_link
+                and isinstance(impl_def.decl_link, uni.Ability)
+                and isinstance(impl_def.decl_link.name_ref, uni.SpecialVarRef)
+            ) {
+                method_name = impl_def.decl_link.name_ref.value;
+            } elif (
+                impl_def.decl_link and isinstance(impl_def.decl_link, uni.Ability)
+            ) {
+                method_name = impl_def.decl_link.name_spec.sym_name;
+            }
+            self.emit(
+                W2080,
+                node_override=attr_name,
+                attr=attr_name.sym_name,
+                method=method_name,
+                arch_type=archetype.arch_type.value,
+                name=archetype.name_spec.sym_name
+            );
+        }
+        # Unannotated self-assignments on obj/node/edge/walker are silently
+        # skipped — these will be caught by E1030 "has no attribute".
+    }
+}
+
+"""Scan inline init/postinit bodies for annotated self-assignments."""
+impl DeclImplMatchPass._populate_inline_init_symbols(
+    self: DeclImplMatchPass, archetype: uni.Archetype
+) -> None {
+    import from jaclang.jac0core.diagnostics { W2080 }
+    # Only check obj/node/edge/walker (class types are handled above).
+    if archetype.arch_type.name == 'KW_CLASS' {
+        return;
+    }
+    # Scan init and __post_init__ (postinit) abilities within the archetype.
+    for method_name in ('init', '__post_init__') {
+        method_sym = archetype.sym_tab.lookup(method_name, deep=False);
+        if not method_sym or not isinstance(method_sym.decl.name_of, uni.Ability) {
             continue;
         }
-        archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
+        ability: uni.Ability = method_sym.decl.name_of;
+        # Scan the ability body (inline or impl-linked).
+        body_node = ability.body
+            if not isinstance(ability.body, uni.ImplDef)
+            else ability.body;
+        for trailer_node in ability.get_all_sub_nodes(uni.AtomTrailer) {
+            if not (
+                trailer_node.parent and isinstance(trailer_node.parent, uni.Assignment)
+            ) {
+                continue;
+            }
+            if (trailer_node != trailer_node.parent.target[0]) {
+                continue;
+            }
+            chain = trailer_node.as_attr_list;
+            if ((len(chain) != 2) or (chain[0].sym_name != 'self')) {
+                continue;
+            }
+            attr_name = chain[1];
+            # Skip if already defined in the archetype.
+            if archetype.sym_tab.lookup(attr_name.sym_name, deep=False) is not None {
+                continue;
+            }
+            assign: uni.Assignment = trailer_node.parent;
+            # Only resolve annotated self-assignments (self.x: Type = value).
+            if assign.type_tag is None {
+                continue;
+            }
+            archetype.sym_tab.def_insert(attr_name, access_spec=archetype);
+            display_name = "postinit"
+                if method_name == "__post_init__"
+                else method_name;
+            self.emit(
+                W2080,
+                node_override=attr_name,
+                attr=attr_name.sym_name,
+                method=display_name,
+                arch_type=archetype.arch_type.value,
+                name=archetype.name_spec.sym_name
+            );
+        }
     }
 }

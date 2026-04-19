@@ -886,9 +886,9 @@ test "root_type" {
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
     expected_error = """
-            root ++> c;
-            x: str = root;  # <- error
-            ^^^^^^^^^^^^^^
+            root() ++> c;
+            x: str = root();  # <- error: cannot assign Root to str
+            ^^^^^^^^^^^^^^^^
             """;
     assert_error_pretty_found(expected_error, program.errors_had[0].pretty_print());
 }
@@ -3795,4 +3795,155 @@ test "component_impl_scope_resolves_has_vars" {
     assert len(program.errors_had) == 0 , f"Expected 0 errors for component impl scope, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "root_call_returns_root_type" {
+    # root() should be recognized as a builtin returning Root, so that
+    # root() spawn Walker() resolves the walker type and .reports is accessible.
+    path = os.path.join(CHECKER_FIXTURES, "checker_root_call_type.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 warnings for root() call, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+}
+
+test "compare_operator_validation" {
+    # Validates that comparison operators are type-checked against operand types.
+    # Previously, CompareExpr only evaluated operands for side effects and returned
+    # bool without checking operator validity (e.g. "hello" > 5 passed silently).
+    path = os.path.join(CHECKER_FIXTURES, "checker_compare_operator_validation.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # At least 7 errors expected (exact count may vary across Python/typeshed
+    # versions due to differences in stub overload signatures):
+    #   - "hello" > 5           — E1110: str vs int
+    #   - "hello" < [1, 2, 3]  — E1110: str vs list
+    #   - [1, 2] < {3: 4}      — E1110: list vs dict
+    #   - 5 in 10               — E1111: int has no __contains__
+    #   - "x" in 42             — E1111: int has no __contains__
+    #   - "a" < 1  (chained)   — E1110: str vs int
+    #   - 1 < "b"  (chained)   — E1110: int vs str
+    assert len(program.errors_had) >= 7 , f"Expected >= 7 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+
+    # Collect all error pretty prints for flexible matching
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    all_errors_str = "\n".join(all_errors);
+
+    # Verify E1110 diagnostics for ordered comparison errors
+    e1110_count = sum(
+        1
+        for e in all_errors
+        if "E1110" in e
+    );
+    assert e1110_count >= 5 , f"Expected >= 5 E1110 errors, got {e1110_count}";
+
+    # Verify E1111 diagnostics for membership test errors
+    e1111_count = sum(
+        1
+        for e in all_errors
+        if "E1111" in e
+    );
+    assert e1111_count >= 2 , f"Expected >= 2 E1111 errors, got {e1111_count}";
+    assert "__contains__" in all_errors_str;
+
+    # Verify specific error locations are present
+    assert '"hello" > 5' in all_errors_str;
+    assert "5 in 10" in all_errors_str;
+}
+
+test "undeclared_obj_attr_warns_w2080" {
+    # W2080: annotated self-assignments in init/postinit of obj/node/edge/walker
+    # should warn "declare as 'has' field" while still resolving the attribute
+    # to prevent cascading E1030 errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_undeclared_obj_attr.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Collect warnings
+    all_warnings = [w.pretty_print() for w in program.warnings_had];
+    w2080_warnings = [
+        w
+        for w in all_warnings
+        if "W2080" in w
+    ];
+
+    # Should have W2080 for: y (Foo.init), count (Bar.postinit),
+    # label (Bar.postinit), cached (MyNode.postinit)
+    assert len(w2080_warnings) >= 4 , f"Expected >= 4 W2080 warnings, got {len(
+        w2080_warnings
+    )}:\n" + "\n---\n".join(w2080_warnings);
+
+    # Verify the warning messages mention the attribute names
+    w2080_str = "\n".join(w2080_warnings);
+    assert "'y'" in w2080_str or "y" in w2080_str;
+    assert "'count'" in w2080_str;
+    assert "'label'" in w2080_str;
+    assert "'cached'" in w2080_str;
+
+    # Verify no E1030 on resolved attributes (f.y, b.count, b.label should NOT error)
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1030_errors = [
+        e
+        for e in all_errors
+        if "E1030" in e
+    ];
+    # Only Baz.secret (unannotated) should produce E1030
+    e1030_names = [
+        e
+        for e in e1030_errors
+        if "secret" in e
+    ];
+    assert len(e1030_names) >= 1 , f"Expected E1030 for 'secret', got: {e1030_errors}";
+    # No E1030 for count, label, cached (resolved via W2080 path)
+    for attr in ["count", "label", "cached"] {
+        resolved_errors = [
+            e
+            for e in e1030_errors
+            if attr in e
+        ];
+        assert len(resolved_errors) == 0 , f"Attribute '{attr}' should be resolved, but got E1030: {resolved_errors}";
+    }
+}
+
+test "annotated_self_assign_no_false_e1001" {
+    # Annotated self-assignments (self.x: int = val) should NOT produce
+    # false E1001 "Cannot assign int to int" errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_annotated_self_assign.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1001_errors = [
+        e
+        for e in all_errors
+        if "E1001" in e
+    ];
+
+    # Must have the 2 real E1001 errors (str assigned to int)
+    e1001_str = "\n".join(e1001_errors);
+    assert "wrong" in e1001_str , f"Expected E1001 for 'wrong', got:\n{e1001_str}";
+    assert "bad" in e1001_str , f"Expected E1001 for 'bad', got:\n{e1001_str}";
+
+    # No same-type false positives (e.g., "Cannot assign int to int")
+    for err in e1001_errors {
+        # Real errors mention mismatched types; false positives have same type on both sides
+        assert not ("assign int to int" in err) , f"False positive E1001 same-type error: {err}";
+        assert not ("assign str to str" in err) , f"False positive E1001 same-type error: {err}";
+        assert not ("assign float to float" in err) , f"False positive E1001 same-type error: {err}";
+    }
 }
