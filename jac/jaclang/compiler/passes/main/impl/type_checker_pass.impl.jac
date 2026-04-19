@@ -10,6 +10,14 @@ impl TypeCheckPass.exit_special_var_ref(
 impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
     # Skip if already resolved or if part of a construct that handles its own resolution
     if nd.sym is None {
+        # Skip Name nodes that are the right-hand side of an AtomTrailer
+        # (member access, e.g. `x.strip`). These names are attribute lookups
+        # that only make sense in the context of their parent — resolving them
+        # as standalone names produces spurious W1051 warnings. The parent
+        # AtomTrailer's exit handler will resolve them with proper base type context.
+        if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
+            return;
+        }
         self.evaluator.get_type_of_expression(nd);
     }
 }

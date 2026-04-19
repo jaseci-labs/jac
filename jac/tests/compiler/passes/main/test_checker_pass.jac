@@ -605,15 +605,19 @@ test "checker_member_access" {
     age_sym = mod.sym_tab.kid_scope[0].lookup("age");
     assert age_sym is not None;
     assert "(NAME, age, 22:11 - 22:14)" in str(age_sym.uses);
-    # 6 errors: 'has no attribute name' (obj can't have dynamic attrs),
-    # 3 Unknown self in static/classmethod, 2 type mismatches
-    assert len(program.errors_had) == 6;
+    # 5 errors: 'has no attribute name' (obj can't have dynamic attrs),
+    # 3 Unknown self in static/classmethod, 1 type mismatch (alice.age = '909').
+    # Note: `self.type = "Human"` in @classmethod no longer produces a spurious
+    # E1001 (assigning to builtin `type`) because `.type` is now correctly
+    # deferred to the AtomTrailer's member-access resolution, where `self` is
+    # Unknown in a classmethod context.
+    assert len(program.errors_had) == 5;
     assert_error_pretty_found(
         """
         alice.age = '909';  # <-- Error
         ^^^^^^^^^^^^^^^^^^
     """,
-        program.errors_had[5].pretty_print()
+        program.errors_had[4].pretty_print()
     );
 }
 
