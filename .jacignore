@@ -1,5 +1,3 @@
-bun_installer.impl.jac
-bun_installer.jac
 cfg_build_pass.jac
 client.jac
 client_runtime.cl.jac
@@ -70,7 +68,6 @@ precompile_bytecode.jac
 program.jac
 project.impl.jac
 project.jac
-pwa_target.impl.jac
 pyast_gen_pass.impl.jac
 pyast_gen_pass.jac
 pyast_load_pass.impl.jac
@@ -126,9 +123,7 @@ serve.jac
 serve.core.impl.jac
 api.cl.jac
 cli.jac
-cli.impl.jac
 bunch_of_statements.jac
-chapter_10_school.jac
 chess.impl.jac
 compiler_bridge.impl.jac
 console.impl.jac
@@ -242,15 +237,10 @@ LoginPage.cl.jac
 memory_hierarchy.main.impl.jac
 memory_hierarchy.mongo.impl.jac
 memory_hierarchy.redis.impl.jac
-metricsService.cl.jac
 PlaceholderPage.cl.jac
 prometheus_metrics.jac
-prompts.impl.jac
-prompts.jac
 ResetPage.cl.jac
-serve.impl.jac
 SSOPage.cl.jac
-standard_logger.jac
 SubTabs.cl.jac
 top_contributors.jac
 userService.cl.jac
