@@ -9,15 +9,15 @@ node Item {
 
 with entry {
     # Connecting root to a list of nodes should not produce an error
-    root ++> [
+    root() ++> [
         Todo(title="task1", done=False),
         Todo(title="task2", done=False),
         Todo(title="task3", done=False)
     ];
 
     # Connecting to a tuple of nodes should also work
-    root ++> (Item(name="item1"), Item(name="item2"));
+    root() ++> (Item(name="item1"), Item(name="item2"));
 
     # Single node connection should still work
-    root ++> Todo(title="single", done=True);
+    root() ++> Todo(title="single", done=True);
 }
