@@ -9,8 +9,9 @@ config.impl.jac
 config.jac
 console.jac
 constant.jac
-context.impl.jac
-context.jac
+# context.impl.jac / context.jac — jac-scale passes, jaclang runtimelib fails
+jac/jaclang/runtimelib/impl/context.impl.jac
+jac/jaclang/runtimelib/context.jac
 decl_impl_match_pass.jac
 dependencies.jac
 dep_registry.jac
@@ -90,7 +91,10 @@ template_registry.jac
 testing.impl.jac
 testing.jac
 tools.impl.jac
-tools.jac
+# tools.jac — test fixture passes, others fail
+jac-mcp/jac_mcp/tools.jac
+jac/jaclang/cli/commands/tools.jac
+jac/tests/compiler/fixtures/pkg_import_lib_py/tools.jac
 transform.jac
 transport.jac
 treeprinter.jac
@@ -122,7 +126,8 @@ mtir.jac
 serve.jac
 serve.core.impl.jac
 api.cl.jac
-cli.jac
+# cli.jac — jaclang passes, jac-client fails
+jac-client/jac_client/plugin/cli.jac
 bunch_of_statements.jac
 chess.impl.jac
 compiler_bridge.impl.jac
@@ -154,8 +159,9 @@ client_bundle.jac
 client_deps.impl.jac
 client_deps.jac
 client_runtime.impl.jac
-config_loader.impl.jac
-config_loader.jac
+# config_loader — jac-byllm and jac-scale pass, jac-client fails
+jac-client/jac_client/plugin/src/impl/config_loader.impl.jac
+jac-client/jac_client/plugin/src/config_loader.jac
 core.impl.jac
 dicts.impl.jac
 engine.impl.jac
@@ -232,7 +238,8 @@ EditUserModal.cl.jac
 frontend.jac
 genius_lite.jac
 kubernetes_redis.jac
-lib.jac
+# lib.jac — jac-byllm and jac-scale pass, jaclang fails
+jac/jaclang/lib.jac
 LoginPage.cl.jac
 memory_hierarchy.main.impl.jac
 memory_hierarchy.mongo.impl.jac
