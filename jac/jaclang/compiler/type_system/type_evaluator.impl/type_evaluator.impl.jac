@@ -653,6 +653,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         return value;
                     }
+                    # Optional chaining (?.): attribute not found is not an error —
+                    # the ?. operator returns None when the attribute doesn't exist.
+                    if expr.is_null_ok {
+                        none_type = self.prefetch.none_type_class;
+                        if none_type is not None {
+                            expr.right.type = self._convert_to_instance(none_type);
+                            return expr.right.type;
+                        }
+                        return types.UnknownType();
+                    }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args
                     # (which cause false positives on generic types like list[T].append).
@@ -859,6 +869,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.is_getattr_resolved = True;
                         return getattr_return;
                     }
+                    # Optional chaining (?.): attribute not found is not an error —
+                    # the ?. operator returns None when the attribute doesn't exist.
+                    if expr.is_null_ok {
+                        none_type = self.prefetch.none_type_class;
+                        if none_type is not None {
+                            expr.right.type = self._convert_to_instance(none_type);
+                            return expr.right.type;
+                        }
+                        return types.UnknownType();
+                    }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args.
                     if not self.is_any_type(base_type) {
@@ -961,7 +981,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                             else types.UnionType(types=unique_types);
                         return expr.right.type;
                     }
-                    # Member not found on all union variants - report error
+                    # Member not found on all union variants.
+                    # Optional chaining (?.): not an error — return NoneType.
+                    if expr.is_null_ok {
+                        none_type = self.prefetch.none_type_class;
+                        if none_type is not None {
+                            expr.right.type = self._convert_to_instance(none_type);
+                            return expr.right.type;
+                        }
+                        return types.UnknownType();
+                    }
                     missing_types: list[str] = [];
                     for union_member in base_type.types {
                         if isinstance(union_member, types.ClassType)
@@ -1095,8 +1124,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 }
             } elif expr.is_null_ok {
-                # TODO:
-                # <expr>?.member
+                # Optional chaining on non-class types (e.g. Unknown, TypeVar).
+                # The ?. operator safely returns None when the base is None or
+                # the attribute doesn't exist. Handled inside the class branches
+                # above; this fallback covers remaining base_type categories.
+                none_type = self.prefetch.none_type_class;
+                if none_type is not None {
+                    expr.right.type = self._convert_to_instance(none_type);
+                    return expr.right.type;
+                }
+                return types.UnknownType();
             } elif isinstance(expr.right, uni.AssignCompr) {
                 # base_type should be a sequence of [T].
                 if not isinstance(base_type, types.ClassType) {

@@ -3923,6 +3923,41 @@ test "undeclared_obj_attr_warns_w2080" {
     }
 }
 
+test "optional_chaining_no_false_e1030" {
+    # Optional chaining (?.) should not emit E1030 for missing attributes.
+    # The ?. operator returns None when the attribute doesn't exist.
+    path = os.path.join(CHECKER_FIXTURES, "checker_optional_chaining.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1030_errors = [
+        e
+        for e in all_errors
+        if "E1030" in e
+    ];
+
+    # Only the regular (non-?.) access `b.extra` should produce E1030
+    assert len(e1030_errors) == 1 , f"Expected exactly 1 E1030 (for b.extra), got {len(
+        e1030_errors
+    )}:\n" + "\n---\n".join(e1030_errors);
+    assert "extra" in e1030_errors[0] , f"Expected E1030 for 'extra', got: {e1030_errors[0]}";
+
+    # Only W1051 allowed is on the regular (non-?.) access line which cascades
+    # from the E1030 Unknown result. No W1051 for ?. expressions themselves.
+    w1051_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code.code == "W1051"
+    ];
+    for w in w1051_warnings {
+        # Any W1051 must be on the `b.extra` line (regular access), not ?. lines
+        assert "b.extra" in w.pretty_print() or "bad" in w.pretty_print(),
+            f"Unexpected W1051 on ?. expression: {w.pretty_print()}";
+    }
+}
+
 test "annotated_self_assign_no_false_e1001" {
     # Annotated self-assignments (self.x: int = val) should NOT produce
     # false E1001 "Cannot assign int to int" errors.
