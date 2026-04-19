@@ -33,6 +33,69 @@
     color: #ffab40 !important;
 }
 
+/* Dropdown-like styling for native details/summary to match site */
+.md-typeset details {
+    border: 1px solid rgba(255, 171, 64, 0.12);
+    border-radius: 8px;
+    background: rgba(255, 171, 64, 0.02);
+    padding: 0.5rem 0.6rem;
+    margin: 0.8rem 0;
+    transition: box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.md-typeset details[open] {
+    box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+}
+
+.md-typeset details>summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 0.4rem 0.5rem;
+    margin: -0.4rem -0.5rem 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    user-select: none;
+    color: var(--md-accent-fg-color, #ff6b35);
+    border-radius: 6px;
+    background: transparent;
+}
+
+.md-typeset details>summary::-webkit-details-marker {
+    display: none;
+}
+
+/* chevron on the right that rotates when open */
+.md-typeset details>summary::after {
+    content: "▸";
+    margin-left: auto;
+    transition: transform 0.12s ease;
+    transform: rotate(0deg);
+    color: var(--md-accent-fg-color, #ff6b35);
+}
+
+.md-typeset details[open]>summary::after {
+    transform: rotate(90deg);
+}
+
+/* content padding inside the dropdown */
+.md-typeset details>:not(summary) {
+    padding: 0.75rem 0.25rem 0.25rem 0.25rem;
+}
+
+/* style inline code inside the summary to match inline code variables */
+.md-typeset details>summary code,
+.md-typeset details summary code {
+    background: rgba(27,31,35,0.6);
+    color: var(--md-default-fg-color, #cccccc);
+    padding: 0.08rem 0.35rem;
+    border-radius: 5px;
+    border: 1px solid rgba(255,255,255,0.04);
+    font-family: var(--md-code-font, 'Roboto Mono');
+    font-size: 0.95em;
+}
+
 /* ── Jac Code Block Component ── */
 .code-block {
     margin: 1.2em 0;

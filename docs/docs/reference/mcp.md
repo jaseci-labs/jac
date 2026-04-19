@@ -36,9 +36,10 @@ Add the server to your AI client's MCP configuration (see [IDE Integration](#ide
 
 ## IDE Integration
 
-### Claude Desktop
+<details markdown="1">
+<summary markdown="1">Claude Desktop</summary>
 
-Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or `%APPDATA%\\Claude\\claude_desktop_config.json` (Windows):
 
 ```json
 {
@@ -53,7 +54,10 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 
 Restart Claude Desktop after saving. The Jac tools will appear in the tool picker (hammer icon).
 
-### Claude Code (CLI)
+</details>
+
+<details markdown="1">
+<summary markdown="1">Claude Code (CLI)</summary>
 
 Add to your project's `.mcp.json`:
 
@@ -75,7 +79,10 @@ Or add it interactively:
 claude mcp add jac -- jac mcp
 ```
 
-### Cursor
+</details>
+
+<details markdown="1">
+<summary markdown="1">Cursor</summary>
 
 Add to `.cursor/mcp.json` in your project root:
 
@@ -92,7 +99,10 @@ Add to `.cursor/mcp.json` in your project root:
 
 After saving, open Cursor Settings > MCP and verify the server shows a green status indicator.
 
-### VS Code with Continue
+</details>
+
+<details markdown="1">
+<summary markdown="1">VS Code with Continue</summary>
 
 Add to your Continue config (`.continue/config.json`):
 
@@ -108,7 +118,10 @@ Add to your Continue config (`.continue/config.json`):
 }
 ```
 
-### VS Code with Copilot Chat
+</details>
+
+<details markdown="1">
+<summary markdown="1">VS Code with Copilot Chat</summary>
 
 Add to your VS Code `settings.json`:
 
@@ -125,7 +138,10 @@ Add to your VS Code `settings.json`:
 }
 ```
 
-### Windsurf
+</details>
+
+<details markdown="1">
+<summary markdown="1">Windsurf</summary>
 
 Add to `~/.windsurf/mcp_config.json`:
 
@@ -140,7 +156,9 @@ Add to `~/.windsurf/mcp_config.json`:
 }
 ```
 
-### Remote / SSE Clients
+</details>
+<details markdown="1">
+<summary markdown="1">Remote / SSE Clients</summary>
 
 For clients that connect over HTTP rather than stdio:
 
@@ -152,6 +170,40 @@ Then configure your client to connect to:
 
 - **SSE endpoint:** `http://127.0.0.1:3001/sse`
 - **Message endpoint:** `http://127.0.0.1:3001/messages/` (POST)
+
+</details>
+<details markdown="1">
+<summary markdown="1">OpenAI Codex (AGENTS.md)</summary>
+
+Add an MCP entry to your project's `AGENTS.md` (or the global `~/.codex/AGENTS.md`) so Codex can launch Jac as an MCP server.
+
+Global (Codex CLI)
+
+Run this to add the agent globally (so Codex can launch it):
+
+```bash
+codex mcp add context7 -- jac mcp
+```
+
+Local (project) example
+
+If you prefer a project-local configuration, add a TOML entry (example shows the `jac mcp` entry):
+
+```toml
+[mcp_servers.context7]
+command = "jac"
+args = ["mcp"]
+transport = "stdio"
+description = "Jac MCP server - exposes Jac language tools and docs"
+```
+
+Notes:
+
+- If `jac` is installed in a virtualenv, use the full path to the binary (e.g. `/path/to/venv/bin/jac`).
+- Use `transport: sse` and `port: 3001` if you prefer an HTTP/SSE transport instead of stdio; in that case configure the matching endpoints in Codex if it supports HTTP transports.
+- After updating `AGENTS.md`, restart the Codex CLI/agent so it reloads the agents list.
+
+</details>
 
 !!! tip
 If your `jac` binary is installed in a virtualenv, use the full path in the `command` field (e.g., `/path/to/venv/bin/jac`). You can find it with `which jac`.
