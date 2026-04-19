@@ -3874,3 +3874,28 @@ test "undeclared_obj_attr_warns_w2080" {
         assert len(resolved_errors) == 0 , f"Attribute '{attr}' should be resolved, but got E1030: {resolved_errors}";
     }
 }
+
+test "annotated_self_assign_no_false_e1001" {
+    # Annotated self-assignments (self.x: int = val) should NOT produce
+    # false E1001 "Cannot assign int to int" errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_annotated_self_assign.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1001_errors = [e for e in all_errors if "E1001" in e];
+
+    # Must have the 2 real E1001 errors (str assigned to int)
+    e1001_str = "\n".join(e1001_errors);
+    assert "wrong" in e1001_str , f"Expected E1001 for 'wrong', got:\n{e1001_str}";
+    assert "bad" in e1001_str , f"Expected E1001 for 'bad', got:\n{e1001_str}";
+
+    # No same-type false positives (e.g., "Cannot assign int to int")
+    for err in e1001_errors {
+        # Real errors mention mismatched types; false positives have same type on both sides
+        assert not ("assign int to int" in err) , f"False positive E1001 same-type error: {err}";
+        assert not ("assign str to str" in err) , f"False positive E1001 same-type error: {err}";
+        assert not ("assign float to float" in err) , f"False positive E1001 same-type error: {err}";
+    }
+}

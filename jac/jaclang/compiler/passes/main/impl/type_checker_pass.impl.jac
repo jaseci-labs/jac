@@ -229,15 +229,21 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                         type=declared_type.shared.class_name
                     );
                 }
-                target.type = declared_type;
+                # Convert class type to instance for assignment checking.
+                # Type annotations like `x: int` resolve to the class `int`
+                # (instantiable), but the LHS of an assignment represents an
+                # instance. Without this, `self.x: int = 5` falsely reports
+                # "Cannot assign int to int" (instance vs class mismatch).
+                declared_inst = self.evaluator._convert_to_instance(declared_type);
+                target.type = declared_inst;
                 # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
                 if isinstance(target, uni.AtomTrailer) {
                     chain = target.as_attr_list;
                     if len(chain) >= 2 {
-                        chain[-1].type = declared_type;
+                        chain[-1].type = declared_inst;
                     }
                 }
-                left_type = declared_type;
+                left_type = declared_inst;
             } else {
                 left_type = self.evaluator.get_type_of_expression(target);
                 # For field assignments (e.g., obj.field = value), the target
