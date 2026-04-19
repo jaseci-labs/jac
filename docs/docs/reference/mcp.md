@@ -157,6 +157,48 @@ Add to `~/.windsurf/mcp_config.json`:
 ```
 
 </details>
+
+<details markdown="1">
+<summary markdown="1">Codex</summary>
+
+To add the agent globally:
+
+```bash
+codex mcp add jac -- jac mcp
+```
+
+If you prefer a project-local configuration, add `.codex/config.toml`:
+
+```toml
+[mcp_servers.jac]
+command = "jac"
+args = ["mcp"]
+description = "Jac MCP server"
+```
+
+</details>
+
+<details markdown="1">
+<summary markdown="1">Opencode</summary>
+
+Add to `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "jac": {
+      "type": "local",
+      "command": [
+        "jac",
+        "mcp"
+      ]
+    }
+  }
+}
+```
+
+</details>
+
 <details markdown="1">
 <summary markdown="1">Remote / SSE Clients</summary>
 
@@ -170,38 +212,6 @@ Then configure your client to connect to:
 
 - **SSE endpoint:** `http://127.0.0.1:3001/sse`
 - **Message endpoint:** `http://127.0.0.1:3001/messages/` (POST)
-
-</details>
-<details markdown="1">
-<summary markdown="1">OpenAI Codex (AGENTS.md)</summary>
-
-Add an MCP entry to your project's `AGENTS.md` (or the global `~/.codex/AGENTS.md`) so Codex can launch Jac as an MCP server.
-
-Global (Codex CLI)
-
-Run this to add the agent globally (so Codex can launch it):
-
-```bash
-codex mcp add context7 -- jac mcp
-```
-
-Local (project) example
-
-If you prefer a project-local configuration, add a TOML entry (example shows the `jac mcp` entry):
-
-```toml
-[mcp_servers.context7]
-command = "jac"
-args = ["mcp"]
-transport = "stdio"
-description = "Jac MCP server - exposes Jac language tools and docs"
-```
-
-Notes:
-
-- If `jac` is installed in a virtualenv, use the full path to the binary (e.g. `/path/to/venv/bin/jac`).
-- Use `transport: sse` and `port: 3001` if you prefer an HTTP/SSE transport instead of stdio; in that case configure the matching endpoints in Codex if it supports HTTP transports.
-- After updating `AGENTS.md`, restart the Codex CLI/agent so it reloads the agents list.
 
 </details>
 
