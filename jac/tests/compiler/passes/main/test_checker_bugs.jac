@@ -23,6 +23,7 @@ Bug index:
   #TVAR-3 - Union return types with TypeVars (e.g., V | None) resolve to Unknown
   #TVAR-5 - Module-level TypeVars shadowed by class type parameters
   #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
+  #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
 """
 
 import os;
@@ -516,6 +517,39 @@ test "bug_impl1_has_var_shadow_in_impl_body" {
     assert len(program.errors_had) == 0 , (
         "Bug #IMPL-1: has var `tasks` in impl body should resolve to the "
         "parent HasVar (type list[dict]), not a local shadow (type Unknown). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #BASE-1: Base class name resolved in class's own scope
+#
+# For `class Child(Parent) { def Parent -> int {...} }` the name `Parent`
+# in the base-classes list was looked up starting from Child's own symbol
+# table. The inner ability `Parent` was found first, so Child's MRO
+# collapsed to [Child] and inherited members became invisible —
+# producing spurious E1030 errors on valid inherited attribute access.
+#
+# Real-world manifestation: `datetime.datetime.fromisoformat(...)` reported
+# "Type datetime has no attribute fromisoformat" because CPython's
+# `class datetime(date)` stub has a method `def date(self) -> _Date: ...`
+# that shadowed the outer `date` class.
+#
+# Fix: Introduced `_resolution_scope_for` helper in the type evaluator.
+# When a Name reference sits inside an Archetype's `base_classes` list,
+# resolution uses the Archetype's parent_scope (Python semantics). PEP 695
+# type parameters declared on the class remain visible inside the base
+# list (names matching `Archetype.type_params` keep class scope).
+# =========================================================================
+test "bug_base1_base_class_resolved_in_enclosing_scope" {
+    program = compile_and_check("checker_bug_base_class_scope.jac");
+
+    # Expected after fix: 0 errors. Before fix: 4 errors (E1030 on
+    # `self.greet()` and `c.greet()`, plus cascading E1002/E1001).
+    assert len(program.errors_had) == 0 , (
+        "Bug #BASE-1: base class name must resolve in enclosing scope, not "
+        "the class's own scope. Inner member shadowing the base identifier "
+        "broke MRO and hid inherited attributes. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }

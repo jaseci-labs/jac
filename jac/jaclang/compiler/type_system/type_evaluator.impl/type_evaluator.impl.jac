@@ -1822,7 +1822,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
             }
 
-            if scope := expr.find_parent_of_type(uni.UniScopeNode) {
+            if scope := self._resolution_scope_for(expr) {
                 if symbol := type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module
                 ) {
