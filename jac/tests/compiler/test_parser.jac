@@ -908,6 +908,44 @@ test "graph edge arrows unaffected by arrow fix" {
     assert not had_error;
 }
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# E0025 help hint visibility
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test "E0025 str includes help hint" {
+    prog = JacProgram();
+    prog.parse_str('glob f = x => x + 1;', "test.jac");
+    assert len(prog.errors_had) >= 1;
+    err_str = str(prog.errors_had[0]);
+    assert "help:" in err_str , f"Expected 'help:' in str(alert), got: {err_str!r}";
+    assert "lambda" in err_str , f"Expected lambda hint in str(alert), got: {err_str!r}";
+}
+
+test "E0025 pretty_print includes help hint" {
+    prog = JacProgram();
+    prog.parse_str('glob f = x => x + 1;', "test.jac");
+    assert len(prog.errors_had) >= 1;
+    pretty = prog.errors_had[0].pretty_print();
+    assert "help:" in pretty , f"Expected 'help:' in pretty_print, got: {pretty!r}";
+    assert "lambda" in pretty , f"Expected lambda hint in pretty_print, got: {pretty!r}";
+}
+
+test "arrow func brace drain stops at stray RBRACE without consuming it" {
+    # `(e) => }` — RBRACE is not preceded by LBRACE inside the arrow body.
+    # The drain must NOT enter the brace loop (outer check fails) and must NOT
+    # consume the `}` so the outer parser can use it.
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <div onClick={(e) => } />; }', "test.jac");
+    # Exactly one E0025; no cascade from consuming the JSX-closing `}`
+    e0025_errors = [
+        e
+        for e in prog.errors_had
+        if e.code is not None and e.code.code == "E0025"
+    ];
+    assert len(e0025_errors) == 1 , f"Expected 1 E0025, got errors: {[
+        str(e) for e in prog.errors_had
+    ]}";
+}
+
 with entry {
     parametrize(
         "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
