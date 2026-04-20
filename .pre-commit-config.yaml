@@ -72,8 +72,8 @@ repos:
 
       - id: validate-fragments
         name: Validate release note fragment filenames
-        entry: jac run --no-persist scripts/validate_fragments.jac
-        language: system
+        entry: env PYTHONPATH=jac python3 -m jaclang run --no-persist scripts/validate_fragments.jac
+        language: python
         files: ^docs/docs/community/release_notes/unreleased/.*\.md$
         exclude: README\.md
 
