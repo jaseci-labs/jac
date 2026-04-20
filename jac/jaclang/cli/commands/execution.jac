@@ -56,7 +56,10 @@ glob registry = get_registry();
     examples=[
         ("jac run hello.jac", "Run a simple program"),
         ("jac run --no-cache app.jac", "Run without caching"),
-        ("jac run --no-persist script.jac", "Run without SQLite persistence (non-graph scripts)"),
+        (
+            "jac run --no-persist script.jac",
+            "Run without SQLite persistence (non-graph scripts)"
+        ),
         ("jac run --autonative app.jac", "Run with native auto-promotion"),
         ("jac run --profile prod app.jac", "Run with production profile"),
         ("jac run -e all app.jac", "Run and show all diagnostics (errors+warnings)"),
