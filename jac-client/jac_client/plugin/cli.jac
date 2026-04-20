@@ -68,7 +68,10 @@ with entry {
         ("jac build --client pwa", "Build PWA (Progressive Web App)"),
         ("jac build --client desktop", "Build desktop app"),
         ("jac build --client desktop --platform windows", "Build for Windows"),
-        ("jac build --client mobile -b development -p android", "Build mobile dev (Android)"),
+        (
+            "jac build --client mobile -b development -p android",
+            "Build mobile dev (Android)"
+        ),
         ("jac build --client mobile -b preview -p ios", "Build mobile preview (iOS)"),
         ("jac build --client mobile -b production -p all", "Build for both platforms"),
 
@@ -109,7 +112,7 @@ def setup(target: str) -> int {
 class JacCmd {
     """Create Jac CLI cmds."""
     @hookimpl
-    static def create_cmd -> None {
+    static def create_cmd {
         """Extend core commands to add --npm flag for npm package management.""";
         registry = get_registry();
 
@@ -195,7 +198,7 @@ class JacCmd {
 }
 
 """Pre-hook to handle --skip flag for create command."""
-def _handle_create_skip(ctx: HookContext) -> None {
+def _handle_create_skip(ctx: HookContext) {
     # Check if --skip flag is set
     skip_flag = ctx.get_arg("skip", False);
     if skip_flag {
@@ -316,10 +319,14 @@ def _handle_build_target(ctx: HookContext) -> None {
         console.print("\n📱 Mobile Build Configuration", style="bold");
         console.print("  Platform options:", style="muted");
         console.print("    • android  - Build for Android devices", style="muted");
-        console.print("    • ios      - Build for iOS devices (requires Mac)", style="muted");
+        console.print(
+            "    • ios      - Build for iOS devices (requires Mac)", style="muted"
+        );
         console.print("    • all      - Build for both platforms", style="muted");
 
-        platform_choice = input("\n  Select platform [android/ios/all] (default: android): ").strip().lower();
+        platform_choice = input(
+            "\n  Select platform [android/ios/all] (default: android): "
+        ).strip().lower();
         if platform_choice == "" {
             platform = "android";
         } elif platform_choice in ["android", "ios", "all"] {
@@ -332,11 +339,19 @@ def _handle_build_target(ctx: HookContext) -> None {
         }
 
         console.print("\n  Build profile options:", style="muted");
-        console.print("    • development - Dev build with debugging enabled", style="muted");
-        console.print("    • preview     - Preview build for internal testing", style="muted");
-        console.print("    • production  - Production build for app stores", style="muted");
+        console.print(
+            "    • development - Dev build with debugging enabled", style="muted"
+        );
+        console.print(
+            "    • preview     - Preview build for internal testing", style="muted"
+        );
+        console.print(
+            "    • production  - Production build for app stores", style="muted"
+        );
 
-        build_choice = input("\n  Select build profile [development/preview/production] (default: production): ").strip().lower();
+        build_choice = input(
+            "\n  Select build profile [development/preview/production] (default: production): "
+        ).strip().lower();
         if build_choice == "" {
             build_type = "production";
         } elif build_choice in ["development", "preview", "production"] {

@@ -53,18 +53,14 @@ impl MobileConfig.get_default_config(self: MobileConfig) -> dict[str, Any] {
                 'resizeMode': 'contain',
                 'backgroundColor': '#ffffff'
             },
-            'ios': {
-                'supportsTablet': True
-            },
+            'ios': {'supportsTablet': True},
             'android': {
                 'adaptiveIcon': {
                     'foregroundImage': './assets/adaptive-icon.png',
                     'backgroundColor': '#ffffff'
                 }
             },
-            'web': {
-                'favicon': './assets/favicon.png'
-            },
+            'web': {'favicon': './assets/favicon.png'},
             'plugins': ['expo-router']
         }
     };
@@ -77,7 +73,7 @@ impl MobileConfig._get_jac_config(self: MobileConfig) -> JacConfig {
         if self._jac_config is None {
             raise RuntimeError(
                 "No jac.toml found. Run 'jac create' to create a project."
-            ) ;
+            );
         }
     }
     return self._jac_config;
@@ -141,7 +137,9 @@ impl MobileConfig.get_app_json_config(self: MobileConfig) -> dict[str, Any] {
     # Get basic info
     name = config.get('display_name', config.get('name', 'my-jac-app'));
     slug = config.get('slug', name.lower().replace(' ', '-'));
-    scheme = config.get('scheme', name.lower().replace(' ', '').replace('-', '').replace('_', ''));
+    scheme = config.get(
+        'scheme', name.lower().replace(' ', '').replace('-', '').replace('_', '')
+    );
     version = config.get('version', '1.0.0');
     bundle_id = config.get('bundle_id', 'com.example.myapp');
 
@@ -155,22 +153,17 @@ impl MobileConfig.get_app_json_config(self: MobileConfig) -> dict[str, Any] {
             'orientation': expo_config.get('orientation', 'portrait'),
             'icon': expo_config.get('icon', './assets/icon.png'),
             'userInterfaceStyle': expo_config.get('userInterfaceStyle', 'light'),
-            'splash': expo_config.get('splash', {
-                'image': './assets/splash.png',
-                'resizeMode': 'contain',
-                'backgroundColor': '#ffffff'
-            }),
-            'ios': {
-                **expo_config.get('ios', {}),
-                'bundleIdentifier': bundle_id
-            },
-            'android': {
-                **expo_config.get('android', {}),
-                'package': bundle_id
-            },
-            'web': expo_config.get('web', {
-                'favicon': './assets/favicon.png'
-            }),
+            'splash': expo_config.get(
+                'splash',
+                {
+                    'image': './assets/splash.png',
+                    'resizeMode': 'contain',
+                    'backgroundColor': '#ffffff'
+                }
+            ),
+            'ios': {** expo_config.get('ios', {}), 'bundleIdentifier': bundle_id},
+            'android': {** expo_config.get('android', {}), 'package': bundle_id},
+            'web': expo_config.get('web', {'favicon': './assets/favicon.png'}),
             'plugins': expo_config.get('plugins', ['expo-router', 'expo-dev-client'])
         }
     };
@@ -201,25 +194,13 @@ impl MobileConfig.get_eas_config(self: MobileConfig) -> dict[str, Any] {
         'development': {
             'distribution': 'internal',
             'developmentClient': True,
-            'android': {
-                'gradleCommand': ':app:assembleDebug',
-                'buildType': 'apk'
-            },
-            'ios': {
-                'simulator': True,
-                'buildConfiguration': 'Debug'
-            }
+            'android': {'gradleCommand': ':app:assembleDebug', 'buildType': 'apk'},
+            'ios': {'simulator': True, 'buildConfiguration': 'Debug'}
         },
         'preview': {
             'distribution': 'internal',
-            'android': {
-                'gradleCommand': ':app:assembleRelease',
-                'buildType': 'apk'
-            },
-            'ios': {
-                'simulator': False,
-                'buildConfiguration': 'Release'
-            }
+            'android': {'gradleCommand': ':app:assembleRelease', 'buildType': 'apk'},
+            'ios': {'simulator': False, 'buildConfiguration': 'Release'}
         },
         'production': {
             'distribution': 'store',
@@ -227,24 +208,20 @@ impl MobileConfig.get_eas_config(self: MobileConfig) -> dict[str, Any] {
                 'gradleCommand': ':app:bundleRelease',
                 'buildType': 'app-bundle'
             },
-            'ios': {
-                'simulator': False,
-                'buildConfiguration': 'Release'
-            }
+            'ios': {'simulator': False, 'buildConfiguration': 'Release'}
         }
     };
 
     # Merge user-defined profiles with defaults
     profiles = eas_config.get('profiles', {});
-    merged_profiles = {**default_profiles};
+    merged_profiles = {** default_profiles};
 
     for profile_name in profiles {
         profile_config = profiles[profile_name];
         if profile_name in merged_profiles {
             # Merge with default
             merged_profiles[profile_name] = deep_merge(
-                merged_profiles[profile_name],
-                profile_config
+                merged_profiles[profile_name], profile_config
             );
         } else {
             # New custom profile
@@ -267,13 +244,13 @@ impl MobileConfig.validate(self: MobileConfig) -> None {
     if not name {
         raise ValueError(
             "Mobile configuration error: 'name' is required in [mobile] section"
-        ) ;
+        );
     }
     bundle_id = config.get('bundle_id', '');
     if not bundle_id {
         raise ValueError(
             "Mobile configuration error: 'bundle_id' is required in [mobile] section"
-        ) ;
+        );
     }
     # Validate bundle_id format (should be reverse domain notation)
     if not _is_valid_bundle_id(bundle_id) {

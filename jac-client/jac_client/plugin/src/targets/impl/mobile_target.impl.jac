@@ -21,7 +21,7 @@ def _get_toml_api_base_url(project_dir: Path) -> str {
 }
 
 """Get local network IP address for mobile dev server."""
-def _get_local_ip() -> str {
+def _get_local_ip -> str {
     import socket;
 
     try {
@@ -51,8 +51,12 @@ impl MobileTarget.setup(project_dir: Path) -> None {
 
     console.print("\n📱 Setting up mobile target (React Native/Expo)", style="bold");
     console.print(f"  Project directory: {project_dir}", style="muted");
-    console.print(f"  Source directory: {mobile_dir.relative_to(project_dir)}", style="muted");
-    console.print(f"  Build artifacts: .jac/mobile/ (not tracked in git)", style="muted");
+    console.print(
+        f"  Source directory: {mobile_dir.relative_to(project_dir)}", style="muted"
+    );
+    console.print(
+        f"  Build artifacts: .jac/mobile/ (not tracked in git)", style="muted"
+    );
 
     # Check if already set up
     if mobile_dir.exists() {
@@ -65,7 +69,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         try {
             project_dir.mkdir(parents=True, exist_ok=True);
         } except Exception as e {
-            raise RuntimeError(f"Failed to create project directory: {e}") ;
+            raise RuntimeError(f"Failed to create project directory: {e}");
         }
     }
 
@@ -78,7 +82,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         (mobile_dir / "assets" / "jac-app").mkdir(exist_ok=True);
         console.print(f"  ✔ Created {mobile_dir}", style="success");
     } except Exception as e {
-        raise RuntimeError(f"Failed to create mobile directory: {e}") ;
+        raise RuntimeError(f"Failed to create mobile directory: {e}");
     }
 
     # Wrap rest of setup in try-finally
@@ -183,15 +187,32 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         # Don't install dependencies during setup - they'll be in .jac/mobile/
         console.success("Mobile target setup complete!");
         console.print("\n💡 Source files created in mobile/ directory", style="bold");
-        console.print("   Dependencies & bundles will be in .jac/mobile/ during build/dev", style="muted");
+        console.print(
+            "   Dependencies & bundles will be in .jac/mobile/ during build/dev",
+            style="muted"
+        );
         console.print("\nNext steps:", style="bold");
         console.print("  1. Build: jac build main.jac --client mobile", style="muted");
-        console.print("             (you'll be prompted for platform and build profile)", style="muted");
+        console.print(
+            "             (you'll be prompted for platform and build profile)",
+            style="muted"
+        );
         console.print("     Or use flags:", style="muted");
-        console.print("       jac build main.jac --client mobile -p android -b development", style="muted");
-        console.print("       jac build main.jac --client mobile -p ios -b production", style="muted");
-        console.print("       jac build main.jac --client mobile -p all -b preview", style="muted");
-        console.print("\n  2. Dev:   jac start main.jac --client mobile --dev", style="muted");
+        console.print(
+            "       jac build main.jac --client mobile -p android -b development",
+            style="muted"
+        );
+        console.print(
+            "       jac build main.jac --client mobile -p ios -b production",
+            style="muted"
+        );
+        console.print(
+            "       jac build main.jac --client mobile -p all -b preview",
+            style="muted"
+        );
+        console.print(
+            "\n  2. Dev:   jac start main.jac --client mobile --dev", style="muted"
+        );
     } finally {
         # Ensure mobile directory exists no matter what
         if not mobile_dir.exists() {
@@ -206,7 +227,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
 }
 
 """Generate app.json from TOML configuration."""
-def _generate_app_json_from_toml(mobile_dir: Path, project_dir: Path) -> None {
+def _generate_app_json_from_toml(mobile_dir: Path, project_dir: Path) {
     import from jac_client.plugin.src.mobile_config { MobileConfig }
 
     # Load mobile config from jac.toml
@@ -223,7 +244,7 @@ def _generate_app_json_from_toml(mobile_dir: Path, project_dir: Path) -> None {
 """Generate app.json for Expo (legacy - kept for backwards compatibility)."""
 def _generate_app_json(
     mobile_dir: Path, name: str, bundle_id: str, version: str, display_name: str
-) -> None {
+) {
     # Generate scheme from name (lowercase, no special chars)
     scheme = name.lower().replace(" ", "").replace("-", "").replace("_", "");
 
@@ -241,10 +262,7 @@ def _generate_app_json(
                 "resizeMode": "contain",
                 "backgroundColor": "#ffffff"
             },
-            "ios": {
-                "supportsTablet": True,
-                "bundleIdentifier": bundle_id
-            },
+            "ios": {"supportsTablet": True, "bundleIdentifier": bundle_id},
             "android": {
                 "adaptiveIcon": {
                     "foregroundImage": "./assets/adaptive-icon.png",
@@ -252,9 +270,7 @@ def _generate_app_json(
                 },
                 "package": bundle_id
             },
-            "web": {
-                "favicon": "./assets/favicon.png"
-            },
+            "web": {"favicon": "./assets/favicon.png"},
             "plugins": ["expo-router"]
         }
     };
@@ -267,7 +283,7 @@ def _generate_app_json(
 }
 
 """Generate package.json for React Native."""
-def _generate_package_json(mobile_dir: Path, name: str) -> None {
+def _generate_package_json(mobile_dir: Path, name: str) {
     package_name = name.lower().replace(" ", "-");
 
     package_json = {
@@ -310,13 +326,8 @@ def _generate_package_json(mobile_dir: Path, name: str) -> None {
 }
 
 """Generate tsconfig.json."""
-def _generate_tsconfig(mobile_dir: Path) -> None {
-    tsconfig = {
-        "extends": "expo/tsconfig.base",
-        "compilerOptions": {
-            "strict": True
-        }
-    };
+def _generate_tsconfig(mobile_dir: Path) {
+    tsconfig = {"extends": "expo/tsconfig.base", "compilerOptions": {"strict": True}};
 
     tsconfig_path = mobile_dir / "tsconfig.json";
     with open(tsconfig_path, "w") as f {
@@ -326,7 +337,7 @@ def _generate_tsconfig(mobile_dir: Path) -> None {
 }
 
 """Generate WebView screen component."""
-def _generate_webview_screen(mobile_dir: Path) -> None {
+def _generate_webview_screen(mobile_dir: Path) {
     screen_code = '''import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -612,7 +623,7 @@ const styles = StyleSheet.create({
 }
 
 """Generate bundle creation script."""
-def _generate_bundle_script(mobile_dir: Path) -> None {
+def _generate_bundle_script(mobile_dir: Path) {
     script_code = '''const fs = require('fs');
 const path = require('path');
 
@@ -699,7 +710,7 @@ console.log(`Bundle size: ${(html.length / 1024).toFixed(2)} KB`);
 }
 
 """Generate _layout.tsx for expo-router."""
-def _generate_layout_file(mobile_dir: Path) -> None {
+def _generate_layout_file(mobile_dir: Path) {
     layout_code = '''import { Slot } from 'expo-router';
 
 export default function RootLayout() {
@@ -799,7 +810,7 @@ distribution = "store"
 }
 
 """Check for required mobile dependencies."""
-def _check_mobile_dependencies() -> None {
+def _check_mobile_dependencies {
     # Check for Node.js
     try {
         result = subprocess.run(
@@ -841,37 +852,40 @@ def _check_mobile_dependencies() -> None {
             );
         }
     } except Exception {
-        console.print("  ℹ Expo CLI will be installed with yarn install", style="muted");
+        console.print(
+            "  ℹ Expo CLI will be installed with yarn install", style="muted"
+        );
     }
 }
 
 """Install dependencies for mobile project using yarn."""
-def _install_yarn_dependencies(mobile_dir: Path) -> None {
+def _install_yarn_dependencies(mobile_dir: Path) {
     try {
         # Run yarn install with real-time output
         process = subprocess.run(
-            ["yarn", "install"],
-            cwd=str(mobile_dir),
-            timeout=300,
-            text=True
+            ["yarn", "install"], cwd=str(mobile_dir), timeout=300, text=True
         );
 
         if process.returncode == 0 {
-            console.print("  ✔ Dependencies installed successfully with yarn", style="success");
+            console.print(
+                "  ✔ Dependencies installed successfully with yarn", style="success"
+            );
         } else {
-            raise RuntimeError(f"yarn install failed with exit code {process.returncode}") ;
+            raise RuntimeError(
+                f"yarn install failed with exit code {process.returncode}"
+            );
         }
     } except subprocess.TimeoutExpired {
-        raise RuntimeError("yarn install timed out after 5 minutes") ;
+        raise RuntimeError("yarn install timed out after 5 minutes");
     } except FileNotFoundError {
-        raise RuntimeError("yarn not found. Install with: npm install -g yarn") ;
+        raise RuntimeError("yarn not found. Install with: npm install -g yarn");
     } except Exception as e {
-        raise RuntimeError(f"yarn install failed: {e}") ;
+        raise RuntimeError(f"yarn install failed: {e}");
     }
 }
 
 """Generate placeholder icon files for Expo."""
-def _generate_placeholder_icons(mobile_dir: Path) -> None {
+def _generate_placeholder_icons(mobile_dir: Path) {
     assets_dir = mobile_dir / "assets";
 
     # Create a minimal 1024x1024 PNG icon using Python
@@ -930,7 +944,7 @@ except ImportError:
 }
 
 """Generate .gitignore file for mobile directory."""
-def _generate_gitignore(mobile_dir: Path) -> None {
+def _generate_gitignore(mobile_dir: Path) {
     gitignore_content = """# This directory contains SOURCE files only
 # All build artifacts (node_modules, bundles) are in .jac/mobile/
 
@@ -962,7 +976,7 @@ assets/jac-app/styles.css
 }
 
 """Prepare build directory by copying source and installing deps in .jac/mobile/."""
-def _prepare_build_dir(mobile_src_dir: Path, mobile_build_dir: Path) -> None {
+def _prepare_build_dir(mobile_src_dir: Path, mobile_build_dir: Path) {
     console.print("  Preparing build directory...", style="muted");
 
     # Create build directory
@@ -1007,7 +1021,7 @@ def _prepare_build_dir(mobile_src_dir: Path, mobile_build_dir: Path) -> None {
 }
 
 """Copy bundles from .jac/mobile/ to mobile/ for EAS."""
-def _copy_bundles_for_eas(mobile_build_dir: Path, mobile_src_dir: Path) -> None {
+def _copy_bundles_for_eas(mobile_build_dir: Path, mobile_src_dir: Path) {
     build_assets = mobile_build_dir / "assets" / "jac-app";
     src_assets = mobile_src_dir / "assets" / "jac-app";
 
@@ -1040,9 +1054,7 @@ impl MobileTarget.build(
     # Check if setup has been run
     mobile_src_dir = project_dir / "mobile";
     if not mobile_src_dir.exists() {
-        raise RuntimeError(
-            "Mobile target not set up. Run 'jac setup mobile' first."
-        ) ;
+        raise RuntimeError("Mobile target not set up. Run 'jac setup mobile' first.");
     }
 
     # Build directory in .jac/mobile/
@@ -1086,10 +1098,15 @@ impl MobileTarget.build(
         node_modules_src = mobile_build_dir / "node_modules";
 
         if build_type == "development" and not node_modules_link.exists() {
-            console.print("  Creating symlink to node_modules for EAS verification...", style="muted");
+            console.print(
+                "  Creating symlink to node_modules for EAS verification...",
+                style="muted"
+            );
             try {
                 import os;
-                os.symlink(node_modules_src, node_modules_link, target_is_directory=True);
+                os.symlink(
+                    node_modules_src, node_modules_link, target_is_directory=True
+                );
                 console.print("  ✔ Symlink created", style="success");
             } except Exception as e {
                 console.warning(f"  Could not create symlink: {e}");
@@ -1099,10 +1116,7 @@ impl MobileTarget.build(
         try {
             console.print(f"  Building with EAS...", style="muted");
             build_info = _build_with_eas(
-                mobile_src_dir,
-                project_dir,
-                build_type,
-                platform or "android"
+                mobile_src_dir, project_dir, build_type, platform or "android"
             );
 
             console.success("Mobile app submitted to EAS!");
@@ -1116,8 +1130,12 @@ impl MobileTarget.build(
         console.print(f"\n📊 Build Information:", style="bold");
         console.print(f"  Build ID: {build_info['build_id']}", style="muted");
         console.print(f"  Build URL: {build_info['build_url']}", style="muted");
-        console.print(f"  Expected artifact: {build_info['artifact_type']}", style="muted");
-        console.print(f"\n💡 Monitor your build at: {build_info['build_url']}", style="bold");
+        console.print(
+            f"  Expected artifact: {build_info['artifact_type']}", style="muted"
+        );
+        console.print(
+            f"\n💡 Monitor your build at: {build_info['build_url']}", style="bold"
+        );
     } else {
         console.print("  Step 5: Skipping EAS build...", style="muted");
         console.success("Mobile app bundle created successfully!");
@@ -1129,7 +1147,7 @@ impl MobileTarget.build(
 }
 
 """Copy web bundle files to mobile assets directory."""
-def _copy_web_bundle_to_mobile(web_bundle_path: Path, mobile_dir: Path) -> None {
+def _copy_web_bundle_to_mobile(web_bundle_path: Path, mobile_dir: Path) {
     assets_dir = mobile_dir / "assets" / "jac-app";
 
     # Find the built files in web bundle
@@ -1144,7 +1162,7 @@ def _copy_web_bundle_to_mobile(web_bundle_path: Path, mobile_dir: Path) -> None 
         shutil.copy2(html_file, assets_dir / "index.html");
         console.print(f"    ✔ Copied index.html", style="success");
     } else {
-        raise RuntimeError(f"index.html not found in {dist_dir}") ;
+        raise RuntimeError(f"index.html not found in {dist_dir}");
     }
 
     # Find and copy CSS file
@@ -1152,7 +1170,9 @@ def _copy_web_bundle_to_mobile(web_bundle_path: Path, mobile_dir: Path) -> None 
     if css_files {
         # Use the first CSS file found
         shutil.copy2(css_files[0], assets_dir / "styles.css");
-        console.print(f"    ✔ Copied {css_files[0].name} as styles.css", style="success");
+        console.print(
+            f"    ✔ Copied {css_files[0].name} as styles.css", style="success"
+        );
     } else {
         console.warning("    No CSS file found, creating empty styles.css");
         (assets_dir / "styles.css").write_text("");
@@ -1174,16 +1194,16 @@ def _copy_web_bundle_to_mobile(web_bundle_path: Path, mobile_dir: Path) -> None 
         shutil.copy2(main_js, assets_dir / "client.js");
         console.print(f"    ✔ Copied {main_js.name} as client.js", style="success");
     } else {
-        raise RuntimeError(f"No JavaScript files found in {dist_dir}") ;
+        raise RuntimeError(f"No JavaScript files found in {dist_dir}");
     }
 }
 
 """Create mobile bundle using Node.js script."""
-def _create_mobile_bundle(mobile_dir: Path) -> None {
+def _create_mobile_bundle(mobile_dir: Path) {
     script_path = mobile_dir / "assets" / "jac-app" / "create-bundle.js";
 
     if not script_path.exists() {
-        raise RuntimeError(f"Bundle script not found: {script_path}") ;
+        raise RuntimeError(f"Bundle script not found: {script_path}");
     }
 
     # Run the bundle creation script
@@ -1198,20 +1218,22 @@ def _create_mobile_bundle(mobile_dir: Path) -> None {
 
         if result.returncode != 0 {
             console.error(f"  Bundle creation failed: {result.stderr}");
-            raise RuntimeError(f"Bundle creation failed: {result.stderr}") ;
+            raise RuntimeError(f"Bundle creation failed: {result.stderr}");
         }
 
         console.print(f"  {result.stdout.strip()}", style="success");
     } except subprocess.TimeoutExpired {
-        raise RuntimeError("Bundle creation timed out") ;
+        raise RuntimeError("Bundle creation timed out");
     } except Exception as e {
-        raise RuntimeError(f"Failed to create bundle: {e}") ;
+        raise RuntimeError(f"Failed to create bundle: {e}");
     }
 }
 
 """Build mobile app for production."""
-def _build_mobile_app(mobile_dir: Path, platform: str) -> None {
-    console.print(f"  Building for {platform} (this may take several minutes)...", style="muted");
+def _build_mobile_app(mobile_dir: Path, platform: str) {
+    console.print(
+        f"  Building for {platform} (this may take several minutes)...", style="muted"
+    );
 
     # Check if node_modules exists
     if not (mobile_dir / "node_modules").exists() {
@@ -1225,40 +1247,39 @@ def _build_mobile_app(mobile_dir: Path, platform: str) -> None {
                 text=True
             );
         } except Exception as e {
-            raise RuntimeError(f"yarn install failed: {e}") ;
+            raise RuntimeError(f"yarn install failed: {e}");
         }
     }
 
     # Build using Expo
     try {
         if platform == "ios" {
-            console.print("  Building iOS app (requires Mac with Xcode)...", style="muted");
+            console.print(
+                "  Building iOS app (requires Mac with Xcode)...", style="muted"
+            );
             subprocess.run(
-                ["npx", "expo", "build:ios"],
-                cwd=str(mobile_dir),
-                check=True
+                ["npx", "expo", "build:ios"], cwd=str(mobile_dir), check=True
             );
         } elif platform == "android" {
             console.print("  Building Android app...", style="muted");
             subprocess.run(
-                ["npx", "expo", "build:android"],
-                cwd=str(mobile_dir),
-                check=True
+                ["npx", "expo", "build:android"], cwd=str(mobile_dir), check=True
             );
         } else {
             console.warning(f"  Unknown platform: {platform}, skipping native build");
         }
     } except Exception as e {
         console.warning(f"  Native build failed: {e}");
-        console.print("  Note: Use 'expo build:ios' or 'expo build:android' manually", style="muted");
+        console.print(
+            "  Note: Use 'expo build:ios' or 'expo build:android' manually",
+            style="muted"
+        );
     }
 }
 
 """Write dev configuration file with local IP for mobile app."""
-def _write_dev_config(mobile_dir: Path, local_ip: str) -> None {
-    dev_config = {
-        'localIP': local_ip
-    };
+def _write_dev_config(mobile_dir: Path, local_ip: str) {
+    dev_config = {'localIP': local_ip};
 
     dev_config_path = mobile_dir / "dev-config.json";
     with open(dev_config_path, "w") as f {
@@ -1278,9 +1299,7 @@ impl MobileTarget.dev(
     # Check if setup has been run
     mobile_src_dir = project_dir / "mobile";
     if not mobile_src_dir.exists() {
-        raise RuntimeError(
-            "Mobile target not set up. Run 'jac setup mobile' first."
-        ) ;
+        raise RuntimeError("Mobile target not set up. Run 'jac setup mobile' first.");
     }
 
     # Build directory in .jac/mobile/
@@ -1310,7 +1329,9 @@ impl MobileTarget.dev(
     console.print(f"  ✔ Vite dev server running", style="success");
 
     # Step 4: Start backend server
-    console.print(f"  Step 4: Starting backend server on port {api_port}...", style="muted");
+    console.print(
+        f"  Step 4: Starting backend server on port {api_port}...", style="muted"
+    );
     server_process = _start_backend_server(entry_file, project_dir, api_port);
     console.print(f"  ✔ Backend server starting on port {api_port}", style="success");
 
@@ -1319,7 +1340,7 @@ impl MobileTarget.dev(
     console.print("  (Press Ctrl+C to stop)", style="muted");
 
     expo_process = None;
-    def cleanup -> None {
+    def cleanup {
         console.print("\n  Stopping dev servers...", style="muted");
         if expo_process {
             try {
@@ -1348,7 +1369,7 @@ impl MobileTarget.dev(
         console.print("  ✔ Dev servers stopped", style="success");
     }
 
-    def signal_handler(signum: int, frame: Any) -> None {
+    def signal_handler(signum: int, frame: Any) {
         cleanup();
         sys.exit(0);
     }
@@ -1359,19 +1380,29 @@ impl MobileTarget.dev(
     try {
         # Start Expo dev server from .jac/mobile/
         expo_process = subprocess.Popen(
-            ["npx", "expo", "start"],
-            cwd=str(mobile_build_dir)
+            ["npx", "expo", "start"], cwd=str(mobile_build_dir)
         );
 
         console.success("Expo dev server started!");
-        console.print("  Scan QR code with Expo Go app to test on device", style="muted");
+        console.print(
+            "  Scan QR code with Expo Go app to test on device", style="muted"
+        );
         console.print(f"\n  🌐 Dev Server URLs (using IP: {local_ip}):", style="bold");
         console.print(f"     Vite dev server: http://{local_ip}:5173", style="muted");
         console.print(f"     Backend API: http://{local_ip}:{api_port}", style="muted");
         console.print("\n  💡 Two modes available:", style="bold");
-        console.print("     Bundle mode (default): Loads pre-built HTML from assets", style="muted");
-        console.print("     Dev mode (HMR): Set USE_DEV_SERVER = true in .jac/mobile/app/index.tsx", style="muted");
-        console.print("                     Loads from Vite dev server with instant updates", style="muted");
+        console.print(
+            "     Bundle mode (default): Loads pre-built HTML from assets",
+            style="muted"
+        );
+        console.print(
+            "     Dev mode (HMR): Set USE_DEV_SERVER = true in .jac/mobile/app/index.tsx",
+            style="muted"
+        );
+        console.print(
+            "                     Loads from Vite dev server with instant updates",
+            style="muted"
+        );
 
         # Wait for Expo process
         return_code = expo_process.wait();
@@ -1411,7 +1442,7 @@ def _start_vite_dev_server(
         process = bundler.start_dev_server(port=5173, suppress_initial_output=True);
         return process;
     } except Exception as e {
-        raise RuntimeError(f"Failed to start Vite dev server: {e}") ;
+        raise RuntimeError(f"Failed to start Vite dev server: {e}");
     }
 }
 
@@ -1429,7 +1460,7 @@ def _start_backend_server(
         );
         return process;
     } except Exception as e {
-        raise RuntimeError(f"Failed to start backend server: {e}") ;
+        raise RuntimeError(f"Failed to start backend server: {e}");
     }
 }
 
@@ -1445,9 +1476,8 @@ impl MobileTarget.start(
 # ============================================================================
 # EAS (Expo Application Services) Build Functions
 # ============================================================================
-
 """Generate eas.json from jac.toml mobile configuration."""
-def _generate_eas_json(mobile_dir: Path, project_dir: Path) -> None {
+def _generate_eas_json(mobile_dir: Path, project_dir: Path) {
     console.print("  Generating eas.json from jac.toml...", style="muted");
 
     try {
@@ -1476,16 +1506,19 @@ def _check_eas_ready(mobile_dir: Path) -> dict {
     # Check if eas-cli is available
     try {
         result = subprocess.run(
-            ["eas", "--version"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            ["eas", "--version"], capture_output=True, text=True, timeout=5
         );
         if result.returncode != 0 {
-            return {'is_ready': False, 'error_message': "EAS CLI not found. Install with: npm install -g eas-cli"};
+            return {
+                'is_ready': False,
+                'error_message': "EAS CLI not found. Install with: npm install -g eas-cli"
+            };
         }
     } except FileNotFoundError {
-        return {'is_ready': False, 'error_message': "EAS CLI not found. Install with: npm install -g eas-cli"};
+        return {
+            'is_ready': False,
+            'error_message': "EAS CLI not found. Install with: npm install -g eas-cli"
+        };
     } except Exception as e {
         return {'is_ready': False, 'error_message': f"Failed to check EAS CLI: {e}"};
     }
@@ -1493,16 +1526,19 @@ def _check_eas_ready(mobile_dir: Path) -> dict {
     # Check if user is logged in
     try {
         result = subprocess.run(
-            ["eas", "whoami"],
-            capture_output=True,
-            text=True,
-            timeout=5
+            ["eas", "whoami"], capture_output=True, text=True, timeout=5
         );
         if result.returncode != 0 or not result.stdout.strip() {
-            return {'is_ready': False, 'error_message': "Not logged into EAS. Run: eas login"};
+            return {
+                'is_ready': False,
+                'error_message': "Not logged into EAS. Run: eas login"
+            };
         }
     } except Exception as e {
-        return {'is_ready': False, 'error_message': f"Failed to check EAS login status: {e}"};
+        return {
+            'is_ready': False,
+            'error_message': f"Failed to check EAS login status: {e}"
+        };
     }
 
     # Note: We don't check for eas.json here because it will be generated automatically later
@@ -1536,18 +1572,21 @@ def _build_with_eas(
         # Handle different error scenarios
         if "EAS CLI not found" in error_msg {
             console.error(f"  {error_msg}");
-            raise RuntimeError(error_msg) ;
+            raise RuntimeError(error_msg);
         } elif "Not logged into EAS" in error_msg {
             # Prompt user to login interactively
             console.warning("  Not logged into EAS");
             console.print("\n💡 EAS login required for building:", style="bold");
             console.print("  - If you have an Expo account: Login now", style="muted");
-            console.print("  - If you don't: Sign up at https://expo.dev/signup first", style="muted");
-
+            console.print(
+                "  - If you don't: Sign up at https://expo.dev/signup first",
+                style="muted"
+            );
             # Ask user if they want to login now
-            console.print("\n🔐 Login to EAS? (You'll be prompted for credentials)", style="bold");
+            console.print(
+                "\n🔐 Login to EAS? (You'll be prompted for credentials)", style="bold"
+            );
             user_input = input("  Continue with login? [Y/n]: ").strip().lower();
-
             if user_input in ['', 'y', 'yes'] {
                 console.print("\n  Running: eas login", style="muted");
                 console.print("  (Follow the prompts to login)\n", style="muted");
@@ -1562,25 +1601,28 @@ def _build_with_eas(
 
                     if result.returncode != 0 {
                         console.error("  Login failed");
-                        raise RuntimeError("EAS login failed") ;
+                        raise RuntimeError("EAS login failed");
                     }
 
                     console.success("  ✔ Login successful!");
                 } except subprocess.TimeoutExpired {
                     console.error("  Login timed out");
-                    raise RuntimeError("EAS login timed out") ;
+                    raise RuntimeError("EAS login timed out");
                 } except Exception as e {
                     console.error(f"  Login failed: {e}");
-                    raise RuntimeError(f"EAS login failed: {e}") ;
+                    raise RuntimeError(f"EAS login failed: {e}");
                 }
             } else {
                 console.print("\n💡 To build later, run: eas login", style="bold");
-                console.print("💡 For local dev testing: jac start main.jac --client mobile", style="muted");
-                raise RuntimeError("User declined EAS login") ;
+                console.print(
+                    "💡 For local dev testing: jac start main.jac --client mobile",
+                    style="muted"
+                );
+                raise RuntimeError("User declined EAS login");
             }
         } else {
             console.error(f"  {error_msg}");
-            raise RuntimeError(error_msg) ;
+            raise RuntimeError(error_msg);
         }
     }
 
@@ -1593,7 +1635,7 @@ def _build_with_eas(
             console.success("  ✔ EAS configured");
         } except Exception as e {
             console.warning(f"  Failed to generate eas.json: {e}");
-            raise RuntimeError(f"EAS configuration failed: {e}") ;
+            raise RuntimeError(f"EAS configuration failed: {e}");
         }
     } else {
         console.print("  ✔ EAS configuration found", style="success");
@@ -1601,15 +1643,13 @@ def _build_with_eas(
 
     # Build command (run from within mobile directory)
     # EAS CLI must be run from the project directory containing app.json
-    cmd = [
-        "eas", "build",
-        "--profile", build_type,
-        "--platform", platform
-    ];
+    cmd = ["eas", "build", "--profile", build_type, "--platform", platform];
 
     console.print(f"\n  Running: {' '.join(cmd)}", style="muted");
     console.print(f"  (This will upload your project to EAS cloud)", style="muted");
-    console.print(f"  (Note: First-time setup may ask to configure project)", style="muted");
+    console.print(
+        f"  (Note: First-time setup may ask to configure project)", style="muted"
+    );
     console.print(f"  (Select the platform you chose: {platform})\n", style="muted");
 
     try {
@@ -1622,7 +1662,7 @@ def _build_with_eas(
 
         if result.returncode != 0 {
             console.error(f"\n  EAS build submission failed");
-            raise RuntimeError(f"EAS build failed with exit code {result.returncode}") ;
+            raise RuntimeError(f"EAS build failed with exit code {result.returncode}");
         }
 
         # Build submitted successfully
@@ -1637,13 +1677,12 @@ def _build_with_eas(
             'artifact_type': _get_artifact_type(build_type, platform),
             'platform': platform
         };
-
     } except subprocess.TimeoutExpired {
         console.error("  EAS build submission timed out");
-        raise RuntimeError("EAS build submission timed out") ;
+        raise RuntimeError("EAS build submission timed out");
     } except Exception as e {
         console.error(f"  EAS build failed: {e}");
-        raise RuntimeError(f"EAS build failed: {e}") ;
+        raise RuntimeError(f"EAS build failed: {e}");
     }
 }
 
