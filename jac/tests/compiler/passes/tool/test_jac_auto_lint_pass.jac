@@ -1218,3 +1218,16 @@ test "W3038 does not remove import when useState call is not a destructure assig
     assert "import from \"react\"" in formatted;
     assert "useState" in formatted;
 }
+
+# ── W3039: map(lambda → JSX) to list comprehension ──────────────────────────
+test "W3039 converts map lambda to list comprehension" {
+    input_path = auto_lint_fixture_path("map_lambda_to_comprehension.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    assert ".map(" not in formatted;
+    assert "for item in items" in formatted;
+    assert "enumerate(hours)" in formatted;
+    assert "for (idx, hour) in enumerate(hours)" in formatted;
+    assert "[<li className=\"item\">{item.name}</li> for item in items]" in formatted;
+}
