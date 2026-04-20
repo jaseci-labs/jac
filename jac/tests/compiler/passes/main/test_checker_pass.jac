@@ -1549,6 +1549,19 @@ test "property_self_return_type_resolution" {
     );
 }
 
+test "property_cfg_narrowing" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_property_narrowing.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Property access inside truthiness guards should narrow (e.g., int | None -> int)
+    # No E1053 or E1002 errors — properties are narrowed like regular fields
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+}
+
 test "type_narrowing" {
     program = JacProgram();
     mod = program.compile(
