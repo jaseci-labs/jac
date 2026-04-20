@@ -69,8 +69,6 @@ def main() -> int {
     }
     return 0;
 }
-with entry {
-    if (__name__ == "__main__") {
-        sys.exit(main());
-    }
+with entry:__main__ {
+    sys.exit(main());
 }

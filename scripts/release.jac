@@ -227,8 +227,6 @@ def main() -> None {
     set_output("modified_files", " ".join(modified_files));
     print(f"Done. Modified files: {', '.join(modified_files)}");
 }
-with entry {
-    if (__name__ == "__main__") {
-        main();
-    }
+with entry:__main__ {
+    main();
 }

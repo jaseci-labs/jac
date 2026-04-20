@@ -14,9 +14,7 @@ import argparse;
 import re;
 import from pathlib { Path }
 import from release_utils { PACKAGES }
-with entry {
-    UNRELEASED_DIR = Path("docs/docs/community/release_notes/unreleased");
-}
+glob UNRELEASED_DIR: Path = Path("docs/docs/community/release_notes/unreleased");
 """Read all fragment files from a package's unreleased directory.
 
     Fragments follow the flat naming convention: <PR#>.<category>.md
@@ -160,8 +158,6 @@ def main() -> None {
     repo_root = Path(__file__).resolve().parent.parent;
     assemble_package(repo_root, args.package, args.version, args.dry_run);
 }
-with entry {
-    if (__name__ == "__main__") {
-        main();
-    }
+with entry:__main__ {
+    main();
 }

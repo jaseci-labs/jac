@@ -26,103 +26,103 @@ class PackageInfo(NamedTuple) {
     has needs_nodejs: bool = False;
     has extra_build_deps: str = "";
 }
+glob PACKAGES: dict[(str, PackageInfo)] = {
+    "jaclang": PackageInfo(
+        dir="jac",
+        pypi="jaclang",
+        tier=1,
+        release_notes="docs/docs/community/release_notes/jaclang.md",
+        notes_display="jaclang",
+        submodules=True,
+        precompile=True,
+        precompile_path="jac/jaclang/_precompiled",
+        precompile_artifact="precompiled-jaclang"
+    ),
+    "jac-byllm": PackageInfo(
+        dir="jac-byllm",
+        pypi="byllm",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/byllm.md",
+        notes_display="byllm",
+        submodules=True,
+        precompile=True,
+        precompile_path="jac-byllm/byllm/_precompiled",
+        precompile_artifact="precompiled-byllm"
+    ),
+    "jac-client": PackageInfo(
+        dir="jac-client",
+        pypi="jac-client",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-client.md",
+        notes_display="jac-client",
+        submodules=True,
+        precompile=True,
+        precompile_path="jac-client/jac_client/_precompiled",
+        precompile_artifact="precompiled-client"
+    ),
+    "jac-scale": PackageInfo(
+        dir="jac-scale",
+        pypi="jac-scale",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-scale.md",
+        notes_display="jac-scale",
+        submodules=True,
+        precompile=True,
+        precompile_path="jac-scale/jac_scale/_precompiled",
+        precompile_artifact="precompiled-scale",
+        extra_build_cmd="jac run scripts/build_admin_ui.jac",
+        needs_nodejs=True,
+        extra_build_deps="jac-client"
+    ),
+    "jac-super": PackageInfo(
+        dir="jac-super",
+        pypi="jac-super",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-super.md",
+        notes_display="jac-super",
+        submodules=True,
+        precompile=True,
+        precompile_path="jac-super/jac_super/_precompiled",
+        precompile_artifact="precompiled-super"
+    ),
+    "jac-mcp": PackageInfo(
+        dir="jac-mcp",
+        pypi="jac-mcp",
+        tier=2,
+        release_notes="docs/docs/community/release_notes/jac-mcp.md",
+        notes_display="jac-mcp",
+        submodules=True,
+        precompile=True,
+        precompile_path="jac-mcp/jac_mcp/_precompiled",
+        precompile_artifact="precompiled-mcp",
+        extra_build_cmd="jac run scripts/bundle_docs.jac"
+    ),
+    "jaseci": PackageInfo(
+        dir="jaseci-package",
+        pypi="jaseci",
+        tier=3,
+        release_notes="",
+        notes_display="jaseci"
+    )
+},
+     INTERNAL_DEPS: dict[(str, list[str])] = {
+    "jaclang": [],
+    "byllm": ["jaclang"],
+    "jac-client": ["jaclang"],
+    "jac-scale": ["jaclang"],
+    "jac-super": ["jaclang"],
+    "jac-mcp": ["jaclang"],
+    "jaseci": [
+        "jaclang",
+        "byllm",
+        "jac-client",
+        "jac-scale",
+        "jac-super",
+        "jac-mcp"
+    ]
+},
+     DEPENDENTS: dict[(str, list[str])] = {};
 with entry {
-    PACKAGES: dict[(str, PackageInfo)] = {
-        "jaclang": PackageInfo(
-            dir="jac",
-            pypi="jaclang",
-            tier=1,
-            release_notes="docs/docs/community/release_notes/jaclang.md",
-            notes_display="jaclang",
-            submodules=True,
-            precompile=True,
-            precompile_path="jac/jaclang/_precompiled",
-            precompile_artifact="precompiled-jaclang"
-        ),
-        "jac-byllm": PackageInfo(
-            dir="jac-byllm",
-            pypi="byllm",
-            tier=2,
-            release_notes="docs/docs/community/release_notes/byllm.md",
-            notes_display="byllm",
-            submodules=True,
-            precompile=True,
-            precompile_path="jac-byllm/byllm/_precompiled",
-            precompile_artifact="precompiled-byllm"
-        ),
-        "jac-client": PackageInfo(
-            dir="jac-client",
-            pypi="jac-client",
-            tier=2,
-            release_notes="docs/docs/community/release_notes/jac-client.md",
-            notes_display="jac-client",
-            submodules=True,
-            precompile=True,
-            precompile_path="jac-client/jac_client/_precompiled",
-            precompile_artifact="precompiled-client"
-        ),
-        "jac-scale": PackageInfo(
-            dir="jac-scale",
-            pypi="jac-scale",
-            tier=2,
-            release_notes="docs/docs/community/release_notes/jac-scale.md",
-            notes_display="jac-scale",
-            submodules=True,
-            precompile=True,
-            precompile_path="jac-scale/jac_scale/_precompiled",
-            precompile_artifact="precompiled-scale",
-            extra_build_cmd="jac run scripts/build_admin_ui.jac",
-            needs_nodejs=True,
-            extra_build_deps="jac-client"
-        ),
-        "jac-super": PackageInfo(
-            dir="jac-super",
-            pypi="jac-super",
-            tier=2,
-            release_notes="docs/docs/community/release_notes/jac-super.md",
-            notes_display="jac-super",
-            submodules=True,
-            precompile=True,
-            precompile_path="jac-super/jac_super/_precompiled",
-            precompile_artifact="precompiled-super"
-        ),
-        "jac-mcp": PackageInfo(
-            dir="jac-mcp",
-            pypi="jac-mcp",
-            tier=2,
-            release_notes="docs/docs/community/release_notes/jac-mcp.md",
-            notes_display="jac-mcp",
-            submodules=True,
-            precompile=True,
-            precompile_path="jac-mcp/jac_mcp/_precompiled",
-            precompile_artifact="precompiled-mcp",
-            extra_build_cmd="jac run scripts/bundle_docs.jac"
-        ),
-        "jaseci": PackageInfo(
-            dir="jaseci-package",
-            pypi="jaseci",
-            tier=3,
-            release_notes="",
-            notes_display="jaseci"
-        )
-    };
-    INTERNAL_DEPS: dict[(str, list[str])] = {
-        "jaclang": [],
-        "byllm": ["jaclang"],
-        "jac-client": ["jaclang"],
-        "jac-scale": ["jaclang"],
-        "jac-super": ["jaclang"],
-        "jac-mcp": ["jaclang"],
-        "jaseci": [
-            "jaclang",
-            "byllm",
-            "jac-client",
-            "jac-scale",
-            "jac-super",
-            "jac-mcp"
-        ]
-    };
-    DEPENDENTS: dict[(str, list[str])] = {};
     for (_pkg_key, _pkg_info) in PACKAGES.items() {
         for _dep in INTERNAL_DEPS.get(_pkg_info.pypi, []) {
             DEPENDENTS.setdefault(_dep, []).append(_pkg_key);

@@ -43,9 +43,7 @@ def parse_from_title(pr_title: str) -> list[dict] {
     }
     return releases;
 }
-with entry {
-    PYTHON_VERSIONS = ["3.12", "3.13", "3.14"];
-}
+glob PYTHON_VERSIONS: list[str] = ["3.12", "3.13", "3.14"];
 """Build matrix for precompilation jobs (packages × python versions)."""
 def build_precompile_matrix(releases: list[dict]) -> dict {
     `include = [];
@@ -100,8 +98,6 @@ def main() -> int {
     set_output("release_summary", summary);
     return 0;
 }
-with entry {
-    if (__name__ == "__main__") {
-        sys.exit(main());
-    }
+with entry:__main__ {
+    sys.exit(main());
 }

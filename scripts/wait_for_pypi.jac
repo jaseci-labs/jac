@@ -12,8 +12,8 @@ import json;
 import sys;
 import time;
 import from release_utils { check_pypi }
-glob DEFAULT_TIMEOUT: int = 600;
-glob DEFAULT_INTERVAL: int = 30;
+glob DEFAULT_TIMEOUT: int = 600,
+     DEFAULT_INTERVAL: int = 30;
 """Wait for all packages of a given tier to appear on PyPI."""
 def wait_for_packages(
     packages: list[dict],

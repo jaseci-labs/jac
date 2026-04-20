@@ -14,10 +14,8 @@ import re;
 import sys;
 import from pathlib { Path }
 
-with entry {
-    VALID_CATEGORIES = {"feature", "bugfix", "breaking", "refactor", "docs"};
-    PATTERN = re.compile(r"^\d+\.(feature|bugfix|breaking|refactor|docs)\.md$");
-}
+glob VALID_CATEGORIES: set[str] = {"feature", "bugfix", "breaking", "refactor", "docs"},
+     PATTERN: re.Pattern[str] = re.compile(r"^\d+\.(feature|bugfix|breaking|refactor|docs)\.md$");
 
 def validate(files: list[str]) -> int {
     failed = False;
@@ -42,8 +40,6 @@ def validate(files: list[str]) -> int {
     return 1 if failed else 0;
 }
 
-with entry {
-    if (__name__ == "__main__") {
-        sys.exit(validate(sys.argv[1:]));
-    }
+with entry:__main__ {
+    sys.exit(validate(sys.argv[1:]));
 }
