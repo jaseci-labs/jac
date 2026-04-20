@@ -1,4 +1,4 @@
-name: Documentation Validation
+name: Contribution Checks
 
 on:
   pull_request:
@@ -19,10 +19,44 @@ on:
   workflow_dispatch:
 
 jobs:
+  check-ai-coauthor:
+    name: Block AI co-author attribution
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for AI co-author in commits
+        run: |
+          if git log origin/${{ github.base_ref }}..HEAD --format='%b' \
+            | grep -iP 'co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'; then
+            echo "::error::AI co-author attribution found in commit messages. Please remove Co-Authored-By lines referencing AI tools."
+            exit 1
+          fi
+
+  check-no-python:
+    name: Block Python files
+    if: |
+      github.event_name == 'pull_request' &&
+      !contains(github.event.pull_request.labels.*.name, 'skip-no-python-check')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check for new Python files
+        run: |
+          if git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD \
+            | grep -P '\.py$'; then
+            echo "::error::New Python (.py) files detected in this PR. This codebase does not allow adding Python files."
+            echo "To skip this check, add the 'skip-no-python-check' label to your PR."
+            exit 1
+          fi
+
   validate-docs:
     name: Validate Documentation
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -75,7 +109,6 @@ jobs:
       github.event_name == 'pull_request' &&
       !contains(github.event.pull_request.labels.*.name, 'skip-release-notes-check')
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -85,4 +118,6 @@ jobs:
       - name: Check release notes
         env:
           CI: "true"
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: bash scripts/check-release-notes.sh
