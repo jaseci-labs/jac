@@ -1,0 +1,32 @@
+# Expo
+.expo
+dist/
+web-build/
+
+# Dependencies
+node_modules/
+
+# Environment
+.env.local
+.env
+
+# Debug
+npm-debug.*
+*.log
+
+# OS
+.DS_Store
+*.pem
+
+# Dev config (contains local IP)
+dev-config.json
+
+# Build artifacts
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# TypeScript
+*.tsbuildinfo

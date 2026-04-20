@@ -27,9 +27,6 @@ lib_imports = ["import tailwindcss from '@tailwindcss/vite'"]
 [plugins.client.assets]
 custom_extensions = [".py", ".js"]
 
-[plugins.client.pwa]
-theme_color = "#000000"
-background_color = "#ffffff"
 
 [plugins.scale.secrets]
 TEST_SECRET_KEY = "${TEST_SECRET_KEY}"
@@ -62,3 +59,93 @@ tailwindcss = "latest"
 [environments.response.headers]
 Cross-Origin-Opener-Policy = "same-origin"
 Cross-Origin-Embedder-Policy = "require-corp"
+
+# Mobile-specific headers (for WebView compatibility)
+[environments.mobile.response.headers]
+Cross-Origin-Opener-Policy = "unsafe-none"
+Cross-Origin-Embedder-Policy = "unsafe-none"
+Access-Control-Allow-Origin = "*"
+Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+Access-Control-Allow-Headers = "Content-Type, Authorization"
+
+
+# Desktop target configuration (Tauri)
+[desktop]
+name = "all-in-one"
+identifier = "all.in.one"
+version = "1.0.0"
+
+[desktop.window]
+title = "all-in-one"
+width = 1200
+height = 800
+min_width = 800
+min_height = 600
+resizable = true
+fullscreen = false
+
+[desktop.platforms]
+windows = true
+macos = true
+linux = true
+
+[desktop.features]
+system_tray = false
+auto_update = false
+notifications = false
+
+# Mobile target configuration (React Native Expo)
+[mobile]
+name = "all-in-one"
+bundle_id = "com.jaseci.allinone"
+version = "1.0.0"
+display_name = "All In One"
+slug = "all-in-one"
+scheme = "allinone"
+
+[mobile.platforms]
+ios = true
+android = true
+
+[mobile.features]
+use_sidecar = false
+api_url = ""
+
+# Expo app configuration (generates mobile/app.json)
+[mobile.expo]
+orientation = "portrait"
+userInterfaceStyle = "light"
+icon = "./assets/icon.png"
+
+[mobile.expo.splash]
+image = "./assets/splash.png"
+resizeMode = "contain"
+backgroundColor = "#ffffff"
+
+[mobile.expo.ios]
+supportsTablet = true
+
+[mobile.expo.android.adaptiveIcon]
+foregroundImage = "./assets/adaptive-icon.png"
+backgroundColor = "#ffffff"
+
+[mobile.expo.web]
+favicon = "./assets/favicon.png"
+
+# EAS Build profiles (generates mobile/eas.json)
+[mobile.eas.profiles.development]
+distribution = "internal"
+
+[mobile.eas.profiles.preview]
+distribution = "internal"
+
+[mobile.eas.profiles.production]
+distribution = "store"
+
+[plugins.client.pwa]
+theme_color = "#000000"
+background_color = "#ffffff"
+# cache_name = "jac-pwa-cache-v1"
+# [plugins.client.pwa.manifest]
+# name = "My App"
+# short_name = "App"

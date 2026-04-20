@@ -20,7 +20,7 @@ venv/
 node_modules/
 
 # Jac build artifacts
-.jac/
+.jac/*
 *.session
 *.session.*
 
