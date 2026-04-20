@@ -828,9 +828,13 @@ impl Parser.parse_expression -> Expr {
                 if self.check(TokenKind.LBRACE) {
                     depth += 1;
                 } elif self.check(TokenKind.RBRACE) {
-                    depth -= 1;
-                    if depth == 0 {
-                        self.advance();
+                    if depth > 0 {
+                        depth -= 1;
+                        if depth == 0 {
+                            self.advance();
+                            break;
+                        }
+                    } else {
                         break;
                     }
                 }

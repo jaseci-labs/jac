@@ -112,6 +112,11 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
         }
+        # Skip synthetic Name nodes created from non-identifier tokens (e.g. `=>`
+        # emitted by the lexer for unsupported JS arrow function syntax).
+        if not name_nd.value.isidentifier() {
+            continue;
+        }
         # Skip attribute access names (right side of x.attr)
         parent = name_nd.parent;
         if isinstance(parent, uni.AtomTrailer) and parent.is_attr {

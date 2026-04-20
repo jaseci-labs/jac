@@ -9,7 +9,11 @@ impl Alert.postinit -> None {
 
 """Return string representation of alert."""
 impl Alert.__str__ -> str {
-    return f"{self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}";
+    base = f"{self.loc.mod_path}, line {self.loc.first_line}, col {self.loc.col_start}: {self.msg}";
+    if self.help_text {
+        base += f"\nhelp: {self.help_text}";
+    }
+    return base;
 }
 
 """Return string representation of alert."""
