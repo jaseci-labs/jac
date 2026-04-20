@@ -85,4 +85,6 @@ jobs:
       - name: Check release notes
         env:
           CI: "true"
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
         run: bash scripts/check-release-notes.sh
