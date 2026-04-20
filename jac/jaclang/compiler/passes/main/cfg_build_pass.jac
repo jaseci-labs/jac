@@ -97,7 +97,7 @@ obj CFGBuildPass(UniPass) {
 
 """Fetch basic blocks."""
 obj CoalesceBBPass(UniPass) {
-    has basic_blocks: dict = {},
+    has basic_blocks: dict[int, dict[str, list[uni.UniCFGNode]]] = {},
         bb_counter: int = 0;
 
     def before_pass -> None;

@@ -15,52 +15,44 @@ impl cfg_dot_from_file(file_name: str) -> str {
 
 """Generate dot graph for CFG."""
 impl CoalesceBBPass.printgraph_cfg -> str {
-    cfg: dict = {};
-    # Save tail/head nodes before bb_stmts gets mutated to strings below.
-    bb_tails: dict = {};
-    bb_heads: dict = {};
+    bb_tails: dict[int, (uni.UniCFGNode | None)] = {};
+    bb_heads: dict[int, (uni.UniCFGNode | None)] = {};
+    cfg_outs: dict[int, list[int]] = {};
+    cfg_labels: dict[int, list[str]] = {};
     for (key, bb) in self.basic_blocks.items() {
-        bb_tails[key] = bb['bb_stmts'][-1] if bb['bb_stmts'] else None;
-        bb_heads[key] = bb['bb_stmts'][0] if bb['bb_stmts'] else None;
+        stmts = bb['bb_stmts'];
+        bb_tails[key] = stmts[-1] if stmts else None;
+        bb_heads[key] = stmts[0] if stmts else None;
     }
     dot = 'digraph G {\n';
     for (key, bb) in self.basic_blocks.items() {
-        cfg[key] = {
-            'bb_stmts': bb['bb_stmts'],
-            'bb_out': [0 for _ in range(len(bb['bb_out']))] if bb['bb_out'] else None
-        };
-
-        if bb['bb_out'] {
-            for out_obj in bb['bb_out'] {
+        bb_out = bb['bb_out'];
+        cfg_labels[key] = [self._node_label(s) for s in bb['bb_stmts']];
+        if bb_out {
+            out_ids: list[int] = [0 for _ in range(len(bb_out))];
+            for out_obj in bb_out {
                 for (k, v) in self.basic_blocks.items() {
                     if (out_obj == v['bb_stmts'][0]) {
-                        cfg[key]['bb_out'][bb['bb_out'].index(out_obj)] = k;
+                        out_ids[bb_out.index(out_obj)] = k;
                         break;
                     }
                 }
             }
+            cfg_outs[key] = out_ids;
         }
     }
-    for (key, bb) in cfg.items() {
-        for (i, bbs) in enumerate(bb['bb_stmts']) {
-            cfg[key]['bb_stmts'][i] = self._node_label(bbs);
-        }
-    }
-    for (key, value) in cfg.items() {
-        if value.get('bb_stmts') {
-            stmts = '\\n'.join(
-                [stmt.replace('"', '\\"') for stmt in value['bb_stmts']]
-            );
-            dot += f'  {key} [label="BB{key}\\n{stmts}", shape=box];' + "\n";
+    for (key, labels) in cfg_labels.items() {
+        if labels {
+            stmts_str = '\\n'.join([stmt.replace('"', '\\"') for stmt in labels]);
+            dot += f'  {key} [label="BB{key}\\n{stmts_str}", shape=box];' + "\n";
         } else {
             dot += f'  {key} [label="BB{key}"];' + "\n";
         }
     }
-    for (key, value) in cfg.items() {
-        if value.get('bb_out') {
-            # Use saved tail/head nodes (bb_stmts was mutated to strings above).
+    for (key, outs) in cfg_outs.items() {
+        if outs {
             tail = bb_tails[key];
-            for out_id in value['bb_out'] {
+            for out_id in outs {
                 label = "";
                 if isinstance(tail, uni.CfgExpr) {
                     out_head = bb_heads[out_id];
@@ -236,8 +228,8 @@ impl CoalesceBBPass.get_bb(nd: uni.UniCFGNode) -> list[uni.UniCFGNode] {
 
 """Before pass."""
 impl CoalesceBBPass.before_pass -> None {
-    self.basic_blocks: dict = {};
-    self.bb_counter: int = 0;
+    self.basic_blocks = {};
+    self.bb_counter = 0;
 }
 
 # ============================================================================

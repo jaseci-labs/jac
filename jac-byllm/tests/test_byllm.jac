@@ -19,8 +19,10 @@ import from byllm.exceptions {
     OutputConversionError,
     ConfigurationError,
     UnknownToolError,
-    FinishToolError
+    FinishToolError,
+    McpError
 }
+import from byllm.mcp { McpClient, McpTool }
 import from byllm.types { Tool, Message, MessageRole }
 import dataclasses;
 import from jaclang { JacRuntimeInterface as Jac }
@@ -1110,6 +1112,99 @@ test "model pool router init" {
     assert "lb_pool_alias:pool-model" in stdout_value;
     assert "lb_deploy_count:3" in stdout_value;
     assert "lb_all_share_alias:True" in stdout_value;
+}
+
+# MCP integration tests
+glob _dummy_mcp_client = McpClient(url="http://example.invalid/mcp");
+
+test "McpTool implements Tool interface" {
+    tool = McpTool(
+        name="get_weather",
+        description="Fetch weather for a city.",
+        input_schema={
+            "type": "object",
+            "properties": {"city": {"type": "string"}},
+            "required": ["city"]
+        },
+        _client=_dummy_mcp_client
+    );
+    assert tool.get_name() == "get_weather";
+    assert not tool.is_finish_tool();
+    # parse_arguments is a passthrough — MCP schema is the source of truth.
+    assert tool.parse_arguments({"city": "Paris"}) == {"city": "Paris"};
+}
+
+test "McpTool.get_json_schema wraps MCP inputSchema in OpenAI envelope" {
+    input_schema = {
+        "type": "object",
+        "properties": {"q": {"type": "string"}},
+        "required": ["q"]
+    };
+    tool = McpTool(
+        name="search",
+        description="Search the web.",
+        input_schema=input_schema,
+        _client=_dummy_mcp_client
+    );
+    schema = tool.get_json_schema();
+    assert schema["type"] == "function";
+    assert schema["function"]["name"] == "search";
+    assert schema["function"]["description"] == "Search the web.";
+    assert schema["function"]["parameters"] == input_schema;
+}
+
+test "McpTool plugs into MTRuntime.get_tool() polymorphically" {
+    mcp_tool = McpTool(
+        name="lookup",
+        description="Look something up.",
+        input_schema={"type": "object", "properties": {}},
+        _client=_dummy_mcp_client
+    );
+    mt_run = MTRuntime(
+        messages=[],
+        resp_type=None,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None  # type: ignore[arg-type]
+    );
+    # Mutate tools list via dynamic access — IDE type checker flags
+    # list[Tool | McpTool] as invariant, but the actual compiler accepts it.
+    getattr(mt_run, "tools").append(mcp_tool);
+    found = mt_run.get_tool("lookup");
+    assert found is mcp_tool , "MTRuntime.get_tool should resolve McpTool by name";
+    assert mt_run.get_tool("nonexistent") is None;
+    # get_tool_list calls get_json_schema on every tool — must not blow up.
+    schemas = mt_run.get_tool_list();
+    assert len(schemas) == 1;
+    assert schemas[0]["function"]["name"] == "lookup";
+}
+
+test "McpClient errors when neither command nor url is set" {
+    client = McpClient();
+    err: McpError | None = None;
+    try {
+        client.connect();
+    } except McpError as e {
+        err = e;
+    }
+    assert err is not None , "McpClient must require command or url";
+}
+
+test "McpClient raises McpError when mcp package is missing" {
+    with unittest.mock.patch.dict(
+        sys.modules, {"mcp": None, "mcp.client": None, "mcp.client.session": None}
+    ) {
+        client = McpClient(command="echo", args=["test"]);
+        err: McpError | None = None;
+        try {
+            client.connect();
+        } except McpError as e {
+            err = e;
+        }
+        assert err is not None , "connect() must raise McpError when mcp is not installed";
+        assert "pip install" in str(err);
+    }
 }
 
 """Test ModelPool streaming fallback path."""
