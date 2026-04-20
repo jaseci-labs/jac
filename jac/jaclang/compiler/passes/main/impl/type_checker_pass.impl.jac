@@ -10,12 +10,24 @@ impl TypeCheckPass.exit_special_var_ref(
 impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
     # Skip if already resolved or if part of a construct that handles its own resolution
     if nd.sym is None {
-        # Skip Name nodes that are the right-hand side of an AtomTrailer
-        # (member access, e.g. `x.strip`). These names are attribute lookups
-        # that only make sense in the context of their parent — resolving them
-        # as standalone names produces spurious W1051 warnings. The parent
-        # AtomTrailer's exit handler will resolve them with proper base type context.
+        # Skip Name nodes that only make sense in the context of their parent
+        # node. Evaluating them as standalone names returns Unknown and emits
+        # spurious W1051 warnings. The parent's exit handler resolves them
+        # with proper context.
+        #
+        # - AtomTrailer.right: member access (e.g. `x.strip`) — resolved by
+        #   the AtomTrailer handler with the base type.
+        # - KWPair.key: keyword argument names (e.g. `name=` in `Thing(name="x")`)
+        #   — these are parameter labels, not variable references.
+        # - SubTag child: type annotation tags (e.g. `: int` in `has x: int`)
+        #   — resolved during type annotation processing, not expression eval.
         if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
+            return;
+        }
+        if isinstance(nd.parent, uni.KWPair) and nd.parent.key is nd {
+            return;
+        }
+        if isinstance(nd.parent, uni.SubTag) {
             return;
         }
         self.evaluator.get_type_of_expression(nd);
