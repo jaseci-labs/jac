@@ -825,7 +825,7 @@ test "same function name different files resolve distinctly" {
     assert beta_info.return_type.name == "BetaResult";
 }
 
-test "submodule MTIR keyed by Python import fullname" {
+test "submodule MTIR keyed by import fullname" {
     # Force re-execution so our exec_module rename fires against the fresh program.
     for name in ["scope_main", "scope_dir.module_alpha", "scope_dir.module_beta", "scope_dir"] {
         sys.modules.pop(name, None);
