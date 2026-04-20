@@ -40,17 +40,25 @@ with entry {
             "client",
             typ=str,
             default="web",
-            help="Build client (web, desktop, pwa)",
-            choices=["web", "desktop", "pwa"],
+            help="Build client (web, desktop, pwa, mobile)",
+            choices=["web", "desktop", "pwa", "mobile"],
             short=""  # Disable auto-generated -t (may conflict with other plugins)
         ),
         Arg.create(
             "platform",
             typ=str,
             default=None,
-            help="Platform for desktop builds (windows, macos, linux, all)",
-            choices=["windows", "macos", "linux", "all"],
+            help="Platform (desktop: windows/macos/linux, mobile: android/ios/all)",
+            choices=["windows", "macos", "linux", "android", "ios", "all"],
             short="p"  # Use -p for platform
+        ),
+        Arg.create(
+            "build_type",
+            typ=str,
+            default="production",
+            help="Build type for mobile (development, preview, production)",
+            choices=["development", "preview", "production"],
+            short="b"  # Use -b for build-type
         ),
 
     ],
@@ -60,13 +68,19 @@ with entry {
         ("jac build --client pwa", "Build PWA (Progressive Web App)"),
         ("jac build --client desktop", "Build desktop app"),
         ("jac build --client desktop --platform windows", "Build for Windows"),
+        ("jac build --client mobile -b development -p android", "Build mobile dev (Android)"),
+        ("jac build --client mobile -b preview -p ios", "Build mobile preview (iOS)"),
+        ("jac build --client mobile -b production -p all", "Build for both platforms"),
 
     ],
     group="build",
     source="jac-client"
 )
 def build(
-    filename: str = "main.jac", target: str = "web", platform: str | None = None
+    filename: str = "main.jac",
+    client: str = "web",
+    platform: str | None = None,
+    build_type: str = "production"
 ) -> int {
     # This will be handled by the pre_hook
     return 0;
@@ -167,8 +181,8 @@ class JacCmd {
                         "client",  # Use client to avoid conflict with jac-scale's --client
                         typ=str,
                         default="web",
-                        help="Client build target for dev server (web, desktop, pwa)",
-                        choices=["web", "desktop", "pwa"],
+                        help="Client build target for dev server (web, desktop, pwa, mobile)",
+                        choices=["web", "desktop", "pwa", "mobile"],
                         short=""  # Disable auto-generated short flag
                     ),
 
@@ -295,6 +309,45 @@ def _handle_build_target(ctx: HookContext) -> None {
 
     target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
+    build_type = ctx.get_arg("build_type", "production");
+
+    # For mobile builds, prompt for platform and build_type if not provided
+    if target_name == "mobile" and platform is None {
+        console.print("\n📱 Mobile Build Configuration", style="bold");
+        console.print("  Platform options:", style="muted");
+        console.print("    • android  - Build for Android devices", style="muted");
+        console.print("    • ios      - Build for iOS devices (requires Mac)", style="muted");
+        console.print("    • all      - Build for both platforms", style="muted");
+
+        platform_choice = input("\n  Select platform [android/ios/all] (default: android): ").strip().lower();
+        if platform_choice == "" {
+            platform = "android";
+        } elif platform_choice in ["android", "ios", "all"] {
+            platform = platform_choice;
+        } else {
+            console.error(f"Invalid platform: {platform_choice}");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+
+        console.print("\n  Build profile options:", style="muted");
+        console.print("    • development - Dev build with debugging enabled", style="muted");
+        console.print("    • preview     - Preview build for internal testing", style="muted");
+        console.print("    • production  - Production build for app stores", style="muted");
+
+        build_choice = input("\n  Select build profile [development/preview/production] (default: production): ").strip().lower();
+        if build_choice == "" {
+            build_type = "production";
+        } elif build_choice in ["development", "preview", "production"] {
+            build_type = build_choice;
+        } else {
+            console.error(f"Invalid build profile: {build_choice}");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+    }
 
     # Get config and project_dir first (needed for factory)
     config = get_config();
@@ -352,7 +405,12 @@ def _handle_build_target(ctx: HookContext) -> None {
         }
 
         # Polymorphic call - each target handles its own build logic
-        bundle_path = target.build(entry_path, project_dir, platform);
+        # Mobile target accepts build_type parameter
+        if target_name == "mobile" {
+            bundle_path = target.build(entry_path, project_dir, platform, build_type);
+        } else {
+            bundle_path = target.build(entry_path, project_dir, platform);
+        }
 
         console.success(f"Build complete: {bundle_path}");
         ctx.set_data("cancel_execution", True);
@@ -450,12 +508,19 @@ def _handle_start_target(ctx: HookContext) -> None {
 
     api_port = ctx.get_arg("port", 8000);
 
-    # Handle non-web targets (desktop, pwa) - they override dev/start behavior
+    # Handle non-web targets (desktop, pwa, mobile) - they override dev/start behavior
     if target_name != "web" {
         # Check if target requires setup
         if target.requires_setup {
-            tauri_dir = project_dir / "src-tauri";
-            if not tauri_dir.exists() {
+            # Check for target-specific directory
+            setup_dir = None;
+            if target_name == "desktop" {
+                setup_dir = project_dir / "src-tauri";
+            } elif target_name == "mobile" {
+                setup_dir = project_dir / "mobile";
+            }
+
+            if setup_dir and not setup_dir.exists() {
                 console.error(
                     f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
                 );
@@ -564,6 +629,21 @@ def _handle_setup_target(ctx: HookContext) -> None {
             if not pwa_icons_dir.exists() {
                 console.error(
                     f"Setup completed but pwa_icons directory not found at: {pwa_icons_dir}"
+                );
+                console.print(
+                    "This may indicate the setup function failed silently.",
+                    style="muted"
+                );
+                ctx.set_data("cancel_execution", True);
+                ctx.set_data("cancel_return_code", 1);
+                return;
+            }
+        }
+        if target_name == "mobile" {
+            mobile_dir = project_dir / "mobile";
+            if not mobile_dir.exists() {
+                console.error(
+                    f"Setup completed but mobile directory not found at: {mobile_dir}"
                 );
                 console.print(
                     "This may indicate the setup function failed silently.",

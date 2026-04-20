@@ -6,6 +6,7 @@ import from jac_client.plugin.src.targets.registry { get_target_registry }
 import from jac_client.plugin.src.targets.web_target { WebTarget }
 import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
 import from jac_client.plugin.src.targets.pwa_target { PWATarget }
+import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
 # Note: Jac's annex pass should auto-discover .impl.jac files automatically
 # The impl files in impl/ directory should be loaded when the base classes are imported
 """Register all available targets."""
@@ -23,4 +24,8 @@ def register_targets -> None {
     # Register PWA target
     pwa_target = PWATarget();
     registry.register(pwa_target);
+
+    # Register mobile target
+    mobile_target = MobileTarget();
+    registry.register(mobile_target);
 }

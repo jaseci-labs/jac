@@ -92,6 +92,10 @@ impl TargetFactory.create_by_type(
         import from jac_client.plugin.src.targets.pwa_target { PWATarget }
         target = PWATarget();
         target.project_dir = project_dir;
+    } elif target_type == TargetType.MOBILE {
+        import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
+        target = MobileTarget();
+        target.project_dir = project_dir;
     } else {
         # This shouldn't happen if TargetType enum is exhaustive
         raise ValueError(f"Unhandled target type: {target_type}");
