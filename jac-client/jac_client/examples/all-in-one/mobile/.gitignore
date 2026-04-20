@@ -1,32 +1,21 @@
-# Expo
-.expo
-dist/
-web-build/
+# This directory contains SOURCE files only
+# All build artifacts (node_modules, bundles) are in .jac/mobile/
 
-# Dependencies
+# node_modules symlink (points to .jac/mobile/node_modules for EAS verification)
 node_modules/
 
-# Environment
+# Environment files
 .env.local
 .env
 
-# Debug
-npm-debug.*
-*.log
-
-# OS
+# OS files
 .DS_Store
 *.pem
 
-# Dev config (contains local IP)
-dev-config.json
-
-# Build artifacts
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# TypeScript
-*.tsbuildinfo
+# Jac web bundle artifacts (temporarily copied here for EAS builds)
+# These are generated in .jac/mobile/ and copied here only for EAS git upload
+assets/jac-app/bundle.html
+assets/jac-app/bundle.ts
+assets/jac-app/client.js
+assets/jac-app/index.html
+assets/jac-app/styles.css

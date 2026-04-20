@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "all-in-one",
+    "name": "All In One",
     "slug": "all-in-one",
     "scheme": "allinone",
     "version": "1.0.0",
@@ -14,14 +14,14 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.example.allinone"
+      "bundleIdentifier": "com.jaseci.allinone"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.example.allinone"
+      "package": "com.jaseci.allinone"
     },
     "web": {
       "favicon": "./assets/favicon.png"

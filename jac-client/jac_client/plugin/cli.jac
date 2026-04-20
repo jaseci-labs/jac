@@ -311,6 +311,44 @@ def _handle_build_target(ctx: HookContext) -> None {
     platform = ctx.get_arg("platform", None);
     build_type = ctx.get_arg("build_type", "production");
 
+    # For mobile builds, prompt for platform and build_type if not provided
+    if target_name == "mobile" and platform is None {
+        console.print("\n📱 Mobile Build Configuration", style="bold");
+        console.print("  Platform options:", style="muted");
+        console.print("    • android  - Build for Android devices", style="muted");
+        console.print("    • ios      - Build for iOS devices (requires Mac)", style="muted");
+        console.print("    • all      - Build for both platforms", style="muted");
+
+        platform_choice = input("\n  Select platform [android/ios/all] (default: android): ").strip().lower();
+        if platform_choice == "" {
+            platform = "android";
+        } elif platform_choice in ["android", "ios", "all"] {
+            platform = platform_choice;
+        } else {
+            console.error(f"Invalid platform: {platform_choice}");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+
+        console.print("\n  Build profile options:", style="muted");
+        console.print("    • development - Dev build with debugging enabled", style="muted");
+        console.print("    • preview     - Preview build for internal testing", style="muted");
+        console.print("    • production  - Production build for app stores", style="muted");
+
+        build_choice = input("\n  Select build profile [development/preview/production] (default: production): ").strip().lower();
+        if build_choice == "" {
+            build_type = "production";
+        } elif build_choice in ["development", "preview", "production"] {
+            build_type = build_choice;
+        } else {
+            console.error(f"Invalid build profile: {build_choice}");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+    }
+
     # Get config and project_dir first (needed for factory)
     config = get_config();
     if not config {

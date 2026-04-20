@@ -13,6 +13,7 @@
     "expo-router": "~6.0.23",
     "expo-linking": "~8.0.0",
     "expo-status-bar": "~3.0.9",
+    "expo-dev-client": "~6.0.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "react-freeze": "~1.0.4",

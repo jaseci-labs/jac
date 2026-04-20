@@ -72,7 +72,7 @@ cd my-app
 jac setup mobile
 
 # 3. Install mobile dependencies (auto-installed during setup)
-# If needed manually: cd mobile && yarn install && cd ..
+# Dependencies installed automatically in .jac/mobile/ during build/dev
 
 # 4. Start dev server (with hot reload)
 jac start --client mobile --dev
@@ -89,29 +89,41 @@ jac build --client mobile -b production -p all
 
 ### `jac setup mobile` -- Project Scaffolding
 
-This command creates the entire React Native/Expo project structure inside a `mobile/` directory.
+This command creates the React Native/Expo project structure with **source files only** in the `mobile/` directory.
 
 **What gets generated:**
 
 ```
-mobile/
+mobile/                        # Source files ONLY (tracked in git)
   app/
-    index.tsx          # WebView screen component (main app)
-    _layout.tsx        # Expo Router layout (uses <Slot />)
+    index.tsx                  # WebView screen component (main app)
+    _layout.tsx                # Expo Router layout (uses <Slot />)
   assets/
-    icon.png           # App icon (1024x1024)
-    splash.png         # Splash screen image
-    adaptive-icon.png  # Android adaptive icon
-    favicon.png        # Web favicon
+    icon.png                   # App icon (1024x1024)
+    splash.png                 # Splash screen image
+    adaptive-icon.png          # Android adaptive icon
+    favicon.png                # Web favicon
     jac-app/
-      create-bundle.js # Bundle creation script
-  app.json             # Expo configuration (generated from jac.toml)
-  package.json         # Dependencies (expo, react-native, react-native-webview)
-  tsconfig.json        # TypeScript config
-  .gitignore           # Ignores node_modules, .expo, builds
+      create-bundle.js         # Bundle creation script (source)
+  app.json                     # Expo configuration (generated from jac.toml)
+  package.json                 # Dependencies manifest
+  tsconfig.json                # TypeScript config
+  .gitignore                   # Ignores temporarily copied bundles
+
+.jac/mobile/                   # Build artifacts (NOT tracked in git)
+  (created during build/dev)
+  node_modules/                # Dependencies
+  yarn.lock                    # Lock file
+  .expo/                       # Expo cache
+  assets/jac-app/
+    bundle.html                # Generated bundle
+    bundle.ts                  # Generated bundle
+    client.js                  # Copied web bundle
+    index.html                 # Copied web bundle
+    styles.css                 # Copied web bundle
 ```
 
-**Note:** Similar to desktop's `src-tauri/` directory, `mobile/` is created in the project root.
+**Note:** Source files are in `mobile/` (tracked in git), while all build artifacts (dependencies, bundles) are in `.jac/mobile/` (not tracked). For EAS builds, bundles are temporarily copied to `mobile/assets/jac-app/` for git upload.
 
 **Key dependencies (auto-installed with yarn):**
 
@@ -210,11 +222,11 @@ Step 5: Start Expo dev server
 
   Two modes available:
      Bundle mode (default): Loads pre-built HTML from assets
-     Dev mode (HMR): Set USE_DEV_SERVER = true in mobile/app/index.tsx
+     Dev mode (HMR): Set USE_DEV_SERVER = true in .jac/mobile/app/index.tsx
                      Loads from Vite dev server with instant updates
 ```
 
-**IP Detection:** The system automatically detects your local network IP (not `localhost`) so that physical devices on the same WiFi network can reach the dev servers. This IP is written to `mobile/dev-config.json`.
+**IP Detection:** The system automatically detects your local network IP (not `localhost`) so that physical devices on the same WiFi network can reach the dev servers. This IP is written to `.jac/mobile/dev-config.json`.
 
 **Two Rendering Modes:**
 
@@ -234,9 +246,9 @@ Step 1: Build web bundle
     |   ViteBundler produces optimized HTML + CSS + JS in .jac/client/dist/
     |
 Step 2: Copy web bundle to mobile assets
-    |   index.html  --> mobile/assets/jac-app/index.html
-    |   *.css        --> mobile/assets/jac-app/styles.css
-    |   *.js (largest) --> mobile/assets/jac-app/client.js
+    |   index.html  --> .jac/mobile/assets/jac-app/index.html
+    |   *.css        --> .jac/mobile/assets/jac-app/styles.css
+    |   *.js (largest) --> .jac/mobile/assets/jac-app/client.js
     |
 Step 3: Create mobile bundle
     |   node create-bundle.js
@@ -449,29 +461,29 @@ After `jac setup mobile`, the project looks like:
 my-app/
   main.jac                    # Jac entry point
   jac.toml                    # Project configuration (includes mobile config)
-  mobile/                     # React Native/Expo project (like desktop's src-tauri/)
-    app/
-      index.tsx               # WebView screen (main app screen)
-      _layout.tsx             # Expo Router root layout
-    assets/
-      icon.png                # App icon
-      splash.png              # Splash screen
-      adaptive-icon.png       # Android adaptive icon
-      favicon.png             # Web favicon
-      jac-app/
-        index.html            # Copied from Vite build
-        styles.css            # Copied from Vite build
-        client.js             # Copied from Vite build (largest JS)
-        bundle.html           # Standalone HTML (for debugging)
-        bundle.ts             # Importable HTML string (used by WebView)
-        create-bundle.js      # Bundle creation script
-    app.json                  # Expo configuration (generated from jac.toml)
-    eas.json                  # EAS build profiles (generated from jac.toml)
-    package.json              # Dependencies
-    tsconfig.json             # TypeScript config
-    dev-config.json           # Dev server IP config (auto-generated)
-    node_modules/             # Installed dependencies (gitignored)
   .jac/
+    mobile/                   # React Native/Expo project
+      app/
+        index.tsx             # WebView screen (main app screen)
+        _layout.tsx           # Expo Router root layout
+      assets/
+        icon.png              # App icon
+        splash.png            # Splash screen
+        adaptive-icon.png     # Android adaptive icon
+        favicon.png           # Web favicon
+        jac-app/
+          index.html          # Copied from Vite build
+          styles.css          # Copied from Vite build
+          client.js           # Copied from Vite build (largest JS)
+          bundle.html         # Standalone HTML (for debugging)
+          bundle.ts           # Importable HTML string (used by WebView)
+          create-bundle.js    # Bundle creation script
+      app.json                # Expo configuration (generated from jac.toml)
+      eas.json                # EAS build profiles (generated from jac.toml)
+      package.json            # Dependencies
+      tsconfig.json           # TypeScript config
+      dev-config.json         # Dev server IP config (auto-generated)
+      node_modules/           # Installed dependencies (gitignored)
     client/
       dist/                   # ViteBundler output (HTML + CSS + JS)
       compiled/               # Compiled Jac code
@@ -479,7 +491,8 @@ my-app/
 
 **Key Points:**
 
-- `mobile/` directory in project root (similar to desktop's `src-tauri/`)
+- `mobile/` directory at project root with source files only (tracked in git)
+- `.jac/mobile/` directory with build artifacts (not tracked in git)
 - `app.json` is generated from `[mobile.expo]` section in `jac.toml`
 - `eas.json` is generated from `[mobile.eas]` section in `jac.toml`
 - All mobile configuration is centralized in `jac.toml`
@@ -494,19 +507,19 @@ my-app/
 | Issue | Cause | Solution |
 |-------|-------|----------|
 | `Stub file not found at .../typeshed/stdlib/typing.pyi` | Git submodule not initialized | `git submodule update --init --recursive` from repo root |
-| `expo-dev-client` plugin error | Missing dependency | `cd mobile && npx expo install expo-dev-client` |
-| `eas.json not found` | Setup didn't generate EAS config | Create `eas.json` manually or run `cd mobile && eas build:configure` |
-| `Mobile target already set up. Skipping...` | `mobile/` directory exists | Delete `mobile/` and re-run `jac setup mobile`, or fix manually |
+| `expo-dev-client` plugin error | Missing dependency | `cd .jac/mobile && npx expo install expo-dev-client` |
+| `eas.json not found` | Setup didn't generate EAS config | Build will generate it automatically, or create manually in `mobile/` |
+| `Mobile target already set up. Skipping...` | `mobile/` directory exists | Delete `mobile/` and `.jac/mobile/` and re-run `jac setup mobile` |
 | `Bun is required but not installed` | Bun not in PATH | Install Bun: `curl -fsSL https://bun.sh/install \| bash` then restart shell |
 | WebView shows blank screen | Backend not running or wrong IP | Check `dev-config.json` has correct local IP; ensure backend is on correct port |
-| HMR not working | Bundle mode is active | Set `USE_DEV_SERVER = true` in `mobile/app/index.tsx` |
+| HMR not working | Bundle mode is active | Set `USE_DEV_SERVER = true` in `.jac/mobile/app/index.tsx` (copied from source during build) |
 | Android emulator can't reach API | Wrong API URL | Android emulator uses `10.0.2.2` as alias for host machine's `localhost` |
 
 ### Dev Mode Checklist
 
 1. Ensure all three servers are running (Vite, Backend, Expo)
 2. Mobile device/emulator is on the same WiFi network as your machine
-3. `USE_DEV_SERVER = true` is set in `mobile/app/index.tsx` for HMR
+3. `USE_DEV_SERVER = true` is set in `.jac/mobile/app/index.tsx` for HMR
 4. `dev-config.json` contains the correct local network IP
 5. No firewall blocking ports 5173 (Vite), 9000 (Backend), or 8081 (Expo)
 

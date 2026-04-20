@@ -45,11 +45,14 @@ def _get_local_ip() -> str {
 
 """Setup mobile target - scaffold React Native/Expo project structure."""
 impl MobileTarget.setup(project_dir: Path) -> None {
-    # Define mobile_dir - similar to desktop's src-tauri/
+    # Define mobile_dir - at top level for source files ONLY
+    # Build artifacts will be in .jac/mobile/
     mobile_dir = project_dir / "mobile";
 
     console.print("\n📱 Setting up mobile target (React Native/Expo)", style="bold");
     console.print(f"  Project directory: {project_dir}", style="muted");
+    console.print(f"  Source directory: {mobile_dir.relative_to(project_dir)}", style="muted");
+    console.print(f"  Build artifacts: .jac/mobile/ (not tracked in git)", style="muted");
 
     # Check if already set up
     if mobile_dir.exists() {
@@ -177,23 +180,18 @@ impl MobileTarget.setup(project_dir: Path) -> None {
             console.warning(f"  Dependency check encountered an issue: {e}");
         }
 
-        # Automatically install dependencies with yarn
-        console.print("\n📦 Installing dependencies with yarn...", style="bold");
-        console.print("  This may take a few minutes...", style="muted");
-        try {
-            _install_yarn_dependencies(mobile_dir);
-            console.success("Mobile target setup complete!");
-            console.print("\nNext steps:", style="bold");
-            console.print("  1. Build: jac build main.jac --client mobile");
-            console.print("  2. Dev:   jac start main.jac --client mobile --dev");
-        } except Exception as e {
-            console.warning(f"  Failed to install dependencies: {e}");
-            console.success("Mobile target setup complete (dependencies not installed)!");
-            console.print("\nNext steps:", style="bold");
-            console.print("  1. Install dependencies: cd .jac/client/mobile && yarn install");
-            console.print("  2. Build: jac build main.jac --client mobile");
-            console.print("  3. Dev:   jac start main.jac --client mobile --dev");
-        }
+        # Don't install dependencies during setup - they'll be in .jac/mobile/
+        console.success("Mobile target setup complete!");
+        console.print("\n💡 Source files created in mobile/ directory", style="bold");
+        console.print("   Dependencies & bundles will be in .jac/mobile/ during build/dev", style="muted");
+        console.print("\nNext steps:", style="bold");
+        console.print("  1. Build: jac build main.jac --client mobile", style="muted");
+        console.print("             (you'll be prompted for platform and build profile)", style="muted");
+        console.print("     Or use flags:", style="muted");
+        console.print("       jac build main.jac --client mobile -p android -b development", style="muted");
+        console.print("       jac build main.jac --client mobile -p ios -b production", style="muted");
+        console.print("       jac build main.jac --client mobile -p all -b preview", style="muted");
+        console.print("\n  2. Dev:   jac start main.jac --client mobile --dev", style="muted");
     } finally {
         # Ensure mobile directory exists no matter what
         if not mobile_dir.exists() {
@@ -287,6 +285,7 @@ def _generate_package_json(mobile_dir: Path, name: str) -> None {
             "expo-router": "~6.0.23",
             "expo-linking": "~8.0.0",
             "expo-status-bar": "~3.0.9",
+            "expo-dev-client": "~6.0.4",
             "react": "19.2.4",
             "react-dom": "19.2.4",
             "react-freeze": "~1.0.4",
@@ -932,38 +931,27 @@ except ImportError:
 
 """Generate .gitignore file for mobile directory."""
 def _generate_gitignore(mobile_dir: Path) -> None {
-    gitignore_content = """# Expo
-.expo
-dist/
-web-build/
+    gitignore_content = """# This directory contains SOURCE files only
+# All build artifacts (node_modules, bundles) are in .jac/mobile/
 
-# Dependencies
+# node_modules symlink (points to .jac/mobile/node_modules for EAS verification)
 node_modules/
 
-# Environment
+# Environment files
 .env.local
 .env
 
-# Debug
-npm-debug.*
-*.log
-
-# OS
+# OS files
 .DS_Store
 *.pem
 
-# Dev config (contains local IP)
-dev-config.json
-
-# Build artifacts
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# TypeScript
-*.tsbuildinfo
+# Jac web bundle artifacts (temporarily copied here for EAS builds)
+# These are generated in .jac/mobile/ and copied here only for EAS git upload
+assets/jac-app/bundle.html
+assets/jac-app/bundle.ts
+assets/jac-app/client.js
+assets/jac-app/index.html
+assets/jac-app/styles.css
 """;
 
     gitignore_path = mobile_dir / ".gitignore";
@@ -971,6 +959,71 @@ dev-config.json
         f.write(gitignore_content);
     }
     console.print(f"  ✔ Generated .gitignore", style="success");
+}
+
+"""Prepare build directory by copying source and installing deps in .jac/mobile/."""
+def _prepare_build_dir(mobile_src_dir: Path, mobile_build_dir: Path) -> None {
+    console.print("  Preparing build directory...", style="muted");
+
+    # Create build directory
+    mobile_build_dir.mkdir(parents=True, exist_ok=True);
+
+    # Copy source files from mobile/ to .jac/mobile/
+    source_files = ["app.json", "package.json", "tsconfig.json"];
+    for file_name in source_files {
+        src_file = mobile_src_dir / file_name;
+        if src_file.exists() {
+            shutil.copy2(src_file, mobile_build_dir / file_name);
+        }
+    }
+
+    # Copy directories
+    source_dirs = ["app", "assets"];
+    for dir_name in source_dirs {
+        src_dir = mobile_src_dir / dir_name;
+        dst_dir = mobile_build_dir / dir_name;
+        if src_dir.exists() {
+            if dst_dir.exists() {
+                shutil.rmtree(dst_dir);
+            }
+            shutil.copytree(src_dir, dst_dir);
+        }
+    }
+
+    console.print("  ✔ Source files copied to .jac/mobile/", style="success");
+
+    # Install dependencies if needed
+    if not (mobile_build_dir / "node_modules").exists() {
+        console.print("  Installing dependencies in .jac/mobile/...", style="muted");
+        try {
+            _install_yarn_dependencies(mobile_build_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to install dependencies: {e}");
+            raise;
+        }
+    } else {
+        console.print("  ✔ Dependencies already installed", style="success");
+    }
+}
+
+"""Copy bundles from .jac/mobile/ to mobile/ for EAS."""
+def _copy_bundles_for_eas(mobile_build_dir: Path, mobile_src_dir: Path) -> None {
+    build_assets = mobile_build_dir / "assets" / "jac-app";
+    src_assets = mobile_src_dir / "assets" / "jac-app";
+
+    # Ensure destination exists
+    src_assets.mkdir(parents=True, exist_ok=True);
+
+    # Copy generated bundle files
+    bundle_files = ["bundle.html", "bundle.ts", "client.js", "index.html", "styles.css"];
+    for file_name in bundle_files {
+        src_file = build_assets / file_name;
+        if src_file.exists() {
+            shutil.copy2(src_file, src_assets / file_name);
+        }
+    }
+
+    console.print("  ✔ Bundles copied to mobile/ for EAS", style="success");
 }
 
 """Build mobile app - build web bundle first, then wrap with React Native."""
@@ -984,54 +1037,95 @@ impl MobileTarget.build(
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     console.print("\n📱 Building mobile app (React Native)", style="bold");
 
-    # Check if setup has been run - mobile directory in project root like desktop's src-tauri/
-    mobile_dir = project_dir / "mobile";
-    if not mobile_dir.exists() {
+    # Check if setup has been run
+    mobile_src_dir = project_dir / "mobile";
+    if not mobile_src_dir.exists() {
         raise RuntimeError(
             "Mobile target not set up. Run 'jac setup mobile' first."
         ) ;
     }
 
-    # Step 1: Build web bundle first using inherited WebTarget.build()
-    console.print("  Step 1: Building web bundle...", style="muted");
+    # Build directory in .jac/mobile/
+    mobile_build_dir = project_dir / ".jac" / "mobile";
+
+    # Step 1: Prepare build directory (copy source + install deps in .jac/mobile/)
+    console.print("  Step 1: Preparing build directory...", style="muted");
+    _prepare_build_dir(mobile_src_dir, mobile_build_dir);
+
+    # Step 2: Build web bundle
+    console.print("  Step 2: Building web bundle...", style="muted");
     web_bundle_path = super.build(entry_file, project_dir, platform);
     console.print(f"  ✔ Web bundle built: {web_bundle_path}", style="success");
 
-    # Step 2: Copy web bundle files to mobile/assets/jac-app/
-    console.print("  Step 2: Copying web bundle to mobile assets...", style="muted");
-    _copy_web_bundle_to_mobile(web_bundle_path, mobile_dir);
+    # Step 3: Copy web bundle to .jac/mobile/assets/jac-app/
+    console.print("  Step 3: Copying web bundle to build directory...", style="muted");
+    _copy_web_bundle_to_mobile(web_bundle_path, mobile_build_dir);
 
-    # Step 3: Run bundle creation script
-    console.print("  Step 3: Creating mobile bundle...", style="muted");
-    _create_mobile_bundle(mobile_dir);
+    # Step 4: Generate mobile bundle in .jac/mobile/
+    console.print("  Step 4: Creating mobile bundle...", style="muted");
+    _create_mobile_bundle(mobile_build_dir);
 
-    # Step 4: Build with EAS
-    # All build types use EAS (development, preview, production)
-    # For local dev server testing, use: jac start main.jac --client mobile
+    # Step 5: Build with EAS
     if use_eas {
-        console.print(f"  Step 4: Building with EAS...", style="muted");
-        build_info = _build_with_eas(
-            mobile_dir,
-            project_dir,
-            build_type,
-            platform or "android"
-        );
+        console.print(f"  Step 5: Preparing for EAS build...", style="muted");
 
-        console.success("Mobile app submitted to EAS!");
+        # Copy bundles from .jac/mobile/ to mobile/ for EAS
+        console.print("  Copying bundles to source directory for EAS...", style="muted");
+        _copy_bundles_for_eas(mobile_build_dir, mobile_src_dir);
+
+        # Generate/update eas.json in source directory
+        try {
+            _generate_eas_json(mobile_src_dir, project_dir);
+        } except Exception as e {
+            console.warning(f"  Failed to generate eas.json: {e}");
+        }
+
+        # For development builds, symlink node_modules so EAS can verify expo-dev-client
+        # EAS will install its own fresh node_modules on cloud, but needs local verification
+        node_modules_link = mobile_src_dir / "node_modules";
+        node_modules_src = mobile_build_dir / "node_modules";
+
+        if build_type == "development" and not node_modules_link.exists() {
+            console.print("  Creating symlink to node_modules for EAS verification...", style="muted");
+            try {
+                import os;
+                os.symlink(node_modules_src, node_modules_link, target_is_directory=True);
+                console.print("  ✔ Symlink created", style="success");
+            } except Exception as e {
+                console.warning(f"  Could not create symlink: {e}");
+            }
+        }
+
+        try {
+            console.print(f"  Building with EAS...", style="muted");
+            build_info = _build_with_eas(
+                mobile_src_dir,
+                project_dir,
+                build_type,
+                platform or "android"
+            );
+
+            console.success("Mobile app submitted to EAS!");
+        } finally {
+            # Clean up symlink after EAS build
+            if node_modules_link.exists() and node_modules_link.is_symlink() {
+                console.print("  Cleaning up symlink...", style="muted");
+                node_modules_link.unlink();
+            }
+        }
         console.print(f"\n📊 Build Information:", style="bold");
         console.print(f"  Build ID: {build_info['build_id']}", style="muted");
         console.print(f"  Build URL: {build_info['build_url']}", style="muted");
         console.print(f"  Expected artifact: {build_info['artifact_type']}", style="muted");
         console.print(f"\n💡 Monitor your build at: {build_info['build_url']}", style="bold");
     } else {
-        # Local bundle only (no native build)
-        console.print("  Step 4: Skipping EAS build...", style="muted");
+        console.print("  Step 5: Skipping EAS build...", style="muted");
         console.success("Mobile app bundle created successfully!");
-        console.print(f"  Mobile directory: {mobile_dir}", style="muted");
+        console.print(f"  Build directory: {mobile_build_dir}", style="muted");
         console.print(f"\n💡 For native builds, re-run with EAS enabled", style="muted");
     }
 
-    return mobile_dir;
+    return mobile_build_dir;
 }
 
 """Copy web bundle files to mobile assets directory."""
@@ -1181,44 +1275,34 @@ impl MobileTarget.dev(
     import sys;
     console.print("\n📱 Starting mobile dev server (Expo)", style="bold");
 
-    # Check if setup has been run - mobile directory in project root like desktop's src-tauri/
-    mobile_dir = project_dir / "mobile";
-    if not mobile_dir.exists() {
+    # Check if setup has been run
+    mobile_src_dir = project_dir / "mobile";
+    if not mobile_src_dir.exists() {
         raise RuntimeError(
             "Mobile target not set up. Run 'jac setup mobile' first."
         ) ;
     }
 
-    # Check if node_modules exists
-    if not (mobile_dir / "node_modules").exists() {
-        console.warning("  node_modules not found, running yarn install first...");
-        try {
-            subprocess.run(
-                ["yarn", "install"],
-                cwd=str(mobile_dir),
-                check=True,
-                timeout=300,
-                text=True
-            );
-        } except Exception as e {
-            raise RuntimeError(f"yarn install failed: {e}") ;
-        }
-    }
+    # Build directory in .jac/mobile/
+    mobile_build_dir = project_dir / ".jac" / "mobile";
+
+    # Prepare build directory
+    _prepare_build_dir(mobile_src_dir, mobile_build_dir);
 
     # Detect local IP and write dev config
     local_ip = _get_local_ip();
     console.print(f"  Detected local IP: {local_ip}", style="muted");
-    _write_dev_config(mobile_dir, local_ip);
+    _write_dev_config(mobile_build_dir, local_ip);
 
     # Step 1: Build web bundle for dev (for bundled mode)
     console.print("  Step 1: Building web bundle for bundled mode...", style="muted");
     web_bundle_path = super.build(entry_file, project_dir, None);
     console.print(f"  ✔ Web bundle built", style="success");
 
-    # Step 2: Copy and create mobile bundle
+    # Step 2: Copy and create mobile bundle in .jac/mobile/
     console.print("  Step 2: Creating mobile bundle...", style="muted");
-    _copy_web_bundle_to_mobile(web_bundle_path, mobile_dir);
-    _create_mobile_bundle(mobile_dir);
+    _copy_web_bundle_to_mobile(web_bundle_path, mobile_build_dir);
+    _create_mobile_bundle(mobile_build_dir);
 
     # Step 3: Start Vite dev server (for HMR mode)
     console.print("  Step 3: Starting Vite dev server on port 5173...", style="muted");
@@ -1273,10 +1357,10 @@ impl MobileTarget.dev(
     signal.signal(signal.SIGTERM, signal_handler);
 
     try {
-        # Start Expo dev server
+        # Start Expo dev server from .jac/mobile/
         expo_process = subprocess.Popen(
             ["npx", "expo", "start"],
-            cwd=str(mobile_dir)
+            cwd=str(mobile_build_dir)
         );
 
         console.success("Expo dev server started!");
@@ -1286,7 +1370,7 @@ impl MobileTarget.dev(
         console.print(f"     Backend API: http://{local_ip}:{api_port}", style="muted");
         console.print("\n  💡 Two modes available:", style="bold");
         console.print("     Bundle mode (default): Loads pre-built HTML from assets", style="muted");
-        console.print("     Dev mode (HMR): Set USE_DEV_SERVER = true in mobile/app/index.tsx", style="muted");
+        console.print("     Dev mode (HMR): Set USE_DEV_SERVER = true in .jac/mobile/app/index.tsx", style="muted");
         console.print("                     Loads from Vite dev server with instant updates", style="muted");
 
         # Wait for Expo process
@@ -1500,32 +1584,23 @@ def _build_with_eas(
         }
     }
 
-    # Configure EAS if needed
+    # EAS configuration should already be in place (generated during build step)
     eas_json_path = mobile_dir / "eas.json";
     if not eas_json_path.exists() {
-        console.print("  Configuring EAS...", style="muted");
+        console.print("  Generating EAS configuration...", style="muted");
         try {
-            # Run eas build:configure to set up eas.json
-            result = subprocess.run(
-                ["eas", "build:configure"],
-                cwd=str(mobile_dir),
-                timeout=60
-            );
-
-            if result.returncode != 0 {
-                console.warning("  EAS configuration failed, generating default eas.json");
-                _generate_eas_json(mobile_dir, project_dir);
-            } else {
-                console.success("  ✔ EAS configured");
-            }
-        } except Exception as e {
-            console.warning(f"  EAS auto-configure failed: {e}");
-            console.print("  Generating default eas.json...", style="muted");
             _generate_eas_json(mobile_dir, project_dir);
+            console.success("  ✔ EAS configured");
+        } except Exception as e {
+            console.warning(f"  Failed to generate eas.json: {e}");
+            raise RuntimeError(f"EAS configuration failed: {e}") ;
         }
+    } else {
+        console.print("  ✔ EAS configuration found", style="success");
     }
 
-    # Build command (run interactively to allow user prompts)
+    # Build command (run from within mobile directory)
+    # EAS CLI must be run from the project directory containing app.json
     cmd = [
         "eas", "build",
         "--profile", build_type,
@@ -1534,10 +1609,11 @@ def _build_with_eas(
 
     console.print(f"\n  Running: {' '.join(cmd)}", style="muted");
     console.print(f"  (This will upload your project to EAS cloud)", style="muted");
-    console.print(f"  (Follow any prompts that appear)\n", style="muted");
+    console.print(f"  (Note: First-time setup may ask to configure project)", style="muted");
+    console.print(f"  (Select the platform you chose: {platform})\n", style="muted");
 
     try {
-        # Run interactively (no capture_output) to allow user prompts
+        # Run from mobile directory (where app.json and eas.json are located)
         result = subprocess.run(
             cmd,
             cwd=str(mobile_dir),

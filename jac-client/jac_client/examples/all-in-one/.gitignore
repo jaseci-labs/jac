@@ -20,13 +20,9 @@ venv/
 node_modules/
 
 # Jac build artifacts
-.jac/
+.jac/*
 *.session
 *.session.*
-
-# Mobile (node_modules will be installed by EAS/locally)
-mobile/node_modules/
-mobile/yarn.lock
 
 # Environment variables (keep .env.example for reference)
 .env
