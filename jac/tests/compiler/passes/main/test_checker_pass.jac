@@ -605,15 +605,19 @@ test "checker_member_access" {
     age_sym = mod.sym_tab.kid_scope[0].lookup("age");
     assert age_sym is not None;
     assert "(NAME, age, 22:11 - 22:14)" in str(age_sym.uses);
-    # 6 errors: 'has no attribute name' (obj can't have dynamic attrs),
-    # 3 Unknown self in static/classmethod, 2 type mismatches
-    assert len(program.errors_had) == 6;
+    # 5 errors: 'has no attribute name' (obj can't have dynamic attrs),
+    # 3 Unknown self in static/classmethod, 1 type mismatch (alice.age = '909').
+    # Note: `self.type = "Human"` in @classmethod no longer produces a spurious
+    # E1001 (assigning to builtin `type`) because `.type` is now correctly
+    # deferred to the AtomTrailer's member-access resolution, where `self` is
+    # Unknown in a classmethod context.
+    assert len(program.errors_had) == 5;
     assert_error_pretty_found(
         """
         alice.age = '909';  # <-- Error
         ^^^^^^^^^^^^^^^^^^
     """,
-        program.errors_had[5].pretty_print()
+        program.errors_had[4].pretty_print()
     );
 }
 
@@ -886,9 +890,9 @@ test "root_type" {
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
     expected_error = """
-            root ++> c;
-            x: str = root;  # <- error
-            ^^^^^^^^^^^^^^
+            root() ++> c;
+            x: str = root();  # <- error: cannot assign Root to str
+            ^^^^^^^^^^^^^^^^
             """;
     assert_error_pretty_found(expected_error, program.errors_had[0].pretty_print());
 }
@@ -1279,7 +1283,11 @@ test "union_member_access" {
         os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+    # 1 error: E1099 for accessing .legs on Mammal | Bird (Bird lacks .legs).
+    # Previously 2 errors because the E1099 returned Unknown, cascading to
+    # E1002 "Cannot return Unknown". Now the partial union result is returned
+    # (int from Mammal.legs), preventing the cascade.
+    assert len(program.errors_had) == 1 , f"Expected 1 error, got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
     assert_error_pretty_found(
@@ -1548,7 +1556,9 @@ test "type_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 14 , f"Expected exactly 14 type errors, but got " + f"{len(
+    # 13 errors: partial union member access now returns resolved types
+    # instead of Unknown, preventing one cascading E1002 error.
+    assert len(program.errors_had) == 13 , f"Expected exactly 13 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -1601,10 +1611,9 @@ test "type_narrowing" {
         return x.bark();  # <-- Error: x is still Dog | None here
                ^^^^
         """,
-        """
-        return x.bark();  # <-- Error: x is still Dog | None here
-        ^^^^^^^^^^^^^^^^
-        """,
+        # The E1002 "Cannot return <Unknown>" for x.bark() is eliminated
+        # because partial union member access now returns the resolved type
+        # (from Dog.bark) instead of Unknown.
         """
         result: Dog = x if (x is None) else Dog(name="d");  # <-- Error: x is NoneType in true branch
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -3300,8 +3309,10 @@ test "root_cause_7_nullable_attr_access" {
         for e in program.errors_had
         if e.loc and 316 <= e.loc.first_line <= 350
     ];
-    # 8 errors: 4 E1099 (attr missing from NoneType) + 4 E1002 (return Unknown)
-    assert len(rc7_errors) == 8 , f"Expected 8 nullable-access errors, got {len(
+    # 4 errors: 4 E1099 (attr missing from NoneType). Previously 8 because
+    # each E1099 returned Unknown, cascading to E1002 "return Unknown". Now
+    # partial union member access returns the resolved type, eliminating cascades.
+    assert len(rc7_errors) == 4 , f"Expected 4 nullable-access errors, got {len(
         rc7_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc7_errors);
 }
@@ -3362,10 +3373,10 @@ test "root_cause_9_any_in_union" {
         for e in program.errors_had
         if e.loc and 396 <= e.loc.first_line <= 415
     ];
-    # CFG narrowing resolved 1 of 3 any-in-union errors.
-    # 4 errors: 2 primary (E1099 attribute missing from Any) + 2 cascading
-    # (E1002 unknown return, E1053 unknown->Sized) from improved Any resolution.
-    assert len(rc9_errors) == 4 , f"Expected 4 any-in-union errors, got {len(
+    # 2 errors: 2 E1099 (attr missing from Any in union). Previously 4 because
+    # cascading E1002/E1053 from Unknown returns. Now partial union member access
+    # returns the resolved type from non-Any members, eliminating cascades.
+    assert len(rc9_errors) == 2 , f"Expected 2 any-in-union errors, got {len(
         rc9_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc9_errors);
 }
@@ -3430,14 +3441,10 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # RC9 now 4 (was 2 before Callable/Any resolution fix), RC5 dropped 2→0.
-    # -1 from former 36: line 390 `executor.submit(lambda: None)` now succeeds
-    # after typing/typing_extensions ParamSpec parity + ParamSpec.args/.kwargs
-    # modelling: `Callable[_P, _T]` is now gradual, accepting the lambda. The
-    # fixture comment predicted "E1032 if executor type is Unknown" when
-    # `executor` was Unknown (stub unloadable pre-fix); that path is resolved
-    # now, and ParamSpec is understood, so no error fires there. Total: 35.
-    assert len(program.errors_had) == 35 , f"Expected 35 total errors, got {len(
+    # 29 errors (down from 35): partial union member access now returns
+    # resolved types instead of Unknown, eliminating 6 cascading errors
+    # (E1002 "return Unknown" and E1053 "Unknown->Sized" that followed E1099).
+    assert len(program.errors_had) == 29 , f"Expected 29 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
@@ -3795,4 +3802,215 @@ test "component_impl_scope_resolves_has_vars" {
     assert len(program.errors_had) == 0 , f"Expected 0 errors for component impl scope, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+}
+
+test "root_call_returns_root_type" {
+    # root() should be recognized as a builtin returning Root, so that
+    # root() spawn Walker() resolves the walker type and .reports is accessible.
+    path = os.path.join(CHECKER_FIXTURES, "checker_root_call_type.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 warnings for root() call, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+}
+
+test "compare_operator_validation" {
+    # Validates that comparison operators are type-checked against operand types.
+    # Previously, CompareExpr only evaluated operands for side effects and returned
+    # bool without checking operator validity (e.g. "hello" > 5 passed silently).
+    path = os.path.join(CHECKER_FIXTURES, "checker_compare_operator_validation.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # At least 7 errors expected (exact count may vary across Python/typeshed
+    # versions due to differences in stub overload signatures):
+    #   - "hello" > 5           — E1110: str vs int
+    #   - "hello" < [1, 2, 3]  — E1110: str vs list
+    #   - [1, 2] < {3: 4}      — E1110: list vs dict
+    #   - 5 in 10               — E1111: int has no __contains__
+    #   - "x" in 42             — E1111: int has no __contains__
+    #   - "a" < 1  (chained)   — E1110: str vs int
+    #   - 1 < "b"  (chained)   — E1110: int vs str
+    assert len(program.errors_had) >= 7 , f"Expected >= 7 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+
+    # Collect all error pretty prints for flexible matching
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    all_errors_str = "\n".join(all_errors);
+
+    # Verify E1110 diagnostics for ordered comparison errors
+    e1110_count = sum(
+        1
+        for e in all_errors
+        if "E1110" in e
+    );
+    assert e1110_count >= 5 , f"Expected >= 5 E1110 errors, got {e1110_count}";
+
+    # Verify E1111 diagnostics for membership test errors
+    e1111_count = sum(
+        1
+        for e in all_errors
+        if "E1111" in e
+    );
+    assert e1111_count >= 2 , f"Expected >= 2 E1111 errors, got {e1111_count}";
+    assert "__contains__" in all_errors_str;
+
+    # Verify specific error locations are present
+    assert '"hello" > 5' in all_errors_str;
+    assert "5 in 10" in all_errors_str;
+}
+
+test "undeclared_obj_attr_warns_w2080" {
+    # W2080: annotated self-assignments in init/postinit of obj/node/edge/walker
+    # should warn "declare as 'has' field" while still resolving the attribute
+    # to prevent cascading E1030 errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_undeclared_obj_attr.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Collect warnings
+    all_warnings = [w.pretty_print() for w in program.warnings_had];
+    w2080_warnings = [
+        w
+        for w in all_warnings
+        if "W2080" in w
+    ];
+
+    # Should have W2080 for: y (Foo.init), count (Bar.postinit),
+    # label (Bar.postinit), cached (MyNode.postinit)
+    assert len(w2080_warnings) >= 4 , f"Expected >= 4 W2080 warnings, got {len(
+        w2080_warnings
+    )}:\n" + "\n---\n".join(w2080_warnings);
+
+    # Verify the warning messages mention the attribute names
+    w2080_str = "\n".join(w2080_warnings);
+    assert "'y'" in w2080_str or "y" in w2080_str;
+    assert "'count'" in w2080_str;
+    assert "'label'" in w2080_str;
+    assert "'cached'" in w2080_str;
+
+    # Verify no E1030 on resolved attributes (f.y, b.count, b.label should NOT error)
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1030_errors = [
+        e
+        for e in all_errors
+        if "E1030" in e
+    ];
+    # Only Baz.secret (unannotated) should produce E1030
+    e1030_names = [
+        e
+        for e in e1030_errors
+        if "secret" in e
+    ];
+    assert len(e1030_names) >= 1 , f"Expected E1030 for 'secret', got: {e1030_errors}";
+    # No E1030 for count, label, cached (resolved via W2080 path)
+    for attr in ["count", "label", "cached"] {
+        resolved_errors = [
+            e
+            for e in e1030_errors
+            if attr in e
+        ];
+        assert len(resolved_errors) == 0 , f"Attribute '{attr}' should be resolved, but got E1030: {resolved_errors}";
+    }
+}
+
+test "optional_chaining_no_false_e1030" {
+    # Optional chaining (?.) should not emit E1030 for missing attributes.
+    # The ?. operator returns None when the attribute doesn't exist.
+    path = os.path.join(CHECKER_FIXTURES, "checker_optional_chaining.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1030_errors = [
+        e
+        for e in all_errors
+        if "E1030" in e
+    ];
+
+    # Only the regular (non-?.) access `b.extra` should produce E1030
+    assert len(e1030_errors) == 1 , f"Expected exactly 1 E1030 (for b.extra), got {len(
+        e1030_errors
+    )}:\n" + "\n---\n".join(e1030_errors);
+    assert "extra" in e1030_errors[0] , f"Expected E1030 for 'extra', got: {e1030_errors[
+        0
+    ]}";
+
+    # Only W1051 allowed is on the regular (non-?.) access line which cascades
+    # from the E1030 Unknown result. No W1051 for ?. expressions themselves.
+    w1051_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code.code == "W1051"
+    ];
+    for w in w1051_warnings {
+        # Any W1051 must be on the `b.extra` line (regular access), not ?. lines
+        assert "b.extra" in w.pretty_print() or "bad" in w.pretty_print() , f"Unexpected W1051 on ?. expression: {w.pretty_print()}";
+    }
+}
+
+test "annotated_self_assign_no_false_e1001" {
+    # Annotated self-assignments (self.x: int = val) should NOT produce
+    # false E1001 "Cannot assign int to int" errors.
+    path = os.path.join(CHECKER_FIXTURES, "checker_annotated_self_assign.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    all_errors = [e.pretty_print() for e in program.errors_had];
+    e1001_errors = [
+        e
+        for e in all_errors
+        if "E1001" in e
+    ];
+
+    # Must have the 2 real E1001 errors (str assigned to int)
+    e1001_str = "\n".join(e1001_errors);
+    assert "wrong" in e1001_str , f"Expected E1001 for 'wrong', got:\n{e1001_str}";
+    assert "bad" in e1001_str , f"Expected E1001 for 'bad', got:\n{e1001_str}";
+
+    # No same-type false positives (e.g., "Cannot assign int to int")
+    for err in e1001_errors {
+        # Real errors mention mismatched types; false positives have same type on both sides
+        assert not ("assign int to int" in err) , f"False positive E1001 same-type error: {err}";
+        assert not ("assign str to str" in err) , f"False positive E1001 same-type error: {err}";
+        assert not ("assign float to float" in err) , f"False positive E1001 same-type error: {err}";
+    }
+}
+
+test "isinstance_and_narrowing" {
+    # isinstance(x, T) in LHS of AND should narrow x to T for RHS operands.
+    path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_and_narrowing.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All functions use isinstance in AND conditions to guard attribute access.
+    # No errors should be produced — the narrowing should resolve all attributes.
+    assert len(program.errors_had) == 0 , f"Expected 0 errors (isinstance AND narrowing should resolve all attrs), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+
+    # No W1051 warnings either
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 warnings, got {len(w1051)}:\n" + "\n---\n".join(
+        w.pretty_print() for w in w1051
+    );
 }

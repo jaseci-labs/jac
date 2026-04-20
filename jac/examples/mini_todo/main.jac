@@ -1,12 +1,29 @@
 node Todo {
     has title: str,
         category: str = "other",
+        priority: int = 0,
         done: bool = False;
 }
 
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
 
 def categorize(title: str) -> Category by llm();
+
+na def priority_score(title: str) -> int {
+    score: int = 0;
+    for c in title {
+        if c == "!" {
+            score = score + 20;
+        }
+    }
+    if "urgent" in title {
+        score = score + 50;
+    }
+    if score > 100 {
+        score = 100;
+    }
+    return score;
+}
 
 def:pub add_todo(title: str) -> Todo {
     try {
@@ -15,7 +32,7 @@ def:pub add_todo(title: str) -> Todo {
     } except Exception {
         category = "other (setup AI key)";
     }
-    todo = Todo(title=title, category=category);
+    todo = Todo(title=title, category=category, priority=priority_score(title));
     root() ++> todo;
     return todo;
 }
@@ -49,6 +66,9 @@ cl def:pub app -> JsxElement {
                 placeholder="Add a todo..."
             />
             <button onClick={add}>Add</button>
-            {[<p key={jid(t)}>{t.title} ({t.category})</p> for t in todos]}
+            {[
+                <p key={jid(t)}>[{t.priority}]{t.title} ({t.category})</p>
+                for t in todos
+            ]}
         </div>;
 }
