@@ -756,6 +756,147 @@ test "bracket filter on list" {
     assert not err , "Failed to parse list bracket filter";
 }
 
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Arrow function syntax error detection (E0025)
+# All tests in this group must FAIL before the lexer fix is implemented.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test "arrow func in jsx attribute emits exactly one error" {
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <button onClick={v => v + 1} />; }', "test.jac");
+    assert len(prog.errors_had) == 1;
+}
+
+test "arrow func in jsx attribute error message mentions arrow function" {
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <button onClick={v => v + 1} />; }', "test.jac");
+    assert len(prog.errors_had) >= 1;
+    # Check the message itself, not pretty_print which includes raw source context
+    assert "arrow" in prog.errors_had[0].msg.lower();
+}
+
+test "arrow func in jsx attribute error code is E0025" {
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <button onClick={v => v + 1} />; }', "test.jac");
+    assert len(prog.errors_had) >= 1;
+    code = prog.errors_had[0].code;
+    assert code is not None;
+    assert code.code == "E0025";
+}
+
+test "arrow func in jsx child expression emits exactly one error" {
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <div>{v => v + 1}</div>; }', "test.jac");
+    assert len(prog.errors_had) == 1;
+}
+
+test "arrow func in jsx child error code is E0025" {
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <div>{v => v + 1}</div>; }', "test.jac");
+    assert len(prog.errors_had) >= 1;
+    code = prog.errors_had[0].code;
+    assert code is not None;
+    assert code.code == "E0025";
+}
+
+test "arrow func outside jsx emits exactly one error" {
+    prog = JacProgram();
+    prog.parse_str('glob f = x => x + 1;', "test.jac");
+    assert len(prog.errors_had) == 1;
+}
+
+test "arrow func outside jsx error code is E0025" {
+    prog = JacProgram();
+    prog.parse_str('glob f = x => x + 1;', "test.jac");
+    assert len(prog.errors_had) >= 1;
+    code = prog.errors_had[0].code;
+    assert code is not None;
+    assert code.code == "E0025";
+}
+
+test "arrow func in jsx produces no cascade errors" {
+    prog = JacProgram();
+    prog.parse_str(
+        'with entry { x = <button onClick={v => v + 1}>{label}</button>; }', "test.jac"
+    );
+    assert len(prog.errors_had) == 1;
+    pretty = prog.errors_had[0].pretty_print();
+    assert "JSX" not in pretty;
+    assert "Missing '}'" not in pretty;
+    assert "Missing '>'" not in pretty;
+}
+
+test "multiple arrow funcs in jsx each emit one error no cascade" {
+    prog = JacProgram();
+    prog.parse_str(
+        'with entry { x = <div onClick={a => a} onHover={b => b} />; }', "test.jac"
+    );
+    assert len(prog.errors_had) == 2;
+    for err in prog.errors_had {
+        code = err.code;
+        assert code is not None;
+        assert code.code == "E0025";
+    }
+}
+
+test "arrow func error location points to arrow token" {
+    prog = JacProgram();
+    prog.parse_str('glob f = x => x + 1;', "test.jac");
+    assert len(prog.errors_had) >= 1;
+    err = prog.errors_had[0];
+    assert err.loc is not None;
+    assert err.loc.first_line == 1;
+    # `=>` starts at col 12 in 'glob f = x => x + 1;'
+    # g=1,l=2,o=3,b=4,sp=5,f=6,sp=7,==8,sp=9,x=10,sp=11,==12,>=13
+    # After fix: lexer detects `=>` as a pair, reports start col 12.
+    # Before fix: error fires on `>` alone at col 13 — test fails correctly.
+    assert err.loc.col_start == 12;
+}
+
+test "arrow func jsx fixture emits exactly two errors no cascade" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURES, "arrow_func_jsx_err.jac"));
+    sys.stdout = sys.__stdout__;
+    assert len(prog.errors_had) == 2;
+    for err in prog.errors_had {
+        pretty = err.pretty_print();
+        assert "arrow" in pretty.lower() or "=>" in pretty or "E0025" in pretty;
+        assert "Missing '}'" not in pretty;
+    }
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Regression guards — valid syntax must remain unaffected by the fix.
+# These pass before AND after the fix.
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+test "lambda syntax unaffected by arrow fix" {
+    (_, had_error) = rd_parse('with entry { f = lambda x: x + 1; }', "");
+    assert not had_error;
+}
+
+test "return hint arrow unaffected by arrow fix" {
+    (_, had_error) = rd_parse('def foo() -> int { return 1; }', "");
+    assert not had_error;
+}
+
+test "gte operator not confused with arrow syntax" {
+    (_, had_error) = rd_parse('with entry { x = a >= b; }', "");
+    assert not had_error;
+}
+
+test "valid jsx event handler unaffected by arrow fix" {
+    (_, had_error) = rd_parse('with entry { x = <button onClick={handler} />; }', "");
+    assert not had_error;
+}
+
+test "graph edge arrows unaffected by arrow fix" {
+    (_, had_error) = rd_parse(
+        'node A {} node B {} edge E {} with entry { a = A(); b = B(); }', ""
+    );
+    assert not had_error;
+}
+
 with entry {
     parametrize(
         "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
