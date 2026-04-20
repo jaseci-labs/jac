@@ -20,7 +20,7 @@ def ensure_jac_runtime {
 This is the canonical function for setting up CLI execution context.
 It handles base_path setup, closing any existing context, and creating a new one.
 """
-def proc_file(filename: str, persist: bool = True) -> tuple {
+def proc_file(filename: str) -> tuple {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     (base, mod) = os.path.split(filename);
     base = base or './';
@@ -34,9 +34,8 @@ def proc_file(filename: str, persist: bool = True) -> tuple {
         console.error('Not a valid file!\nOnly supports `.jac` and `.py`');
         `exit(1);
     }
-    if not persist {
-        Jac.set_base_path(None);
-    } elif not Jac.base_path_dir {
+    # Only set base path if not already set (allows tests to override)
+    if not Jac.base_path_dir {
         Jac.set_base_path(base);
     }
     # CLI contexts use system_root (no user authentication)

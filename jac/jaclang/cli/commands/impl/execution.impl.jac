@@ -91,7 +91,6 @@ impl run(
     cache: bool = True,
     autonative: bool = False,
     diagnostics: str = "",
-    persist: bool = True,
     args: list = []
 ) -> int {
     _ensure_jac_runtime();
@@ -107,7 +106,7 @@ impl run(
     # Set sys.argv so the script can access arguments via sys.argv[1:]
     original_argv = sys.argv;
     sys.argv = [filename] + list(args);
-    (base, mod, mach) = _proc_file(filename, persist=persist);
+    (base, mod, mach) = _proc_file(filename);
     lng = filename.split('.')[-1];
     try {
         if filename.endswith('.na.jac') {
