@@ -1385,3 +1385,50 @@ test "serve sync skips write access check on unchanged anchors" {
         client.close();
     }
 }
+
+test "serve blocking sync walkers run concurrently via to_thread" {
+    import asyncio;
+    import from time { time }
+    import from jaclang.jac0core.runtime { JacRuntimeInterface as Jac }
+    import from jaclang.runtimelib.server {
+        ExecutionManager,
+        UserManager,
+        ModuleIntrospector
+    }
+
+    with TemporaryDirectory() as tmpdir {
+        # Load the blocking IO fixture
+        jac_file = fixture_abs_path("serve_blocking_io.jac");
+        introspector = ModuleIntrospector(
+            module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
+        );
+        introspector.load();
+        walkers = introspector.get_walkers();
+        assert "slow_blocking" in walkers , "slow_blocking walker not found";
+        walker_cls = walkers["slow_blocking"];
+        user_mgr = UserManager(base_path=tmpdir);
+        exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
+        # Create a test user so spawn_walker can resolve a root
+        user_mgr.create_user("testuser", "testpass");
+        # Each walker sleeps for 1 second. Launch 3 concurrently.
+        # If they run in threads (concurrent): ~1s total.
+        # If they run serially on event loop: ~3s total.
+        async def run_concurrent_walkers -> float {
+            start = time();
+            tasks = [
+                exec_mgr.spawn_walker(walker_cls, {"duration": 1.0}, "testuser")
+                for _ in range(3)
+            ];
+            results = await asyncio.gather(*tasks);
+            elapsed = time() - start;
+            # Verify all walkers completed successfully
+            for r in results {
+                assert "error" not in r , f"Walker failed: {r}";
+            }
+            return elapsed;
+        }
+        elapsed = asyncio.run(run_concurrent_walkers());
+        # With to_thread fix: ~1s. Without: ~3s. Use 2.5s as threshold.
+        assert elapsed < 2.5 , f"Blocking walkers took {elapsed:.2f}s (expected < 2.5s for concurrent execution)";
+    }
+}
