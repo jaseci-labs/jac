@@ -49,6 +49,7 @@ impl JacAPIServerEndpoints.register_walkers_endpoints -> None {
 impl JacAPIServerEndpoints.create_walker_parameters(
     walker_name: str, invoke_on_root: bool, method: HTTPMethod = HTTPMethod.POST
 ) -> list[APIParameter] {
+    import from typing { get_type_hints }
     parameters: list[APIParameter] = [];
     # Extract path parameter names from restspec path (e.g. /items/{item_id} -> {"item_id"})
     walker_cls = self.get_walkers()[walker_name];
@@ -58,6 +59,14 @@ impl JacAPIServerEndpoints.create_walker_parameters(
     walker_fields = self.introspector.introspect_walker(self.get_walkers()[walker_name])[
         'fields'
     ];
+    # Resolve actual type objects for custom-obj support. The jaclang
+    # introspector stringifies types, which is insufficient for generating
+    # nested Pydantic body models.
+    try {
+        walker_type_hints = get_type_hints(walker_cls.init);
+    } except Exception {
+        walker_type_hints = {};
+    }
     for field_name in walker_fields {
         if ((field_name == '_jac_spawn_node') and invoke_on_root) {
             continue;
@@ -74,10 +83,17 @@ impl JacAPIServerEndpoints.create_walker_parameters(
         } else {
             param_type = ParameterType.BODY;
         }
+        type_obj = walker_fields[field_name].get('type_obj')
+            if isinstance(walker_fields[field_name], dict)
+            else None;
+        if (type_obj is None) {
+            type_obj = walker_type_hints.get(field_name);
+        }
         parameters.append(
             APIParameter(
                 name='nd' if (field_name == '_jac_spawn_node') else field_name,
                 data_type=field_type,
+                type_obj=type_obj,
                 required=walker_fields[field_name]['required'],
                 default=walker_fields[field_name]['default'],
                 description=f"Field {field_name} for walker {walker_name}",
@@ -175,6 +191,7 @@ impl JacAPIServerEndpoints.register_functions_endpoints -> None {
 impl JacAPIServerEndpoints.create_function_parameters(
     func_name: str, method: HTTPMethod = HTTPMethod.POST
 ) -> list[APIParameter] {
+    import from typing { get_type_hints }
     parameters: list[APIParameter] = [];
     # Extract path parameter names from restspec path
     func_obj = self.get_functions()[func_name];
@@ -182,6 +199,11 @@ impl JacAPIServerEndpoints.create_function_parameters(
     spec_path = restspec.path if restspec else None;
     path_param_names = _extract_path_param_names(spec_path);
     func_fields = self.introspector.introspect_callable(func_obj)['parameters'];
+    try {
+        func_type_hints = get_type_hints(func_obj);
+    } except Exception {
+        func_type_hints = {};
+    }
     for field_name in func_fields {
         field_type = func_fields[field_name]['type'];
         if field_name in path_param_names {
@@ -193,10 +215,17 @@ impl JacAPIServerEndpoints.create_function_parameters(
         } else {
             param_type = ParameterType.BODY;
         }
+        type_obj = func_fields[field_name].get('type_obj')
+            if isinstance(func_fields[field_name], dict)
+            else None;
+        if (type_obj is None) {
+            type_obj = func_type_hints.get(field_name);
+        }
         parameters.append(
             APIParameter(
                 name=field_name,
                 data_type=field_type,
+                type_obj=type_obj,
                 required=func_fields[field_name]['required'],
                 default=func_fields[field_name]['default'],
                 description=f"Field {field_name} for function {func_name}",
