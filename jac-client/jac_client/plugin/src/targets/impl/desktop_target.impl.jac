@@ -323,10 +323,6 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
             );
         }
 
-        # Check required dependencies and surface clear install instructions
-        # for anything missing. We deliberately do NOT run sudo-based package
-        # installs from here: a project setup tool should not escalate
-        # privileges or modify system packages on the user's behalf.
         console.print("\n📦 Checking required dependencies...", style="bold");
         try {
             _check_dependencies();
@@ -1001,15 +997,7 @@ jac_mcp = true     # MCP server integration
     console.print("  ✔ Added [desktop] section to jac.toml", style="success");
 }
 
-"""Check all required dependencies for desktop target and surface install
-instructions for any that are missing.
-
-Policy: this function and its helpers do NOT run `sudo` package installs
-or pipe `curl | sh` installers. `jac setup desktop` is a project-scaffolding
-command; silently escalating privileges or modifying system packages is
-surprising and a security smell. Instead we detect what is missing and
-print the exact command the user should run for their platform / distro.
-"""
+"""Check all required dependencies; print platform-specific install hints for any that are missing."""
 def _check_dependencies {
     import platform as platform_module;
     import sys;
@@ -1051,9 +1039,7 @@ def _check_dependencies {
     }
 }
 
-"""Check if the Rust toolchain is installed. When missing, print a clear
-install hint and return False. We do not invoke the rustup installer -- the
-user runs it themselves so they know what is about to touch their system."""
+"""Check for the Rust toolchain; print install instructions if missing."""
 def _check_rust -> bool {
     try {
         result = subprocess.run(
@@ -1069,7 +1055,6 @@ def _check_rust -> bool {
         }
     } except Exception as e { }
 
-    # Rust not found -- print install instructions and return.
     console.warning("  Rust toolchain not found");
     console.print(
         "  Rust is required for building desktop applications with Tauri.",
@@ -1091,9 +1076,7 @@ def _check_rust -> bool {
     return False;
 }
 
-"""Check that platform build tools are present. When missing, print the
-platform-specific install command. We do not invoke `xcode-select --install`
-or distro package managers here -- the user runs them themselves."""
+"""Check for platform build tools; print install command if missing."""
 def _check_build_tools(system: str) -> bool {
     if system == "Linux" {
         # Check for gcc/cc
@@ -1200,8 +1183,7 @@ def _detect_linux_distro -> str | None {
     }
 }
 
-"""Check Linux system dependencies (pkg-config, webkit2gtk). When missing,
-print platform-specific install instructions. No auto-install."""
+"""Check pkg-config + webkit2gtk; print distro install command if missing."""
 def _check_linux_dependencies -> None {
     # Check pkg-config
     pkg_config_ok = False;
@@ -1235,10 +1217,9 @@ def _check_linux_dependencies -> None {
     }
 
     if pkg_config_ok and webkit_ok {
-        return;  # All dependencies satisfied
+        return;
     }
 
-    # Missing dependencies -- surface the install command, do not run it.
     console.warning("  Some Linux system dependencies are missing");
     distro = _detect_linux_distro();
     if distro {
