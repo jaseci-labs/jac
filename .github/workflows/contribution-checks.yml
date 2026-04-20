@@ -15,19 +15,21 @@ on:
     paths:
       - 'docs/**/*.md'
       - 'docs/scripts/validate_docs_code.jac'
-      - '.github/workflows/docs-validation.yml'
+      - '.github/workflows/contribution-checks.yml'
   workflow_dispatch:
 
 jobs:
-  check-ai-coauthor:
-    name: Block AI co-author attribution
-    if: github.event_name == 'pull_request'
+  contribution-checks:
+    name: Contribution Checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Check for AI co-author in commits
+          submodules: true
+
+      - name: Block AI co-author attribution
+        if: github.event_name == 'pull_request'
         run: |
           if git log origin/${{ github.base_ref }}..HEAD --format='%b' \
             | grep -iP 'co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'; then
@@ -35,17 +37,10 @@ jobs:
             exit 1
           fi
 
-  check-no-python:
-    name: Block Python files
-    if: |
-      github.event_name == 'pull_request' &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-no-python-check')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Check for new Python files
+      - name: Block Python files
+        if: |
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-no-python-check')
         run: |
           if git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD \
             | grep -P '\.py$'; then
@@ -53,15 +48,6 @@ jobs:
             echo "To skip this check, add the 'skip-no-python-check' label to your PR."
             exit 1
           fi
-
-  validate-docs:
-    name: Validate Documentation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          submodules: true
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v4
@@ -103,19 +89,10 @@ jobs:
             echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
           fi
 
-  check-release-notes:
-    name: Check Release Notes Updated
-    if: |
-      github.event_name == 'pull_request' &&
-      !contains(github.event.pull_request.labels.*.name, 'skip-release-notes-check')
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Check release notes
+      - name: Check Release Notes Updated
+        if: |
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-release-notes-check')
         env:
           CI: "true"
           PR_TITLE: ${{ github.event.pull_request.title }}
