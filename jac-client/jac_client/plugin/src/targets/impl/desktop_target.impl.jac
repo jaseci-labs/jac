@@ -1070,8 +1070,7 @@ def _check_rust -> bool {
         style="muted"
     );
     console.print(
-        "  Re-run `jac setup desktop` after the toolchain is on PATH.",
-        style="muted"
+        "  Re-run `jac setup desktop` after the toolchain is on PATH.", style="muted"
     );
     return False;
 }
@@ -1134,7 +1133,7 @@ def _check_build_tools(system: str) -> bool {
 }
 
 """Print the command that installs build tools on the detected Linux distro."""
-def _print_linux_build_tools_instructions -> None {
+def _print_linux_build_tools_instructions {
     distro = _detect_linux_distro();
     console.print("  Install build tools manually:", style="muted");
     if distro in ("ubuntu", "debian") {
@@ -1148,10 +1147,11 @@ def _print_linux_build_tools_instructions -> None {
         console.print("    sudo pacman -S --noconfirm base-devel", style="muted");
     } else {
         console.print(
-            "    Ubuntu/Debian: sudo apt-get install -y build-essential",
-            style="muted"
+            "    Ubuntu/Debian: sudo apt-get install -y build-essential", style="muted"
         );
-        console.print("    Fedora:        sudo dnf install -y gcc gcc-c++", style="muted");
+        console.print(
+            "    Fedora:        sudo dnf install -y gcc gcc-c++", style="muted"
+        );
         console.print(
             "    Arch:          sudo pacman -S --noconfirm base-devel", style="muted"
         );
