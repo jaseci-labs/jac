@@ -1231,3 +1231,18 @@ test "W3039 converts map lambda to list comprehension" {
     assert "for (idx, hour) in enumerate(hours)" in formatted;
     assert "[<li className=\"item\">{item.name}</li> for item in items]" in formatted;
 }
+
+test "W3039 filter-map chain converts to filtered comprehension" {
+    input_path = auto_lint_fixture_path("filter_map_lambda_to_comprehension.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # Both .filter() and .map() calls must be gone
+    assert ".map(" not in formatted;
+    assert ".filter(" not in formatted;
+
+    # Should produce a filtered list comprehension with an if clause
+    assert "<li className=\"active\">{item.name}</li>" in formatted;
+    assert "for item in items" in formatted;
+    assert "if item.active" in formatted;
+}

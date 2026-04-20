@@ -2462,6 +2462,34 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         }
     }
     collection = trailer.target;
+
+    # ── .filter(lambda) chain ───────────────────────────────────────
+    # Detect arr.filter(lambda item -> bool { return <cond>; }).map(...)
+    # and extract the conditional to produce [<jsx> for item in arr if <cond>]
+    filter_cond: (uni.Expr | None) = None;
+    if isinstance(collection, uni.FuncCall)
+    and isinstance(collection.target, uni.AtomTrailer)
+    and collection.target.is_attr
+    and isinstance(collection.target.right, uni.Name)
+    and collection.target.right.value == "filter"
+    and collection.params is not None
+    and len(collection.params) == 1
+    and isinstance(collection.params[0], uni.LambdaExpr) {
+        filter_lam: uni.LambdaExpr = collection.params[0];
+        if isinstance(filter_lam.body, list) {
+            filter_stmts = [
+                s
+                for s in filter_lam.body
+                if not isinstance(s, uni.Semi)
+            ];
+            if len(filter_stmts) == 1
+            and isinstance(filter_stmts[0], uni.ReturnStmt)
+            and filter_stmts[0].expr is not None {
+                filter_cond = filter_stmts[0].expr;
+                collection = collection.target.target;
+            }
+        }
+    }
     # ── Emit warning (returns False if suppressed by inline comment) ─────────
     if not self.emit(W3039, node_override=nd, name=item_name) {
         return False;
@@ -2501,12 +2529,21 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         target_node = item_node;
         iter_expr = collection;
     }
+    compr_kid: list = [
+        nd.gen_token(Tok.KW_FOR),
+        target_node,
+        nd.gen_token(Tok.KW_IN),
+        iter_expr
+    ];
+    if filter_cond is not None {
+        compr_kid.extend([nd.gen_token(Tok.KW_IF), filter_cond]);
+    }
     inner_compr = uni.InnerCompr(
         is_async=False,
         target=target_node,
         collection=iter_expr,
-        conditional=None,
-        kid=[nd.gen_token(Tok.KW_FOR), target_node, nd.gen_token(Tok.KW_IN), iter_expr]
+        conditional=[filter_cond] if filter_cond is not None else None,
+        kid=compr_kid
     );
     list_compr = uni.ListCompr(
         out_expr=ret_expr,
@@ -2523,6 +2560,9 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
     inner_compr.parent = list_compr;
     target_node.parent = inner_compr;
     iter_expr.parent = inner_compr;
+    if filter_cond is not None {
+        filter_cond.parent = inner_compr;
+    }
     parent = nd.parent;
     if parent is None {
         return False;
