@@ -1864,7 +1864,11 @@ impl DesktopTarget.build(
                 );
             }
             sidecar_path = _bundle_sidecar(
-                entry_file, project_dir, tauri_dir, platform, plugins_config,
+                entry_file,
+                project_dir,
+                tauri_dir,
+                platform,
+                plugins_config,
                 pyinstaller_timeout
             );
             if sidecar_path and sidecar_path.exists() {
@@ -2508,7 +2512,12 @@ def _bundle_sidecar(
 
     if use_pyinstaller {
         result = _bundle_sidecar_pyinstaller(
-            entry_file, project_dir, tauri_dir, binaries_dir, is_windows, plugins_config,
+            entry_file,
+            project_dir,
+            tauri_dir,
+            binaries_dir,
+            is_windows,
+            plugins_config,
             pyinstaller_timeout
         );
         if result {

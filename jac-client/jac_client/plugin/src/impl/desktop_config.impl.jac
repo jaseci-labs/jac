@@ -61,12 +61,7 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
             'jac_mcp': True  # jac-mcp: MCP server integration
             # jac_client is always bundled as a core package (not configurable)
         },
-        'bundle': {
-            # Build-time bundling knobs. 40 minutes covers a cold first-run
-            # Windows + PyInstaller build; users with unusually slow hardware
-            # or very large plugin sets can raise it.
-            'pyinstaller_timeout': 2400
-        }
+        'bundle': {'pyinstaller_timeout': 2400}
     };
 }
 
