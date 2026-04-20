@@ -61,7 +61,13 @@ test "custom method func" {
     client = make_client("restspec_fixtures.jac");
     try {
         client.register_user("u1", "p1");
-        login = client.post("/user/login", json={"identity": {"type": "username", "value": "u1"}, "credential": {"type": "password", "password": "p1"}});
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
         token = extract_data(login.json())["token"];
 
         response = client.get(
@@ -79,7 +85,13 @@ test "custom path func" {
     client = make_client("restspec_fixtures.jac");
     try {
         client.register_user("u1", "p1");
-        login = client.post("/user/login", json={"identity": {"type": "username", "value": "u1"}, "credential": {"type": "password", "password": "p1"}});
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
         token = extract_data(login.json())["token"];
 
         response = client.get(
@@ -98,7 +110,13 @@ test "post method func" {
     client = make_client("restspec_fixtures.jac");
     try {
         client.register_user("u1", "p1");
-        login = client.post("/user/login", json={"identity": {"type": "username", "value": "u1"}, "credential": {"type": "password", "password": "p1"}});
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
         token = extract_data(login.json())["token"];
 
         response = client.post(
@@ -117,7 +135,13 @@ test "default method func" {
     client = make_client("restspec_fixtures.jac");
     try {
         client.register_user("u1", "p1");
-        login = client.post("/user/login", json={"identity": {"type": "username", "value": "u1"}, "credential": {"type": "password", "password": "p1"}});
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
         token = extract_data(login.json())["token"];
 
         response = client.post(
@@ -152,7 +176,13 @@ test "get func with params" {
     client = make_client("restspec_fixtures.jac");
     try {
         client.register_user("u1", "p1");
-        login = client.post("/user/login", json={"identity": {"type": "username", "value": "u1"}, "credential": {"type": "password", "password": "p1"}});
+        login = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "u1"},
+                "credential": {"type": "password", "password": "p1"}
+            }
+        );
         token = extract_data(login.json())["token"];
 
         response = client.get(
@@ -351,6 +381,187 @@ test "walker with node parameter functional test" {
         assert data["reports"][0]["node_id"] == node_id;
         assert data["reports"][0]["user_id"] == "user123";
         assert data["reports"][0]["name"] == "Alice";
+    } finally {
+        client.close();
+    }
+}
+
+# ============================================================================
+# Custom Object Body Parameter Tests — walker + function + recursive
+# One integration test per variant; schema + runtime + validation in one flow.
+# ============================================================================
+test "custom obj body - walker flows" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        # OpenAPI: UserBody schema + CreateUser body references it via $ref
+        spec = client._server.server.app.openapi();
+        schemas = spec["components"]["schemas"];
+        assert "UserBody" in schemas;
+        user_schema = schemas["UserBody"];
+        assert user_schema["properties"]["name"]["type"] == "string"
+        and user_schema["properties"]["age"]["type"] == "integer"
+        and set(user_schema["required"]) == {"name","age"};
+        body_ref = spec["paths"]["/walker/CreateUser"]["post"]["requestBody"]["content"][
+            "application/json"
+        ]["schema"]["$ref"];
+        body_schema = schemas[body_ref.rsplit("/", 1)[1]];
+        assert body_schema["properties"]["user"].get("$ref", "").endswith("/UserBody");
+
+        # Flat obj
+        r = client.post(
+            "/walker/CreateUser", json={"user": {"name": "Alice", "age": 30}}
+        );
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["reports"][0];
+        assert d["name"] == "Alice" and d["age"] == 30 and d["user_type"] == "UserBody";
+
+        # Nested obj
+        r = client.post(
+            "/walker/CreateUserWithAddress",
+            json={
+                "user": {
+                    "name": "Bob",
+                    "address": {"street": "1 Main", "city": "Springfield"}
+                }
+            }
+        );
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["reports"][0];
+        assert d["name"] == "Bob"
+        and d["street"] == "1 Main"
+        and d["city"] == "Springfield"
+        and d["address_type"] == "Address";
+
+        # List of objs
+        r = client.post(
+            "/walker/CreateUsers",
+            json={"users": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}]}
+        );
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["reports"][0];
+        assert d["count"] == 2
+        and d["names"] == ["Alice", "Bob"]
+        and d["first_type"] == "UserBody";
+
+        # Validation rejects wrong field type
+        r = client.post(
+            "/walker/CreateUser", json={"user": {"name": "Alice", "age": "not-an-int"}}
+        );
+        assert r.status_code == 422;
+    } finally {
+        client.close();
+    }
+}
+
+test "custom obj body - function flows" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        client.register_user("u_fn", "p_fn");
+        auth = {"Authorization": f"Bearer {client.login_user('u_fn', 'p_fn')}"};
+
+        # Flat obj
+        r = client.post(
+            "/func/create_user",
+            headers=auth,
+            json={"user": {"name": "Alice", "age": 30}}
+        );
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["result"];
+        assert d["name"] == "Alice" and d["age"] == 30 and d["user_type"] == "UserBody";
+
+        # Nested obj
+        r = client.post(
+            "/func/create_user_with_address",
+            headers=auth,
+            json={
+                "user": {
+                    "name": "Bob",
+                    "address": {"street": "1 Main", "city": "Springfield"}
+                }
+            }
+        );
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["result"];
+        assert d["name"] == "Bob"
+        and d["street"] == "1 Main"
+        and d["city"] == "Springfield"
+        and d["address_type"] == "Address";
+
+        # List of objs
+        r = client.post(
+            "/func/create_users",
+            headers=auth,
+            json={"users": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}]}
+        );
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["result"];
+        assert d["count"] == 2
+        and d["names"] == ["Alice", "Bob"]
+        and d["first_type"] == "UserBody";
+
+        # Validation rejects wrong field type
+        r = client.post(
+            "/func/create_user",
+            headers=auth,
+            json={"user": {"name": "Alice", "age": "not-an-int"}}
+        );
+        assert r.status_code == 422;
+    } finally {
+        client.close();
+    }
+}
+
+test "recursive obj body flows" {
+    client = make_client("restspec_fixtures.jac");
+    try {
+        # OpenAPI: TreeNode.children items $ref TreeNode (self-reference)
+        spec = client._server.server.app.openapi();
+        schemas = spec["components"]["schemas"];
+        assert "TreeNode" in schemas;
+        items = schemas["TreeNode"]["properties"]["children"].get("items", {});
+        assert items.get("$ref", "").endswith("/TreeNode") , f"Expected children items to $ref TreeNode, got {items}";
+
+        # Walker tree (public): 4 nodes, depth 3
+        walker_tree = {
+            "name": "root",
+            "children": [
+                {"name": "child1", "children": [{"name": "leaf1", "children": []}]},
+                {"name": "child2", "children": []}
+            ]
+        };
+        r = client.post("/walker/CreateTreeWalker", json={"root": walker_tree});
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["reports"][0];
+        assert d["root_name"] == "root"
+        and d["root_type"] == "TreeNode"
+        and d["child_type"] == "TreeNode"
+        and d["depth"] == 3
+        and d["node_count"] == 4;
+
+        # Function tree (auth): 5 nodes, depth 3
+        client.register_user("u_rec", "p_rec");
+        auth = {"Authorization": f"Bearer {client.login_user('u_rec', 'p_rec')}"};
+        fn_tree = {
+            "name": "root",
+            "children": [
+                {
+                    "name": "child1",
+                    "children": [
+                        {"name": "leaf1", "children": []},
+                        {"name": "leaf2", "children": []}
+                    ]
+                },
+                {"name": "child2", "children": []}
+            ]
+        };
+        r = client.post("/func/create_tree", headers=auth, json={"root": fn_tree});
+        assert r.status_code == 200 , r.text;
+        d = extract_data(r.json())["result"];
+        assert d["root_name"] == "root"
+        and d["root_type"] == "TreeNode"
+        and d["child_type"] == "TreeNode"
+        and d["depth"] == 3
+        and d["node_count"] == 5;
     } finally {
         client.close();
     }
