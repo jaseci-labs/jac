@@ -240,6 +240,10 @@ obj TypeEvaluator {
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
+        # Temporary type overrides for isinstance narrowing within AND conditions.
+        # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
+        # that RHS operands see the narrowed type from LHS isinstance checks.
+        _and_narrowing_overrides: dict[int, TypeBase] = {},
         # Stub modules - initialized in postinit
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,

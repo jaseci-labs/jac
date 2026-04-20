@@ -3989,3 +3989,23 @@ test "annotated_self_assign_no_false_e1001" {
         assert not ("assign float to float" in err) , f"False positive E1001 same-type error: {err}";
     }
 }
+
+test "isinstance_and_narrowing" {
+    # isinstance(x, T) in LHS of AND should narrow x to T for RHS operands.
+    path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_and_narrowing.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # All functions use isinstance in AND conditions to guard attribute access.
+    # No errors should be produced — the narrowing should resolve all attributes.
+    assert len(program.errors_had) == 0 , f"Expected 0 errors (isinstance AND narrowing should resolve all attrs), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+
+    # No W1051 warnings either
+    w1051 = [w for w in program.warnings_had if w.code.code == "W1051"];
+    assert len(w1051) == 0 , f"Expected no W1051 warnings, got {len(w1051)}:\n" + "\n---\n".join(
+        w.pretty_print() for w in w1051
+    );
+}

@@ -1569,11 +1569,46 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.BoolExpr():
             # AND/OR return operand values, not bool: `x and y` → y if x truthy, else x.
             # Type is the union of all operand types (Python semantics).
+            is_and = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_AND;
             is_or = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_OR;
             operand_types: list[TypeBase] = [];
             num_values = len(expr.values);
+            # Track narrowing overrides applied within this AND expression
+            # so they can be cleaned up afterward.
+            and_override_keys: list[int] = [];
             for i in range(num_values) {
                 op_type = self.get_type_of_expression(expr.values[i].expr);
+                # For AND expressions, extract isinstance narrowing info from
+                # each operand and apply it as a temporary type override for
+                # subsequent operands. This implements expression-level
+                # narrowing: in `isinstance(x, T) and x.attr`, the RHS sees
+                # x narrowed to T.
+                if is_and and i < num_values - 1 {
+                    import from jaclang.compiler.type_system.type_evaluator {
+                        NarrowingKind
+                    }
+                    operand_expr = expr.values[i].expr;
+                    cond_info = self.classify_condition(operand_expr);
+                    if cond_info is not None
+                    and cond_info.kind == NarrowingKind.ISINSTANCE
+                    and cond_info.narrow_type is not None {
+                        # Find the symbol for the isinstance target
+                        narrowed_sym = self._find_symbol_by_key(
+                            cond_info.key, operand_expr
+                        );
+                        if narrowed_sym is not None {
+                            sym_type = self.get_type_of_symbol(narrowed_sym);
+                            narrowed = self._apply_narrowing(
+                                sym_type, cond_info
+                            );
+                            if narrowed is not None {
+                                sym_id = id(narrowed_sym);
+                                self._and_narrowing_overrides[sym_id] = narrowed;
+                                and_override_keys.append(sym_id);
+                            }
+                        }
+                    }
+                }
                 # Pyright-style OR result narrowing: for `x or y`, the result
                 # type of non-last operands excludes always-falsy types (None)
                 # because if the operand were falsy, OR short-circuits to the
@@ -1587,6 +1622,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
                 self._collect_unique_types(op_type, operand_types);
+            }
+            # Clean up any AND narrowing overrides we applied
+            for key in and_override_keys {
+                self._and_narrowing_overrides.pop(key, None);
             }
             if len(operand_types) == 1 {
                 return operand_types[0];
@@ -3292,6 +3331,12 @@ impl TypeEvaluator.get_narrowed_type(
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
     sym_id = id(symbol);
+    # Check for temporary AND-condition narrowing overrides first.
+    # These are set during BoolExpr(and) evaluation when an isinstance check
+    # on the LHS should narrow the type for RHS operands.
+    if sym_id in self._and_narrowing_overrides {
+        return self._and_narrowing_overrides[sym_id];
+    }
     if sym_id in self._flow_pending_symbols {
         return None;
     }
