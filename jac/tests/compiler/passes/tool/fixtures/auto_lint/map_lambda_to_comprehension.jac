@@ -2,7 +2,7 @@
 
 def:pub HourGrid(hours: list, items: list) -> JsxElement {
     hourLabels = hours.map(
-        lambda idx: int, hour: any -> any {
+        lambda hour: any, idx: int -> any {
             return <div key={idx} className="text-xs text-center">{hour}</div>;
         }
     );
