@@ -10,7 +10,7 @@ import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
 # Note: Jac's annex pass should auto-discover .impl.jac files automatically
 # The impl files in impl/ directory should be loaded when the base classes are imported
 """Register all available targets."""
-def register_targets -> None {
+def register_targets {
     registry = get_target_registry();
 
     # Register web target (default)

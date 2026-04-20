@@ -20,9 +20,9 @@ The key insight is that Jac's compiler does not simply transpile syntax; it impl
 ```mermaid
 graph TD
     SRC["Jac Source Code"] --> COMPILER["Jac Compiler"]
-    COMPILER --> PY["Python / Server Backend<br/><code>sv { }</code>"]
-    COMPILER --> ES["ECMAScript / Client Backend<br/><code>cl { }</code>"]
-    COMPILER --> NA["Native / LLVM Backend<br/><code>na { }</code>"]
+    COMPILER --> PY["Python / Server Backend<br/><code>to sv:</code>"]
+    COMPILER --> ES["ECMAScript / Client Backend<br/><code>to cl:</code>"]
+    COMPILER --> NA["Native / LLVM Backend<br/><code>to na:</code>"]
 
     PY --> PRIM["Shared Primitive Semantics<br/>int, float, str, list, dict, ..."]
     ES --> PRIM
@@ -33,58 +33,72 @@ graph TD
 
 ## Codespace Model
 
-A **codespace** determines *where* your code runs. You select a codespace with either a file extension or an inline block prefix:
+A **codespace** determines *where* your code runs. You select a codespace with a file extension or, within a file, one of three forms -- a **section header**, a **single-statement prefix**, or a **braced block**:
 
-| Codespace | Block Prefix | File Extension | Compiles To | Ecosystem |
-|-----------|-------------|----------------|-------------|-----------|
-| Server    | `sv { }` | `.sv.jac` or `.jac` (default) | Python | PyPI |
-| Client    | `cl { }` | `.cl.jac` | JavaScript / TypeScript | npm |
-| Native    | `na { }` | `.na.jac` | LLVM IR → machine code | C ABI |
+| Codespace | Section Header | Statement Prefix | Braced Block | File Extension | Compiles To | Ecosystem |
+|-----------|---------------|-----------------|--------------|----------------|-------------|-----------|
+| Server    | `to sv:` | `sv stmt` | `sv { }` | `.sv.jac` or `.jac` (default) | Python | PyPI |
+| Client    | `to cl:` | `cl stmt` | `cl { }` | `.cl.jac` | JavaScript / TypeScript | npm |
+| Native    | `to na:` | `na stmt` | `na { }` | `.na.jac` | LLVM IR → machine code | C ABI |
 
-Code outside any block defaults to the server codespace. Any `.jac` file can mix codespace blocks:
+Code outside any tagged region defaults to the server codespace.
+
+### Section headers (preferred)
+
+A `to cl:` / `to sv:` / `to na:` header sets the default codespace for **every following module-level element** until the next header or end of file. This keeps cl/sv/na-heavy modules flat -- no wrapping block, no trailing brace far from the opening:
 
 ```jac
-# Server (default codespace)
-def add(a: int, b: int) -> int {
-    return a + b;
+to cl:
+
+def:pub Greeting(props: dict) -> JsxElement {
+    return <h1>Hello, {props.name}!</h1>;
 }
 
-cl {
-    # Client -- compiles to JavaScript
-    def greet(name: str) -> str {
-        return "Hello, " + name;
-    }
+def:pub Counter() -> JsxElement {
+    has count: int = 0;
+    return <button onClick={lambda { count = count + 1; }}>{count}</button>;
+}
+```
+
+Headers can be interleaved to partition a mixed module:
+
+```jac
+to sv:
+
+def fetch_items() -> list[dict] {
+    return [{"id": 1, "name": "Item A"}];
 }
 
-na {
-    # Native -- compiles to machine code
-    def fast_sum(n: int) -> int {
-        has total: int = 0;
-        for i in range(n) {
-            total += i;
-        }
-        return total;
-    }
+to cl:
+
+async def load() -> None {
+    items = await fetch_items();   # compiler generates the HTTP call
+}
+```
+
+### Statement prefix and braced block
+
+The single-statement prefix is ideal for a one-off override:
+
+```jac
+# Default server codespace
+def add(a: int, b: int) -> int { return a + b; }
+
+cl def greet(name: str) -> str { return "Hello, " + name; }
+```
+
+The braced block still works -- and is useful for **inner-scope overrides** inside a class or function, or for small mixed-codespace fragments -- but at module scope it now emits **W0064** pointing at the section-header form:
+
+<!-- jac-skip -->
+```jac
+cl {   # W0064: prefer `to cl:` at module level
+    def:pub Counter() -> JsxElement { ... }
 }
 ```
 
 ### Cross-Codespace Interop
 
-When code in one codespace calls a function in another, the compiler generates the interop layer automatically -- HTTP calls between server and client, FFI bridges between Python and native, serialization and deserialization at boundaries.
-
-```jac
-# Server function
-def:pub fetch_items() -> list[dict] {
-    return [{"id": 1, "name": "Item A"}];
-}
-
-cl {
-    # Client calls server -- compiler generates the HTTP call
-    async def load() -> None {
-        items = await fetch_items();
-    }
-}
-```
+When code in one codespace calls a function in another, the compiler generates the interop layer automatically -- HTTP calls between server and client, FFI bridges between Python and native, serialization and deserialization at boundaries. See the section-header example above.
 
 ### What Is Shared
 

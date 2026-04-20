@@ -365,9 +365,7 @@ impl find_deepest_symbol_node_at_pos(
 """Iterate through symbol table."""
 impl sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode] {
     sym_tabs = [sym_tab]
-        if not (
-            isinstance(sym_tab, uni.Module) and sym_tab.loc.mod_path != file_path
-        )
+        if not (isinstance(sym_tab, uni.Module) and sym_tab.loc.mod_path != file_path)
         else [];
     for i in sym_tab.kid_scope {
         sym_tabs += sym_tab_list(i, file_path=file_path);
@@ -379,14 +377,14 @@ impl sym_tab_list(sym_tab: UniScopeNode, file_path: str) -> list[UniScopeNode] {
 impl debounce(`wait: float) -> Callable[[T], Callable[(..., Awaitable[None])]] {
     def decorator(fn: T) -> Callable[P, Awaitable[None]] {
         @wraps(fn)
-        async def debounced(*args: P.args, **kwargs: P.kwargs) -> None {
-            async def call_it -> None {
+        async def debounced(*args: P.args, **kwargs: P.kwargs) {
+            async def call_it {
                 await fn(*args, _=kwargs);
             }
             if debounced?._task {
                 debounced._task.cancel();
             }
-            async def debounced_coro -> None {
+            async def debounced_coro {
                 try {
                     await asyncio.sleep(`wait);
                     await call_it();

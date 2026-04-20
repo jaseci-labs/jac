@@ -43,13 +43,29 @@ a diagnostic and sets argumentErrors to true.
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
+    # `super()` in a method behaves like bare `super` — a proxy for the
+    # parent class. Attribute access (`super().method(...)`) dispatches
+    # through the parent's MRO; there is no __init__/__call__ to validate.
+    if self._is_expr_super(expr.target) {
+        return caller_type;
+    }
+
+    # Special-form handling for enum.auto() -> int
+    if isinstance(caller_type, types.ClassType)
+    and caller_type.is_builtin("auto")
+    and (not expr.params or len(expr.params) == 0) {
+        return self.prefetch.int_class if self.prefetch else types.UnknownType();
+    }
+
     # TypeVar handling - use bound/constraints if available
     if isinstance(caller_type, types.TypeVarType) {
         # Constrained TypeVar - check all constraint types
         if caller_type.constraints {
             for constraint_type in caller_type.constraints {
                 if isinstance(constraint_type, types.ClassType) {
-                    call_member = self._lookup_class_member(constraint_type, "__call__");
+                    call_member = self._lookup_class_member(
+                        constraint_type, "__call__"
+                    );
                     if call_member {
                         # Validate call arguments against this constraint's __call__
                         call_type = self.get_type_of_symbol(call_member.symbol);
@@ -106,6 +122,32 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return types.UnknownType();
     }
 
+    # Special-form handling for typing.cast(T, val) -> T
+    # Without this, cast() matches the `object` overload and returns Any/Unknown.
+    if isinstance(caller_type, types.OverloadedType) {
+        target_node = expr.target;
+        is_cast = False;
+        if isinstance(target_node, uni.Name) and target_node.sym {
+            dotted = target_node.sym.sym_dotted_name;
+            is_cast = dotted.endswith("typing.cast");
+        }
+        if is_cast and len(expr.params) >= 1 {
+            first_arg = expr.params[0];
+            first_arg_expr = first_arg.value
+                if isinstance(first_arg, uni.KWPair)
+                else first_arg;
+            cast_target_type = self.get_type_of_expression(first_arg_expr);
+            if isinstance(cast_target_type, types.ClassType)
+            and cast_target_type.is_instantiable_class() {
+                return cast_target_type.clone_as_instance();
+            }
+            # For non-class types (e.g. cast(str, x)), return the type directly
+            if not isinstance(cast_target_type, types.UnknownType) {
+                return cast_target_type;
+            }
+        }
+    }
+
     is_unbound_call = self._is_unbound_method_call(expr);
     if isinstance(caller_type, types.FunctionType) {
         arg_param_match = self.match_args_to_params(
@@ -114,6 +156,18 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         if not arg_param_match.argument_errors {
             self.validate_arg_types(arg_param_match);
         }
+        # Always collect TypeVar bindings, even when the function has no
+        # formal `type_params`. Self (PEP 673) is not a declared type param
+        # but still needs to be solved from argument types — e.g.
+        # `object.__new__(self.__class__)` binds Self → enclosing class via
+        # the `cls: type[Self]` parameter.
+        bindings = self._collect_type_var_bindings(
+            caller_type, expr, is_unbound_call=is_unbound_call
+        );
+        if bindings {
+            specialized = caller_type.specialize_func_type_vars(bindings);
+            return specialized.return_type or types.UnknownType();
+        }
         return caller_type.return_type or types.UnknownType();
     }
     if isinstance(caller_type, types.OverloadedType) {
@@ -121,10 +175,16 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         # to avoid broken overloads (e.g. LiteralString) shadowing correct ones.
         _fallback_result: types.TypeBase | None = None;
 
-        # Helper to check if a type contains Unknown (either is Unknown or has Unknown in type_args)
+        # Helper to check if a type contains Unknown or unresolved TypeVars
         def _contains_unknown(ty: types.TypeBase) -> bool {
             if isinstance(ty, types.UnknownType) {
                 return True;
+            }
+            if isinstance(ty, types.TypeVarType) {
+                return True;
+            }
+            if isinstance(ty, types.UnionType) {
+                return any(_contains_unknown(member) for member in ty.types);
             }
             if isinstance(ty, types.ClassType) and ty.private.type_args {
                 return any(_contains_unknown(arg) for arg in ty.private.type_args);
@@ -143,12 +203,26 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
 
             if not arg_param_match.argument_errors {
                 if self.validate_arg_types(arg_param_match, checking_overload=True) {
+                    ret_type = overload.return_type;
+                    # Infer method-level TypeVars from call arguments and
+                    # specialize the return type. Uses the existing
+                    # _collect_type_var_bindings infrastructure which handles
+                    # bounds, constraints, variance, and nested generics via
+                    # assign_type_to_type_var.
+                    if ret_type and _contains_unknown(ret_type) {
+                        bindings = self._collect_type_var_bindings(
+                            overload, expr, is_unbound_call=is_unbound_call
+                        );
+                        if bindings {
+                            ret_type = self._substitute_type_vars(ret_type, bindings);
+                        }
+                    }
                     # Check if return type is concrete (no Unknown types anywhere)
-                    if not _contains_unknown(overload.return_type) {
-                        return overload.return_type or types.UnknownType();
+                    if not _contains_unknown(ret_type or types.UnknownType()) {
+                        return ret_type or types.UnknownType();
                     }
                     if _fallback_result is None {
-                        _fallback_result = overload.return_type;
+                        _fallback_result = ret_type;
                     }
                 }
             }
@@ -159,8 +233,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         self.emit_diag(E1054, expr);
         return types.UnknownType();
     }
-    if isinstance(caller_type, types.ClassType)
-    and caller_type.shared == (self.prefetch and self.prefetch.type_var_class.shared) {
+    if self.is_typevar_class(caller_type) {
         # Pyright: createTypeVarType() - Extract TypeVar name and validate constraints
         type_var_name = "";
         first_constraint_arg: uni.Expr | None = None;
@@ -244,8 +317,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             constraints=constraint_types or None
         );
     }
-    if isinstance(caller_type, types.ClassType)
-    and caller_type.shared == (self.prefetch and self.prefetch.param_spec_class.shared) {
+    if self.is_paramspec_class(caller_type) {
         # Handle ParamSpec("P", bound=..., covariant=..., contravariant=...)
         # ParamSpec accepts only a name and optional bound/variance kwargs (no positional constraints).
         param_spec_name = "";
@@ -298,10 +370,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             bound=bound_type
         );
     }
-    if isinstance(caller_type, types.ClassType)
-    and caller_type.shared == (
-        self.prefetch and self.prefetch.type_var_tuple_class.shared
-    ) {
+    if self.is_type_var_tuple_class(caller_type) {
         # Handle TypeVarTuple("Ts") - only accepts a name, no variance or bound
         tvt_name = "";
         if expr.params and len(expr.params) > 0 {
@@ -323,8 +392,7 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return types.TypeVarType(name=tvt_name, is_param_spec=False);
     }
     if (
-        isinstance(caller_type, types.ClassType)
-        and caller_type.is_instantiable_class()
+        isinstance(caller_type, types.ClassType) and caller_type.is_instantiable_class()
     ) {
         matched_method: types.FunctionType | None = None;
         # NamedTuple: use synthesized __new__ with field parameters (not inherited tuple.__new__)
@@ -440,12 +508,19 @@ impl TypeEvaluator.match_args_to_params(
         }
         # For class types with explicit self, keep it in params_to_match (don't pop)
     } else {
-        # Bound call: pop self/cls as usual
-        if (
-            len(func_type.parameters) >= 1
-            and (func_type.parameters[0].is_self or func_type.parameters[0].is_cls)
-        ) {
-            params_to_match.pop(0);
+        # Bound call: pop self/cls as usual.
+        # For is_cls, only pop when the function is a classmethod (cls is auto-bound).
+        # __new__ is a staticmethod in CPython — its cls param has is_cls=True for
+        # constructor resolution but should NOT be auto-stripped in direct calls.
+        if len(func_type.parameters) >= 1 {
+            first = func_type.parameters[0];
+            if first.is_self
+            or (
+                first.is_cls
+                and func_type.function_flags & types.FunctionTypeFlags.ClassMethod
+            ) {
+                params_to_match.pop(0);
+            }
         }
     }
     param_tracker = type_utils.ParamAssignmentTracker(params_to_match);
@@ -517,7 +592,12 @@ impl TypeEvaluator._validate_constructor_method(
             has_params = len(method_type.parameters) > 1;
         }
         if has_params {
-            arg_param_match = self.match_args_to_params(expr.params, expr, method_type);
+            # During construction, self/cls is implicitly provided by the metacall.
+            # Strip it before arg matching so user args match the remaining params.
+            # This is necessary because __new__ is a staticmethod — its cls param
+            # won't be auto-stripped by match_args_to_params (no ClassMethod flag).
+            ctor_type = self._strip_implicit_self_cls(method_type);
+            arg_param_match = self.match_args_to_params(expr.params, expr, ctor_type);
             if not arg_param_match.argument_errors {
                 self.validate_arg_types(arg_param_match);
             }
@@ -528,8 +608,9 @@ impl TypeEvaluator._validate_constructor_method(
     if isinstance(method_type, types.OverloadedType) {
         matched_overload: types.FunctionType | None = None;
         for overload in method_type.overloads {
+            ctor_overload = self._strip_implicit_self_cls(overload);
             arg_param_match = self.match_args_to_params(
-                expr.params, expr, overload, checking_overload=True
+                expr.params, expr, ctor_overload, checking_overload=True
             );
 
             if not arg_param_match.argument_errors {
@@ -540,13 +621,38 @@ impl TypeEvaluator._validate_constructor_method(
             }
         }
         if matched_overload is None and method_type.overloads {
+            ctor_first = self._strip_implicit_self_cls(method_type.overloads[0]);
             self.match_args_to_params(
-                expr.params, expr, method_type.overloads[0], checking_overload=False
+                expr.params, expr, ctor_first, checking_overload=False
             );
         }
         return matched_overload;
     }
     return None;
+}
+
+"""
+Strip the implicit self/cls parameter from a method type for constructor matching.
+
+During construction (MyClass(...)), the metacall provides self/cls implicitly.
+Returns a new FunctionType with the first parameter removed if it is self or cls.
+"""
+impl TypeEvaluator._strip_implicit_self_cls(
+    method: types.FunctionType
+) -> types.FunctionType {
+    if (
+        method.parameters
+        and (method.parameters[0].is_self or method.parameters[0].is_cls)
+    ) {
+        return types.FunctionType(
+            func_name=method.func_name,
+            return_type=method.return_type,
+            parameters=method.parameters[1:],
+            function_flags=method.function_flags,
+            type_params=method.type_params,
+        );
+    }
+    return method;
 }
 
 """
@@ -589,13 +695,72 @@ Example: param=Iterable[_T], arg=list[Item] -> bindings[_T] = Item
 """
 impl TypeEvaluator.assign_type_to_type_var(
     param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
-) -> None {
+) -> bool {
     # Direct TypeVar binding
     if isinstance(param_type, types.TypeVarType) {
-        if param_type.name and param_type.name not in bindings {
-            bindings[param_type.name] = self._convert_to_instance(arg_type);
+        if not param_type.name {
+            return True;
         }
-        return;
+        resolved_arg = self._convert_to_instance(arg_type);
+
+        # Validate against bound: T(bound=X) requires arg <: X
+        if param_type.bound {
+            if not self.assign_type(resolved_arg, param_type.bound) {
+                return False;
+            }
+        }
+
+        # Validate against constraints: T(A, B) requires arg <: A or arg <: B
+        if param_type.constraints {
+            matched = False;
+            for constraint in param_type.constraints {
+                if self.assign_type(resolved_arg, constraint) {
+                    matched = True;
+                    break;
+                }
+            }
+            if not matched {
+                return False;
+            }
+        }
+
+        # Check consistency: if already bound, arg must be compatible
+        if param_type.name in bindings {
+            existing = bindings[param_type.name];
+            # Both directions: allow widening (arg assignable to existing
+            # OR existing assignable to arg)
+            if (
+                not self.assign_type(resolved_arg, existing)
+                and not self.assign_type(existing, resolved_arg)
+            ) {
+                return False;
+            }
+        } else {
+            bindings[param_type.name] = resolved_arg;
+        }
+        return True;
+    }
+
+    # Union param type: try to bind TypeVars in each member
+    if isinstance(param_type, types.UnionType) {
+        for member in param_type.types {
+            if isinstance(member, types.TypeVarType) {
+                self.assign_type_to_type_var(member, arg_type, bindings);
+            }
+        }
+        return True;
+    }
+
+    if (
+        isinstance(param_type, types.ClassType)
+        and isinstance(arg_type, types.ClassType)
+        and self._is_type_subscript(param_type)
+        and (arg_type.flags & types.TypeFlags.Instantiable)
+    ) {
+        for pta in param_type.private.type_args {
+            self.assign_type_to_type_var(pta, arg_type.clone_as_instance(), bindings);
+        }
+        return True;
     }
 
     # Generic ClassType: match type_args recursively
@@ -607,10 +772,13 @@ impl TypeEvaluator.assign_type_to_type_var(
 
         for (i, pta) in enumerate(param_type_args) {
             if i < len(arg_type_args) {
-                self.assign_type_to_type_var(pta, arg_type_args[i], bindings);
+                if not self.assign_type_to_type_var(pta, arg_type_args[i], bindings) {
+                    return False;
+                }
             }
         }
     }
+    return True;
 }
 
 
@@ -642,13 +810,18 @@ impl TypeEvaluator._infer_type_args_from_method(
 
     # Find the raw constructor method that matches the call arguments.
     # We need the RAW version (with TypeVars preserved) for inference.
-    init_method = self._find_matching_raw_constructor(caller_type, expr, matched_method);
+    init_method = self._find_matching_raw_constructor(
+        caller_type, expr, matched_method
+    );
     if not init_method {
         return [];
     }
 
-    # Match args to params and collect TypeVar bindings
-    bindings = self._collect_type_var_bindings(init_method, expr);
+    # Match args to params and collect TypeVar bindings.
+    # This is a constructor call, so `cls` is implicit and must be stripped.
+    bindings = self._collect_type_var_bindings(
+        init_method, expr, is_constructor_call=True
+    );
 
     # First, try direct binding from class type_params (works for enumerate)
     direct_args = [
@@ -663,9 +836,7 @@ impl TypeEvaluator._infer_type_args_from_method(
     # If direct binding failed, use return type approach (works for zip)
     # The return type is e.g. zip[tuple[_T1, _T2]] - substitute TypeVars and use
     ret_type = init_method.return_type;
-    if isinstance(ret_type, types.ClassType)
-    and ret_type.private
-    and ret_type.private.type_args {
+    if isinstance(ret_type, types.ClassType) and ret_type.private.type_args {
         substituted_args: list[TypeBase] = [];
         for arg in ret_type.private.type_args {
             substituted = self._substitute_type_vars(arg, bindings);
@@ -688,7 +859,13 @@ impl TypeEvaluator._substitute_type_vars(
     if isinstance(typ, types.TypeVarType) {
         return bindings.get(typ.name, typ);
     }
-    if isinstance(typ, types.ClassType) and typ.private and typ.private.type_args {
+    if isinstance(typ, types.UnionType) {
+        new_members = [
+            self._substitute_type_vars(member, bindings) for member in typ.types
+        ];
+        return types.UnionType(types=new_members);
+    }
+    if isinstance(typ, types.ClassType) and typ.private.type_args {
         new_args = [
             self._substitute_type_vars(arg, bindings) for arg in typ.private.type_args
         ];
@@ -794,9 +971,7 @@ impl TypeEvaluator._find_overload_by_arg_count(
         positional_params = sum(
             1
             for p in ovl.parameters
-            if not p.is_self
-            and not p.is_cls
-            and p.param_kind != types.ParamKind.KWONLY
+            if not p.is_self and not p.is_cls and p.param_kind != types.ParamKind.KWONLY
         );
         if positional_params == arg_count {
             return ovl;
@@ -833,7 +1008,9 @@ impl TypeEvaluator.infer_type_args(
     # Try own constructor first
     init_method = self._get_constructor_for_inference(caller_type);
     if init_method {
-        bindings = self._collect_type_var_bindings(init_method, expr);
+        bindings = self._collect_type_var_bindings(
+            init_method, expr, is_constructor_call=True
+        );
         direct_args = [
             bindings.get(tp.name, types.UnknownType())
             for tp in caller_type.shared.type_params
@@ -851,15 +1028,15 @@ impl TypeEvaluator.infer_type_args(
         }
         inherited_init = self._get_constructor_for_inference(mro_cls);
         if inherited_init {
-            bindings = self._collect_type_var_bindings(inherited_init, expr);
+            bindings = self._collect_type_var_bindings(
+                inherited_init, expr, is_constructor_call=True
+            );
             if bindings {
                 # Translate base class TypeVar names to our TypeVar names.
                 # If base declares T and we inherit as MyClass[U](Base[U]),
                 # then binding {T: int} should become {U: int}.
                 translated: dict[str, TypeBase] = {};
-                if mro_cls.private
-                and mro_cls.private.type_args
-                and mro_cls.shared.type_params {
+                if mro_cls.private.type_args and mro_cls.shared.type_params {
                     # Build reverse map: base TypeVar name -> type_arg expression
                     for (idx, base_tp) in enumerate(mro_cls.shared.type_params) {
                         if base_tp.name and base_tp.name in bindings {
@@ -951,14 +1128,94 @@ impl TypeEvaluator._has_meaningful_params(method: types.FunctionType) -> bool {
 Collect TypeVar bindings from matching call args to method params.
 """
 impl TypeEvaluator._collect_type_var_bindings(
-    method: types.FunctionType, expr: uni.FuncCall
+    method: types.FunctionType,
+    expr: uni.FuncCall,
+    is_unbound_call: bool = False,
+    is_constructor_call: bool = False
 ) -> dict[str, TypeBase] {
     bindings: dict[str, TypeBase] = {};
-    params = [
-        p
-        for p in method.parameters
-        if not p.is_self and not p.is_cls
-    ];
+    # Effective parameter list must mirror match_args_to_params so that
+    # positional args line up with the same params used during argument
+    # validation. Key cases:
+    #   - bound method call: first param is self (or cls on classmethods)
+    #     and is auto-bound → strip it.
+    #   - unbound call (Class.method(instance, ...)): keep self as-is;
+    #     inject a synthetic self when the function has no explicit self
+    #     param (matches match_args_to_params behavior).
+    #   - constructor call (`ClassName(args)` invoking `__new__`/`__init__`):
+    #     cls/self is implicit (filled in by the class construction machinery),
+    #     so strip it even when the method is a staticmethod-style `__new__`.
+    #   - direct staticmethod with is_cls first param (e.g. `object.__new__(x)`):
+    #     the cls param is NOT auto-bound; it consumes the first positional
+    #     argument and must participate in TypeVar binding. This is how
+    #     `Self` gets solved in `object.__new__(self.__class__)`.
+    params = method.parameters.copy();
+    if is_unbound_call {
+        if (len(params) == 0 or not (params[0].is_self or params[0].is_cls)) {
+            # Synthetic self: no param_type, so it consumes the receiver
+            # arg without contributing bindings.
+            params.insert(
+                0,
+                types.Parameter(
+                    name="self",
+                    category=types.ParameterCategory.Positional,
+                    param_type=None,
+                    is_self=True,
+                    param_kind=types.ParamKind.NORMAL,
+                )
+            );
+        }
+    } elif len(params) >= 1 {
+        first = params[0];
+        if first.is_self
+        or (
+            first.is_cls
+            and (
+                is_constructor_call
+                or method.function_flags & types.FunctionTypeFlags.ClassMethod
+            )
+        ) {
+            params.pop(0);
+        }
+    }
+
+    # Synthesize implicit `Self` annotations for unannotated `self`/`cls`
+    # params (PEP 673). Typeshed routinely writes `def __new__(cls) -> Self`
+    # and `def method(self) -> Self` without explicit `cls: type[Self]` /
+    # `self: Self` annotations — the type checker is expected to fill them
+    # in. Without this synthesis, calls like `object.__new__(self.__class__)`
+    # can't solve Self from the argument and the return type stays as the
+    # raw `Self` TypeVar.
+    def _effective_param_type(p: types.Parameter) -> TypeBase | None {
+        # `Any`-annotated self/cls is effectively unannotated — typeshed
+        # often uses `Any` as the placeholder. Treat both `None` and `Any`
+        # as "no annotation" and synthesize the implicit Self form.
+        is_unannotated = (
+            p.param_type is None
+            or (
+                isinstance(p.param_type, types.ClassType)
+                and self.prefetch is not None
+                and self.prefetch.any_class is not None
+                and p.param_type.shared == self.prefetch.any_class.shared
+            )
+        );
+        if not is_unannotated {
+            return p.param_type;
+        }
+        if p.is_self {
+            return types.TypeVarType(name="Self", is_self=True);
+        }
+        if (
+            p.is_cls
+            and self.prefetch is not None
+            and self.prefetch.type_class is not None
+        ) {
+            synth = self.prefetch.type_class.clone_as_instance();
+            synth.private.type_args = [types.TypeVarType(name="Self", is_self=True)];
+            return synth;
+        }
+        return p.param_type;
+    }
 
     param_idx = 0;
     for arg in expr.params {
@@ -966,11 +1223,12 @@ impl TypeEvaluator._collect_type_var_bindings(
             # Keyword argument - get value for type, use key for param lookup
             if isinstance(arg.key, uni.Name) {
                 for param in params {
-                    if param.name == arg.key.value and param.param_type {
-                        arg_type = self.get_type_of_expression(arg.value);
-                        self.assign_type_to_type_var(
-                            param.param_type, arg_type, bindings
-                        );
+                    if param.name == arg.key.value {
+                        eff = _effective_param_type(param);
+                        if eff is not None {
+                            arg_type = self.get_type_of_expression(arg.value);
+                            self.assign_type_to_type_var(eff, arg_type, bindings);
+                        }
                         break;
                     }
                 }
@@ -979,9 +1237,10 @@ impl TypeEvaluator._collect_type_var_bindings(
         } elif param_idx < len(params) {
             # Positional argument
             param = params[param_idx];
-            if param.param_type {
+            eff = _effective_param_type(param);
+            if eff is not None {
                 arg_type = self.get_type_of_expression(arg);
-                self.assign_type_to_type_var(param.param_type, arg_type, bindings);
+                self.assign_type_to_type_var(eff, arg_type, bindings);
             }
             param_idx += 1;
         }

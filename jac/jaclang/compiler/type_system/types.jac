@@ -122,13 +122,17 @@ obj AnyType(TypeBase) {
 obj ModuleType(TypeBase) {
     has mod_name: str = "",
         file_uri: Path = Path(""),
-        symbol_table: SymbolTable = None,
+        symbol_table: SymbolTable | None = None,
         # Module source flags (similar to Pyright's SourceFileInfo)
         # These are computed once when the module is loaded based on file path.
         is_stub_file: bool = False,  # True if .pyi file
         is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
         is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
-        is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
+        is_builtin_stub: bool = False,  # True if builtins.pyi, abc.pyi, etc.
+        # True for modules backed by a file in a language the Jac compiler
+        # cannot parse (e.g. .js/.ts/.css/assets). Lookups against these
+        # modules yield AnyType (gradual) instead of erroring on missing names.
+        is_external: bool = False;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
@@ -142,6 +146,10 @@ obj ModuleType(TypeBase) {
 TypeVarType supports two mutually exclusive constraint modes:
 1. bound - TypeVar("T", bound=Foo) means T can be Foo or any subclass
 2. constraints - TypeVar("T", Foo, Bar) means T must be exactly Foo or Bar
+
+The is_class_type_param flag distinguishes:
+- Class type parameters (T from class Foo[T]) - should be substituted during specialization
+- Module-level TypeVars (glob T = TypeVar('T', bound=int)) - should NOT be substituted
 """
 obj TypeVarType(TypeBase) {
     has name: str = "",
@@ -149,6 +157,7 @@ obj TypeVarType(TypeBase) {
         is_contravariant: bool = False,
         is_self: bool = False,
         is_param_spec: bool = False,
+        is_class_type_param: bool = False,
         bound: (TypeBase | None) = None,
         constraints: (list[TypeBase] | None) = None;
 
@@ -161,12 +170,22 @@ obj TypeVarType(TypeBase) {
 
 """Represents a class type."""
 obj ClassType(TypeBase) {
-    has shared: (ClassType.ClassDetailsShared | None) = None,
-        private: (ClassType.ClassDetailsPrivate | None) = None;
+    # `private` is per-instance and always populated (the default
+    # factory creates a fresh `ClassDetailsPrivate` for every instance
+    # that doesn't override it).  `_shared` may legitimately be None
+    # for detached property ClassTypes produced by `create_property`
+    # without an enclosing class context — read `_shared` directly
+    # when handling that case, or use the `shared` accessor (which
+    # asserts non-null) for the common case.
+    has _shared: (ClassType.ClassDetailsShared | None) = None,
+        private: ClassType.ClassDetailsPrivate = ClassType.ClassDetailsPrivate();
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
+
+    @property
+    def shared -> ClassType.ClassDetailsShared;
 
     """
 Holds the shared details of class type.
@@ -178,7 +197,7 @@ Holds the shared details of class type.
     obj ClassDetailsShared {
         has class_name: str,
             symbol_table: SymbolTable,
-            mro: list[ClassType],
+            mro: list[ClassType] = [],
             type_params: (list[TypeVarType] | None) = None,
             base_classes: (list[TypeBase] | None) = None,
             is_builtin_class: bool = False,
@@ -225,7 +244,6 @@ Holds the private details of class type.
         def postinit -> None;
     }
 
-    def postinit -> None;
     def __str__ -> str;
     def clone_as_instance -> ClassType;
     def clone_as_class -> ClassType;
@@ -307,7 +325,8 @@ obj FunctionType(TypeBase) {
         return_type: (TypeBase | None) = None,
         parameters: (list[Parameter] | None) = None,
         # Using int for bitwise flag operations (FunctionTypeFlags values combined)
-        function_flags: int = 0;
+        function_flags: int = 0,
+        type_params: (list[TypeVarType] | None) = None;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Function;
@@ -316,6 +335,7 @@ obj FunctionType(TypeBase) {
     def postinit -> None;
     def __str__ -> str;
     def specialize(class_type: ClassType) -> FunctionType;
+    def specialize_func_type_vars(solution: dict[(str, TypeBase)]) -> FunctionType;
     def is_gradual_callable_form -> bool;
     def is_from_callable_annotation -> bool;
 }

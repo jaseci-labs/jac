@@ -15,9 +15,7 @@ cl {
                     fontFamily: "Arial, sans-serif"
                 }}
             >
-                <h1>
-                    🍔 Burger Counter App
-                </h1>
+                <h1>🍔 Burger Counter App</h1>
                 <img
                     src="/static/assets/burger.png"
                     alt="Delicious Burger"
@@ -31,13 +29,11 @@ cl {
                 />
                 <p style={{fontSize: "18px", margin: "20px 0"}}>
                     You've clicked the burger
-                    <strong>
-                        {count}
-                    </strong>
+                    <strong>{count}</strong>
                     times!
                 </p>
                 <button
-                    onClick={lambda e: Any  -> None { count = count + 1;}}
+                    onClick={lambda e: Any { count = count + 1;}}
                     style={{
                         padding: "10px 20px",
                         fontSize: "16px",

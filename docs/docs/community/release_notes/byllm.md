@@ -2,11 +2,40 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.5.8 (Unreleased)
+## byllm 0.6.4 (Latest Release)
+
+- **Fix: `ModelPool` streaming fallback infinite recursion**: Fixed a bug where `ModelPool` with `strategy="fallback"` and `stream=True` caused LiteLLM Router's `stream_with_fallbacks` to recurse infinitely on primary model failure. The fix calls `Router._completion()` directly per model with `fallbacks=[]`, avoiding recursive re-entry. A `yielded` guard prevents corrupted output on mid-stream failures by propagating the exception instead of silently falling back. Fallback alias construction is deduplicated into a `_fallback_model_names` field populated in `postinit`.
+- **Add: Automatic Anthropic prompt caching**: Caches system prompt, tool schemas, and ReAct conversation history across iterations for Claude models, significantly reducing input token costs. Enabled by default.
+- **Fix: Emit `usage` StreamEvent for no-tool streaming calls**: The usage event now fires for every streaming invocation, not just ReAct loops with tools, so token accounting is complete across all `by llm()` shapes.
+
+## byllm 0.6.3
+
+- **Add: `ModelPool` for LLM fallback and load-balancing**: Introduced `ModelPool` as a drop-in replacement for `Model` - use `by pool()` exactly like `by llm()`. Internally wraps a LiteLLM `Router` running in-process (no subprocess, no proxy server) that handles fallback, retries, and load-distribution across a list of `Model` instances. Exported from `byllm.lib`. Six routing strategies are supported: `"fallback"` (ordered priority, next model on failure), `"simple-shuffle"` (random pick per call - ideal for free-tier key rotation across multiple API keys), `"cost-based-routing"` (cheapest deployment via LiteLLM's built-in cost database), `"latency-based-routing"` (fastest by EWMA-tracked response time), `"usage-based-routing"` (lowest current TPM/RPM usage), and `"least-busy"` (fewest in-flight requests). Backward compatible - no changes needed to existing `by llm()` call sites.
+- **Add: Global `ModelPool` defaults via `jac.toml`**: A new `[plugins.byllm.fallback]` section in `jac.toml` provides global defaults for `ModelPool` construction - `strategy` (default `"fallback"`), `num_retries` (default `1`), and `timeout` (default `60.0` seconds).
+
+## byllm 0.6.2
+
+- **Type Safety: `BaseLLM` implements `LLMModel` protocol**: `BaseLLM` now extends the `LLMModel` protocol defined in jaclang core, and the byllm plugin's `default_llm` hook returns `LLMModel` instead of `object`. This enables type-safe LLM model references across the full chain from the type checker through the runtime.
+
+## byllm 0.6.1
+
+- **Add: ReAct loop interrupt via `on_iteration` callback**: New `on_iteration` parameter on `by llm()` fires between iterations, returning `CONTINUE`, `ABORT`, or `ABORT_WITH_SUMMARY`. Enables stop buttons, token budgets, and doom-loop detection. Backward compatible.
+
+## byllm 0.6.0
+
+- **Security: Pin litellm to safe versions**: litellm v1.82.7+ was compromised with a credential-stealing payload (supply chain attack). Pinned dependency to `<=1.82.6` which is verified safe. See [BerriAI/litellm#24512](https://github.com/BerriAI/litellm/issues/24512) for details.
+
+## byllm 0.5.9
+
+- 1 small changes.
+
+## byllm 0.5.8
 
 - **Add: Configurable LiteLLM debug logging via `jac.toml`**: LiteLLM's verbose logging (HTTP requests, retries, headers) can now be toggled via `[plugins.byllm.litellm] debug = true/false` in `jac.toml`. Defaults to `false` (quiet). When disabled, `_disable_debugging()` silences LiteLLM's internal loggers, reducing stdout noise. byLLM's own exception logging (`logger.error`) is unaffected, errors are always logged and propagated regardless of this setting.
+- **Add: LLM Telemetry & Observability**: Introduced a lightweight agent telemetry publish mechanism (`byllm/telemetry.jac`) that emits structured per-invocation records (caller, user prompt, agent response, token usage, cost, and latency) at the end of every `Model.invoke()` call without storing any data in byllm itself.
+- **Add: Invocation ID correlation**: `Model.invoke()` now stamps a UUID `invocation_id` across all LLM calls in a ReAct loop, enabling external consumers (e.g., jac-scale) to correlate per-call litellm events with the top-level agent invocation into a single unified trace.
 
-## byllm 0.5.7 (Latest Release)
+## byllm 0.5.7
 
 ## byllm 0.5.6
 

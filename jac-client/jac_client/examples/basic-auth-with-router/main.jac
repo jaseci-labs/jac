@@ -20,7 +20,7 @@ cl {
         isLoggedIn = jacIsLoggedIn();
         navigate = useNavigate();
 
-        def handleLogout(e: Any) -> None {
+        def handleLogout(e: Any) {
             e.preventDefault();
             jacLogout();
             navigate("/login");
@@ -129,11 +129,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) -> None {
+        def handleUsernameChange(e: Any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) -> None {
+        def handlePasswordChange(e: Any) {
             password = e.target.value;
         }
 
@@ -222,9 +222,7 @@ cl {
                         }}
                     >
                         Need an account?
-                        <Link to="/signup">
-                            Sign up
-                        </Link>
+                        <Link to="/signup">Sign up</Link>
                     </p>
                 </div>
             </div>;
@@ -253,11 +251,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) -> None {
+        def handleUsernameChange(e: Any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) -> None {
+        def handlePasswordChange(e: Any) {
             password = e.target.value;
         }
 
@@ -346,9 +344,7 @@ cl {
                         }}
                     >
                         Have an account?
-                        <Link to="/login">
-                            Login
-                        </Link>
+                        <Link to="/login">Login</Link>
                     </p>
                 </div>
             </div>;

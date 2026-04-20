@@ -1,4 +1,19 @@
 import from jaclang.cli.console { console }
+import from jac_client.plugin.utils { get_bun }
+import from jaclang.runtimelib.client_bundle { ClientBundleError }
+
+
+"""Resolve the bun binary path or raise an error."""
+def _require_bun -> str {
+    bun = get_bun();
+    if not bun {
+        raise ClientBundleError(
+            'Bun is required but could not be found or installed. '
+            'Install manually: https://bun.sh'
+        ) from None;
+    }
+    return bun;
+}
 
 """Get the client build directory from project config."""
 impl ViteBundler._get_client_dir(self: ViteBundler) -> Path {
@@ -308,7 +323,14 @@ impl ViteBundler._format_define_entries(
 ) -> str {
     # Vite define values must be valid JS expressions.
     # _to_js_expr() converts any Python/TOML value to a valid JS expression.
-    entries = ["    '" + JAC_API_BASE_URL_KEY + "': " + _to_js_expr(api_base_url)];
+    entries = [];
+    # Only add API base URL if explicitly set - skip for desktop builds where
+    # Tauri injects it at runtime via initialization_script
+    if api_base_url {
+        entries.append(
+            "    '" + JAC_API_BASE_URL_KEY + "': " + _to_js_expr(api_base_url)
+        );
+    }
     for (key, value) in custom_defines.items() {
         entries.append("    '" + key + "': " + _to_js_expr(value));
     }
@@ -334,13 +356,21 @@ impl ViteBundler._generate_vite_config_content(
     # Calculate paths for aliases
     if entry_relative.endswith('/build/main.js') {
         compiled_utils_relative = entry_relative[:-13] + '/compiled/client_runtime.js';
+        compiled_pwa_relative = entry_relative[:-13] + '/compiled/pwa_runtime.js';
         compiled_assets_relative = entry_relative[:-13] + '/compiled/assets';
     } elif entry_relative.endswith('build/main.js') {
         compiled_utils_relative = 'compiled/client_runtime.js';
+        compiled_pwa_relative = 'compiled/pwa_runtime.js';
         compiled_assets_relative = 'compiled/assets';
     } else {
         compiled_utils_relative = 'compiled/client_runtime.js';
+        compiled_pwa_relative = 'compiled/pwa_runtime.js';
         compiled_assets_relative = 'compiled/assets';
+    }
+    # Check if PWA is enabled to add @jac/pwa alias
+    pwa_alias_str = '';
+    if self.config_loader.is_pwa_enabled() {
+        pwa_alias_str = f'\n      "@jac/pwa": path.resolve(buildDir, "{compiled_pwa_relative}"),';
     }
     plugins = [];
     plugin_imports = [];
@@ -443,9 +473,7 @@ export default defineConfig({{
 {define_str}
   }},
   plugins: [
-    jacErrorReporter(),{(
-            newline + plugins_str + newline + '  '
-        )
+    jacErrorReporter(),{(newline + plugins_str + newline + '  ')
             if plugins_str
             else ''}],
   root: buildDir,
@@ -482,12 +510,32 @@ export default defineConfig({{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
       }},
+      "/docs": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/openapi.json": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/admin": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/graph": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
+      "/redoc": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
     }},
 {server_config_str}
   }},
   resolve: {{
     alias: {{
-      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
+      "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}
       "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
     }},
     extensions: [{extensions_str}],
@@ -583,9 +631,7 @@ export default defineConfig({{
 {define_str}
   }},
   plugins: [
-    jacSourceMapper(),{(
-            newline + plugins_str + newline + '  '
-        )
+    jacSourceMapper(),{(newline + plugins_str + newline + '  ')
             if plugins_str
             else ''}],
   root: buildDir, // base folder (.jac/client/) so vite can find node_modules
@@ -610,7 +656,7 @@ export default defineConfig({{
   publicDir: false,
 {server_section}  resolve: {{
       alias: {{
-        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),
+        "@jac/runtime": path.resolve(buildDir, "{compiled_utils_relative}"),{pwa_alias_str}
         "@jac-client/assets": path.resolve(buildDir, "{compiled_assets_relative}"),{user_aliases_str}
       }},
       extensions: [{extensions_str}],
@@ -689,13 +735,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
     import sys;
     import time;
     import shutil;
-    import from jac_client.plugin.utils { ensure_bun_available, ensure_client_deps }
-    # Ensure bun is available before proceeding
-    if not ensure_bun_available() {
-        raise ClientBundleError(
-            'Bun is required. Install manually: https://bun.sh'
-        ) from None;
-    }
+    import from jac_client.plugin.utils { ensure_client_deps }
+    # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
+    bun = _require_bun();
     # Ensure client npm deps are configured; prompt to install defaults if missing
     if not ensure_client_deps(self.config_loader) {
         raise ClientBundleError(
@@ -728,40 +770,33 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             if configs_npmrc.exists() and not build_npmrc.exists() {
                 shutil.copy2(configs_npmrc, build_npmrc);
             }
-            try {
-                # Install to .jac/client/node_modules with progress feedback
-                console.print("\n  ⏳ Installing dependencies...\n");
-                start_time = time.time();
-                result = subprocess.run(
-                    ['bun', 'install'],
-                    cwd=build_dir,
-                    check=False,
-                    text=True,
-                    capture_output=True
-                );
-                elapsed = time.time() - start_time;
-                if result.returncode != 0 {
-                    error_output = result.stderr or result.stdout;
-                    error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
-                    raise ClientBundleError(error_msg) from None;
-                }
-                console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
-            } except FileNotFoundError {
-                # This shouldn't happen since we check for bun at the start
-                raise ClientBundleError(
-                    'Bun command not found. Install Bun: https://bun.sh'
-                ) from None;
+            # Install to .jac/client/node_modules with progress feedback
+            console.print("\n  ⏳ Installing dependencies...\n");
+            start_time = time.time();
+            result = subprocess.run(
+                [bun, 'install'],
+                cwd=build_dir,
+                check=False,
+                text=True,
+                capture_output=True
+            );
+            elapsed = time.time() - start_time;
+            if result.returncode != 0 {
+                error_output = result.stderr or result.stdout;
+                error_msg = f"Dependency installation failed after {elapsed:.1f}s\n\n{error_output}\nCommand: bun install";
+                raise ClientBundleError(error_msg) from None;
             }
+            console.print(f"\n  ✔ Dependencies installed ({elapsed:.1f}s)");
         }
         if self.config_path {
             # Make config path relative to build_dir (where vite runs from)
             try {
                 config_rel = self.config_path.relative_to(build_dir);
-                command = ['bun', 'x', 'vite', 'build', '--config', str(config_rel)];
+                command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
             } except ValueError {
                 # Config is outside client build dir, use absolute path
                 command = [
-                    'bun',
+                    bun,
                     'x',
                     'vite',
                     'build',
@@ -773,9 +808,9 @@ impl ViteBundler.build(self: ViteBundler, entry_file: Optional[Path] = None) -> 
             generated_config = self.create_vite_config(entry_file);
             # Config is in configs/, make it relative to build_dir
             config_rel = generated_config.relative_to(build_dir);
-            command = ['bun', 'x', 'vite', 'build', '--config', str(config_rel)];
+            command = [bun, 'x', 'vite', 'build', '--config', str(config_rel)];
         } else {
-            command = ['bun', 'run', 'build'];
+            command = [bun, 'run', 'build'];
         }
         # Run vite from client build directory so it can find node_modules
         console.print("\n  ⏳ Building client bundle...\n");
@@ -827,20 +862,18 @@ impl ViteBundler.init(
 }
 
 """Create config files from jac.toml [plugins.client.configs].
+Each key in [plugins.client.configs] becomes a <name>.config.<ext> file.
 
-Generates JavaScript config files (e.g., postcss.config.js, tailwind.config.js)
-from TOML configuration. Each key in [plugins.client.configs] becomes a config file.
-
-Example jac.toml:
+CommonJS (default) - plain TOML data, no meta keys:
     [plugins.client.configs.postcss]
     plugins = ["tailwindcss", "autoprefixer"]
+    → postcss.config.js:  module.exports = { "plugins": [...] };
 
-    [plugins.client.configs.tailwind]
-    content = ["./src/**/*.{js,jsx}"]
-
-This generates:
-    - .jac/client/configs/postcss.config.js
-    - .jac/client/configs/tailwind.config.js
+Raw template - write file content verbatim (any extension):
+    [plugins.client.configs.source]
+    extension = ".ts"
+    raw = "export default { foo: 'bar' };"
+    → source.config.ts:  export default { foo: 'bar' };
 """
 impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     configs = self.config_loader.get_configs();
@@ -852,11 +885,18 @@ impl ViteBundler.create_config_files(self: ViteBundler) -> list[Path] {
     configs_dir.mkdir(parents=True, exist_ok=True);
     created_files: list[Path] = [];
     for (config_name, config_data) in configs.items() {
-        config_path = configs_dir / f'{config_name}.config.js';
+        if not isinstance(config_data, dict) {
+            continue;
+        }
+        extension = config_data.get('extension', '.js');
+        config_path = configs_dir / f'{config_name}.config{extension}';
 
-        # Convert the TOML config to JavaScript module.exports
-        js_content = _toml_config_to_js(config_name, config_data);
-        config_path.write_text(js_content, encoding='utf-8');
+        if 'raw' in config_data {
+            file_content = _toml_config_from_raw(config_data);
+        } else {
+            file_content = _toml_config_to_js(config_data);
+        }
+        config_path.write_text(file_content, encoding='utf-8');
         created_files.append(config_path);
     }
     return created_files;
@@ -921,18 +961,29 @@ impl ViteBundler.create_npmrc(self: ViteBundler) -> Optional[Path] {
     return npmrc_path;
 }
 
-"""Convert TOML config data to JavaScript config file content.
+"""Convert TOML config data to CommonJS module.exports."""
+def _toml_config_to_js(config_data: dict) -> str {
+    return f"module.exports = {json.dumps(
+        {
+            k: v
+            for (k, v) in config_data.items()
+            if k not in CONFIG_META_KEYS
+        },
+        indent=2
+    )};\n";
+}
 
-Generates a generic module.exports with the config data as JSON.
-"""
-def _toml_config_to_js(config_name: str, config_data: dict) -> str {
-    return f"module.exports = {json.dumps(config_data, indent=2)};\n";
+"""Write the 'raw' field verbatim as config file content."""
+def _toml_config_from_raw(config_data: dict) -> str {
+    content = str(config_data.get('raw', '')).strip();
+    return content + '\n' if content else '';
 }
 
 """Build the Vite dev server command."""
 def _build_vite_dev_command(config_rel: Path, port: int) -> list[str] {
+    bun = _require_bun();
     return [
-        'bun',
+        bun,
         'x',
         'vite',
         '--config',
@@ -970,11 +1021,8 @@ This runs in a separate thread to avoid blocking the main thread.
 Buffers output before ready so errors can be shown if startup fails.
 """
 def _forward_vite_output(
-    proc: Any,
-    ready_event: "threading.Event",
-    sys_module: Any,
-    output_buffer: list[str]
-) -> None {
+    proc: Any, ready_event: "threading.Event", sys_module: Any, output_buffer: list[str]
+) {
     try {
         for line in iter(proc.stdout.readline, '') {
             if not line {
@@ -1087,6 +1135,7 @@ impl ViteBundler._ensure_dev_index_html(self: ViteBundler, build_dir: Path) -> N
 
 """Ensure dev dependencies are installed."""
 impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) -> None {
+    bun = _require_bun();
     import time;
     node_modules = build_dir / 'node_modules';
     if node_modules.exists() {
@@ -1111,7 +1160,7 @@ impl ViteBundler._ensure_dev_dependencies(self: ViteBundler, build_dir: Path) ->
         console.print("\n  ⏳ Installing dependencies...\n");
         start_time = time.time();
         result = subprocess.run(
-            ['bun', 'install'], cwd=build_dir, check=False, text=True
+            [bun, 'install'], cwd=build_dir, check=False, text=True
         );
         elapsed = time.time() - start_time;
 

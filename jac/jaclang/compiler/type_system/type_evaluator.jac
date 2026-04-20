@@ -29,6 +29,7 @@ with entry {
 import from jaclang.compiler.type_system { operations }
 import from jaclang.compiler.type_system { type_utils }
 import from jaclang.compiler.type_system { properties }
+import from jaclang.compiler.type_system { enum_utils }
 import from jaclang.compiler.type_system.types { TypeBase }
 
 import from jaclang.jac0core.diagnostics {
@@ -80,50 +81,75 @@ import from jaclang.jac0core.diagnostics {
     E1097,
     E1098,
     E1099,
-    W1100
+    E1100,
+    E1101,
+    E1102,
+    E1103,
+    E1104,
+    E1110,
+    E1111,
+    W1050,
+    W1051,
+    W1100,
+    W1101,
+    W1102
 }
 
 """Types whose definitions are prefetched and cached by the type evaluator."""
 obj PrefetchedTypes {
-    has none_type_class: TypeBase | None = None,
-        object_class: TypeBase | None = None,
-        type_class: TypeBase | None = None,
-        union_type_class: TypeBase | None = None,
-        awaitable_class: TypeBase | None = None,
-        function_class: TypeBase | None = None,
-        method_class: TypeBase | None = None,
-        tuple_class: TypeBase | None = None,
-        bool_class: TypeBase | None = None,
-        int_class: TypeBase | None = None,
-        float_class: TypeBase | None = None,
-        str_class: TypeBase | None = None,
-        bytes_class: TypeBase | None = None,
-        dict_class: TypeBase | None = None,
-        list_class: TypeBase | None = None,
-        module_type_class: TypeBase | None = None,
-        typed_dict_class: TypeBase | None = None,
-        typed_dict_private_class: TypeBase | None = None,
-        supports_keys_and_get_item_class: TypeBase | None = None,
-        mapping_class: TypeBase | None = None,
-        template_class: TypeBase | None = None,
-        type_var_class: TypeBase | None = None,
-        param_spec_class: TypeBase | None = None,
-        type_var_tuple_class: TypeBase | None = None,
-        classmethod_class: TypeBase | None = None,
+    has none_type_class: types.ClassType | None = None,
+        object_class: types.ClassType | None = None,
+        type_class: types.ClassType | None = None,
+        union_type_class: types.ClassType | None = None,
+        awaitable_class: types.ClassType | None = None,
+        function_class: types.ClassType | None = None,
+        method_class: types.ClassType | None = None,
+        tuple_class: types.ClassType | None = None,
+        bool_class: types.ClassType | None = None,
+        int_class: types.ClassType | None = None,
+        float_class: types.ClassType | None = None,
+        str_class: types.ClassType | None = None,
+        bytes_class: types.ClassType | None = None,
+        dict_class: types.ClassType | None = None,
+        list_class: types.ClassType | None = None,
+        module_type_class: types.ClassType | None = None,
+        typed_dict_class: types.ClassType | None = None,
+        typed_dict_private_class: types.ClassType | None = None,
+        supports_keys_and_get_item_class: types.ClassType | None = None,
+        mapping_class: types.ClassType | None = None,
+        template_class: types.ClassType | None = None,
+        type_var_class: types.ClassType | None = None,
+        param_spec_class: types.ClassType | None = None,
+        type_var_tuple_class: types.ClassType | None = None,
+        classmethod_class: types.ClassType | None = None,
         # Prefetch from typing.pyi file
-        protocol_class: TypeBase | None = None,
-        any_class: TypeBase | None = None,
-        callable_class: TypeBase | None = None,
+        protocol_class: types.ClassType | None = None,
+        any_class: types.ClassType | None = None,
+        callable_class: types.ClassType | None = None,
         # Prefetched from jac_builtins.pyi file
-        final_class: TypeBase | None = None,
-        literal_string_class: TypeBase | None = None,
-        root_class: TypeBase | None = None,
-        node_class: TypeBase | None = None,
-        walker_class: TypeBase | None = None,
-        jsx_element_class: TypeBase | None = None,
+        final_class: types.ClassType | None = None,
+        literal_string_class: types.ClassType | None = None,
+        root_class: types.ClassType | None = None,
+        node_class: types.ClassType | None = None,
+        walker_class: types.ClassType | None = None,
+        jsx_element_class: types.ClassType | None = None,
+        # Intrinsic element prop types (from dom_types.pyi)
+        html_common_props_class: types.ClassType | None = None,
+        jsx_intrinsic_elements_class: types.ClassType | None = None,
+        # Fixed-width numeric types
+        i8_class: types.ClassType | None = None,
+        u8_class: types.ClassType | None = None,
+        i16_class: types.ClassType | None = None,
+        u16_class: types.ClassType | None = None,
+        i32_class: types.ClassType | None = None,
+        u32_class: types.ClassType | None = None,
+        i64_class: types.ClassType | None = None,
+        u64_class: types.ClassType | None = None,
+        f32_class: types.ClassType | None = None,
+        f64_class: types.ClassType | None = None,
         # Prefetched enum base class
-        enum_class: TypeBase | None = None,
-        set_class: TypeBase | None = None;
+        enum_class: types.ClassType | None = None,
+        set_class: types.ClassType | None = None;
 }
 
 """Represents a single entry in the symbol resolution stack."""
@@ -144,16 +170,88 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
+"""Wraps the identity of what is being narrowed (a symbol or a dotted expression)."""
+obj NarrowingTarget {
+    has key: str,  # "x" or "bmw.speed"
+        declared_type: TypeBase,
+        symbol: uni.Symbol | None = None;  # None for expression-based narrowing
+}
+
 """Represents a narrowing operation from a conditional predicate."""
 obj NarrowingPredicate {
-    has sym_name: str,
+    has key: str,
         narrow_type: TypeBase,
         is_inverted: bool = False;
 }
 
+"""Classification of a leaf narrowing condition."""
+enum NarrowingKind {
+    ISINSTANCE = "isinstance",
+    CALLABLE = "callable",
+    NONE_IS = "none_is",
+    NONE_IS_NOT = "none_is_not",
+    TRUTHINESS = "truthiness",
+    LITERAL_EQ = "literal_eq",
+    LITERAL_NE = "literal_ne"
+}
+
+"""Result of classifying a leaf condition node.
+
+Captures the narrowing-kind-specific info extracted from the AST.
+Structural wrappers (parens, NOT, AND, OR) are handled by callers
+before reaching classification.
+"""
+obj ConditionInfo {
+    has kind: NarrowingKind,
+        key: str,
+        narrow_type: (TypeBase | None) = None;
+}
+
 """Type evaluator for JacLang."""
 obj TypeEvaluator {
-    def init(program: "JacProgram") -> None;
+    has program: "JacProgram",
+        # Path constants - initialized in postinit (use __file__ from impl)
+        _BUILTINS_STUB_FILE_PATH: str by postinit,
+        _TYPING_STUB_FILE_PATH: str by postinit,
+        _TYPES_STUB_FILE_PATH: str by postinit,
+        _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
+        _DOM_TYPES_STUB_FILE_PATH: str by postinit,
+        _ENUM_STUB_FILE_PATH: str by postinit,
+        _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
+            "Union",
+            "Protocol",
+            "Callable",
+            "Type",
+            "NoReturn",
+            "ClassVar",
+            "Optional",
+            "Tuple",
+            "Final",
+            "Literal",
+            "TypedDict"
+        ),
+        # Resolution and state
+        symbol_resolution_stack: list[SymbolResolutionStackEntry] = [],
+        prefetch: PrefetchedTypes by postinit,
+        _pass: object | None = None,
+        builtins_module: uni.Module | None = None,
+        # Type narrowing (CFG-based only — no scope stack)
+        _flow_node_type_cache: dict[tuple, types.TypeBase | None] = {},
+        _flow_pending_symbols: set[int] by postinit,
+        _flow_pending_keys: set[str] by postinit,
+        _module_type_cache: dict[str, types.ModuleType] = {},
+        # Temporary type overrides for isinstance narrowing within AND conditions.
+        # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
+        # that RHS operands see the narrowed type from LHS isinstance checks.
+        _and_narrowing_overrides: dict[int, TypeBase] = {},
+        # Stub modules - initialized in postinit
+        typing_module: uni.Module by postinit,
+        types_module: uni.Module by postinit,
+        enum_module: uni.Module by postinit,
+        jac_builtins_module: uni.Module by postinit,
+        dom_types_module: uni.Module by postinit;
+
+    def postinit -> None;
     def _load_stub_module(path: str) -> uni.Module;
     def _get_type_from_module(module: uni.Module, name: str) -> TypeBase;
     def _prefetch_types;
@@ -168,12 +266,24 @@ obj TypeEvaluator {
     # for the following functions.
     def _import_module_from_path(path: str) -> uni.Module;
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
+    def _reattach_impl_modules(mod: uni.Module, source_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
     def _try_resolve_forward_ref(expr: uni.String) -> TypeBase | None;
     def get_type_of_module(node_: uni.ModulePath) -> types.TypeBase;
     def get_type_of_module_item(node_: uni.ModuleItem) -> types.TypeBase;
+    def _resolve_star_import_symbol(
+        mod: uni.Module, name: str, visited: set[int] | None = None
+    ) -> uni.Symbol | None;
+
     def _extract_type_params(node_: uni.Archetype) -> list[types.TypeVarType];
+    def _collect_typevars_from_base(
+        base_class: uni.AtomTrailer,
+        outer_names: set[str],
+        seen_names: set[str],
+        type_params: list[types.TypeVarType]
+    ) -> None;
+
     def get_type_of_class(node_: uni.Archetype) -> types.ClassType;
     def get_type_of_enum(node_: uni.Enum) -> types.ClassType;
     def get_type_of_ability(node_: uni.Ability) -> TypeBase;
@@ -191,6 +301,9 @@ obj TypeEvaluator {
     def is_paramspec_class(ty: TypeBase) -> bool;
     # Check if a type is the TypeVarTuple class itself (not a TypeVarType instance).
     def is_type_var_tuple_class(ty: TypeBase) -> bool;
+    # Match a typing special form by canonical name from stdlib stubs so
+    # typing.X and typing_extensions.X (distinct classes in typeshed) both count.
+    def _is_typing_special_form(ty: TypeBase, name: str) -> bool;
     # Comments from pyright:
     # // Determines if the source type can be assigned to the dest type.
     # // If constraint are provided, type variables within the destType are
@@ -215,9 +328,21 @@ obj TypeEvaluator {
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
-    def _is_symbol_property(symbol: uni.Symbol) -> bool;
-    # Property type utilities
+    # Shared classifier: single decorator walk, returns the property kind.
+    def _classify_property_symbol(symbol: uni.Symbol) -> type_utils.PropertyWriteKind;
+    # Property type utilities — both delegate to _classify_property_symbol.
     def get_getter_type_from_property(symbol: uni.Symbol) -> (TypeBase | None);
+    # Classifies a property symbol's writability for assignment checking.
+    # Returns a PropertyWriteResult with kind:
+    #   NOT_PROPERTY → normal field, caller should fall through
+    #   READ_ONLY    → @property with no setter, assignment is illegal
+    #   WRITABLE     → @cached_property or @property+setter, write_type set
+    def get_property_write_type(symbol: uni.Symbol) -> type_utils.PropertyWriteResult;
+    # Extract setter value-param type from a @name.setter overload symbol.
+    def _get_setter_value_type(
+        symbol: uni.Symbol, prop_name: str
+    ) -> (TypeBase | None);
+
     def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol
@@ -228,6 +353,12 @@ obj TypeEvaluator {
     # type and inferred type, we're going to unify them (if it's required
     # in the future, we can refactor this).
     def _get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
+    # Return EnumMemberType if `node_` is the Name of an enum member
+    # declaration (either `RED = 1` target or bare `RED,` inside enum body).
+    # Returns None when the Name is not an enum member declaration.
+    def _get_enum_member_type_for_decl(
+        node_: uni.Name
+    ) -> (types.EnumMemberType | None);
     # gets member type and specializes it with class type_args
     def get_type_of_member(member: Any, class_type: types.ClassType) -> TypeBase;
     # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
@@ -248,6 +379,7 @@ obj TypeEvaluator {
 
     def resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol;
     def _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase;
+    def _resolution_scope_for(expr: uni.UniNode) -> uni.UniScopeNode | None;
     def _is_expr_self(expr: uni.Expr) -> bool;
     def _is_expr_super(expr: uni.Expr) -> bool;
     def _get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None;
@@ -259,10 +391,25 @@ obj TypeEvaluator {
         scope: uni.Ability | uni.LambdaExpr
     ) -> TypeBase | None;
 
+    def _infer_lambda_block_return_type(body: list[uni.CodeBlockStmt]) -> TypeBase;
+    def _collect_return_types(
+        stmts: list[uni.CodeBlockStmt], out: list[TypeBase]
+    ) -> bool;
+
+    def _collect_if_else_returns(
+        else_body: uni.ElseIf | uni.ElseStmt | None, out: list[TypeBase]
+    ) -> bool;
+
     def _get_enclosing_method(nd: uni.UniNode) -> uni.Ability | None;
     def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
+    def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
+    def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
+    def _extract_tuple_element_type_path(
+        tuple_type: TypeBase, path: list[int]
+    ) -> TypeBase | None;
+
     def _convert_to_instance(jtype: TypeBase) -> TypeBase;
     def _type_in_list(ty: TypeBase, type_list: list[TypeBase]) -> bool;
     def _collect_unique_types(ty: TypeBase, result: list[TypeBase]) -> None;
@@ -280,7 +427,7 @@ obj TypeEvaluator {
     # with user-defined classes named "Callable".
     def _get_special_form_type(
         name: str, symbol_type: types.TypeBase
-    ) -> types.ClassType | None;
+    ) -> types.TypeBase | None;
     # creates Self TypeVar if symbol is typing.Self
     def create_self_type(symbol_type: types.TypeBase) -> types.TypeVarType | None;
     # --- Callable type handling (similar to Pyright's createCallableType) ---
@@ -340,6 +487,7 @@ obj TypeEvaluator {
         expr: uni.FuncCall, method_type: TypeBase
     ) -> types.FunctionType | None;
 
+    def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
         method_member: Any, caller_type: types.ClassType
     ) -> TypeBase;
@@ -349,7 +497,7 @@ obj TypeEvaluator {
     # -------------------------------------------------------------------------
     def assign_type_to_type_var(
         param_type: TypeBase, arg_type: TypeBase, bindings: dict[str, TypeBase]
-    ) -> None;
+    ) -> bool;
 
     def infer_type_args(
         caller_type: types.ClassType, expr: uni.FuncCall
@@ -381,9 +529,30 @@ obj TypeEvaluator {
 
     def _has_meaningful_params(method: types.FunctionType) -> bool;
     def _collect_type_var_bindings(
-        method: types.FunctionType, expr: uni.FuncCall
+        method: types.FunctionType,
+        expr: uni.FuncCall,
+        is_unbound_call: bool = False,
+        is_constructor_call: bool = False
     ) -> dict[str, TypeBase];
 
+    # -------------------------------------------------------------------------
+    # JSX prop validation
+    # -------------------------------------------------------------------------
+    def _validate_jsx_props(
+        expr: uni.JsxElement, expected_type: TypeBase | None = None
+    ) -> None;
+
+    def _resolve_jsx_component_type(
+        name: uni.JsxElementName
+    ) -> types.FunctionType | None;
+
+    def _get_intrinsic_props_type(tag_name: str) -> types.ClassType | None;
+    def _validate_component_jsx_props(
+        expr: uni.JsxElement, component_name: str
+    ) -> None;
+
+    def _validate_intrinsic_jsx_props(expr: uni.JsxElement, tag_name: str) -> None;
+    def _resolve_intrinsic_jsx_tag(part: uni.Name, tag_name: str) -> None;
     # -------------------------------------------------------------------------
     # TypeVar scope validation (Pyright: validateTypeVarUsage)
     # -------------------------------------------------------------------------
@@ -394,7 +563,10 @@ obj TypeEvaluator {
         expr: uni.Expr, operand_type: types.TypeBase, operation: str
     ) -> None;
 
-    def _get_enclosing_class_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
+    def _get_enclosing_class_type_params(
+        node_: uni.UniNode
+    ) -> list[types.TypeVarType];
+
     def _get_function_type_params(func: uni.Ability) -> list[types.TypeVarType];
     def _get_outer_scope_type_params(node_: uni.UniNode) -> list[types.TypeVarType];
     # -------------------------------------------------------------------------
@@ -407,32 +579,35 @@ obj TypeEvaluator {
     #    find narrowing conditions. Used for flow-sensitive analysis.
     # -------------------------------------------------------------------------
 
-    # --- Scope-based narrowing (forward traversal) ---
-    def push_narrowing_scope -> None;
-    def pop_narrowing_scope -> None;
-    def add_scope_narrowing(key: str, narrowed_type: types.TypeBase) -> None;
-    def get_scope_narrowing(key: str) -> types.TypeBase | None;
-    def get_narrowing_key(expr: uni.Expr) -> str | None;
-    def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
-    def process_condition(condition: uni.Expr) -> None;
     # --- CFG-based narrowing (backward traversal) ---
+    def create_key_for_reference(expr: uni.Expr) -> str | None;
+    def _find_symbol_by_key(key: str, condition: uni.Expr) -> uni.Symbol | None;
+    def classify_condition(condition: uni.Expr) -> ConditionInfo | None;
     def get_narrowed_type(symbol: uni.Symbol, at_node: uni.UniNode) -> TypeBase | None;
-    def _compute_narrowed_at(
-        symbol: uni.Symbol, stmt: uni.UniCFGNode, visited: set
+    def get_narrowed_type_for_expr(
+        expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
+    ) -> TypeBase | None;
+
+    def _get_type_from_flow_node(
+        target: NarrowingTarget, flow_node: uni.UniCFGNode, visited: set
     ) -> TypeBase | None;
 
     def _classify_edge(pred: uni.IfStmt, succ: uni.UniCFGNode) -> str;
     # --- Shared narrowing utilities ---
     def _find_predicate_for(
-        symbol: uni.Symbol, condition: uni.Expr
+        target: NarrowingTarget, condition: uni.Expr
     ) -> NarrowingPredicate | None;
 
     def _apply_narrowing(
         predicate: NarrowingPredicate,
         incoming: TypeBase | None,
         is_true_branch: bool,
-        symbol: uni.Symbol
+        target: NarrowingTarget
     ) -> TypeBase | None;
+
+    def _refine_isinstance_type(
+        narrowing_key: str, isinstance_type: TypeBase, condition: uni.Expr
+    ) -> TypeBase;
 
     def _filter_union_for_isinstance(
         base_type: TypeBase, target_type: TypeBase
@@ -444,4 +619,21 @@ obj TypeEvaluator {
     def _get_type_from_match_pattern(pattern: uni.MatchPattern) -> TypeBase | None;
     def _union_contains_none(union_type: TypeBase) -> bool;
     def _extract_isinstance_info(condition: uni.Expr) -> tuple[str, TypeBase] | None;
+    def _extract_callable_info(condition: uni.Expr) -> str | None;
+    def _is_callable_type(t: TypeBase) -> bool;
+    def _filter_union_to_callables(union_type: TypeBase) -> TypeBase;
+    def _filter_union_to_non_callables(union_type: TypeBase) -> TypeBase;
+    def _is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool;
+    def _is_type_alias_annotation(
+        annotation_type: TypeBase, tag_expr: uni.Expr
+    ) -> bool;
+
+    def _resolve_type_alias_rhs(value: uni.Expr) -> TypeBase;
+    def _resolve_string_type_expr(
+        type_str: str, scope: uni.UniScopeNode
+    ) -> TypeBase | None;
+
+    def _resolve_py_ast_type_node(
+        ast_node: object, scope: uni.UniScopeNode
+    ) -> TypeBase | None;
 }

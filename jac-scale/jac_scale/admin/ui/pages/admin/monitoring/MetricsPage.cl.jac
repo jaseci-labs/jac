@@ -16,7 +16,7 @@ cl {
 
         auth = useAuth();
 
-        async def loadMetrics -> None {
+        async def loadMetrics {
             result = await getMetrics(auth["authToken"]);
             if result["ok"] and result["data"] {
                 metricsEnabled = result["data"]["enabled"];
@@ -34,14 +34,14 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda -> None { loadMetrics();}, []);
+        useEffect(lambda { loadMetrics();}, []);
 
         useEffect(
-            lambda -> any { if not autoRefresh {
-                return undefined;
-            }interval = setInterval(lambda -> None { loadMetrics();}, 3000);return lambda -> None { clearInterval(
-                interval
-            );}; },
+            lambda -> any {
+                if not autoRefresh { return undefined;  }
+                interval = setInterval(lambda { loadMetrics();}, 3000);
+                return lambda { clearInterval(interval);};
+            },
             [autoRefresh]
         );
 
@@ -200,9 +200,7 @@ cl {
                         <div
                             className="w-16 h-16 mx-auto mb-4 rounded-full bg-slate-800 border-2 border-orange-500/50 flex items-center justify-center"
                         >
-                            <span className="text-2xl text-orange-400">
-                                !
-                            </span>
+                            <span className="text-2xl text-orange-400">!</span>
                         </div>
                         <h2 className="text-xl font-bold text-white mb-2 tracking-wide">
                             METRICS OFFLINE
@@ -306,14 +304,14 @@ cl {
                                 <input
                                     type="checkbox"
                                     checked={autoRefresh}
-                                    onChange={lambda e: any  -> None { autoRefresh = e.target.checked;}}
+                                    onChange={lambda e: any { autoRefresh = e.target.checked;}}
                                     className="rounded border-teal-500/50 bg-slate-800 text-teal-500 focus:ring-teal-500/50"
                                 />
                                 LIVE SYNC
                             </label>
                             <Button
                                 variant="secondary"
-                                onClick={lambda -> None { loadMetrics();}}
+                                onClick={lambda { loadMetrics();}}
                             >
                                 REFRESH
                             </Button>
@@ -329,9 +327,7 @@ cl {
                             <div
                                 className="w-20 h-20 rounded-full bg-gradient-to-br from-teal-500/20 to-lime-500/20 border-2 border-lime-400 flex items-center justify-center shadow-lg shadow-lime-500/20"
                             >
-                                <span className="text-4xl text-lime-400">
-                                    ✓
-                                </span>
+                                <span className="text-4xl text-lime-400">✓</span>
                             </div>
                             <div className="text-center">
                                 <div
@@ -472,9 +468,7 @@ cl {
                                                         className="bg-teal-400 h-1 rounded-full"
                                                         style={{
                                                             "width": getBarHeight(
-                                                                req[
-                                                                    "count"
-                                                                ],
+                                                                req["count"],
                                                                 maxReqCount
                                                             )
                                                         }}
@@ -489,9 +483,7 @@ cl {
                                     className="mt-4 p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg"
                                 >
                                     <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-orange-400">
-                                            ⚠
-                                        </span>
+                                        <span className="text-orange-400">⚠</span>
                                         <span className="text-orange-300 font-mono">
                                             SLOWEST PATH:
                                         </span>
@@ -595,9 +587,7 @@ cl {
                                     className="mt-4 p-3 bg-teal-500/10 border border-teal-500/30 rounded-lg"
                                 >
                                     <div className="flex items-center gap-2 text-xs">
-                                        <span className="text-teal-400">
-                                            💡
-                                        </span>
+                                        <span className="text-teal-400">💡</span>
                                         <span className="text-teal-300">
                                             Gen 2 is doing the heavy lifting — no memory leaks detected.
                                         </span>

@@ -1,23 +1,43 @@
 """Core initialization and transform logic for native IR generation."""
 """Initialize the native IR generation pass."""
-impl NaIRGenPass.init(
-    ir_in: uni.Module, prog: object, cancel_token: (object | None) = None
-) -> None {
-    self.llvm_module = ir.Module(name="jac_native", context=ir.Context());
-    # Set data layout to match native target so optimizer and MCJIT agree
-    # on struct sizes. Without this, the optimizer uses default layout
-    # (4-byte i64 alignment, sizeof({i8,i64})=12) while MCJIT uses native
-    # x86-64 layout (8-byte alignment, sizeof=16), causing buffer overflows.
+impl NaIRGenPass.postinit -> None {
+    # Use the source file name as the LLVM module ID so GDB shows it.
+    import os as _ni_os;
+    _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
+    _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
+    self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
     import llvmlite.binding as _llvm_bind;
     _llvm_bind.initialize_native_target();
     _target = _llvm_bind.Target.from_default_triple();
     _tm = _target.create_target_machine();
     self.llvm_module.data_layout = str(_tm.target_data);
     self.llvm_module.triple = _tm.triple;
-    self.builder: (ir.IRBuilder | None) = None;
-    self.func_symtab: dict[(str, ir.Function)] = {};
-    self.local_vars: dict[(str, ir.AllocaInstr)] = {};
-    self.has_native_code = False;
+    # DWARF debug metadata — populated below when JAC_NATIVE_DEBUG=1
+    if _ni_src and _ni_os.environ.get("JAC_NATIVE_DEBUG", "") {
+        _ni_src_dir: str = _ni_os.path.dirname(_ni_os.path.abspath(_ni_src));
+        try {
+            self.di_file = self.llvm_module.add_debug_info(
+                "DIFile", {"filename": _ni_mod_name, "directory": _ni_src_dir}
+            );
+            self.di_cu = self.llvm_module.add_debug_info(
+                "DICompileUnit",
+                {
+                    "language": ir.DIToken("DW_LANG_C"),
+                    "file": self.di_file,
+                    "producer": "jac native compiler",
+                    "runtimeVersion": 0,
+                    "isOptimized": False,
+                    "emissionKind": ir.DIToken("FullDebug"),
+
+                },
+                is_distinct=True
+            );
+        } except Exception {
+            self.di_file = None;
+            self.di_cu = None;
+        }
+    }
+
     # Build type_map from the centralized type registry
     _spec_map: dict[str, ir.Type] = {
         "i8": ir.IntType(8),
@@ -29,7 +49,7 @@ impl NaIRGenPass.init(
         "i1": ir.IntType(1),
         "i8*": ir.IntType(8).as_pointer()
     };
-    self.type_map: dict[(str, ir.Type)] = {};
+    self.type_map = {};
     try {
         import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
         for (_name, _spec) in JAC_TYPE_REGISTRY.na_type_entries() {
@@ -42,120 +62,23 @@ impl NaIRGenPass.init(
         self.type_map["bool"] = _spec_map["i1"];
         self.type_map["str"] = _spec_map["i8*"];
     }
-    self._fmt_strings: dict[(str, ir.GlobalVariable)] = {};
-    # External function cache (Phase 0)
-    self.extern_funcs: dict[(str, ir.Function)] = {};
-    # C library extern function names (from import from "lib" { def ...; })
-    self.clib_extern_names: set[str] = set();
-    # C library struct names (value-type structs declared in clib import blocks)
-    self.clib_struct_names: set[str] = set();
-    # ABI-coerced integer types for small clib structs (struct_name → ir.IntType)
-    self.clib_struct_abi_types: dict[str, ir.Type] = {};
-    # Enum support (Phase 1)
-    self.enum_values: dict[(str, ir.Constant)] = {};
-    self.enum_types: dict[(str, ir.IntType)] = {};
-    # String-valued enum lookup tables
-    self.enum_string_values: dict[str, list] = {};  # enum_name → [(member_name, string_value, ordinal), ...]
-    self.enum_value_arrays: dict[str, object] = {};  # enum_name → global [N x i8*] array (.value strings)
-    self.enum_name_arrays: dict[str, object] = {};  # enum_name → global [N x i8*] array (.name strings)
-    self.var_enum_type: dict[str, str] = {};  # var_name → enum_name (tracks enum-typed vars)
-    self.struct_field_enum_type: dict[str, dict] = {};  # struct_name → {field_name → enum_name}
-    # Loop stack for break/continue (Phase 1)
-    self.loop_stack: list[tuple] = [];
-    # String counter for unique global names (Phase 2)
-    self._str_count: int = 0;
-    # Object/struct support (Phase 3)
-    self.struct_types: dict[(str, object)] = {};
-    self.struct_field_indices: dict[(str, dict)] = {};
-    self.struct_field_types: dict[(str, dict)] = {};
-    self.struct_field_defaults: dict[(str, object)] = {};
-    self.method_funcs: dict[(str, ir.Function)] = {};
-    self.method_ast_sigs: dict[(str, object)] = {};  # "Arch.method" → FuncSignature AST node
-    self.type_var_map: dict[(str, str)] = {};
-    # List support (Phase 4)
-    self.list_types: dict[(str, object)] = {};  # elem_type_name → list struct type
-    self.list_helpers: dict[(str, dict)] = {};  # elem_type_name → {new, append, get, set, len}
-    self.var_list_elem_type: dict[(str, str)] = {};  # var_name → elem_type_name
-    # Jac-level type tracking for nested lists and ptr list element resolution
-    self.field_type_node: dict[(str, dict)] = {};  # struct_name → {field → type AST node}
-    self.var_type_node: dict[(str, object)] = {};  # var_name → type AST node
-    self._list_type_hint: (str | None) = None;  # hint for empty list creation
-    self._last_type_node_hint: (object | None) = None;  # Jac type AST of last evaluated expr
-    # Inheritance / vtable support (Phase 5)
-    self.class_hierarchy: dict[(str, str)] = {};  # child → primary parent (backward compat)
-    self.class_parents: dict[str, list[str]] = {};  # child → [parent1, parent2, ...]
-    self.mro_order: dict[str, list[str]] = {};  # class → C3 MRO [self, parent1, ...]
-    self.parent_field_start: dict[str, dict[str, int]] = {};  # child → {ancestor → first_field_idx}
-    self.arch_ast_map: dict[str, object] = {};  # class_name → Archetype AST node
-    self.has_vtable: dict[(str, bool)] = {};
-    self.vtable_layouts: dict[(str, list[str])] = {};
-    self.vtable_method_indices: dict[(str, dict)] = {};
-    self.vtable_globals: dict[(str, ir.GlobalVariable)] = {};
-    self._non_overridden_methods: dict[str, set[str]] = {};  # class → methods never overridden by children
-    # Tuple support (Phase 9)
-    self.tuple_types: dict[(str, object)] = {};  # type_key → LiteralStructType
-    self.var_tuple_type: dict[(str, str)] = {};  # var_name → tuple_key
-    # Complex number support
+
+    # Initialize LLVM struct types that depend on llvm_module.context
     self.complex_struct_type = self.llvm_module.context.get_identified_type(
         "JacComplex"
     );
-    self.complex_struct_type.set_body(
-        ir.DoubleType(), ir.DoubleType()
-    );  # {f64 real, f64 imag}
-    self.var_complex: set[str] = set();  # variable names known to be complex
-    # Range object support
+    self.complex_struct_type.set_body(ir.DoubleType(), ir.DoubleType());
+
     self.range_struct_type = self.llvm_module.context.get_identified_type("JacRange");
-    self.range_struct_type.set_body(
-        ir.IntType(64), ir.IntType(64), ir.IntType(64)
-    );  # {i64 start, i64 stop, i64 step}
-    self.var_range: set[str] = set();  # variable names known to be range
-    # Slice object support (same layout as JacRange)
+    self.range_struct_type.set_body(ir.IntType(64), ir.IntType(64), ir.IntType(64));
+
     self.slice_struct_type = self.llvm_module.context.get_identified_type("JacSlice");
-    self.slice_struct_type.set_body(
-        ir.IntType(64), ir.IntType(64), ir.IntType(64)
-    );  # {i64 start, i64 stop, i64 step}
-    self.var_slice: set[str] = set();  # variable names known to be slice
-    # Global variable support (Phase 11)
-    self.global_vars: dict[(str, ir.GlobalVariable)] = {};  # name → global variable
-    self.global_var_types: dict[(str, ir.Type)] = {};  # name → LLVM type
-    # Dictionary support (Phase 12)
-    self.dict_types: dict[(str, object)] = {};  # "key_type:val_type" → dict struct type
-    self.dict_helpers: dict[(str, dict)] = {};  # "key_type:val_type" → {new, set, get, contains, len}
-    self.var_dict_type: dict[(str, str)] = {};  # var_name → "key_type:val_type"
-    # JacVal tagged union for dict[str, any] support
+    self.slice_struct_type.set_body(ir.IntType(64), ir.IntType(64), ir.IntType(64));
+
     self.jacval_type = self.llvm_module.context.get_identified_type("JacVal");
-    self.jacval_type.set_body(ir.IntType(8), ir.IntType(64));  # {i8 tag, i64 payload}
-    self._dict_val_type_hint: (str | None) = None;  # "jacval" when dict[str, any]
-    # Set support (Phase 13)
-    self.set_types: dict[(str, object)] = {};  # elem_type_name → set struct type
-    self.set_helpers: dict[(str, dict)] = {};  # elem_type_name → {new, add, contains, len}
-    self.var_set_elem_type: dict[(str, str)] = {};  # var_name → elem_type_name
-    # Exception handling support (Phase 14)
-    self._exc_state_type: (object | None) = None;  # JacExceptionState struct type
-    self._exc_handler_global: (object | None) = None;  # @__jac_current_handler global
-    self._exc_push_fn: (object | None) = None;  # __jac_exc_push function
-    self._exc_pop_fn: (object | None) = None;  # __jac_exc_pop function
-    self._exc_raise_fn: (object | None) = None;  # __jac_exc_raise function
-    self._exc_type_registry: dict[(str, int)] = {"Exception": 0};  # exc_name → type_id
-    self._exc_type_counter: int = 1;  # Next type ID to assign
-    self._rt_error_msgs: dict[(str, object)] = {};  # msg → ir.GlobalVariable (dedup cache)
-    # File I/O support (Phase 15)
-    self._file_struct_type: (object | None) = None;  # File struct type
-    self._file_helpers_emitted: bool = False;
-    # Primitive emitter singletons (lazily initialized)
-    self._native_emitters: (dict[str, object] | None) = None;
-    self._native_builtin_emitter: (object | None) = None;
-    # Reference counting support (Phase RC)
-    self.rc_alloc_fn: (ir.Function | None) = None;
-    self.rc_retain_fn: (ir.Function | None) = None;
-    self.rc_release_simple_fn: (ir.Function | None) = None;
-    self.malloc_fn: (ir.Function | None) = None;
-    self.free_fn: (ir.Function | None) = None;
-    self.struct_release_fns: dict[(str, ir.Function)] = {};
-    self.list_release_fns: dict[(str, ir.Function)] = {};
-    self.dict_release_fns: dict[(str, ir.Function)] = {};
-    self.set_release_fns: dict[(str, ir.Function)] = {};
-    super.init(ir_in=ir_in, prog=prog, cancel_token=cancel_token);
+    self.jacval_type.set_body(ir.IntType(8), ir.IntType(64));
+
+    super.postinit();
 }
 
 # ─── Main Pass Logic ─────────────────────────────────────────
@@ -499,47 +422,53 @@ and access their fields.
 """
 impl NaIRGenPass._register_imported_struct_types -> None {
     import os;
-    # Collect imports from top-level and inside na {} blocks
-    imports = [
+    import from jaclang.jac0core.codeinfo { resolve_native_module }
+    # ── DFS work queue: collect ALL transitive .na.jac imports ───────────────
+    # Uses the shared resolve_native_module() from codeinfo to resolve paths,
+    # ensuring consistency with InteropAnalysisPass.
+    processed_modules: set[str] = set();
+    imported_mods: list = [];  # list of (source_module_str, module_ast)
+    manifest = self.ir_in.gen.interop_manifest;
+
+    # Seed work queue with entry module's import statements.
+    entry_base = os.path.dirname(os.path.abspath(self.ir_in.loc.mod_path))
+        if (self.ir_in?.loc)
+        else os.getcwd();
+    wq: list = [];  # list of (module_name_str, base_dir)
+    for imp in [
         s
         for s in ModuleCodegenPass.iter_context_stmts(self.ir_in)
         if isinstance(s, uni.Import)
-    ];
-    # Resolve all imported modules, deduplicating by absolute path.
-    processed_modules: set[str] = set();
-    imported_mods: list = [];
-    for imp in imports {
-        if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
+    ] {
+        mod_name = self._extract_import_module_name(imp);
+        if mod_name {
+            wq.append((mod_name, entry_base));
+        }
+    }
+
+    qi = 0;
+    while qi < len(wq) {
+        (mod_name, cur_base) = wq[qi];
+        qi += 1;
+        (src_mod_str, full_path) = resolve_native_module(mod_name, cur_base);
+        if src_mod_str is None or full_path is None {
             continue;
         }
-        # Skip clib imports (from "libname")
-        if imp.from_loc.path and isinstance(imp.from_loc.path[0], uni.String) {
-            continue;
-        }
-        try {
-            resolved_path = imp.from_loc.resolve_relative_path();
-        } except Exception {
-            continue;
-        }
-        abs_key = os.path.abspath(resolved_path);
+        abs_key = os.path.abspath(full_path);
         if abs_key in processed_modules {
             continue;
         }
         # Look up the imported module in the hub (try both relative and absolute)
-        imported_mod = self.prog.mod.hub.get(resolved_path);
+        imported_mod = self.prog.mod.hub.get(full_path);
         if imported_mod is None {
             imported_mod = self.prog.mod.hub.get(abs_key);
         }
         # If not in hub, parse the imported .jac file for type extraction.
-        if (
-            imported_mod is None
-            and resolved_path.endswith('.jac')
-            and os.path.isfile(resolved_path)
-        ) {
+        if imported_mod is None and os.path.isfile(full_path) {
             try {
                 import from jaclang.jac0core.parser { parse as rd_parse }
-                source = open(resolved_path).read();
-                (imported_mod, _) = rd_parse(source, resolved_path, prog=self.prog);
+                source = open(full_path, encoding="utf-8").read();
+                (imported_mod, _) = rd_parse(source, full_path, prog=self.prog);
             } except Exception {
                 continue;
             }
@@ -548,13 +477,35 @@ impl NaIRGenPass._register_imported_struct_types -> None {
             continue;
         }
         processed_modules.add(abs_key);
-        imported_mods.append((resolved_path, imported_mod));
+        imported_mods.append((src_mod_str, imported_mod));
+        # Enqueue this module's own imports for transitive DFS
+        sub_base = os.path.dirname(os.path.abspath(full_path));
+        for sub_imp in [
+            s
+            for s in ModuleCodegenPass.iter_context_stmts(imported_mod)
+            if isinstance(s, uni.Import)
+        ] {
+            sub_name = self._extract_import_module_name(sub_imp);
+            if sub_name {
+                wq.append((sub_name, sub_base));
+            }
+        }
     }
+
+    # Store transitive source strings on the manifest so _codegen_entry can
+    # emit __jac_glob_init_<safe_name>() calls for ALL linked modules.
+    for (src_mod_str, _) in imported_mods {
+        if src_mod_str not in manifest.native_transitive_sources {
+            manifest.native_transitive_sources.append(src_mod_str);
+        }
+    }
+
+    # ── Phase 0: process clib imports from all imported modules ─────────────
+    for (_, imported_mod) in imported_mods {
+        self._process_clib_imports(imported_mod);
+    }
+
     # ── Phase 1a: register ALL struct names (empty identified types) ─────────
-    # All struct names must exist in struct_types before any body is filled
-    # so that cross-module field/parameter type references (e.g.
-    # JSClosure.func: CompiledFunction) resolve correctly even when the
-    # defining module is walked after the referencing module.
     for (_, imported_mod) in imported_mods {
         self._walk_imported_module_type_names(imported_mod);
     }
@@ -563,16 +514,26 @@ impl NaIRGenPass._register_imported_struct_types -> None {
         self._walk_imported_module_types(imported_mod);
     }
     # ── Phase 2: forward-declare ALL abilities from ALL modules ──────────────
-    for (resolved_path, imported_mod) in imported_mods {
+    for (_, imported_mod) in imported_mods {
         self._walk_imported_module_abilities(imported_mod);
-        # Track path so _codegen_entry can emit __jac_glob_init_<safe_name>() calls
-        if not self?._imported_na_paths {
-            self._imported_na_paths: list = [];
-        }
-        if resolved_path not in self._imported_na_paths {
-            self._imported_na_paths.append(resolved_path);
-        }
     }
+}
+
+"""Extract the module name string from an Import node, or None if not applicable.
+
+Skips clib imports (from "libname") and non-module imports."""
+impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
+    if not imp.from_loc or not isinstance(imp.from_loc, uni.ModulePath) {
+        return None;
+    }
+    if imp.from_loc.path and isinstance(imp.from_loc.path[0], uni.String) {
+        return None;
+    }
+    mod_name = getattr(imp.from_loc, 'dot_path_str', None);
+    if not mod_name and imp.from_loc?.path and imp.from_loc.path {
+        mod_name = '.'.join(getattr(p, 'value', str(p)) for p in imp.from_loc.path);
+    }
+    return mod_name;
 }
 
 """Walk an imported module's AST and register all type declarations."""
@@ -685,9 +646,6 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
     }
     # Guard: skip body fill if already done (e.g., called twice due to multiple
     # import paths, or after Phase 1a + Phase 1b sequencing).
-    if not self?._struct_bodies_done {
-        self._struct_bodies_done: set[str] = set();
-    }
     if aname in self._struct_bodies_done {
         return;
     }
@@ -786,9 +744,6 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                         mod_name = ".".join(parts);
                     }
                     if mod_name == "sys" {
-                        if not self?._native_stdlib_modules {
-                            self._native_stdlib_modules: set[str] = set();
-                        }
                         self._native_stdlib_modules.add("sys");
                     }
                 }
@@ -805,9 +760,6 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
                         raw = raw[1:-1];
                     }
                     # Store library path for NativeCompilePass to load
-                    if not self?._clib_paths {
-                        self._clib_paths: list[str] = [];
-                    }
                     self._clib_paths.append(raw);
                 }
             }
@@ -875,7 +827,7 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
             }
         }
         # Store clib paths on module gen for compile pass
-        if self?._clib_paths and self._clib_paths {
+        if self._clib_paths {
             module.gen._clib_paths = self._clib_paths;
             self.has_native_code = True;
         }

@@ -331,8 +331,7 @@ async def type_check(self: JacLangServer, file_path: str) -> None {
         # Start new thread for type checking
         print(" debounced_type_check ->", time.time(), file=sys.stderr);
         self.type_check_threads[file_path] = threading.Thread(
-            target=self.type_check_file,
-            args=(file_path, self.cancel_tokens[file_path])
+            target=self.type_check_file, args=(file_path, self.cancel_tokens[file_path])
         );
         self.type_check_threads[file_path].start();
         self.type_check_threads[file_path].join();

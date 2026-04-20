@@ -21,7 +21,17 @@ their behavior in separate files.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
-import from jaclang.jac0core.diagnostics { E2009, W2010, E2011, E2012, W2013 }
+import from jaclang.jac0core.passes.sym_tab_build_pass { bind_assignment_targets }
+import from jaclang.jac0core.diagnostics {
+    E2009,
+    W2010,
+    E2011,
+    E2012,
+    W2013,
+    E2016,
+    E2017,
+    W2080
+}
 
 """Decls and Def matching pass."""
 class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
@@ -60,22 +70,9 @@ declarations in the main module.
         self: DeclImplMatchPass, sym: Symbol, valid_decl: uni.AstSymbolNode
     ) -> None;
 
-    """Re-resolve symbols in an impl body after symbol table synchronization.
-
-        When impl files are compiled, they don't have access to the base
-module's
-        symbols (like 'self' or archetype members). After DeclImplMatchPass
-links
-        the impl to its declaration and synchronizes symbol tables, we need to
-        re-traverse the impl body to resolve these symbols.
-        """
-    def _resolve_impl_body_symbols(
-        self: DeclImplMatchPass, impl_def: uni.ImplDef
-    ) -> None;
-
-    """Resolve symbols in module-level expressions (GlobalVars RHS, TypeAlias values)."""
-    def _resolve_module_level_symbols(
-        self: DeclImplMatchPass, module: uni.Module
+    """Resolve unresolved Name and AtomTrailer symbols in a subtree."""
+    def _resolve_symbols_in_subtree(
+        self: DeclImplMatchPass, root: uni.UniNode
     ) -> None;
 
     """Populate self-member symbols from impl body to archetype's symbol table.
@@ -86,5 +83,12 @@ links
     these symbols into the archetype. This method does that after connection."""
     def _populate_self_member_symbols(
         self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
+    ) -> None;
+
+    """Scan inline init/postinit bodies for annotated self-assignments on
+    obj/node/edge/walker archetypes. Emits W2080 and registers the symbol
+    so downstream type checking resolves correctly."""
+    def _populate_inline_init_symbols(
+        self: DeclImplMatchPass, archetype: uni.Archetype
     ) -> None;
 }

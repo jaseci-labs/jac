@@ -10,6 +10,7 @@ codegen passes.
 import from collections.abc { Sequence }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
+import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.diagnostics { E5030, W5031, W5032 }
 
@@ -85,10 +86,20 @@ obj LayoutRegistry {
     def is_primary_ancestor(child: str, ancestor: str) -> bool;
 }
 
-"""Layout analysis pass."""
-obj LayoutPass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
-    def before_pass -> None;
+"""Layout analysis pass.
+
+Does not traverse the tree node-by-node; all analysis is performed
+in transform() via bulk sub-node queries, so we extend Transform
+directly instead of UniPass.
+"""
+obj LayoutPass(Transform[uni.Module, uni.Module]) {
+    has ir_in: uni.Module,
+        prog: Any,
+        cancel_token: Any = None,
+        registry: LayoutRegistry by postinit;
+
+    def postinit -> None;
+    def transform(ir_in: uni.Module) -> uni.Module;
     # Core analysis
     def _collect_archetypes(module: uni.Module) -> dict[str, uni.Archetype];
     def _build_hierarchy(archetypes: dict[str, uni.Archetype]) -> None;

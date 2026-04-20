@@ -18,6 +18,13 @@ Bug index:
   #23     - With statement alias typed as Unknown (wrong traversal order)
   #ANY-1  - typing.Any attribute access incorrectly raises E1030
   #FINAL-1 - Final[T] not unwrapped for attribute access
+  #TVAR-1 - Duplicate TypeVars in _extract_type_params cause positional mismatch
+  #TVAR-2 - No transitive TypeVar propagation through base_classes in build_type_var_solution
+  #TVAR-3 - Union return types with TypeVars (e.g., V | None) resolve to Unknown
+  #TVAR-5 - Module-level TypeVars shadowed by class type parameters
+  #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
+  #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
+  #SUPER-1 - super() call returns Unknown instead of parent instance
 """
 
 import os;
@@ -95,25 +102,25 @@ test "bug_6_mro_not_c3_diamond" {
     a_shared = ClassType.ClassDetailsShared(
         class_name="A", symbol_table=None, mro=[], base_classes=[]
     );
-    a_type = ClassType(shared=a_shared, flags=TypeFlags.Instantiable);
+    a_type = ClassType(_shared=a_shared, flags=TypeFlags.Instantiable);
     a_type.shared.mro = [a_type];
 
     b_shared = ClassType.ClassDetailsShared(
         class_name="B", symbol_table=None, mro=[], base_classes=[a_type]
     );
-    b_type = ClassType(shared=b_shared, flags=TypeFlags.Instantiable);
+    b_type = ClassType(_shared=b_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(b_type);
 
     c_shared = ClassType.ClassDetailsShared(
         class_name="C", symbol_table=None, mro=[], base_classes=[a_type]
     );
-    c_type = ClassType(shared=c_shared, flags=TypeFlags.Instantiable);
+    c_type = ClassType(_shared=c_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(c_type);
 
     d_shared = ClassType.ClassDetailsShared(
         class_name="D", symbol_table=None, mro=[], base_classes=[b_type, c_type]
     );
-    d_type = ClassType(shared=d_shared, flags=TypeFlags.Instantiable);
+    d_type = ClassType(_shared=d_shared, flags=TypeFlags.Instantiable);
     compute_mro_linearization(d_type);
 
     mro_names = [cls.shared.class_name for cls in d_type.shared.mro];
@@ -325,4 +332,255 @@ test "bug_final1_final_unwrap_for_attr_access" {
     program = compile_and_check("checker_bug_final_unwrap_attr.jac");
     assert len(program.errors_had) == 0 , f"Bug #FINAL-1: attribute access on Final[T] raised E1030 "
     f"({len(program.errors_had)} errors). Final[T] must unwrap to T for member lookup.";
+}
+
+# =========================================================================
+# Bug #TVAR-1: Duplicate TypeVars in _extract_type_params
+#
+# When a class inherits from multiple generic bases with overlapping TypeVars
+# (e.g., BaseMapping(BaseCollection[K], Generic[K, V])), _extract_type_params
+# collected K twice, producing type_params=[K, K, V]. This caused positional
+# mismatches when mapping type_params to type_args during specialization,
+# leaving V unresolved -> Unknown.
+#
+# Fix: Deduplicate TypeVars by name in _extract_type_params, preserving
+# first-occurrence order (matching Python's typing module behavior).
+#
+# Impact: Methods returning TypeVars from multi-base generic classes had
+#         Unknown return types, suppressing legitimate type errors.
+# =========================================================================
+test "bug_tvar1_typevar_dedup_in_extract_type_params" {
+    program = compile_and_check("checker_bug_typevar_dedup.jac");
+
+    # Expected: 1 error (int not assignable to str for `bad: str = m.lookup("key")`)
+    # Without fix: 0 errors (V is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-1: _extract_type_params duplicates TypeVars from "
+    f"multiple generic bases, causing positional mismatch. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without dedup, V in BaseMapping(BaseCollection[K], Generic[K, V]) is unresolved.";
+}
+
+# =========================================================================
+# Bug #TVAR-2: No transitive TypeVar propagation in build_type_var_solution
+#
+# build_type_var_solution only checked MRO entries for type_args (which are
+# unspecialized), missing the parameterized base_classes chain. When a class
+# like ChildMap[str, int] inherits MiddleMap[K, V] which inherits
+# BaseReader[K, V2], the TypeVar V2 was never mapped to V -> int.
+#
+# Fix: Added a phase in build_type_var_solution that walks each MRO entry's
+# base_classes to propagate TypeVar bindings transitively.
+#
+# Impact: Methods inherited from grandparent+ generic classes had Unknown
+#         return types when TypeVars were renamed across inheritance levels.
+# =========================================================================
+test "bug_tvar2_transitive_typevar_propagation" {
+    program = compile_and_check("checker_bug_typevar_transitive.jac");
+
+    # Expected: 1 error (int not assignable to str for `bad: str = c.read("key")`)
+    # Without fix: 0 errors (V2 is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-2: build_type_var_solution doesn't propagate TypeVars "
+    f"through base_classes chain. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without transitive propagation, V2 in BaseReader is unresolved.";
+}
+
+# =========================================================================
+# Bug #TVAR-3: Union return types with TypeVars resolve to Unknown
+#
+# When a generic method returns V | None (a union containing a TypeVar),
+# the BinaryExpr with BW_OR operator was evaluated by operations.jac which
+# checked is_any_type() on both operands BEFORE handling the union case.
+# Since TypeVarType.is_any_type() returns True, the function short-circuited
+# to UnknownType, and the union handler at line 276 was never reached.
+#
+# Fix: Move the BW_OR union-type check before the is_any_type() early return
+# and extend is_annotation_type() to recognize TypeVarType as valid.
+#
+# Impact: dict.get(), Optional-returning methods on generic classes, and any
+#         typeshed stub with `-> TypeVar | None` had Unknown return types.
+# =========================================================================
+test "bug_tvar3_typevar_union_return_type" {
+    program = compile_and_check("checker_bug_typevar_union_return.jac");
+
+    # Expected: 1 error (int | None not assignable to str for `bad: str = s.lookup("key")`)
+    # Without fix: 0 errors (V | None is Unknown, assignable to anything)
+    assert len(program.errors_had) >= 1 , f"Bug #TVAR-3: Union return types with TypeVars (V | None) resolve "
+    f"to Unknown due to is_any_type() short-circuit in operations.jac. "
+    f"Expected at least 1 type error but got {len(program.errors_had)}. "
+    f"Without the fix, dict.get() and similar methods return Unknown.";
+}
+
+# =========================================================================
+# Bug #TVAR-4: Generic[] base class must establish canonical TypeVar order
+# =========================================================================
+# Root cause: _extract_type_params processed base classes left-to-right and
+# deduplicated by name. For dict_values(ValuesView[_VT_co], Generic[_KT_co,
+# _VT_co]), _VT_co was encountered first (from ValuesView), producing
+# type_params = [_VT_co, _KT_co]. The correct order per PEP 484 is
+# [_KT_co, _VT_co] from the Generic[] declaration, which is the authoritative
+# source. Wrong ordering swaps key/value types in dict.keys()/values().
+#
+# Impact: dict.values() yielded key types instead of value types, and
+#         dict.keys() yielded value types instead of key types, for any
+#         dict-like class whose typeshed stub lists Generic[] after other
+#         parameterized bases.
+# =========================================================================
+test "bug_tvar4_generic_base_canonical_typevar_order" {
+    program = compile_and_check("checker_bug_typevar_generic_order.jac");
+
+    # Expected: 2 errors on the `bad` lines (24 and 30), NOT on the `good` lines (23 and 29).
+    # Without fix: 2 errors on the WRONG lines (23 and 30) because key/value types are swapped,
+    # so a count-only check would still pass — we must verify the error locations.
+    assert len(program.errors_had) >= 2 , f"Bug #TVAR-4: Generic[] base must set canonical TypeVar order. "
+    f"Expected at least 2 type errors but got {len(program.errors_had)}.";
+
+    # Verify errors are on the `bad` assignment lines, not the `good` ones.
+    # Line 24: `bad: int = v` should error (v is str from values())
+    # Line 30: `bad2: str = k` should error (k is int from keys())
+    error_lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.loc
+    ];
+    assert 24 in error_lines , f"Expected error on line 24 (bad: int = v), got errors on lines {error_lines}. "
+    f"Without fix, dict.values() yields key type instead of value type.";
+    assert 30 in error_lines , f"Expected error on line 30 (bad2: str = k), got errors on lines {error_lines}.";
+    # The `good` lines should NOT have errors.
+    assert 23 not in error_lines , f"Line 23 (good: str = v) should not error — values() yields str, "
+    f"but got errors on lines {error_lines}. TypeVar order is likely swapped.";
+    assert 29 not in error_lines , f"Line 29 (good2: int = k) should not error — keys() yields int, "
+    f"but got errors on lines {error_lines}.";
+}
+
+# =========================================================================
+# Bug #TVAR-5: Module-level TypeVars shadowed by class type parameters
+#
+# apply_solved_type_vars matched TypeVars by name only, so module-level
+# `glob T = TypeVar('T', bound=int)` was substituted with inherited `str`
+# from `Transform[str]`.
+#
+# Fix: Added is_class_type_param flag and bounds-checking to distinguish
+# class type parameters from module-level TypeVars.
+# =========================================================================
+test "bug_tvar5_module_typevar_shadowed_by_class_param" {
+    program = compile_and_check("checker_bug_typevar_shadow.jac");
+
+    # Expected: 1 error (str -> int on line 29)
+    # Without fix: 2 errors (line 23 would also error because sync returned str)
+    assert len(program.errors_had) == 1 , f"Bug #TVAR-5: Expected 1 error but got {len(
+        program.errors_had
+    )}.";
+
+    error_lines = [
+        e.loc.first_line
+        for e in program.errors_had
+        if e.loc
+    ];
+    assert 29 in error_lines , f"Expected error on line 29, got {error_lines}.";
+    assert 23 not in error_lines , f"Line 23 should NOT error, got {error_lines}.";
+}
+
+# =========================================================================
+# Bug #IMPL-1: `has` var reassigned in impl body shadows the parent type
+#
+# When a reactive def-component (e.g. `def:pub app -> None { has todos: ... }`)
+# has its method body split into a separate `.impl.jac` file, assignments to
+# the has var like `todos = todos + [x]` inside the impl created an untyped
+# local "shadow" symbol in SymTabBuildPass. The impl module's parent scope
+# is not yet connected at that pass, so the lookup for the enclosing HasVar
+# fails and falls through to the local-var branch.
+#
+# Effect: in the impl body, every reference to the has var is typed as
+# Unknown, and any operation on it (e.g. `todos + [{...}]`) breaks overload
+# resolution for `__add__`, producing a cascade of spurious E1055 errors
+# that don't appear when the same body is written inline.
+#
+# Fix: After DeclImplMatchPass connects an impl body to its declaration,
+# walk the impl body for Assignment targets whose resolved symbol is a
+# local shadow of a HasVar in the now-reachable parent ability scope, and
+# re-point those Name nodes at the parent HasVar. Only apply this for
+# has vars owned by an Ability (reactive component state); archetype
+# methods keep normal Python scoping (bare-name assignments stay local).
+# =========================================================================
+test "bug_impl1_has_var_shadow_in_impl_body" {
+    fixture_dir = os.path.join(
+        JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
+    );
+    program = JacProgram();
+    program.compile(
+        os.path.join(fixture_dir, "impl_has_var_reassign.cl.jac"), type_check=True
+    );
+
+    # Expected after fix: 0 errors. The impl body should type-check cleanly:
+    #   - `tasks + [task]` resolves via list[dict].__add__
+    #   - `x: list[dict] = tasks` is a sound assignment
+    assert len(program.errors_had) == 0 , (
+        "Bug #IMPL-1: has var `tasks` in impl body should resolve to the "
+        "parent HasVar (type list[dict]), not a local shadow (type Unknown). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #BASE-1: Base class name resolved in class's own scope
+#
+# For `class Child(Parent) { def Parent -> int {...} }` the name `Parent`
+# in the base-classes list was looked up starting from Child's own symbol
+# table. The inner ability `Parent` was found first, so Child's MRO
+# collapsed to [Child] and inherited members became invisible —
+# producing spurious E1030 errors on valid inherited attribute access.
+#
+# Real-world manifestation: `datetime.datetime.fromisoformat(...)` reported
+# "Type datetime has no attribute fromisoformat" because CPython's
+# `class datetime(date)` stub has a method `def date(self) -> _Date: ...`
+# that shadowed the outer `date` class.
+#
+# Fix: Introduced `_resolution_scope_for` helper in the type evaluator.
+# When a Name reference sits inside an Archetype's `base_classes` list,
+# resolution uses the Archetype's parent_scope (Python semantics). PEP 695
+# type parameters declared on the class remain visible inside the base
+# list (names matching `Archetype.type_params` keep class scope).
+# =========================================================================
+test "bug_base1_base_class_resolved_in_enclosing_scope" {
+    program = compile_and_check("checker_bug_base_class_scope.jac");
+
+    # Expected after fix: 0 errors. Before fix: 4 errors (E1030 on
+    # `self.greet()` and `c.greet()`, plus cascading E1002/E1001).
+    assert len(program.errors_had) == 0 , (
+        "Bug #BASE-1: base class name must resolve in enclosing scope, not "
+        "the class's own scope. Inner member shadowing the base identifier "
+        "broke MRO and hid inherited attributes. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #SUPER-1: super() call returns Unknown
+#
+# `_get_type_of_super` returned `parent_class_type.clone_as_instance()` for
+# the bare `super` Name, giving it the type of an already-instantiated
+# parent. When written as `super()`, the FuncCall handler then fell through
+# to the generic "call an instance" path and tried to resolve `__call__`
+# on the parent instance. With no match it returned Unknown, so
+# `super().method()` evaluated to `Unknown.method()` and produced
+# cascading E1002/E1001/W1051 diagnostics on the enclosing expression.
+#
+# Fix: short-circuit in `validate_call_args` when the call target is
+# `super` — the return type of `super()` is the same as bare `super`
+# (the parent instance), matching Python semantics where attribute
+# access through `super()` dispatches via the parent's MRO.
+# =========================================================================
+test "bug_super1_super_call_returns_parent_instance" {
+    program = compile_and_check("checker_bug_super_call_in_method.jac");
+
+    # Expected after fix: 0 errors. Before fix: 1 error (E1002 "Cannot
+    # return <Unknown>, expected dict") plus 6 W1051 warnings on every
+    # chained use of the Unknown result.
+    assert len(program.errors_had) == 0 , (
+        "Bug #SUPER-1: `super()` in a method must type-check as the "
+        "parent instance so that attribute access dispatches through the "
+        "parent's MRO. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
 }

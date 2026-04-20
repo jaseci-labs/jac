@@ -4,14 +4,14 @@ Storage configuration comes from environment variables or jac.toml.
 """
 
 """Initialize ScaleTieredMemory with distributed backends."""
-impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
+impl ScaleTieredMemory.postinit -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
     self.__mem__ = {};
     self.__gc__ = set();
     # L2: Try to initialize Redis cache (replaces LocalCacheMemory)
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
-    if self._cache_available and use_cache {
+    if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
     } else {
@@ -52,7 +52,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 is None {
         return;
     }
-    # Single anchor commit
+    # Single anchor commit (explicit save via Jac.commit)
     if anchor is not None {
         if not anchor.persistent {
             return;
@@ -60,7 +60,6 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
         if not Jac.check_write_access(anchor) {
             return;
         }
-        anchor.is_updated = True;
         try {
             self.l3.put(anchor);
             if self.l2 {
@@ -71,9 +70,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
         }
         return;
     }
-    # Batch commit: delegate to L3's sync()
-    # - SQLite: sync() does hash-based change detection (only writes changed anchors)
-    # - MongoDB: sync() checks is_updated flag (only writes modified anchors)
+    # Batch commit: delegate to L3's sync() which uses hash-based change detection.
+    # Capture L2-pending anchors BEFORE L3 sync (which updates hashes).
     if self.l3 {
         try {
             l2_pending = [];
@@ -82,7 +80,7 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     mem_anchor
                     for (_, mem_anchor) in list(self.__mem__.items())
                     if mem_anchor.persistent
-                    and mem_anchor.is_updated
+                    and Serializer._compute_hash(mem_anchor) != mem_anchor.hash
                     and Jac.check_write_access(mem_anchor)
                 ];
             }
@@ -100,6 +98,42 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
             logger.warning(f"ScaleTieredMemory.commit sync failed: {e}");
         }
     }
+}
+
+"""Batch get with tiered read-through: check L1, then batch L3 misses, promote all."""
+impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
+    result: dict[UUID, Anchor] = {};
+    missing_ids: list[UUID] = [];
+    for id in ids {
+        if (anchor := self.__mem__.get(id)) {
+            result[id] = anchor;
+        } else {
+            missing_ids.append(id);
+        }
+    }
+    if missing_ids and self.l3 {
+        # Use batch_get if L3 supports it (MongoBackend), fall back to get() (SqliteMemory)
+        l3_results: dict[UUID, Anchor] = {};
+        if hasattr(self.l3, 'batch_get') {
+            l3_results = self.l3.batch_get(missing_ids);
+        } else {
+            for mid in missing_ids {
+                if (a := self.l3.get(mid)) {
+                    l3_results[mid] = a;
+                }
+            }
+        }
+        for (id, anchor) in l3_results.items() {
+            self.__mem__[id] = anchor;
+            if self.l2 {
+                try {
+                    self.l2.put(anchor);
+                } except Exception { }
+            }
+            result[id] = anchor;
+        }
+    }
+    return result;
 }
 
 """Close all backends."""

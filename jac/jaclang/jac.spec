@@ -120,6 +120,16 @@ builtin_type ::=
     | "bytes"
     | "any"
     | "type"
+    | "i8"
+    | "u8"
+    | "i16"
+    | "u16"
+    | "i32"
+    | "u32"
+    | "i64"
+    | "u64"
+    | "f32"
+    | "f64"
 
 special_ref ::=
     "self"
@@ -220,7 +230,10 @@ jsx_element ::=
       ("/>" | JSX_TAG_END jsx_children "</" JSX_NAME ("." JSX_NAME)* JSX_TAG_END)
 
 jsx_attributes ::=
-    (JSX_NAME ("=" (STRING | "{" expression "}")?)? | "{" ELLIPSIS? expression "}")*
+    (
+        JSX_NAME ("=" (STRING | "{" expression "}")?)?
+        | "{" ("**" | ELLIPSIS)? expression "}"
+    )*
 
 jsx_children ::= jsx_child*
 
@@ -228,6 +241,7 @@ jsx_child ::= JSX_TEXT jsx_child? | "{" expression "}" | jsx_element
 
 element_stmt ::=
     ";"
+    | "to" element_stmt*
     | "cl" (client_block | element_stmt)?
     | "sv" (server_block | element_stmt)?
     | "na" (native_block | element_stmt)?

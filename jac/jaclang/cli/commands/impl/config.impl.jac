@@ -124,7 +124,9 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             # Case 0: Wildcard - disable all external plugins
             if target == '*' {
                 if '*' not in config.plugins_config.disabled {
-                    config.plugins_config.disabled = ['*'];  # Replace with just wildcard
+                    config.plugins_config.disabled = [
+                        '*'
+                    ];  # Replace with just wildcard
                     console.success("Disabled: * (all external plugins)", emoji=False);
                 } else {
                     console.warning(
@@ -364,7 +366,12 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             pkg_name = pkg_name.replace(" (built-in)", "");
         }
 
-        for (short_name, qualified_name, plugin, plugin_class_name) in plugins_in_dist {
+        for (
+            short_name,
+            qualified_name,
+            plugin,
+            plugin_class_name
+        ) in plugins_in_dist {
             # Check disabled status using qualified name
             if qualified_name in disabled_plugins {
                 console.print(
@@ -505,7 +512,7 @@ def _config_file_label(path: Path, active_profile: str) -> str {
 }
 
 """Show the path to the active configuration files."""
-def _config_path -> None {
+def _config_path {
     import from jaclang.project.config { get_config, find_project_root }
 
     config = get_config();
@@ -539,7 +546,7 @@ def _config_path -> None {
 }
 
 """List available configuration groups."""
-def _config_groups -> None {
+def _config_groups {
     console.print("\nAvailable configuration groups:\n", style="info");
     group_descriptions = {
         "project": "Project metadata (name, version, description, authors)",
@@ -792,7 +799,7 @@ def _output_table(settings: dict, show_all: bool) -> None {
 }
 
 """Output settings as JSON."""
-def _output_json(settings: dict) -> None {
+def _output_json(settings: dict) {
     import json;
 
     # Convert to simpler structure for JSON output
@@ -811,7 +818,7 @@ def _output_json(settings: dict) -> None {
 }
 
 """Output settings as TOML (only explicitly set values)."""
-def _output_toml(settings: dict, show_all: bool) -> None {
+def _output_toml(settings: dict, show_all: bool) {
     lines: list[str] = [];
 
     for grp in sorted(settings.keys()) {
@@ -1239,7 +1246,7 @@ def _save_config_without_setting(
 }
 
 """Write a dictionary to a TOML file."""
-def _write_toml(path: object, data: dict) -> None {
+def _write_toml(path: object, data: dict) {
     lines: list[str] = [];
     tables: list[tuple[str, dict]] = [];
 

@@ -63,12 +63,24 @@ def extract_transport_response_data(
 def register_user(base_url: str, username: str, password: str = "password123") -> str {
     res = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": password},
+        json={
+            "identities": [{"type": "username", "value": username}],
+            "credential": {"type": "password", "password": password}
+        },
         timeout=2
     );
     assert res.status_code == 201 , f"Registration failed: {res.status_code} - {res.text}";
-    data = cast(dict[str, Any], extract_transport_response_data(res.json()));
-    return data["token"];
+    login_res = requests.post(
+        f"{base_url}/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": password}
+        },
+        timeout=2
+    );
+    assert login_res.status_code == 200 , f"Login failed: {login_res.status_code} - {login_res.text}";
+    login_data = cast(dict[str, Any], extract_transport_response_data(login_res.json()));
+    return login_data["token"];
 }
 
 def post_request(base_url: str, path: str, payload: dict, token: str) -> dict[str, Any] {
@@ -78,7 +90,7 @@ def post_request(base_url: str, path: str, payload: dict, token: str) -> dict[st
         headers={"Authorization": f"Bearer {token}"},
         timeout=2
     );
-    assert res.status_code == 200;
+    assert res.status_code == 200 , f"POST {path} failed: {res.status_code} - {res.text}";
     return cast(dict[str, Any], extract_transport_response_data(res.json()));
 }
 
@@ -101,8 +113,8 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     base_url = f"http://localhost:{port}";
     for _ in range(30) {
         try {
-            r = requests.get(f"{base_url}/docs", timeout=1);
-            if r.status_code in (200, 404) {
+            r = requests.get(f"{base_url}/healthz", timeout=1);
+            if r.status_code == 200 {
                 return server;
             }
         } except Exception {
@@ -345,6 +357,11 @@ test "no unnecessary saves on read-only operations" {
     base_url = f"http://localhost:{port}";
     server = start_server(FIXTURES_DIR, JAC_FILE, port);
 
+    def get_update_count -> int {
+        server_status = mongo_client.admin.command("serverStatus");
+        return server_status["opcounters"]["update"];
+    }
+
     try {
         db = mongo_client["jac_db"];
         collection = db["_anchors"];
@@ -372,6 +389,9 @@ test "no unnecessary saves on read-only operations" {
 
         docs_hash_before = get_docs_hash();
 
+        # Capture server-side update count before read-only operations
+        updates_before_readonly = get_update_count();
+
         # Make multiple read-only requests
         for _ in range(3) {
             res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=2);
@@ -389,6 +409,13 @@ test "no unnecessary saves on read-only operations" {
         docs_hash_after = get_docs_hash();
         assert docs_hash_before == docs_hash_after , (
             "Read-only operations should not modify existing documents in MongoDB"
+        );
+
+        # Verify no update operations were issued to MongoDB during read-only requests.
+        updates_after_readonly = get_update_count();
+        assert updates_after_readonly == updates_before_readonly , (
+            f"Read-only operations should not issue any MongoDB update commands. "
+            f"Got {updates_after_readonly - updates_before_readonly} unexpected updates"
         );
 
         # Now create a task (this should write)
@@ -677,7 +704,10 @@ test "L2 and L3 commit with server restart" {
         # Login as existing user after server restart (user persisted in MongoDB)
         res = requests.post(
             f"{base_url}/user/login",
-            json={"username": "testuser", "password": "testpass"},
+            json={
+                "identity": {"type": "username", "value": "testuser"},
+                "credential": {"type": "password", "password": "testpass"}
+            },
             timeout=2
         );
         assert res.status_code == 200 , f"Login failed: {res.status_code} - {res.text}";
@@ -763,7 +793,7 @@ test "Redis write cycle via commit" {
         # Initial: 4 nodes in Redis (super_root, guest, admin, __system__)
         assert redis_client.dbsize() == 4 , "Redis should start with 4 initial nodes";
 
-        # Create task (goes to L1 with is_updated=True, then commit writes to L2)
+        # Create task
         res = requests.post(
             f"{base_url}/walker/CreateTask",
             json={"id": 999, "title": "Redis Write Test"},
@@ -809,41 +839,46 @@ test "Redis write cycle via commit" {
     }
 }
 
-test "is_updated flag set on field modification" {
-    # Import the Task node from the fixture
+test "hash-based dirty check detects all mutation types" {
+    import from jaclang.runtimelib.serializer { Serializer }
     import sys;
     sys.path.insert(0, str(FIXTURES_DIR));
-    import from todo_app { Task }
+    import from mutation_app { Item }
 
-    # Create a Task instance
-    task = Task(id=999, title="Test is_updated", completed=False);
-    task_anchor = task.__jac__;
+    # Create an Item with mutable fields
+    item = Item(id=1);
+    anchor = item.__jac__;
 
-    # After creation, is_updated should be True (new node)
-    assert task_anchor.is_updated , "Newly created node should have is_updated=True";
+    # New anchor has hash=0 (never persisted)
+    assert anchor.hash == 0 , "New anchor should have hash=0";
 
-    # Simulate save by setting is_updated=False (as would happen after commit)
-    task_anchor.is_updated = False;
-    assert not task_anchor.is_updated , "After save simulation, is_updated should be False";
+    # Simulate persist: compute and store baseline hash
+    anchor.hash = Serializer._compute_hash(anchor);
+    baseline = anchor.hash;
+    assert baseline != 0 , "Computed hash should be non-zero";
 
-    # Modify a field - this should trigger __setattr__ which sets is_updated=True
-    task.completed = True;
+    # No mutation → hash unchanged
+    assert Serializer._compute_hash(anchor) == baseline , "No mutation should yield same hash";
 
-    # Verify is_updated was set to True
-    assert task_anchor.is_updated , (
-        "Modifying 'completed' field should set is_updated=True via __setattr__"
-    );
+    # Direct field assignment
+    item.completed = True;
+    assert Serializer._compute_hash(anchor) != baseline , "Direct assignment should change hash";
 
-    # Reset flag
-    task_anchor.is_updated = False;
+    # Reset baseline
+    anchor.hash = Serializer._compute_hash(anchor);
+    baseline = anchor.hash;
 
-    # Modify another field
-    task.title = "Modified Title";
+    # In-place list mutation
+    item.tags.append("urgent");
+    assert Serializer._compute_hash(anchor) != baseline , "list.append should change hash";
 
-    # Verify is_updated was set to True again
-    assert task_anchor.is_updated , (
-        "Modifying 'title' field should set is_updated=True"
-    );
+    # Reset baseline
+    anchor.hash = Serializer._compute_hash(anchor);
+    baseline = anchor.hash;
+
+    # In-place dict mutation
+    item.metadata["priority"] = "high";
+    assert Serializer._compute_hash(anchor) != baseline , "dict[k]=v should change hash";
 }
 
 test "sequential requests work correctly" {
@@ -880,5 +915,204 @@ test "sequential requests work correctly" {
         }
         mongo_container.stop();
         gc.collect();
+    }
+}
+
+test "batch_get reduces MongoDB queries for edge traversals" {
+    # Validates: When traversing N edges, batch_get uses $in queries instead of N individual finds.
+    # Creates 10 tasks (10 edges + 10 nodes), restarts server to clear L1,
+    # then reads all tasks and verifies MongoDB query count is much less than 20.
+    if not JAC_FILE.exists() {
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
+    }
+
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
+    }
+
+    mongo_container = MongoDbContainer("mongo:latest");
+    mongo_container.start();
+    mongo_uri = mongo_container.get_connection_url();
+    os.environ["MONGODB_URI"] = mongo_uri;
+    mongo_client = MongoClient(mongo_uri);
+
+    # No Redis — force all reads through MongoDB to measure query count accurately
+    env_backup = {};
+    if "REDIS_URL" in os.environ {
+        env_backup["REDIS_URL"] = os.environ["REDIS_URL"];
+        del os.environ["REDIS_URL"];
+    }
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+    num_tasks = 10;
+
+    try {
+        db = mongo_client["jac_db"];
+        collection = db["_anchors"];
+
+        # Create N tasks (each creates 1 node + 1 edge = 2 anchors)
+        for i in range(num_tasks) {
+            res = requests.post(
+                f"{base_url}/walker/CreateTask",
+                json={"id": i, "title": f"Batch task {i}"},
+                timeout=5
+            );
+            assert res.status_code == 200 , f"Task {i} creation failed: {res.status_code}";
+        }
+
+        # Verify all tasks were stored in MongoDB
+        # 4 initial + num_tasks * 2 (node + edge per task)
+        expected_docs = 4 + num_tasks * 2;
+        actual_docs = collection.count_documents({});
+        assert actual_docs == expected_docs , (
+            f"Expected {expected_docs} docs in MongoDB, got {actual_docs}"
+        );
+
+        # Restart server to clear L1 memory — forces reads from L3 (MongoDB)
+        server.terminate();
+        server.wait(timeout=2);
+        server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+        # Capture MongoDB query count before the read traversal
+        server_status_before = mongo_client.admin.command("serverStatus");
+        queries_before = server_status_before["opcounters"]["query"];
+
+        # Read all tasks — this triggers _prefetch_edges -> batch_get
+        res = requests.post(f"{base_url}/walker/GetAllTasks", json={}, timeout=10);
+        assert res.status_code == 200;
+        response_data = cast(
+            dict[str, Any], extract_transport_response_data(res.json())
+        );
+        tasks = response_data["reports"][0];
+        assert len(tasks) == num_tasks , (
+            f"Expected {num_tasks} tasks, got {len(tasks)}"
+        );
+
+        # Capture MongoDB query count after read
+        server_status_after = mongo_client.admin.command("serverStatus");
+        queries_after = server_status_after["opcounters"]["query"];
+
+        # Without batch_get: would need ~20+ individual find() calls (1 per edge + 1 per node)
+        # With batch_get: should be ~2-4 calls (batch edges + batch nodes + root load)
+        queries_used = queries_after - queries_before;
+        max_expected_queries = num_tasks;  # Should be well under N queries
+        assert queries_used < max_expected_queries , (
+            f"batch_get should reduce queries: used {queries_used} queries to traverse "
+            f"{num_tasks} edges, expected fewer than {max_expected_queries}. "
+            f"batch_get may not be working."
+        );
+    } finally {
+        if server {
+            server.terminate();
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
+        }
+
+        system_dbs = {"admin","config","local"};
+        for db_name in mongo_client.list_database_names() {
+            if db_name not in system_dbs {
+                mongo_client.drop_database(db_name);
+            }
+        }
+        mongo_client.close();
+        mongo_container.stop();
+
+        # Restore environment
+        for (key, value) in env_backup.items() {
+            os.environ[key] = value;
+        }
+
+        time.sleep(0.5);
+        gc.collect();
+
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
+    }
+}
+
+glob MUTATION_JAC_FILE = FIXTURES_DIR / "mutation_app.jac";
+
+"""Validates that in-place mutations (list.append, dict[k]=v) which bypass
+__setattr__ are still detected and persisted through hash comparison."""
+test "in-place mutations on list and dict are persisted via hash-based dirty check" {
+    mongo_container = MongoDbContainer("mongo:latest");
+    mongo_container.start();
+    os.environ["MONGODB_URI"] = mongo_container.get_connection_url();
+    mongo_client = MongoClient(mongo_container.get_connection_url());
+
+    redis_container = RedisContainer("redis:latest", port=6379);
+    redis_container.start();
+    redis_host = redis_container.get_container_host_ip();
+    redis_port = redis_container.get_exposed_port(6379);
+    os.environ["REDIS_URL"] = f"redis://{redis_host}:{redis_port}/0";
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server: subprocess.Popen = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
+
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+
+    try {
+        token = register_user(base_url, "mutation_tester");
+
+        # Create an item
+        post_request(base_url, "/walker/CreateItem", {"id": 1}, token);
+
+        # --- In-place list mutation (list.append) ---
+        result = post_request(
+            base_url, "/walker/AppendTag", {"id": 1, "tag": "urgent"}, token
+        );
+        assert "urgent" in result["reports"][0]["tags"];
+
+        # --- In-place dict mutation (dict[k]=v) ---
+        result = post_request(
+            base_url,
+            "/walker/SetMeta",
+            {"id": 1, "key": "priority", "value": "high"},
+            token
+        );
+        assert result["reports"][0]["metadata"]["priority"] == "high";
+
+        # --- Restart server to force reload from MongoDB ---
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.wait(timeout=2);
+        }
+        server = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
+
+        # Read back after restart — mutations must have been persisted
+        result = post_request(base_url, "/walker/GetItems", {}, token);
+        items = result["reports"][0];
+        assert len(items) == 1 , f"Expected 1 item, got {len(items)}";
+
+        item = items[0];
+        assert "urgent" in item["tags"] , (
+            f"list.append mutation was not persisted. tags={item['tags']}"
+        );
+        assert item["metadata"].get("priority") == "high" , (
+            f"dict[k]=v mutation was not persisted. metadata={item['metadata']}"
+        );
+    } finally {
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.wait(timeout=2);
+        }
+        mongo_client.close();
+        mongo_container.stop();
+        redis_container.stop();
+        time.sleep(0.5);
+        gc.collect();
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
     }
 }

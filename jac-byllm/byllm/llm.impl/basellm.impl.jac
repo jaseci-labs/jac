@@ -1,3 +1,50 @@
+"""Check if the model is eligible for Anthropic prompt caching."""
+def _is_prompt_caching_eligible(model_name: str) -> bool {
+    pc_config = _byllm_config.get_prompt_caching_config();
+    if not pc_config.get("enabled", True) {
+        return False;
+    }
+    name = model_name.lower();
+    return name.startswith("anthropic/") or name.startswith("claude-");
+}
+
+
+"""Attach a cache_control marker to a message (string or list content)."""
+def _mark_message_for_caching(msg: dict) {
+    content = msg.get("content");
+    if isinstance(content, str) {
+        msg["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+    } elif isinstance(content, list) and len(content) > 0 {
+        content[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+    }
+}
+
+
+"""Mark cache breakpoints for Anthropic: last system, last non-system, last tool."""
+def _apply_prompt_caching(messages: list, tools: list | None) {
+    last_sys_idx = -1;
+    last_nonsys_idx = -1;
+    for (i, msg) in enumerate(messages) {
+        if isinstance(msg, dict) {
+            if msg.get("role") == "system" {
+                last_sys_idx = i;
+            } else {
+                last_nonsys_idx = i;
+            }
+        }
+    }
+    if last_sys_idx >= 0 {
+        _mark_message_for_caching(messages[last_sys_idx]);
+    }
+    if last_nonsys_idx >= 0 {
+        _mark_message_for_caching(messages[last_nonsys_idx]);
+    }
+    if tools {
+        tools[-1]["cache_control"] = _CACHE_CONTROL_EPHEMERAL;
+    }
+}
+
+
 """Construct the call parameters and return self (factory pattern).
 
 Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
@@ -27,38 +74,40 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
         or _call_params_config.get("max_react_iterations")
         or 0
     );
+    on_iteration = (
+        mt_run.call_params.get("on_iteration") or self.call_params.get("on_iteration")
+    );
     iter_count = 0;
-    # Invoke the LLM and handle tool calls (ReAct loop).
+    last_tool = "";
+    last_result = "";
+    total_tokens = 0;
     while True {
         iter_count += 1;
+        if on_iteration and iter_count > 1 {
+            ctx = IterationContext(
+                iteration=iter_count,
+                messages=mt_run.messages,
+                last_tool=last_tool,
+                last_result=last_result,
+                total_tokens=total_tokens
+            );
+            action = on_iteration(ctx);
+            if action == IterationAction.ABORT {
+                return last_result;
+            }
+            if action == IterationAction.ABORT_WITH_SUMMARY {
+                if mt_run.stream {
+                    return self._stream_final_answer(mt_run);
+                }
+                return self._force_final_answer(mt_run);
+            }
+        }
         if int(max_iters) > 0 and iter_count > int(max_iters) {
             # If streaming, reuse the existing streaming final-answer path
             if mt_run.stream {
                 return self._stream_final_answer(mt_run);
             }
-            # Non-streaming: keep only finish_tool and ask for final answer once
-            final_instruction = Message(
-                role=MessageRole.USER,
-                content="Based on the tool calls and their results above, provide only your final answer.",
-            );
-            mt_run.add_message(final_instruction);
-            original_tools = mt_run.tools;
-            finish_tool_obj = mt_run.get_tool("finish_tool");
-            mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
-            try {
-                final_resp = self.dispatch_no_streaming(mt_run);
-                if final_resp.tool_calls {
-                    for tool_call in final_resp.tool_calls {
-                        if tool_call.is_finish_call() {
-                            mt_run.add_message(tool_call());
-                            return tool_call.get_output();
-                        }
-                    }
-                }
-                return final_resp.output;
-            } finally {
-                mt_run.tools = original_tools;
-            }
+            return self._force_final_answer(mt_run);
         }
         try {
             resp = self.dispatch_no_streaming(mt_run);
@@ -78,6 +127,12 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             }
             return recovery_resp.output;
         }
+        usage = resp.usage or {};
+        total_tokens += int(
+            usage.get("total_tokens", 0)
+                if isinstance(usage, dict)
+                else getattr(usage, "total_tokens", 0)
+        );
         if resp.tool_calls {
             for tool_call in resp.tool_calls {
                 if tool_call.is_finish_call() {
@@ -89,7 +144,10 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                     }
                     return tool_call.get_output();
                 } else {
-                    mt_run.add_message(tool_call());
+                    result_msg = tool_call();
+                    last_tool = tool_call.tool.get_name();
+                    last_result = str(result_msg.content)[:500];
+                    mt_run.add_message(result_msg);
                 }
             }
         } else {
@@ -125,20 +183,42 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     # Use call_params from config as defaults, then override with instance call_params
     default_temp = _call_params_config.get("temperature", 0.7);
     default_max_tokens = _call_params_config.get("max_tokens");
+
+    # Build telemetry metadata (litellm passes this through to callbacks untouched)
+    agent_metadata = {};
+    try {
+        agent_metadata = {
+            "jac_invocation_id": getattr(mt_run, '_invocation_id', None),
+            "jac_parent_invocation_id": getattr(mt_run, '_parent_invocation_id', None),
+            "jac_caller_name": mt_run.mtir.caller.__name__ if mt_run.mtir else None,
+
+        };
+    } except Exception as e {
+        logger.debug(f"agent_metadata build failed: {e}");
+    }
+
+    messages = mt_run.get_msg_list();
+    tools = mt_run.get_tool_list() or None;
+
+    if _is_prompt_caching_eligible(self.model_name) {
+        _apply_prompt_caching(messages, tools);
+    }
+
     params = {
         "model": self.model_name,
+        "api_key": self.api_key or None,
         "api_base": (
             self.config.get("base_url")
             or self.config.get("host")
             or self.config.get("api_base")
             or _model_config.get("base_url")
         ),
-        "messages": mt_run.get_msg_list(),
-        "tools": mt_run.get_tool_list() or None,
+        "messages": messages,
+        "tools": tools,
         "response_format": mt_run.get_output_schema(),
-        "api_key": self.api_key or None,
         "temperature": self.call_params.get("temperature", default_temp),
         "max_tokens": self.call_params.get("max_tokens", default_max_tokens),
+        "metadata": agent_metadata,
 
     };
     # Pass through tool_choice if explicitly set in call_params
@@ -207,10 +287,18 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mt_run);
     # Call the LiteLLM API
     log_params = self.format_prompt(params);
-    self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
     self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
     params.pop("api_key", None);
-    response = self.model_call_no_stream(params);
+    try {
+        response = self.model_call_no_stream(params);
+    } except Exception {
+        # Log with model_name on failure so verbose output is still captured
+        self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
+        raise;
+    }
+    # Log the actual model that served the request (from response, useful for proxy/pool)
+    actual_model = response.get("model", self.model_name);
+    self.log_info(f"Calling LLM: {actual_model} with params: {log_params}");
     # Output format:
     # https://docs.litellm.ai/docs/#response-format-openai-format
     #
@@ -260,6 +348,11 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     params.pop("api_key", None);
     response = self.model_call_with_stream(params);
     for chunk in response {
+        # Final chunk carries usage when stream_options.include_usage is set.
+        chunk_usage = getattr(chunk, "usage", None);
+        if chunk_usage {
+            self._usage_history.append(chunk_usage);
+        }
         if chunk?.choices and chunk?.choices?[0]?.delta {
             delta = chunk.choices[0].delta;
             yield delta.content or "";
@@ -287,6 +380,32 @@ impl BaseLLM.model_call_with_stream(params: dict) -> Generator[str, None, None] 
     raise NotImplementedError(
         "Subclasses must implement this method for LLM call with streaming."
     );
+}
+
+"""Force LLM to produce a final answer (non-streaming). Restricts tools to finish_tool only."""
+impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
+    final_instruction = Message(
+        role=MessageRole.USER,
+        content="Based on the tool calls and their results above, provide only your final answer.",
+    );
+    mt_run.add_message(final_instruction);
+    original_tools = mt_run.tools;
+    finish_tool_obj = mt_run.get_tool("finish_tool");
+    mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
+    try {
+        final_resp = self.dispatch_no_streaming(mt_run);
+        if final_resp.tool_calls {
+            for tool_call in final_resp.tool_calls {
+                if tool_call.is_finish_call() {
+                    mt_run.add_message(tool_call());
+                    return tool_call.get_output();
+                }
+            }
+        }
+        return str(final_resp.output) if final_resp.output else "";
+    } finally {
+        mt_run.tools = original_tools;
+    }
 }
 
 """Stream the final answer after ReAct tool calls complete.
@@ -418,9 +537,56 @@ impl BaseLLM._invoke_streaming(
             or _call_params_config.get("max_react_iterations")
             or 0
         );
+        on_iteration = (
+            mt_run.call_params.get("on_iteration")
+            or self.call_params.get("on_iteration")
+        );
         iter_count = 0;
+        last_tool = "";
+        last_result = "";
+        total_tokens = 0;
         while True {
             iter_count += 1;
+
+            if on_iteration and iter_count > 1 {
+                ctx = IterationContext(
+                    iteration=iter_count,
+                    messages=mt_run.messages,
+                    last_tool=last_tool,
+                    last_result=last_result,
+                    total_tokens=total_tokens
+                );
+                action = on_iteration(ctx);
+                if action == IterationAction.ABORT {
+                    yield StreamEvent(
+                        event_type="steps_done",
+                        data={"iterations": iter_count - 1, "reason": "aborted"}
+                    );
+                    if last_result {
+                        yield StreamEvent(
+                            event_type="chunk", data={"content": last_result}
+                        );
+                    }
+                    break;
+                }
+                if action == IterationAction.ABORT_WITH_SUMMARY {
+                    yield StreamEvent(
+                        event_type="steps_done",
+                        data={
+                            "iterations": iter_count - 1,
+                            "reason": "aborted_with_summary"
+                        }
+                    );
+                    for token in self._stream_final_answer(mt_run) {
+                        if token {
+                            yield StreamEvent(
+                                event_type="chunk", data={"content": token}
+                            );
+                        }
+                    }
+                    break;
+                }
+            }
 
             if int(max_iters) > 0 and iter_count > int(max_iters) {
                 yield StreamEvent(
@@ -449,6 +615,13 @@ impl BaseLLM._invoke_streaming(
                 break;
             }
             self._usage_history.append(resp.usage);
+
+            usage = resp.usage or {};
+            total_tokens += int(
+                usage.get("total_tokens", 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, "total_tokens", 0)
+            );
 
             # Yield thought if the LLM produced reasoning text
             if resp.output and str(resp.output).strip() {
@@ -486,7 +659,7 @@ impl BaseLLM._invoke_streaming(
                         );
                         # Execute the tool
                         result_msg = tool_call();
-                        # Yield tool_result event after execution
+                        last_tool = tool_call.tool.get_name();
                         # Truncate result for the event stream (full result stays in mt_run messages).
                         # Configurable via call_params["max_tool_result_length"], default 500.
                         max_result_len = int(
@@ -496,6 +669,7 @@ impl BaseLLM._invoke_streaming(
                             or 500
                         );
                         truncated_result = result_msg.content[:max_result_len];
+                        last_result = truncated_result;
                         yield StreamEvent(
                             event_type="tool_result",
                             data={

@@ -146,8 +146,8 @@ def _start_server(
         }
 
         try {
-            response = requests.get(f"{base_url}/docs", timeout=2);
-            if response.status_code in (200, 404) {
+            response = requests.get(f"{base_url}/healthz", timeout=2);
+            if response.status_code == 200 {
                 print(f"Server started successfully on port {port}");
                 server_ready = True;
                 break;
@@ -190,32 +190,54 @@ def _stop_server(server_process: subprocess.Popen | None) -> None {
 }
 
 # Shared webhook test functions
+"""Register a user and login via HTTP, return the JWT token."""
+def _register_and_login(base_url: str, username: str, password: str) -> str {
+    requests.post(
+        f"{base_url}/user/register",
+        json={
+            "identities": [{"type": "username", "value": username}],
+            "credential": {"type": "password", "password": password}
+        },
+        timeout=10
+    );
+    login_resp = requests.post(
+        f"{base_url}/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": password}
+        },
+        timeout=10
+    );
+    login_data = cast(
+        dict[str, Any], _extract_transport_response_data(login_resp.json())
+    );
+    return login_data["token"];
+}
+
 """Verify webhook endpoints are registered for walkers with webhook protocol."""
 def run_webhook_endpoint_exists_test(base_url: str) -> None {
-    response = requests.get(f"{base_url}/openapi.json", timeout=5);
-    assert response.status_code == 200;
-    schema = response.json();
-    paths = schema.get("paths", {});
-
-    assert "/webhook/PaymentReceived" in paths , (
-        f"Expected /webhook/PaymentReceived in paths: {list(paths.keys())}"
+    # Hit endpoints directly — non-404 means the route is registered
+    resp = requests.post(f"{base_url}/webhook/PaymentReceived", json={}, timeout=5);
+    assert resp.status_code != 404 , (
+        "Expected /webhook/PaymentReceived to be registered"
     );
-    assert "/webhook/MinimalWebhook" in paths , (
-        f"Expected /webhook/MinimalWebhook in paths: {list(paths.keys())}"
+    resp = requests.post(f"{base_url}/webhook/MinimalWebhook", json={}, timeout=5);
+    assert resp.status_code != 404 , (
+        "Expected /webhook/MinimalWebhook to be registered"
     );
 }
 
 """Verify normal walkers are NOT in /webhook/."""
 def run_normal_walker_not_in_webhook_test(base_url: str) -> None {
-    response = requests.get(f"{base_url}/openapi.json", timeout=5);
-    assert response.status_code == 200;
-    schema = response.json();
-    paths = schema.get("paths", {});
-
-    assert "/webhook/NormalPayment" not in paths , (
-        "NormalPayment should NOT have webhook endpoint but found in paths"
+    # NormalPayment should be rejected by webhook endpoint
+    # Static mode: 404, Dynamic mode: 400 or 405 depending on routing
+    resp = requests.post(f"{base_url}/webhook/NormalPayment", json={}, timeout=5);
+    assert resp.status_code != 200 , (
+        "NormalPayment should NOT be a valid webhook endpoint"
     );
-    assert "/walker/NormalPayment" in paths or "/walker/{walker_name}" in paths , (
+    # But it should be accessible via /walker/
+    resp = requests.post(f"{base_url}/walker/NormalPayment", json={}, timeout=5);
+    assert resp.status_code != 404 , (
         "NormalPayment should be accessible via /walker/ endpoint"
     );
 }
@@ -225,14 +247,25 @@ def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
     username = f"normal_walker_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
-        json={"username": username, "password": "password123"},
+        json={
+            "identities": [{"type": "username", "value": username}],
+            "credential": {"type": "password", "password": "password123"}
+        },
         timeout=10
     );
     assert register_response.status_code == 201;
-    register_data = cast(
-        dict[str, Any], _extract_transport_response_data(register_response.json())
+    login_response = requests.post(
+        f"{base_url}/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": "password123"}
+        },
+        timeout=10
     );
-    token = register_data["token"];
+    login_data = cast(
+        dict[str, Any], _extract_transport_response_data(login_response.json())
+    );
+    token = login_data["token"];
 
     response = requests.post(
         f"{base_url}/walker/NormalPayment",
@@ -292,16 +325,7 @@ def run_webhook_invalid_api_key_test(base_url: str) -> None {
 """MinimalWebhook works with valid API key."""
 def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
     username = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}";
-    register_response = requests.post(
-        f"{base_url}/user/register",
-        json={"username": username, "password": "password123"},
-        timeout=10
-    );
-    assert register_response.status_code == 201;
-    register_data = cast(
-        dict[str, Any], _extract_transport_response_data(register_response.json())
-    );
-    token = register_data["token"];
+    token = _register_and_login(base_url, username, "password123");
 
     api_key_response = requests.post(
         f"{base_url}/api-key/create",
@@ -343,16 +367,7 @@ def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
 """PaymentReceived webhook walker with multiple fields."""
 def run_webhook_payment_received_test(base_url: str) -> None {
     username = f"payment_user_{uuid.uuid4().hex[:8]}";
-    register_response = requests.post(
-        f"{base_url}/user/register",
-        json={"username": username, "password": "password123"},
-        timeout=10
-    );
-    assert register_response.status_code == 201;
-    register_data = cast(
-        dict[str, Any], _extract_transport_response_data(register_response.json())
-    );
-    token = register_data["token"];
+    token = _register_and_login(base_url, username, "password123");
 
     api_key_response = requests.post(
         f"{base_url}/api-key/create",
@@ -404,16 +419,7 @@ def run_webhook_payment_received_test(base_url: str) -> None {
 """Webhook walkers are NOT accessible via /walker/."""
 def run_webhook_not_accessible_via_walker_test(base_url: str) -> None {
     username = f"webhook_path_user_{uuid.uuid4().hex[:8]}";
-    register_response = requests.post(
-        f"{base_url}/user/register",
-        json={"username": username, "password": "password123"},
-        timeout=10
-    );
-    assert register_response.status_code == 201;
-    register_data = cast(
-        dict[str, Any], _extract_transport_response_data(register_response.json())
-    );
-    token = register_data["token"];
+    token = _register_and_login(base_url, username, "password123");
 
     response = requests.post(
         f"{base_url}/walker/PaymentReceived",
@@ -430,16 +436,7 @@ def run_webhook_not_accessible_via_walker_test(base_url: str) -> None {
 """Test that revoked API keys are rejected."""
 def run_webhook_revoked_api_key_test(base_url: str) -> None {
     username = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}";
-    register_response = requests.post(
-        f"{base_url}/user/register",
-        json={"username": username, "password": "password123"},
-        timeout=10
-    );
-    assert register_response.status_code == 201;
-    register_data = cast(
-        dict[str, Any], _extract_transport_response_data(register_response.json())
-    );
-    token = register_data["token"];
+    token = _register_and_login(base_url, username, "password123");
 
     api_key_response = requests.post(
         f"{base_url}/api-key/create",
@@ -508,9 +505,7 @@ test "webhook without mongo - endpoint exists" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        response = client.get("/openapi.json");
-        assert response.status_code == 200;
-        schema = response.json();
+        schema = client._server.server.app.openapi();
         paths = schema.get("paths", {});
 
         assert "/webhook/PaymentReceived" in paths , (
@@ -531,9 +526,7 @@ test "webhook without mongo - normal walker not in webhook" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        response = client.get("/openapi.json");
-        assert response.status_code == 200;
-        schema = response.json();
+        schema = client._server.server.app.openapi();
         paths = schema.get("paths", {});
 
         assert "/webhook/NormalPayment" not in paths , (
@@ -554,9 +547,9 @@ test "webhook without mongo - normal walker accessible via walker endpoint" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        (_, token) = client.register_user(
-            f"normal_walker_user_{uuid.uuid4().hex[:8]}", "password123"
-        );
+        walker_username = f"normal_walker_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(walker_username, "password123");
+        token = client.login_user(walker_username, "password123");
 
         response = client.post(
             "/walker/NormalPayment",
@@ -639,9 +632,9 @@ test "webhook without mongo - minimal webhook with valid api key" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        (_, token) = client.register_user(
-            f"minimal_webhook_user_{uuid.uuid4().hex[:8]}", "password123"
-        );
+        _wh_user1 = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(_wh_user1, "password123");
+        token = client.login_user(_wh_user1, "password123");
 
         api_key_response = client.post(
             "/api-key/create",
@@ -686,9 +679,9 @@ test "webhook without mongo - payment received with fields" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        (_, token) = client.register_user(
-            f"payment_user_{uuid.uuid4().hex[:8]}", "password123"
-        );
+        _wh_user2 = f"payment_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(_wh_user2, "password123");
+        token = client.login_user(_wh_user2, "password123");
 
         api_key_response = client.post(
             "/api-key/create",
@@ -743,9 +736,9 @@ test "webhook without mongo - not accessible via walker endpoint" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        (_, token) = client.register_user(
-            f"webhook_path_user_{uuid.uuid4().hex[:8]}", "password123"
-        );
+        _wh_user3 = f"webhook_path_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(_wh_user3, "password123");
+        token = client.login_user(_wh_user3, "password123");
 
         response = client.post(
             "/walker/PaymentReceived",
@@ -768,9 +761,9 @@ test "webhook without mongo - revoked api key" {
     original_mongodb_uri = os.environ.pop("MONGODB_URI", None);
     client = make_client();
     try {
-        (_, token) = client.register_user(
-            f"webhook_revoke_user_{uuid.uuid4().hex[:8]}", "password123"
-        );
+        _wh_user4 = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}";
+        client.register_user(_wh_user4, "password123");
+        token = client.login_user(_wh_user4, "password123");
 
         api_key_response = client.post(
             "/api-key/create",

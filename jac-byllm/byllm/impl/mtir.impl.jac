@@ -34,14 +34,22 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     # Check if we have MTIR info (Jac mode) or need runtime introspection (Python lib mode)
     has_mtir = ir_info is not None;
     # Prepare tools with or without MTIR info
-    if has_mtir {
-        tools = [
-            Tool(func, info=ir_info.tools[i] if i < len(ir_info.tools) else None)
-            for (i, func) in enumerate(call_params.get("tools", []))
-        ];  # type: ignore
-    } else {
-        # Python library mode: create tools without MTIR info
-        tools = [Tool(func) for func in call_params.get("tools", [])];  # type: ignore
+    raw_tools = call_params.get("tools", []);
+    tools = [];
+    local_idx = 0;
+    for func in raw_tools {
+        # Already tool-like (e.g., McpTool) — pass through unchanged.
+        if func?.get_json_schema and func?.get_name and func?.is_finish_tool {
+            tools.append(func);
+            continue;
+        }
+        if has_mtir {
+            info = ir_info.tools[local_idx] if local_idx < len(ir_info.tools) else None;
+            tools.append(Tool(func, info=info));  # type: ignore
+        } else {
+            tools.append(Tool(func));  # type: ignore
+        }
+        local_idx += 1;
     }
     # Construct the input information from the arguments.
     inputs_detail: list[str] = [];
@@ -229,10 +237,10 @@ impl MTRuntime.parse_response(response: str) -> object {
     return response;
 }
 
-"""Get a tool by its function name."""
-impl MTRuntime.get_tool(tool_name: str) -> Tool | None {
+"""Get a tool by name. Works for both Tool and McpTool."""
+impl MTRuntime.get_tool(tool_name: str) -> Tool | McpTool | None {
     for tool in self.tools {
-        if tool.func.__name__ == tool_name {
+        if tool.get_name() == tool_name {
             return tool;
         }
     }

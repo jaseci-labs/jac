@@ -26,6 +26,8 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
         },
         'call_params': {'temperature': 0.7, 'max_tokens': 0},
         'litellm': {'local_cost_map': True, 'drop_params': True, 'debug': False},
+        'fallback': {'strategy': 'fallback', 'num_retries': 1, 'timeout': 60.0},
+        'prompt_caching': {'enabled': True},
         'system_prompt': ''
     };
 }
@@ -66,6 +68,24 @@ impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, Any] {
         'drop_params': bool(litellm_config.get('drop_params', True)),
         'debug': bool(litellm_config.get('debug', False))
     };
+}
+
+"""Get fallback/resilience configuration from jac.toml."""
+impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    fallback_config = config.get('fallback', {});
+    return {
+        'strategy': fallback_config.get('strategy', 'fallback'),
+        'num_retries': int(fallback_config.get('num_retries', 1)),
+        'timeout': float(fallback_config.get('timeout', 60.0))
+    };
+}
+
+"""Get prompt caching configuration from jac.toml."""
+impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    pc_config = config.get('prompt_caching', {});
+    return {'enabled': bool(pc_config.get('enabled', True))};
 }
 
 """Get or create the global JacByllmConfig instance."""

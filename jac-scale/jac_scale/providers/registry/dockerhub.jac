@@ -1,7 +1,6 @@
 """DockerHub registry implementation."""
-import docker;
 import from typing { Any }
-import from docker.errors { APIError, BuildError }
+import from jac_scale._optdeps.docker { docker_module as docker, APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
 
 """DockerHub image registry implementation."""
@@ -35,7 +34,7 @@ obj DockerHubRegistry(ImageRegistry) {
         return repository_name;
     }
 
-    def push_image(image_name: str) -> None {
+    def push_image(image_name: str) {
         # Push Docker image to DockerHub
         docker_client = docker.from_env();
         try {

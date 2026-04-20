@@ -1,20 +1,21 @@
 """Direct Database Access Module."""
-import from pymongo { MongoClient }
-import from pymongo.results {
-    InsertOneResult as PyMongoInsertOneResult,
-    InsertManyResult as PyMongoInsertManyResult,
-    UpdateResult as PyMongoUpdateResult,
-    DeleteResult as PyMongoDeleteResult
+import from jac_scale._optdeps.optional_deps { require_optional }
+import from jac_scale._optdeps.pymongo {
+    MongoClient,
+    PyMongoInsertOneResult,
+    PyMongoInsertManyResult,
+    PyMongoUpdateResult,
+    PyMongoDeleteResult,
+    Cursor,
+    Collection,
+    ObjectId
 }
-import from pymongo.cursor { Cursor }
-import from pymongo.collection { Collection }
-import from redis { Redis }
+import from jac_scale._optdeps.redis { Redis }
 import from jac_scale.factories.database_factory {
     DatabaseProviderFactory,
     DatabaseType,
     _resolve_uri
 }
-import from bson { ObjectId }
 import from uuid { uuid4 }
 import from jaclang.runtimelib.serializer { Serializer }
 import json;
@@ -43,6 +44,7 @@ obj DeleteResult {
 
 """Get or create a pooled MongoDB client for the given URI."""
 def get_mongo_client(uri: (str | None) = None) -> MongoClient {
+    require_optional("pymongo", "data");
     global _mongo_clients;
 
     # Resolve URI from config if not provided
@@ -60,6 +62,7 @@ def get_mongo_client(uri: (str | None) = None) -> MongoClient {
 
 """Get or create a pooled Redis client for the given URI."""
 def get_redis_client(uri: (str | None) = None) -> Redis {
+    require_optional("redis", "data");
     global _redis_clients;
 
     # Resolve URI from config if not provided
@@ -76,7 +79,7 @@ def get_redis_client(uri: (str | None) = None) -> Redis {
 }
 
 """Close a specific MongoDB client connection."""
-def close_mongo_client(uri: (str | None) = None) -> None {
+def close_mongo_client(uri: (str | None) = None) {
     global _mongo_clients;
 
     # Resolve URI (silently skip if config not found)
@@ -90,7 +93,7 @@ def close_mongo_client(uri: (str | None) = None) -> None {
 }
 
 """Close a specific Redis client connection."""
-def close_redis_client(uri: (str | None) = None) -> None {
+def close_redis_client(uri: (str | None) = None) {
     global _redis_clients;
 
     # Resolve URI (silently skip if config not found)
@@ -104,7 +107,7 @@ def close_redis_client(uri: (str | None) = None) -> None {
 }
 
 """Close all MongoDB and Redis connections."""
-def close_all_db_connections -> None {
+def close_all_db_connections {
     global _mongo_clients,_redis_clients;
 
     # Close all MongoDB clients

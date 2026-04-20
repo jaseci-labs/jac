@@ -47,8 +47,8 @@ def:pub TestButton(text: str, onClick: Any, variant: str) -> JsxElement {
                 "fontWeight": "600",
                 "transition": "all 0.2s"
             }}
-            onMouseOver={lambda e: Any  -> None { e.target.style.backgroundColor = hover_color;}}
-            onMouseOut={lambda e: Any  -> None { e.target.style.backgroundColor = bg_color;}}
+            onMouseOver={lambda e: Any { e.target.style.backgroundColor = hover_color;}}
+            onMouseOut={lambda e: Any { e.target.style.backgroundColor = bg_color;}}
         >
             {text}
         </button>;
@@ -86,9 +86,7 @@ def:pub TestCard(title: str, children: Any, color: str) -> JsxElement {
                     {title}
                 </h3>
             </div>
-            <div>
-                {children}
-            </div>
+            <div>{children}</div>
         </div>;
 }
 
@@ -110,9 +108,7 @@ def:pub ResultDisplay(data: Any, label: str) -> JsxElement {
                 "border": "1px solid #e5e7eb"
             }}
         >
-            <strong style={{"color": "#374151"}}>
-                {label}:
-            </strong>
+            <strong style={{"color": "#374151"}}>{label}:</strong>
             <pre
                 style={{
                     "marginTop": "10px",
@@ -226,7 +222,7 @@ def:pub FeaturesTest -> JsxElement {
     }
 
     # Test string methods via walker
-    async def handleStringTest -> None {
+    async def handleStringTest {
         loading = true;
         try {
             response = root spawn test_string_methods(input_text=stringInput);
@@ -240,7 +236,7 @@ def:pub FeaturesTest -> JsxElement {
     }
 
     # Test list operations via walker
-    async def handleListTest -> None {
+    async def handleListTest {
         loading = true;
         try {
             # Parse number list
@@ -261,7 +257,7 @@ def:pub FeaturesTest -> JsxElement {
     }
 
     # Test complex data processing
-    async def handleComplexTest -> None {
+    async def handleComplexTest {
         loading = true;
         try {
             # Generate sample data using JS helper
@@ -331,7 +327,7 @@ def:pub FeaturesTest -> JsxElement {
                 <Link to="/">
                     <TestButton
                         text="← Back Home"
-                        onClick={lambda -> None { }}
+                        onClick={lambda { }}
                         variant="secondary"
                     />
                 </Link>
@@ -369,7 +365,7 @@ def:pub FeaturesTest -> JsxElement {
                         <input
                             type="text"
                             value={testMessage}
-                            onChange={lambda e: Any  -> None { testMessage = e.target.value;}}
+                            onChange={lambda e: Any { testMessage = e.target.value;}}
                             placeholder="Enter test message..."
                             style={{
                                 "flex": "1",
@@ -381,7 +377,7 @@ def:pub FeaturesTest -> JsxElement {
                         />
                         <TestButton
                             text="Create"
-                            onClick={lambda -> None { handleCreate();}}
+                            onClick={lambda { handleCreate();}}
                             variant="primary"
                         />
                     </div>
@@ -424,16 +420,12 @@ def:pub FeaturesTest -> JsxElement {
                                 <div style={{"display": "flex", "gap": "8px"}}>
                                     <TestButton
                                         text="Edit"
-                                        onClick={lambda -> None { handleUpdate(
-                                            item._jac_id
-                                        );}}
+                                        onClick={lambda { handleUpdate(item._jac_id);}}
                                         variant="secondary"
                                     />
                                     <TestButton
                                         text="Delete"
-                                        onClick={lambda -> None { handleDelete(
-                                            item._jac_id
-                                        );}}
+                                        onClick={lambda { handleDelete(item._jac_id);}}
                                         variant="secondary"
                                     />
                                 </div>
@@ -463,9 +455,7 @@ def:pub FeaturesTest -> JsxElement {
                         >
                             {[
                                 <div key={key} style={{"marginBottom": "5px"}}>
-                                    <span style={{"fontWeight": "600"}}>
-                                        {key}:
-                                    </span>
+                                    <span style={{"fontWeight": "600"}}>{key}:</span>
                                     {string_demos[key]}
                                 </div> for key in list(string_demos.keys())
                             ]}
@@ -486,7 +476,7 @@ def:pub FeaturesTest -> JsxElement {
                             <input
                                 type="text"
                                 value={stringInput}
-                                onChange={lambda e: Any  -> None { stringInput = e.target.value;}}
+                                onChange={lambda e: Any { stringInput = e.target.value;}}
                                 style={{
                                     "flex": "1",
                                     "padding": "10px",
@@ -497,7 +487,7 @@ def:pub FeaturesTest -> JsxElement {
                             />
                             <TestButton
                                 text="Process with Walker"
-                                onClick={lambda -> None { handleStringTest();}}
+                                onClick={lambda { handleStringTest();}}
                                 variant="primary"
                             />
                         </div>
@@ -512,11 +502,13 @@ def:pub FeaturesTest -> JsxElement {
                     <p style={{"color": "#4b5563", "marginBottom": "10px"}}>
                         Process arrays/lists using walker operations.
                     </p>
-                    <div style={{"display": "flex", "gap": "10px", "marginTop": "10px"}}>
+                    <div
+                        style={{"display": "flex", "gap": "10px", "marginTop": "10px"}}
+                    >
                         <input
                             type="text"
                             value={numberList}
-                            onChange={lambda e: Any  -> None { numberList = e.target.value;}}
+                            onChange={lambda e: Any { numberList = e.target.value;}}
                             placeholder="Enter numbers (comma-separated)"
                             style={{
                                 "flex": "1",
@@ -528,7 +520,7 @@ def:pub FeaturesTest -> JsxElement {
                         />
                         <TestButton
                             text="Process List"
-                            onClick={lambda -> None { handleListTest();}}
+                            onClick={lambda { handleListTest();}}
                             variant="primary"
                         />
                     </div>
@@ -571,34 +563,24 @@ def:pub FeaturesTest -> JsxElement {
                     </p>
                     <ul style={{"color": "#374151", "lineHeight": "1.8"}}>
                         <li>
-                            <strong>
-                                JAC-Client Utils:
-                            </strong>
+                            <strong>JAC-Client Utils:</strong>
                             Router components (Link, useNavigate)
                         </li>
                         <li>
-                            <strong>
-                                React:
-                            </strong>
+                            <strong>React:</strong>
                             Hooks (useState, useEffect)
                         </li>
                         #
                         <li>
-                            <strong>
-                                TypeScript:
-                            </strong>
+                            <strong>TypeScript:</strong>
                             PieChart component from .tsx file
                         </li>
                         <li>
-                            <strong>
-                                JavaScript:
-                            </strong>
+                            <strong>JavaScript:</strong>
                             Helper functions from .js file (generateId, sumBy)
                         </li>
                         <li>
-                            <strong>
-                                JAC Files:
-                            </strong>
+                            <strong>JAC Files:</strong>
                             for matCurrency from utils/formatters.jac
                         </li>
                     </ul>
@@ -610,9 +592,7 @@ def:pub FeaturesTest -> JsxElement {
                             "marginTop": "15px"
                         }}
                     >
-                        <strong style={{"color": "#065f46"}}>
-                            Examples:
-                        </strong>
+                        <strong style={{"color": "#065f46"}}>Examples:</strong>
                         <div
                             style={{
                                 "marginTop": "8px",
@@ -620,15 +600,9 @@ def:pub FeaturesTest -> JsxElement {
                                 "color": "#047857"
                             }}
                         >
-                            <div>
-                                Generated ID:{generateId()}
-                            </div>
-                            <div>
-                                Formatted Currency:{formatCurrency(1234.56)}
-                            </div>
-                            <div>
-                                Percentage Calc:{calculatePercentage(75, 100)}%
-                            </div>
+                            <div>Generated ID:{generateId()}</div>
+                            <div>Formatted Currency:{formatCurrency(1234.56)}</div>
+                            <div>Percentage Calc:{calculatePercentage(75, 100)}%</div>
                         </div>
                     </div>
                 </div>
@@ -655,9 +629,7 @@ def:pub FeaturesTest -> JsxElement {
                             }}
                         >
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#92400e"}}>
-                                    VITE_APP_NAME:
-                                </span>
+                                <span style={{"color": "#92400e"}}>VITE_APP_NAME:</span>
                                 {import.meta.env.VITE_APP_NAME or "(not set)"}
                             </div>
                             <div style={{"marginBottom": "5px"}}>
@@ -673,15 +645,11 @@ def:pub FeaturesTest -> JsxElement {
                                 {import.meta.env.VITE_API_ENDPOINT or "(not set)"}
                             </div>
                             <div style={{"marginBottom": "5px"}}>
-                                <span style={{"color": "#92400e"}}>
-                                    MODE:
-                                </span>
+                                <span style={{"color": "#92400e"}}>MODE:</span>
                                 {import.meta.env.MODE or "(not set)"}
                             </div>
                             <div>
-                                <span style={{"color": "#92400e"}}>
-                                    DEV:
-                                </span>
+                                <span style={{"color": "#92400e"}}>DEV:</span>
                                 {"true" if import.meta.env.DEV else "false"}
                             </div>
                         </div>
@@ -749,7 +717,7 @@ def:pub FeaturesTest -> JsxElement {
                     </p>
                     <TestButton
                         text="Process Sample Data"
-                        onClick={lambda -> None { handleComplexTest();}}
+                        onClick={lambda { handleComplexTest();}}
                         variant="primary"
                     />
                     {complexResult

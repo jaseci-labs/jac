@@ -24,6 +24,7 @@ import from .schema { tool_to_schema }
 import from byllm.exceptions { ByLLMError, FinishToolError, UnknownToolError }
 
 import from jaclang.jac0core.mtp { Info }
+import from byllm.mcp { McpTool }
 
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).
@@ -83,7 +84,7 @@ Created from LLM responses and can be executed to get results.
 """
 obj ToolCall {
     has call_id: str,
-        tool: Tool,
+        tool: Tool | McpTool,
         args: dict;
 
     def __call__ -> ToolCallResultMsg;
@@ -119,6 +120,22 @@ answer chunks share this single type.
 obj StreamEvent {
     has event_type: str,
         data: dict;
+}
+
+"""Control action returned by on_iteration callback."""
+enum IterationAction ( StrEnum ) {
+    CONTINUE = "continue",
+    ABORT = "abort",
+    ABORT_WITH_SUMMARY = "abort_with_summary"
+}
+
+"""Loop state snapshot passed to on_iteration callback."""
+obj IterationContext {
+    has iteration: int,
+        messages: list,
+        last_tool: str,
+        last_result: str,
+        total_tokens: int;
 }
 
 # -----------------------------------------------------------------------------

@@ -13,66 +13,126 @@ import from pathlib { Path }
 import from typing { Any }
 import from jaclang.project.plugin_config { deep_merge }
 
-# Core dependency versions - must match jac-client plugin version.
+# Core dependency versions — individual packages instead of meta-packages.
 # These are the required versions for runtime compatibility.
-glob JAC_CLIENT_NODE_VERSION = "1.0.7",
-     JAC_CLIENT_DEV_DEPS_VERSION = "2.0.0";
+
+# Runtime dependencies (always injected)
+glob CORE_RUNTIME_DEPS: dict[str, str] = {
+         "react": "^18.2.0",
+         "react-dom": "^18.2.0",
+         "react-router-dom": "^6.22.0",
+         "react-error-boundary": "^5.0.0"
+     },
+     # Optional runtime dependencies (injected by default, separable later)
+     OPTIONAL_RUNTIME_DEPS: dict[str, str] = {
+         "react-hook-form": "^7.71.0",
+         "zod": "^4.3.6",
+         "@hookform/resolvers": "^5.2.2"
+     },
+     # Dev/build dependencies (always injected)
+     CORE_DEV_DEPS: dict[str, str] = {
+         "vite": "^6.4.1",
+         "@vitejs/plugin-react": "^4.2.1",
+         "typescript": "^5.3.3",
+         "@types/react": "^18.2.0",
+         "@types/react-dom": "^18.2.0"
+     },
+     # Legacy meta-package names (for migration)
+     LEGACY_META_PACKAGES = {"jac-client-node","@jac-client/dev-deps"};
 
 # ============================================================================
 # DEPENDENCY MANAGEMENT HELPERS
 # ============================================================================
-"""Ensure a core dependency exists in jac.toml, add if missing.
+"""Ensure a set of dependencies exist in jac.toml, adding any that are missing.
 
 Returns updated deps dict and whether node_modules should be cleared.
 """
-def _ensure_dependency(
+def _ensure_dependencies(
     jac_config: Any,
     deps: dict,
-    name: str,
-    version: str,
+    required: dict[str, str],
     is_dev: bool,
     description: str
 ) -> tuple[dict, bool] {
-    if name not in deps {
-        console.print(
-            f"\n  [yellow]⚠[/yellow] Missing required {'dev '
-                if is_dev
-                else ''}dependency: [bold]{name}[/bold]"
-        );
-        console.print(f"  [dim]{description}[/dim]");
-        jac_config.add_dependency(name, version, dev=is_dev, dep_type='npm');
-        jac_config.save();
-        deps = {name: version, ** deps};
-        console.print(f"  [green]✔[/green] Added {name}@{version} to jac.toml");
-        return (deps, True);  # needs reinstall
-
+    needs_reinstall = False;
+    for (name, version) in required.items() {
+        if name not in deps {
+            console.print(
+                f"\n  [yellow]⚠[/yellow] Missing required {'dev '
+                    if is_dev
+                    else ''}dependency: [bold]{name}[/bold]"
+            );
+            console.print(f"  [dim]{description}[/dim]");
+            jac_config.add_dependency(name, version, dev=is_dev, dep_type='npm');
+            deps = {name: version, ** deps};
+            console.print(f"  [green]✔[/green] Added {name}@{version} to jac.toml");
+            needs_reinstall = True;
+        }
     }
-    return (deps, False);
+    if needs_reinstall {
+        jac_config.save();
+    }
+    return (deps, needs_reinstall);
 }
 
-"""Check and auto-update dependency version if mismatched.
+"""Migrate away from legacy meta-packages (jac-client-node, @jac-client/dev-deps).
 
-Returns True if version was updated (needs reinstall).
+Removes the meta-package entry and injects the individual deps it contained.
+Returns updated deps dict and whether migration occurred.
 """
-def _check_dependency_version(
-    jac_config: Any, deps: dict, name: str, required_version: str, is_dev: bool
-) -> bool {
-    user_version: str = str(deps.get(name, ''));
-    if user_version and user_version != required_version {
+def _migrate_legacy_meta_packages(
+    jac_config: Any, npm_deps: dict, npm_dev_deps: dict
+) -> tuple[dict, dict, bool] {
+    migrated = False;
+
+    if 'jac-client-node' in npm_deps {
         console.print(
-            f"\n  [yellow]⚠[/yellow] Version mismatch: {name}@{user_version} "
-            f"(required: {required_version})"
+            "\n  [yellow]⚠[/yellow] Migrating from [bold]jac-client-node[/bold] "
+            "meta-package to individual dependencies..."
         );
-        jac_config.add_dependency(name, required_version, dev=is_dev, dep_type='npm');
-        jac_config.save();
-        console.print(f"  [green]✔[/green] Updated to {name}@{required_version}");
-        return True;
+        jac_config.remove_dependency('jac-client-node', dev=False, dep_type='npm');
+        del npm_deps['jac-client-node'];
+        # Inject individual runtime deps (core + optional)
+        all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+        for (name, version) in all_runtime.items() {
+            if name not in npm_deps {
+                jac_config.add_dependency(name, version, dev=False, dep_type='npm');
+                npm_deps[name] = version;
+            }
+        }
+        console.print(
+            "  [green]✔[/green] Replaced jac-client-node with individual packages"
+        );
+        migrated = True;
     }
-    return False;
+
+    if '@jac-client/dev-deps' in npm_dev_deps {
+        console.print(
+            "\n  [yellow]⚠[/yellow] Migrating from [bold]@jac-client/dev-deps[/bold] "
+            "meta-package to individual dependencies..."
+        );
+        jac_config.remove_dependency('@jac-client/dev-deps', dev=True, dep_type='npm');
+        del npm_dev_deps['@jac-client/dev-deps'];
+        for (name, version) in CORE_DEV_DEPS.items() {
+            if name not in npm_dev_deps {
+                jac_config.add_dependency(name, version, dev=True, dep_type='npm');
+                npm_dev_deps[name] = version;
+            }
+        }
+        console.print(
+            "  [green]✔[/green] Replaced @jac-client/dev-deps with individual packages"
+        );
+        migrated = True;
+    }
+
+    if migrated {
+        jac_config.save();
+    }
+    return (npm_deps, npm_dev_deps, migrated);
 }
 
 """Clear node_modules to force dependency reinstall."""
-def _clear_node_modules(project_dir: Path | None) -> None {
+def _clear_node_modules(project_dir: Path | None) {
     if project_dir is not None {
         node_modules: Path = project_dir / '.jac' / 'client' / 'node_modules';
         if node_modules.exists() {
@@ -116,7 +176,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any]
 """Load configuration from jac.toml, merging with defaults.
 
 Overrides base class to also include npm dependencies from [dependencies.npm].
-Ensures jac-client-node is present in jac.toml with compatible version.
+Ensures core dependencies are present in jac.toml, migrating legacy meta-packages if needed.
 """
 impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     if self._config is not None {
@@ -134,52 +194,34 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     dev_section = npm_plugin_deps.get('dev', {});
     npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
 
-    # Ensure core dependencies are present in jac.toml
-    needs_reinstall = False;
+    # Migrate legacy meta-packages if present
+    (npm_deps, npm_dev_deps, migrated) = _migrate_legacy_meta_packages(
+        jac_config, npm_deps, npm_dev_deps
+    );
+    needs_reinstall = migrated;
 
-    # Runtime dependency: jac-client-node
-    (npm_deps, added) = _ensure_dependency(
+    # Ensure core runtime dependencies are present
+    all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+    (npm_deps, added) = _ensure_dependencies(
         jac_config,
         npm_deps,
-        name='jac-client-node',
-        version=JAC_CLIENT_NODE_VERSION,
+        all_runtime,
         is_dev=False,
-        description="This package provides React and other client runtime libraries."
+        description="Core client runtime library."
     );
     needs_reinstall = needs_reinstall or added;
-    if not added {
-        updated = _check_dependency_version(
-            jac_config,
-            npm_deps,
-            'jac-client-node',
-            JAC_CLIENT_NODE_VERSION,
-            is_dev=False
-        );
-        needs_reinstall = needs_reinstall or updated;
-    }
 
-    # Dev dependency: @jac-client/dev-deps
-    (npm_dev_deps, added) = _ensure_dependency(
+    # Ensure core dev/build dependencies are present
+    (npm_dev_deps, added) = _ensure_dependencies(
         jac_config,
         npm_dev_deps,
-        name='@jac-client/dev-deps',
-        version=JAC_CLIENT_DEV_DEPS_VERSION,
+        CORE_DEV_DEPS,
         is_dev=True,
-        description="This package provides Vite, TypeScript and build tools."
+        description="Build toolchain dependency."
     );
     needs_reinstall = needs_reinstall or added;
-    if not added {
-        updated = _check_dependency_version(
-            jac_config,
-            npm_dev_deps,
-            '@jac-client/dev-deps',
-            JAC_CLIENT_DEV_DEPS_VERSION,
-            is_dev=True
-        );
-        needs_reinstall = needs_reinstall or updated;
-    }
 
-    # Clear node_modules if any dependency was added
+    # Clear node_modules if any dependency was added or migrated
     if needs_reinstall {
         _clear_node_modules(self.project_dir);
     }
@@ -192,6 +234,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
         'configs': client_config.get('configs', {}),
         'paths': client_config.get('paths', {}),
         'npm': client_config.get('npm', {}),
+        'pwa': client_config.get('pwa', {}),
         'package': {
             'name': jac_config.project.name,
             'version': jac_config.project.version,
@@ -273,42 +316,80 @@ impl JacClientConfig.get_paths_config(self: JacClientConfig) -> dict[str, str] {
     return config.get('paths', {});
 }
 
-"""Check if jac-client-node version matches exactly with jac-client plugin.
+"""Get PWA configuration from [plugins.client.pwa] in jac.toml."""
+impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, Any] {
+    config = self.load();
+    return config.get('pwa', {});
+}
 
-Returns tuple of (is_compatible, user_version, required_version).
-Requires exact version match - even patch versions must match.
+"""Check if PWA is enabled (pwa section exists in jac.toml)."""
+impl JacClientConfig.is_pwa_enabled(self: JacClientConfig) -> bool {
+    pwa_config = self.get_pwa_config();
+    # PWA is enabled if the section exists (even if empty)
+    # The section is added by `jac setup pwa`
+    return len(pwa_config) > 0;
+}
+
+"""Check if core runtime dependencies are present and version-compatible.
+
+Returns tuple of (is_compatible, user_version_summary, required_version_summary).
+Checks that all core runtime deps (react, react-dom, etc.) are present.
 """
 impl JacClientConfig.check_runtime_version(
     self: JacClientConfig
 ) -> tuple[bool, str, str] {
     jac_config = self.get_jac_config();
     npm_deps: dict = dict(jac_config.get_plugin_deps('npm'));
-    user_version: str = str(npm_deps.get('jac-client-node', ''));
-    required_version: str = JAC_CLIENT_NODE_VERSION;
 
-    if not user_version {
-        return (False, '', required_version);
+    # Check if react is present as the primary indicator
+    user_react: str = str(npm_deps.get('react', ''));
+    required_react: str = CORE_RUNTIME_DEPS.get('react', '');
+
+    if not user_react {
+        # Legacy check: maybe still using jac-client-node
+        if 'jac-client-node' in npm_deps {
+            return (False, 'jac-client-node (legacy)', required_react);
+        }
+        return (False, '', required_react);
     }
 
-    # Exact version match required - strip any semver prefixes for comparison
-    clean_user: str = user_version.lstrip('^~>=<');
-    clean_required: str = required_version.lstrip('^~>=<');
+    # Check all core deps are present
+    all_required = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+    missing = [
+        name
+        for name in all_required
+        if name not in npm_deps
+    ];
+    if missing {
+        return (False, user_react, required_react);
+    }
 
-    is_compatible = clean_user == clean_required;
-    return (is_compatible, user_version, required_version);
+    return (True, user_react, required_react);
 }
 
-"""Sync jac-client-node version in jac.toml to match jac-client plugin."""
+"""Sync core runtime dependency versions in jac.toml."""
 impl JacClientConfig.sync_runtime_version(self: JacClientConfig) -> None {
     jac_config = self.get_jac_config();
-    # Update the dependency in jac.toml
-    jac_config.add_dependency(
-        'jac-client-node', JAC_CLIENT_NODE_VERSION, dev=False, dep_type='npm'
-    );
+    npm_deps: dict = dict(jac_config.get_plugin_deps('npm'));
+
+    # Migrate legacy meta-packages first
+    npm_plugin_deps: dict = dict(jac_config.plugin_dependencies.get('npm', {}));
+    dev_section = npm_plugin_deps.get('dev', {});
+    npm_dev_deps: dict = dict(dev_section) if isinstance(dev_section, dict) else {};
+    _migrate_legacy_meta_packages(jac_config, npm_deps, npm_dev_deps);
+
+    # Update all core runtime deps
+    all_runtime = {** CORE_RUNTIME_DEPS, ** OPTIONAL_RUNTIME_DEPS};
+    for (name, version) in all_runtime.items() {
+        jac_config.add_dependency(name, version, dev=False, dep_type='npm');
+    }
+    for (name, version) in CORE_DEV_DEPS.items() {
+        jac_config.add_dependency(name, version, dev=True, dep_type='npm');
+    }
     jac_config.save();
     # Invalidate cache to reload
     self.invalidate();
     console.print(
-        f"  [green]✔[/green] Synced jac-client-node to {JAC_CLIENT_NODE_VERSION}"
+        "  [green]✔[/green] Synced all core dependencies to latest required versions"
     );
 }

@@ -1,15 +1,3 @@
-"""Implementation of Jac Scale configuration loader.
-
-This module provides the implementation for JacScaleConfig, which inherits
-from PluginConfigBase for common configuration loading functionality.
-
-The base class handles: init, load, get_jac_config, deep_merge, get_section.
-This file only implements plugin-specific methods.
-"""
-import from pathlib { Path }
-import from typing { Any }
-import os;
-
 """Get the plugin section name for scale."""
 impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
     return "scale";
@@ -24,9 +12,11 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'exp_delta_days': 7
         },
         'sso': {
-            'host': 'http://localhost:8000/sso',
+            'host': 'http://localhost:8000',
             'client_auth_callback_url': '',  # If set, redirects to this URL with token/error
-            'google': {'client_id': '', 'client_secret': ''}
+            'google': {'client_id': '', 'client_secret': ''},
+            'apple': {'client_id': '', 'client_secret': ''},
+            'github': {'client_id': '', 'client_secret': ''}
         },
         'database': {
             'mongodb_uri': None,
@@ -59,6 +49,12 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'redis_password': 'password',
             # Ingress configuration
             'ingress_node_port': 30080,
+            # Rate limiting (DDoS protection)
+            'ingress_limit_rps': 20,
+            'ingress_limit_burst_multiplier': 5,
+            'ingress_limit_connections': 20,
+            # Sticky sessions (cookie-based affinity, disabled by default)
+            'ingress_session_affinity': True,
             # Resource requests/limits
             'cpu_request': None,
             'cpu_limit': None,
@@ -72,7 +68,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'liveness_failure_threshold': 80
         },
         'secrets': {},
-        'server': {'port': 8000, 'host': '0.0.0.0'},
+        'server': {'port': 8000, 'host': '0.0.0.0', 'docs_enabled': True},
         'webhook': {
             'secret': 'webhook-secret-key',
             'signature_header': 'X-Webhook-Signature',
@@ -113,7 +109,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
         'scheduler': {
             'system_user_password': 'system_secret',
             'collection': 'scheduled_jobs'
-        }
+        },
+        'telemetry': {'max_traces': 1000}
     };
 }
 
@@ -133,12 +130,22 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
     config = self.load();
     sso_config = config.get('sso', {});
     google_config = sso_config.get('google', {});
+    apple_config = sso_config.get('apple', {});
+    github_config = sso_config.get('github', {});
     return {
-        'host': sso_config.get('host', 'http://localhost:8000/sso'),
+        'host': sso_config.get('host', 'http://localhost:8000'),
         'client_auth_callback_url': sso_config.get('client_auth_callback_url', ''),
         'google': {
             'client_id': google_config.get('client_id', ''),
             'client_secret': google_config.get('client_secret', '')
+        },
+        'apple': {
+            'client_id': apple_config.get('client_id', ''),
+            'client_secret': apple_config.get('client_secret', '')
+        },
+        'github': {
+            'client_id': github_config.get('client_id', ''),
+            'client_secret': github_config.get('client_secret', '')
         }
     };
 }
@@ -187,7 +194,8 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
     server_config = config.get('server', {});
     return {
         'port': int(server_config.get('port', 8000)),
-        'host': server_config.get('host', '0.0.0.0')
+        'host': server_config.get('host', '0.0.0.0'),
+        'docs_enabled': server_config.get('docs_enabled', True)
     };
 }
 
@@ -293,6 +301,13 @@ impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
 impl reset_scale_config -> None {
     global _scale_config_instance;
     _scale_config_instance = None;
+}
+
+"""Get telemetry configuration from jac.toml."""
+impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    telemetry_config = config.get('telemetry', {});
+    return {'max_traces': int(telemetry_config.get('max_traces', 1000))};
 }
 
 """Get scheduler configuration from jac.toml."""

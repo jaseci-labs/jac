@@ -13,10 +13,8 @@ node Profile {
     }
 
     can get with get_profile entry {
-        follwers = [
-            {"id": jid(i), "username": i.username} for i in [self-->[?:Profile]]
-        ];
-        report {"user": self, "followers": follwers};
+        followers = [self-->[?:Profile]];
+        report {"user": self, "followers": followers};
     }
 
     can follow with follow_request entry {
@@ -285,13 +283,9 @@ cl def FeedView(tweets: list) -> JsxElement {
                 class="feed-header"
                 style={{"padding": "20px", "borderBottom": "1px solid #e1e8ed"}}
             >
-                <h1 style={{"margin": "0"}}>
-                    LittleX Feed
-                </h1>
+                <h1 style={{"margin": "0"}}>LittleX Feed</h1>
             </div>
-            <div class="feed-content">
-                {[TweetCard(tweet) for tweet in tweets]}
-            </div>
+            <div class="feed-content">{[TweetCard(tweet) for tweet in tweets]}</div>
         </div>;
 }
 
@@ -349,29 +343,19 @@ cl def LoginForm -> JsxElement {
                 >
                     Login
                 </Button>
-                <Button color="default" variant="dashed">
-                    Dashed
-                </Button>
-                <Button color="default" variant="filled">
-                    Filled
-                </Button>
-                <Button color="default" variant="text">
-                    Text
-                </Button>
-                <Button color="default" variant="link">
-                    Link
-                </Button>
+                <Button color="default" variant="dashed">Dashed</Button>
+                <Button color="default" variant="filled">Filled</Button>
+                <Button color="default" variant="text">Text</Button>
+                <Button color="default" variant="link">Link</Button>
             </form>
             <div style={{"marginTop": "15px", "textAlign": "center"}}>
-                <Link href="/signup">
-                    Don't have an account? Sign up
-                </Link>
+                <Link href="/signup">Don't have an account? Sign up</Link>
             </div>
         </Card>;
 }
 
 # Handle login form submission
-cl async def handle_login(event: Any) -> None {
+cl async def handle_login(event: Any) {
     event.preventDefault();
     username = document.getElementById("username").value;
     password = document.getElementById("password").value;
@@ -462,9 +446,7 @@ cl def SignupForm -> JsxElement {
                 </button>
             </form>
             <div style={{"marginTop": "15px", "textAlign": "center"}}>
-                <Link href="/login">
-                    Already have an account? Login
-                </Link>
+                <Link href="/login">Already have an account? Login</Link>
             </div>
         </div>;
 }
@@ -501,7 +483,7 @@ cl async def handle_signup(event: Any) -> None {
 }
 
 # Handle logout
-cl def logout_action -> None {
+cl def logout_action {
     jacLogout();
     navigate("/login");
 }
@@ -540,9 +522,7 @@ cl def:pub App -> JsxElement {
         <div class="app-container">
             {build_nav_bar(currentPath)}
             <Rotate>
-                <span>
-                    😂
-                </span>
+                <span>😂</span>
             </Rotate>
             {router.render()}
         </div>;
@@ -627,15 +607,9 @@ cl def HomeView -> JsxElement {
                 "fontFamily": "sans-serif"
             }}
         >
-            <h1>
-                Home Feed
-            </h1>
-            <p>
-                Welcome to LittleX! This is the home page.
-            </p>
-            <p>
-                The reactive router is working!
-            </p>
+            <h1>Home Feed</h1>
+            <p>Welcome to LittleX! This is the home page.</p>
+            <p>The reactive router is working!</p>
         </div>;
 }
 
@@ -656,9 +630,7 @@ cl def ProfileView -> JsxElement {
                 "fontFamily": "sans-serif"
             }}
         >
-            <h1>
-                Profile
-            </h1>
+            <h1>Profile</h1>
             <div
                 style={{
                     "padding": "15px",
@@ -666,9 +638,7 @@ cl def ProfileView -> JsxElement {
                     "borderRadius": "8px"
                 }}
             >
-                <p>
-                    Profile information will be displayed here.
-                </p>
+                <p>Profile information will be displayed here.</p>
             </div>
         </div>;
 }

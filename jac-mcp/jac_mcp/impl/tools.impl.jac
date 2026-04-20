@@ -8,7 +8,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
     return [
         {
             "name": "validate_jac",
-            "description": "Validate Jac code with full type checking. IMPORTANT: You MUST call this tool after generating or modifying any Jac code to verify it compiles correctly. Returns structured errors and warnings. If errors are returned, fix the code and re-validate before presenting it to the user.",
+            "description": "Validate Jac code with full type checking. Returns structured errors and warnings.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -27,7 +27,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "check_syntax",
-            "description": "Quick syntax-only check (parse-only, no type checking). Use this for a fast first pass when iterating on code. For final validation, use validate_jac instead.",
+            "description": "Parse-only syntax check (no type checking). Faster than validate_jac.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -41,7 +41,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "format_jac",
-            "description": "Format Jac code according to standard style. Use this to ensure code follows Jac formatting conventions before presenting it to the user.",
+            "description": "Format Jac code to standard style.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -55,7 +55,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "py_to_jac",
-            "description": "Convert Python code to Jac using the official compiler transpiler. Use this as a starting point when migrating Python code — the output may need manual refinement for idiomatic Jac style.",
+            "description": "Transpile Python code to Jac. Output may need manual refinement.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -69,7 +69,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "explain_error",
-            "description": "Explain a Jac compiler error with suggestions and examples. Use this when validate_jac returns errors you need to understand. Returns a structured explanation with the error category, root cause, and corrected code pattern.",
+            "description": "Explain a Jac compiler error with category, root cause, and fix example.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -83,7 +83,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "list_examples",
-            "description": "List available Jac example code categories. Use this to discover working Jac code examples that demonstrate correct patterns before writing new code.",
+            "description": "List available Jac example categories with descriptions.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -96,18 +96,33 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "get_example",
-            "description": "Get all .jac files from an example category. Use this to study working code before writing similar functionality — these examples are tested and verified.",
+            "description": "Get all .jac files from an example category. Call list_examples first to see valid names.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Example category name"}
+                    "name": {
+                        "type": "string",
+                        "description": "Example category name. Valid: chess, data_spatial, guess_game, littleX, manual_code, medical, micro, plugins, rpg_game, shopping_cart",
+                        "enum": [
+                            "chess",
+                            "data_spatial",
+                            "guess_game",
+                            "littleX",
+                            "manual_code",
+                            "medical",
+                            "micro",
+                            "plugins",
+                            "rpg_game",
+                            "shopping_cart"
+                        ]
+                    }
                 },
                 "required": ["name"]
             }
         },
         {
             "name": "search_docs",
-            "description": "Search Jac documentation by keyword. Use this when you are unsure about Jac syntax or features — the results come from the official documentation and are authoritative. Returns ranked snippets with resource URIs.",
+            "description": "Search Jac docs by keyword. Returns ranked snippets with resource URIs.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -123,7 +138,7 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
         },
         {
             "name": "get_ast",
-            "description": "Parse Jac code and return AST representation. Useful for understanding code structure.",
+            "description": "Parse Jac code and return AST as tree or JSON.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -139,6 +154,180 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
                     }
                 },
                 "required": ["code"]
+            }
+        },
+        {
+            "name": "lint_jac",
+            "description": "Lint Jac code for style violations and unused symbols. Supports auto_fix.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Jac source code to lint"
+                    },
+                    "auto_fix": {
+                        "type": "boolean",
+                        "description": "Auto-fix lint violations and return corrected code",
+                        "default": False
+                    }
+                },
+                "required": ["code"]
+            }
+        },
+        {
+            "name": "jac_to_py",
+            "description": "Transpile Jac code to Python. Shows generated Python output.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Jac source code to convert to Python"
+                    }
+                },
+                "required": ["code"]
+            }
+        },
+        {
+            "name": "jac_to_js",
+            "description": "Transpile Jac code to JavaScript. Shows generated JS from .cl.jac code.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Jac source code to convert to JavaScript"
+                    }
+                },
+                "required": ["code"]
+            }
+        },
+        {
+            "name": "run_jac",
+            "description": "Execute Jac code and return stdout/stderr. Supports optional entrypoint.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Jac source code to execute"
+                    },
+                    "entrypoint": {
+                        "type": "string",
+                        "description": "Optional specific walker or function to invoke (like jac enter)",
+                        "default": ""
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Max execution time in seconds",
+                        "default": 10
+                    }
+                },
+                "required": ["code"]
+            }
+        },
+        {
+            "name": "graph_visualize",
+            "description": "Run Jac code and visualize the resulting graph as DOT or JSON.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Jac source code that builds a graph"
+                    },
+                    "format": {
+                        "type": "string",
+                        "description": "Output format: dot or json",
+                        "default": "dot",
+                        "enum": ["dot", "json"]
+                    },
+                    "depth": {
+                        "type": "integer",
+                        "description": "Max traversal depth (-1 for unlimited)",
+                        "default": -1
+                    },
+                    "bfs": {
+                        "type": "boolean",
+                        "description": "Use breadth-first search (true) or depth-first (false)",
+                        "default": True
+                    },
+                    "edge_limit": {
+                        "type": "integer",
+                        "description": "Max edges to include",
+                        "default": 512
+                    },
+                    "node_limit": {
+                        "type": "integer",
+                        "description": "Max nodes to include",
+                        "default": 512
+                    }
+                },
+                "required": ["code"]
+            }
+        },
+        {
+            "name": "list_commands",
+            "description": "List all jac CLI commands including plugin-provided ones.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "get_command",
+            "description": "Get full argument details for a specific jac CLI command.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "The command name (e.g. 'run', 'check', 'add')"
+                    }
+                },
+                "required": ["name"]
+            }
+        },
+        {
+            "name": "execute_command",
+            "description": "Execute a jac CLI command with arguments (e.g. ['hello.jac', '--no-cache']).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "The jac command to run (e.g. 'run', 'check', 'format', 'test')"
+                    },
+                    "args": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Arguments to pass to the command, as a list of strings (e.g. ['hello.jac', '--no-cache'])",
+                        "default": []
+                    },
+                    "timeout": {
+                        "type": "integer",
+                        "description": "Max execution time in seconds",
+                        "default": 30
+                    }
+                },
+                "required": ["command"]
+            }
+        },
+        {
+            "name": "understand_jac_and_jaseci",
+            "description": "Get the Jac & Jaseci knowledge map with resource URIs for each topic.",
+            "inputSchema": {"type": "object", "properties": {}}
+        },
+        {
+            "name": "get_resource",
+            "description": "Fetch a Jac/Jaseci doc resource by URI (e.g. jac://guide/pitfalls, jac://docs/osp).",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "uri": {
+                        "type": "string",
+                        "description": "Resource URI to fetch, e.g. jac://guide/pitfalls or jac://docs/osp"
+                    }
+                },
+                "required": ["uri"]
             }
         },
 
@@ -203,6 +392,68 @@ impl ToolProvider.call_tool(name: str, arguments: dict[str, Any]) -> dict[str, A
                 return {"error": "Missing required argument: code"};
             }
             return get_ast(code, fmt);
+        } elif name == "lint_jac" {
+            code = arguments.get("code", "");
+            auto_fix = arguments.get("auto_fix", False);
+            if not code {
+                return {"error": "Missing required argument: code"};
+            }
+            return lint_jac(code, auto_fix);
+        } elif name == "jac_to_py" {
+            code = arguments.get("code", "");
+            if not code {
+                return {"error": "Missing required argument: code"};
+            }
+            return jac_to_py(code);
+        } elif name == "jac_to_js" {
+            code = arguments.get("code", "");
+            if not code {
+                return {"error": "Missing required argument: code"};
+            }
+            return jac_to_js(code);
+        } elif name == "run_jac" {
+            code = arguments.get("code", "");
+            entrypoint = arguments.get("entrypoint", "");
+            timeout = arguments.get("timeout", 10);
+            if not code {
+                return {"error": "Missing required argument: code"};
+            }
+            return run_jac(code, entrypoint, timeout);
+        } elif name == "graph_visualize" {
+            code = arguments.get("code", "");
+            fmt = arguments.get("format", "dot");
+            depth = arguments.get("depth", -1);
+            bfs = arguments.get("bfs", True);
+            edge_limit = arguments.get("edge_limit", 512);
+            node_limit = arguments.get("node_limit", 512);
+            if not code {
+                return {"error": "Missing required argument: code"};
+            }
+            return graph_visualize(code, fmt, depth, bfs, edge_limit, node_limit);
+        } elif name == "list_commands" {
+            return list_commands();
+        } elif name == "get_command" {
+            cmd_name = arguments.get("name", "");
+            if not cmd_name {
+                return {"error": "Missing required argument: name"};
+            }
+            return get_command(cmd_name);
+        } elif name == "execute_command" {
+            cmd_name = arguments.get("command", "");
+            cmd_args = arguments.get("args", []);
+            cmd_timeout = arguments.get("timeout", 30);
+            if not cmd_name {
+                return {"error": "Missing required argument: command"};
+            }
+            return execute_command(cmd_name, cmd_args, cmd_timeout);
+        } elif name == "understand_jac_and_jaseci" {
+            return understand_jac_and_jaseci();
+        } elif name == "get_resource" {
+            uri = arguments.get("uri", "");
+            if not uri {
+                return {"error": "Missing required argument: uri"};
+            }
+            return get_resource(uri);
         } else {
             return {"error": f"Unknown tool: {name}"};
         }
@@ -288,6 +539,21 @@ impl list_examples(category: str | None = None) -> dict[str, Any] {
                         "name": cat_name,
                         "uri": uri,
                         "description": info.get("description", "")
+                    }
+                );
+            }
+        }
+    }
+    # If no individual examples found, try lazy GitHub fetch (PyPI install)
+    if not examples and "jac://examples/index" in rp._resources {
+        categories = rp._fetch_github_categories();
+        for cat_name in categories {
+            if category is None or category == cat_name {
+                examples.append(
+                    {
+                        "name": cat_name,
+                        "uri": f"jac://examples/{cat_name}",
+                        "description": f"Example Jac code for {cat_name}"
                     }
                 );
             }
@@ -383,4 +649,228 @@ impl search_docs(query: str, limit: int = 5) -> dict[str, Any] {
 impl get_ast(code: str, fmt: str = "tree") -> dict[str, Any] {
     import from jac_mcp.compiler_bridge { CompilerBridge }
     return CompilerBridge.get_ast_snippet(code, fmt);
+}
+
+"""Lint Jac code with optional auto-fix."""
+impl lint_jac(code: str, auto_fix: bool = False) -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.lint_snippet(code, auto_fix);
+}
+
+"""Convert Jac code to Python."""
+impl jac_to_py(code: str) -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.jac_to_py(code);
+}
+
+"""Convert Jac code to JavaScript."""
+impl jac_to_js(code: str) -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.jac_to_js(code);
+}
+
+"""Execute Jac code and return output."""
+impl run_jac(code: str, entrypoint: str = "", timeout: int = 10) -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.run_snippet(code, entrypoint, timeout);
+}
+
+"""Generate graph visualization from Jac code."""
+impl graph_visualize(
+    code: str,
+    format: str = "dot",
+    depth: int = -1,
+    bfs: bool = True,
+    edge_limit: int = 512,
+    node_limit: int = 512
+) -> dict[str, Any] {
+    import from jac_mcp.compiler_bridge { CompilerBridge }
+    return CompilerBridge.graph_viz_snippet(
+        code, format, depth, bfs, edge_limit, node_limit
+    );
+}
+
+"""List all available jac CLI commands including those from installed plugins."""
+impl list_commands -> dict[str, Any] {
+    try {
+        import from jaclang.jac0core.runtime { JacRuntime as Jac }
+        import from jaclang.cli.registry { get_registry }
+        import jaclang.cli.commands;
+
+        # Trigger plugin command registrations, same hook the CLI calls at startup
+        Jac.create_cmd();
+
+        registry = get_registry();
+        if not registry._finalized {
+            registry.finalize();
+        }
+
+        commands: list[dict[str, Any]] = [];
+        for spec in registry.get_all() {
+            # Collect unique plugin sources that extend this command
+            extensions: list[str] = [];
+            seen_ext: set = set();
+            for arg in spec.extra_args {
+                if arg.source != spec.source and arg.source not in seen_ext {
+                    seen_ext.add(arg.source);
+                    extensions.append(arg.source);
+                }
+            }
+
+            cmd: dict[str, Any] = {
+                "name": spec.name,
+                "help": spec.help,
+                "group": spec.group,
+                "source": spec.source
+            };
+            if extensions {
+                cmd["extended_by"] = extensions;
+            }
+            commands.append(cmd);
+        }
+
+        commands.sort(key=lambda c : (c["group"], c["name"]));
+
+        return {
+            "commands": commands,
+            "groups": registry.get_groups(),
+            "total": len(commands)
+        };
+    } except Exception as e {
+        return {"error": f"Failed to list commands: {str(e)}"};
+    }
+}
+
+"""Get full argument details for a specific jac CLI command."""
+impl get_command(name: str) -> dict[str, Any] {
+    try {
+        import from jaclang.jac0core.runtime { JacRuntime as Jac }
+        import from jaclang.cli.registry { get_registry }
+        import jaclang.cli.commands;
+
+        Jac.create_cmd();
+        registry = get_registry();
+        if not registry._finalized {
+            registry.finalize();
+        }
+
+        spec = registry.get(name);
+        if spec is None {
+            return {"error": f"Command not found: {name}"};
+        }
+
+        args: list[dict[str, Any]] = [];
+        seen_args: set = set();
+        for arg in spec.get_all_args() {
+            if arg.name in seen_args {
+                continue;
+            }
+            seen_args.add(arg.name);
+            type_name: str;
+            if hasattr(arg.typ, "__name__") {
+                type_name = arg.typ.__name__;
+            } else {
+                type_name = str(arg.typ);
+            }
+            arg_info: dict[str, Any] = {
+                "name": arg.name,
+                "kind": arg.kind.name,
+                "type": type_name,
+                "required": arg.required,
+                "default": arg.default,
+                "help": arg.help,
+                "source": arg.source
+            };
+            if arg.short is not None {
+                arg_info["short"] = arg.short;
+            }
+            if arg.choices is not None {
+                arg_info["choices"] = arg.choices;
+            }
+            args.append(arg_info);
+        }
+
+        extensions: list[str] = [];
+        seen_ext: set = set();
+        for arg in spec.extra_args {
+            if arg.source != spec.source and arg.source not in seen_ext {
+                seen_ext.add(arg.source);
+                extensions.append(arg.source);
+            }
+        }
+
+        result: dict[str, Any] = {
+            "name": spec.name,
+            "help": spec.help,
+            "group": spec.group,
+            "source": spec.source,
+            "args": args
+        };
+        if extensions {
+            result["extended_by"] = extensions;
+        }
+        return result;
+    } except Exception as e {
+        return {"error": f"Failed to get command: {str(e)}"};
+    }
+}
+
+"""Execute a jac CLI command by name with optional arguments."""
+impl execute_command(
+    command: str, args: list[str] | None = None, timeout: int = 30
+) -> dict[str, Any] {
+    import subprocess;
+    import sys;
+
+    cmd_args: list[str] = [sys.executable, "-m", "jaclang", command] + (args or []);
+    try {
+        result = subprocess.run(
+            cmd_args, capture_output=True, text=True, timeout=timeout
+        );
+        return {
+            "success": result.returncode == 0,
+            "exit_code": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "command": f"jac {command} {' '.join(args or [])}"
+        };
+    } except subprocess.TimeoutExpired {
+        return {
+            "success": False,
+            "exit_code": -1,
+            "error": f"Command timed out after {timeout}s",
+            "command": f"jac {command} {' '.join(args or [])}"
+        };
+    } except Exception as e {
+        return {
+            "success": False,
+            "exit_code": -1,
+            "error": f"Failed to execute command: {str(e)}",
+            "command": f"jac {command} {' '.join(args or [])}"
+        };
+    }
+}
+
+"""Get the Jac & Jaseci knowledge map with resource URIs for any task."""
+impl understand_jac_and_jaseci -> dict[str, Any] {
+    import from jac_mcp.resources { ResourceProvider }
+    rp = ResourceProvider();
+    rp.index_resources();
+    content = rp.read_resource("jac://guide/understand");
+    if content.startswith("Error:") {
+        return {"error": content};
+    }
+    return {"knowledge_map": content};
+}
+
+"""Fetch a Jac/Jaseci doc resource by URI."""
+impl get_resource(uri: str) -> dict[str, Any] {
+    import from jac_mcp.resources { ResourceProvider }
+    rp = ResourceProvider();
+    rp.index_resources();
+    content = rp.read_resource(uri);
+    if content.startswith("Error:") {
+        return {"error": content, "uri": uri};
+    }
+    return {"uri": uri, "content": content};
 }

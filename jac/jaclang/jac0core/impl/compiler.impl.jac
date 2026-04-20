@@ -262,7 +262,7 @@ impl JacCompiler._load_native_from_cache(
     full_target: str,
     target_program: JacProgram,
     cached_ir: str,
-    cached_interop: (dict | None)
+    cached_interop: (dict[str, Any] | None)
 ) -> None {
     try {
         import llvmlite.binding as llvm;
@@ -334,7 +334,7 @@ impl JacCompiler._load_native_from_bitcode(
     full_target: str,
     target_program: JacProgram,
     section_data: bytes,
-    cached_interop: (dict | None)
+    cached_interop: (dict[str, Any] | None)
 ) -> None {
     import struct as _struct;
     import llvmlite.binding as llvm;
@@ -418,7 +418,7 @@ impl JacCompiler._restore_sections(
     if native_obj_bytes is not None {
         try {
             import json;
-            cached_interop: (dict | None) = None;
+            cached_interop: (dict[str, Any] | None) = None;
             interop_bytes = secs.get(SEC_INTEROP);
             if interop_bytes is not None {
                 cached_interop = json.loads(interop_bytes.decode('utf-8'));
@@ -438,7 +438,7 @@ impl JacCompiler._restore_sections(
             import zlib;
             import json;
             cached_ir = zlib.decompress(llvm_bytes).decode('utf-8');
-            cached_interop2: (dict | None) = None;
+            cached_interop2: (dict[str, Any] | None) = None;
             interop_bytes2 = secs.get(SEC_INTEROP);
             if interop_bytes2 is not None {
                 cached_interop2 = json.loads(interop_bytes2.decode('utf-8'));
@@ -569,7 +569,6 @@ impl JacCompiler.parse_str(
     } else {
         import from jaclang.jac0core.parser { parse as rd_parse }
         (mod, had_error) = rd_parse(source_str, file_path, prog=target_program);
-        _recalculate_parents(mod);
         if file_path.endswith('.cl.jac') {
             _coerce_client_module(mod);
         } elif file_path.endswith('.sv.jac') {
@@ -604,11 +603,8 @@ impl JacCompiler.compile(
     file_path: str,
     target_program: JacProgram,
     use_str: (str | None) = None,
-    options: (CompileOptions | None) = None
+    options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    if (options is None) {
-        options = CompileOptions();
-    }
     # For impl/test annex files compiled standalone, redirect to compile the
     # parent module instead. The parent's JacAnnexPass discovers and attaches
     # the impl, and DeclImplMatchPass connects them with full scope context.
@@ -717,7 +713,6 @@ impl JacCompiler._prepare_tool_program(
     import from jaclang.jac0core.parser { parse as rd_parse }
     prog = JacProgram();
     (current_mod, had_error) = rd_parse(source_str, file_path, prog=prog);
-    _recalculate_parents(current_mod);
     if had_error {
         prog.mod = uni.ProgramModule(main_mod=current_mod);
         return (prog, None);
@@ -733,7 +728,6 @@ impl JacCompiler._prepare_tool_program(
                 try {
                     annex_src = read_file_with_encoding(annex_path);
                     (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    _recalculate_parents(annex_mod);
                     current_mod.impl_mod.append(annex_mod);
                 } except Exception {
                     ;
@@ -745,7 +739,6 @@ impl JacCompiler._prepare_tool_program(
                 try {
                     annex_src = read_file_with_encoding(annex_path);
                     (annex_mod, _) = rd_parse(annex_src, annex_path, prog=prog);
-                    _recalculate_parents(annex_mod);
                     current_mod.test_mod.append(annex_mod);
                 } except Exception {
                     ;

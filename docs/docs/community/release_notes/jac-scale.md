@@ -2,18 +2,73 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.7 (Unreleased)
+## jac-scale 0.2.14 (Latest Release)
 
+- **Identity-based auth system**: Replaced flat username/password user model with a flexible identity + credential architecture. Users can register with multiple identities (username, email) and credentials (password), stored as arrays in MongoDB. Login accepts any identity type. SSO accounts are stored as identities (`type: sso`, `provider: google`) within the user document instead of a separate `sso_accounts` collection.
+- **JWT user_id claim**: JWT tokens now use `user_id` (UUID) instead of `username` as the primary claim, enabling identity changes without token invalidation.
+- **Feat: SV-to-SV Eager Auto-Spawn in `jac start`**: `jac start consumer.jac` now brings up every `sv import`-ed provider (including transitive ones) automatically before serving the first request, so single-host multi-service deployments need exactly one terminal and zero env vars.
+- **Fix: ScaleTieredMemory Initialization**: Changed `ScaleTieredMemory.init(use_cache)` to `postinit` lifecycle method with `use_cache` as a class field, fixing initialization order issues.
+- **Fix: Windows Compatibility for Local Sandbox**: Added platform guards for Unix-only APIs, cross-platform temp paths, Windows-compatible shell commands, --jac-cli sidecar support, and increased readiness timeout to 300s.
+- **Fix: Spurious "write access" warnings on system root during sync**: Skip `check_write_access()` for unchanged anchors in MongoDB sync, eliminating noisy `Current root doesn't have write access to NodeAnchor Root` log spam on every authenticated request.
+- **Persistence: MongoBackend gets Schema Drift + Quarantine + Aliases**: `MongoBackend` now mirrors `SqliteMemory`'s schema-migration surface -- documents are stamped with archetype identity + fingerprint, undeserializable docs route to a `<collection>_quarantine` sidecar instead of being silently dropped, and DB-resident rescue aliases live in `<collection>_aliases`. The new jaclang `jac db inspect / quarantine / alias / recover` commands work against Mongo deployments unchanged. See [Persistence & Schema Migration](../../reference/persistence.md).
+
+- **Optional Install Groups**: Heavy dependencies (pymongo, redis, prometheus-client, apscheduler, kubernetes, docker) are no longer required by default. Install only what you need via extras: `pip install jac-scale[data]` (MongoDB + Redis), `[monitoring]` (Prometheus), `[scheduler]` (APScheduler), `[deploy]` (Kubernetes + Docker), or `[all]` for everything. Groups are combinable: `pip install jac-scale[data,monitoring]`. Missing dependencies produce clear error messages with install instructions. Existing users should use `pip install jac-scale[all]` to keep current behavior.
+- **Fix: `jac start` crashes without `jac-scale[scheduler]`**: The scheduler setup in `jac start` unconditionally initialized APScheduler, causing a `'NoneType' object is not callable` error when APScheduler wasn't installed. The scheduler now gracefully degrades: static/interval/cron tasks still work via the core jaclang scheduler, and dynamic scheduling features are skipped with a clear log message when APScheduler is absent.
+- 1 small refactor/change.
+
+## jac-scale 0.2.13
+
+- **jac-mcp included by default**: Added to the default Kubernetes package set in jac-scale.
+
+## jac-scale 0.2.12
+
+- **Pre-built Admin Dashboard**: The admin dashboard UI is now pre-built during the release process and shipped as static assets in the package. Previously, navigating to `/admin/` on first load triggered a full Vite build from source, causing significant lag. The server now copies bundled assets instantly, falling back to source build only in dev mode.
+- **Dev Mode: Named endpoints in Swagger docs**: Dev mode (`jac start --dev`) now registers individual named endpoints (e.g. `/walker/read_todos`) instead of generic catch-all routes (`/walker/{walker_name}`), so Swagger UI shows all walker/function names. HMR still works - routes are refreshed automatically on file changes.
+- **API docs enabled by default**: `/docs`, `/redoc`, and `/openapi.json` are now available in all modes (not just dev). Disable with `docs_enabled = false` in `[plugins.scale.server]`.
+- 2 small refactors/changes.
+
+## jac-scale 0.2.11
+
+- **Fix: Sandbox status returns stale RUNNING for dead pods**: `KubernetesSandbox.status()` was returning the cached registry state (often `RUNNING`) when `read_namespaced_pod_status()` threw an exception (pod deleted or unreachable). This caused callers to believe the sandbox was still alive, preventing recovery. Now returns `STOPPED` when the pod query fails so dead pods are detected immediately.
+- **Fix: Admin portal build fails from PyPI install**: `jac.toml` and `styles/*.css` were excluded from the wheel because `pyproject.toml` package-data only included `*.jac` files. The admin portal's `jac build` command needs these files to discover the project config and generate Tailwind CSS output.
+
+## jac-scale 0.2.10
+
+- **Dev Mode: API Docs accessible from client URL**: In dev mode (`jac start --dev`), the FastAPI Swagger UI (`/docs`) and OpenAPI spec (`/openapi.json`) are now proxied through the Vite dev server, so you can browse your API docs at the same URL as your app without switching ports.
+- **Configurable API docs**: `/docs`, `/redoc`, and `/openapi.json` are controlled by the `docs_enabled` setting in `[plugins.scale.server]` (defaults to `true`). Set `docs_enabled = false` to hide them in production.
+- **Health check endpoint**: Added `GET /healthz` for liveness checks. Returns `{"status": "ok"}` with no authentication required. Useful for Kubernetes probes and monitoring.
+- **Warm Pool TTL**: Added `warm_pool_ttl` config to control warm pod lifetime independently from sandbox `ttl_seconds`. Default `0` means warm pods live indefinitely until claimed, preventing the pool from emptying after the sandbox TTL expires.
+
+## jac-scale 0.2.9
+
+- **Ingress Rate Limiting (DDoS Protection)**: Added configurable NGINX rate limiting to the Kubernetes ingress. Limits sustained requests per second, burst headroom, and concurrent connections per client IP using the leaky bucket algorithm. Returns `429 Too Many Requests` when limits are exceeded. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`: `ingress_limit_rps` (default: 20), `ingress_limit_burst_multiplier` (default: 5), `ingress_limit_connections` (default: 20).
+- **Cookie-Based Sticky Sessions (optional)**: Added opt-in session affinity via NGINX cookie (`route`). When enabled, every user is pinned to the same pod regardless of IP changes (mobile, NAT, proxies). Cookie never expires in the browser. On pod failure NGINX automatically re-routes and rewrites the cookie. Enabled by default. Disable via `ingress_session_affinity = false` in `[plugins.scale.kubernetes]`.
+- **Performance: MongoBackend.batch_get()**: New `batch_get(ids)` uses `find({_id: {$in: [...]}})` so edge traversals hit MongoDB with 2-3 queries instead of one per anchor. On cold starts with 100 edges this cuts 201 round-trips down to 3.
+- **Extensible Deployment Targets and Image Registries**: `DeploymentTargetFactory` and `ImageRegistryFactory` now support plugin-registered targets via `register(name, factory)`. External packages can register custom deployment targets (e.g. `DeploymentTargetFactory.register("enterprise-kubernetes", my_factory)`) and image registries without modifying jac-scale. Custom targets load their config from `[plugins.scale.<target-name>]` in `jac.toml`.
+- **PWA/Web Target Integration Test**: Added test to verify `jac start --client pwa` uses jac-scale's FastAPI server when installed (checks `/docs` endpoint availability).
+- **Fix: HPA config ignored on redeployment**: `create_hpa` silently swallowed 409 Conflict errors when the HPA already existed, so updated `min_replicas`, `max_replicas`, and `cpu_utilization_target` values in `jac.toml` were never applied on subsequent deploys. Changed to a replace-first, create-on-404 pattern consistent with how Ingress and ConfigMap resources are managed, ensuring HPA configuration is always kept in sync with `jac.toml`.
+- **Sandbox Security Hardening**: Hardened K8s sandbox pods by dropping all Linux capabilities (`drop: ALL`), enabling seccomp `RuntimeDefault` profile (~44 dangerous syscalls blocked), disabling service account token automounting (prevents K8s API access from inside sandboxes), and adding a configurable `/app` emptyDir size limit (`app_storage_limit`, default 1Gi) to prevent node disk exhaustion. Applied consistently to both on-demand and warm pool pods. The sandbox base Dockerfile now creates a dedicated non-root user (`jac`, UID 1000) and installs Bun system-wide so it's accessible under the security context.
+
+## jac-scale 0.2.8
+
+- 1 small changes.
+
+## jac-scale 0.2.7
+
+- **Apple & GitHub SSO Support**: Added Apple Sign In and GitHub as SSO providers via `fastapi-sso`. Unified the SSO callback into a single endpoint per platform (`/sso/{platform}/callback`) that auto-registers new users or logs in existing ones. Initiation endpoints remain separate (`/sso/{platform}/login`, `/sso/{platform}/register`). SSO `host` config simplified to just the base URL (e.g., `http://localhost:8000`). Configure via `[plugins.scale.sso.apple]` and `[plugins.scale.sso.github]` in `jac.toml`.
 - **Kubernetes Security Hardening**: Added container-level security contexts (`allowPrivilegeEscalation: false`, `drop: ALL`, `readOnlyRootFilesystem`, `seccompProfile: RuntimeDefault`), dedicated `ServiceAccount` per workload, component-specific NetworkPolicies enforcing proper isolation (databases only accept traffic from main app + dashboards, monitoring components only accept ingress from trusted internal sources), and `pod-security.kubernetes.io/enforce: baseline` namespace labels.
 - **Scheduler Code Quality Cleanup**: Extracted shared `_authenticate_request()` and `_validate_trigger()` helpers to remove duplicated auth/validation logic across `/jobs` endpoints. Fixed `get_job()` to query by ID directly instead of loading all jobs. Replaced deprecated `datetime.utcnow()` with `datetime.now(timezone.utc)`. Persisted `is_walker` in job data to avoid redundant introspector lookups. Replaced silent exception swallowing with debug logging.
-- **Performance: Skip Unnecessary Database Writes**: Prevented unnecessary database writes by introducing an `is_updated` flag on anchors, ensuring only explicitly modified (committed) data is persisted while read-only executions skip all write operations.
+- **Metrics Endpoint Fix & Prometheus Auth**: Fixed `/metrics` 500 error (`TransportResponse` is a dataclass, not Pydantic - replaced `.model_dump()` with `dataclasses.asdict()`). Added HTTP Basic Auth support so Prometheus can scrape `/metrics` via `basic_auth` in `prometheus.yml`.
+- **Hash-based dirty checking for MongoDB/Redis persistence**: Replaced `is_updated` flag with hash-based change detection at sync time. Read-only requests no longer trigger any database writes. All mutation types, including in-place mutations (`list.append()`, `dict[k]=v`, `set.add()`, nested objects), are automatically detected and persisted.
 - **Client-Side Error Reporting Endpoint**: Added `POST /cl/__error__` endpoint to `JacAPIServerCore` for receiving client-side JavaScript errors. Errors are logged via the `jaclang.client_errors` logger and printed to the dev console with stack traces for visibility.
 - **Source-Mapped Error Stack Traces**: Client error stack traces received at `/cl/__error__` are now resolved from bundled JS locations to original `.jac` file paths and exact line numbers via the centralized `SourceMapper` with two-layer resolution.
 - **Client Error Rate Limiting**: The `/cl/__error__` endpoint now deduplicates identical error messages (10s window) and caps at 20 errors per minute to prevent log flooding from render loops or repeated failures.
+- **Add: LLM Telemetry Admin Dashboard**: Added a `TelemetryStore` backend that subscribes to byllm's agent callback and litellm's per-call logger, grouping all LLM calls within a single agent invocation into one trace (tokens, cost, latency, user prompt, agent response). Traces are served via four new admin REST endpoints (`/admin/llm/telemetry/summary`, `/traces`, `/traces/{id}`, `/filters`) and visualized in the admin UI with a metrics overview page and a paginated, filterable trace detail view.
+- **Fix: Nginx error when domain is set before `--enable-tls`**: Ingress now always deploys with a wildcard rule; the domain `host` is only applied when `--enable-tls` is run, fixing the app being unreachable via IP/NLB when `domain` was set in `jac.toml` before initial deployment.
 - **Sandbox System**: Isolated preview environments with Docker and Kubernetes backends, warm pod pool, routing proxy with WebSocket/HMR, and path-safe file operations. Configure via `[plugins.scale.sandbox]` in `jac.toml`.
 - **Request-Scoped L1 Memory Cache**: Made the L1 (in-memory) cache request-scoped using `ContextVar`, ensuring each request gets an isolated cache that is automatically cleared after execution, preventing stale data, memory leaks, and cross-request interference while maintaining backward compatibility for CLI and tests.
 
-## jac-scale 0.2.6 (Latest Release)
+## jac-scale 0.2.6
 
 - **Domain & TLS support (`--enable-tls`)**: Added custom domain name routing and automatic HTTPS via cert-manager + Let's Encrypt. Set `domain` in `jac.toml`, deploy normally, point your CNAME to the NLB, then run `jac start app.jac --scale --enable-tls` to enable HTTPS without a full redeploy. cert-manager is installed automatically and certificates are renewed automatically. Configurable via `domain` and `cert_manager_email` in `[plugins.scale.kubernetes]`.
 

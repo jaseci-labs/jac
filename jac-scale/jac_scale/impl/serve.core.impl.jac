@@ -56,6 +56,7 @@ impl JacAPIServerCore.postinit -> None {
         import from jac_scale.jserver.jfast_api { JFastApiServer }
         self.server = JFastApiServer();
     }
+    self.server.set_user_manager(self.user_manager);
     self._api_key_manager = ApiKeyManager();
     self.server.app.add_middleware(
         CORSMiddleware,
@@ -116,10 +117,7 @@ impl JacAPIServerCore.postinit -> None {
                     response = await call_next(request);
                     duration = time.perf_counter() - start_time;
                     metrics_collector.record_request(
-                        request.method,
-                        request.url.path,
-                        response.status_code,
-                        duration
+                        request.method, request.url.path, response.status_code, duration
                     );
                     return response;
                 } except Exception as e {
@@ -160,6 +158,7 @@ impl JacAPIServerCore.start(
     on_ready: Callable[..., None] | None = None
 ) -> None {
     self.introspector.load();
+    self._ensure_sv_siblings();
     # Eagerly build client bundle if there are client exports (skip in dev, no_client, or PWA mode)
     if not dev and not no_client {
         client_exports = self.introspector._client_manifest.get('exports', []);
@@ -200,7 +199,9 @@ impl JacAPIServerCore.start(
                         emoji=True
                     );
                     console.print(file=sys.stderr);
-                    console.info('Try again after running: jac clean --all', emoji=True);
+                    console.info(
+                        'Try again after running: jac clean --all', emoji=True
+                    );
                     console.info(
                         f'If it still doesn\'t work, ask for help at {JAC_DISCORD_URL}',
                         emoji=True
@@ -209,35 +210,29 @@ impl JacAPIServerCore.start(
             }
         }
     }
-    self.register_create_user_endpoint();
-    self.register_login_endpoint();
-    self.register_page_endpoint();
-    self.register_refresh_token_endpoint();
-    self.register_sso_endpoints();
-    self.register_client_js_endpoint();
-    self.register_static_file_endpoint();
-    self.register_update_username_endpoint();
-    self.register_update_password_endpoint();
-    self.register_api_key_endpoints();
-    self.register_graph_endpoint();
-    self.register_admin_endpoints();
-    # Use dynamic routing for HMR support, static routing for production
-    if dev {
-        self.register_dynamic_walker_endpoint();
-        self.register_dynamic_function_endpoint();
-        self.register_dynamic_introspection_endpoints();
-        self.register_dynamic_webhook_endpoint();
-        self.register_dynamic_websocket_endpoint();
-    } else {
-        self.register_walkers_endpoints();
-        self.register_functions_endpoints();
-        self.register_webhook_endpoints();
-        self.register_websocket_endpoints();
+    server_config = get_scale_config().get_server_config();
+    if not server_config.get('docs_enabled', True) {
+        self.server.app.docs_url = None;
+        self.server.app.openapi_url = None;
+        self.server.app.redoc_url = None;
     }
-    self.register_root_asset_endpoint();
-    self._register_client_error_endpoint();
-    self._configure_openapi_security();
-    self.user_manager.create_user(Con.GUEST.value, '__no_password__');
+    self._register_endpoints();
+    if dev {
+        # Add middleware to refresh endpoints on HMR file changes
+        import from starlette.requests { Request as StarletteRequest }
+        import from starlette.responses { Response as StarletteResponse }
+        _self = self;
+        @self.server.app.middleware("http")
+        async def hmr_refresh_middleware(
+            request: StarletteRequest, call_next: Any
+        ) -> StarletteResponse {
+            if _self._hmr_pending {
+                _self._refresh_dev_endpoints();
+            }
+            return await call_next(request);
+        }
+    }
+    self.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
     self._setup_scheduler();
     # Find an available port (may differ from requested if port is in use)
     original_port = self.port;
@@ -355,468 +350,28 @@ impl JacAPIServerCore._configure_openapi_security -> None {
     self.server.app.openapi = custom_openapi;
 }
 
-impl JacAPIServerCore.register_login_endpoint -> None {
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.POST,
-            path='/user/login',
-            callback=self.login,
-            parameters=[
-                APIParameter(
-                    name='username',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='username for login',
-                    type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='password',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Password for login',
-                    type=ParameterType.BODY
-                )
-            ],
-            response_model=None,
-            tags=['User APIs'],
-            summary='User login',
-            description='Endpoint for user authentication and token generation'
-        )
-    );
-}
-
-impl JacAPIServerCore.login(username: str, password: str) -> TransportResponse {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta }
-    if (not username or not password) {
-        return TransportResponse.fail(
-            code='VALIDATION_ERROR',
-            message='Username and password required',
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    result = self.user_manager.authenticate(username, password);
-    if not result {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Invalid credentials',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
-    result['token'] = self.user_manager.create_jwt_token(username);
-    return TransportResponse.success(
-        data=dict[(str, JsonValue)](result), meta=Meta(extra={'http_status': 200})
-    );
-}
-
-impl JacAPIServerCore.register_create_user_endpoint -> None {
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.POST,
-            path='/user/register',
-            callback=self.create_user,
-            parameters=[
-                APIParameter(
-                    name='username',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Username for new user',
-                    type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='password',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Password for new user',
-                    type=ParameterType.BODY
-                )
-            ],
-            response_model=None,
-            tags=['User APIs'],
-            summary='Register user API.',
-            description='Endpoint for creating a new user account'
-        )
-    );
-}
-
-impl JacAPIServerCore.create_user(username: str, password: str) -> TransportResponse {
-    import traceback;
-    import from jaclang.runtimelib.transport { TransportResponse, Meta }
-    try {
-        res = self.user_manager.create_user(username, password);
-        if ('error' in res) {
-            return TransportResponse.fail(
-                code='USER_EXISTS',
-                message=res.get('error', 'User creation failed'),
-                meta=Meta(extra={'http_status': 400})
-            );
-        }
-        res['token'] = self.user_manager.create_jwt_token(username);
-        return TransportResponse.success(
-            data=res, meta=Meta(extra={'http_status': 201})
-        );
-    } except Exception as e {
-        error_trace = traceback.format_exc();
-        console.print(f"Error in create_user: {e}\n{error_trace}");
-        return TransportResponse.fail(
-            code='INTERNAL_ERROR',
-            message=f"Registration failed: {e}",
-            meta=Meta(extra={'http_status': 500})
-        );
-    }
-}
-
-impl JacAPIServerCore.register_refresh_token_endpoint -> None {
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.POST,
-            path='/user/refresh-token',
-            callback=self.refresh_token,
-            parameters=[
-                APIParameter(
-                    name='token',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='JWT token to refresh (with or without Bearer prefix)',
-                    type=ParameterType.BODY
-                )
-            ],
-            response_model=None,
-            tags=['User APIs'],
-            summary='Refresh JWT token',
-            description='Endpoint for refreshing an existing JWT token. Token must be within the refresh window.'
-        )
-    );
-}
-
-impl JacAPIServerCore.refresh_token(token: (str | None) = None) -> TransportResponse {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta }
-    if (not token) {
-        return TransportResponse.fail(
-            code='VALIDATION_ERROR',
-            message='Token is required',
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    if token.startswith('Bearer ') {
-        token = token[7:];
-    }
-    new_token = self.user_manager.refresh_jwt_token(token);
-    if (not new_token) {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Invalid or expired token',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
-    return TransportResponse.success(
-        data={'token': new_token, 'message': 'Token refreshed successfully'},
-        meta=Meta(extra={'http_status': 200})
-    );
-}
-
-impl JacAPIServerCore.update_username(
-    current_username: str, new_username: str, Authorization: (str | None) = None
-) -> TransportResponse {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta }
-    # Validate token and extract username
-    token: (str | None) = None;
-    if (
-        Authorization
-        and isinstance(Authorization, str)
-        and Authorization.startswith('Bearer ')
-    ) {
-        token = Authorization[7:];
-    }
-    token_username = self.user_manager.validate_jwt_token(token) if token else None;
-    if not token_username {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Invalid or expired token',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
-    # Ensure user is updating their own username
-    if (token_username != current_username) {
-        return TransportResponse.fail(
-            code='FORBIDDEN',
-            message='Cannot update another user\'s username',
-            meta=Meta(extra={'http_status': 403})
-        );
-    }
-    if (not new_username) {
-        return TransportResponse.fail(
-            code='VALIDATION_ERROR',
-            message='New username is required',
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    result = self.user_manager.update_username(current_username, new_username);
-    if ('error' in result) {
-        return TransportResponse.fail(
-            code='UPDATE_FAILED',
-            message=result.get('error', 'Username update failed'),
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    # Generate new JWT token with updated username
-    result['token'] = self.user_manager.create_jwt_token(new_username);
-    return TransportResponse.success(
-        data=result, meta=Meta(extra={'http_status': 200})
-    );
-}
-
-impl JacAPIServerCore.update_password(
-    username: str,
-    current_password: str,
-    new_password: str,
-    Authorization: (str | None) = None
-) -> TransportResponse {
-    import from jaclang.runtimelib.transport { TransportResponse, Meta }
-    # Validate token and extract username
-    token: (str | None) = None;
-    if (
-        Authorization
-        and isinstance(Authorization, str)
-        and Authorization.startswith('Bearer ')
-    ) {
-        token = Authorization[7:];
-    }
-    token_username = self.user_manager.validate_jwt_token(token) if token else None;
-    if not token_username {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Invalid or expired token',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
-    # Ensure user is updating their own password
-    if (token_username != username) {
-        return TransportResponse.fail(
-            code='FORBIDDEN',
-            message='Cannot update another user\'s password',
-            meta=Meta(extra={'http_status': 403})
-        );
-    }
-    if (not current_password or not new_password) {
-        return TransportResponse.fail(
-            code='VALIDATION_ERROR',
-            message='Current password and new password are required',
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    result = self.user_manager.update_password(username, current_password, new_password);
-    if ('error' in result) {
-        return TransportResponse.fail(
-            code='UPDATE_FAILED',
-            message=result.get('error', 'Password update failed'),
-            meta=Meta(extra={'http_status': 400})
-        );
-    }
-    return TransportResponse.success(
-        data=result, meta=Meta(extra={'http_status': 200})
-    );
-}
-
-impl JacAPIServerCore.register_update_username_endpoint -> None {
-    import from fastapi { Request }
-    async def update_username_handler(
-        request: Request, current_username: str, new_username: str
-    ) -> TransportResponse {
-        authorization = request.headers.get('Authorization');
-        return self.update_username(current_username, new_username, authorization);
-    }
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.PUT,
-            path='/user/username',
-            callback=update_username_handler,
-            parameters=[
-                APIParameter(
-                    name='current_username',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Current username',
-                    type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='new_username',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='New username',
-                    type=ParameterType.BODY
-                )
-            ],
-            response_model=None,
-            tags=['User APIs'],
-            summary='Update username',
-            description='Endpoint for updating user\'s username. Requires authentication.'
-        )
-    );
-}
-
-impl JacAPIServerCore.register_update_password_endpoint -> None {
-    import from fastapi { Request }
-    async def update_password_handler(
-        request: Request, username: str, current_password: str, new_password: str
-    ) -> TransportResponse {
-        authorization = request.headers.get('Authorization');
-        return self.update_password(
-            username, current_password, new_password, authorization
-        );
-    }
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.PUT,
-            path='/user/password',
-            callback=update_password_handler,
-            parameters=[
-                APIParameter(
-                    name='username',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Username',
-                    type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='current_password',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Current password',
-                    type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='new_password',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='New password',
-                    type=ParameterType.BODY
-                )
-            ],
-            response_model=None,
-            tags=['User APIs'],
-            summary='Update password',
-            description='Endpoint for updating user\'s password. Requires authentication.'
-        )
-    );
-}
-
-"""Create a wrapper around sso_callback that optionally redirects to frontend.
-
-If client_auth_callback_url is configured in jac.toml [plugins.scale.sso],
-the wrapper redirects to that URL with token (success) or error params (failure).
-If not configured, returns JSON response (backwards compatible).
-"""
-impl JacAPIServerCore._create_sso_callback_wrapper -> Callable[
-    ...,
-    (Response | TransportResponse)
-] {
-    import from urllib.parse { quote }
-    async def sso_callback_wrapper(
-        request: Request, platform: str, operation: str
-    ) -> (Response | TransportResponse) {
-        # Call original sso_callback which returns TransportResponse
-        result = await self.user_manager.sso_callback(request, platform, operation);
-
-        # Check if frontend redirect URL is configured
-        sso_config = get_scale_config().get_sso_config();
-        frontend_url = sso_config.get('client_auth_callback_url', '');
-
-        if not frontend_url {
-            # No redirect configured, return TransportResponse as JSON (current behavior)
-            return result;
-        }
-
-        # Redirect to frontend with token or error
-        if result.ok {
-            # Success - redirect with token
-            token = result.data.get('token', '') if result.data else '';
-            return RedirectResponse(url=f"{frontend_url}?token={token}");
-        } else {
-            # Error - redirect with error details
-            error_code = result.error.code if result.error else 'UNKNOWN_ERROR';
-            message = result.error.message if result.error else 'Unknown error';
-            return RedirectResponse(
-                url=f"{frontend_url}?error={quote(error_code)}&message={quote(message)}"
-            );
-        }
-    }
-    return sso_callback_wrapper;
-}
-
-impl JacAPIServerCore.register_sso_endpoints -> None {
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path='/sso/{platform}/{operation}',
-            callback=self.user_manager.sso_initiate,
-            parameters=[
-                APIParameter(
-                    name='platform',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='SSO platform: google',
-                    type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='operation',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Operation to perform: "login" or "register"',
-                    type=ParameterType.PATH
-                )
-            ],
-            response_model=None,
-            tags=['SSO APIs'],
-            summary='Initiate SSO authentication',
-            description='Redirects to the SSO provider for authentication. Supported platforms: Google. Configure each platform by setting SSO_{PLATFORM}_CLIENT_ID and SSO_{PLATFORM}_CLIENT_SECRET environment variables.'
-        )
-    );
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path='/sso/{platform}/{operation}/callback',
-            callback=self._create_sso_callback_wrapper(),
-            parameters=[
-                APIParameter(
-                    name='platform',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='SSO platform: google',
-                    type=ParameterType.PATH
-                ),
-                APIParameter(
-                    name='operation',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='Operation to perform: "login" or "register"',
-                    type=ParameterType.PATH
-                )
-            ],
-            response_model=None,
-            tags=['SSO APIs'],
-            summary='SSO callback endpoint',
-            description='Handles the callback from SSO provider after authentication. If client_auth_callback_url is configured, redirects with token/error params.'
-        )
-    );
-}
-
 # ============================================================================
 # HMR (Hot Module Replacement) Support
 # ============================================================================
+"""Register the /healthz endpoint for liveness checks."""
+impl JacAPIServerCore.register_health_endpoint -> None {
+    async def health_check -> dict {
+        return {"status": "ok"};
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz',
+            callback=health_check,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Liveness check',
+            description='Returns 200 if the server is running'
+        )
+    );
+}
+
 """Register the /cl/__error__ endpoint for client-side error reporting."""
 impl JacAPIServerCore._register_client_error_endpoint -> None {
     import from fastapi { Request }
@@ -890,7 +445,7 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
 impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
     self._hot_reloader = hot_reloader;
     # Callback when file changes - sets pending flag
-    def on_change(event: Any) -> None {
+    def on_change(event: Any) {
         self._hmr_pending = True;
         logger.debug(f"Change detected: {event.path}");
     }
@@ -899,163 +454,40 @@ impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
     logger.debug("Dynamic routing enabled for jac-scale");
 }
 
-# ============================================================================
-# API Key Management
-# ============================================================================
-"""Get or create the API key manager instance."""
-impl JacAPIServerCore.get_api_key_manager -> ApiKeyManager {
-    if self._api_key_manager is None {
-        self._api_key_manager = ApiKeyManager();
-    }
-    return self._api_key_manager;
+"""Register all endpoints (core + user-defined). Called at startup and on HMR refresh."""
+impl JacAPIServerCore._register_endpoints -> None {
+    # Core endpoints
+    self.register_health_endpoint();
+    self.register_auth_endpoints();
+    self.register_page_endpoint();
+    self.register_client_js_endpoint();
+    self.register_static_file_endpoint();
+    self.register_graph_endpoint();
+    self.register_admin_endpoints();
+    self.register_llm_telemetry_endpoints();
+    # User-defined endpoints (walkers, functions, webhooks)
+    self.register_walkers_endpoints();
+    self.register_functions_endpoints();
+    self.register_webhook_endpoints();
+    self.register_websocket_endpoints();
+    # Post-registration
+    self.register_scheduler_endpoints();
+    self.register_root_asset_endpoint();
+    self._register_client_error_endpoint();
+    self._configure_openapi_security();
 }
 
-"""Create a new API key for the authenticated user."""
-impl JacAPIServerCore.create_api_key(
-    name: str, expiry_days: int | None = None, Authorization: str | None = None
-) -> TransportResponse {
-    # Validate JWT token to get username
-    token: str | None = None;
-    if Authorization and Authorization.startswith('Bearer ') {
-        token = Authorization[7:];
-    }
-    username = self.user_manager.validate_jwt_token(token) if token else None;
-    if not username {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Valid authentication required to create API keys',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
-    return self.get_api_key_manager().create_api_key(
-        username=username, name=name, expiry_days=expiry_days
-    );
-}
-
-"""List all API keys for the authenticated user."""
-impl JacAPIServerCore.list_api_keys(
-    Authorization: str | None = None
-) -> TransportResponse {
-    # Validate JWT token to get username
-    token: str | None = None;
-    if Authorization and Authorization.startswith('Bearer ') {
-        token = Authorization[7:];
-    }
-    username = self.user_manager.validate_jwt_token(token) if token else None;
-    if not username {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Valid authentication required to list API keys',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
-    return self.get_api_key_manager().list_api_keys(username);
-}
-
-"""Revoke an API key for the authenticated user."""
-impl JacAPIServerCore.revoke_api_key(
-    api_key_id: str, Authorization: str | None = None
-) -> TransportResponse {
-    # Validate JWT token to get username
-    token: str | None = None;
-    if Authorization and Authorization.startswith('Bearer ') {
-        token = Authorization[7:];
-    }
-    username = self.user_manager.validate_jwt_token(token) if token else None;
-    if not username {
-        return TransportResponse.fail(
-            code='UNAUTHORIZED',
-            message='Valid authentication required to revoke API keys',
-            meta=Meta(extra={'http_status': 401})
-        );
-    }
-    return self.get_api_key_manager().revoke_api_key(username, api_key_id);
-}
-
-"""Register API key management endpoints."""
-impl JacAPIServerCore.register_api_key_endpoints -> None {
-    import from fastapi { Request }
-    async def create_api_key_handler(
-        request: Request, name: str, expiry_days: int | None = None
-    ) -> TransportResponse {
-        authorization = request.headers.get('Authorization');
-        return self.create_api_key(name, expiry_days, authorization);
-    }
-    async def list_api_keys_handler(request: Request) -> TransportResponse {
-        authorization = request.headers.get('Authorization');
-        return self.list_api_keys(authorization);
-    }
-    async def revoke_api_key_handler(
-        request: Request, api_key_id: str
-    ) -> TransportResponse {
-        authorization = request.headers.get('Authorization');
-        return self.revoke_api_key(api_key_id, authorization);
-    }
-    # Create API key
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.POST,
-            path='/api-key/create',
-            callback=create_api_key_handler,
-            parameters=[
-                APIParameter(
-                    name='name',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='A friendly name for the API key',
-                    type=ParameterType.BODY
-                ),
-                APIParameter(
-                    name='expiry_days',
-                    data_type='integer',
-                    required=False,
-                    default=None,
-                    description='Number of days until expiry (default from config)',
-                    type=ParameterType.BODY
-                )
-            ],
-            response_model=None,
-            tags=['API Keys'],
-            summary='Create a new API key',
-            description='Creates a new API key for webhook authentication. The API key is wrapped in a JWT and can be used with HMAC-SHA256 signature verification.'
-        )
-    );
-    # List API keys
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.GET,
-            path='/api-key/list',
-            callback=list_api_keys_handler,
-            parameters=[],
-            response_model=None,
-            tags=['API Keys'],
-            summary='List all API keys',
-            description='Lists all API keys for the authenticated user (metadata only, not the actual keys).'
-        )
-    );
-    # Revoke API key
-    self.server.add_endpoint(
-        JEndPoint(
-            method=HTTPMethod.DELETE,
-            path='/api-key/{api_key_id}',
-            callback=revoke_api_key_handler,
-            parameters=[
-                APIParameter(
-                    name='api_key_id',
-                    data_type='string',
-                    required=True,
-                    default=None,
-                    description='The ID of the API key to revoke',
-                    type=ParameterType.PATH
-                )
-            ],
-            response_model=None,
-            tags=['API Keys'],
-            summary='Revoke an API key',
-            description='Revokes an API key, making it invalid for future webhook requests.'
-        )
-    );
+"""Refresh all endpoints after HMR reload - clears routes and re-registers from scratch."""
+impl JacAPIServerCore._refresh_dev_endpoints -> None {
+    self._hmr_pending = False;
+    self.introspector.load(force_reload=True);
+    # Clear all routes and endpoints, then re-setup docs and re-register
+    self.server._endpoints[:] = [];
+    self.server.app.routes.clear();
+    self.server.app.setup();
+    self._register_endpoints();
+    self.server.execute();
+    self.server.app.openapi_schema = None;
 }
 
 """Create the __system__ user, initialise JacScaleScheduler, and register /jobs endpoints."""
@@ -1063,7 +495,9 @@ impl JacAPIServerCore._setup_scheduler -> None {
     scheduler_config = get_scale_config().get_scheduler_config();
     system_password = scheduler_config.get('system_user_password', 'system_secret');
     try {
-        self.user_manager.create_user('__system__', system_password);
+        self.user_manager.create_internal_user(
+            '__system__', system_password, role='system'
+        );
     } except Exception { }
     system_token = self.user_manager.create_jwt_token('__system__');
 
@@ -1079,9 +513,6 @@ impl JacAPIServerCore._setup_scheduler -> None {
 
     # Start APScheduler background thread
     jac_scheduler.start();
-
-    # Register /jobs REST endpoints
-    self.register_scheduler_endpoints();
 }
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""
@@ -1091,18 +522,42 @@ impl JacAPIServerCore._create_admin_metrics_handler(
     import from fastapi { Request }
     import from fastapi.responses { Response, JSONResponse }
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
+    import dataclasses;
+    import base64;
+
+    monitoring_config = get_scale_config().get_monitoring_config();
+    prometheus_password = monitoring_config.get('prometheus_admin_password', '');
+    admin_config = get_scale_config().get_admin_config();
+    admin_username = admin_config.get('username', 'admin');
 
     async def admin_metrics_handler(request: Request) -> Response {
         authorization = request.headers.get('Authorization');
-        admin_user = self.validate_admin_token(authorization);
-        if not admin_user {
+        # Accept Bearer JWT token (admin portal) or Basic Auth (Prometheus scraping)
+        authed = False;
+        if authorization {
+            if authorization.startswith('Bearer ') {
+                authed = self.validate_admin_token(authorization) is not None;
+            } elif authorization.startswith('Basic ') and prometheus_password {
+                try {
+                    decoded = base64.b64decode(authorization[6:]).decode('utf-8');
+                    parts = decoded.split(':', 1);
+                    authed = parts[0] == admin_username
+                    and parts[1] == prometheus_password;
+                } except Exception {
+                    authed = False;
+                }
+            }
+        }
+        if not authed {
             return JSONResponse(
                 status_code=403,
-                content=TransportResponse.fail(
-                    code='FORBIDDEN',
-                    message='Admin access required',
-                    meta=Meta(extra={'http_status': 403})
-                ).model_dump()
+                content=dataclasses.asdict(
+                    TransportResponse.fail(
+                        code='FORBIDDEN',
+                        message='Admin access required',
+                        meta=Meta(extra={'http_status': 403})
+                    )
+                )
             );
         }
         return original_handler();

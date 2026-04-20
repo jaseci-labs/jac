@@ -90,12 +90,21 @@ obj JacLangServer(JacProgram, LanguageServer) {
 
     def get_completion_of_node(nd: uni.UniNode) -> lspt.CompletionList;
     def get_node_type(n: uni.UniNode) -> Optional[TypeBase];
-    def get_completion_items_of(ty: TypeBase | uni.UniScopeNode) -> lspt.CompletionList;
+    def get_completion_items_of(
+        ty: TypeBase | uni.UniScopeNode
+    ) -> lspt.CompletionList;
+
     def rename_module(old_path: str, new_path: str) -> None;
     def close_module(uri: str) -> None;
     def delete_module(uri: str) -> None;
-    def format_document(file_path: str, auto_lint: bool = False) -> list[lspt.TextEdit];
-    def get_hover_info(file_path: str, position: lspt.Position) -> Optional[lspt.Hover];
+    def format_document(
+        file_path: str, auto_lint: bool = False
+    ) -> list[lspt.TextEdit];
+
+    def get_hover_info(
+        file_path: str, position: lspt.Position
+    ) -> Optional[lspt.Hover];
+
     def get_node_info(sym_node: uni.AstSymbolNode) -> Optional[str];
     def get_outline(file_path: str) -> list[lspt.DocumentSymbol];
     def get_definition(

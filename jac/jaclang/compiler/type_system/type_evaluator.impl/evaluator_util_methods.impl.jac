@@ -134,7 +134,6 @@ impl TypeEvaluator._lookup_class_member(
 impl TypeEvaluator._is_type_subscript(class_type: types.ClassType) -> bool {
     return (
         class_type.is_builtin("type")
-        and class_type.private is not None
         and class_type.private.type_args is not None
         and len(class_type.private.type_args) >= 1
     );
@@ -279,7 +278,6 @@ impl TypeEvaluator._get_expected_element_type(
         isinstance(expected_type, types.ClassType)
         and isinstance(container_class, types.ClassType)
         and expected_type.shared == container_class.shared
-        and expected_type.private
         and expected_type.private.type_args
         and len(expected_type.private.type_args) >= 1
     ) {
@@ -303,7 +301,6 @@ impl TypeEvaluator._get_expected_kv_types(
         isinstance(expected_type, types.ClassType)
         and isinstance(dict_class, types.ClassType)
         and expected_type.shared == dict_class.shared
-        and expected_type.private
         and expected_type.private.type_args
         and len(expected_type.private.type_args) >= 2
     ) {
@@ -319,7 +316,7 @@ impl TypeEvaluator._get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None
     # If the symbol is from a module item, we need to resolve it to the actual symbol.
     # Check if mod_item.name is a Name and has a sym attribute before accessing it
     # Cache the type.
-    # __new__ is always a classmethod in Python, even without @classmethod decorator
+    # __new__ is a staticmethod in CPython; cls is marked is_cls for constructor resolution
     impl_ := nd.find_parent_of_type(uni.ImplDef);
     if impl_ and isinstance(impl_.decl_link, uni.Archetype) {
         return impl_.decl_link;
@@ -394,6 +391,45 @@ impl TypeEvaluator._get_enclosing_function(nd: uni.UniNode) -> uni.Ability | Non
         }
     }
     return None;
+}
+
+
+"""Return the correct scope for resolving a name reference.
+
+By default this is the nearest enclosing UniScopeNode. Python semantics
+require base class expressions in `class Foo(Base)` to be resolved in
+the *enclosing* scope, not the class's own scope — otherwise an inner
+member named `Base` would shadow the outer class. PEP 695 type
+parameters declared on the class (`class Foo[T](Base[T])`) remain
+visible inside the base list, so names that match a declared type param
+keep resolving against the class scope.
+"""
+impl TypeEvaluator._resolution_scope_for(expr: uni.UniNode) -> uni.UniScopeNode | None {
+    scope = expr.find_parent_of_type(uni.UniScopeNode);
+    if scope is None {
+        return None;
+    }
+    if isinstance(scope, uni.Archetype) and scope.base_classes {
+        cur: uni.UniNode | None = expr;
+        while cur is not None and cur.parent is not scope {
+            cur = cur.parent;
+        }
+        if cur is not None {
+            for base in scope.base_classes {
+                if base is cur {
+                    if isinstance(expr, uni.Name) and scope.type_params {
+                        for tp in scope.type_params {
+                            if tp.name.value == expr.value {
+                                return scope;
+                            }
+                        }
+                    }
+                    return scope.parent_scope or scope;
+                }
+            }
+        }
+    }
+    return scope;
 }
 
 """Check if the expression is Name that is 'self' and in the method context."""
@@ -473,7 +509,9 @@ impl TypeEvaluator._set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeB
 
 """Resolve the imported symbols to the actual symbol."""
 impl TypeEvaluator.resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol {
-    if (isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)) {
+    if (
+        isinstance(sym.decl, uni.Name) and sym.decl.find_parent_of_type(uni.ModuleItem)
+    ) {
         mod_item = sym.decl.find_parent_of_type(uni.ModuleItem);
         assert (mod_item is not None);
         self.get_type_of_module(mod_item.from_mod_path);
@@ -518,7 +556,7 @@ impl TypeEvaluator._extract_type_params(
     # The type_params field on the Archetype node holds TypeParam AST nodes.
     if node_.type_params {
         for tp in node_.type_params {
-            tv = types.TypeVarType(name=tp.sym_name);
+            tv = types.TypeVarType(name=tp.sym_name, is_class_type_param=True);
             type_params.append(tv);
         }
         return type_params;
@@ -529,39 +567,130 @@ impl TypeEvaluator._extract_type_params(
     outer_names = {tp.name for tp in outer_type_params};
 
     # Handle Python-style generics: obj Box(Generic[T])
+    # Track seen TypeVar names to deduplicate (e.g. Mapping(Collection[_KT],
+    # Generic[_KT, _VT_co]) would otherwise collect _KT twice).
+    #
+    # Two-pass strategy: when Generic[...] is explicitly present in the bases,
+    # PEP 484 makes it the authoritative declaration of type parameter order.
+    # We process it FIRST so other bases don't impose encounter order.
+    # e.g. dict_values(ValuesView[_VT_co], Generic[_KT_co, _VT_co]) must produce
+    # [_KT_co, _VT_co] (from Generic), not [_VT_co, _KT_co] (encounter order).
+    #
+    # Generic detection uses two approaches:
+    #   1. is_special_form("Generic") on the resolved type (when alias_name is set).
+    #   2. AST symbol name fallback — Generic in typeshed stubs resolves to
+    #      type[_SpecialForm] without alias_name, so we check the Name node
+    #      value directly (mirroring Pyright's aliasedName approach).
+    seen_names: set[str] = set();
+    generic_base: uni.AtomTrailer | None = None;
     for base_class in node_.base_classes or [] {
         if (not isinstance(base_class, uni.AtomTrailer))
         or base_class.is_attr
         or base_class.is_null_ok {
             continue;
         }
+        target_type = self.get_type_of_expression(base_class.target);
+        is_generic = (
+            isinstance(target_type, types.ClassType)
+            and target_type.is_special_form("Generic")
+        );
+        if (
+            not is_generic
+            and isinstance(base_class.target, uni.Name)
+            and base_class.target.value == "Generic"
+        ) {
+            is_generic = True;
+        }
+        if is_generic {
+            generic_base = base_class;
+            break;
+        }
+    }
+    if generic_base is not None {
+        self._collect_typevars_from_base(
+            generic_base, outer_names, seen_names, type_params
+        );
+    }
 
-        if isinstance(base_class.right, uni.IndexSlice) and base_class.right.slices {
-            type_vars = base_class.right.slices[0].start;
-            if isinstance(type_vars, uni.TupleVal) {
-                for val in type_vars.values {
-                    type_var_type = self.get_type_of_expression(val);
-                    if isinstance(type_var_type, types.TypeVarType) {
-                        # Validate: TypeVar not already in use by outer scope
-                        if type_var_type.name in outer_names {
-                            self.emit_diag(E1062, val, name=type_var_type.name);
-                        }
-                        type_params.append(type_var_type);
-                    }
+    # Second pass: process all non-Generic bases for remaining TypeVars.
+    # When Generic[] was found, this only picks up TypeVars not already seen
+    # (should be none in well-formed code). When Generic[] is absent, this is
+    # the primary extraction path.
+    for base_class in node_.base_classes or [] {
+        if (not isinstance(base_class, uni.AtomTrailer))
+        or base_class.is_attr
+        or base_class.is_null_ok {
+            continue;
+        }
+        if base_class is generic_base {
+            continue;
+        }
+        self._collect_typevars_from_base(
+            base_class, outer_names, seen_names, type_params
+        );
+    }
+    return type_params;
+}
+
+"""Extract TypeVars from a single parameterized base class into type_params.
+
+Handles both single-TypeVar bases like Base[T] and multi-TypeVar bases like
+Generic[K, V]. Deduplicates by name using seen_names and validates against
+outer_names for outer-scope reuse errors.
+"""
+impl TypeEvaluator._collect_typevars_from_base(
+    base_class: uni.AtomTrailer,
+    outer_names: set[str],
+    seen_names: set[str],
+    type_params: list[types.TypeVarType]
+) -> None {
+    if not (isinstance(base_class.right, uni.IndexSlice) and base_class.right.slices) {
+        return;
+    }
+    type_vars = base_class.right.slices[0].start;
+    if isinstance(type_vars, uni.TupleVal) {
+        for val in type_vars.values {
+            type_var_type = self.get_type_of_expression(val);
+            if isinstance(type_var_type, types.TypeVarType) {
+                if type_var_type.name in outer_names {
+                    self.emit_diag(E1062, val, name=type_var_type.name);
                 }
-            } else {
-                type_var_type = self.get_type_of_expression(type_vars);
-                if isinstance(type_var_type, types.TypeVarType) {
-                    # Validate: TypeVar not already in use by outer scope
-                    if type_var_type.name in outer_names {
-                        self.emit_diag(E1062, type_vars, name=type_var_type.name);
-                    }
-                    type_params.append(type_var_type);
+                if type_var_type.name not in seen_names {
+                    seen_names.add(type_var_type.name);
+                    # Mark as class type param since it's used in the class's base declaration
+                    class_type_var = types.TypeVarType(
+                        name=type_var_type.name,
+                        is_covariant=type_var_type.is_covariant,
+                        is_contravariant=type_var_type.is_contravariant,
+                        bound=type_var_type.bound,
+                        constraints=type_var_type.constraints,
+                        is_class_type_param=True
+                    );
+                    type_params.append(class_type_var);
                 }
             }
         }
+    } else {
+        type_var_type = self.get_type_of_expression(type_vars);
+        if isinstance(type_var_type, types.TypeVarType) {
+            if type_var_type.name in outer_names {
+                self.emit_diag(E1062, type_vars, name=type_var_type.name);
+            }
+            if type_var_type.name not in seen_names {
+                seen_names.add(type_var_type.name);
+                # Mark as class type param since it's used in the class's base declaration
+                class_type_var = types.TypeVarType(
+                    name=type_var_type.name,
+                    is_covariant=type_var_type.is_covariant,
+                    is_contravariant=type_var_type.is_contravariant,
+                    bound=type_var_type.bound,
+                    constraints=type_var_type.constraints,
+                    is_class_type_param=True
+                );
+                type_params.append(class_type_var);
+            }
+        }
     }
-    return type_params;
 }
 
 """Emit a structured diagnostic via the pass."""
@@ -574,9 +703,9 @@ impl TypeEvaluator.emit_diag(
 }
 
 impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
-    if node_.name_spec and node_.name_spec.sym_name == "__new__" {
-        return True;
-    }
+    # Note: __new__ is a staticmethod in CPython, not a classmethod.
+    # Its cls param is marked is_cls for constructor resolution but the
+    # function itself should not carry the ClassMethod flag.
     if node_.decorators {
         for decorator in node_.decorators {
             decor_type = self.get_type_of_expression(decorator);
@@ -592,31 +721,138 @@ impl TypeEvaluator._is_ability_classmethod(node_: uni.Ability) -> bool {
     return False;
 }
 
-"""Check if a symbol represents a property (@property or @cached_property)."""
-impl TypeEvaluator._is_symbol_property(symbol: uni.Symbol) -> bool {
+"""Classify a symbol as @property, @cached_property, or not a property.
+
+Single decorator walk shared by both the read path (get_getter_type_from_property)
+and the write path (get_property_write_type).
+
+Returns:
+  WRITABLE      — @cached_property (non-data descriptor, assignment is legal)
+  READ_ONLY     — @property (data descriptor, needs setter check by caller)
+  NOT_PROPERTY  — not decorated with @property or @cached_property
+"""
+impl TypeEvaluator._classify_property_symbol(
+    symbol: uni.Symbol
+) -> type_utils.PropertyWriteKind {
+    import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
     node_ = symbol.decl.name_of;
     if not isinstance(node_, uni.Ability) {
-        return False;
+        return PropertyWriteKind.NOT_PROPERTY;
     }
     ability = node_;
     if not ability.decorators {
-        return False;
+        return PropertyWriteKind.NOT_PROPERTY;
     }
     for decorator in ability.decorators {
         decorator_type = self.get_type_of_expression(decorator);
-        if properties.is_property_decorator_type(decorator_type) {
-            return True;
-        }
         if properties.is_cached_property_decorator_type(decorator_type) {
-            return True;
+            return PropertyWriteKind.WRITABLE;
+        }
+        if properties.is_property_decorator_type(decorator_type) {
+            return PropertyWriteKind.READ_ONLY;
         }
     }
-    return False;
+    return PropertyWriteKind.NOT_PROPERTY;
 }
 
-"""Get the return type of a property's getter."""
+"""Get the return type of a property's getter (read path).
+
+Used by atom-trailer evaluation to unwrap @property / @cached_property
+into the getter's return type. Returns None for non-property symbols.
+"""
 impl TypeEvaluator.get_getter_type_from_property(
     symbol: uni.Symbol
+) -> (TypeBase | None) {
+    import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
+    kind = self._classify_property_symbol(symbol);
+    if kind == PropertyWriteKind.NOT_PROPERTY {
+        return None;
+    }
+    node_ = symbol.decl.name_of;
+    if not isinstance(node_, uni.Ability) {
+        return None;
+    }
+    func_type = self.get_type_of_ability(node_);
+    if not isinstance(func_type, types.FunctionType) {
+        return None;
+    }
+    return func_type.return_type;
+}
+
+"""Classify a symbol's writability for property-aware assignment checking.
+
+Delegates to _classify_property_symbol for the decorator walk, then
+determines the concrete write type:
+
+  NOT_PROPERTY  — not @property / @cached_property; use the normal
+                  declared-type path.
+  READ_ONLY     — @property with no setter; the assignment is illegal.
+  WRITABLE      — @cached_property or @property with a @name.setter
+                  sibling; `write_type` holds the type values must match.
+"""
+impl TypeEvaluator.get_property_write_type(
+    symbol: uni.Symbol
+) -> type_utils.PropertyWriteResult {
+    import from jaclang.compiler.type_system.type_utils {
+        PropertyWriteKind,
+        PropertyWriteResult
+    }
+    kind = self._classify_property_symbol(symbol);
+    if kind == PropertyWriteKind.NOT_PROPERTY {
+        return PropertyWriteResult(kind=PropertyWriteKind.NOT_PROPERTY);
+    }
+
+    # @cached_property (WRITABLE from classifier): write type = getter return type.
+    if kind == PropertyWriteKind.WRITABLE {
+        node_ = symbol.decl.name_of;
+        if isinstance(node_, uni.Ability) {
+            func_type = self.get_type_of_ability(node_);
+            if isinstance(func_type, types.FunctionType)
+            and func_type.return_type is not None {
+                return PropertyWriteResult(
+                    kind=PropertyWriteKind.WRITABLE, write_type=func_type.return_type
+                );
+            }
+        }
+        # Getter return type couldn't be resolved — treat as writable
+        # with unknown type to avoid a false "read-only" diagnostic.
+        return PropertyWriteResult(
+            kind=PropertyWriteKind.WRITABLE, write_type=types.UnknownType()
+        );
+    }
+
+    # @property (READ_ONLY from classifier): look for a @<name>.setter
+    # sibling in the enclosing class scope. The symbol_table of a method
+    # points to the Ability's own scope; the overloads live one level up
+    # in the parent (Archetype/class) scope.
+    prop_name = symbol.sym_name;
+    method_scope = symbol.symbol_table;
+    class_scope = method_scope.parent_scope if method_scope is not None else None;
+    if class_scope is not None {
+        overload_syms = class_scope.names_in_scope_overload.get(prop_name);
+        if overload_syms {
+            for overload_sym in overload_syms {
+                setter_type = self._get_setter_value_type(overload_sym, prop_name);
+                if setter_type is not None {
+                    return PropertyWriteResult(
+                        kind=PropertyWriteKind.WRITABLE, write_type=setter_type
+                    );
+                }
+            }
+        }
+    }
+    # No setter found — read-only.
+    return PropertyWriteResult(kind=PropertyWriteKind.READ_ONLY);
+}
+
+"""Extract the value-parameter type from a @name.setter decorated method.
+
+Given a symbol that may be decorated with `@<prop_name>.setter`, inspect
+its decorators. If a matching setter decorator is found, return the type
+of the setter's first non-self/cls parameter (i.e., the value type).
+"""
+impl TypeEvaluator._get_setter_value_type(
+    symbol: uni.Symbol, prop_name: str
 ) -> (TypeBase | None) {
     node_ = symbol.decl.name_of;
     if not isinstance(node_, uni.Ability) {
@@ -626,23 +862,30 @@ impl TypeEvaluator.get_getter_type_from_property(
     if not ability.decorators {
         return None;
     }
-    is_property_decorated = False;
     for decorator in ability.decorators {
-        decorator_type = self.get_type_of_expression(decorator);
-        if properties.is_property_decorator_type(decorator_type)
-        or properties.is_cached_property_decorator_type(decorator_type) {
-            is_property_decorated = True;
-            break;
+        # @<prop_name>.setter is an AtomTrailer: target=Name(prop_name), right=Name("setter")
+        if isinstance(decorator, uni.AtomTrailer) and decorator.is_attr {
+            if (
+                isinstance(decorator.right, uni.Name)
+                and decorator.right.value == "setter"
+                and isinstance(decorator.target, uni.Name)
+                and decorator.target.value == prop_name
+            ) {
+                func_type = self.get_type_of_ability(ability);
+                if isinstance(func_type, types.FunctionType) and func_type.parameters {
+                    # The setter signature is (self, value). FunctionType
+                    # parameters include self for methods, so skip it.
+                    for param in func_type.parameters {
+                        if not param.is_self and not param.is_cls {
+                            return param.param_type;
+                        }
+                    }
+                }
+                return None;
+            }
         }
     }
-    if not is_property_decorated {
-        return None;
-    }
-    func_type = self.get_type_of_ability(ability);
-    if not isinstance(func_type, types.FunctionType) {
-        return None;
-    }
-    return func_type.return_type;
+    return None;
 }
 
 """
@@ -782,7 +1025,7 @@ match the name against known special forms and return the appropriate type.
 """
 impl TypeEvaluator._get_special_form_type(
     name: str, symbol_type: types.TypeBase
-) -> types.ClassType | types.TypeVarType | None {
+) -> types.TypeBase | None {
     if not self.prefetch {
         return None;
     }
@@ -794,7 +1037,6 @@ impl TypeEvaluator._get_special_form_type(
     is_special_form = (
         isinstance(symbol_type, types.ClassType)
         and self.prefetch.callable_class
-        and isinstance(self.prefetch.callable_class, types.ClassType)
         and symbol_type.shared == self.prefetch.callable_class.shared
     );
 
@@ -836,7 +1078,11 @@ impl TypeEvaluator._get_special_form_type(
     # Map special form names to their handling
     match name {
         case "Callable":
-            return self.prefetch.callable_class;
+            # Bare Callable is Callable[..., Any] per PEP 484.
+            # Return a gradual FunctionType so it's usable as a callable.
+            # The subscript handler checks is_from_callable_annotation() to
+            # recognize this as a Callable base for Callable[[int], str] syntax.
+            return types.create_callable_type([], types.AnyType(), is_gradual=True);
 
         case "Protocol":
             return self.prefetch.protocol_class;
@@ -881,8 +1127,7 @@ impl TypeEvaluator.create_self_type(
     if not isinstance(symbol_type, types.ClassType) {
         return None;
     }
-    if not self.prefetch.callable_class
-    or not isinstance(self.prefetch.callable_class, types.ClassType) {
+    if not self.prefetch.callable_class {
         return None;
     }
     # Check if it's a _SpecialForm
@@ -965,7 +1210,7 @@ impl TypeEvaluator._create_special_builtin_type(
         mro=[],
         is_builtin_class=True
     );
-    special_type = types.ClassType(shared=shared);
+    special_type = types.ClassType(_shared=shared, flags=base_class.flags);
     # Compute MRO: [SpecialType, BaseClass, ...]
     special_type.shared.mro = [special_type] + base_class.shared.mro;
     return special_type;
@@ -1103,7 +1348,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
 
     # Get the class's type parameters
     class_type = self.get_type_of_class(enclosing_class);
-    if not class_type or not class_type.shared or not class_type.shared.type_params {
+    if not class_type or not class_type.shared.type_params {
         return;
     }
 
@@ -1114,7 +1359,7 @@ impl TypeEvaluator.validate_typevar_variance(func: uni.Ability) -> None {
     }
 
     # Helper to check variance - only direct TypeVar, not in unions for params
-    def check_expr(expr: uni.Expr, is_return: bool) -> None {
+    def check_expr(expr: uni.Expr, is_return: bool) {
         if isinstance(expr, uni.Name) {
             resolved = self.get_type_of_expression(expr);
             if isinstance(resolved, types.TypeVarType)
@@ -1180,6 +1425,47 @@ A TypeVar is valid if:
 impl TypeEvaluator.validate_typevar_scope(
     expr: uni.Expr, type_var: types.TypeVarType
 ) -> None {
+    # Module-level TypeVars (defined via glob T = TypeVar("T")) are valid
+    # when used in a function/method signature (param types or return type),
+    # including impl blocks. They are NOT valid in class bodies, function
+    # bodies, or at module level outside signatures.
+    # Check this early to avoid recursive validation loops that occur when
+    # _get_function_type_params evaluates signature types.
+    if isinstance(expr, uni.Name) and expr.sym {
+        sym_decl = expr.sym.decl;
+        if sym_decl {
+            # Check if the TypeVar is declared at module level
+            is_module_level = False;
+            decl_parent = sym_decl.parent;
+            while decl_parent {
+                if isinstance(decl_parent, uni.Module) {
+                    is_module_level = True;
+                    break;
+                }
+                if isinstance(decl_parent, (uni.Archetype, uni.Ability)) {
+                    break;  # Not module-level
+                }
+                decl_parent = decl_parent.parent;
+            }
+            # If module-level, check that expr is inside a function signature
+            if is_module_level {
+                sig_check = expr.parent;
+                while sig_check {
+                    if isinstance(sig_check, uni.FuncSignature) {
+                        return;  # Valid: module-level TypeVar in function signature
+
+                    }
+                    if isinstance(
+                        sig_check, (uni.Ability, uni.Archetype, uni.Module)
+                    ) {
+                        break;  # Reached a scope boundary without finding signature
+                    }
+                    sig_check = sig_check.parent;
+                }
+            }
+        }
+    }
+
     # Find IMMEDIATE enclosing scope (class or function)
     enclosing_class: uni.Archetype | None = None;
     enclosing_func: uni.Ability | None = None;
@@ -1259,4 +1545,192 @@ impl TypeEvaluator._get_outer_scope_type_params(
         current = current.parent;
     }
     return type_params;
+}
+
+"""Check if a function body contains only ellipsis (stub body)."""
+impl TypeEvaluator._is_ellipsis_only_body(body: list[uni.CodeBlockStmt]) -> bool {
+    has_ellipsis = False;
+    for stmt in body {
+        if isinstance(stmt, uni.Semi) {
+            continue;
+        }
+        if isinstance(stmt, uni.ExprStmt) and isinstance(stmt.expr, uni.Ellipsis) {
+            has_ellipsis = True;
+            continue;
+        }
+        return False;
+    }
+    return has_ellipsis;
+}
+
+"""Infer return type for a block-body lambda from its return statements.
+
+Walks the body collecting ReturnStmt nodes (without descending into nested
+Ability or LambdaExpr scopes). Accounts for implicit None on fall-through
+paths: if not every code path returns a value, NoneType is included in the
+result. If no return-with-value is found at all, returns NoneType."""
+impl TypeEvaluator._infer_lambda_block_return_type(
+    body: list[uni.CodeBlockStmt]
+) -> TypeBase {
+    import from jaclang.compiler.type_system { types }
+
+    none_type = self._convert_to_instance(self.get_none_type());
+    return_types: list[TypeBase] = [];
+    always_returns = self._collect_return_types(body, return_types);
+
+    if not return_types {
+        # No return-with-value found → implicit None return.
+        return none_type;
+    }
+
+    # If not all code paths return a value, the function can fall through
+    # to an implicit None return.
+    if not always_returns {
+        return_types.append(none_type);
+    }
+
+    # Deduplicate: remove NoneType duplicates and collapse single-type results.
+    seen: list[TypeBase] = [];
+    for rt in return_types {
+        is_dup = False;
+        for s in seen {
+            if str(rt) == str(s) {
+                is_dup = True;
+                break;
+            }
+        }
+        if not is_dup {
+            seen.append(rt);
+        }
+    }
+
+    if len(seen) == 1 {
+        return seen[0];
+    }
+
+    return types.UnionType(types=seen);
+}
+
+"""Collect return-expression types from a statement block, returning whether
+all code paths return a value. Stops at nested Ability/LambdaExpr boundaries."""
+impl TypeEvaluator._collect_return_types(
+    stmts: list[uni.CodeBlockStmt], out: list[TypeBase]
+) -> bool {
+    for stmt in stmts {
+        # Nested scopes own their own returns.
+        if isinstance(stmt, (uni.Ability, uni.LambdaExpr)) {
+            continue;
+        }
+
+        if isinstance(stmt, uni.ReturnStmt) {
+            if stmt.expr and not isinstance(stmt.expr, uni.Null) {
+                out.append(self.get_type_of_expression(stmt.expr));
+            }
+            # Any return (bare or with value) means this path terminates.
+            return True;
+        }
+
+        if isinstance(stmt, uni.RaiseStmt) {
+            return True;
+        }
+
+        # --- Compound statements: recurse into their specific body fields ---
+        if isinstance(stmt, uni.IfStmt) {
+            if_returns = self._collect_return_types(list(stmt.body), out);
+            else_returns = self._collect_if_else_returns(stmt.else_body, out);
+            if if_returns and else_returns {
+                return True;
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.MatchStmt) {
+            if stmt.cases {
+                all_return = True;
+                for case in stmt.cases {
+                    mc: uni.MatchCase = case;
+                    if not self._collect_return_types(list(mc.body), out) {
+                        all_return = False;
+                    }
+                }
+                if all_return {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.SwitchStmt) {
+            if stmt.cases {
+                has_default = False;
+                all_return = True;
+                for case in stmt.cases {
+                    sc: uni.SwitchCase = case;
+                    if sc.pattern is None {
+                        has_default = True;
+                    }
+                    if not self._collect_return_types(list(sc.body), out) {
+                        all_return = False;
+                    }
+                }
+                if has_default and all_return {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.TryStmt) {
+            try_returns = self._collect_return_types(list(stmt.body), out);
+            if try_returns {
+                if not stmt.excepts or len(stmt.excepts) == 0 {
+                    return True;
+                }
+                all_except = True;
+                for exc in stmt.excepts {
+                    ex: uni.Except = exc;
+                    if not self._collect_return_types(list(ex.body), out) {
+                        all_except = False;
+                    }
+                }
+                if all_except {
+                    return True;
+                }
+            }
+            continue;
+        }
+
+        if isinstance(stmt, uni.WithStmt) {
+            if self._collect_return_types(list(stmt.body), out) {
+                return True;
+            }
+            continue;
+        }
+
+        # For/while loops: collect returns inside but a loop never guarantees
+        # all paths return (it might iterate zero times).
+        if isinstance(stmt, (uni.IterForStmt, uni.InForStmt, uni.WhileStmt)) {
+            self._collect_return_types(list(stmt.body), out);
+            continue;
+        }
+    }
+    return False;
+}
+
+"""Helper: collect return types from the else branch of an IfStmt."""
+impl TypeEvaluator._collect_if_else_returns(
+    else_body: uni.ElseIf | uni.ElseStmt | None, out: list[TypeBase]
+) -> bool {
+    if else_body is None {
+        return False;
+    }
+    if isinstance(else_body, uni.ElseStmt) {
+        return self._collect_return_types(list(else_body.body), out);
+    }
+    if isinstance(else_body, uni.ElseIf) {
+        if_returns = self._collect_return_types(list(else_body.body), out);
+        else_returns = self._collect_if_else_returns(else_body.else_body, out);
+        return if_returns and else_returns;
+    }
+    return False;
 }

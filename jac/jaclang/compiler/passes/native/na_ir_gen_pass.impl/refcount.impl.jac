@@ -32,11 +32,33 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     self.malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
     self.free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
 
+    # Pre-declare all libc functions that the compiler uses internally.
+    # This must happen BEFORE _process_clib_imports so that user imports
+    # of the same names (e.g. `import from "libc" { def memcpy(...); }`)
+    # find the correctly-typed declarations in extern_funcs and reuse them
+    # instead of creating conflicting declarations with user types.
+    self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
+    self._get_or_declare_extern("strlen", i64, [i8_ptr]);
+    self._get_or_declare_extern("strcmp", i32, [i8_ptr, i8_ptr]);
+    self._get_or_declare_extern("strncmp", i32, [i8_ptr, i8_ptr, i64]);
+    self._get_or_declare_extern("memcmp", i32, [i8_ptr, i8_ptr, i64]);
+    self._get_or_declare_extern("calloc", i8_ptr, [i64, i64]);
+    self._get_or_declare_extern("fopen", i8_ptr, [i8_ptr, i8_ptr]);
+    self._get_or_declare_extern("fclose", i32, [i8_ptr]);
+    self._get_or_declare_extern("fread", i64, [i8_ptr, i64, i64, i8_ptr]);
+    self._get_or_declare_extern("fwrite", i64, [i8_ptr, i64, i64, i8_ptr]);
+    self._get_or_declare_extern("fgets", i8_ptr, [i8_ptr, i32, i8_ptr]);
+    self._get_or_declare_extern("fflush", i32, [i8_ptr]);
+    self._get_or_declare_extern("ftell", i64, [i8_ptr]);
+    self._get_or_declare_extern("fseek", i32, [i8_ptr, i64, i32]);
+
     # --- Bump allocator arena globals ---
     # Uses chained arenas: when one fills up, a new one is malloc'd.
     # Arena size chosen to balance page-fault cost vs fragmentation.
     ARENA_SIZE = 128 * 1024 * 1024;  # 128 MB per arena
-    arena_base_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__jac_arena_base");
+    arena_base_gv = ir.GlobalVariable(
+        self.llvm_module, i8_ptr, name="__jac_arena_base"
+    );
     arena_base_gv.linkage = "private";
     arena_base_gv.initializer = ir.Constant(i8_ptr, None);
     arena_offset_gv = ir.GlobalVariable(self.llvm_module, i64, name="__jac_arena_off");
@@ -140,7 +162,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     # When proper retain/release balancing is implemented, this will need
     # arena-aware freeing. For now, all RC memory is bump-allocated and leaked.
     release_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
-    release_fn = ir.Function(self.llvm_module, release_fnty, name="__rc_release_simple");
+    release_fn = ir.Function(
+        self.llvm_module, release_fnty, name="__rc_release_simple"
+    );
     release_fn.linkage = "private";
     release_fn.args[0].name = "ptr";
     entry_bb = release_fn.append_basic_block("entry");

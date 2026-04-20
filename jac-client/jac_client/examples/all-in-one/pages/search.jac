@@ -32,7 +32,7 @@ cl {
             )
         ];
 
-        def handleSearch(e: Any) -> None {
+        def handleSearch(e: Any) {
             e.preventDefault();
             if inputValue.trim() {
                 navigate(f"/search?q={encodeURIComponent(inputValue.trim())}&page=1");
@@ -41,7 +41,7 @@ cl {
             }
         }
 
-        def goToPage(newPage: int) -> None {
+        def goToPage(newPage: int) {
             if query {
                 navigate(f"/search?q={encodeURIComponent(query)}&page={newPage}");
             } else {
@@ -51,9 +51,7 @@ cl {
 
         return
             <div style={{"padding": "2rem", "maxWidth": "600px"}}>
-                <h1>
-                    Search
-                </h1>
+                <h1>Search</h1>
                 <p style={{"color": "#6b7280", "marginBottom": "1.5rem"}}>
                     Demonstrates query parameter handling with URLSearchParams
                 </p>
@@ -62,7 +60,7 @@ cl {
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={lambda e: Any  -> None { inputValue = e.target.value;}}
+                            onChange={lambda e: Any { inputValue = e.target.value;}}
                             placeholder="Search users and posts..."
                             style={{
                                 "flex": "1",
@@ -95,9 +93,7 @@ cl {
                         "fontSize": "0.875rem"
                     }}
                 >
-                    <strong>
-                        Current URL params:
-                    </strong>
+                    <strong>Current URL params:</strong>
                     <br/>
                     q = "
                     {query}
@@ -123,9 +119,7 @@ cl {
                                 "justifyContent": "space-between"
                             }}
                         >
-                            <span>
-                                {item["title"]}
-                            </span>
+                            <span>{item["title"]}</span>
                             <span
                                 style={{
                                     "background": (
@@ -148,9 +142,11 @@ cl {
                         </li> for item in results
                     ]}
                 </ul>
-                <div style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}>
+                <div
+                    style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}
+                >
                     <button
-                        onClick={lambda -> None { goToPage(page - 1);}}
+                        onClick={lambda { goToPage(page - 1);}}
                         disabled={page <= 1}
                         style={{
                             "padding": "0.5rem 1rem",
@@ -162,11 +158,9 @@ cl {
                     >
                         Previous
                     </button>
-                    <span style={{"padding": "0.5rem 1rem"}}>
-                        Page{page}
-                    </span>
+                    <span style={{"padding": "0.5rem 1rem"}}>Page{page}</span>
                     <button
-                        onClick={lambda -> None { goToPage(page + 1);}}
+                        onClick={lambda { goToPage(page + 1);}}
                         style={{
                             "padding": "0.5rem 1rem",
                             "border": "1px solid #d1d5db",
@@ -178,9 +172,7 @@ cl {
                     </button>
                 </div>
                 <div style={{"marginTop": "2rem"}}>
-                    <Link to="/" style={{"color": "#3b82f6"}}>
-                        ← Back to Home
-                    </Link>
+                    <Link to="/" style={{"color": "#3b82f6"}}>← Back to Home</Link>
                 </div>
             </div>;
     }

@@ -9,6 +9,7 @@ obj SandboxConfig {
         memory_limit: str = "512Mi",
         base_image: str = "python:3.12-slim",
         storage_limit: str = "256Mi",
+        app_storage_limit: str = "1Gi",
         domain_template: str = "{sandbox_id}.preview.example.com",
         security_context_enabled: bool = True,
         network_isolation: bool = True,
@@ -17,7 +18,8 @@ obj SandboxConfig {
         tls_issuer: str = "letsencrypt-prod",
         ingress_annotations: dict[str, str] = {},
         proxy_mode: bool = False,
-        warm_pool_size: int = 0;
+        warm_pool_size: int = 0,
+        warm_pool_ttl: int = 0;
 
     static def from_dict(config: dict[str, Any]) -> SandboxConfig {
         return SandboxConfig(
@@ -29,6 +31,7 @@ obj SandboxConfig {
             memory_limit=str(config.get("memory_limit", "512Mi")),
             base_image=str(config.get("base_image", "python:3.12-slim")),
             storage_limit=str(config.get("storage_limit", "256Mi")),
+            app_storage_limit=str(config.get("app_storage_limit", "1Gi")),
             domain_template=str(
                 config.get("domain_template", "{sandbox_id}.preview.example.com")
             ),
@@ -39,7 +42,8 @@ obj SandboxConfig {
             tls_issuer=str(config.get("tls_issuer", "letsencrypt-prod")),
             ingress_annotations=dict(config.get("ingress_annotations", {})),
             proxy_mode=bool(config.get("proxy_mode", False)),
-            warm_pool_size=int(config.get("warm_pool_size", 0))
+            warm_pool_size=int(config.get("warm_pool_size", 0)),
+            warm_pool_ttl=int(config.get("warm_pool_ttl", 0))
         );
     }
 }

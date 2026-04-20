@@ -70,28 +70,46 @@ Jac imagines what should be abstracted away from the developer and automates it 
 
 ```jac
 node Todo {
-    has title: str, done: bool = False;
+    has title: str, category: str = "other", done: bool = False;
 }
 
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, OTHER }
 
-def categorize(title: str) -> Category
-    by llm();
+def categorize(title: str) -> Category by llm();
 
-def:pub get_todos -> list {
-    if not [root-->][?:Todo] {
-        root ++> Todo(title="Buy groceries");
-        root ++> Todo(title="Finish report");
+def:pub add_todo(title: str) -> Todo {
+    try {
+        result = categorize(title);
+        category = str(result).split(".")[-1].lower();
+    } except Exception {
+        category = "other (setup AI key)";
     }
-    return [{"title": t.title, "category": str(categorize(t.title)).split(".")[-1]}
-            for t in [root-->][?:Todo]];
+    todo = Todo(title=title, category=category);
+    root() ++> todo;
+    return todo;
 }
 
-cl def:pub app() -> JsxElement {
-    has items: list = [];
-    async can with entry { items = await get_todos(); }
-    return <div>{[<p key={i.title}>{i.title} ({i.category})</p>
-                  for i in items]}</div>;
+def:pub get_todos -> list[Todo] {
+    return [root()-->][?:Todo];
+}
+
+cl def:pub app -> JsxElement {
+    has todos: list[Todo] = [], text: str = "";
+    async can with entry { todos = await get_todos(); }
+    async def add {
+        if text.strip() {
+            todos = todos + [await add_todo(text.strip())];
+            text = "";
+        }
+    }
+    return <div>
+        <input value={text}
+            onChange={lambda e: ChangeEvent { text = e.target.value; }}
+            onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); } }}
+            placeholder="Add a todo..." />
+        <button onClick={add}>Add</button>
+        {[<p key={jid(t)}>{t.title} ({t.category})</p> for t in todos]}
+    </div>;
 }
 ```
 
@@ -106,16 +124,23 @@ Save the code above as `main.jac`, then create a `jac.toml` in the same director
 
 ```toml
 [project]
-name = "my-app"
+name = "mini-todo"
 
 [dependencies.npm]
-jac-client-node = "1.0.4"
+react = "^18.2.0"
+react-dom = "^18.2.0"
 
 [dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
 
 [serve]
 base_route_app = "app"
+
+[plugins.scale]
 
 [plugins.client]
 

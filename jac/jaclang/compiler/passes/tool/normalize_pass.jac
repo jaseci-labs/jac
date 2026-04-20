@@ -13,7 +13,6 @@ import from jaclang.jac0core.unitree { Tok, EmptyToken, Token }
 
 """Rebuild kid lists from semantic fields."""
 obj NormalizePass(UniPass) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) -> None;
     def enter_sub_tag(nd: uni.SubTag) -> None;
     def enter_module(nd: uni.Module) -> None;
     def enter_type_param(nd: uni.TypeParam) -> None;
@@ -66,6 +65,7 @@ obj NormalizePass(UniPass) {
     def enter_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def enter_binary_expr(nd: uni.BinaryExpr) -> None;
     def enter_compare_expr(nd: uni.CompareExpr) -> None;
+    def enter_cfg_expr(nd: uni.CfgExpr) -> None;
     def enter_bool_expr(nd: uni.BoolExpr) -> None;
     def enter_lambda_expr(nd: uni.LambdaExpr) -> None;
     def enter_unary_expr(nd: uni.UnaryExpr) -> None;

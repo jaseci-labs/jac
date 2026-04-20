@@ -107,7 +107,9 @@ impl JacTestResult.stop -> None {
 impl JacTestResult.addFailure(`test: Any, err: Any) -> None {
     super.addFailure(`test, err);
     self.failures_count += 1;
-    if ((self.max_failures is not None) and (self.failures_count >= self.max_failures)) {
+    if (
+        (self.max_failures is not None) and (self.failures_count >= self.max_failures)
+    ) {
         self.stop();
     }
 }
@@ -132,7 +134,7 @@ impl parametrize(
         display = f"{base_name} [{param_id}]";
         func_name = f"{base_name}_{param_id}";
         def make_fn(p: Any) -> Callable {
-            def fn -> None {
+            def fn {
                 test_func(p);
             }
             return fn;

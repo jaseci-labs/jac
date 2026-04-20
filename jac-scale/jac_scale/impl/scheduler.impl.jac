@@ -21,7 +21,7 @@ impl JacScaleScheduler.setup(system_token: str, server: Any | None = None) -> No
     self._server = server;
 
     # Register the dynamic handler via the public API in jaclang's scheduler.
-    def _dynamic_handler(task: Any) -> None {
+    def _dynamic_handler(task: Any) {
         self._execute_task(task.name, self._system_username, task.is_walker);
     }
     Scheduler.instance().dynamic_handler = _dynamic_handler;
@@ -41,12 +41,20 @@ impl JacScaleScheduler.setup(system_token: str, server: Any | None = None) -> No
     }
     # APScheduler uses in-memory job store — MongoDB persistence is handled manually
     # via _persist_job / _load_jobs_from_db, avoiding serialisation issues with closures.
-    executors = {'default': ThreadPoolExecutor(10)};
-    job_defaults = {'coalesce': False, 'max_instances': 1};
-    self._apscheduler = BackgroundScheduler(
-        executors=executors, job_defaults=job_defaults
-    );
-    logger.debug("APScheduler initialized with in-memory job store");
+    if HAS_APSCHEDULER {
+        executors = {'default': ThreadPoolExecutor(10)};
+        job_defaults = {'coalesce': False, 'max_instances': 1};
+        self._apscheduler = BackgroundScheduler(
+            executors=executors, job_defaults=job_defaults
+        );
+        logger.debug("APScheduler initialized with in-memory job store");
+    } else {
+        self._apscheduler = None;
+        logger.info(
+            "APScheduler not installed — dynamic scheduling disabled. "
+            "Install with: pip install jac-scale[scheduler]"
+        );
+    }
 }
 
 """Start the APScheduler background scheduler."""
@@ -81,7 +89,7 @@ impl JacScaleScheduler.register_static_tasks(
     base_scheduler = Scheduler.instance();
 
     def _make_target(_name: str, _is_walker: bool) -> Any {
-        def target -> None {
+        def target {
             self._execute_task(_name, self._system_username, _is_walker);
         }
         return target;
@@ -166,7 +174,7 @@ impl JacScaleScheduler.create_job(
 ) -> dict {
     if self._apscheduler is None {
         raise RuntimeError(
-            "APScheduler is not available. Install apscheduler>=3.0.0,<4.0.0."
+            "APScheduler is not available. Install with: pip install jac-scale[scheduler]"
         );
     }
 
@@ -327,7 +335,7 @@ impl JacScaleScheduler._execute_task(
         target = registry[name];
         logger.debug(f"Executing scheduled {label} '{name}' as '{username}'");
 
-        async def _run -> None {
+        async def _run {
             if is_walker {
                 result = await self._server.execution_manager.spawn_walker(
                     target, {}, username
@@ -374,7 +382,7 @@ impl JacScaleScheduler._schedule_apscheduler_job(
         raise RuntimeError("APScheduler is not initialized");
     }
 
-    def job_func -> None {
+    def job_func {
         self._execute_task(name, username, is_walker);
     }
 

@@ -106,7 +106,7 @@ obj KubernetesIngressProvider(IngressProvider) {
         return url;
     }
 
-    def delete_route(sandbox_id: str, namespace: str) -> None {
+    def delete_route(sandbox_id: str, namespace: str) {
         self._init_k8s();
         import from kubernetes { client }
         import from kubernetes.client.exceptions { ApiException }

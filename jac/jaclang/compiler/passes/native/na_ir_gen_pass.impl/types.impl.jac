@@ -601,6 +601,12 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
         if isinstance(target_type, ir.IntType) and isinstance(val, ir.Constant) {
             return ir.Constant(target_type, -1);
         }
+        # Generic PointerType → IntType: ptrtoint.
+        # Needed for passing Jac obj references (struct pointers) or str (i8*)
+        # to C functions declared with int params, e.g. uv_fs_write(bufs: int).
+        if isinstance(target_type, ir.IntType) {
+            return self.builder.ptrtoint(val, target_type, name="ptr.toint");
+        }
     }
     # Struct value → struct pointer (C value → Jac pointer at call boundary)
     if not isinstance(val.type, ir.PointerType)
@@ -644,6 +650,12 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
                 }
             }
         }
+    }
+    # Generic IntType → PointerType: inttoptr.
+    # Needed for assigning calloc/malloc results (i64) to pointer-typed
+    # variables like str (i8*) or obj references, e.g. `txt: str = calloc_result;`
+    if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.PointerType) {
+        return self.builder.inttoptr(val, target_type, name="int.toptr");
     }
     # Int width coercion (i1 to i64, etc.)
     if isinstance(val.type, ir.IntType) and isinstance(target_type, ir.IntType) {
@@ -828,7 +840,9 @@ impl NaIRGenPass._emit_binary_op(
                     lmul_helpers["get"], [lmul_list, lmul_ei], name="lmul.elem"
                 );
                 self.builder.call(lmul_helpers["append"], [lmul_new, lmul_elem]);
-                lmul_ne = self.builder.add(lmul_ei, ir.Constant(i64, 1), name="lmul.ne");
+                lmul_ne = self.builder.add(
+                    lmul_ei, ir.Constant(i64, 1), name="lmul.ne"
+                );
                 lmul_ei.add_incoming(lmul_ne, lmul_ibody_bb);
                 self.builder.branch(lmul_inner_bb);
                 self.builder.position_at_start(lmul_onext_bb);
@@ -875,12 +889,16 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.branch(loop1_bb);
                 # Append all from right
                 self.builder.position_at_start(mid_bb);
-                right_len = self.builder.call(helpers["len"], [right], name="lcat.rlen");
+                right_len = self.builder.call(
+                    helpers["len"], [right], name="lcat.rlen"
+                );
                 self.builder.branch(loop2_bb);
                 self.builder.position_at_start(loop2_bb);
                 i2 = self.builder.phi(i64, name="lcat.i2");
                 i2.add_incoming(ir.Constant(i64, 0), mid_bb);
-                end2 = self.builder.icmp_unsigned(">=", i2, right_len, name="lcat.end2");
+                end2 = self.builder.icmp_unsigned(
+                    ">=", i2, right_len, name="lcat.end2"
+                );
                 self.builder.cbranch(end2, done_bb, body2_bb);
                 self.builder.position_at_start(body2_bb);
                 e2 = self.builder.call(helpers["get"], [right, i2], name="lcat.e2");
@@ -1473,13 +1491,17 @@ impl NaIRGenPass._emit_comparison(
                     # For < and <=: ea < eb → True, ea > eb → False
                     # For > and >=: ea > eb → True, ea < eb → False
                     if op == Tok.LT or op == Tok.LTE {
-                        self.builder.cbranch(lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody
+                        );
                         self.builder.position_at_start(lcmp_lex_lbody);
                         self.builder.cbranch(
                             lcmp_lex_gt, lcmp_lex_false, lcmp_lex_next
                         );
                     } else {
-                        self.builder.cbranch(lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody
+                        );
                         self.builder.position_at_start(lcmp_lex_lbody);
                         self.builder.cbranch(
                             lcmp_lex_lt, lcmp_lex_false, lcmp_lex_next
@@ -1720,9 +1742,13 @@ impl NaIRGenPass._emit_comparison(
         return None;
     }
     if is_float {
+        # IEEE 754: != must use unordered compare so NaN != NaN → true.
+        # All other comparisons use ordered (NaN → false).
+        if op == Tok.NE {
+            return self.builder.fcmp_unordered("!=", left, right, name="fcmp");
+        }
         fcmp_map: dict[(str, str)] = {
             Tok.EE: "==",
-            Tok.NE: "!=",
             Tok.LT: "<",
             Tok.GT: ">",
             Tok.LTE: "<=",

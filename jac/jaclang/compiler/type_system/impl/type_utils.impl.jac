@@ -254,8 +254,7 @@ impl ParamAssignmentTracker.lookup_named_parameter(
 ) -> (types.Parameter | None) {
     for param in self.params {
         if (
-            (param.param_kind == types.ParamKind.POSONLY)
-            and (param_name == param.name)
+            (param.param_kind == types.ParamKind.POSONLY) and (param_name == param.name)
         ) {
             self.matched_params.add(param);
             raise Exception(
@@ -455,7 +454,47 @@ impl apply_solved_type_vars(
         if ty.is_self and class_type is not None {
             return class_type.clone_as_instance();
         }
-        # Regular TypeVar -> lookup in solution by name
+        # Only substitute TypeVars that are declared class type parameters.
+        # Module-level TypeVars that are NOT used as class type params should
+        # not be substituted, as they are independent of the class hierarchy.
+        #
+        # A TypeVar should be substituted if:
+        # 1. is_class_type_param flag is True (set when created from class type param), OR
+        # 2. Name matches a class type_param AND the TypeVar has NO bound
+        #    (module-level TypeVars typically have bounds from TypeVar(...) call,
+        #    while class type params from Generic[T] don't unless explicitly bounded)
+        #
+        # This allows typeshed TypeVars (which don't have is_class_type_param) to be
+        # substituted when they match class type params, while preventing module-level
+        # TypeVars with explicit bounds from being incorrectly substituted.
+        is_declared_class_param = ty.is_class_type_param;
+        if not is_declared_class_param and ty.name {
+            # Check if this TypeVar matches a class type param by name AND bound
+            if class_type is not None {
+                for tp in class_type.shared.type_params {
+                    if tp.name == ty.name {
+                        # Only substitute if the TypeVar's bound matches the class type param's bound
+                        # (or if neither has a bound)
+                        if ty.bound is None
+                        or (tp.bound is not None and ty.bound == tp.bound) {
+                            is_declared_class_param = True;
+                        }
+                        break;
+                    }
+                }
+            }
+            # Also allow substitution if the TypeVar has no bound AND name is in solution
+            # This handles typeshed TypeVars without bounds
+            if not is_declared_class_param
+            and ty.bound is None
+            and ty.name in solution {
+                is_declared_class_param = True;
+            }
+        }
+        if not is_declared_class_param {
+            return ty;
+        }
+        # Regular TypeVar (class type param) -> lookup in solution by name
         if ty.name and ty.name in solution {
             resolved = solution[ty.name];
             return convert_to_instance(resolved);
@@ -518,13 +557,25 @@ declares get() -> T, then build_type_var_solution(Box[int]) yields {U: int, T: i
 impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.TypeBase] {
     solution: dict[str, types.TypeBase] = {};
 
-    # Start with the class's own type_params -> type_args
+    # Start with the class's own type_params -> type_args.
+    # PEP 484: bare generics (e.g. list without [T]) default unresolved
+    # TypeVars to Any so downstream operations (iteration, subscript,
+    # method calls) work correctly instead of producing Unknown.
     if class_type.shared.type_params
-    and class_type.private
-    and class_type.private.type_args {
+    and class_type.private.type_args
+    and len(class_type.private.type_args) > 0 {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {
                 solution[tp.name] = class_type.private.type_args[idx];
+            }
+        }
+    } elif class_type.shared.type_params {
+        # Bare generic (e.g. list without [T]): default all TypeVars to Any
+        # per PEP 484 so downstream operations (iteration, subscript,
+        # method calls) work correctly instead of producing Unknown.
+        for tp in class_type.shared.type_params {
+            if tp.name {
+                solution[tp.name] = types.AnyType();
             }
         }
     }
@@ -532,9 +583,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
     # Walk MRO and accumulate base class TypeVar mappings.
     # Only add NEW bindings — never overwrite a concrete binding with a TypeVar.
     for mro_cls in class_type.shared.mro {
-        if mro_cls.shared.type_params
-        and mro_cls.private
-        and mro_cls.private.type_args {
+        if mro_cls.shared.type_params and mro_cls.private.type_args {
             for (idx, tp) in enumerate(mro_cls.shared.type_params) {
                 if tp.name and idx < len(mro_cls.private.type_args) {
                     arg = mro_cls.private.type_args[idx];
@@ -552,6 +601,32 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
         }
     }
 
+    # Propagate TypeVar bindings transitively through the inheritance chain.
+    # MRO entries are unspecialized (shared only, no type_args), so Phase 2
+    # above misses TypeVars defined on ancestor classes (e.g., _VT_co on
+    # Mapping when specializing dict[str, int]). Use the existing
+    # specialize_for_base_class infrastructure to get each MRO entry's
+    # specialized form, then extract its TypeVar bindings into the solution.
+    for mro_cls in class_type.shared.mro {
+        if not mro_cls.shared.type_params {
+            continue;
+        }
+        specialized = specialize_for_base_class(class_type, mro_cls);
+        if specialized.private.type_args {
+            for (idx, tp) in enumerate(specialized.shared.type_params) {
+                if tp.name and idx < len(specialized.private.type_args) {
+                    arg = specialized.private.type_args[idx];
+                    if not isinstance(arg, types.TypeVarType) {
+                        if tp.name not in solution
+                        or isinstance(solution[tp.name], types.TypeVarType) {
+                            solution[tp.name] = arg;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     return solution;
 }
 
@@ -561,9 +636,7 @@ impl build_solution_from_specialized_class(
 ) -> dict[str, types.TypeBase] {
     solution: dict[str, types.TypeBase] = {};
 
-    if class_type.shared.type_params
-    and class_type.private
-    and class_type.private.type_args {
+    if class_type.shared.type_params and class_type.private.type_args {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {
                 # Skip duplicates (e.g., Generator has _YieldT_co twice)
@@ -651,7 +724,7 @@ Apply a TypeVar solution to specialize a ClassType's type_args.
 def _apply_solution_to_class(
     class_type: types.ClassType, solution: dict[str, types.TypeBase]
 ) -> types.ClassType {
-    if not class_type.private or not class_type.private.type_args {
+    if not class_type.private.type_args {
         return class_type;
     }
 
@@ -694,7 +767,8 @@ def _apply_to_function(
                 is_cls=param.is_cls,
                 param_kind=param.param_kind
             ) for param in func.parameters
-        ]
+        ],
+        type_params=func.type_params,
     );
 
     # Specialize parameter types

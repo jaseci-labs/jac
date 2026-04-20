@@ -28,14 +28,18 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
 import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
+import from jac_scale._optdeps.optional_deps { require_optional }
+import from jac_scale._optdeps.kubernetes {
+    client,
+    config as k8s_cluster_config,
+    ApiException
+}
 import from jac_scale.factories.database_factory { DatabaseProviderFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
 import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 import time;
-import from kubernetes { client, config as k8s_cluster_config }
-import from kubernetes.client.exceptions { ApiException }
 
 """Kubernetes deployment target implementation."""
 obj KubernetesTarget(DeploymentTarget) {
@@ -200,9 +204,10 @@ obj KubernetesTarget(DeploymentTarget) {
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
-            commands.append('pip install -e ./jac-scale');
+            commands.append('pip install -e "./jac-scale[all]"');
             commands.append('pip install -e ./jac-client');
             commands.append('pip install -e ./jac-byllm');
+            commands.append('pip install -e ./jac-mcp');
             commands.append('cd ..');
         } else {
             packages = config.plugin_versions or {};
@@ -210,15 +215,16 @@ obj KubernetesTarget(DeploymentTarget) {
             scale_v = packages.get('jac_scale', 'latest');
             client_v = packages.get('jac_client', 'latest');
             byllm_v = packages.get('jac_byllm', 'latest');
+            mcp_v = packages.get('jac_mcp', 'latest');
             if jaclang_v == 'latest' {
                 commands.append('pip install jaclang');
             } else {
                 commands.append(f'pip install jaclang=={jaclang_v}');
             }
             if scale_v == 'latest' {
-                commands.append('pip install jac-scale');
+                commands.append('pip install "jac-scale[all]"');
             } else {
-                commands.append(f'pip install jac-scale=={scale_v}');
+                commands.append(f'pip install "jac-scale[all]=={scale_v}"');
             }
             if client_v == 'latest' {
                 commands.append('pip install jac-client');
@@ -230,6 +236,13 @@ obj KubernetesTarget(DeploymentTarget) {
                     commands.append('pip install byllm');
                 } else {
                     commands.append(f'pip install byllm=={byllm_v}');
+                }
+            }
+            if mcp_v and mcp_v != 'none' {
+                if mcp_v == 'latest' {
+                    commands.append('pip install jac-mcp');
+                } else {
+                    commands.append(f'pip install jac-mcp=={mcp_v}');
                 }
             }
         }
@@ -332,11 +345,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Build volumes and build container configuration for code sync via code-server."""
     def _build_volumes_config(
-        app_name: str,
-        app_config: AppConfig,
-        namespace: str,
-        core_v1: Any,
-        apps_v1: Any
+        app_name: str, app_config: AppConfig, namespace: str, core_v1: Any, apps_v1: Any
     ) -> dict[str, Any] {
         pvc_name = f"{app_name}-code-pvc";
         pvc_size = self.k8s_config.pvc_size;
@@ -387,9 +396,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Deploy code-server: a single-replica busybox httpd that serves code from the PVC over HTTP."""
-    def _deploy_code_server(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    def _deploy_code_server(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         code_server_name = f"{app_name}-code-server";
         code_server_labels = {'app': code_server_name};
         pvc_name = f"{app_name}-code-pvc";
@@ -533,7 +540,7 @@ obj KubernetesTarget(DeploymentTarget) {
     """Deploy all enabled databases and their optional dashboards."""
     def _deploy_databases(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
-    ) -> None {
+    ) {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
             mongodb_service_name = f"{mongodb_name}-service";
@@ -557,8 +564,7 @@ obj KubernetesTarget(DeploymentTarget) {
             );
             try {
                 core_v1.read_namespaced_secret(
-                    name=mongo_result['secret']['metadata']['name'],
-                    namespace=namespace
+                    name=mongo_result['secret']['metadata']['name'], namespace=namespace
                 );
             } except ApiException as e {
                 if e.status == 404 {
@@ -665,8 +671,7 @@ obj KubernetesTarget(DeploymentTarget) {
             );
             try {
                 core_v1.read_namespaced_secret(
-                    name=redis_result['secret']['metadata']['name'],
-                    namespace=namespace
+                    name=redis_result['secret']['metadata']['name'], namespace=namespace
                 );
             } except ApiException as e {
                 if e.status == 404 {
@@ -736,9 +741,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
                 # Check if deployment needs update (config hash changed)
                 annotations = existing_deploy.spec.template.metadata.annotations;
-                existing_hash = annotations.get(
-                    'redis-config-hash', ''
-                )
+                existing_hash = annotations.get('redis-config-hash', '')
                     if annotations
                     else '';
                 new_hash = redis_result['config_hash'];
@@ -847,7 +850,7 @@ obj KubernetesTarget(DeploymentTarget) {
     """Create a dedicated ServiceAccount with no automounted token for a deployment."""
     def _create_service_account(
         sa_name: str, app_label: str, namespace: str, core_v1: Any
-    ) -> None {
+    ) {
         sa_body = {
             'apiVersion': 'v1',
             'kind': 'ServiceAccount',
@@ -883,7 +886,7 @@ obj KubernetesTarget(DeploymentTarget) {
     """
     def _apply_provider_service_account(
         sa_spec: dict[str, Any], namespace: str, core_v1: Any
-    ) -> None {
+    ) {
         sa_spec['metadata']['namespace'] = namespace;
         sa_name = sa_spec['metadata']['name'];
         try {
@@ -912,9 +915,7 @@ obj KubernetesTarget(DeploymentTarget) {
       - Redis: allows ingress on 6379 from main app, allows egress to DNS and intra-namespace
       - Other components: deny all ingress, allow egress to DNS and intra-namespace
     """
-    def _deploy_network_policy(
-        app_name: str, namespace: str, networking_v1: Any
-    ) -> None {
+    def _deploy_network_policy(app_name: str, namespace: str, networking_v1: Any) {
         # Common egress rules for all policies
         common_egress_rules = [
             # DNS — explicit kube-system selector so CNIs that evaluate policy
@@ -1101,9 +1102,7 @@ obj KubernetesTarget(DeploymentTarget) {
                     name=policy_config['name'], namespace=namespace
                 );
                 networking_v1.replace_namespaced_network_policy(
-                    name=policy_config['name'],
-                    namespace=namespace,
-                    body=network_policy
+                    name=policy_config['name'], namespace=namespace, body=network_policy
                 );
             } except ApiException as e {
                 if e.status == 404 {
@@ -1476,7 +1475,9 @@ obj KubernetesTarget(DeploymentTarget) {
                     self.logger.info(
                         f"\nAfter the record propagates, enable HTTPS with:"
                     );
-                    self.logger.info(f"  jac start <your-app.jac> --scale --enable-tls");
+                    self.logger.info(
+                        f"  jac start <your-app.jac> --scale --enable-tls"
+                    );
                     self.logger.info(f"{'=' * 62}\n");
                 }
             }
@@ -1706,9 +1707,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Destroy all databases, caches, and their dashboards."""
-    def _destroy_databases(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    def _destroy_databases(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         self._destroy_database(app_name, namespace, apps_v1, core_v1);
         self._destroy_cache(app_name, namespace, apps_v1, core_v1);
         self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
@@ -1716,7 +1715,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     def _destroy_application(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    ) {
         autoscaling_v2 = client.AutoscalingV2Api();
         delete_if_exists(
             autoscaling_v2.delete_namespaced_horizontal_pod_autoscaler,
@@ -1789,9 +1788,7 @@ obj KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def _destroy_database(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    def _destroy_database(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         mongodb_name = f"{app_name}-mongodb";
         delete_if_exists(
             apps_v1.delete_namespaced_stateful_set,
@@ -1814,9 +1811,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_cache(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    def _destroy_cache(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         redis_name = f"{app_name}-redis";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, redis_name, namespace, 'Deployment'
@@ -1842,9 +1837,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_dashboard(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         express_name = f"{app_name}-mongo-express";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, express_name, namespace, 'Deployment'
@@ -1893,7 +1886,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     def _destroy_component(
         app_name: str, namespace: str, component: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    ) {
         if component == 'application' {
             self._destroy_application(app_name, namespace, apps_v1, core_v1);
         } elif component == 'database' {
@@ -2072,7 +2065,7 @@ obj KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def scale(app_name: str, replicas: int) -> None {
+    def scale(app_name: str, replicas: int) {
         if self.logger {
             self.logger.info(
                 f"Scaling application '{app_name}' to {replicas} replicas"
@@ -2192,7 +2185,7 @@ obj KubernetesTarget(DeploymentTarget) {
     Ingress with TLS annotations, and waits for the certificate to become Ready.
     Does NOT redeploy the application.
     """
-    def enable_tls(app_name: str) -> None {
+    def enable_tls(app_name: str) {
         if self.logger {
             self.logger.info(f"Enabling TLS for '{app_name}'...");
         }

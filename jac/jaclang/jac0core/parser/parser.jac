@@ -46,7 +46,9 @@ import from jaclang.jac0core.diagnostics {
     E0050,
     E0051,
     W0060,
-    W0061
+    W0061,
+    W0063,
+    W0064
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
@@ -122,7 +124,8 @@ import from jaclang.jac0core.unitree {
     UnaryExpr,
     CompareExpr,
     BoolExpr,
-    IfElseExpr
+    IfElseExpr,
+    CfgExpr
 }
 import from jaclang.jac0core.unitree {
     AtomTrailer,
@@ -147,7 +150,12 @@ import from jaclang.jac0core.unitree {
     GenCompr,
     InnerCompr
 }
-import from jaclang.jac0core.unitree { FString, FormattedValue, MultiString, LambdaExpr }
+import from jaclang.jac0core.unitree {
+    FString,
+    FormattedValue,
+    MultiString,
+    LambdaExpr
+}
 import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
@@ -208,6 +216,16 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.TYP_BYTES: Tok.TYP_BYTES.value,
          TokenKind.TYP_ANY: Tok.TYP_ANY.value,
          TokenKind.TYP_TYPE: Tok.TYP_TYPE.value,
+         TokenKind.TYP_I8: Tok.TYP_I8.value,
+         TokenKind.TYP_U8: Tok.TYP_U8.value,
+         TokenKind.TYP_I16: Tok.TYP_I16.value,
+         TokenKind.TYP_U16: Tok.TYP_U16.value,
+         TokenKind.TYP_I32: Tok.TYP_I32.value,
+         TokenKind.TYP_U32: Tok.TYP_U32.value,
+         TokenKind.TYP_I64: Tok.TYP_I64.value,
+         TokenKind.TYP_U64: Tok.TYP_U64.value,
+         TokenKind.TYP_F32: Tok.TYP_F32.value,
+         TokenKind.TYP_F64: Tok.TYP_F64.value,
          # Keywords
          TokenKind.KW_ABSTRACT: Tok.KW_ABSTRACT.value,
          TokenKind.KW_OBJECT: Tok.KW_OBJECT.value,
@@ -410,8 +428,14 @@ obj Parser {
     def error(message: str);
     def error_at(message: str, loc: SourceLoc);
     def warn_at(message: str, loc: SourceLoc);
-    def emit_diag(diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object);
-    def emit_warn(diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object);
+    def emit_diag(
+        diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+    );
+
+    def emit_warn(
+        diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+    );
+
     def make_uni_token(tok: Token) -> UniToken;
     def make_name(tok: Token, is_enum_stmt: bool = False) -> Name;
     def make_special_name(tok: Token) -> Name;

@@ -37,7 +37,7 @@ Use `jac.toml` to suppress diagnostics project-wide. See the [Configuration](con
 ### CLI Flags
 
 - `--nowarn` on `jac check` suppresses all warnings (errors are still shown)
-- `-e` / `--show-errors` on `jac run` displays type check errors and warnings after execution (by default, only a summary count is shown)
+- `-e` / `--diagnostics` on `jac run` controls diagnostic verbosity: `error` (default -- fail on errors with full details), `all` (errors + warnings), or `none` (silent)
 
 ---
 
@@ -109,6 +109,7 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
+| `W0064` | `'{keyword} { ... }'` block syntax is deprecated at module scope. Use the `'to {keyword}:'` section header instead. |
 
 ### Lexer Errors
 
@@ -239,6 +240,8 @@ Emitted by the type checker and type evaluator.
 | Code | Message |
 |------|---------|
 | `W1100` | Module not found |
+| `W1101` | Cannot import name '{name}' from module '{module}' |
+| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
 
 ---
 

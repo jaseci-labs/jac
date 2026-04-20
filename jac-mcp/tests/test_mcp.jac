@@ -241,6 +241,17 @@ test "tool names" {
     assert "list_examples" in names;
     assert "get_example" in names;
     assert "search_docs" in names;
+    assert "get_ast" in names;
+    assert "lint_jac" in names;
+    assert "jac_to_py" in names;
+    assert "jac_to_js" in names;
+    assert "run_jac" in names;
+    assert "graph_visualize" in names;
+    assert "list_commands" in names;
+    assert "get_command" in names;
+    assert "execute_command" in names;
+    assert "understand_jac_and_jaseci" in names;
+    assert "get_resource" in names;
 }
 
 test "explain error unexpected token" {
@@ -273,6 +284,34 @@ test "list examples returns results" {
     result = tp.call_tool("list_examples", {});
     assert "examples" in result;
     assert isinstance(result["examples"], list);
+}
+
+test "list examples returns results when repo root is None (PyPI install)" {
+    import from unittest.mock { patch }
+
+    # Mock find_repo_root to return None, simulating a PyPI (non-editable) install,
+    # and stub the GitHub API fetch so the test does not depend on live network
+    # access (which is rate-limited and flaky in CI).
+    fake_categories = ["data_spatial", "guess_game", "littleX"];
+    with patch("jac_mcp.resources.find_repo_root", return_value=None) {
+        with patch(
+            "jac_mcp.resources.ResourceProvider._fetch_github_categories",
+            return_value=fake_categories
+        ) {
+            tp = ToolProvider();
+            result = tp.call_tool("list_examples", {});
+        }
+    }
+    assert "examples" in result;
+    examples = result["examples"];
+    assert len(examples) > 0 , "list_examples should return results via GitHub fallback when repo root is None";
+    names = [e["name"] for e in examples];
+    assert "data_spatial" in names , "Expected 'data_spatial' in GitHub-fetched examples";
+    for ex in examples {
+        assert "name" in ex;
+        assert "uri" in ex;
+        assert ex["uri"].startswith("jac://examples/");
+    }
 }
 
 test "unknown tool returns error" {
@@ -468,6 +507,163 @@ test "unknown prompt returns error" {
     assert "Unknown" in result.get("description", "") or "messages" in result;
 }
 
+# ── Plugin Config / jac.toml Integration Tests ──
+#   CLI (explicit) > [plugins.mcp] in jac.toml > CLI default
+test "jac.toml values override CLI defaults for all three fields" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {
+        "transport": "streamable-http",
+        "port": 9000,
+        "host": "0.0.0.0"
+    };
+
+    # Simulate: user ran `jac mcp` with no explicit args (all CLI defaults)
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1 , "JacMcpServer should have been instantiated once";
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "streamable-http" , "jac.toml transport should override CLI default";
+    assert ctor_kwargs["port"] == 9000 , "jac.toml port should override CLI default";
+    assert ctor_kwargs["host"] == "0.0.0.0" , "jac.toml host should override CLI default";
+}
+
+test "explicit CLI args take priority over jac.toml for all three fields" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {
+        "transport": "streamable-http",
+        "port": 9000,
+        "host": "0.0.0.0"
+    };
+
+    # Simulate: user ran `jac mcp --transport sse --port 8080 --host 10.0.0.1`
+    mock_ctx = MagicMock();
+    def cli_explicit(name: str, fallback: object = None) -> object {
+        m = {"transport": "sse", "port": 8080, "host": "10.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_explicit;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "sse" , "explicit CLI --transport must win over jac.toml";
+    assert ctor_kwargs["port"] == 8080 , "explicit CLI --port must win over jac.toml";
+    assert ctor_kwargs["host"] == "10.0.0.1" , "explicit CLI --host must win over jac.toml";
+}
+
+test "CLI defaults used when jac.toml has no mcp section" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_jac_cfg = MagicMock();
+    mock_jac_cfg.get_plugin_config.return_value = {};
+
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=mock_jac_cfg) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "stdio";
+    assert ctor_kwargs["port"] == 3001;
+    assert ctor_kwargs["host"] == "127.0.0.1";
+}
+
+test "CLI defaults used when no jac.toml is present" {
+    import from unittest.mock { patch, MagicMock }
+    import from jac_mcp.plugin { _handle_mcp_cmd }
+
+    mock_ctx = MagicMock();
+    def cli_no_args(name: str, fallback: object = None) -> object {
+        m = {"transport": "stdio", "port": 3001, "host": "127.0.0.1", "inspect": False};
+        if name in m {
+            return m[name];
+        }
+        return fallback;
+    }
+    mock_ctx.get_arg.side_effect = cli_no_args;
+
+    captured: list = [];
+    def capture_ctor(**kwargs: object) -> object {
+        captured.append(kwargs);
+        return MagicMock();
+    }
+    mock_server_cls = MagicMock();
+    mock_server_cls.side_effect = capture_ctor;
+
+    with patch("jaclang.project.config.get_config", return_value=None) {
+        with patch("jac_mcp.server.JacMcpServer", mock_server_cls) {
+            _handle_mcp_cmd(mock_ctx);
+        }
+    }
+    assert len(captured) == 1;
+    ctor_kwargs = captured[0];
+    assert ctor_kwargs["transport"] == "stdio";
+    assert ctor_kwargs["port"] == 3001;
+    assert ctor_kwargs["host"] == "127.0.0.1";
+}
+
 test "all prompt messages use only MCP-valid roles" {
     pp = PromptProvider();
     valid_roles = ["user", "assistant"];
@@ -565,4 +761,251 @@ test "doc mappings have unique bundled names" {
         }
     }
     assert len(dupes) == 0 , f"Duplicate bundled names: {dupes}";
+}
+
+# ── Compiler Bridge — New Tool Tests ──
+glob _VALID_JAC = "obj Foo { has x: int = 5; }",
+     _GRAPH_JAC = "node A { has val: int = 1; }\nwith entry { a = A(val=1); root ++> a; }",
+     _CLIENT_JAC = "def:pub greet(name: str) -> str { return name; }";
+
+test "lint snippet clean code" {
+    result = CompilerBridge.lint_snippet(_VALID_JAC);
+    assert "violations" in result;
+    assert "changed" in result;
+    assert isinstance(result["violations"], list);
+}
+
+test "lint snippet auto fix" {
+    result = CompilerBridge.lint_snippet(_VALID_JAC, auto_fix=True);
+    assert "violations" in result;
+    assert "fixed_code" in result;
+    assert "changed" in result;
+}
+
+test "jac to py produces python" {
+    result = CompilerBridge.jac_to_py(_VALID_JAC);
+    assert "python_code" in result;
+    assert "warnings" in result;
+    assert isinstance(result["python_code"], str);
+}
+
+test "jac to py invalid code" {
+    result = CompilerBridge.jac_to_py("this @@@ is broken");
+    assert "python_code" in result;
+    assert result["python_code"] == "";
+}
+
+test "jac to js client code shape" {
+    result = CompilerBridge.jac_to_js(_CLIENT_JAC);
+    assert "js_code" in result;
+    assert "warnings" in result;
+    assert isinstance(result["js_code"], str);
+}
+
+test "run snippet prints hello" {
+    result = CompilerBridge.run_snippet("with entry { print(\"hello\"); }");
+    assert "stdout" in result;
+    assert "exit_code" in result;
+    assert result["exit_code"] == 0;
+    assert "hello" in result["stdout"];
+}
+
+test "run snippet invalid code fails" {
+    result = CompilerBridge.run_snippet("this @@@ is broken");
+    assert "exit_code" in result;
+    assert result["exit_code"] != 0;
+}
+
+test "graph viz snippet dot format" {
+    result = CompilerBridge.graph_viz_snippet(_GRAPH_JAC);
+    assert "graph" in result;
+    assert isinstance(result["graph"], str);
+}
+
+test "graph viz snippet mermaid format" {
+    result = CompilerBridge.graph_viz_snippet(_GRAPH_JAC, format="mermaid");
+    assert "graph" in result;
+    assert isinstance(result["graph"], str);
+}
+
+test "list templates has default" {
+    result = CompilerBridge.list_templates();
+    assert "templates" in result;
+    assert len(result["templates"]) > 0;
+    names = [t["name"] for t in result["templates"]];
+    assert "default" in names;
+    for t in result["templates"] {
+        assert "name" in t;
+        assert "description" in t;
+    }
+}
+
+test "create project empty name returns error" {
+    result = CompilerBridge.create_project("");
+    assert not result["success"];
+    assert "error" in result;
+}
+
+test "create project default template" {
+    import tempfile;
+    tmpdir = tempfile.mkdtemp();
+    result = CompilerBridge.create_project("myapp", directory=tmpdir);
+    assert "success" in result;
+    assert "project_path" in result;
+    assert "files_created" in result;
+    if result["success"] {
+        assert len(result["files_created"]) > 0;
+        assert any("main.jac" in f for f in result["files_created"]);
+    }
+}
+
+test "start server nonexistent file" {
+    result = CompilerBridge.start_server("/nonexistent/path/app.jac");
+    assert "error" in result;
+}
+
+test "start server faux mode" {
+    import from jac_mcp.resources { find_repo_root }
+    import from pathlib { Path }
+
+    repo_root = find_repo_root();
+    if repo_root is None {
+        return;
+    }
+    main_jac = str(
+        Path(repo_root) / "jac-mcp" / "tests" / "fixtures" / "sample_project" / "main.jac"
+    );
+    result = CompilerBridge.start_server(main_jac, port=19999, faux=True);
+    assert "mode" in result;
+    assert result["mode"] == "faux";
+    assert "endpoints" in result;
+}
+
+# ── Tool Provider — New Tool Tests ──
+test "get ast via tool" {
+    tp = ToolProvider();
+    result = tp.call_tool("get_ast", {"code": _VALID_JAC});
+    assert "ast" in result;
+    assert "valid" in result;
+}
+
+test "get ast missing code returns error" {
+    tp = ToolProvider();
+    result = tp.call_tool("get_ast", {});
+    assert "error" in result;
+}
+
+test "lint jac via tool" {
+    tp = ToolProvider();
+    result = tp.call_tool("lint_jac", {"code": _VALID_JAC});
+    assert "violations" in result;
+    assert isinstance(result["violations"], list);
+}
+
+test "lint jac auto fix via tool" {
+    tp = ToolProvider();
+    result = tp.call_tool("lint_jac", {"code": _VALID_JAC, "auto_fix": True});
+    assert "violations" in result;
+    assert "fixed_code" in result;
+    assert "changed" in result;
+}
+
+test "lint jac missing code returns error" {
+    tp = ToolProvider();
+    result = tp.call_tool("lint_jac", {});
+    assert "error" in result;
+}
+
+test "jac to py via tool" {
+    tp = ToolProvider();
+    result = tp.call_tool("jac_to_py", {"code": _VALID_JAC});
+    assert "python_code" in result;
+    assert "warnings" in result;
+}
+
+test "jac to js via tool" {
+    tp = ToolProvider();
+    result = tp.call_tool("jac_to_js", {"code": _CLIENT_JAC});
+    assert "js_code" in result;
+    assert "warnings" in result;
+}
+
+test "run jac prints output" {
+    tp = ToolProvider();
+    result = tp.call_tool("run_jac", {"code": "with entry { print(\"hello world\"); }"});
+    assert "stdout" in result;
+    assert "exit_code" in result;
+    assert result["exit_code"] == 0;
+    assert "hello world" in result["stdout"];
+}
+
+test "run jac invalid code" {
+    tp = ToolProvider();
+    result = tp.call_tool("run_jac", {"code": "this @@@ is broken"});
+    assert "exit_code" in result or "error" in result;
+}
+
+test "run jac missing code returns error" {
+    tp = ToolProvider();
+    result = tp.call_tool("run_jac", {});
+    assert "error" in result;
+}
+
+test "graph visualize returns dot" {
+    tp = ToolProvider();
+    result = tp.call_tool("graph_visualize", {"code": _GRAPH_JAC});
+    assert "graph" in result;
+    assert isinstance(result["graph"], str);
+}
+
+test "graph visualize missing code returns error" {
+    tp = ToolProvider();
+    result = tp.call_tool("graph_visualize", {});
+    assert "error" in result;
+}
+
+test "get command returns full args" {
+    tp = ToolProvider();
+    result = tp.call_tool("get_command", {"name": "run"});
+    assert "name" in result;
+    assert result["name"] == "run";
+    assert "args" in result;
+    assert isinstance(result["args"], list);
+    assert len(result["args"]) > 0;
+}
+
+test "get command unknown returns error" {
+    tp = ToolProvider();
+    result = tp.call_tool("get_command", {"name": "nonexistent_cmd"});
+    assert "error" in result;
+}
+
+test "get command missing name returns error" {
+    tp = ToolProvider();
+    result = tp.call_tool("get_command", {});
+    assert "error" in result;
+}
+
+test "understand returns knowledge map with key sections and size hints" {
+    tp = ToolProvider();
+    result = tp.call_tool("understand_jac_and_jaseci", {});
+    assert "knowledge_map" in result;
+    km = result["knowledge_map"];
+    assert "Language Syntax" in km
+    and "Object-Spatial Programming" in km
+    and "Full-Stack Development" in km;
+    assert "jac://guide/pitfalls" in km and "jac://docs/osp" in km;
+    assert "[S]" in km and "[M]" in km and "[L]" in km;
+}
+
+test "get resource fetches valid URIs and rejects invalid ones" {
+    tp = ToolProvider();
+    pitfalls = tp.call_tool("get_resource", {"uri": "jac://guide/pitfalls"});
+    assert "content" in pitfalls and "WRONG" in pitfalls["content"];
+    osp = tp.call_tool("get_resource", {"uri": "jac://docs/osp"});
+    assert "content" in osp and osp["uri"] == "jac://docs/osp";
+    bad = tp.call_tool("get_resource", {"uri": "jac://nonexistent/fake"});
+    assert "error" in bad;
+    empty = tp.call_tool("get_resource", {});
+    assert "error" in empty;
 }

@@ -1,10 +1,9 @@
 """Initialize CommentInjectionPass."""
-
-impl CommentInjectionPass.init(ir_in: uni.Module, prog: Any, cancel_token: Any = None) {
+impl CommentInjectionPass.postinit -> None {
     # Cache for _get_tokens to avoid redundant traversals (10M+ calls -> ~600k)
-    # Must be set BEFORE super.init() which calls transform()
-    self._token_cache: dict[(int, list[uni.Token])] = {};
-    super.init(ir_in, prog, cancel_token);
+    # Must be set BEFORE super.postinit() which calls transform()
+    self._token_cache = {};
+    super.postinit();
 }
 
 """Remove redundant line breaks after inline comments."""
@@ -26,7 +25,9 @@ impl CommentInjectionPass._remove_redundant_lines(nd: doc.DocType) -> doc.DocTyp
                 new_parts.append(processed_part);
                 new_parts.append(doc.Line(hard=True));
                 next_part = self._remove_redundant_lines(nd.parts[(i + 1)]);
-                if (isinstance(next_part, doc.Concat) and (len(next_part.parts) == 2)) {
+                if (
+                    isinstance(next_part, doc.Concat) and (len(next_part.parts) == 2)
+                ) {
                     new_parts.append(
                         doc.Concat([next_part.parts[0]], ast_node=next_part.ast_node)
                     );
@@ -815,7 +816,9 @@ impl CommentInjectionPass._inject_into_parts(
                 look = index + 1;
                 while (look < len(parts)) {
                     candidate = parts[look];
-                    if (isinstance(candidate, doc.Text) and not candidate.text.strip()) {
+                    if (
+                        isinstance(candidate, doc.Text) and not candidate.text.strip()
+                    ) {
                         look += 1;
                         continue;
                     }

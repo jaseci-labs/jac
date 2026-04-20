@@ -29,7 +29,7 @@ impl check(
     start_time = time();
     ignore_list = _normalize_ignore_patterns(ignore);
     # Helper to process and store single file result
-    def process_file_result(file_path: str, idx: int, total: int) -> None {
+    def process_file_result(file_path: str, idx: int, total: int) {
         nonlocal total_files , total_errors , total_warnings , failed_files;
         total_files += 1;
         (success, errs, warns, errors_list, warnings_list) = check_single_file(
@@ -55,10 +55,21 @@ impl check(
     def check_single_file(
         prog: JacProgram, file_path: str
     ) -> tuple[bool, int, int, list, list] {
+        import os;
+        import from jaclang.jac0core.bccache { discover_base_file }
         path_obj = Path(file_path);
         if not path_obj.exists() {
             console.error(f"File '{file_path}' does not exist.");
             return (False, 1, 0, [], []);
+        }
+        # If the file is an annex (.impl.jac or .test.jac), compile the base
+        # file instead so the full annex pipeline runs (DeclImplMatchPass, etc.).
+        # Then filter errors/warnings to only those originating from the annex file.
+        annex_filter_path: (str | None) = None;
+        base_path = discover_base_file(file_path);
+        if base_path is not None {
+            annex_filter_path = os.path.realpath(file_path);
+            file_path = base_path;
         }
         try {
             import from jaclang.jac0core.compile_options { CompileOptions }
@@ -88,6 +99,19 @@ impl check(
             }
             filtered_errors = filter_issues(new_errors);
             filtered_warnings = filter_issues(new_warnings);
+            # If checking an annex file, further filter to only errors from that file
+            if annex_filter_path is not None {
+                filtered_errors = [
+                    e
+                    for e in filtered_errors
+                    if e.loc and e.loc.mod_path == annex_filter_path
+                ];
+                filtered_warnings = [
+                    w
+                    for w in filtered_warnings
+                    if w.loc and w.loc.mod_path == annex_filter_path
+                ];
+            }
             err_count = len(filtered_errors);
             warn_count = len(filtered_warnings);
 
@@ -141,6 +165,9 @@ impl lint(paths: list, fix: bool = False, ignore: list = []) -> int {
         try {
             prog = JacProgram.jac_file_linter(str(path_obj));
             error_count = 0;
+            for warning in prog.warnings_had {
+                console.warning(f"{warning}");
+            }
             for error in prog.errors_had {
                 console.error(f"{error}");
                 error_count += 1;
@@ -372,36 +399,51 @@ impl format(
     results: list[dict] = [];
 
     if use_parallel {
-        with ProcessPoolExecutor(max_workers=max_workers) as executor {
-            futures = {
-                executor.submit(_format_single_file_worker, fp, lintfix, check): fp
-                for fp in all_files
-            };
-            completed = 0;
-            for future in as_completed(futures) {
-                completed += 1;
-                fp = futures[future];
-                console.print(f"Formatting [{completed}/{total_files}] completed...");
-                try {
-                    results.append(future.result());
-                } except Exception as e {
-                    results.append(
-                        {
-                            'path': fp,
-                            'success': False,
-                            'changed': False,
-                            'errors': 0,
-                            'syntax_errors': [f"Worker error: {e}"],
-                            'warnings_strs': [],
-                            'errors_strs': [],
-                            'formatted_code': None,
-                            'impl_results': []
-                        }
+        try {
+            import multiprocessing as mp;
+            ctx = mp.get_context("fork") if os.name != "nt" else None;
+            pool_cls = (
+                ProcessPoolExecutor
+                    if ctx is None
+                    else lambda **kw : ProcessPoolExecutor(mp_context=ctx, **kw)
+            );
+            with pool_cls(max_workers=max_workers) as executor {
+                futures = {
+                    executor.submit(_format_single_file_worker, fp, lintfix, check): fp
+                    for fp in all_files
+                };
+                completed = 0;
+                for future in as_completed(futures) {
+                    completed += 1;
+                    fp = futures[future];
+                    console.print(
+                        f"Formatting [{completed}/{total_files}] completed..."
                     );
+                    try {
+                        results.append(future.result());
+                    } except Exception as e {
+                        results.append(
+                            {
+                                'path': fp,
+                                'success': False,
+                                'changed': False,
+                                'errors': 0,
+                                'syntax_errors': [f"Worker error: {e}"],
+                                'warnings_strs': [],
+                                'errors_strs': [],
+                                'formatted_code': None,
+                                'impl_results': []
+                            }
+                        );
+                    }
                 }
             }
+        } except Exception {
+            # Fall back to sequential processing if multiprocessing fails
+            use_parallel = False;
         }
-    } else {
+    }
+    if not use_parallel {
         # Single file: show filename
         for fp in all_files {
             console.print(f"Formatting {fp}...");
@@ -439,7 +481,12 @@ impl format(
                 if res['formatted_code'] is not None {
                     try {
                         if to_screen {
-                            console.print(res['formatted_code']);
+                            # markup=False, highlight=False: prevent Rich from
+                            # interpreting Jac syntax like [root()-->], [?:Todo],
+                            # or [todo] as markup tags and silently stripping them.
+                            console.print(
+                                res['formatted_code'], markup=False, highlight=False
+                            );
                         } else {
                             with open(res['path'], 'w', encoding='utf-8') as f {
                                 f.write(res['formatted_code']);
@@ -453,7 +500,7 @@ impl format(
                 for (impl_path, impl_code) in res['impl_results'] {
                     try {
                         if to_screen {
-                            console.print(impl_code);
+                            console.print(impl_code, markup=False, highlight=False);
                         } else {
                             with open(impl_path, 'w', encoding='utf-8') as f {
                                 f.write(impl_code);
@@ -668,19 +715,37 @@ def _normalize_ignore_patterns(ignore: list) -> list {
 }
 
 """Check if a file path should be ignored based on patterns.
-Supports both exact matches and wildcard patterns (e.g., 'jac-*').
+Supports exact matches, wildcard patterns (e.g., 'jac-*'), and
+path patterns containing '/' (e.g., 'jac-client/*/config_loader.impl.jac').
+
+Path patterns (containing '/') are matched against the full file path using
+fnmatch, so they can target specific files in specific packages. Simple
+patterns (no '/') are matched against each individual path component, which
+preserves the existing behavior of matching bare filenames.
 """
 def _should_ignore(file_path: str, ignore_patterns: list) -> bool {
     if not ignore_patterns {
         return False;
     }
     path_parts = Path(file_path).parts;
+    # Normalize file path to use forward slashes for consistent matching
+    normalized_path = '/'.join(path_parts);
     # Patterns are already normalized in ignore_list
     for pattern in ignore_patterns {
-        # fnmatch handles both exact and wildcard matches
-        for part in path_parts {
-            if fnmatch(part, pattern) {
+        if '/' in pattern {
+            # Path pattern: match against the full normalized path.
+            # This allows patterns like 'jac-client/*/config_loader.impl.jac'
+            # to target specific files in specific packages.
+            if fnmatch(normalized_path, '*/' + pattern)
+            or fnmatch(normalized_path, pattern) {
                 return True;
+            }
+        } else {
+            # Simple pattern: match against each path component (existing behavior)
+            for part in path_parts {
+                if fnmatch(part, pattern) {
+                    return True;
+                }
             }
         }
     }

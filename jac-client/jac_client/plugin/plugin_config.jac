@@ -11,7 +11,6 @@ configuration system, registering:
 import os;
 import shutil;
 import subprocess;
-import json;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.jac0core.runtime { hookimpl }
@@ -122,7 +121,7 @@ class JacClientPluginConfig {
     static def register_project_template -> list[dict[str, Any]] {
         templates: list[dict[str, Any]] = [];
 
-        # Load templates from bundled JSON files
+        # Load templates from template directories
         for template_name in ["client", "fullstack"] {
             template = _load_template(template_name);
             if template {
@@ -137,36 +136,41 @@ class JacClientPluginConfig {
 # ===============================================================================
 # Template Loader
 # ===============================================================================
-"""Load a template from bundled JSON file."""
+"""Load a template from a template directory containing jac.toml with [jacpack] section."""
 def _load_template(template_name: str) -> dict[str, Any] | None {
-    # Find the template JSON file relative to this module
+    import from jaclang.project.template_loader { load_template_from_directory }
+    import from jaclang.cli.console { console }
+
+    # Find the template directory relative to this module
     # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
     module_dir = Path(__file__).parent.parent;  # jac_client directory
-    template_path = module_dir / "templates" / f"{template_name}.jacpack";
+    template_dir = module_dir / "templates" / template_name;
 
-    if not template_path.exists() {
+    if not template_dir.exists() {
         # Fallback: look in installed package location
         import from importlib.resources { files }
         try {
-            package_files = files("jac_client");
-            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpack";
-        } except Exception {
+            package_root = str(files("jac_client"));
+            template_dir = Path(package_root) / "templates" / template_name;
+        } except (TypeError, ModuleNotFoundError) as e {
+            console.warning(
+                f"Failed to locate template directory for '{template_name}': {e}"
+            );
             return None;
         }
     }
 
-    if not template_path.exists() {
+    if not template_dir.exists() or not template_dir.is_dir() {
         return None;
     }
 
     try {
-        with open(template_path, "r") as f {
-            data = json.load(f);
-        }
-
-        # Attach the post_create hook
+        template = load_template_from_directory(
+            template_dir, post_create_hook=_post_create_client
+        );
+        # Convert to dict for registry registration
+        data = template.to_dict();
         data["post_create"] = _post_create_client;
-
         return data;
     } except Exception as e {
         console.error(f"Warning: Could not load {template_name} template: {e}");
@@ -245,11 +249,13 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
             shutil.copy2(configs_npmrc, build_npmrc);
         }
 
-        # Run bun install (ensure bun is available first)
-        import from jac_client.plugin.utils { ensure_bun_available }
-        if not ensure_bun_available() {
-            console.warning("Bun is required. Install manually: https://bun.sh");
+        # Resolve bun binary (system PATH → .jac/bin/ → auto-download)
+        import from jac_client.plugin.utils { get_bun }
+        bun = get_bun();
+        if not bun {
+            console.warning("Bun is required but could not be found or installed.");
             console.print(
+                "  💡 Install manually: https://bun.sh\n"
                 "  💡 You can install packages later with: jac add --cl\n",
                 style="muted"
             );
@@ -262,7 +268,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
 
         try {
             console.print("\n  ⏳ Installing packages...\n", style="cyan");
-            subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
+            subprocess.run([bun, 'install'], cwd=client_dir, check=True, timeout=300);
 
             # Move bun.lockb to configs/ if it was created
             build_bun_lockb = client_dir / 'bun.lockb';
@@ -278,8 +284,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         } except subprocess.CalledProcessError as e {
             console.warning(f"Failed to install packages: {e}");
             console.print(
-                "  💡 You can install packages later with: jac add --cl\n",
-                style="muted"
+                "  💡 You can install packages later with: jac add --cl\n", style="muted"
             );
         } finally {
             # Clean up temporary package.json
@@ -308,7 +313,7 @@ def _npm_install_handler(
     package_name: str,
     version: str | None = None,
     is_dev: bool = False
-) -> None {
+) {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
     if config.project_root is None {
@@ -325,7 +330,7 @@ def _npm_install_handler(
 }
 
 """Install all npm packages from jac.toml."""
-def _npm_install_all_handler(config: JacConfig) -> None {
+def _npm_install_all_handler(config: JacConfig) {
     if config.project_root is None {
         raise RuntimeError("No project root found");
     }
@@ -334,9 +339,7 @@ def _npm_install_all_handler(config: JacConfig) -> None {
 }
 
 """Remove an npm package."""
-def _npm_remove_handler(
-    config: JacConfig, package_name: str, is_dev: bool = False
-) -> None {
+def _npm_remove_handler(config: JacConfig, package_name: str, is_dev: bool = False) {
     if config.project_root is None {
         raise RuntimeError("No project root found");
     }
@@ -357,7 +360,7 @@ def _npm_remove_handler(
 }
 
 """Regenerate package.json from jac.toml and run bun install."""
-def _regenerate_and_install(project_dir: Path) -> None {
+def _regenerate_and_install(project_dir: Path) {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import from jac_client.plugin.utils { ensure_bun_available }
 
@@ -390,8 +393,16 @@ def _regenerate_and_install(project_dir: Path) -> None {
     }
 
     try {
-        # Run bun install
-        subprocess.run(['bun', 'install'], cwd=client_dir, check=True, timeout=300);
+        # Resolve bun binary
+        import from jac_client.plugin.utils { get_bun }
+        bun = get_bun();
+        if not bun {
+            raise RuntimeError(
+                "Bun is required but could not be found or installed. "
+                "Install manually: https://bun.sh"
+            );
+        }
+        subprocess.run([bun, 'install'], cwd=client_dir, check=True, timeout=300);
     } except subprocess.CalledProcessError as e {
         raise RuntimeError(f"Failed to install packages: {e}") from e;
     } finally {

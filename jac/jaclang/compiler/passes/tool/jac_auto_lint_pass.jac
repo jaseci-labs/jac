@@ -44,13 +44,23 @@ import from jaclang.jac0core.diagnostics {
     W3025,
     W3030,
     W3035,
-    W3036
+    W3036,
+    W3037,
+    W3038
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
 obj JacAutoLintPass(UniPass) {
+    has lint_enabled: bool = True,
+        report_only: bool = False,
+        main_module: (uni.Module | None) = None,
+        _exclude_patterns: list[str] = [],
+        _project_root: str = "",
+        _did_convert_usestate: bool = False,
+        _pending_setters: list[dict[str, str]] = [];
+
     """Initialize the pass with linting options."""
-    def init(ir_in: uni.Module, prog: Any) -> None;
+    def postinit -> None;
 
     def _is_file_excluded(file_path: str) -> bool;
     def enter_module(nd: uni.Module) -> None;
@@ -116,6 +126,14 @@ obj JacAutoLintPass(UniPass) {
     def _check_too_many_params(nd: uni.FuncSignature) -> None;
     def _check_is_with_literal(nd: uni.CompareExpr) -> None;
     def _check_mutable_default(nd: uni.ParamVar) -> None;
+    def _check_unnecessary_none_return(
+        nd: (uni.Ability | uni.LambdaExpr),
+        body: (list | uni.Expr),
+        sig: (uni.FuncSignature | None),
+        name: str
+    ) -> None;
+
+    def _body_has_return_stmt(body: list) -> bool;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def enter_else_stmt(nd: uni.ElseStmt) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
@@ -123,5 +141,31 @@ obj JacAutoLintPass(UniPass) {
     def enter_param_var(nd: uni.ParamVar) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
+    def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def _body_to_key(body: list) -> str;
+    # useState-to-has conversion (W3038)
+    def _is_usestate_assignment(
+        stmt: uni.UniNode
+    ) -> (tuple[str, str, uni.Expr | None] | None);
+
+    def _infer_type_from_usestate_value(value: (uni.Expr | None)) -> str;
+    def _create_has_from_usestate(
+        ref_node: uni.UniNode,
+        var_name: str,
+        type_str: str,
+        init_value: (uni.Expr | None)
+    ) -> uni.ArchHas;
+
+    def _convert_usestate_vars(ability_node: uni.Ability) -> None;
+    def _strip_usestate_imports(nd: uni.Module) -> None;
+    def exit_expr_stmt(nd: uni.ExprStmt) -> None;
+    def exit_module(nd: uni.Module) -> None;
+}
+
+"""Report-only lint pass for use in the standard compile/LSP pipeline.
+
+Emits lint warnings without mutating the AST.
+"""
+obj JacLintCheckPass(JacAutoLintPass) {
+    has report_only: bool = True;
 }

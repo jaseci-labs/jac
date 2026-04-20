@@ -1,27 +1,51 @@
 [project]
 name = "jac-scale"
-version = "0.2.6"
+version = "0.2.14"
 description = ""
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "rich>=13.0.0",
-    "jaclang>=0.12.2",
+    "jaclang>=0.14.0",
     "python-dotenv>=1.2.1,<2.0.0",
-    "docker>=7.1.0,<8.0.0",
-    "kubernetes>=34.1.0,<35.0.0",
-    "pymongo>=4.15.4,<5.0.0",
-    "redis>=7.1.0,<8.0.0",
     "fastapi>=0.121.3,<0.122.0",
     "uvicorn>=0.38.0,<0.39.0",
     "pyjwt>=2.10.1,<2.11.0",
-    "fastapi-sso>=0.18.0,<1.0.0",
+    "fastapi-sso>=0.21.0,<1.0.0",
     "python-multipart>=0.0.21,<1.0.0",
-    "apscheduler>=3.11.2,<4.0.0",
-    "prometheus-client>=0.21.0,<1.0.0",
-    "bcrypt>=4.0.0,<5.0.0"
+    "bcrypt>=4.0.0,<5.0.0",
+    "sqlalchemy>=2.0.0,<3.0.0",
 ]
+
+[project.optional-dependencies]
+data = [
+    "pymongo>=4.15.4,<5.0.0",
+    "redis>=7.1.0,<8.0.0",
+]
+monitoring = [
+    "prometheus-client>=0.21.0,<1.0.0",
+]
+scheduler = [
+    "apscheduler>=3.11.2,<4.0.0",
+]
+deploy = [
+    "kubernetes>=34.1.0,<35.0.0",
+    "docker>=7.1.0,<8.0.0",
+]
+all = [
+    "jac-scale[data,monitoring,scheduler,deploy]",
+]
+test = [
+    "jac-scale[all]",
+    "testcontainers[mongodb,redis]",
+    "requests",
+]
+
+[project.urls]
+Repository = "https://github.com/Jaseci-Labs/jaseci"
+Homepage = "https://jaseci.org"
+Documentation = "https://jac-lang.org"
 
 [project.entry-points."jac"]
 scale = "jac_scale.plugin:JacCmd"
@@ -31,8 +55,8 @@ scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
 include = ["jac_scale*"]
 
 [tool.setuptools.package-data]
-"*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac"]
-jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json", "templates/*.html", "providers/**/*.template"]
+"*" = ["*.jac", "*.impl/*.jac", "*.cl/*.jac", "*.toml", "*.css"]
+jac_scale = ["_precompiled/**/*.jir", "_precompiled/manifest.json", "templates/*.html", "providers/**/*.template", "admin/_dist/**/*"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

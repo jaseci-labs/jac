@@ -6,10 +6,38 @@ impl NaIRGenPass._get_or_declare_extern(
     if name in self.extern_funcs {
         return self.extern_funcs[name];
     }
+    # The function may already exist in the LLVM module — e.g. declared by
+    # _declare_clib_ability from a user `import from "lib" { def ...; }`.
+    # In that case, ir.Function() would raise DuplicatedNameError.
+    # Look it up first; if found, re-use it directly.
+    for gv in self.llvm_module.global_values {
+        if isinstance(gv, ir.Function) and gv.name == name {
+            self.extern_funcs[name] = gv;
+            return gv;
+        }
+    }
     fnty = ir.FunctionType(ret_type, arg_types, var_arg=var_arg);
     func = ir.Function(self.llvm_module, fnty, name=name);
     self.extern_funcs[name] = func;
     return func;
+}
+
+"""Call an extern function with automatic argument coercion.
+Handles type mismatches between internal callers (using i8*) and user-
+declared C functions (using i64), or vice versa.  Uses _coerce_type for
+ptrtoint / inttoptr / bitcast as needed."""
+impl NaIRGenPass._call_extern(
+    b: ir.IRBuilder, func: ir.Function, args: list[ir.Value], name: str = ""
+) -> ir.Value {
+    coerced: list[ir.Value] = [];
+    for (i, arg) in enumerate(args) {
+        if i < len(func.args) and arg.type != func.args[i].type {
+            coerced.append(self._coerce_type(arg, func.args[i].type));
+        } else {
+            coerced.append(arg);
+        }
+    }
+    return b.call(func, coerced, name=name);
 }
 
 # ─── Print Support ───────────────────────────────────────────
@@ -489,7 +517,9 @@ impl NaIRGenPass._codegen_str_split(
     str_len = self.builder.call(strlen_fn, [str_val], name="str.len");
     sep_len = self.builder.call(strlen_fn, [sep_val], name="sep.len");
     memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    strncmp_fn = self._get_or_declare_extern("strncmp", ir.IntType(32), [i8p, i8p, i64]);
+    strncmp_fn = self._get_or_declare_extern(
+        "strncmp", ir.IntType(32), [i8p, i8p, i64]
+    );
     # Loop: scan through string, find separator matches
     # i = current position, token_start = start of current token
     i_alloca = self.builder.alloca(i64, name="split.i");

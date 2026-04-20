@@ -9,11 +9,11 @@ cl {
             print("Count changed: ", count);
         }
 
-        handleIncrement = lambda e: Any  -> None { count = count + 1;};
+        handleIncrement = lambda e: Any { count = count + 1;};
 
-        handleDecrement = lambda e: Any  -> None { count = count - 1;};
+        handleDecrement = lambda e: Any { count = count - 1;};
 
-        handleReset = lambda e: Any  -> None { count = 0;};
+        handleReset = lambda e: Any { count = 0;};
 
         countClass = "countDisplay " + (
             "positive" if count > 0 else "negative" if count < 0 else "zero"
@@ -22,17 +22,11 @@ cl {
         return
             <div className="container">
                 <div className="card">
-                    <h1 className="title">
-                        Counter Application
-                    </h1>
+                    <h1 className="title">Counter Application</h1>
                     <div className="divider"></div>
                     <div className="counterSection">
-                        <div className="label">
-                            Current Count
-                        </div>
-                        <div className={countClass}>
-                            {count}
-                        </div>
+                        <div className="label">Current Count</div>
+                        <div className={countClass}>{count}</div>
                     </div>
                     <div className="divider"></div>
                     <div className="buttonGroup">

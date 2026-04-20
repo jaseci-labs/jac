@@ -88,7 +88,7 @@ impl createSignal(initialValue: Any) -> list {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
     }
-    def setter(newValue: Any) -> None {
+    def setter(newValue: Any) {
         if newValue != signalData.value {
             signalData.value = newValue;
             __jacNotifySubscribers(signalData.subscribers);
@@ -105,7 +105,7 @@ impl createState(initialState: dict) -> list {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
     }
-    def setter(updates: dict) -> None {
+    def setter(updates: dict) {
         # Shallow merge
         newState = {};
         stateValue = signalData.value;
@@ -143,7 +143,7 @@ impl onMount(mountFn: Any) -> None {
         __jacReactiveContext.mountedComponents[componentId] = True;
         # Run in next tick to ensure component is fully rendered
         try {
-            setTimeout(lambda -> None { __jacRunEffect(mountFn);}, 0);
+            setTimeout(lambda { __jacRunEffect(mountFn);}, 0);
         } except Exception {
             # Fallback if setTimeout not available
             __jacRunEffect(mountFn);
@@ -272,9 +272,11 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     # Listen to popstate (back/forward buttons and pushState navigation)
     window.addEventListener(
         "popstate",
-        lambda event: Any  -> None { newPath = __jacGetPath();if not newPath {
-            newPath = defaultRoute;
-        }setCurrentPath(newPath);}
+        lambda event: Any {
+            newPath = __jacGetPath();
+            if not newPath { newPath = defaultRoute; }
+            setCurrentPath(newPath);
+        }
     );
     # Render method - returns component for current route
     def render -> JsxElement {
@@ -286,9 +288,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
                 # Check guard if present
                 if route.guard and not route.guard() {
                     return
-                        <div>
-                            Access Denied
-                        </div>;
+                        <div>Access Denied</div>;
                 }
                 return route.component();
             }
@@ -296,12 +296,10 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
 
         # No match - show 404
         return
-            <div>
-                404 - Route not found:{path}
-            </div>;
+            <div>404 - Route not found:{path}</div>;
     }
     # Navigate method
-    def navigateTo(path: str) -> None {
+    def navigateTo(path: str) {
         window.history.pushState({}, "", path);
         setCurrentPath(path);
     }
@@ -318,7 +316,7 @@ impl Route(path: str, component: Any, guard: Any = None) -> dict {
 impl Link(props: dict) -> JsxElement {
     href = props["href"] if "href" in props else "/";
     children = props["children"] if "children" in props else [];
-    def handleClick(event: Any) -> None {
+    def handleClick(event: Any) {
         event.preventDefault();
         navigate(href);
     }
@@ -741,9 +739,12 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
         return;
     }
     # Set up reactive root component for automatic re-rendering
-    __jacReactiveContext.rootComponent = lambda -> Any { __jacReactiveContext.currentComponent = "__root__";result = target.apply(
-        scope, orderedArgs
-    );__jacReactiveContext.currentComponent = None;return result; };
+    __jacReactiveContext.rootComponent = lambda -> Any {
+        __jacReactiveContext.currentComponent = "__root__";
+        result = target.apply(scope, orderedArgs);
+        __jacReactiveContext.currentComponent = None;
+        return result;
+    };
     renderer = __jacResolveRenderer(scope);
     if not renderer {
         console.warn("[Jac] renderJsxTree is not available in client bundle");
@@ -752,10 +753,8 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
-        value.then(
-            lambda nd: Any  -> None { __jacApplyRender(renderer, rootEl, nd);}
-        ).catch(
-            lambda err: Any  -> None { console.error(
+        value.then(lambda nd: Any { __jacApplyRender(renderer, rootEl, nd);}).catch(
+            lambda err: Any { console.error(
                 "[Jac] Error resolving client function promise", err
             );}
         );
@@ -787,7 +786,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
         hydration.registered = True;
         documentRef.addEventListener(
             "DOMContentLoaded",
-            lambda _event: Any  -> None { __jacExecuteHydration();},
+            lambda _event: Any { __jacExecuteHydration();},
             {"once": True}
         );
     }
@@ -875,7 +874,7 @@ impl useState(initialValue: Any) -> list {
     # First render: create new state
     signalData = {"value": initialValue};
     # Setter that updates value and triggers re-render
-    def setter(newValue: Any) -> None {
+    def setter(newValue: Any) {
         if newValue != signalData.value {
             signalData.value = newValue;
             # Schedule re-render of root component
@@ -947,7 +946,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
     scope.addEventListener(
         "error",
-        lambda event: Any  -> None { __jacReportError(
+        lambda event: Any { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -957,11 +956,17 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     scope.addEventListener(
         "unhandledrejection",
-        lambda event: Any  -> None { reason = event.reason;message = "";stack = "";if reason {
-            message = reason.message or str(reason);
-            stack = reason.stack or "";
-        } else {
-            message = "Unhandled promise rejection";
-        } __jacReportError(message, stack, "", "unhandledrejection");}
+        lambda event: Any {
+            reason = event.reason;
+            message = "";
+            stack = "";
+            if reason {
+                message = reason.message or str(reason);
+                stack = reason.stack or "";
+            } else {
+                message = "Unhandled promise rejection";
+            }
+            __jacReportError(message, stack, "", "unhandledrejection");
+        }
     );
 }

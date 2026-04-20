@@ -122,6 +122,11 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.BW_AND_EQ: "emit_op_iand",
          Tok.BW_XOR_EQ: "emit_op_ixor"
      },
+     # Python-only method names that have no JS equivalent. When the static
+     # type of the receiver cannot be proven (issue #5508 / #5453), the
+     # codegen routes these calls through `_jac.poly.<method>(target, ...)`,
+     # which dispatches to the native JS operation at runtime.
+     POLYMORPHIC_METHODS: set[str] = {"lower","upper","strip","lstrip","rstrip","append","extend","pop"},
      LiteralValue = str | bool | int | float | None;
 
 """Track declarations within a lexical scope."""
@@ -162,7 +167,6 @@ obj SpawnCallParts {
 
 """Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
-    def init(ir_in: uni.Module, prog: Any, cancel_token: (Any | None) = None) -> None;
     def before_pass -> None;
     def enter_node(nd: uni.UniNode) -> None;
     def exit_node(nd: uni.UniNode) -> None;
@@ -225,6 +229,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
     def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
@@ -263,6 +268,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_switch_stmt(nd: uni.SwitchStmt) -> None;
     def exit_switch_case(nd: uni.SwitchCase) -> None;
     def _ensure_emitters -> None;
+    def _resolve_primitive_type_name(_obj_type: object) -> str;
     def _try_primitive_op(
         expr_node: uni.UniNode,
         emit_method: str,
@@ -272,6 +278,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> (es.Expression | None);
 
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
+    def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;

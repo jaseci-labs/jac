@@ -83,7 +83,10 @@ obj TextDocument {
     def lines -> list[str];
 
     def apply_change(change: Any) -> None;
-    def _apply_incremental_change(change: TextDocumentContentChangeEvent_Type1) -> None;
+    def _apply_incremental_change(
+        change: TextDocumentContentChangeEvent_Type1
+    ) -> None;
+
     def _apply_full_change(change: Any) -> None;
 }
 

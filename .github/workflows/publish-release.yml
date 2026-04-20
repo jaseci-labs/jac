@@ -149,7 +149,23 @@ jobs:
         if: matrix.extra_build_cmd != '' && matrix.name != 'jaclang'
         run: pip install -e ./${{ matrix.dir }}
 
-      # Run extra build commands (e.g., bundle_docs for jac-mcp)
+      # Install extra pip dependencies for build commands (e.g., jac-client for admin UI)
+      - name: Install extra build dependencies
+        if: matrix.extra_build_deps != ''
+        run: pip install -e ./${{ matrix.extra_build_deps }}
+
+      # Set up Node.js for packages that need it (e.g., admin UI build)
+      - name: Set up Node.js (for client builds)
+        if: matrix.needs_nodejs == true
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Set up Bun (for client builds)
+        if: matrix.needs_nodejs == true
+        uses: oven-sh/setup-bun@v2
+
+      # Run extra build commands (e.g., bundle_docs for jac-mcp, build_admin_ui for jac-scale)
       - name: Run extra build commands
         if: matrix.extra_build_cmd != ''
         working-directory: ${{ matrix.dir }}
@@ -313,6 +329,27 @@ jobs:
         with:
           password: ${{ secrets.PYPI_TOKEN }}
 
+  wait-tier3:
+    needs: [parse-release, publish-tier3]
+    if: needs.parse-release.outputs.has_releases == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Wait for tier 3 on PyPI
+        env:
+          MATRIX: ${{ needs.parse-release.outputs.matrix }}
+        run: python scripts/wait_for_pypi.py --matrix "$MATRIX" --tier 3
+
   # ============================================================================
   # Push tags after successful publish
   # ============================================================================
@@ -436,9 +473,10 @@ jobs:
   # Build standalone binaries (triggered when jaseci is released)
   # ============================================================================
   build-standalone-binaries:
-    needs: [parse-release, push-tags, create-github-release]
+    needs: [parse-release, wait-tier3, push-tags, create-github-release]
     if: |
       always() &&
+      needs.wait-tier3.result == 'success' &&
       needs.push-tags.result == 'success' &&
       needs.push-tags.outputs.jaseci_version != ''
     uses: ./.github/workflows/build-standalone.yml
@@ -452,7 +490,7 @@ jobs:
   # Summary
   # ============================================================================
   summary:
-    needs: [parse-release, precompile, build, publish-tier1, publish-tier2, publish-tier3, push-tags, create-github-release, build-standalone-binaries]
+    needs: [parse-release, precompile, build, publish-tier1, publish-tier2, publish-tier3, wait-tier3, push-tags, create-github-release, build-standalone-binaries]
     if: always() && needs.parse-release.outputs.has_releases == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5

@@ -13,6 +13,8 @@ cl {
     import from .users.UsersPage { UsersPage }
     import from .sso.SSOPage { SSOPage }
     import from .monitoring.MetricsPage { MetricsPage }
+    import from .monitoring.LLMMetricsPage { LLMMetricsPage }
+    import from .monitoring.LLMTracesPage { LLMTracesPage }
     import from .placeholder.PlaceholderPage {
         SessionsPage,
         ApiKeysPage,
@@ -57,6 +59,8 @@ cl {
              },
              "monitor": {
                  "metrics": MetricsPage,
+                 "llm_metrics": LLMMetricsPage,
+                 "llm_traces": LLMTracesPage,
                  "logs": LogsPage,
                  "health": HealthPage,
                  "alerts": AlertsConfigPage
@@ -91,12 +95,12 @@ cl {
 
         currentSubTabs = subTabs[activeCategory];
 
-        def handleCategoryChange(catId: str, defaultTab: str) -> None {
+        def handleCategoryChange(catId: str, defaultTab: str) {
             activeCategory = catId;
             activeSubTab = defaultTab;
         }
 
-        def handleSubTabChange(tabId: str) -> None {
+        def handleSubTabChange(tabId: str) {
             activeSubTab = tabId;
         }
 
@@ -110,9 +114,7 @@ cl {
                 }
             }
             return
-                <div className="text-slate-500">
-                    Page not found
-                </div>;
+                <div className="text-slate-500">Page not found</div>;
         }
 
         return
@@ -134,9 +136,7 @@ cl {
                     />
                 </header>
                 <Alert message={alert["message"]} type={alert["alertType"]}/>
-                <main className="p-4">
-                    {renderContent()}
-                </main>
+                <main className="p-4">{renderContent()}</main>
             </div>;
     }
 }

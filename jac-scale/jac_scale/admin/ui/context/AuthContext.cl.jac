@@ -15,7 +15,7 @@ cl {
             isLoading: bool = True,
             view: str = "login";
 
-        async def validateAndRestoreSession(token: str, username: str) -> None {
+        async def validateAndRestoreSession(token: str, username: str) {
             try {
                 resp = await fetch(
                     baseUrl + "/admin/users",
@@ -107,7 +107,7 @@ cl {
             }
         }
 
-        def logout -> None {
+        def logout {
             authToken = "";
             currentUsername = "";
             removeStorage("admin_token");
@@ -116,13 +116,15 @@ cl {
         }
 
         useEffect(
-            lambda -> None { stored_token = getStorage("admin_token");stored_user = getStorage(
-                "admin_username"
-            );if stored_token and stored_user {
-                validateAndRestoreSession(stored_token, stored_user);
-            } else {
-                isLoading = False;
-            } },
+            lambda {
+                stored_token = getStorage("admin_token");
+                stored_user = getStorage("admin_username");
+                if stored_token and stored_user {
+                    validateAndRestoreSession(stored_token, stored_user);
+                } else {
+                    isLoading = False;
+                }
+            },
             []
         );
 
@@ -137,9 +139,7 @@ cl {
         };
 
         return
-            <AuthContext.Provider value={value}>
-                {children}
-            </AuthContext.Provider>;
+            <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
     }
 
     def:pub useAuth -> dict {

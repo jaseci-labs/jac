@@ -16,9 +16,7 @@ cl {
         );
 
         return
-            <span className={classes}>
-                {text}
-            </span>;
+            <span className={classes}>{text}</span>;
     }
 
     def:pub RoleBadge(role: str) -> JsxElement {
@@ -31,13 +29,9 @@ cl {
     ) -> JsxElement {
         if active {
             return
-                <span className="text-xs text-emerald-400">
-                    {activeText}
-                </span>;
+                <span className="text-xs text-emerald-400">{activeText}</span>;
         }
         return
-            <span className="text-xs text-amber-400">
-                {inactiveText}
-            </span>;
+            <span className="text-xs text-amber-400">{inactiveText}</span>;
     }
 }

@@ -289,11 +289,6 @@ impl UniNode.unparse -> str {
     return ' '.join([i.unparse() for i in self.kid]);
 }
 
-impl AtomExpr.postinit -> None {
-    Expr.postinit(self);
-    AstSymbolStubNode._init_stub(self, sym_type=SymbolType.UNKNOWN);
-}
-
 
 """Initialize."""
 impl Symbol.init(
@@ -302,13 +297,13 @@ impl Symbol.init(
     parent_tab: (UniScopeNode | None) = None,
     imported: bool = False
 ) -> None {
-    self.defn: list[NameAtom] = [defn];
-    self.uses: list[NameAtom] = [];
-    self.imported: bool = imported;
+    self.defn = [defn];
+    self.uses = [];
+    self.imported = imported;
     defn.sym = self;
-    self.access: SymbolAccess = access;
+    self.access = access;
     self.parent_tab = parent_tab;
-    self.semstr: str = '';
+    self.semstr = '';
 }
 
 """Get decl."""
@@ -584,7 +579,7 @@ impl UniScopeNode.chain_use_lookup(node_list: Sequence[AstSymbolNode]) -> None {
 impl UniScopeNode.update_py_ctx_for_def(nd: AstSymbolNode) -> None {
     nd.name_spec.py_ctx_func = ast3.Store;
     if (isinstance(nd, (TupleVal, ListVal)) and nd.values) {
-        def fix(item: TupleVal | ListVal | UnaryExpr) -> None {
+        def fix(item: TupleVal | ListVal | UnaryExpr) {
             if isinstance(item, UnaryExpr) {
                 if isinstance(item.operand, AstSymbolNode) {
                     item.operand.name_spec.py_ctx_func = ast3.Store;
@@ -726,6 +721,13 @@ impl ConditionalNode.postinit -> None {
     UniCFGNode.postinit(self);
 }
 
+"""Initialize CfgExpr (expression-level CFG wrapper)."""
+impl CfgExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+    ConditionalNode.postinit(self);
+}
+
 
 """Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head -> UniCFGNode {
@@ -733,9 +735,7 @@ impl UniCFGNode.get_head -> UniCFGNode {
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
-        and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
-        )
+        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
             nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
@@ -753,10 +753,10 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
+        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+            nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
-        and not isinstance(nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
     ) {
@@ -888,11 +888,7 @@ impl SubTag.postinit -> None {
 
 
 impl Module.postinit -> None {
-    self.impl_mod: list[Module] = [];
-    self.test_mod: list[Module] = [];
-    self.variant_mod: list[Module] = [];
-    self.src_terminals: list[Token] = self.terminals;
-    self.is_raised_from_py: bool = False;
+    self.src_terminals = self.terminals;
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=self.name);
 }
@@ -941,9 +937,7 @@ impl ProgramModule.postinit -> None {
     self.main = self.main_mod or Module.make_stub();
     self.kid = [self.main];
     UniNode.postinit(self);
-    self.hub: dict[(str, Module)] = {self.loc.mod_path: self.main_mod}
-        if self.main_mod
-        else {};
+    self.hub = {self.loc.mod_path: self.main_mod} if self.main_mod else {};
 }
 
 
@@ -1117,7 +1111,7 @@ impl Import.__jac_detected -> bool {
 }
 
 impl ModulePath.postinit -> None {
-    self.abs_path: (str | None) = None;
+    self.abs_path = None;
     UniNode.postinit(self);
 }
 
@@ -1138,31 +1132,13 @@ impl ModulePath.dot_path_str -> str {
         return (('.' * self.level) + self.path[0].lit_value);
     }
     return (
-        ('.' * self.level) + '.'.join(
-            [p.value for p in self.path] if self.path else []
-        )
+        ('.' * self.level) + '.'.join([p.value for p in self.path] if self.path else [])
     );
 }
 
 """Convert an import target string into a relative file path."""
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    if target.startswith('@jac/') {
-        import jaclang.runtimelib;
-        runtime_dir = os.path.dirname(jaclang.runtimelib.__file__);
-        module_name = target[5:];
-        module_map = {'runtime': 'client_runtime.cl.jac'};
-        if (module_name in module_map) {
-            return os.path.join(runtime_dir, module_map[module_name]);
-        }
-        for ext in ['.cl.jac', '.jac', '.js'] {
-            path = os.path.join(runtime_dir, (module_name + ext));
-            if os.path.exists(path) {
-                return path;
-            }
-        }
-        return os.path.join(runtime_dir, (module_name + '.jac'));
-    }
     return resolve_relative_path(target, self.loc.mod_path);
 }
 
@@ -1221,7 +1197,7 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
 
 impl ModuleItem.postinit -> None {
     UniNode.postinit(self);
-    self.abs_path: (str | None) = None;
+    self.abs_path = None;
 }
 
 
@@ -1283,9 +1259,7 @@ impl Archetype._get_impl_resolved_body -> list {
     return `list(self.body)
         if isinstance(self.body, Sequence)
         else `list(self.body.body)
-            if (
-                isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence)
-            )
+            if (isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence))
             else [];
 }
 
@@ -1592,10 +1566,7 @@ impl ParamVar.postinit -> None {
     self.param_kind = ParamKind.NORMAL;
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(
-        self,
-        sym_name=self.name.value,
-        name_spec=self.name,
-        sym_category=SymbolType.VAR
+        self, sym_name=self.name.value, name_spec=self.name, sym_category=SymbolType.VAR
     );
 }
 
@@ -1819,7 +1790,6 @@ impl CompareExpr.postinit -> None {
 impl BoolExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
-    ConditionalNode.postinit(self);
 }
 
 
@@ -1940,7 +1910,9 @@ impl AtomTrailer.postinit -> None {
 impl AtomTrailer.as_attr_list -> list[AstSymbolNode] {
     left = self.right if isinstance(self.right, AtomTrailer) else self.target;
     right = self.target if isinstance(self.right, AtomTrailer) else self.right;
-    trag_list: list[AstSymbolNode] = [right] if isinstance(right, AstSymbolNode) else [];
+    trag_list: list[AstSymbolNode] = [right]
+        if isinstance(right, AstSymbolNode)
+        else [];
     while (isinstance(left, AtomTrailer) and left.is_attr) {
         if isinstance(left.right, AstSymbolNode) {
             trag_list.insert(0, left.right);
@@ -2567,8 +2539,8 @@ impl Source.init(source: str, mod_path: str) -> None {
     self.value = source;
     self.hash = md5(source.encode()).hexdigest();
     self.file_path = mod_path;
-    self.comments: list[CommentToken] = [];
-    self.inline_suppressions: dict[int, set[str]] = {};
+    self.comments = [];
+    self.inline_suppressions = {};
 }
 
 """Return the source code as string."""

@@ -11,7 +11,9 @@ def _build_strtab(
     strings: list[str], initial_bytes: bytes = b"\x00"
 ) -> tuple[bytes, dict[str, int]];
 
-def _append_to_blob(blob: bytearray, data: bytes, alignment: int, mem_size: int) -> int;
+def _append_to_blob(
+    blob: bytearray, data: bytes, alignment: int, mem_size: int
+) -> int;
 
 def _resolve_seg_vaddr(
     seg: str, seg_off: int, code_vaddr: int, rodata_vaddr: int, data_vaddr: int

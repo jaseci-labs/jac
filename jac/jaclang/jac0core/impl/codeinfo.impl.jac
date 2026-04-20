@@ -70,3 +70,17 @@ impl InteropManifest.server_exports_to_client -> list[InteropBinding] {
         )
     ];
 }
+
+"""Server functions imported from another server module via sv import."""
+@property
+impl InteropManifest.server_exports_to_server -> list[InteropBinding] {
+    return [
+        b
+        for b in self.bindings.values()
+        if (
+            (b.source_context == InteropContext.SERVER)
+            and (InteropContext.SERVER in b.callers)
+            and (b.source_module is not None)
+        )
+    ];
+}

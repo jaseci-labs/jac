@@ -836,3 +836,22 @@ test "escape sequences in strings and fstrings" {
     # Test 9: unicode \u001b → ESC (third distinct escape syntax)
     assert "unicode_escape_first_ord:27" in output , f"Unicode escape failed: {output}";
 }
+
+test "bidirectional edge traversal" {
+    output = run_jac(os.path.join(FIXTURES, "bidirectional_edge_traversal.jac"));
+    lines = output.strip().split("\n");
+    assert "From a:" in lines[0];
+    assert "Friend found: 2" in lines[1];
+    assert "From b:" in lines[2];
+    assert "Friend found: 1" in lines[3];
+    assert "Generic from c:" in lines[4];
+    assert "Neighbor found: 4" in lines[5];
+    assert "Generic from d:" in lines[6];
+    assert "Neighbor found: 3" in lines[7];
+    assert "Reverse from a:\nFriend found: 2" in output;
+    assert "Reverse from b:\nFriend found: 1" in output;
+    assert "Forward from e:\nFollower found: 6" in output;
+    assert "Forward from f:\nBackward from f:" in output;
+    assert "Backward from f:\nFollower found: 5" in output;
+    assert "Backward from e:\nDone." in output;
+}

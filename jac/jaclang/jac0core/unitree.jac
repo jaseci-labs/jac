@@ -56,7 +56,7 @@ obj UniNode {
     }
 
     @gen.setter
-    def gen(value: CodeGenTarget) -> None {
+    def gen(value: CodeGenTarget) {
         self._gen = value;
     }
 
@@ -97,6 +97,13 @@ obj UniNode {
 
 """Symbol."""
 obj Symbol {
+    has defn: list[NameAtom] by postinit,
+        uses: list[NameAtom] by postinit,
+        access: SymbolAccess by postinit,
+        parent_tab: (UniScopeNode | None) by postinit,
+        imported: bool by postinit,
+        semstr: str by postinit;
+
     def init(
         defn: NameAtom,
         access: SymbolAccess,
@@ -271,7 +278,7 @@ obj UniCFGNode(UniNode) {
 }
 
 """A CFG node that branches on a condition with true/false targets.
-Used by BoolExpr (short-circuit) and IfElseExpr (ternary)."""
+Used by CfgExpr wrappers inside BoolExpr operands and IfElseExpr branches."""
 obj ConditionalNode(UniCFGNode) {
     has sc_true_target: (UniCFGNode | None) = None,
         sc_false_target: (UniCFGNode | None) = None;
@@ -321,9 +328,18 @@ obj Expr(UniNode) {
     }
 
     @type_sym_tab.setter
-    def type_sym_tab(type_sym_tab: UniScopeNode) -> None {
+    def type_sym_tab(type_sym_tab: UniScopeNode) {
         self._type_sym_tab = type_sym_tab;
     }
+}
+
+"""Wrapper that promotes an expression to a CFG-participating conditional node.
+Used for each BoolExpr operand and each IfElseExpr branch so that type
+narrowing can be resolved with a single backward CFG walk."""
+obj CfgExpr(Expr, ConditionalNode) {
+    has expr: Expr;
+
+    def postinit -> None;
 }
 
 """AtomExpr node type for Jac Ast."""
@@ -369,7 +385,7 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     }
 
     @sym.setter
-    def sym(sym: Symbol) -> None {
+    def sym(sym: Symbol) {
         self._sym = sym;
     }
 
@@ -394,7 +410,7 @@ obj NameAtom(AtomExpr, EnumBlockStmt) {
     }
 
     @py_ctx_func.setter
-    def py_ctx_func(py_ctx_func: type[ast3.expr_context]) -> None {
+    def py_ctx_func(py_ctx_func: type[ast3.expr_context]) {
         self._py_ctx_func = py_ctx_func;
     }
 
@@ -425,7 +441,12 @@ obj Module(AstDocNode, UniScopeNode) {
         source: Source,
         body: Sequence[ElementStmt | String | EmptyToken],
         terminals: list[Token],
-        stub_only: bool = False;
+        stub_only: bool = False,
+        impl_mod: list[Module] = [],
+        test_mod: list[Module] = [],
+        variant_mod: list[Module] = [],
+        src_terminals: list[Token] = [],
+        is_raised_from_py: bool = False;
 
     def postinit -> None;
     @property
@@ -466,7 +487,9 @@ obj Module(AstDocNode, UniScopeNode) {
 
 """Whole Program node type for Jac Ast."""
 obj ProgramModule(UniNode) {
-    has main_mod: (Module | None) = None;
+    has main_mod: (Module | None) = None,
+        main: Module by postinit,
+        hub: dict[(str, Module)] by postinit;
 
     def postinit -> None;
 }
@@ -555,7 +578,8 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
     has from_loc: (ModulePath | None),
         items: (Sequence[ModuleItem] | Sequence[ModulePath]),
         is_absorb: bool,
-        clib_decls: (Sequence[UniNode] | None) = None;
+        clib_decls: (Sequence[UniNode] | None) = None,
+        hint: (SubTag[Token] | None) by postinit;
 
     def postinit -> None;
     @property
@@ -572,7 +596,8 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 obj ModulePath(UniNode) {
     has path: (Sequence[(Name | String)] | None),
         level: int,
-        alias: (Name | None);
+        alias: (Name | None),
+        abs_path: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -594,7 +619,8 @@ obj ModulePath(UniNode) {
     """
 obj ModuleItem(UniNode) {
     has name: (Name | Token),
-        alias: (Name | None);
+        alias: (Name | None),
+        abs_path: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -723,7 +749,8 @@ class ParamKind(IntEnum) {
 obj ParamVar(AstSymbolNode, AstTypedVarNode) {
     has name: Name,
         unpack: (Token | None),
-        value: (Expr | None);
+        value: (Expr | None),
+        param_kind: ParamKind by postinit;
 
     def postinit -> None;
     @property
@@ -965,10 +992,12 @@ obj CompareExpr(Expr) {
     def postinit -> None;
 }
 
-"""BoolExpr node type for Jac Ast."""
-obj BoolExpr(Expr, ConditionalNode) {
+"""BoolExpr node type for Jac Ast.
+Each operand is wrapped in a CfgExpr so that short-circuit evaluation
+is modeled at the expression level in the CFG."""
+obj BoolExpr(Expr) {
     has op: Token,
-        values: list[Expr];
+        values: list[CfgExpr];
 
     def postinit -> None;
 }
@@ -989,11 +1018,13 @@ obj UnaryExpr(Expr) {
     def postinit -> None;
 }
 
-"""IfElseExpr node type for Jac Ast."""
+"""IfElseExpr node type for Jac Ast.
+Each branch is wrapped in a CfgExpr so that conditional evaluation
+is modeled at the expression level in the CFG."""
 obj IfElseExpr(Expr) {
-    has condition: Expr,
-        value: Expr,
-        else_value: Expr;
+    has condition: CfgExpr,
+        value: CfgExpr,
+        else_value: CfgExpr;
 
     def postinit -> None;
 }
@@ -1366,6 +1397,14 @@ obj MatchArch(MatchPattern) {
 
 """Token node type for Jac Ast."""
 obj Token(UniNode) {
+    has orig_src: Source by postinit,
+        line_no: int by postinit,
+        end_line: int by postinit,
+        c_start: int by postinit,
+        c_end: int by postinit,
+        pos_start: int by postinit,
+        pos_end: int by postinit;
+
     def init(
         orig_src: Source,
         name: str,
@@ -1422,6 +1461,8 @@ obj Name(Token, NameAtom) {
 
 """SpecialVarRef node type for Jac Ast."""
 obj SpecialVarRef(Name) {
+    has orig: Name by postinit;
+
     def init(var: Name, is_enum_stmt: bool = False) -> None;
     def py_resolve_name -> str;
 }
@@ -1577,6 +1618,10 @@ obj CommentToken(Token) {
 
 """SourceString node type for Jac Ast."""
 obj Source(EmptyToken) {
+    has comments: list[CommentToken] by postinit,
+        inline_suppressions: dict[int, set[str]] by postinit,
+        file_path: str by postinit;
+
     def init(source: str, mod_path: str) -> None;
     @property
     def code -> str;
@@ -1584,5 +1629,8 @@ obj Source(EmptyToken) {
 
 """SourceString node type for Jac Ast."""
 obj PythonModuleAst(EmptyToken) {
+    has orig_src: Source by postinit,
+        file_path: str by postinit;
+
     def init(ast: ast3.Module, orig_src: Source) -> None;
 }

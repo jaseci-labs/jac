@@ -2,14 +2,13 @@
 import re;
 import hashlib;
 import from typing { Any }
-import from kubernetes { client }
+import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     delete_if_exists,
     delete_k8s_secret
 }
-import from kubernetes.client.exceptions { ApiException }
 
 """Deploys and destroys a Prometheus + Grafana monitoring stack scoped to an app namespace.
 
@@ -35,7 +34,7 @@ obj MonitoringDeployer {
     """
     def _deploy_prometheus(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
-    ) -> None {
+    ) {
         prometheus_name = f"{app_name}-prometheus";
         ksm_name = f"{app_name}-kube-state-metrics";
         ne_name = f"{app_name}-node-exporter";
@@ -250,7 +249,7 @@ obj MonitoringDeployer {
     """
     def _deploy_kube_state_metrics(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    ) {
         ksm_name = f"{app_name}-kube-state-metrics";
         ksm_sa_name = f"{ksm_name}-sa";
         # Prefix with namespace to avoid conflicts across multiple deployments
@@ -492,7 +491,7 @@ obj MonitoringDeployer {
     """
     def _deploy_node_exporter(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any
-    ) -> None {
+    ) {
         ne_name = f"{app_name}-node-exporter";
 
         ne_daemonset = {
@@ -616,7 +615,7 @@ obj MonitoringDeployer {
     """
     def _deploy_grafana(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
-    ) -> None {
+    ) {
         grafana_name = f"{app_name}-grafana";
         prometheus_name = f"{app_name}-prometheus";
         grafana_secret_name = f"{grafana_name}-secret";
@@ -1213,7 +1212,7 @@ obj MonitoringDeployer {
     }
 
     """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter."""
-    def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) -> None {
+    def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         prometheus_name = f"{app_name}-prometheus";
         grafana_name = f"{app_name}-grafana";
         ksm_name = f"{app_name}-kube-state-metrics";

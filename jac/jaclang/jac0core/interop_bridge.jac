@@ -44,7 +44,7 @@ def register_py_callbacks(
     manifest: InteropManifest,
     py_func_table: dict[(str, Callable[(..., object)])],
     callbacks_list: list
-) -> None {
+) {
     import llvmlite.binding as llvm;
     for binding in manifest.native_imports {
         ret_ct = JAC_TO_CTYPES.get(binding.ret_type, ctypes.c_int64);

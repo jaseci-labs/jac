@@ -3,8 +3,14 @@
 Walks the module AST to detect calls between different codespace contexts
 (server/Python, native/LLVM, client/JavaScript) and builds an InteropManifest.
 """
+import from typing { Any }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.codeinfo { InteropBinding, InteropContext }
+import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.codeinfo {
+    BoundaryTypeInfo,
+    InteropBinding,
+    InteropContext
+}
 import from jaclang.jac0core.passes.uni_pass { UniPass }
 """Identify cross-boundary function calls between sv, na, and cl contexts.
 
@@ -39,12 +45,51 @@ linking
         self: InteropAnalysisPass, module_name: str
     ) -> (str | None);
 
-    """Track imports from .na.jac modules."""
+    """Track imports from .na.jac modules and sv-to-sv microservice imports."""
     def enter_import(self: InteropAnalysisPass, nd: uni.Import) -> None;
+
+    """Register an sv-to-sv import: create InteropBindings for each item."""
+    def _register_sv_to_sv_import(
+        self: InteropAnalysisPass, nd: uni.Import, module_name: str
+    ) -> None;
+
+    """Walk a module AST collecting Ability nodes by name."""
+    def _collect_abilities(
+        self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+    ) -> None;
+
+    """Find an Archetype or Enum node by name via AST walk."""
+    def _find_archetype(self: InteropAnalysisPass, nd: Any, target: str) -> Any;
+
+    """Parse a source file standalone (no semantic analysis)."""
+    def _parse_only_source_module(self: InteropAnalysisPass, file_path: str) -> Any;
 
     """Record function definition and its context."""
     def enter_ability(self: InteropAnalysisPass, nd: uni.Ability) -> None;
 
     """Check if a function call crosses context boundaries."""
     def enter_func_call(self: InteropAnalysisPass, nd: uni.FuncCall) -> None;
+
+    """Extract the inner type name from a subscript expression."""
+    def _extract_subscript_inner(
+        self: InteropAnalysisPass, expr: (uni.UniNode | None)
+    ) -> str;
+
+    """Extract all user-defined type names from a subscript."""
+    def _extract_all_subscript_types(
+        self: InteropAnalysisPass, expr: (uni.UniNode | None)
+    ) -> list[str];
+
+    """Extract all user-defined type names from a type annotation expression."""
+    def _extract_all_type_names(
+        self: InteropAnalysisPass, expr: (uni.UniNode | None)
+    ) -> list[str];
+
+    """Collect a type that crosses the codespace boundary into the manifest."""
+    def _collect_boundary_type(
+        self: InteropAnalysisPass, type_name: str, source_mod: (uni.Module | None)
+    ) -> None;
+
+    """After all nodes visited, collect boundary types from SV->CL bindings."""
+    def after_pass(self: InteropAnalysisPass) -> None;
 }

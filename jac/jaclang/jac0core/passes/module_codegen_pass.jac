@@ -16,7 +16,7 @@ with entry {
 Provides static helpers for context-block unwrapping and body
 extraction, used by PyastGenPass, EsastGenPass, and NaIRGenPass.
 """
-class ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
+obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
     """Unwrap ImplDef wrapper to get body statements.
 
     Returns the body as a Sequence, handling both direct list bodies
@@ -65,8 +65,7 @@ class ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
             ) {
                 result.append(stmt);
             } elif (
-                not isinstance(stmt, uni.ContextAwareNode)
-                and ctx == CodeContext.SERVER
+                not isinstance(stmt, uni.ContextAwareNode) and ctx == CodeContext.SERVER
             ) {
                 # Undecorated top-level nodes default to SERVER context
                 result.append(stmt);

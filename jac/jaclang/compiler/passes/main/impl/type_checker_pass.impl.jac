@@ -10,6 +10,26 @@ impl TypeCheckPass.exit_special_var_ref(
 impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
     # Skip if already resolved or if part of a construct that handles its own resolution
     if nd.sym is None {
+        # Skip Name nodes that only make sense in the context of their parent
+        # node. Evaluating them as standalone names returns Unknown and emits
+        # spurious W1051 warnings. The parent's exit handler resolves them
+        # with proper context.
+        #
+        # - AtomTrailer.right: member access (e.g. `x.strip`) — resolved by
+        #   the AtomTrailer handler with the base type.
+        # - KWPair.key: keyword argument names (e.g. `name=` in `Thing(name="x")`)
+        #   — these are parameter labels, not variable references.
+        # - SubTag child: type annotation tags (e.g. `: int` in `has x: int`)
+        #   — resolved during type annotation processing, not expression eval.
+        if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
+            return;
+        }
+        if isinstance(nd.parent, uni.KWPair) and nd.parent.key is nd {
+            return;
+        }
+        if isinstance(nd.parent, uni.SubTag) {
+            return;
+        }
         self.evaluator.get_type_of_expression(nd);
     }
 }
@@ -74,7 +94,9 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
         return;
     }
 
-    returning_type = self.evaluator._convert_to_instance(self.evaluator.get_none_type());
+    returning_type = self.evaluator._convert_to_instance(
+        self.evaluator.get_none_type()
+    );
     if nd.expr {
         returning_type = self.evaluator.get_type_of_expression(
             nd.expr, expected_type=return_type
@@ -115,44 +137,14 @@ impl TypeCheckPass.exit_func_call(self: TypeCheckPass, nd: uni.FuncCall) -> None
     }
 }
 
-"""Handle the binary expression node."""
-impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None {
+"""Handle JSX element node — validates props against component signature or intrinsic types."""
+impl TypeCheckPass.exit_jsx_element(self: TypeCheckPass, nd: uni.JsxElement) -> None {
     self.evaluator.get_type_of_expression(nd);
 }
 
-"""Enter a boolean expression - set up narrowing scope for AND expressions."""
-impl TypeCheckPass.enter_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
-    import from jaclang.jac0core.constant { Tokens as Tok }
-    # For AND expressions, push a narrowing scope
-    if nd.op.name == Tok.KW_AND {
-        self.evaluator.push_narrowing_scope();
-        # Pre-process conditions to add narrowings BEFORE children are evaluated
-        for val in nd.values {
-            self.evaluator.process_condition(val);
-        }
-    }
-}
-
-"""Exit a boolean expression - clean up narrowing scope."""
-impl TypeCheckPass.exit_bool_expr(self: TypeCheckPass, nd: uni.BoolExpr) -> None {
-    import from jaclang.jac0core.constant { Tokens as Tok }
-    # Pop the narrowing scope for AND expressions
-    if nd.op.name == Tok.KW_AND {
-        self.evaluator.pop_narrowing_scope();
-    }
-}
-
-"""Enter an if statement - set up narrowing scope for the if body."""
-impl TypeCheckPass.enter_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
-    # Push a narrowing scope for the if body
-    self.evaluator.push_narrowing_scope();
-    # Process the condition to add narrowings
-    self.evaluator.process_condition(nd.condition);
-}
-
-"""Exit an if statement - clean up narrowing scope."""
-impl TypeCheckPass.exit_if_stmt(self: TypeCheckPass, nd: uni.IfStmt) -> None {
-    self.evaluator.pop_narrowing_scope();
+"""Handle the binary expression node."""
+impl TypeCheckPass.exit_binary_expr(self: TypeCheckPass, nd: uni.BinaryExpr) -> None {
+    self.evaluator.get_type_of_expression(nd);
 }
 
 """Handle the atom trailer node."""
@@ -163,15 +155,63 @@ impl TypeCheckPass.exit_atom_trailer(self: TypeCheckPass, nd: uni.AtomTrailer) -
 """Pyright: Checker.visitAssignment(node: AssignmentNode): boolean."""
 impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> None {
     import from jaclang.compiler.type_system { types }
+    # Enum member declarations reuse the Assignment AST node but are a
+    # distinct construct: the `=` binds the literal value, not for
+    # variable-assignment type compatibility. The parser marks these with
+    # is_enum_stmt=True for both inline (`enum Color { RED = 1 }`) and
+    # impl-based (`enum Color; impl Color { RED = 1 }`) forms. Value-type
+    # validation (against enum_value_type and per-member type annotations)
+    # is owned by build_enum_members.
+    if nd.is_enum_stmt {
+        return;
+    }
     if ((len(nd.target) == 1) and (nd.value is not None)) {
         target = nd.target[0];
+        # Track whether this is a reassignment of a variable whose
+        # declaration has no type annotation.  For such variables the
+        # declared type is *inferred* from the first assignment, so
+        # later reassignments should be allowed to widen the inferred
+        # type — matching Pyright's behaviour for patterns like
+        # `x = None; …; x = value` or `x = 0; …; x = "str"`.
+        is_unannotated_reassign = False;
         # For assignment targets, use the declared symbol type (not the
         # narrowed type). Narrowing reflects the *current* value; the
         # variable's declared type determines what can be assigned to it.
         if isinstance(target, uni.Name) and target.sym {
             left_type = self.evaluator.get_type_of_symbol(target.sym);
-            # Cache the type on the Name node for hover info
-            target.type = left_type;
+            # Detect unannotated reassignment: the current target is not
+            # the declaration site and the declaration has no type
+            # annotation (plain `x = expr` form).
+            if (
+                target.sym.decl.name_of is not target
+                and isinstance(target.sym.decl.name_of.parent, uni.Assignment)
+                and target.sym.decl.name_of.parent.type_tag is None
+            ) {
+                is_unannotated_reassign = True;
+            }
+            # `target.type` is the hover cache — show the post-write type
+            # for re-assignments, declared type otherwise. `left_type`
+            # stays declared for the compat check and bare-generic warnings.
+            if hover_type := self.evaluator._get_type_of_lhs_assignment(target) {
+                target.type = self.evaluator._convert_to_instance(hover_type);
+            } else {
+                target.type = left_type;
+            }
+            # Warn on bare generic type annotations (e.g. x: list = [])
+            if (
+                nd.type_tag
+                and nd.type_tag.tag
+                and isinstance(left_type, types.ClassType)
+                and left_type.shared
+                and left_type.shared.type_params
+                and (not left_type.private or not left_type.private.type_args)
+            ) {
+                self.emit(
+                    W1036,
+                    node_override=nd.type_tag.tag,
+                    type=left_type.shared.class_name
+                );
+            }
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
             # Individual element types are inferred by _eval_unpacking_names.
@@ -190,7 +230,72 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
             return;
         } else {
-            left_type = self.evaluator.get_type_of_expression(target);
+            # Handle typed assignment: target: Type = value
+            # Propagate type annotation to the target node
+            if nd.type_tag and nd.type_tag.tag {
+                declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
+                # Warn on bare generic type annotations (e.g. list instead of list[T])
+                if (
+                    isinstance(declared_type, types.ClassType)
+                    and declared_type.shared
+                    and declared_type.shared.type_params
+                    and (
+                        not declared_type.private or not declared_type.private.type_args
+                    )
+                ) {
+                    self.emit(
+                        W1036,
+                        node_override=nd.type_tag.tag,
+                        type=declared_type.shared.class_name
+                    );
+                }
+                # Convert class type to instance for assignment checking.
+                # Type annotations like `x: int` resolve to the class `int`
+                # (instantiable), but the LHS of an assignment represents an
+                # instance. Without this, `self.x: int = 5` falsely reports
+                # "Cannot assign int to int" (instance vs class mismatch).
+                declared_inst = self.evaluator._convert_to_instance(declared_type);
+                target.type = declared_inst;
+                # For AtomTrailer (e.g., self.attr), also set type on the attribute Name
+                if isinstance(target, uni.AtomTrailer) {
+                    chain = target.as_attr_list;
+                    if len(chain) >= 2 {
+                        chain[-1].type = declared_inst;
+                    }
+                }
+                left_type = declared_inst;
+            } else {
+                left_type = self.evaluator.get_type_of_expression(target);
+                # For field assignments (e.g., obj.field = value), the target
+                # expression type may be narrowed (e.g., NoneType inside an
+                # `if obj.field is None` block). Use the declared field type
+                # for the assignment check instead of the narrowed type.
+                if isinstance(target, uni.AtomTrailer) and target.is_attr {
+                    if isinstance(target.right, uni.Name) and target.right.sym {
+                        import from jaclang.compiler.type_system.type_utils {
+                            PropertyWriteKind
+                        }
+                        target_sym = target.right.sym;
+                        prop_result = self.evaluator.get_property_write_type(
+                            target_sym
+                        );
+                        if prop_result.kind == PropertyWriteKind.WRITABLE {
+                            left_type = prop_result.write_type;
+                        } elif prop_result.kind == PropertyWriteKind.READ_ONLY {
+                            self.emit(
+                                E1005, node_override=target, name=target.right.value
+                            );
+                            return;
+                        } else {
+                            # NOT_PROPERTY — use the declared symbol type.
+                            declared = self.evaluator.get_type_of_symbol(target_sym);
+                            if declared {
+                                left_type = declared;
+                            }
+                        }
+                    }
+                }
+            }
         }
         # Pass declared LHS type as expected_type for bidirectional inference
         right_type = self.evaluator.get_type_of_expression(
@@ -279,7 +384,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                     E1010, node_override=nd, op=nd.aug_op.name, type=left_type.name
                 );
             }
-        } elif not self.evaluator.assign_type(right_type, left_type) {
+        } elif (
+            not is_unannotated_reassign
+            and not self.evaluator.assign_type(right_type, left_type)
+        ) {
             self.emit(E1001, actual=str(right_type), expected=str(left_type));
         }
         # Validate augmented assignment operator (+=, -=, etc.)
@@ -422,10 +530,8 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         }
     }
 
-    # ImplDef body is not in kid list, traverse it explicitly
-    # Only process stubs linked to an impl file
+    # ImplDef body is not in kid list, traverse it explicitly.
     if isinstance(nd.body, uni.ImplDef) {
-        # ImplDef body is not in kid list, traverse it explicitly
         self.traverse(nd.body);
     }
     # Check for missing return statements on non-None return type functions
@@ -447,7 +553,9 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
         }
         # Skip generator functions (contain yield) — they don't need explicit return
         is_generator = len(nd.get_all_sub_nodes(uni.YieldExpr)) > 0;
-        if not is_overload and not is_generator {
+        # Skip stub functions (body is only ellipsis and/or semicolons)
+        is_stub = self.evaluator._is_ellipsis_only_body(nd.body);
+        if not is_overload and not is_generator and not is_stub {
             ret_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
             ret_inst = self.evaluator._convert_to_instance(ret_type);
             none_type = self.evaluator._convert_to_instance(
@@ -467,107 +575,15 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     }
 }
 
-"""Check if a code block always returns a value on all paths."""
+"""Check if a code block always returns a value on all paths.
+
+Delegates to TypeEvaluator._collect_return_types which is the canonical
+control-flow analysis for return statements — used both here (boolean only)
+and in lambda block-body return type inference (boolean + collected types)."""
 impl TypeCheckPass._body_always_returns(
     self: TypeCheckPass, body: list[uni.CodeBlockStmt]
 ) -> bool {
-    for stmt in reversed(body) {
-        if isinstance(stmt, uni.ReturnStmt) {
-            return True;
-        }
-        if isinstance(stmt, uni.IfStmt) {
-            if_returns = self._body_always_returns(list(stmt.body));
-            else_returns = False;
-            if isinstance(stmt.else_body, uni.ElseIf) {
-                else_returns = self._body_always_returns(list(stmt.else_body.body));
-                if not else_returns {
-                    continue;
-                }
-                if stmt.else_body.else_body {
-                    if isinstance(stmt.else_body.else_body, uni.ElseStmt) {
-                        else_returns = self._body_always_returns(
-                            list(stmt.else_body.else_body.body)
-                        );
-                    } elif isinstance(stmt.else_body.else_body, uni.ElseIf) {
-                        else_returns = self._body_always_returns(
-                            [stmt.else_body.else_body]
-                        );
-                    }
-                } else {
-                    else_returns = False;
-                }
-            } elif isinstance(stmt.else_body, uni.ElseStmt) {
-                else_returns = self._body_always_returns(list(stmt.else_body.body));
-            }
-            if if_returns and else_returns {
-                return True;
-            }
-        }
-        if isinstance(stmt, uni.MatchStmt) {
-            # Match statement always returns if all cases return.
-            # This handles both explicit wildcard (case _:) and exhaustive
-            # union coverage (case A() + case B() covering A|B).
-            if stmt.cases {
-                all_cases_return = True;
-                for case in stmt.cases {
-                    match_case: uni.MatchCase = case;
-                    if not self._body_always_returns(list(match_case.body)) {
-                        all_cases_return = False;
-                        break;
-                    }
-                }
-                if all_cases_return {
-                    return True;
-                }
-            }
-        }
-        if isinstance(stmt, uni.SwitchStmt) {
-            if stmt.cases {
-                has_default = False;
-                all_cases_return = True;
-                for case in stmt.cases {
-                    switch_case: uni.SwitchCase = case;
-                    if switch_case.pattern is None {
-                        has_default = True;
-                    }
-                    if not self._body_always_returns(list(switch_case.body)) {
-                        all_cases_return = False;
-                    }
-                }
-                if has_default and all_cases_return {
-                    return True;
-                }
-            }
-        }
-        if isinstance(stmt, uni.WithStmt) {
-            if self._body_always_returns(list(stmt.body)) {
-                return True;
-            }
-        }
-        if isinstance(stmt, uni.TryStmt) {
-            try_returns = self._body_always_returns(list(stmt.body));
-            if try_returns {
-                if not stmt.excepts or len(stmt.excepts) == 0 {
-                    return True;
-                }
-                all_excepts_return = True;
-                for exc in stmt.excepts {
-                    except_clause: uni.Except = exc;
-                    if not self._body_always_returns(list(except_clause.body)) {
-                        all_excepts_return = False;
-                        break;
-                    }
-                }
-                if all_excepts_return {
-                    return True;
-                }
-            }
-        }
-        if isinstance(stmt, uni.RaiseStmt) {
-            return True;
-        }
-    }
-    return False;
+    return self.evaluator._collect_return_types(body, []);
 }
 
 """Exit a type alias node."""
@@ -583,7 +599,15 @@ impl TypeCheckPass.exit_archetype(self: TypeCheckPass, nd: uni.Archetype) -> Non
 
 """Exit an enum node - build enum type eagerly and traverse ImplDef body if present."""
 impl TypeCheckPass.exit_enum(self: TypeCheckPass, nd: uni.Enum) -> None {
-    self.evaluator.get_type_of_enum(nd);
+    cls_type = self.evaluator.get_type_of_enum(nd);
+    # Type-check each enum member name so W1051 fires for unresolved members.
+    for child in nd.kid {
+        if isinstance(child, uni.Assignment) {
+            for target in child.target {
+                self.evaluator.get_type_of_expression(target);
+            }
+        }
+    }
     if isinstance(nd.body, uni.ImplDef) {
         self.traverse(nd.body);
     }
@@ -617,8 +641,45 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
 
 """Set type on class fields (has vars) and validate initializer type."""
 impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
+    import from jaclang.compiler.type_system { types }
+    if (nd.defer and nd.kid and isinstance(nd.kid[-1], uni.Name)) {
+        postinit_nd: uni.Name = nd.kid[-1];
+        if postinit_nd.sym is None {
+            arch = nd.parent.parent if isinstance(nd.parent, uni.ArchHas) else None;
+            if isinstance(arch, uni.Archetype) {
+                postinit_sym = arch.names_in_scope.get("__post_init__");
+                if postinit_sym is not None {
+                    postinit_nd._sym = postinit_sym;
+                }
+            } elif isinstance(arch, uni.ImplDef)
+            and isinstance(arch.decl_link, uni.Archetype) {
+                # has field in a separate impl block: decl_link points to the archetype
+                if (
+                    postinit_sym := arch.decl_link.names_in_scope.get("__post_init__")
+                ) is not None {
+                    postinit_nd._sym = postinit_sym;
+                }
+            }
+        }
+    }
     if (sym := nd.sym) {
-        nd.type = self.evaluator.get_type_of_symbol(sym);
+        declared_type = self.evaluator.get_type_of_symbol(sym);
+        nd.type = declared_type;
+        # Warn on bare generic type annotations (e.g. has items: list instead of list[T])
+        if (
+            nd.type_tag
+            and nd.type_tag.tag
+            and isinstance(declared_type, types.ClassType)
+            and declared_type.shared
+            and declared_type.shared.type_params
+            and (not declared_type.private or not declared_type.private.type_args)
+        ) {
+            self.emit(
+                W1036,
+                node_override=nd.type_tag.tag,
+                type=declared_type.shared.class_name
+            );
+        }
         # If there's an initializer, check that its type is compatible
         # with the declared type (e.g., bad1: int = unknown_val;).
         if nd.value is not None and nd.type is not None {
@@ -820,8 +881,7 @@ impl TypeCheckPass.exit_visit_stmt(self: TypeCheckPass, nd: uni.VisitStmt) -> No
     target_type = self.evaluator.get_type_of_expression(nd.target);
     # Validate the visit target is a node (or unknown/any which we can't check)
     if (
-        not isinstance(target_type, types.UnknownType)
-        and not target_type.is_any_type()
+        not isinstance(target_type, types.UnknownType) and not target_type.is_any_type()
     ) {
         is_valid = False;
         if isinstance(target_type, types.ClassType) {
@@ -923,7 +983,8 @@ impl TypeCheckPass.exit_sub_tag(self: TypeCheckPass, nd: uni.SubTag[uni.T]) -> N
     }
 }
 
-"""Evaluate types for each Name in a tuple/list unpacking pattern."""
+"""Evaluate types for each Name leaf in a destructure pattern, recursing
+into nested containers."""
 impl TypeCheckPass._eval_unpacking_names(
     self: TypeCheckPass, container: uni.Expr
 ) -> None {
@@ -931,6 +992,8 @@ impl TypeCheckPass._eval_unpacking_names(
         for val in container.values {
             if isinstance(val, uni.Name) {
                 self.evaluator.get_type_of_expression(val);
+            } elif isinstance(val, (uni.TupleVal, uni.ListVal)) {
+                self._eval_unpacking_names(val);
             }
         }
     }

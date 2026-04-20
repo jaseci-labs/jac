@@ -67,6 +67,9 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
         if os.path.isfile(os.path.join(candidate, '__init__.py')) {
             return (os.path.join(candidate, '__init__.py'), 'py');
         }
+        if os.path.isfile(os.path.join(candidate, '__init__.pyi')) {
+            return (os.path.join(candidate, '__init__.pyi'), 'pyi');
+        }
     }
     if os.path.isfile((candidate + '.jac')) {
         return ((candidate + '.jac'), 'jac');
@@ -83,10 +86,60 @@ def _candidate_from(base: str, parts: list[str]) -> (tuple[(str, str)] | None) {
     if os.path.isfile((candidate + '.py')) {
         return ((candidate + '.py'), 'py');
     }
+    # .pyi after .py so co-located stubs defer to real sources;
+    # essential for relative imports inside typeshed packages
+    # (e.g. `from .path import ...` in os/__init__.pyi).
+    if os.path.isfile((candidate + '.pyi')) {
+        return ((candidate + '.pyi'), 'pyi');
+    }
     if os.path.isfile((candidate + '.js')) {
         return ((candidate + '.js'), 'js');
     }
     return None;
+}
+
+"""Resolve the built-in `@jac/*` virtual module alias.
+
+`@jac/runtime` is baked into the language — it is mapped to
+`jaclang/runtimelib/client_runtime.cl.jac` at bundle time and must be resolvable
+during static analysis so the type checker agrees with the runtime.
+
+Returns `(path, lang)` when `target` begins with `@jac/`, otherwise `None`.
+"""
+def _resolve_jac_virtual_module(target: str) -> (tuple[(str, str)] | None) {
+    if not target.startswith('@jac/') {
+        return None;
+    }
+    import jaclang.runtimelib as _runtimelib;
+    runtime_dir = os.path.dirname(_runtimelib.__file__);
+    module_name = target[len('@jac/'):];
+    # Well-known aliases explicitly mapped to their backing source.
+    module_map = {'runtime': 'client_runtime.cl.jac'};
+    if module_name in module_map {
+        path = os.path.join(runtime_dir, module_map[module_name]);
+        if os.path.isfile(path) {
+            return (path, 'jac');
+        }
+    }
+    # Fallback: search for a file under the runtime directory by extension.
+    for (ext, lang) in [('.cl.jac', 'jac'), ('.jac', 'jac'), ('.js', 'js')] {
+        path = os.path.join(runtime_dir, (module_name + ext));
+        if os.path.isfile(path) {
+            return (path, lang);
+        }
+    }
+    return None;
+}
+
+"""Return the filesystem path of a `@jac/*` virtual module, or None if unknown.
+
+Single source of truth for the `@jac/<name>` → backing-file mapping shared by
+the module resolver (so the type checker agrees with the bundler) and the
+ECMAScript pass (so the client manifest registers the same file).
+"""
+def resolve_jac_virtual_module_path(target: str) -> (str | None) {
+    result = _resolve_jac_virtual_module(target);
+    return result[0] if result else None;
 }
 
 """Get path aliases from project config [plugins.client.paths]."""
@@ -156,6 +209,12 @@ def _resolve_path_alias(target: str, base_path: str) -> (str | None) {
 """Resolve module path and infer language."""
 def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
     base_dir = os.path.dirname(base_path);
+    # Built-in `@jac/*` virtual aliases (e.g. `@jac/runtime`) take precedence
+    # so static analysis agrees with the bundler's runtime resolution.
+    jac_virtual = _resolve_jac_virtual_module(target);
+    if jac_virtual {
+        return jac_virtual;
+    }
     # Check for path aliases first (e.g., @components/Button -> ./components/Button)
     alias_resolved = _resolve_path_alias(target, base_path);
     if alias_resolved {
