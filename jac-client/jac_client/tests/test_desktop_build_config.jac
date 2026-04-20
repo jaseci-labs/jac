@@ -74,7 +74,7 @@ test "bundle sidecar plumbs timeout from config" {
         "pyinstaller_timeout parameter defaulting to SUBPROCESS_TIMEOUT_BUILD"
     );
 
-    # The subprocess call must use the parameter, not the bare constant —
+    # The subprocess call must use the parameter, not the bare constant --
     # otherwise the config is silently ignored.
     assert "timeout=pyinstaller_timeout" in content , (
         "The PyInstaller subprocess.run must pass the plumbed timeout parameter"
