@@ -1283,7 +1283,11 @@ test "union_member_access" {
         os.path.join(CHECKER_FIXTURES, "checker_union_member_access.jac"), options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+    # 1 error: E1099 for accessing .legs on Mammal | Bird (Bird lacks .legs).
+    # Previously 2 errors because the E1099 returned Unknown, cascading to
+    # E1002 "Cannot return Unknown". Now the partial union result is returned
+    # (int from Mammal.legs), preventing the cascade.
+    assert len(program.errors_had) == 1 , f"Expected 1 error, got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
     assert_error_pretty_found(
@@ -1552,7 +1556,9 @@ test "type_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 14 , f"Expected exactly 14 type errors, but got " + f"{len(
+    # 13 errors: partial union member access now returns resolved types
+    # instead of Unknown, preventing one cascading E1002 error.
+    assert len(program.errors_had) == 13 , f"Expected exactly 13 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -1605,10 +1611,9 @@ test "type_narrowing" {
         return x.bark();  # <-- Error: x is still Dog | None here
                ^^^^
         """,
-        """
-        return x.bark();  # <-- Error: x is still Dog | None here
-        ^^^^^^^^^^^^^^^^
-        """,
+        # The E1002 "Cannot return <Unknown>" for x.bark() is eliminated
+        # because partial union member access now returns the resolved type
+        # (from Dog.bark) instead of Unknown.
         """
         result: Dog = x if (x is None) else Dog(name="d");  # <-- Error: x is NoneType in true branch
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -3304,8 +3309,10 @@ test "root_cause_7_nullable_attr_access" {
         for e in program.errors_had
         if e.loc and 316 <= e.loc.first_line <= 350
     ];
-    # 8 errors: 4 E1099 (attr missing from NoneType) + 4 E1002 (return Unknown)
-    assert len(rc7_errors) == 8 , f"Expected 8 nullable-access errors, got {len(
+    # 4 errors: 4 E1099 (attr missing from NoneType). Previously 8 because
+    # each E1099 returned Unknown, cascading to E1002 "return Unknown". Now
+    # partial union member access returns the resolved type, eliminating cascades.
+    assert len(rc7_errors) == 4 , f"Expected 4 nullable-access errors, got {len(
         rc7_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc7_errors);
 }
@@ -3366,10 +3373,10 @@ test "root_cause_9_any_in_union" {
         for e in program.errors_had
         if e.loc and 396 <= e.loc.first_line <= 415
     ];
-    # CFG narrowing resolved 1 of 3 any-in-union errors.
-    # 4 errors: 2 primary (E1099 attribute missing from Any) + 2 cascading
-    # (E1002 unknown return, E1053 unknown->Sized) from improved Any resolution.
-    assert len(rc9_errors) == 4 , f"Expected 4 any-in-union errors, got {len(
+    # 2 errors: 2 E1099 (attr missing from Any in union). Previously 4 because
+    # cascading E1002/E1053 from Unknown returns. Now partial union member access
+    # returns the resolved type from non-Any members, eliminating cascades.
+    assert len(rc9_errors) == 2 , f"Expected 2 any-in-union errors, got {len(
         rc9_errors
     )}:\n" + "\n---\n".join(e.pretty_print() for e in rc9_errors);
 }
@@ -3434,14 +3441,10 @@ test "root_causes_total_error_count" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    # RC9 now 4 (was 2 before Callable/Any resolution fix), RC5 dropped 2→0.
-    # -1 from former 36: line 390 `executor.submit(lambda: None)` now succeeds
-    # after typing/typing_extensions ParamSpec parity + ParamSpec.args/.kwargs
-    # modelling: `Callable[_P, _T]` is now gradual, accepting the lambda. The
-    # fixture comment predicted "E1032 if executor type is Unknown" when
-    # `executor` was Unknown (stub unloadable pre-fix); that path is resolved
-    # now, and ParamSpec is understood, so no error fires there. Total: 35.
-    assert len(program.errors_had) == 35 , f"Expected 35 total errors, got {len(
+    # 29 errors (down from 35): partial union member access now returns
+    # resolved types instead of Unknown, eliminating 6 cascading errors
+    # (E1002 "return Unknown" and E1053 "Unknown->Sized" that followed E1099).
+    assert len(program.errors_had) == 29 , f"Expected 29 total errors, got {len(
         program.errors_had
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }

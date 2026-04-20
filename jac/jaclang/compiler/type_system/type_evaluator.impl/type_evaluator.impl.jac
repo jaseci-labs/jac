@@ -1009,6 +1009,23 @@ impl TypeEvaluator._get_type_of_expression_core(
                         type=str(base_type),
                         missing=", ".join(missing_types)
                     );
+                    # If the attribute was found on at least some union members,
+                    # return the resolved type instead of Unknown. This prevents
+                    # cascading Unknown errors on subsequent chained accesses
+                    # (e.g. x.attr.method() where x is a union and only some
+                    # members have 'attr'). The E1099 diagnostic above still
+                    # alerts the user about the partial coverage.
+                    if member_types {
+                        if decl_for_ide and decl_for_ide.sym {
+                            decl_for_ide.sym.add_use(expr.right);
+                        }
+                        unique_types = list({str(t): t for t in member_types}.values());
+                        all_same_type = len(unique_types) == 1;
+                        expr.right.type = unique_types[0]
+                            if all_same_type
+                            else types.UnionType(types=unique_types);
+                        return expr.right.type;
+                    }
                     return types.UnknownType();
                 } elif isinstance(base_type, types.TypeVarType) {
                     attr_name = expr.right.value;
