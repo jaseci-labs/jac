@@ -38,10 +38,9 @@ if [ -z "$CHANGED_FILES" ]; then
     exit 0
 fi
 
-# Skip protected files check for release PRs - the release script legitimately edits them
-IS_RELEASE_PR=false
+# Release PRs created by the release script legitimately edit protected files - skip all checks
 if [[ "${PR_TITLE:-}" == release:* ]] || [[ "${PR_AUTHOR:-}" == "github-actions[bot]" ]]; then
-    IS_RELEASE_PR=true
+    exit 0
 fi
 
 # Check if any release notes .md files were directly modified
@@ -64,7 +63,7 @@ while IFS= read -r file; do
     done
 done <<< "$CHANGED_FILES"
 
-if [ ${#DIRECTLY_MODIFIED[@]} -gt 0 ] && [ "$IS_RELEASE_PR" = false ]; then
+if [ ${#DIRECTLY_MODIFIED[@]} -gt 0 ]; then
     echo ""
     echo "=========================================="
     echo "ERROR: Do not edit release notes files directly!"
