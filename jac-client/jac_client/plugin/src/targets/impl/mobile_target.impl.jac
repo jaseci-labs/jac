@@ -108,8 +108,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         }
 
         console.print(
-            f"  Project name: {project_name}, version: {project_version}",
-            style="muted"
+            f"  Project name: {project_name}, version: {project_version}", style="muted"
         );
         console.print(f"  Bundle ID: {bundle_id}", style="muted");
 
@@ -207,8 +206,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
             style="muted"
         );
         console.print(
-            "       jac build main.jac --client mobile -p all -b preview",
-            style="muted"
+            "       jac build main.jac --client mobile -p all -b preview", style="muted"
         );
         console.print(
             "\n  2. Dev:   jac start main.jac --client mobile --dev", style="muted"
@@ -1031,7 +1029,13 @@ def _copy_bundles_for_eas(mobile_build_dir: Path, mobile_src_dir: Path) {
     src_assets.mkdir(parents=True, exist_ok=True);
 
     # Copy generated bundle files
-    bundle_files = ["bundle.html", "bundle.ts", "client.js", "index.html", "styles.css"];
+    bundle_files = [
+        "bundle.html",
+        "bundle.ts",
+        "client.js",
+        "index.html",
+        "styles.css"
+    ];
     for file_name in bundle_files {
         src_file = build_assets / file_name;
         if src_file.exists() {
@@ -1084,7 +1088,9 @@ impl MobileTarget.build(
         console.print(f"  Step 5: Preparing for EAS build...", style="muted");
 
         # Copy bundles from .jac/mobile/ to mobile/ for EAS
-        console.print("  Copying bundles to source directory for EAS...", style="muted");
+        console.print(
+            "  Copying bundles to source directory for EAS...", style="muted"
+        );
         _copy_bundles_for_eas(mobile_build_dir, mobile_src_dir);
 
         # Generate/update eas.json in source directory

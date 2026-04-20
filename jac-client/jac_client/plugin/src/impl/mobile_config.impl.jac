@@ -264,7 +264,9 @@ impl MobileConfig.validate(self: MobileConfig) -> None {
 def _generate_bundle_id(project_name: str) -> str {
     # Convert project name to valid bundle ID format
     # Example: "My Jac App" -> "com.example.myjacapp"
-    clean_name = project_name.lower().replace(' ', '').replace('-', '').replace('_', '');
+    clean_name = project_name.lower().replace(' ', '').replace('-', '').replace(
+        '_', ''
+    );
     return f"com.example.{clean_name}";
 }
 
