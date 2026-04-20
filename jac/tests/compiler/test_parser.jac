@@ -852,6 +852,17 @@ test "arrow func error location points to arrow token" {
     assert err.loc.col_start == 12;
 }
 
+test "arrow func with block body emits exactly one error no cascade" {
+    prog = JacProgram();
+    prog.parse_str(
+        'def f() -> JsxElement { return <button onClick={(e) => { count += 1; }}>{count}</button>; }',
+        "test.jac"
+    );
+    assert len(prog.errors_had) == 1;
+    assert prog.errors_had[0].code is not None;
+    assert prog.errors_had[0].code.code == "E0025";
+}
+
 test "arrow func jsx fixture emits exactly two errors no cascade" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

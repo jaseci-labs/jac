@@ -814,6 +814,32 @@ impl Parser.parse_expression -> Expr {
         return self.parse_lambda_expr();
     }
     expr = self.parse_concurrent_expr();
+    # If an ERROR token follows, it's an unsupported operator (e.g. `=>`).
+    # The lexer already emitted the diagnostic; consume the token and the
+    # right-hand side so callers see a clean token stream.
+    # Block body `=> { stmts; }`: drain by brace depth to avoid parse_brace_expr
+    # choking on statements (+=, ;, etc.) and leaking tokens back to the caller.
+    # Expression body `=> expr`: discard via parse_concurrent_expr as normal.
+    if self.check(TokenKind.ERROR) {
+        self.advance();
+        if self.check(TokenKind.LBRACE) {
+            depth = 0;
+            while not self.at_end() {
+                if self.check(TokenKind.LBRACE) {
+                    depth += 1;
+                } elif self.check(TokenKind.RBRACE) {
+                    depth -= 1;
+                    if depth == 0 {
+                        self.advance();
+                        break;
+                    }
+                }
+                self.advance();
+            }
+        } else {
+            self.parse_concurrent_expr();
+        }
+    }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
         condition = self.parse_expression();
@@ -2027,6 +2053,11 @@ impl Parser.parse_special_ref -> Expr {
 }
 
 impl Parser.parse_atom -> Expr {
+    # Silently consume ERROR tokens — the lexer already emitted the diagnostic.
+    # Without this guard, ERROR tokens fall through to E0004 and double-report.
+    if self.check(TokenKind.ERROR) {
+        return self.make_name(self.advance());
+    }
     # Literals: INT, HEX, BIN, OCT, FLOAT, BOOL, NULL, ELLIPSIS
     if self.check_any(
         TokenKind.INT,
