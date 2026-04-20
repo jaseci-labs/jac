@@ -379,6 +379,7 @@ obj TypeEvaluator {
 
     def resolve_imported_symbols(sym: uni.Symbol) -> uni.Symbol;
     def _set_symbol_to_expr(expr: uni.Expr, sym: uni.Symbol) -> TypeBase;
+    def _resolution_scope_for(expr: uni.UniNode) -> uni.UniScopeNode | None;
     def _is_expr_self(expr: uni.Expr) -> bool;
     def _is_expr_super(expr: uni.Expr) -> bool;
     def _get_enclosing_function(nd: uni.UniNode) -> uni.Ability | None;
