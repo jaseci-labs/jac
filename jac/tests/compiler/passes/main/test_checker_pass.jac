@@ -3945,7 +3945,9 @@ test "optional_chaining_no_false_e1030" {
     assert len(e1030_errors) == 1 , f"Expected exactly 1 E1030 (for b.extra), got {len(
         e1030_errors
     )}:\n" + "\n---\n".join(e1030_errors);
-    assert "extra" in e1030_errors[0] , f"Expected E1030 for 'extra', got: {e1030_errors[0]}";
+    assert "extra" in e1030_errors[0] , f"Expected E1030 for 'extra', got: {e1030_errors[
+        0
+    ]}";
 
     # Only W1051 allowed is on the regular (non-?.) access line which cascades
     # from the E1030 Unknown result. No W1051 for ?. expressions themselves.
@@ -3956,8 +3958,7 @@ test "optional_chaining_no_false_e1030" {
     ];
     for w in w1051_warnings {
         # Any W1051 must be on the `b.extra` line (regular access), not ?. lines
-        assert "b.extra" in w.pretty_print() or "bad" in w.pretty_print(),
-            f"Unexpected W1051 on ?. expression: {w.pretty_print()}";
+        assert "b.extra" in w.pretty_print() or "bad" in w.pretty_print() , f"Unexpected W1051 on ?. expression: {w.pretty_print()}";
     }
 }
 
@@ -4004,7 +4005,11 @@ test "isinstance_and_narrowing" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 
     # No W1051 warnings either
-    w1051 = [w for w in program.warnings_had if w.code.code == "W1051"];
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code.code == "W1051"
+    ];
     assert len(w1051) == 0 , f"Expected no W1051 warnings, got {len(w1051)}:\n" + "\n---\n".join(
         w.pretty_print() for w in w1051
     );

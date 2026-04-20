@@ -1585,7 +1585,9 @@ impl TypeEvaluator._get_type_of_expression_core(
                 # x narrowed to T.
                 if is_and and i < num_values - 1 {
                     import from jaclang.compiler.type_system.type_evaluator {
-                        NarrowingKind
+                        NarrowingKind,
+                        NarrowingPredicate,
+                        NarrowingTarget
                     }
                     operand_expr = expr.values[i].expr;
                     cond_info = self.classify_condition(operand_expr);
@@ -1598,8 +1600,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         );
                         if narrowed_sym is not None {
                             sym_type = self.get_type_of_symbol(narrowed_sym);
+                            predicate = NarrowingPredicate(
+                                key=cond_info.key, narrow_type=cond_info.narrow_type
+                            );
+                            target = NarrowingTarget(
+                                key=cond_info.key,
+                                declared_type=sym_type,
+                                symbol=narrowed_sym
+                            );
                             narrowed = self._apply_narrowing(
-                                sym_type, cond_info
+                                predicate, sym_type, True, target
                             );
                             if narrowed is not None {
                                 sym_id = id(narrowed_sym);
