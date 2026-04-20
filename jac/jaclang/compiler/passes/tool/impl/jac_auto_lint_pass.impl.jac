@@ -2407,7 +2407,7 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
     or not isinstance(nd.params[0], uni.LambdaExpr) {
         return False;
     }
-    lam = nd.params[0];
+    lam: uni.LambdaExpr = nd.params[0];
     # Lambda body must be a block with exactly one statement: return <JsxElement>
     if not isinstance(lam.body, list) {
         return False;
@@ -2421,35 +2421,44 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         return False;
     }
     ret_stmt = real_stmts[0];
-    if ret_stmt.expr is None or not isinstance(ret_stmt.expr, uni.JsxElement) {
+    # Unwrap parentheses: `return (<jsx>)` produces AtomUnit(value=JsxElement)
+    ret_expr = ret_stmt.expr;
+    if isinstance(ret_expr, uni.AtomUnit)
+    and isinstance(ret_expr.value, uni.JsxElement) {
+        ret_expr = ret_expr.value;
+    }
+    if ret_expr is None or not isinstance(ret_expr, uni.JsxElement) {
         return False;
     }
-    jsx_expr = ret_stmt.expr;
     # Extract item and optional index parameter names
     sig = lam.signature;
     if sig is None {
         return False;
     }
-    all_params: list = list(sig.posonly_params or []);
+    all_params: list[uni.ParamVar] = list(sig.posonly_params or []);
     if sig.params {
         all_params.extend(sig.params);
     }
     if len(all_params) < 1 or len(all_params) > 2 {
         return False;
     }
-    item_name = all_params[0].name.value;
+    # Default: first param is the item. Corrected below if it turns out to be the index.
+    item_name: str = all_params[0].name.value;
     idx_name: (str | None) = None;
     if len(all_params) == 2 {
-        second = all_params[1];
-        if second.type_tag is not None {
-            type_node = second.type_tag.tag;
-            if (
-                isinstance(type_node, uni.BuiltinType)
-                or isinstance(type_node, uni.Name)
-            )
-            and type_node.value == "int" {
-                idx_name = second.name.value;
+        p0 = all_params[0];
+        p1 = all_params[1];
+        for param in [p0, p1] {
+            if param.type_tag is not None {
+                t = param.type_tag.tag;
+                if (isinstance(t, uni.BuiltinType) or isinstance(t, uni.Name))
+                and t.value == "int" {
+                    idx_name = param.name.value;
+                }
             }
+        }
+        if idx_name == p0.name.value {
+            item_name = p1.name.value;
         }
     }
     collection = trailer.target;
@@ -2500,17 +2509,17 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         kid=[nd.gen_token(Tok.KW_FOR), target_node, nd.gen_token(Tok.KW_IN), iter_expr]
     );
     list_compr = uni.ListCompr(
-        out_expr=jsx_expr,
+        out_expr=ret_expr,
         compr=[inner_compr],
         kid=[
             nd.gen_token(Tok.LSQUARE),
-            jsx_expr,
+            ret_expr,
             inner_compr,
             nd.gen_token(Tok.RSQUARE)
         ]
     );
     # ── Wire parent references ────────────────────────────────────────────────
-    jsx_expr.parent = list_compr;
+    ret_expr.parent = list_compr;
     inner_compr.parent = list_compr;
     target_node.parent = inner_compr;
     iter_expr.parent = inner_compr;
