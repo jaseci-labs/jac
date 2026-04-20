@@ -20,7 +20,7 @@ glob DEFAULT_API_PORT: int = 8000,
      SUBPROCESS_TIMEOUT_SHORT: int = 5,
      SUBPROCESS_TIMEOUT_MEDIUM: int = 60,
      SUBPROCESS_TIMEOUT_LONG: int = 300,
-     SUBPROCESS_TIMEOUT_BUILD: int = 7200,
+     SUBPROCESS_TIMEOUT_BUILD: int = 2400,
      DEFAULT_ICON_COLOR_RGB: tuple[int, int, int, int] = (66, 139, 202, 255),
      DEFAULT_ICON_SIZE: int = 1024,
      DEFAULT_WINDOW_WIDTH: int = 1200,
@@ -1851,18 +1851,21 @@ impl DesktopTarget.build(
                 "  Step 1.5: Bundling sidecar (Jac backend)...", style="muted"
             );
             plugins_config = None;
+            pyinstaller_timeout = SUBPROCESS_TIMEOUT_BUILD;
             try {
                 plugins_config = desktop_config.get_plugins_config();
                 if plugins_config {
                     console.print(f"  Plugins config: {plugins_config}", style="muted");
                 }
+                pyinstaller_timeout = desktop_config.get_pyinstaller_timeout();
             } except Exception as config_err {
                 console.warning(
                     f"  Could not load plugins config: {config_err}, using defaults"
                 );
             }
             sidecar_path = _bundle_sidecar(
-                entry_file, project_dir, tauri_dir, platform, plugins_config
+                entry_file, project_dir, tauri_dir, platform, plugins_config,
+                pyinstaller_timeout
             );
             if sidecar_path and sidecar_path.exists() {
                 console.print(f"  ✔ Sidecar bundled: {sidecar_path}", style="success");
@@ -2486,7 +2489,8 @@ def _bundle_sidecar(
     project_dir: Path,
     tauri_dir: Path,
     target_platform: Optional[str] = None,
-    plugins_config: dict | None = None
+    plugins_config: dict | None = None,
+    pyinstaller_timeout: int = SUBPROCESS_TIMEOUT_BUILD
 ) -> Path | None {
     import platform as platform_module;
 
@@ -2504,7 +2508,8 @@ def _bundle_sidecar(
 
     if use_pyinstaller {
         result = _bundle_sidecar_pyinstaller(
-            entry_file, project_dir, tauri_dir, binaries_dir, is_windows, plugins_config
+            entry_file, project_dir, tauri_dir, binaries_dir, is_windows, plugins_config,
+            pyinstaller_timeout
         );
         if result {
             return result;
@@ -2523,7 +2528,8 @@ def _bundle_sidecar_pyinstaller(
     tauri_dir: Path,
     binaries_dir: Path,
     is_windows: bool,
-    plugins_config: dict | None = None
+    plugins_config: dict | None = None,
+    pyinstaller_timeout: int = SUBPROCESS_TIMEOUT_BUILD
 ) -> Path | None {
     import sys;
     import shutil;
@@ -2662,7 +2668,7 @@ if __name__ == "__main__":
             ],
             capture_output=True,
             text=True,
-            timeout=SUBPROCESS_TIMEOUT_BUILD,
+            timeout=pyinstaller_timeout,
             cwd=str(project_dir)
         );
 
@@ -2712,7 +2718,11 @@ if __name__ == "__main__":
         );
         return output_path;
     } except subprocess.TimeoutExpired {
-        console.warning("PyInstaller timed out after 2 hours");
+        console.warning(
+            f"PyInstaller timed out after {pyinstaller_timeout // 60} minutes. "
+            "Raise [desktop.bundle] pyinstaller_timeout in jac.toml if your build "
+            "legitimately needs longer."
+        );
         return None;
     } except Exception as e {
         console.warning(f"PyInstaller error: {e}");

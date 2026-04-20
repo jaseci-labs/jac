@@ -60,6 +60,12 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
             'jac_coder': True,  # jac-coder: AI coding assistant
             'jac_mcp': True  # jac-mcp: MCP server integration
             # jac_client is always bundled as a core package (not configurable)
+        },
+        'bundle': {
+            # Build-time bundling knobs. 40 minutes covers a cold first-run
+            # Windows + PyInstaller build; users with unusually slow hardware
+            # or very large plugin sets can raise it.
+            'pyinstaller_timeout': 2400
         }
     };
 }
@@ -138,6 +144,23 @@ impl DesktopConfig.get_features_config(self: DesktopConfig) -> dict[str, Any] {
 impl DesktopConfig.get_plugins_config(self: DesktopConfig) -> dict[str, Any] {
     config = self.load();
     return config.get('plugins', {});
+}
+
+"""Get bundle configuration (build-time bundling knobs like pyinstaller_timeout)."""
+impl DesktopConfig.get_bundle_config(self: DesktopConfig) -> dict[str, Any] {
+    config = self.load();
+    return config.get('bundle', {});
+}
+
+"""Get PyInstaller subprocess timeout in seconds.
+
+Reads [desktop.bundle] pyinstaller_timeout from jac.toml. Defaults to 2400
+(40 minutes) via get_default_config(). Override in jac.toml when a project's
+plugin set or host hardware legitimately needs more time.
+"""
+impl DesktopConfig.get_pyinstaller_timeout(self: DesktopConfig) -> int {
+    bundle = self.get_bundle_config();
+    return int(bundle.get('pyinstaller_timeout', 2400));
 }
 
 """Check if desktop is configured for client-only mode (no sidecar)."""

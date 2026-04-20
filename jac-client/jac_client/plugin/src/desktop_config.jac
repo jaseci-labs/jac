@@ -26,6 +26,8 @@ class DesktopConfig {
     def get_platforms_config(self: DesktopConfig) -> dict[str, Any];
     def get_features_config(self: DesktopConfig) -> dict[str, Any];
     def get_plugins_config(self: DesktopConfig) -> dict[str, Any];
+    def get_bundle_config(self: DesktopConfig) -> dict[str, Any];
+    def get_pyinstaller_timeout(self: DesktopConfig) -> int;
     def is_client_only(self: DesktopConfig) -> bool;
     def validate(self: DesktopConfig) -> None;
     def get_default_config(self: DesktopConfig) -> dict[str, Any];
