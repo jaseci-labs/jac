@@ -467,6 +467,7 @@ impl JacWalker.spawn_call(
     ctx = JacRuntimeInterface.get_context();
     call_state = ctx.call_state.get(None);
     owns_call_state = False;
+    walker_succeeded = False;
     if not call_state {
         call_token = ctx.call_state.set(CallState());
         call_state = ctx.call_state.get();
@@ -479,6 +480,7 @@ impl JacWalker.spawn_call(
             }
             if `walker.disengaged {
                 `walker.ignores = [];
+                walker_succeeded = True;
                 return warch;
             }
         }
@@ -503,6 +505,7 @@ impl JacWalker.spawn_call(
             }
         }
         `walker.ignores = [];
+        walker_succeeded = True;
         return warch;
     } finally {
         if owns_call_state {
@@ -515,6 +518,14 @@ impl JacWalker.spawn_call(
             }
             warch.reports = reports;
             ctx.call_state.reset(call_token);
+            # Flush deferred persistence at the outermost spawn boundary, on
+            # success only — mirrors ExecutionManager.spawn_walker so direct
+            # `walker spawn node` flows (tests, `jac run`, CLI) persist without
+            # callers having to call Jac.commit() manually. Skipped on
+            # exception so partial walker state is dropped with the L1 buffer.
+            if walker_succeeded {
+                ctx.mem.commit();
+            }
         }
     }
 }
@@ -681,6 +692,7 @@ impl JacWalker.async_spawn_call(
     ctx = JacRuntimeInterface.get_context();
     call_state = ctx.call_state.get(None);
     owns_call_state = False;
+    walker_succeeded = False;
     if not call_state {
         call_token = ctx.call_state.set(CallState());
         call_state = ctx.call_state.get();
@@ -696,6 +708,7 @@ impl JacWalker.async_spawn_call(
             }
             if `walker.disengaged {
                 `walker.ignores = [];
+                walker_succeeded = True;
                 return warch;
             }
         }
@@ -725,6 +738,7 @@ impl JacWalker.async_spawn_call(
             }
         }
         `walker.ignores = [];
+        walker_succeeded = True;
         return warch;
     } finally {
         if owns_call_state {
@@ -737,6 +751,10 @@ impl JacWalker.async_spawn_call(
             }
             warch.reports = reports;
             ctx.call_state.reset(call_token);
+            # See spawn_call: flush deferred persistence on success only.
+            if walker_succeeded {
+                ctx.mem.commit();
+            }
         }
     }
 }

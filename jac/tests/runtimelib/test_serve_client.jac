@@ -1667,22 +1667,21 @@ test "Memory async mirrors (aget/aput/adelete/ahas/acommit) work" {
 }
 
 test "SqliteMemory concurrent writes from worker threads do not race" {
-    # Regression guard for the sqlite3 shared-connection race.
+    # Regression guard for the sqlite3 shared-connection race at sync().
     #
-    # When sync walkers finish, Jac.acommit offloads commit() to a worker
-    # thread via asyncio.to_thread. Multiple concurrent walker calls from
-    # one user share the same SqliteMemory instance (same connection,
-    # opened with check_same_thread=False). Python's sqlite3 module is
-    # NOT thread-safe for concurrent writes on a shared connection — on
-    # Linux the auto-BEGIN races collide as
-    # "cannot start a transaction within a transaction"; on macOS the
-    # same race corrupts the row and surfaces later as
-    # "stored anchor ... unreadable" warnings during sync().
+    # When sync walkers finish, Jac.acommit offloads SqliteMemory.commit()
+    # (which calls sync()) to a worker thread via asyncio.to_thread.
+    # Multiple concurrent walker calls from one user share the same
+    # SqliteMemory instance and connection (opened with
+    # check_same_thread=False). sync() does a BEGIN IMMEDIATE; two racing
+    # invocations on one connection collide as "cannot start a
+    # transaction within a transaction" on Linux, or corrupt the stored
+    # row and surface as "stored anchor ... unreadable" later on macOS.
     #
-    # A threading.RLock inside SqliteMemory serializes all transactional
-    # paths. This test drives many concurrent put/commit calls and
-    # asserts both (a) no exceptions propagate and (b) the DB is not
-    # corrupted (every anchor we wrote reads back cleanly).
+    # A threading.RLock inside SqliteMemory serializes sync() and the
+    # other connection-touching methods. This test drives many concurrent
+    # commits and asserts both (a) no exceptions propagate and (b) every
+    # anchor reads back cleanly from a fresh connection.
     import asyncio;
     import os;
     import from uuid { uuid4 }

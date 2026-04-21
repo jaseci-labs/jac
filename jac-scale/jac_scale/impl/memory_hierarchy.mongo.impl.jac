@@ -221,26 +221,13 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     return cast(Anchor, anchor);
 }
 
-"""Store anchor in MongoDB. For NodeAnchors with a load snapshot, uses
-an atomic aggregation pipeline to merge edge deltas with the stored
-document, so concurrent writers cannot erase each other's edge changes.
-Newly-created anchors and non-NodeAnchor types take the direct write
-path."""
-impl MongoBackend.put(anchor: Anchor) -> None {
-    if self.client is None or not anchor.persistent {
-        return;
-    }
-    if isinstance(anchor, NodeAnchor) {
-        delta = anchor.edge_delta();
-        if delta is not None {
-            added = [str(eid) for eid in delta[0]];
-            removed = [str(eid) for eid in delta[1]];
-            self._put_node_atomic(anchor, added, removed);
-            return;
-        }
-    }
-    self._write_to_db(anchor);
-}
+"""Stage anchor for persistence. MongoBackend.put is a no-op — all
+persistence flows through sync(), which routes NodeAnchors with a load
+snapshot through the merge-aware _put_node_atomic pipeline and
+everything else through _write_to_db. This matches SqliteMemory.put
+semantics: defer to sync() so cross-anchor consistency holds within a
+walker's transaction boundary (closes issue #5446)."""
+impl MongoBackend.put(anchor: Anchor) -> None { }
 
 """Write anchor directly to MongoDB. Used internally by put() and
 sync() for newly-created anchors or non-NodeAnchor types where edge
