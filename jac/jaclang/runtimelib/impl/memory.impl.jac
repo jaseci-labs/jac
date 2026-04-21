@@ -549,99 +549,12 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
     return cast(Anchor, anchor);
 }
 
-"""Store an anchor. Writes to memory and persists to database.
-
-For NodeAnchors with a load snapshot, uses a BEGIN IMMEDIATE transaction
-to re-read the stored edges and apply the caller's delta, so concurrent
-writers cannot erase each other's edge additions. Newly-created anchors
-and non-NodeAnchor types take the direct write path.
-"""
+"""Store an anchor in L1 memory. DB persistence is deferred to sync() so
+that concurrent writes go through a single merge-aware BEGIN IMMEDIATE
+transaction per walker instead of per-anchor writes that race on
+cross-anchor consistency (closes issue #5446)."""
 impl SqliteMemory.put(anchor: Anchor) -> None {
     self.__mem__[anchor.id] = anchor;
-    if not anchor.persistent {
-        return;
-    }
-    self._ensure_connection();
-    assert self.__conn__ is not None;
-    conn = self.__conn__;
-    try {
-        delta: (tuple[(set[UUID], set[UUID])] | None) = None;
-        if isinstance(anchor, NodeAnchor) {
-            delta = anchor.edge_delta();
-        }
-        if delta is not None {
-            # Merge-aware path: re-read stored edges inside a write lock
-            conn.commit();
-            conn.execute("BEGIN IMMEDIATE");
-            try {
-                added = set(delta[0]);
-                removed = set(delta[1]);
-                cursor = conn.execute(
-                    "SELECT data FROM anchors WHERE id = ?", (str(anchor.id), )
-                );
-                row = cursor.fetchone();
-                if row {
-                    try {
-                        stored = Serializer.deserialize(json.loads(row[0]));
-                    } except Exception {
-                        stored = None;
-                    }
-                    if (isinstance(stored, NodeAnchor) and stored.is_populated()) {
-                        stored_ids = set(e.id for e in stored.edges);
-                        merged_ids = (stored_ids | added) - removed;
-                        edge_by_id = {e.id: e for e in stored.edges};
-                        edge_by_id.update({e.id: e for e in anchor.edges});
-                        anchor.edges = [
-                            edge_by_id[eid]
-                            for eid in merged_ids
-                            if eid in edge_by_id
-                        ];
-                    }
-                }
-                if (
-                    isinstance(anchor, NodeAnchor)
-                    and not anchor.edges
-                    and not isinstance(anchor.archetype, Root)
-                ) {
-                    conn.execute(
-                        "DELETE FROM anchors WHERE id = ?", (str(anchor.id), )
-                    );
-                } else {
-                    row_data = _anchor_to_row(anchor);
-                    conn.execute(
-                        """
-                        INSERT OR REPLACE INTO anchors
-                            (id, type, arch_module, arch_type, fingerprint,
-                             data, format_version, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                        """,
-                        (str(anchor.id), ) + row_data
-                    );
-                }
-                conn.commit();
-                anchor.hash = Serializer._compute_hash(anchor);
-            } except Exception {
-                conn.rollback();
-                raise;
-            }
-        } else {
-            # Direct write: newly-created anchor or non-NodeAnchor
-            row = _anchor_to_row(anchor);
-            conn.execute(
-                """
-                INSERT OR REPLACE INTO anchors
-                    (id, type, arch_module, arch_type, fingerprint, data,
-                     format_version, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (str(anchor.id), ) + row
-            );
-            conn.commit();
-            anchor.hash = Serializer._compute_hash(anchor);
-        }
-    } except Exception as e {
-        logger.warning(f"SqliteMemory.put persist failed: {e}");
-    }
 }
 
 """Delete an anchor and track for garbage collection (only if persistent)."""
