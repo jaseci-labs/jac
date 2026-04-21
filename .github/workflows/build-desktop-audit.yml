@@ -173,6 +173,22 @@ jobs:
           with open(conf, 'w') as f: json.dump(c, f, indent=2)
           "
 
+      # Force NSIS (.exe installer) on Windows. Default WiX MSI bundling
+      # via light.exe fails on the byllm-bloated sidecar; NSIS is more
+      # permissive with file count and path length.
+      - name: Force NSIS bundle on Windows
+        if: matrix.platform == 'windows'
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        run: |
+          python -c "
+          import json
+          conf = 'src-tauri/tauri.conf.json'
+          with open(conf) as f: c = json.load(f)
+          c['bundle']['targets'] = ['nsis']
+          with open(conf, 'w') as f: json.dump(c, f, indent=2)
+          "
+
       - name: Set Linux AppImage env vars
         if: matrix.platform == 'linux'
         run: |
