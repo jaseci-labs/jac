@@ -1422,9 +1422,7 @@ obj KubernetesTarget(DeploymentTarget) {
                             'securityContext': {
                                 'seccompProfile': {'type': 'RuntimeDefault'}
                             },
-                            'imagePullSecrets': [
-                                {'name': pull_secret_name}
-                            ]
+                            'imagePullSecrets': [{'name': pull_secret_name}]
                                 if pull_secret_name
                                 else [],
                             'initContainers': init_containers,
