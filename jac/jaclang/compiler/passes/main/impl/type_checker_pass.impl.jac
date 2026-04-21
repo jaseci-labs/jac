@@ -30,6 +30,12 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         if isinstance(nd.parent, uni.SubTag) {
             return;
         }
+        # JsxElementName child: intrinsic HTML tag names (e.g. `div` in `<div>`)
+        # are resolved by _resolve_intrinsic_jsx_tag in exit_jsx_element, not
+        # via normal scope lookup.
+        if isinstance(nd.parent, uni.JsxElementName) {
+            return;
+        }
         self.evaluator.get_type_of_expression(nd);
     }
 }

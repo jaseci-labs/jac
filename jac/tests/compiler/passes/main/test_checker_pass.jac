@@ -3715,6 +3715,26 @@ test "jsx_step5_intrinsic_props" {
     );
 }
 
+test "jsx_intrinsic_tags_no_w1051" {
+    """Intrinsic JSX tag names (div, h1, button) must not produce W1051."""
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_intrinsic_no_w1051.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    w1051_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "W1051"
+    ];
+    assert len(w1051_errors) == 0,
+        f"Expected no W1051 for intrinsic JSX tags, got {len(w1051_errors)}:\n"
+        + "\n".join(
+            f"  {err.pretty_print()}"
+            for err in w1051_errors
+        );
+}
+
 test "jsx_step6_spread_props" {
     path = os.path.join(CHECKER_FIXTURES, "checker_jsx_step6_spread_props.jac");
     program = JacProgram();
