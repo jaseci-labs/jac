@@ -29,7 +29,8 @@ import from jaclang.jac0core.diagnostics {
     E2012,
     W2013,
     E2016,
-    E2017
+    E2017,
+    W2080
 }
 
 """Decls and Def matching pass."""
@@ -82,5 +83,12 @@ declarations in the main module.
     these symbols into the archetype. This method does that after connection."""
     def _populate_self_member_symbols(
         self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
+    ) -> None;
+
+    """Scan inline init/postinit bodies for annotated self-assignments on
+    obj/node/edge/walker archetypes. Emits W2080 and registers the symbol
+    so downstream type checking resolves correctly."""
+    def _populate_inline_init_symbols(
+        self: DeclImplMatchPass, archetype: uni.Archetype
     ) -> None;
 }

@@ -323,10 +323,9 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
             );
         }
 
-        # Check and install required dependencies (wrap in try-except to not fail setup)
         console.print("\n📦 Checking required dependencies...", style="bold");
         try {
-            _check_and_install_dependencies();
+            _check_dependencies();
         } except Exception as e {
             console.warning(f"  Dependency check encountered an issue: {e}");
             console.print(
@@ -1088,22 +1087,22 @@ jac_mcp = true     # MCP server integration
     console.print("  ✔ Added [desktop] section to jac.toml", style="success");
 }
 
-"""Check and install all required dependencies for desktop target."""
-def _check_and_install_dependencies {
+"""Check all required dependencies; print platform-specific install hints for any that are missing."""
+def _check_dependencies {
     import platform as platform_module;
     import sys;
 
     system = platform_module.system();
 
     # Check Rust toolchain
-    rust_installed = _check_and_install_rust();
+    rust_installed = _check_rust();
 
     # Check build tools
-    build_tools_installed = _check_and_install_build_tools(system);
+    build_tools_installed = _check_build_tools(system);
 
     # Check system dependencies (Linux only)
     if system == "Linux" {
-        _check_and_install_linux_dependencies();
+        _check_linux_dependencies();
     } elif system == "Darwin" {
         _check_macos_dependencies();
     } elif system == "Windows" {
@@ -1120,18 +1119,18 @@ def _check_and_install_dependencies {
     console.print("\n  Dependency check complete!", style="success");
     if not rust_installed {
         console.warning(
-            "  Rust is required but not installed. Please install it manually."
+            "  Rust is required but not installed. Follow the instructions above."
         );
     }
     if not build_tools_installed {
         console.warning(
-            "  Build tools are required but not installed. Please install them manually."
+            "  Build tools are required but not installed. Follow the instructions above."
         );
     }
 }
 
-"""Check if Rust toolchain is installed, and offer to install if missing."""
-def _check_and_install_rust -> bool {
+"""Check for the Rust toolchain; print install instructions if missing."""
+def _check_rust -> bool {
     try {
         result = subprocess.run(
             ["rustc", "--version"],
@@ -1146,109 +1145,28 @@ def _check_and_install_rust -> bool {
         }
     } except Exception as e { }
 
-    # Rust not found
     console.warning("  Rust toolchain not found");
     console.print(
         "  Rust is required for building desktop applications with Tauri.",
         style="muted"
     );
     console.print("  Install Rust: https://rustup.rs/", style="muted");
-
-    # Try to detect if we can install automatically
-    try {
-        # Check if curl is available
-        subprocess.run(
-            ["curl", "--version"], capture_output=True, check=True, timeout=2
-        );
-        console.print(
-            "\n  Would you like to install Rust automatically using rustup?",
-            style="info"
-        );
-        response = input("  Install Rust? [Y/n]: ").strip().lower();
-        if not response or response in ('y', 'yes') {
-            console.print("  Installing Rust...", style="muted");
-            console.print("  This may take a few minutes...", style="muted");
-            try {
-                # Run rustup installer directly via curl pipe
-                result = subprocess.run(
-                    [
-                        "sh",
-                        "-c",
-                        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
-                    ],
-                    timeout=SUBPROCESS_TIMEOUT_BUILD,
-                    check=False
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Rust installed successfully!", style="success");
-                    console.print(
-                        "  Note: You may need to restart your terminal or run: source $HOME/.cargo/env",
-                        style="muted"
-                    );
-                    # Try to source cargo env and verify
-                    import os;
-                    cargo_bin = os.path.expanduser("~/.cargo/bin");
-                    if os.path.exists(cargo_bin) {
-                        # Add to PATH for current session
-                        current_path = os.environ.get("PATH", "");
-                        os.environ["PATH"] = f"{cargo_bin}:{current_path}";
-                        # Verify installation
-                        try {
-                            verify_result = subprocess.run(
-                                ["rustc", "--version"],
-                                capture_output=True,
-                                text=True,
-                                timeout=SUBPROCESS_TIMEOUT_SHORT
-                            );
-                            if verify_result.returncode == 0 {
-                                version = verify_result.stdout.strip();
-                                console.print(
-                                    f"  ✔ Verified: {version}", style="success"
-                                );
-                                return True;
-                            }
-                        } except Exception as e { }
-                        return True;
-                    } else {
-                        console.warning(
-                            "  Rust installation failed. Please install manually."
-                        );
-                    }
-                }
-            } except Exception as e {
-                error_str = str(e);
-                if "TimeoutExpired" in error_str or "timeout" in error_str.lower() {
-                    console.warning(
-                        "  Rust installation timed out. Please install manually."
-                    );
-                } else {
-                    console.warning(f"  Failed to install Rust automatically: {e}");
-                    console.print(
-                        "  Please install manually: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
-                        style="muted"
-                    );
-                }
-            }
-        } else {
-            console.print(
-                "  Skipping Rust installation. Please install manually.", style="muted"
-            );
-        }
-    } except Exception as e {
-        console.print(
-            "  curl not found. Cannot install Rust automatically.", style="muted"
-        );
-        console.print(
-            "  Please install manually: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
-            style="muted"
-        );
-    }
-
+    console.print(
+        "    Unix/macOS: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
+        style="muted"
+    );
+    console.print(
+        "    Windows:    winget install Rustlang.Rustup  (or download from https://rustup.rs/)",
+        style="muted"
+    );
+    console.print(
+        "  Re-run `jac setup desktop` after the toolchain is on PATH.", style="muted"
+    );
     return False;
 }
 
-"""Check and install build tools based on OS."""
-def _check_and_install_build_tools(system: str) -> bool {
+"""Check for platform build tools; print install command if missing."""
+def _check_build_tools(system: str) -> bool {
     if system == "Linux" {
         # Check for gcc/cc
         try {
@@ -1262,7 +1180,7 @@ def _check_and_install_build_tools(system: str) -> bool {
             return True;
         } except Exception as e {
             console.warning("  Build tools (gcc) not found");
-            _try_install_linux_build_tools();
+            _print_linux_build_tools_instructions();
             return False;
         }
     } elif system == "Darwin" {
@@ -1281,30 +1199,22 @@ def _check_and_install_build_tools(system: str) -> bool {
         } except Exception as e { }
         console.warning("  Xcode Command Line Tools not found");
         console.print("  Install with: xcode-select --install", style="muted");
-        console.print("\n  Would you like to open the installer?", style="info");
-        response = input("  Open installer? [Y/n]: ").strip().lower();
-        if not response or response in ('y', 'yes') {
-            try {
-                subprocess.run(["xcode-select", "--install"], check=False);
-                console.print(
-                    "  ✔ Installer opened. Please complete the installation.",
-                    style="success"
-                );
-            } except Exception as e {
-                console.warning(
-                    "  Failed to open installer. Please run: xcode-select --install"
-                );
-            }
-        }
+        console.print(
+            "  Complete the Apple installer dialog, then re-run `jac setup desktop`.",
+            style="muted"
+        );
         return False;
     } elif system == "Windows" {
-        # Check for Visual Studio Build Tools
-        console.warning("  Build tools check not implemented for Windows");
+        console.warning("  Windows build tools check not implemented");
         console.print(
-            "  Please install Visual Studio Build Tools manually:", style="muted"
+            "  Install Visual Studio Build Tools (C++ workload):", style="muted"
         );
         console.print(
-            "    https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022",
+            "    winget install Microsoft.VisualStudio.2022.BuildTools --override \"--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\"",
+            style="muted"
+        );
+        console.print(
+            "    (Or download from https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)",
             style="muted"
         );
         return False;
@@ -1312,72 +1222,31 @@ def _check_and_install_build_tools(system: str) -> bool {
     return False;
 }
 
-"""Try to install Linux build tools."""
-def _try_install_linux_build_tools -> None {
-    # Detect Linux distribution
+"""Print the command that installs build tools on the detected Linux distro."""
+def _print_linux_build_tools_instructions {
     distro = _detect_linux_distro();
-
-    if not distro {
+    console.print("  Install build tools manually:", style="muted");
+    if distro in ("ubuntu", "debian") {
         console.print(
-            "  Could not detect Linux distribution. Please install build tools manually.",
+            "    sudo apt-get update && sudo apt-get install -y build-essential",
             style="muted"
         );
-        return;
+    } elif distro == "fedora" {
+        console.print("    sudo dnf install -y gcc gcc-c++", style="muted");
+    } elif distro == "arch" {
+        console.print("    sudo pacman -S --noconfirm base-devel", style="muted");
+    } else {
+        console.print(
+            "    Ubuntu/Debian: sudo apt-get install -y build-essential", style="muted"
+        );
+        console.print(
+            "    Fedora:        sudo dnf install -y gcc gcc-c++", style="muted"
+        );
+        console.print(
+            "    Arch:          sudo pacman -S --noconfirm base-devel", style="muted"
+        );
     }
-
-    console.print(f"  Detected: {distro}", style="muted");
-    console.print(
-        "\n  Would you like to install build tools automatically?", style="info"
-    );
-    response = input("  Install build tools? [Y/n]: ").strip().lower();
-    if not response or response in ('y', 'yes') {
-        try {
-            if distro in ("ubuntu", "debian") {
-                console.print("  Installing build-essential...", style="muted");
-                result = subprocess.run(
-                    ["sudo", "apt-get", "update"],
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_MEDIUM
-                );
-                if result.returncode == 0 {
-                    result = subprocess.run(
-                        ["sudo", "apt-get", "install", "-y", "build-essential"],
-                        check=False,
-                        timeout=SUBPROCESS_TIMEOUT_LONG
-                    );
-                    if result.returncode == 0 {
-                        console.print("  ✔ Build tools installed", style="success");
-                        return;
-                    }
-                }
-            } elif distro == "fedora" {
-                console.print("  Installing gcc gcc-c++...", style="muted");
-                result = subprocess.run(
-                    ["sudo", "dnf", "install", "-y", "gcc", "gcc-c++"],
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_LONG
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Build tools installed", style="success");
-                    return;
-                }
-            } elif distro == "arch" {
-                console.print("  Installing base-devel...", style="muted");
-                result = subprocess.run(
-                    ["sudo", "pacman", "-S", "--noconfirm", "base-devel"],
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_LONG
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Build tools installed", style="success");
-                    return;
-                }
-            }
-            console.warning("  Failed to install build tools automatically");
-        } except Exception as e {
-            console.warning(f"  Error installing build tools: {e}");
-        }
-    }
+    console.print("  Re-run `jac setup desktop` after installation.", style="muted");
 }
 
 """Detect Linux distribution."""
@@ -1404,8 +1273,8 @@ def _detect_linux_distro -> str | None {
     }
 }
 
-"""Check and install Linux system dependencies."""
-def _check_and_install_linux_dependencies -> None {
+"""Check pkg-config + webkit2gtk; print distro install command if missing."""
+def _check_linux_dependencies -> None {
     # Check pkg-config
     pkg_config_ok = False;
     try {
@@ -1438,111 +1307,15 @@ def _check_and_install_linux_dependencies -> None {
     }
 
     if pkg_config_ok and webkit_ok {
-        return;  # All dependencies satisfied
-
+        return;
     }
 
-    # Missing dependencies
     console.warning("  Some Linux system dependencies are missing");
     distro = _detect_linux_distro();
-
     if distro {
         console.print(f"  Detected: {distro}", style="muted");
-        console.print(
-            "\n  Would you like to install missing dependencies automatically?",
-            style="info"
-        );
-        response = input("  Install dependencies? [Y/n]: ").strip().lower();
-        if not response or response in ('y', 'yes') {
-            _try_install_linux_system_deps(distro);
-        } else {
-            _print_manual_install_instructions(distro);
-        }
-    } else {
-        _print_manual_install_instructions(None);
     }
-}
-
-"""Try to install Linux system dependencies."""
-def _try_install_linux_system_deps(distro: str) -> None {
-    try {
-        if distro in ("ubuntu", "debian") {
-            deps = [
-                "libwebkit2gtk-4.1-dev",
-                "build-essential",
-                "curl",
-                "wget",
-                "libssl-dev",
-                "libgtk-3-dev",
-                "libayatana-appindicator3-dev",
-                "librsvg2-dev"
-            ];
-            console.print("  Installing dependencies...", style="muted");
-            result = subprocess.run(
-                ["sudo", "apt-get", "update"],
-                check=False,
-                timeout=SUBPROCESS_TIMEOUT_MEDIUM
-            );
-            if result.returncode == 0 {
-                result = subprocess.run(
-                    ["sudo", "apt-get", "install", "-y"] + deps,
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_BUILD
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Dependencies installed", style="success");
-                    return;
-                }
-            }
-        } elif distro == "fedora" {
-            deps = [
-                "webkit2gtk3-devel.x86_64",
-                "openssl-devel",
-                "curl",
-                "wget",
-                "libappindicator-gtk3",
-                "librsvg2-devel"
-            ];
-            console.print("  Installing dependencies...", style="muted");
-            result = subprocess.run(
-                ["sudo", "dnf", "install", "-y"] + deps,
-                check=False,
-                timeout=SUBPROCESS_TIMEOUT_BUILD
-            );
-            if result.returncode == 0 {
-                console.print("  ✔ Dependencies installed", style="success");
-                return;
-            }
-        } elif distro == "arch" {
-            deps = [
-                "webkit2gtk",
-                "base-devel",
-                "curl",
-                "wget",
-                "openssl",
-                "appmenu-gtk-module",
-                "gtk3",
-                "libappindicator-gtk3",
-                "librsvg",
-                "libvips"
-            ];
-            console.print("  Installing dependencies...", style="muted");
-            result = subprocess.run(
-                ["sudo", "pacman", "-S", "--noconfirm"] + deps,
-                check=False,
-                timeout=SUBPROCESS_TIMEOUT_BUILD
-            );
-            if result.returncode == 0 {
-                console.print("  ✔ Dependencies installed", style="success");
-                return;
-            }
-        }
-        console.warning("  Failed to install dependencies automatically");
-        _print_manual_install_instructions(distro);
-    } except Exception as e {
-        console.warning(f"  Error installing dependencies: {e}");
-        _print_manual_install_instructions(distro);
-    }
+    _print_manual_install_instructions(distro);
 }
 
 """Print manual installation instructions."""
@@ -1577,12 +1350,13 @@ def _print_manual_install_instructions(distro: str | None) {
             style="muted"
         );
     }
+    console.print("  Re-run `jac setup desktop` after installation.", style="muted");
 }
 
 """Check macOS dependencies."""
 def _check_macos_dependencies {
     # macOS dependencies are typically handled by Xcode Command Line Tools
-    # which is checked in _check_and_install_build_tools
+    # which is checked in _check_build_tools
     console.print(
         "  ✔ macOS dependencies (handled by Xcode Command Line Tools)", style="success"
     );

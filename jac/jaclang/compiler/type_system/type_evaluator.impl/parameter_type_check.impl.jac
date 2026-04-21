@@ -43,6 +43,13 @@ a diagnostic and sets argumentErrors to true.
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
+    # `super()` in a method behaves like bare `super` — a proxy for the
+    # parent class. Attribute access (`super().method(...)`) dispatches
+    # through the parent's MRO; there is no __init__/__call__ to validate.
+    if self._is_expr_super(expr.target) {
+        return caller_type;
+    }
+
     # Special-form handling for enum.auto() -> int
     if isinstance(caller_type, types.ClassType)
     and caller_type.is_builtin("auto")
