@@ -119,9 +119,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                         'metadata': {'name': mongodb_volume_name},
                         'spec': {
                             'accessModes': ['ReadWriteOnce'],
-                            'resources': {
-                                'requests': {'storage': mongodb_storage_size}
-                            }
+                            'resources': {'requests': {'storage': mongodb_storage_size}}
                         }
                     }
                 ]
