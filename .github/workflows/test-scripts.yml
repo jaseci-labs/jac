@@ -1,0 +1,36 @@
+name: Test Release Scripts
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/**'
+  workflow_dispatch:
+
+jobs:
+  test-release-pipeline:
+    name: Release Pipeline E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -e jac
+          pip install tomlkit
+
+      - name: Run release pipeline tests
+        run: jac run scripts/tests/test_release_pipeline.jac
