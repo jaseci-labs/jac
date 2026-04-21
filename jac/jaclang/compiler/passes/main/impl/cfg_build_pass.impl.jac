@@ -66,12 +66,12 @@ impl CoalesceBBPass.printgraph_cfg -> str {
                     if tail.body and out_head is tail.body[0] {
                         label = ' [label="T"]';
                     } elif tail.else_body {
-                        if isinstance(tail.else_body, uni.ElseIf)
-                        and out_head is tail.else_body {
+                        eb = tail.else_body;
+                        if isinstance(eb, uni.ElseIf) and out_head is eb {
                             label = ' [label="F"]';
-                        } elif isinstance(tail.else_body, uni.ElseStmt)
-                        and tail.else_body.body
-                        and out_head is tail.else_body.body[0] {
+                        } elif isinstance(eb, uni.ElseStmt)
+                        and eb.body
+                        and out_head is eb.body[0] {
                             label = ' [label="F"]';
                         }
                     }
@@ -192,7 +192,7 @@ impl CoalesceBBPass.enter_node(nd: uni.UniNode) -> None {
             is_cfg_node = True;
         }
     }
-    if (is_cfg_node) {
+    if is_cfg_node and isinstance(nd, uni.UniCFGNode) {
         for bbs in self.basic_blocks.values() {
             if (nd in bbs['bb_stmts']) {
                 return;
@@ -289,7 +289,7 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
         if self._is_terminal(prev) {
             continue;
         }
-        has_else = prev?.else_body and prev.else_body is not None;
+        has_else = isinstance(prev, uni.AstElseBodyNode) and prev.else_body is not None;
         # Did the exit handler already wire a short-circuit chain? Peel
         # parentheses so `(a and b)` matches `a and b`.
         has_bool_sc = False;
@@ -303,14 +303,14 @@ impl CFGBuildPass._link_sequential(body: Sequence[uni.CodeBlockStmt]) -> None {
             # Exit paths covered -- no direct prev→next edge, unless an
             # empty true body or empty ElseStmt body creates a fall-through.
             self._connect_tails(prev, next);
-            if isinstance(prev, uni.IfStmt)
-            and (
-                not prev.body
-                or (
-                    isinstance(prev.else_body, uni.ElseStmt) and not prev.else_body.body
-                )
-            ) {
-                self.link_bbs(prev, next);
+            if isinstance(prev, uni.IfStmt) {
+                # Fall-through if true body is empty or else body is empty
+                empty_true = not prev.body;
+                eb = prev.else_body;
+                empty_else = isinstance(eb, uni.ElseStmt) and not eb.body;
+                if empty_true or empty_else {
+                    self.link_bbs(prev, next);
+                }
             }
         } elif has_bool_sc {
             # Short-circuit wiring handled false path via BoolExpr chain -- no direct prev→next.
@@ -333,9 +333,10 @@ impl CFGBuildPass._connect_tails(parent: uni.UniNode, target: uni.UniCFGNode) ->
             continue;
         }
         # Skip structural Assignment fields of IterForStmt (iter, count_by)
-        if isinstance(parent, uni.IterForStmt)
-        and (k is parent.iter or k is parent.count_by) {
-            continue;
+        if isinstance(parent, uni.IterForStmt) {
+            if k is parent.iter or k is parent.count_by {
+                continue;
+            }
         }
         if isinstance(k, (uni.Ability, uni.Archetype, uni.ImplDef, uni.Test)) {
             # Scope boundary -- don't recurse into nested scopes
@@ -567,9 +568,11 @@ impl CFGBuildPass._find_parent_of_types(
     cur = nd.parent;
     while cur {
         if isinstance(cur, types) {
-            return cur;
+            # isinstance with a runtime tuple can't be statically narrowed,
+            # but the types param guarantees UniCFGNode subtypes.
+            return cast(uni.UniCFGNode, cur);
         }
-        cur = cur.parent;
+        cur = getattr(cur, 'parent', None);
     }
     return None;
 }
@@ -578,9 +581,10 @@ impl CFGBuildPass._find_parent_of_types(
 impl CFGBuildPass._find_next_cfg_stmt_after(
     parent: uni.UniNode, child: uni.UniNode
 ) -> (uni.UniCFGNode | None) {
-    if parent?.body and isinstance(parent.body, Sequence) {
+    body = getattr(parent, 'body', None);
+    if body is not None and isinstance(body, Sequence) {
         found = False;
-        for stmt in parent.body {
+        for stmt in body {
             if found and isinstance(stmt, uni.CodeBlockStmt) {
                 return stmt;
             }
