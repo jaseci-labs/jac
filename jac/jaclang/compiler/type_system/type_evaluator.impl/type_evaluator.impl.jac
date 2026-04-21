@@ -653,6 +653,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         }
                         return value;
                     }
+                    # Optional chaining (?.): attribute not found is not an error —
+                    # the ?. operator returns None when the attribute doesn't exist.
+                    if expr.is_null_ok {
+                        none_type = self.prefetch.none_type_class;
+                        if none_type is not None {
+                            expr.right.type = self._convert_to_instance(none_type);
+                            return expr.right.type;
+                        }
+                        return types.UnknownType();
+                    }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args
                     # (which cause false positives on generic types like list[T].append).
@@ -813,7 +823,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 prop_return_type, base_type
                             );
                             member.symbol.add_use(expr.right);
-                            expr.right.type = prop_return_type;
+                            # Apply CFG-based narrowing for properties too (e.g., if x.prop { x.prop })
+                            cfg_narrowed = self.get_narrowed_type_for_expr(
+                                expr, prop_return_type, expr
+                            );
+                            expr.right.type = cfg_narrowed or prop_return_type;
                             return expr.right.type;
                         }
                         # NOTE: If this atom trailer is called `<atom_trailer>()` we can resolve
@@ -858,6 +872,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                         expr.right.type = getattr_return;
                         expr.right.is_getattr_resolved = True;
                         return getattr_return;
+                    }
+                    # Optional chaining (?.): attribute not found is not an error —
+                    # the ?. operator returns None when the attribute doesn't exist.
+                    if expr.is_null_ok {
+                        none_type = self.prefetch.none_type_class;
+                        if none_type is not None {
+                            expr.right.type = self._convert_to_instance(none_type);
+                            return expr.right.type;
+                        }
+                        return types.UnknownType();
                     }
                     # Suppress diagnostic for any-like types (Any, object, Unknown,
                     # TypeVar) and for types with unresolved TypeVars in type_args.
@@ -961,7 +985,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                             else types.UnionType(types=unique_types);
                         return expr.right.type;
                     }
-                    # Member not found on all union variants - report error
+                    # Member not found on all union variants.
+                    # Optional chaining (?.): not an error — return NoneType.
+                    if expr.is_null_ok {
+                        none_type = self.prefetch.none_type_class;
+                        if none_type is not None {
+                            expr.right.type = self._convert_to_instance(none_type);
+                            return expr.right.type;
+                        }
+                        return types.UnknownType();
+                    }
                     missing_types: list[str] = [];
                     for union_member in base_type.types {
                         if isinstance(union_member, types.ClassType)
@@ -980,6 +1013,23 @@ impl TypeEvaluator._get_type_of_expression_core(
                         type=str(base_type),
                         missing=", ".join(missing_types)
                     );
+                    # If the attribute was found on at least some union members,
+                    # return the resolved type instead of Unknown. This prevents
+                    # cascading Unknown errors on subsequent chained accesses
+                    # (e.g. x.attr.method() where x is a union and only some
+                    # members have 'attr'). The E1099 diagnostic above still
+                    # alerts the user about the partial coverage.
+                    if member_types {
+                        if decl_for_ide and decl_for_ide.sym {
+                            decl_for_ide.sym.add_use(expr.right);
+                        }
+                        unique_types = list({str(t): t for t in member_types}.values());
+                        all_same_type = len(unique_types) == 1;
+                        expr.right.type = unique_types[0]
+                            if all_same_type
+                            else types.UnionType(types=unique_types);
+                        return expr.right.type;
+                    }
                     return types.UnknownType();
                 } elif isinstance(base_type, types.TypeVarType) {
                     attr_name = expr.right.value;
@@ -1095,8 +1145,16 @@ impl TypeEvaluator._get_type_of_expression_core(
                     return types.UnknownType();
                 }
             } elif expr.is_null_ok {
-                # TODO:
-                # <expr>?.member
+                # Optional chaining on non-class types (e.g. Unknown, TypeVar).
+                # The ?. operator safely returns None when the base is None or
+                # the attribute doesn't exist. Handled inside the class branches
+                # above; this fallback covers remaining base_type categories.
+                none_type = self.prefetch.none_type_class;
+                if none_type is not None {
+                    expr.right.type = self._convert_to_instance(none_type);
+                    return expr.right.type;
+                }
+                return types.UnknownType();
             } elif isinstance(expr.right, uni.AssignCompr) {
                 # base_type should be a sequence of [T].
                 if not isinstance(base_type, types.ClassType) {
@@ -1416,10 +1474,78 @@ impl TypeEvaluator._get_type_of_expression_core(
             return operations.get_type_of_binary_operation(self, expr);
 
         case uni.CompareExpr():
-            # Evaluate operands for side effects / error detection
-            self.get_type_of_expression(expr.left);
+            # Evaluate all operand types and validate each comparison pair.
+            # For a chained comparison `a < b < c`, check (a, <, b) and (b, <, c).
+            operand_types: list[types.TypeBase] = [
+                self.get_type_of_expression(expr.left)
+            ];
             for right in expr.rights {
-                self.get_type_of_expression(right);
+                operand_types.append(self.get_type_of_expression(right));
+            }
+            for i in range(len(expr.ops)) {
+                op = expr.ops[i];
+                left_type = operand_types[i];
+                right_type = operand_types[i + 1];
+                # Skip validation for unknown/any types (not enough info to diagnose).
+                if (
+                    isinstance(left_type, types.UnknownType)
+                    or isinstance(right_type, types.UnknownType)
+                    or left_type.is_any_type()
+                    or right_type.is_any_type()
+                ) {
+                    continue;
+                }
+                # `is` / `is not` are identity checks — always valid.
+                if op.name in (Tok.KW_IS, Tok.KW_ISN) {
+                    continue;
+                }
+                # `in` / `not in` — check __contains__ on the RIGHT operand.
+                # Enum classes are iterable/containable via EnumMeta which is
+                # not in the Jac type system's MRO — skip the check for them
+                # (same pattern as exit_in_for_stmt for __iter__).
+                if op.name in (Tok.KW_IN, Tok.KW_NIN) {
+                    is_enum = (
+                        isinstance(right_type, types.ClassType)
+                        and right_type.is_enum_class()
+                    );
+                    if not is_enum {
+                        result = self.get_type_of_magic_method_call(
+                            right_type, "__contains__", [expr.rights[i]], None
+                        );
+                        if result is None {
+                            self.emit_diag(
+                                E1111, expr, op=op.value, type=str(right_type)
+                            );
+                        }
+                    }
+                    continue;
+                }
+                # Ordered / equality comparisons: <, <=, >, >=, ==, !=
+                # Reuse BINARY_OPERATOR_MAP which already maps these tokens
+                # to (forward_magic, reflected_magic) pairs.
+                if op.name in operations.BINARY_OPERATOR_MAP {
+                    (magic, rmagic) = operations.BINARY_OPERATOR_MAP[op.name];
+                    result = self.get_type_of_magic_method_call(
+                        left_type, magic, [expr.rights[i]], None
+                    );
+                    if result is None {
+                        result = self.get_type_of_magic_method_call(
+                            right_type,
+                            rmagic,
+                            [expr.left if i == 0 else expr.rights[i - 1]],
+                            None
+                        );
+                    }
+                    if result is None {
+                        self.emit_diag(
+                            E1110,
+                            expr,
+                            op=op.value,
+                            left=str(left_type),
+                            right=str(right_type)
+                        );
+                    }
+                }
             }
             # Comparisons always return bool
             if self.prefetch and self.prefetch.bool_class {
@@ -1447,11 +1573,56 @@ impl TypeEvaluator._get_type_of_expression_core(
         case uni.BoolExpr():
             # AND/OR return operand values, not bool: `x and y` → y if x truthy, else x.
             # Type is the union of all operand types (Python semantics).
+            is_and = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_AND;
             is_or = isinstance(expr.op, uni.Token) and expr.op.name == Tok.KW_OR;
             operand_types: list[TypeBase] = [];
             num_values = len(expr.values);
+            # Track narrowing overrides applied within this AND expression
+            # so they can be cleaned up afterward.
+            and_override_keys: list[int] = [];
             for i in range(num_values) {
                 op_type = self.get_type_of_expression(expr.values[i].expr);
+                # For AND expressions, extract isinstance narrowing info from
+                # each operand and apply it as a temporary type override for
+                # subsequent operands. This implements expression-level
+                # narrowing: in `isinstance(x, T) and x.attr`, the RHS sees
+                # x narrowed to T.
+                if is_and and i < num_values - 1 {
+                    import from jaclang.compiler.type_system.type_evaluator {
+                        NarrowingKind,
+                        NarrowingPredicate,
+                        NarrowingTarget
+                    }
+                    operand_expr = expr.values[i].expr;
+                    cond_info = self.classify_condition(operand_expr);
+                    if cond_info is not None
+                    and cond_info.kind == NarrowingKind.ISINSTANCE
+                    and cond_info.narrow_type is not None {
+                        # Find the symbol for the isinstance target
+                        narrowed_sym = self._find_symbol_by_key(
+                            cond_info.key, operand_expr
+                        );
+                        if narrowed_sym is not None {
+                            sym_type = self.get_type_of_symbol(narrowed_sym);
+                            predicate = NarrowingPredicate(
+                                key=cond_info.key, narrow_type=cond_info.narrow_type
+                            );
+                            target = NarrowingTarget(
+                                key=cond_info.key,
+                                declared_type=sym_type,
+                                symbol=narrowed_sym
+                            );
+                            narrowed = self._apply_narrowing(
+                                predicate, sym_type, True, target
+                            );
+                            if narrowed is not None {
+                                sym_id = id(narrowed_sym);
+                                self._and_narrowing_overrides[sym_id] = narrowed;
+                                and_override_keys.append(sym_id);
+                            }
+                        }
+                    }
+                }
                 # Pyright-style OR result narrowing: for `x or y`, the result
                 # type of non-last operands excludes always-falsy types (None)
                 # because if the operand were falsy, OR short-circuits to the
@@ -1465,6 +1636,10 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                 }
                 self._collect_unique_types(op_type, operand_types);
+            }
+            # Clean up any AND narrowing overrides we applied
+            for key in and_override_keys {
+                self._and_narrowing_overrides.pop(key, None);
             }
             if len(operand_types) == 1 {
                 return operand_types[0];
@@ -1626,7 +1801,32 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return self._get_type_of_super(expr);
             }
 
-            if scope := expr.find_parent_of_type(uni.UniScopeNode) {
+            # Handle bare `root` — the deprecated form (not in a FuncCall).
+            # Codegen rewrites bare root to root(), so the type checker must
+            # resolve it as Root instance to avoid false E1096 errors on
+            # connections like `root ++> x`. Only applies when `root` would
+            # resolve from jac_builtins.pyi (not a user-defined local).
+            if isinstance(expr, uni.Name)
+            and expr.value == "root"
+            and not (
+                isinstance(expr.parent, uni.FuncCall) and expr.parent.target is expr
+            )
+            and self.prefetch
+            and self.prefetch.root_class {
+                scope_ = expr.find_parent_of_type(uni.UniScopeNode);
+                local_sym = type_utils.lookup_symtab(scope_, "root", None)
+                    if scope_
+                    else None;
+                if local_sym is None
+                or (
+                    local_sym.decl is not None
+                    and local_sym.decl.loc.mod_path.endswith("jac_builtins.pyi")
+                ) {
+                    return self._convert_to_instance(self.prefetch.root_class);
+                }
+            }
+
+            if scope := self._resolution_scope_for(expr) {
                 if symbol := type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module
                 ) {
@@ -1802,6 +2002,15 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # Note: Scope narrowing is checked in get_type_of_expression before caching.
             if node_.type is not None {
                 return node_.type;
+            }
+            # ---- Handle enum member declarations ----
+            # A Name declared inside an enum body (either as the target of an
+            # Assignment — `RED = 1` — or as a bare name — `RED,`) represents
+            # a specific enum member, not the enum class. Return EnumMemberType
+            # so hover, assignment checks, and attribute access all see the
+            # correct per-member type.
+            if enum_member_type := self._get_enum_member_type_for_decl(node_) {
+                return enum_member_type;
             }
             # ---- Handle tuple/list unpacking targets ----
             # When a Name is inside a TupleVal/ListVal that is the target
@@ -2067,6 +2276,52 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
     # TODO: Implement for functions, parameters, explicit type
     # annotations in assignment etc.
     return types.UnknownType();
+}
+
+"""Return EnumMemberType if node_ is an enum member declaration Name.
+
+Uses the parser-set `Assignment.is_enum_stmt` flag as the structural
+discriminator — it is set for both inline (`enum Color { RED = 1 }`) and
+impl-based (`enum Color; impl Color { RED = 1 }`) forms, so enum members
+are identified uniformly without AST shape probing. To resolve the owning
+Enum, the Assignment's parent is either the Enum itself (inline) or the
+ImplDef that implements it; DeclImplMatchPass sets ImplDef.decl_link to
+the declaring Enum before TypeCheckPass runs. The member's EnumMemberInfo
+is built eagerly by get_type_of_enum and wrapped in EnumMemberType here.
+Returns None when node_ is not an enum member declaration Name.
+"""
+impl TypeEvaluator._get_enum_member_type_for_decl(
+    node_: uni.Name
+) -> (types.EnumMemberType | None) {
+    assignment = node_.parent;
+    if not isinstance(assignment, uni.Assignment) or not assignment.is_enum_stmt {
+        return None;
+    }
+    # Guard against non-target positions (the Assignment holds only the
+    # member Name(s) in `target`, so this is typically redundant — but
+    # guards against future AST shapes that reuse is_enum_stmt).
+    if node_ not in assignment.target {
+        return None;
+    }
+    container = assignment.parent;
+    enum_node: uni.Enum | None = None;
+    if isinstance(container, uni.Enum) {
+        enum_node = container;
+    } elif isinstance(container, uni.ImplDef)
+    and isinstance(container.decl_link, uni.Enum) {
+        enum_node = container.decl_link;
+    }
+    if enum_node is None {
+        return None;
+    }
+    enum_type = self.get_type_of_enum(enum_node);
+    member_info = enum_type.shared.enum_members.get(node_.sym_name)
+        if enum_type.shared.enum_members
+        else None;
+    if member_info is None {
+        return None;
+    }
+    return types.EnumMemberType(enum_class=enum_type, member_info=member_info);
 }
 
 """
@@ -2820,6 +3075,16 @@ impl TypeEvaluator.get_type_of_expression(
         }
     }
     result = self._get_type_of_expression_core(node_, expected_type);
+    if isinstance(result, types.UnknownType) {
+        # Suppress W1051 inside stub modules (typeshed .pyi files). Stubs
+        # may contain forward references and cross-stub types that can't
+        # be fully resolved in Jac; surfacing them produces noise for
+        # users who only care about diagnostics on their own source.
+        mod = node_.find_parent_of_type(uni.Module);
+        if mod is None or not mod.is_raised_from_py {
+            self.emit_diag(W1051, node_);
+        }
+    }
     node_.type = result;
     return result;
 }
@@ -3080,6 +3345,12 @@ impl TypeEvaluator.get_narrowed_type(
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
     sym_id = id(symbol);
+    # Check for temporary AND-condition narrowing overrides first.
+    # These are set during BoolExpr(and) evaluation when an isinstance check
+    # on the LHS should narrow the type for RHS operands.
+    if sym_id in self._and_narrowing_overrides {
+        return self._and_narrowing_overrides[sym_id];
+    }
     if sym_id in self._flow_pending_symbols {
         return None;
     }
