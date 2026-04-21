@@ -823,7 +823,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 prop_return_type, base_type
                             );
                             member.symbol.add_use(expr.right);
-                            expr.right.type = prop_return_type;
+                            # Apply CFG-based narrowing for properties too (e.g., if x.prop { x.prop })
+                            cfg_narrowed = self.get_narrowed_type_for_expr(
+                                expr, prop_return_type, expr
+                            );
+                            expr.right.type = cfg_narrowed or prop_return_type;
                             return expr.right.type;
                         }
                         # NOTE: If this atom trailer is called `<atom_trailer>()` we can resolve
@@ -1822,7 +1826,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                 }
             }
 
-            if scope := expr.find_parent_of_type(uni.UniScopeNode) {
+            if scope := self._resolution_scope_for(expr) {
                 if symbol := type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module
                 ) {
