@@ -1564,6 +1564,76 @@ test "Memory async mirrors (aget/aput/adelete/ahas/acommit) work" {
     }
 }
 
+test "CallState.reports is thread-safe (sync walker worker threads put safely)" {
+    # Sync walkers run inside asyncio.to_thread; their `report` statements
+    # call log_report from a worker thread, which calls put_nowait on
+    # CallState.reports. asyncio.Queue.put_nowait is not safe to call from
+    # a non-event-loop thread (its internal Future wakeup path relies on
+    # loop-affine state). The production flow "works" only because the
+    # drain runs strictly after the walker joins, so no getter is ever
+    # waiting — but that is a latent invariant. Use a thread-safe queue
+    # so the type itself documents and enforces cross-thread put.
+    import asyncio;
+    import from jaclang.runtimelib.context { CallState }
+
+    call_state = CallState();
+
+    # Type guard — fails today (asyncio.Queue), passes after fix.
+    assert not isinstance(call_state.reports, asyncio.Queue) , (
+        "CallState.reports must not be an asyncio.Queue: put_nowait from "
+        "a worker thread is thread-unsafe. Use queue.Queue (or another "
+        "thread-safe primitive) so sync-walker log_report calls are correct "
+        "by construction, not by relying on drain-after-join ordering."
+    );
+
+    # Behavioral guard — the invariant we want preserved after the fix:
+    # many worker threads put concurrently, event loop drains afterward,
+    # no lost or duplicated reports.
+    total_threads = 50;
+    items_per_thread = 100;
+    expected_count = total_threads * items_per_thread;
+
+    received: list = [];
+
+    def worker(tid: int) {
+        for i in range(items_per_thread) {
+            call_state.reports.put_nowait((tid, i));
+        }
+    }
+
+    async def run_and_drain -> int {
+        tasks = [asyncio.to_thread(worker, tid) for tid in range(total_threads)];
+        await asyncio.gather(*tasks);
+        call_state.reports.put_nowait(call_state._sentinel);
+        while True {
+            try {
+                item = call_state.reports.get_nowait();
+            } except Exception {
+                break;
+            }
+            if item is call_state._sentinel {
+                break;
+            }
+            received.append(item);
+        }
+        return len(received);
+    }
+
+    count = asyncio.run(run_and_drain());
+    assert count == expected_count , (
+        f"Expected {expected_count} reports from {total_threads} concurrent "
+        f"worker threads, got {count}"
+    );
+    expected_set = {
+        (t, i) for t in range(total_threads) for i in range(items_per_thread)
+    };
+    missing = len(expected_set - set(received));
+    extra = len(set(received) - expected_set);
+    assert set(received) == expected_set , (
+        f"Report set mismatch. Missing: {missing}, extra: {extra}"
+    );
+}
+
 # =============================================================================
 # Follow-up work markers (xfail until implemented)
 # =============================================================================

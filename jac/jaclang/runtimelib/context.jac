@@ -1,8 +1,8 @@
 """Execution context for Jac Language."""
 
-import from asyncio { Queue }
 import from contextvars { ContextVar }
 import from dataclasses { MISSING }
+import from queue { Queue }
 import from typing { Any, cast }
 import from uuid { UUID }
 
@@ -12,7 +12,14 @@ import from jaclang.runtimelib.memory { Memory, TieredMemory }
 
 glob __all__ = ['ExecutionContext'];
 
-"""Call State for managing function, spawn calls."""
+"""Call State for managing function, spawn calls.
+
+`reports` is a thread-safe `queue.Queue` so sync walkers running inside
+`asyncio.to_thread` can call `put_nowait` from the worker thread safely.
+The collector drains synchronously after the walker joins (see
+`ExecutionManager.report_collector`), so the queue is never contended by
+a concurrent getter — we just need put-from-thread to be correct.
+"""
 obj CallState {
     has reports: Queue = Queue(),
         _sentinel: object = object();

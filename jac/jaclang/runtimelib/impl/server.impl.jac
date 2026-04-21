@@ -221,13 +221,26 @@ impl UserManager.close -> None {
     }
 }
 
-"""Collect reports from function, spawn execution asynchronously."""
+"""Collect reports from a completed function/spawn invocation.
+
+The walker (sync or async) has already joined by the time we get here —
+`_finalize_call_response` calls us after awaiting the spawn. So the
+`queue.Queue` is fully populated and no concurrent producer is active.
+Drain synchronously via `get_nowait`; this keeps the report path off
+the event loop thread-safe boundary and avoids the asyncio.Queue
+put-from-worker-thread hazard (asyncio.Queue's waiter wakeup is not
+thread-safe).
+"""
 impl ExecutionManager.report_collector(call_state: CallState) -> dict[str, JsonValue] {
+    import from queue { Empty }
     final_reports = [];
     while True {
-        report_item = await call_state.reports.get();
+        try {
+            report_item = call_state.reports.get_nowait();
+        } except Empty {
+            return final_reports;
+        }
         if report_item is call_state._sentinel {
-            call_state.reports.task_done();
             return final_reports;
         } elif isgenerator(report_item) or isinstance(report_item, AsyncGenerator) {
             return report_item;
