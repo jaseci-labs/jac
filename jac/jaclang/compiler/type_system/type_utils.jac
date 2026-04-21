@@ -118,6 +118,29 @@ def class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
 ) -> bool;
 
+# Generator / Iterator return-type helpers.
+"""Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
+def get_generator_type_args(
+    return_type: types.TypeBase
+) -> (list[types.TypeBase] | None);
+
+"""Yield type Y of a generator-like return type, or None.
+
+`is_async` selects the `Async*` family; otherwise the sync family
+(Generator/Iterator/Iterable/AwaitableGenerator).
+"""
+def get_generator_yield_type(
+    declared_return_type: types.TypeBase, is_async: bool
+) -> (types.TypeBase | None);
+
+"""R parameter of Generator[Y, S, R] (send/return), or None."""
+def get_declared_generator_return_type(
+    return_type: types.TypeBase
+) -> (types.TypeBase | None);
+
+"""True if `return_type` is any generator/iterator-family builtin."""
+def is_generator_family_type(return_type: types.TypeBase) -> bool;
+
 """
 Module source flags computed from file path.
 

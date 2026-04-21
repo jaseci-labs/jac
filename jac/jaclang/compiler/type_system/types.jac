@@ -253,7 +253,9 @@ Holds the private details of class type.
         member: str, r_overloaded: list | None = None
     ) -> (Symbol | None);
 
-    def is_builtin(class_name: (str | None) = None) -> bool;
+    # `class_name` may be a single name, a list of acceptable names, or
+    # omitted to check only the builtin flag.
+    def is_builtin(class_name: (str | list[str] | None) = None) -> bool;
     def is_data_class -> bool;
     def is_namedtuple -> bool;
     def is_enum_class -> bool;

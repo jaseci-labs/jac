@@ -396,15 +396,15 @@ def _has_pub_access(ast_item: Any) -> bool {
     if not isinstance(ast_item, uni.AstAccessNode) {
         return False;
     }
-    access = getattr(ast_item, "access", None);
+    access = ast_item?.access;
     if access is None {
         return False;
     }
-    tag = getattr(access, "tag", None);
+    tag = access?.tag;
     if tag is None {
         return False;
     }
-    return getattr(tag, "name", None) == Tok.KW_PUB;
+    return tag?.name == Tok.KW_PUB;
 }
 
 

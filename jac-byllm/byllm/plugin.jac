@@ -29,7 +29,7 @@ def fetch_mtir(func: Callable) -> Info | None {
     if module_name and module_name == "__main__" {
         # For __main__, get the file stem from sys.modules to match compile-time scope
         main_mod = sys.modules.get("__main__");
-        main_file = getattr(main_mod, "__file__", None) if main_mod else None;
+        main_file = main_mod?.__file__ if main_mod else None;
         if main_file {
             # Use the file stem to match compile-time _get_scope_str
             stem = Path(main_file).stem;
@@ -124,7 +124,7 @@ class JacRuntime {
     """Return a configured Model from jac.toml for the builtin llm."""
     @hookimpl
     static def default_llm -> LLMModel {
-        _cache = getattr(JacRuntime, '_cached_default_llm', None);
+        _cache = JacRuntime?._cached_default_llm;
         if (_cache is not None) {
             return _cache;
         }

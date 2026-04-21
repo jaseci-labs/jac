@@ -55,7 +55,7 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
-        fp = getattr(type(arch), '__jac_fingerprint__', None);
+        fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
     }
     return {
@@ -170,7 +170,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     # Fingerprint drift check (INFO-only; best-effort load proceeds below).
     if arch_module and arch_type and fingerprint {
         cls = Serializer._get_class(arch_module, arch_type);
-        current_fp = getattr(cls, '__jac_fingerprint__', None) if cls else None;
+        current_fp = cls?.__jac_fingerprint__ if cls else None;
         if current_fp and current_fp != fingerprint {
             logger.info(
                 f"MongoBackend: schema drift on {arch_module}.{arch_type} "
@@ -221,8 +221,18 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     return cast(Anchor, anchor);
 }
 
-"""Store anchor in MongoDB with fingerprint and archetype identity fields."""
-impl MongoBackend.put(anchor: Anchor) -> None {
+"""Stage anchor for persistence. MongoBackend.put is a no-op — all
+persistence flows through sync(), which routes NodeAnchors with a load
+snapshot through the merge-aware _put_node_atomic pipeline and
+everything else through _write_to_db. This matches SqliteMemory.put
+semantics: defer to sync() so cross-anchor consistency holds within a
+walker's transaction boundary (closes issue #5446)."""
+impl MongoBackend.put(anchor: Anchor) -> None { }
+
+"""Write anchor directly to MongoDB. Used internally by put() and
+sync() for newly-created anchors or non-NodeAnchor types where edge
+merging does not apply."""
+impl MongoBackend._write_to_db(anchor: Anchor) -> None {
     if self.client is None or not anchor.persistent {
         return;
     }
@@ -232,7 +242,7 @@ impl MongoBackend.put(anchor: Anchor) -> None {
         self.collection.update_one({'_id': str(_id)}, {'$set': doc}, upsert=True);
         anchor.hash = Serializer._compute_hash(anchor);
     } except Exception as e {
-        logger.error(f"MongoDB put failed: {e}");
+        logger.error(f"MongoDB _write_to_db failed: {e}");
     }
 }
 
@@ -249,8 +259,14 @@ impl MongoBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close MongoDB connection."""
+"""Flush pending writes and close MongoDB connection."""
 impl MongoBackend.close -> None {
+    # Persist any pending L1 changes before closing
+    try {
+        self.sync();
+    } except Exception as e {
+        logger.warning(f"MongoBackend.close sync failed: {e}");
+    }
     if self.client {
         try {
             self.client.close();
@@ -358,10 +374,76 @@ impl MongoBackend.sync -> None {
             continue;
         }
         try {
-            self.put(anchor);
+            # For NodeAnchors with a load snapshot, always route through
+            # the atomic pipeline so edge changes from sibling walkers
+            # are preserved even when only scalar fields changed here.
+            if isinstance(anchor, NodeAnchor) {
+                delta = anchor.edge_delta();
+                if delta is not None {
+                    added = [str(eid) for eid in delta[0]];
+                    removed = [str(eid) for eid in delta[1]];
+                    self._put_node_atomic(anchor, added, removed);
+                    continue;
+                }
+            }
+            # Non-NodeAnchors or newly-created NodeAnchors: direct write
+            self._write_to_db(anchor);
         } except Exception as e {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
+    }
+}
+
+"""Atomically update a NodeAnchor, merging edge changes with DB state."""
+impl MongoBackend._put_node_atomic(
+    anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+) -> None {
+    if self.client is None {
+        return;
+    }
+    _id = str(to_uuid(anchor.id));
+    try {
+        data: dict[str, object] = dict(Serializer.serialize(anchor, include_type=True));
+        # Separate edge list from the rest of the serialized data
+        data_no_edges = {
+            k: v
+            for (k, v) in data.items()
+            if k != 'edges'
+        };
+        # Single atomic operation: merge non-edge fields + apply edge delta
+        self.collection.update_one(
+            {'_id': _id},
+            [
+                {
+                    '$set': {
+                        'data': {
+                            '$mergeObjects': [
+                                '$data',
+                                data_no_edges,
+                                {
+                                    'edges': {
+                                        '$setUnion': [
+                                            {
+                                                '$setDifference': [
+                                                    {'$ifNull': ['$data.edges', []]},
+                                                    edges_removed
+                                                ]
+                                            },
+                                            edges_added
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        'type': 'NodeAnchor'
+                    }
+                }
+            ],
+            upsert=True
+        );
+        anchor.hash = Serializer._compute_hash(anchor);
+    } except Exception as e {
+        logger.error(f"MongoDB _put_node_atomic failed: {e}");
     }
 }
 

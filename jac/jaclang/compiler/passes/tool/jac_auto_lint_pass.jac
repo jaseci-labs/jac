@@ -10,6 +10,7 @@ This pass applies automatic linting corrections to Jac code, including:
 - Removing empty parentheses from function/method declarations (def foo() -> def foo)
 - Removing unnecessary backtick escaping from names that are not actual keywords
 - Converting hasattr(obj, "attr") to null-safe access
+- Converting getattr(obj, "attr", None) to null-safe access
 - Propagating null-safe access consistency
 - Simplifying ternary expressions (x if x else default -> x or default)
 - Removing `import from __future__ { annotations }` (not needed in Jac)
@@ -46,7 +47,8 @@ import from jaclang.jac0core.diagnostics {
     W3035,
     W3036,
     W3037,
-    W3038
+    W3038,
+    W3039
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
@@ -84,6 +86,11 @@ obj JacAutoLintPass(UniPass) {
     def enter_builtin_type(nd: uni.BuiltinType) -> None;
     def exit_func_call(nd: uni.FuncCall) -> None;
     def _convert_hasattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
+    def _convert_getattr_to_null_ok(nd: uni.FuncCall) -> (uni.AtomTrailer | None);
+    def _replace_child_in_parent(
+        parent: uni.UniNode, old: uni.UniNode, new: uni.Expr
+    ) -> None;
+
     def _is_matching_attr_access(
         trailer: uni.AtomTrailer, obj_expr: uni.Expr, attr_name: str
     ) -> bool;
