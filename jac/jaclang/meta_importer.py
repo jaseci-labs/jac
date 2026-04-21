@@ -369,6 +369,24 @@ class JacMetaImporter(importlib.abc.MetaPathFinder, importlib.abc.Loader):
                 return
             raise ImportError(f"No bytecode found for {file_path}")
 
+        # MTIR is written keyed by file stem but byllm looks up by func.__module__;
+        # re-key to the fullname so submodule imports resolve. __main__ is already
+        # resolved back to its stem at lookup time.
+        fullname = module.__name__
+        stem = os.path.splitext(os.path.basename(file_path))[0]
+        for suffix in (".impl", ".cl", ".sv"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        if fullname and stem and fullname != stem and fullname != "__main__":
+            prefix = stem + "."
+            renamed = {
+                fullname + "." + key[len(prefix) :]: program.mtir_map.pop(key)
+                for key in list(program.mtir_map)
+                if key.startswith(prefix)
+            }
+            program.mtir_map.update(renamed)
+
         # Inject native interop infrastructure if needed (sv↔na interop)
         native_engine, interop_py_funcs = compiler.get_native_interop_setup(
             file_path, program

@@ -523,7 +523,7 @@ impl ModuleIntrospector._load_manifest -> None {
     if not self._module {
         return;
     }
-    mod_path = getattr(self._module, '__file__', None);
+    mod_path = self._module?.__file__;
     if mod_path {
         mod = _lookup_module_in_hub(os.path.abspath(mod_path), Jac.program.mod.hub);
         if not mod {
@@ -620,7 +620,7 @@ impl ModuleIntrospector._extract_access_levels -> None {
     }
 
     # Get main module AST
-    mod_path = getattr(self._module, '__file__', None);
+    mod_path = self._module?.__file__;
     if not mod_path {
         return;
     }
@@ -717,7 +717,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
         return None;
     }
     # Get main module AST
-    mod_path = getattr(self._module, '__file__', None);
+    mod_path = self._module?.__file__;
     if not mod_path {
         return;
     }

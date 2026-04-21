@@ -1,0 +1,1 @@
+- **Fix: byllm Sem Strings Dropped for Subpackage Imports**: MTIR entries are now stored under the module's dotted import name, so byllm resolves `.jac` types imported from any subfolder depth. Previously only top-level imports matched the compile-time file-stem key.

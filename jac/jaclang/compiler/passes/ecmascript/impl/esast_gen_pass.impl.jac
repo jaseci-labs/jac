@@ -133,7 +133,7 @@ impl EsastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
         if is_pub {
             for assignment in nd.assignments {
                 for target in assignment.target {
-                    if (sym_name := getattr(target, 'sym_name', None)) {
+                    if (sym_name := target?.sym_name) {
                         self.client_manifest.globals.append(sym_name);
                         if (
                             assignment.value
@@ -1888,7 +1888,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
                     else es.Literal(value=0)
         )
     );
-    op_name_str = getattr(nd.op, 'name', None);
+    op_name_str = nd.op?.name;
     op_name = Tok(op_name_str) if (op_name_str in Tok.__members__) else None;
     if (op_name == Tok.KW_SPAWN) {
         spawn_parts = self._prepare_spawn_call(nd, left, right);

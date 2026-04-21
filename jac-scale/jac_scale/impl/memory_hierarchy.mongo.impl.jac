@@ -55,7 +55,7 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
-        fp = getattr(type(arch), '__jac_fingerprint__', None);
+        fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
     }
     return {
@@ -170,7 +170,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     # Fingerprint drift check (INFO-only; best-effort load proceeds below).
     if arch_module and arch_type and fingerprint {
         cls = Serializer._get_class(arch_module, arch_type);
-        current_fp = getattr(cls, '__jac_fingerprint__', None) if cls else None;
+        current_fp = cls?.__jac_fingerprint__ if cls else None;
         if current_fp and current_fp != fingerprint {
             logger.info(
                 f"MongoBackend: schema drift on {arch_module}.{arch_type} "

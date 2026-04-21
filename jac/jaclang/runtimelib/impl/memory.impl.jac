@@ -59,7 +59,7 @@ def _anchor_to_row(anchor: Anchor) -> tuple {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
-        fp = getattr(type(arch), '__jac_fingerprint__', None);
+        fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
     }
     return (
@@ -515,7 +515,10 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
             """,
             (str(id), )
         );
-        row = cursor.fetchone();
+        row = cast(
+            (tuple[str, (str | None), (str | None), (str | None), str, int] | None),
+            cursor.fetchone()
+        );
         if not row {
             return None;
         }
@@ -526,7 +529,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
         # deserialize exceptions below.
         if arch_module and arch_type and fingerprint {
             cls = Serializer._get_class(arch_module, arch_type);
-            current_fp = getattr(cls, '__jac_fingerprint__', None) if cls else None;
+            current_fp = cls?.__jac_fingerprint__ if cls else None;
             if current_fp and current_fp != fingerprint {
                 logger.info(
                     f"SqliteMemory: schema drift on {arch_module}.{arch_type} "
@@ -592,9 +595,11 @@ impl SqliteMemory.put(anchor: Anchor) -> None {
     if anchor.persistent {
         with self.__lock__ {
             self._ensure_connection();
+            assert self.__conn__ is not None;
+            conn = self.__conn__;
             try {
                 row = _anchor_to_row(anchor);
-                self.__conn__.execute(
+                conn.execute(
                     """
                     INSERT OR REPLACE INTO anchors
                         (id, type, arch_module, arch_type, fingerprint, data,
@@ -603,7 +608,7 @@ impl SqliteMemory.put(anchor: Anchor) -> None {
                     """,
                     (str(anchor.id), ) + row
                 );
-                self.__conn__.commit();
+                conn.commit();
                 anchor.hash = Serializer._compute_hash(anchor);
             } except Exception as e {
                 logger.warning(f"SqliteMemory.put immediate persist failed: {e}");
@@ -623,8 +628,9 @@ impl SqliteMemory.delete(id: UUID) -> None {
     # Also remove from database immediately if connected
     if self.__conn__ {
         with self.__lock__ {
-            self.__conn__.execute("DELETE FROM anchors WHERE id = ?", (str(id), ));
-            self.__conn__.commit();
+            conn = cast(sqlite3.Connection, self.__conn__);
+            conn.execute("DELETE FROM anchors WHERE id = ?", (str(id), ));
+            conn.commit();
         }
     }
 }
@@ -735,7 +741,8 @@ impl SqliteMemory.sync -> None {
     with self.__lock__ {
         # Lazily create connection now that we have data to persist
         self._ensure_connection();
-        conn = cast(sqlite3.Connection, self.__conn__);
+        assert self.__conn__ is not None;
+        conn = self.__conn__;
         # Handle garbage collected anchors (deletions)
         for anchor in self.__gc__ {
             conn.execute("DELETE FROM anchors WHERE id = ?", (str(anchor.id), ));
@@ -944,7 +951,7 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
     # resolution and drift-detection logging.
     re_data = Serializer.serialize(anchor, include_type=True);
     re_data_json = json.dumps(re_data);
-    live_arch = getattr(anchor, 'archetype', None);
+    live_arch = anchor?.archetype;
     live_module = getattr(type(live_arch), '__module__', arch_module)
         if live_arch
         else arch_module;
@@ -981,32 +988,41 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
 """Summary dict for `jac db inspect`."""
 impl SqliteMemory.inspect_summary -> dict {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
     fmt_row = conn.execute(
         "SELECT value FROM schema_meta WHERE key='db_format_version'"
     ).fetchone();
     fmt_version = fmt_row[0] if fmt_row else '?';
-    anchors_rows = list(
-        conn.execute(
-            """
+    anchors_rows = cast(
+        list[tuple],
+        list(
+            conn.execute(
+                """
         SELECT COALESCE(arch_type, '<none>'), COUNT(*)
         FROM anchors
         GROUP BY arch_type
         ORDER BY COUNT(*) DESC
         """
+            )
         )
     );
-    quarantine_rows = list(
-        conn.execute(
-            """
+    quarantine_rows = cast(
+        list[tuple],
+        list(
+            conn.execute(
+                """
         SELECT COALESCE(arch_type, '<none>'), COUNT(*)
         FROM anchors_quarantine
         GROUP BY arch_type
         ORDER BY COUNT(*) DESC
         """
+            )
         )
     );
-    (alias_count, ) = conn.execute("SELECT COUNT(*) FROM aliases").fetchone();
+    (alias_count, ) = cast(
+        tuple[int], conn.execute("SELECT COUNT(*) FROM aliases").fetchone()
+    );
     return {
         'format_version': str(fmt_version),
         'anchors_total': sum(r[1] for r in anchors_rows),
@@ -1022,10 +1038,13 @@ impl SqliteMemory.inspect_summary -> dict {
 """List recent quarantined rows."""
 impl SqliteMemory.list_quarantined(limit: int = 50) -> list {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
-    rows = list(
-        conn.execute(
-            """
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
+    rows = cast(
+        list[tuple],
+        list(
+            conn.execute(
+                """
         SELECT id, COALESCE(arch_module, '?') || '.' ||
                COALESCE(arch_type, '?'), COALESCE(fingerprint, ''),
                COALESCE(error, ''), COALESCE(quarantined_at, '')
@@ -1033,7 +1052,8 @@ impl SqliteMemory.list_quarantined(limit: int = 50) -> list {
         ORDER BY quarantined_at DESC
         LIMIT ?
         """,
-            (limit, )
+                (limit, )
+            )
         )
     );
     return [
@@ -1051,17 +1071,21 @@ impl SqliteMemory.list_quarantined(limit: int = 50) -> list {
 """Full detail of one quarantined row (by id or unique prefix)."""
 impl SqliteMemory.show_quarantined(id_prefix: str) -> (dict | None) {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
-    rows = list(
-        conn.execute(
-            """
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
+    rows = cast(
+        list[tuple],
+        list(
+            conn.execute(
+                """
         SELECT id, type, arch_module, arch_type, fingerprint, data,
                error, quarantined_at, from_format_version
         FROM anchors_quarantine
         WHERE id = ? OR id LIKE ?
         LIMIT 2
         """,
-            (id_prefix, id_prefix + '%')
+                (id_prefix, id_prefix + '%')
+            )
         )
     );
     if not rows {
@@ -1092,19 +1116,23 @@ impl SqliteMemory.show_quarantined(id_prefix: str) -> (dict | None) {
 """Recover a single quarantined row (or unique prefix)."""
 impl SqliteMemory.recover_one(id_prefix: str) -> tuple {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
     # Pull in DB-resident aliases so CLI-added rescues apply.
     _load_db_aliases(conn);
-    rows = list(
-        conn.execute(
-            """
+    rows = cast(
+        list[tuple],
+        list(
+            conn.execute(
+                """
         SELECT id, type, arch_module, arch_type, fingerprint, data,
                error, quarantined_at, from_format_version
         FROM anchors_quarantine
         WHERE id = ? OR id LIKE ?
         LIMIT 2
         """,
-            (id_prefix, id_prefix + '%')
+                (id_prefix, id_prefix + '%')
+            )
         )
     );
     if not rows {
@@ -1122,15 +1150,19 @@ impl SqliteMemory.recover_one(id_prefix: str) -> tuple {
 """Recover every quarantined row; return (n_recovered, [(id, reason)...])."""
 impl SqliteMemory.recover_all -> tuple {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
     _load_db_aliases(conn);
-    rows = list(
-        conn.execute(
-            """
+    rows = cast(
+        list[tuple],
+        list(
+            conn.execute(
+                """
         SELECT id, type, arch_module, arch_type, fingerprint, data,
                error, quarantined_at, from_format_version
         FROM anchors_quarantine
         """
+            )
         )
     );
     recovered = 0;
@@ -1151,11 +1183,15 @@ impl SqliteMemory.recover_all -> tuple {
 """List DB-resident aliases."""
 impl SqliteMemory.list_aliases -> list {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
-    rows = list(
-        conn.execute(
-            "SELECT old_name, new_name, COALESCE(created_at, '') "
-            "FROM aliases ORDER BY created_at"
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
+    rows = cast(
+        list[tuple],
+        list(
+            conn.execute(
+                "SELECT old_name, new_name, COALESCE(created_at, '') "
+                "FROM aliases ORDER BY created_at"
+            )
         )
     );
     return [
@@ -1168,7 +1204,8 @@ impl SqliteMemory.list_aliases -> list {
 """Add (or replace) an alias; merge into the in-process Serializer map."""
 impl SqliteMemory.add_alias(old_name: str, new_name: str) -> None {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
     now = datetime.now(timezone.utc).isoformat();
     conn.execute(
         """
@@ -1185,7 +1222,8 @@ impl SqliteMemory.add_alias(old_name: str, new_name: str) -> None {
 """Remove an alias. Returns True if an entry was deleted."""
 impl SqliteMemory.remove_alias(old_name: str) -> bool {
     self._ensure_connection();
-    conn = cast(sqlite3.Connection, self.__conn__);
+    assert self.__conn__ is not None;
+    conn = self.__conn__;
     cursor = conn.execute("DELETE FROM aliases WHERE old_name = ?", (old_name, ));
     conn.commit();
     removed = cursor.rowcount > 0;
