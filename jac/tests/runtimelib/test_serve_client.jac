@@ -1572,38 +1572,63 @@ test "Memory async mirrors (aget/aput/adelete/ahas/acommit) work" {
 # green. When each follow-up lands, remove the `pytest.xfail(...)` line;
 # the aspirational body below it (described in comments for now) should
 # then pass on its own.
-test "follow-up: walker traversal batches target-node reads (DataLoader)" {
+test "follow-up: SqliteMemory.put defers writes until explicit commit (UoW)" {
     import pytest;
     pytest.xfail(
-        "Read batching (DataLoader) not yet implemented. "
-        "Walker traversal currently makes one `mem.get(id)` call per edge "
-        "target, so 9 concurrent walkers visiting 100 nodes each serialize "
-        "on the shared backend. Target: coalesce reads within a visit step "
-        "into a single batch call (uses existing TieredMemory.batch_get). "
-        "Closes amadolid's `long_blocking_io` regression from the #5639 "
-        "discussion."
+        "Unit-of-Work write batching not yet implemented. SqliteMemory.put() "
+        "fires conn.commit() per anchor today, so a walker creating N nodes "
+        "triggers O(N) disk syncs and the new row is immediately visible "
+        "from other connections. Target: mark anchors dirty in put(); flush "
+        "once in acommit() via executemany. Directly addresses amadolid's "
+        "`commit is the longest IO, jac does it one by one` observation and "
+        "is the actual fix for his `long_blocking_io` data (100 per-visit "
+        "writes x 9 concurrent walkers serialize on SQLite's writer lock). "
+        "NB: a read-batching / DataLoader test was considered but omitted: "
+        "Jac edges store direct NodeAnchor refs, not IDs, so traversal does "
+        "not round-trip to L3 per edge. Read batching is therefore not on "
+        "the critical path for #5639."
     );
-    # When implemented:
-    #   populate K persistent nodes under Root, drop L1 cache, spawn a
-    #   walker that visits `[-->]` once, assert
-    #   `ctx.mem.get_l3_fetch_count() <= 2` regardless of K (one fetch for
-    #   the root, one batched fetch for all children).
-}
+    # Body below runs once the xfail line is removed. Probes the UoW
+    # invariant via a second sqlite connection: under UoW, `put()` without
+    # an explicit acommit() should not be visible to another reader.
+    import sqlite3;
+    import asyncio;
+    import from uuid { uuid4 }
+    import from jaclang.jac0core.archetype { NodeAnchor, Root }
+    import from jaclang.runtimelib.memory { SqliteMemory }
+    import os;
 
-test "follow-up: walker writes collapse into one DB commit (UoW)" {
-    import pytest;
-    pytest.xfail(
-        "Unit-of-Work commit batching not yet implemented. "
-        "SqliteMemory.put() fires conn.commit() per anchor today, so a "
-        "walker creating N nodes triggers O(N) disk syncs. Target: "
-        "accumulate dirty anchors during the walker lifecycle and flush "
-        "once in acommit() via executemany. Addresses amadolid's "
-        "`commit is the longest IO, jac does it one by one` observation."
-    );
-    # When implemented:
-    #   monkeypatch sqlite3.Connection.commit to count calls, spawn a
-    #   walker that creates N nodes (N >= 10), assert commit call count
-    #   is 1 (or at least bounded and independent of N).
+    with TemporaryDirectory() as tmpdir {
+        db_path = os.path.join(tmpdir, "uow_probe.db");
+        sq = SqliteMemory(path=db_path);
+        anchor = NodeAnchor(id=uuid4(), archetype=Root(), edges=[]);
+        anchor.persistent = True;
+        sq.put(anchor);
+        # Second connection reads; under UoW, put() alone should be invisible.
+        probe = sqlite3.connect(db_path);
+        try {
+            (visible_before, ) = probe.execute(
+                "SELECT COUNT(*) FROM anchors WHERE id = ?", (str(anchor.id), )
+            ).fetchone();
+            assert visible_before == 0 , (
+                f"Expected put() alone to NOT commit (UoW defers writes); "
+                f"but the anchor is already visible from a second connection "
+                f"(count={visible_before}). SqliteMemory.put is still "
+                f"calling conn.commit() per call."
+            );
+            asyncio.run(sq.acommit(anchor));
+            (visible_after, ) = probe.execute(
+                "SELECT COUNT(*) FROM anchors WHERE id = ?", (str(anchor.id), )
+            ).fetchone();
+            assert visible_after == 1 , (
+                f"After acommit() the anchor must be visible; got count="
+                f"{visible_after}"
+            );
+        } finally {
+            probe.close();
+            sq.close();
+        }
+    }
 }
 
 test "follow-up: UserManager does not require a cursor lock (connection pool)" {
@@ -1617,9 +1642,16 @@ test "follow-up: UserManager does not require a cursor lock (connection pool)" {
         "Once pooled, UserManager._lock can be removed and this test can "
         "assert its absence."
     );
-    # When implemented:
-    #   mgr = UserManager(base_path=tmpdir);
-    #   assert not hasattr(mgr, '_lock'), "connection pooling should remove the need for the cursor lock";
+    import from jaclang.runtimelib.server { UserManager }
+
+    with TemporaryDirectory() as tmpdir {
+        mgr = UserManager(base_path=tmpdir);
+        assert not hasattr(mgr, '_lock') , (
+            "Connection pooling should remove the need for the cursor "
+            "lock. `_lock` exists today as a stopgap; when the pool lands "
+            "remove the field and delete this assertion."
+        );
+    }
 }
 
 test "follow-up: byllm exposes async invoke surface" {
@@ -1631,9 +1663,15 @@ test "follow-up: byllm exposes async invoke surface" {
         "Then async walkers calling LLMs will not burn a worker thread "
         "per long-running model call."
     );
-    # When implemented:
-    #   import inspect;
-    #   from byllm.llm import BaseLLM;
-    #   assert hasattr(BaseLLM, 'ainvoke'), "byllm must expose ainvoke";
-    #   assert inspect.iscoroutinefunction(BaseLLM.ainvoke), "ainvoke must be a coroutine function";
+    import inspect;
+
+    byllm_llm = pytest.importorskip("byllm.llm");
+    BaseLLM = byllm_llm.BaseLLM;
+    assert hasattr(BaseLLM, 'ainvoke') , (
+        "byllm must expose an async `ainvoke` alongside the sync `invoke`"
+    );
+    assert inspect.iscoroutinefunction(BaseLLM.ainvoke) , (
+        "BaseLLM.ainvoke must be a coroutine function "
+        "(use litellm.acompletion under the hood)"
+    );
 }
