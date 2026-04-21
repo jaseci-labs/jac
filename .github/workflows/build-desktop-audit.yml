@@ -127,6 +127,39 @@ jobs:
           rm -rf src-tauri
           jac setup desktop
 
+      # Force [desktop.plugins] to match the variant. Without this, the
+      # generated PyInstaller spec defaults all plugins to enabled and
+      # silently bundles whatever happens to be pip-installed -- which
+      # makes the variants harder to attribute. We also pin jac_coder
+      # and jac_mcp off so transitive installs can't pollute the size delta.
+      - name: Configure desktop plugins for variant
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        run: |
+          case "${{ matrix.variant }}" in
+            jaclang-only)    export JS=false BY=false ;;
+            jac-scale)       export JS=true  BY=false ;;
+            byllm)           export JS=false BY=true  ;;
+            jac-scale+byllm) export JS=true  BY=true  ;;
+          esac
+          python3 -c "
+          import os, re
+          from pathlib import Path
+          p = Path('jac.toml')
+          text = p.read_text() if p.exists() else ''
+          text = re.sub(r'\[desktop\.plugins\][^\[]*', '', text).rstrip()
+          block = (
+              '\n\n[desktop.plugins]\n'
+              f'jac_scale = {os.environ[\"JS\"]}\n'
+              f'byllm = {os.environ[\"BY\"]}\n'
+              'jac_coder = false\n'
+              'jac_mcp = false\n'
+              'jac_client = true\n'
+          )
+          p.write_text(text + block)
+          print(p.read_text())
+          "
+
       - name: Disable AppImage on Linux
         if: matrix.platform == 'linux'
         working-directory: ${{ env.EXAMPLE_DIR }}
