@@ -81,7 +81,22 @@ obj UserManager {
     def close -> None;
 }
 
-"""Manages execution contexts for user operations."""
+"""Manages execution contexts for user operations.
+
+Exposes two execution surfaces per call kind:
+
+- `*_sync` variants: for sync user code (functions / walkers without
+  `__jac_async__`). Run the user code via `asyncio.to_thread` so blocking
+  IO inside it (sleep, requests, byllm, SQLite writes) does not stall the
+  event loop. Surrounding context setup, report collection, and commit
+  stay on the loop.
+- `*_async` variants: for async user code. `await` the coroutine on the
+  loop directly — no thread hop.
+
+`spawn_walker` and `execute_function` remain as thin dispatchers that pick
+the right variant based on walker metadata / function kind. They are
+preserved for backwards compatibility with external callers (jac-scale).
+"""
 obj ExecutionManager {
     has base_path: str,
         user_manager: UserManager;
@@ -90,7 +105,23 @@ obj ExecutionManager {
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 
+    async def execute_function_sync(
+        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
+    async def execute_function_async(
+        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
     async def spawn_walker(
+        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
+    async def spawn_walker_sync(
+        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
+    async def spawn_walker_async(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 

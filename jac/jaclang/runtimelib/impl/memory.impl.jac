@@ -3,6 +3,7 @@
 Implementations for VolatileMemory, LocalCacheMemory, SqliteMemory, and TieredMemory.
 """
 
+import asyncio;
 import json;
 import logging;
 import os;
@@ -18,6 +19,32 @@ glob logger = logging.getLogger(__name__),
      # Bumped when the on-disk row layout changes in a way that requires
      # schema migration. Kept in the `schema_meta` table.
      SQLITE_DB_FORMAT_VERSION: int = 1;
+
+# =============================================================================
+# Memory — default async mirrors
+# =============================================================================
+# Every backend inherits these. Default behavior: offload the blocking sync
+# op to the default thread pool so the calling event loop stays responsive.
+# Backends with a native async driver should override to bypass the thread.
+impl Memory.aget(id: UUID) -> (Anchor | None) {
+    return await asyncio.to_thread(self.get, id);
+}
+
+impl Memory.aput(anchor: Anchor) -> None {
+    await asyncio.to_thread(self.put, anchor);
+}
+
+impl Memory.adelete(id: UUID) -> None {
+    await asyncio.to_thread(self.delete, id);
+}
+
+impl Memory.ahas(id: UUID) -> bool {
+    return await asyncio.to_thread(self.`has, id);
+}
+
+impl Memory.acommit(anchor: (Anchor | None) = None) -> None {
+    await asyncio.to_thread(self.commit, anchor);
+}
 
 """Serialize an anchor to the tuple of columns stored in the anchors table."""
 def _anchor_to_row(anchor: Anchor) -> tuple {

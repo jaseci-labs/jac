@@ -202,54 +202,75 @@ impl ExecutionManager.report_collector(call_state: CallState) -> dict[str, JsonV
     }
 }
 
-"""Execute a function in user's context."""
+"""Deserialize typed arguments from wire format in-place."""
+def _deserialize_wire_args(args: dict[(str, Any)]) {
+    for (k, v) in list(args.items()) {
+        if isinstance(v, dict) and '__type__' in v {
+            deserialized = Serializer.deserialize(v);
+            if deserialized is not None {
+                args[k] = deserialized;
+            }
+        } elif isinstance(v, list) {
+            args[k] = [
+                Serializer.deserialize(item)
+                    if isinstance(item, dict) and '__type__' in item
+                    else item for item in v
+            ];
+        }
+    }
+}
+
+"""Drain the reports queue and package the wire response for a completed call."""
+async def _finalize_call_response(
+    self: ExecutionManager, call_state: CallState, result: Any
+) -> dict[str, JsonValue] {
+    call_state.reports.put_nowait(call_state._sentinel);
+    reports = await self.report_collector(call_state);
+    Jac.commit();
+    if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
+        return reports;
+    } else {
+        return {
+            'result': Serializer.serialize(result, api_mode=True),
+            'reports': Serializer.serialize(reports, api_mode=True)
+        };
+    }
+}
+
+"""Dispatcher: pick sync/async variant based on function kind.
+
+Kept for backwards compatibility with external callers (jac-scale, etc).
+Internal callers should prefer `execute_function_sync` / `execute_function_async`.
+"""
 impl ExecutionManager.execute_function(
+    func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    if asyncio.iscoroutinefunction(func) {
+        return await self.execute_function_async(func, args, username);
+    }
+    return await self.execute_function_sync(func, args, username);
+}
+
+"""Execute a sync function in user's context.
+
+User code runs on a worker thread via `asyncio.to_thread`; the surrounding
+context setup, report collection, and commit stay on the event loop.
+"""
+impl ExecutionManager.execute_function_sync(
     func: Callable[(..., Any)], args: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
     root_id = self.user_manager.get_root_id(username);
     if not root_id {
         return {'error': 'User not found'};
     }
-    # Set user context for permission checks and ownership
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
-        # Deserialize typed arguments from wire format
-        for (k, v) in list(args.items()) {
-            if isinstance(v, dict) and '__type__' in v {
-                deserialized = Serializer.deserialize(v);
-                if deserialized is not None {
-                    args[k] = deserialized;
-                }
-            } elif isinstance(v, list) {
-                args[k] = [
-                    Serializer.deserialize(item)
-                        if isinstance(item, dict) and '__type__' in item
-                        else item for item in v
-                ];
-            }
-        }
-        # Check if the function is a coroutine function (async def).
-        # Sync functions may contain blocking IO, so offload to a thread
-        # to avoid stalling the event loop.
-        if asyncio.iscoroutinefunction(func) {
-            result = await func(**args);
-        } else {
-            result = await asyncio.to_thread(func, **args);
-        }
-        call_state.reports.put_nowait(call_state._sentinel);
-        reports = await self.report_collector(call_state);
-        Jac.commit();
-        if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
-            return reports;
-        } else {
-            return {
-                'result': Serializer.serialize(result, api_mode=True),
-                'reports': Serializer.serialize(reports, api_mode=True)
-            };
-        }
+        _deserialize_wire_args(args);
+        result = await asyncio.to_thread(func, **args);
+        return await _finalize_call_response(self, call_state, result);
     } except Exception as e {
         return {'error': str(e)};
     } finally {
@@ -257,8 +278,54 @@ impl ExecutionManager.execute_function(
     }
 }
 
-"""Spawn a walker in user's context."""
+"""Execute an async function in user's context.
+
+User coroutine is awaited directly on the event loop.
+"""
+impl ExecutionManager.execute_function_async(
+    func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    root_id = self.user_manager.get_root_id(username);
+    if not root_id {
+        return {'error': 'User not found'};
+    }
+    ctx = Jac.get_context();
+    ctx.set_user_root(root_id);
+    call_token = ctx.call_state.set(CallState());
+    call_state = ctx.call_state.get();
+    try {
+        _deserialize_wire_args(args);
+        result = await func(**args);
+        return await _finalize_call_response(self, call_state, result);
+    } except Exception as e {
+        return {'error': str(e)};
+    } finally {
+        ctx.call_state.reset(call_token);
+    }
+}
+
+"""Dispatcher: pick sync/async variant based on walker metadata.
+
+Kept for backwards compatibility with external callers (jac-scale, etc).
+Internal callers should prefer `spawn_walker_sync` / `spawn_walker_async`.
+"""
 impl ExecutionManager.spawn_walker(
+    walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    if getattr(walker_cls, '__jac_async__', False) {
+        return await self.spawn_walker_async(walker_cls, fields, username);
+    }
+    return await self.spawn_walker_sync(walker_cls, fields, username);
+}
+
+"""Spawn a sync walker in user's context.
+
+User walker entry/exit abilities run on a worker thread via
+`asyncio.to_thread`, so blocking IO inside them (sleep, network, LLM,
+heavy CPU) does not stall the event loop. Context setup, report
+collection, and commit stay on the loop.
+"""
+impl ExecutionManager.spawn_walker_sync(
     walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
 ) -> dict[str, JsonValue] {
     import from jaclang.jac0core.constructs { NodeArchetype }
@@ -267,22 +334,7 @@ impl ExecutionManager.spawn_walker(
         return {'error': 'User not found'};
     }
     target_node_id = fields.pop('_jac_spawn_node', None);
-    # Deserialize typed walker fields from wire format
-    for (k, v) in list(fields.items()) {
-        if isinstance(v, dict) and '__type__' in v {
-            deserialized = Serializer.deserialize(v);
-            if deserialized is not None {
-                fields[k] = deserialized;
-            }
-        } elif isinstance(v, list) {
-            fields[k] = [
-                Serializer.deserialize(item)
-                    if isinstance(item, dict) and '__type__' in item
-                    else item for item in v
-            ];
-        }
-    }
-    # Set user context for permission checks and ownership
+    _deserialize_wire_args(fields);
     ctx = Jac.get_context();
     ctx.set_user_root(root_id);
     call_token = ctx.call_state.set(CallState());
@@ -297,31 +349,51 @@ impl ExecutionManager.spawn_walker(
         } else {
             target_node = ctx.get_root();
         }
-        # Check if the walker is async (has __jac_async__ = True).
-        # Async walkers return a coroutine from Jac.spawn that we await directly.
-        # Sync walkers execute blocking IO (sleep, network calls, LLM completions, etc.)
-        # so we offload them to a thread to avoid stalling the event loop.
-        if getattr(walker_cls, '__jac_async__', False) {
-            spawn_result = Jac.spawn(`walker, target_node);
-            if iscoroutine(spawn_result) {
-                result = await spawn_result;
-            } else {
-                result = spawn_result;
+        result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
+        return await _finalize_call_response(self, call_state, result);
+    } except Exception as e {
+        import traceback;
+        return {'error': str(e), 'traceback': traceback.format_exc()};
+    } finally {
+        ctx.call_state.reset(call_token);
+    }
+}
+
+"""Spawn an async walker in user's context.
+
+Walker coroutine is awaited directly on the event loop.
+"""
+impl ExecutionManager.spawn_walker_async(
+    walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    import from jaclang.jac0core.constructs { NodeArchetype }
+    root_id = self.user_manager.get_root_id(username);
+    if not root_id {
+        return {'error': 'User not found'};
+    }
+    target_node_id = fields.pop('_jac_spawn_node', None);
+    _deserialize_wire_args(fields);
+    ctx = Jac.get_context();
+    ctx.set_user_root(root_id);
+    call_token = ctx.call_state.set(CallState());
+    call_state = ctx.call_state.get();
+    try {
+        `walker = walker_cls(**fields);
+        if target_node_id {
+            target_node = Jac.get_object(target_node_id);
+            if not isinstance(target_node, NodeArchetype) {
+                return {'error': f"Invalid target node: {target_node_id}"};
             }
         } else {
-            result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
+            target_node = ctx.get_root();
         }
-        call_state.reports.put_nowait(call_state._sentinel);
-        reports = await self.report_collector(call_state);
-        Jac.commit();  # Persist changes
-        if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
-            return reports;
+        spawn_result = Jac.spawn(`walker, target_node);
+        if iscoroutine(spawn_result) {
+            result = await spawn_result;
         } else {
-            return {
-                'result': Serializer.serialize(result, api_mode=True),
-                'reports': Serializer.serialize(reports, api_mode=True)
-            };
+            result = spawn_result;
         }
+        return await _finalize_call_response(self, call_state, result);
     } except Exception as e {
         import traceback;
         return {'error': str(e), 'traceback': traceback.format_exc()};
@@ -1190,7 +1262,12 @@ impl IntrospectionHandler.get_walker_info(name: str) -> TransportResponse {
     );
 }
 
-"""Call a function."""
+"""Call a function.
+
+Dispatches at the handler seam to the explicit sync/async path on
+ExecutionManager, so sync user code is offloaded to a thread and async
+user code stays on the loop.
+"""
 impl ExecutionHandler.call_function(
     name: str, args: dict[(str, Any)], username: str
 ) -> TransportResponse {
@@ -1203,15 +1280,26 @@ impl ExecutionHandler.call_function(
             meta=Meta(extra={'http_status': 404})
         );
     }
-    result = await self.execution_manager.execute_function(
-        functions[name], args, username
-    );
+    func = functions[name];
+    if asyncio.iscoroutinefunction(func) {
+        result = await self.execution_manager.execute_function_async(
+            func, args, username
+        );
+    } else {
+        result = await self.execution_manager.execute_function_sync(
+            func, args, username
+        );
+    }
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 200})
     );
 }
 
-"""Spawn a walker."""
+"""Spawn a walker.
+
+Dispatches at the handler seam to the explicit sync/async path on
+ExecutionManager based on the walker's `__jac_async__` metadata.
+"""
 impl ExecutionHandler.spawn_walker(
     name: str, fields: dict[(str, Any)], username: str
 ) -> TransportResponse {
@@ -1224,7 +1312,16 @@ impl ExecutionHandler.spawn_walker(
             meta=Meta(extra={'http_status': 404})
         );
     }
-    result = await self.execution_manager.spawn_walker(walkers[name], fields, username);
+    walker_cls = walkers[name];
+    if getattr(walker_cls, '__jac_async__', False) {
+        result = await self.execution_manager.spawn_walker_async(
+            walker_cls, fields, username
+        );
+    } else {
+        result = await self.execution_manager.spawn_walker_sync(
+            walker_cls, fields, username
+        );
+    }
     return TransportResponse.success(
         data=result, meta=Meta(extra={'http_status': 200})
     );

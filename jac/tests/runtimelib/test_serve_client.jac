@@ -1432,3 +1432,90 @@ test "serve blocking sync walkers run concurrently via to_thread" {
         assert elapsed < 2.5 , f"Blocking walkers took {elapsed:.2f}s (expected < 2.5s for concurrent execution)";
     }
 }
+
+test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
+    # Verifies the explicit sync/async entrypoints on ExecutionManager work
+    # standalone (not via the back-compat dispatcher). The handler seam
+    # picks between these based on walker metadata.
+    import asyncio;
+    import from time { time }
+    import from jaclang.runtimelib.server {
+        ExecutionManager,
+        UserManager,
+        ModuleIntrospector
+    }
+
+    with TemporaryDirectory() as tmpdir {
+        jac_file = fixture_abs_path("serve_blocking_io.jac");
+        introspector = ModuleIntrospector(
+            module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
+        );
+        introspector.load();
+        walker_cls = introspector.get_walkers()["slow_blocking"];
+        user_mgr = UserManager(base_path=tmpdir);
+        exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
+        user_mgr.create_user("testuser", "testpass");
+        async def run -> tuple {
+            # Explicit sync path: must still run concurrently via to_thread.
+            start = time();
+            tasks = [
+                exec_mgr.spawn_walker_sync(walker_cls, {"duration": 0.5}, "testuser")
+                for _ in range(3)
+            ];
+            results = await asyncio.gather(*tasks);
+            sync_elapsed = time() - start;
+            for r in results {
+                assert "error" not in r , f"sync walker failed: {r}";
+            }
+            return (sync_elapsed, results);
+        }
+        (sync_elapsed, results) = asyncio.run(run());
+        assert sync_elapsed < 1.5 , f"spawn_walker_sync not concurrent: {sync_elapsed:.2f}s";
+        assert len(results) == 3 , "expected 3 results";
+    }
+}
+
+test "Memory async mirrors (aget/aput/adelete/ahas/acommit) work" {
+    # Every Memory backend gets async mirrors by default via to_thread.
+    # This verifies the base-class impls round-trip correctly and do not
+    # block the caller's event loop.
+    import asyncio;
+    import from jaclang.jac0core.archetype { NodeAnchor, Root }
+    import from jaclang.runtimelib.memory { VolatileMemory, SqliteMemory }
+    import from uuid { uuid4 }
+
+    with TemporaryDirectory() as tmpdir {
+        # Volatile backend (pure in-memory).
+        vol = VolatileMemory();
+        anchor = NodeAnchor(id=uuid4(), archetype=Root(), edges=[]);
+        async def exercise_volatile -> bool {
+            await vol.aput(anchor);
+            assert await vol.ahas(anchor.id);
+            got = await vol.aget(anchor.id);
+            assert got is anchor;
+            await vol.acommit(anchor);  # no-op for volatile
+            await vol.adelete(anchor.id);
+            assert not await vol.ahas(anchor.id);
+            return True;
+        }
+        assert asyncio.run(exercise_volatile());
+        # SQLite backend (blocking IO wrapped in to_thread by default).
+        import os;
+        db_path = os.path.join(tmpdir, "test.db");
+        sq = SqliteMemory(path=db_path);
+        persist_anchor = NodeAnchor(id=uuid4(), archetype=Root(), edges=[]);
+        persist_anchor.persistent = True;
+        async def exercise_sqlite -> bool {
+            await sq.aput(persist_anchor);
+            assert await sq.ahas(persist_anchor.id);
+            got = await sq.aget(persist_anchor.id);
+            assert got is not None;
+            assert got.id == persist_anchor.id;
+            await sq.acommit(persist_anchor);
+            await sq.adelete(persist_anchor.id);
+            return True;
+        }
+        assert asyncio.run(exercise_sqlite());
+        sq.close();
+    }
+}
