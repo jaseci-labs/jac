@@ -1563,3 +1563,77 @@ test "Memory async mirrors (aget/aput/adelete/ahas/acommit) work" {
         sq.close();
     }
 }
+
+# =============================================================================
+# Follow-up work markers (xfail until implemented)
+# =============================================================================
+# These tests document the remaining architectural work from #5639 that is
+# NOT shipped in this PR. They are marked with `pytest.xfail` so CI stays
+# green. When each follow-up lands, remove the `pytest.xfail(...)` line;
+# the aspirational body below it (described in comments for now) should
+# then pass on its own.
+test "follow-up: walker traversal batches target-node reads (DataLoader)" {
+    import pytest;
+    pytest.xfail(
+        "Read batching (DataLoader) not yet implemented. "
+        "Walker traversal currently makes one `mem.get(id)` call per edge "
+        "target, so 9 concurrent walkers visiting 100 nodes each serialize "
+        "on the shared backend. Target: coalesce reads within a visit step "
+        "into a single batch call (uses existing TieredMemory.batch_get). "
+        "Closes amadolid's `long_blocking_io` regression from the #5639 "
+        "discussion."
+    );
+    # When implemented:
+    #   populate K persistent nodes under Root, drop L1 cache, spawn a
+    #   walker that visits `[-->]` once, assert
+    #   `ctx.mem.get_l3_fetch_count() <= 2` regardless of K (one fetch for
+    #   the root, one batched fetch for all children).
+}
+
+test "follow-up: walker writes collapse into one DB commit (UoW)" {
+    import pytest;
+    pytest.xfail(
+        "Unit-of-Work commit batching not yet implemented. "
+        "SqliteMemory.put() fires conn.commit() per anchor today, so a "
+        "walker creating N nodes triggers O(N) disk syncs. Target: "
+        "accumulate dirty anchors during the walker lifecycle and flush "
+        "once in acommit() via executemany. Addresses amadolid's "
+        "`commit is the longest IO, jac does it one by one` observation."
+    );
+    # When implemented:
+    #   monkeypatch sqlite3.Connection.commit to count calls, spawn a
+    #   walker that creates N nodes (N >= 10), assert commit call count
+    #   is 1 (or at least bounded and independent of N).
+}
+
+test "follow-up: UserManager does not require a cursor lock (connection pool)" {
+    import pytest;
+    pytest.xfail(
+        "Per-request sqlite connection pool not yet implemented. A shared "
+        "sqlite3.Connection requires the RLock added in this PR to avoid "
+        "`InterfaceError: bad parameter or other API misuse` under "
+        "concurrent cursor creation from `to_thread` workers. Target: "
+        "check out a connection per request (or per-thread) from a pool. "
+        "Once pooled, UserManager._lock can be removed and this test can "
+        "assert its absence."
+    );
+    # When implemented:
+    #   mgr = UserManager(base_path=tmpdir);
+    #   assert not hasattr(mgr, '_lock'), "connection pooling should remove the need for the cursor lock";
+}
+
+test "follow-up: byllm exposes async invoke surface" {
+    import pytest;
+    pytest.xfail(
+        "byllm is sync-only today. BaseLLM.invoke wraps LiteLLM's sync "
+        "`completion` API. Target: add BaseLLM.ainvoke using "
+        "litellm.acompletion and expose streaming as AsyncIterator[str]. "
+        "Then async walkers calling LLMs will not burn a worker thread "
+        "per long-running model call."
+    );
+    # When implemented:
+    #   import inspect;
+    #   from byllm.llm import BaseLLM;
+    #   assert hasattr(BaseLLM, 'ainvoke'), "byllm must expose ainvoke";
+    #   assert inspect.iscoroutinefunction(BaseLLM.ainvoke), "ainvoke must be a coroutine function";
+}
