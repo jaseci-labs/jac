@@ -60,12 +60,8 @@ cl {
                         </label>
                     </div>
                     <ModalFooter>
-                        <Button variant="ghost" onClick={handleClose}>
-                            Cancel
-                        </Button>
-                        <Button type="submit">
-                            Save
-                        </Button>
+                        <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+                        <Button type="submit">Save</Button>
                     </ModalFooter>
                 </form>
             </Modal>;

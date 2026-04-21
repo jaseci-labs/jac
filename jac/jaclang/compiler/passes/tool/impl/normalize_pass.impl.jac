@@ -156,6 +156,14 @@ impl NormalizePass.enter_client_block(nd: uni.ClientBlock) -> None {
         } else {
             new_kid.append(EmptyToken());
         }
+    } elif nd.implicit {
+        # Section-header form: 'to cl:' followed by body at module scope.
+        new_kid.append(nd.gen_token(Tok.KW_TO));
+        new_kid.append(nd.gen_token(Tok.KW_CLIENT));
+        new_kid.append(nd.gen_token(Tok.COLON));
+        for stmt in nd.body {
+            new_kid.append(stmt);
+        }
     } else {
         new_kid.append(nd.gen_token(Tok.KW_CLIENT));
         new_kid.append(nd.gen_token(Tok.LBRACE));
@@ -183,6 +191,14 @@ impl NormalizePass.enter_server_block(nd: uni.ServerBlock) -> None {
         } else {
             new_kid.append(EmptyToken());
         }
+    } elif nd.implicit {
+        # Section-header form: 'to sv:' followed by body at module scope.
+        new_kid.append(nd.gen_token(Tok.KW_TO));
+        new_kid.append(nd.gen_token(Tok.KW_SERVER));
+        new_kid.append(nd.gen_token(Tok.COLON));
+        for stmt in nd.body {
+            new_kid.append(stmt);
+        }
     } else {
         new_kid.append(nd.gen_token(Tok.KW_SERVER));
         new_kid.append(nd.gen_token(Tok.LBRACE));
@@ -209,6 +225,14 @@ impl NormalizePass.enter_native_block(nd: uni.NativeBlock) -> None {
             new_kid.extend(nd.body);
         } else {
             new_kid.append(EmptyToken());
+        }
+    } elif nd.implicit {
+        # Section-header form: 'to na:' followed by body at module scope.
+        new_kid.append(nd.gen_token(Tok.KW_TO));
+        new_kid.append(nd.gen_token(Tok.KW_NATIVE));
+        new_kid.append(nd.gen_token(Tok.COLON));
+        for stmt in nd.body {
+            new_kid.append(stmt);
         }
     } else {
         new_kid.append(nd.gen_token(Tok.KW_NATIVE));
@@ -480,7 +504,8 @@ impl NormalizePass.enter_enum(nd: uni.Enum) -> None {
             new_kid.append(nd.gen_token(Tok.LBRACE));
             prev_stmt = None;
             for stmt in nd.body {
-                if isinstance(prev_stmt, uni.EnumBlockStmt) and prev_stmt.is_enum_stmt {
+                if isinstance(prev_stmt, uni.EnumBlockStmt)
+                and prev_stmt.is_enum_stmt {
                     new_kid.append(nd.gen_token(Tok.COMMA));
                 }
                 new_kid.append(stmt);
@@ -736,7 +761,11 @@ impl NormalizePass.enter_else_if(nd: uni.ElseIf) -> None {
 
 """Normalize ElseStmt kid list."""
 impl NormalizePass.enter_else_stmt(nd: uni.ElseStmt) -> None {
-    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.KW_ELSE), nd.gen_token(Tok.LBRACE), ];
+    new_kid: list[uni.UniNode] = [
+        nd.gen_token(Tok.KW_ELSE),
+        nd.gen_token(Tok.LBRACE),
+
+    ];
     for stmt in nd.body {
         new_kid.append(stmt);
     }
@@ -1081,6 +1110,11 @@ impl NormalizePass.enter_compare_expr(nd: uni.CompareExpr) -> None {
         new_kid.append(nd.rights[i]);
     }
     nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize CfgExpr kid list."""
+impl NormalizePass.enter_cfg_expr(nd: uni.CfgExpr) -> None {
+    nd.set_kids(nodes=[nd.expr]);
 }
 
 """Normalize BoolExpr kid list."""

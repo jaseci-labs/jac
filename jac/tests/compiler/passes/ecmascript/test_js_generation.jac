@@ -666,7 +666,12 @@ test "separated files" {
 
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code;
-    assert "__jacSpawn(\"create_todo\", \"\", {\"text\": input.strip()});" in js_code;
+    # `input` is destructured from useState (external React typings) so its
+    # static type is unknown — `.strip()` routes through the polymorphic
+    # runtime helper instead of leaking the Python method name.
+    assert (
+        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.strip(input)});" in js_code
+    );
 }
 
 test "separated defpub generates rpc stubs" {
@@ -876,11 +881,14 @@ test "compr list multiple filters" {
 test "compr list method call" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
-    # list_compr_method: [x.strip() for x in items] → items.map(x => x.strip())
-    # items is typed as bare `list` (no element type), so x is Unknown
-    # and strip() correctly stays untranspiled.
-    assert ".strip()" in js_code , (
-        "Method call in comprehension output should be preserved"
+    # list_compr_method: [x.strip() for x in items] → items.map(x => _jac.poly.strip(x))
+    # `items` is typed as bare `list` (no element type), so x is Unknown.
+    # Pre-#5508 the codegen leaked the Python `.strip()` verbatim into JS,
+    # which crashes at runtime. The polymorphic runtime helper dispatches
+    # to `String.prototype.trim` for actual strings.
+    assert "_jac.poly.strip(x)" in js_code , (
+        "Untyped element method calls in comprehensions should route "
+        "through _jac.poly.* runtime helpers"
     );
 }
 
@@ -891,6 +899,67 @@ test "str methods on local vars and chained calls" {
     assert "text.toUpperCase().trim()" in js_code , "chained str.upper().strip() should map to .toUpperCase().trim()";
     assert "text.trim().toUpperCase()" in js_code , "chained str.strip().upper() should map to .trim().toUpperCase()";
     assert "text.toUpperCase().trim().toLowerCase()" in js_code , "triple-chained str.upper().strip().lower() should map to .toUpperCase().trim().toLowerCase()";
+}
+
+test "issue 5508 case1 in operator on str method call" {
+    # Regression for jaseci-labs/jaseci#5508 case 1.
+    # `"a" in name.lower()` was emitting a raw JS `in` operator on a string
+    # because operator-side dispatch (_try_primitive_op) did not walk the MRO
+    # to recognize the LiteralString return type as `str`. The receiver of
+    # `.lower()` got translated to `.toLowerCase()`, but the `in` operator
+    # itself was left untranslated, crashing at runtime in the browser.
+    js_code = compile_fixture_to_js("issue_5508_str_method_dispatch.cl.jac", FIXTURES);
+    assert "name.toLowerCase().includes(\"a\")" in js_code , (
+        "`x in str_method()` should lower to .includes() on the method result"
+    );
+    assert "(\"a\" in name.toLowerCase())" not in js_code , (
+        "raw JS `in` operator on a string would crash at runtime"
+    );
+}
+
+test "issue 5508 case2 str methods on untyped receivers" {
+    # Regression for jaseci-labs/jaseci#5508 case 2 (also covers #5453).
+    # When the static type of the receiver is not provably `str` (props of
+    # type `dict`, results of `or` widening, comprehension over untyped
+    # list, etc.) the codegen used to emit Python method names verbatim
+    # (`.upper`, `.strip`, `.lower`) which crash at runtime in JS. Fall
+    # back to runtime-polymorphic helpers (`_jac.poly.*`) instead.
+    js_code = compile_fixture_to_js("issue_5508_str_method_dispatch.cl.jac", FIXTURES);
+    # Pluck out the user-compiled function bodies (skip the injected
+    # _jac runtime, which legitimately contains `s.upper()` etc. as the
+    # user-class fallback inside its polyfills).
+    user_chunks = [];
+    for fn_name in ["case2_props_upper", "case2_props_strip", "case2_props_lower"] {
+        idx = js_code.find("function " + fn_name);
+        assert idx >= 0 , (f"missing compiled function {fn_name}");
+        user_chunks.append(js_code[idx:idx + 400]);
+    }
+    user_code = "\n".join(user_chunks);
+    # Untyped string methods must NOT survive verbatim into the user code.
+    assert ".upper()" not in user_code , (
+        "Python `.upper()` should not appear verbatim in compiled user JS"
+    );
+    assert ".strip()" not in user_code , (
+        "Python `.strip()` should not appear verbatim in compiled user JS"
+    );
+    assert ".lower()" not in user_code , (
+        "Python `.lower()` (without a static str type) should not appear "
+        "verbatim in compiled user JS"
+    );
+    # Should route through the polymorphic runtime helpers.
+    assert "_jac.poly.upper(" in user_code , (
+        "Untyped .upper() should route through _jac.poly.upper()"
+    );
+    assert "_jac.poly.strip(" in user_code , (
+        "Untyped .strip() should route through _jac.poly.strip()"
+    );
+    assert "_jac.poly.lower(" in user_code , (
+        "Untyped .lower() should route through _jac.poly.lower()"
+    );
+    # The _jac runtime must be injected when poly helpers are used.
+    assert "const _jac = {" in js_code , (
+        "_jac runtime must be injected when _jac.poly.* helpers are emitted"
+    );
 }
 
 test "compr list ternary output" {

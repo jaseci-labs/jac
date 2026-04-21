@@ -21,7 +21,17 @@ their behavior in separate files.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.unitree { Symbol, UniScopeNode }
-import from jaclang.jac0core.diagnostics { E2009, W2010, E2011, E2012, W2013 }
+import from jaclang.jac0core.passes.sym_tab_build_pass { bind_assignment_targets }
+import from jaclang.jac0core.diagnostics {
+    E2009,
+    W2010,
+    E2011,
+    E2012,
+    W2013,
+    E2016,
+    E2017,
+    W2080
+}
 
 """Decls and Def matching pass."""
 class DeclImplMatchPass(Transform[uni.Module, uni.Module]) {
@@ -73,5 +83,12 @@ declarations in the main module.
     these symbols into the archetype. This method does that after connection."""
     def _populate_self_member_symbols(
         self: DeclImplMatchPass, impl_def: uni.ImplDef, archetype: uni.Archetype
+    ) -> None;
+
+    """Scan inline init/postinit bodies for annotated self-assignments on
+    obj/node/edge/walker archetypes. Emits W2080 and registers the symbol
+    so downstream type checking resolves correctly."""
+    def _populate_inline_init_symbols(
+        self: DeclImplMatchPass, archetype: uni.Archetype
     ) -> None;
 }

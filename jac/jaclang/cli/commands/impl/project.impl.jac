@@ -44,7 +44,9 @@ impl create(
     tmpl = _resolve_template(use, registry);
     if tmpl is None {
         console.error(f"Unknown template: {use}");
-        console.print("Use --list-templates to see available templates.", style="muted");
+        console.print(
+            "Use --list-templates to see available templates.", style="muted"
+        );
         return 1;
     }
     cwd = Path.cwd();
@@ -347,7 +349,9 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     import from jaclang.project.dep_registry { get_dependency_registry }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         return 1;
     }
     console.print(
@@ -378,8 +382,7 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     all_packages = pip_packages + git_packages;
     if all_packages {
         with console.status(
-            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]",
-            spinner="dots"
+            f"[cyan]Installing {len(all_packages)} package(s)...[/cyan]", spinner="dots"
         ) as status {
             install_success = installer.install_package(all_packages);
         }
@@ -534,7 +537,9 @@ impl remove(packages: list = [], dev: bool = False) -> int {
     import from jaclang.project.dependencies { DependencyInstaller }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         return 1;
     }
     if not packages {

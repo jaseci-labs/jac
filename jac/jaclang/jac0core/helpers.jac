@@ -26,7 +26,9 @@ def pascal_to_snake(pascal_string: str) -> str {
 
 """Convert string to snakecase including replacing(/ ,- )."""
 def heading_to_snake(heading: str) -> str {
-    return heading.strip().replace('-', '_').replace('/', '_').replace(' ', '_').lower();
+    return heading.strip().replace('-', '_').replace('/', '_').replace(
+        ' ', '_'
+    ).lower();
 }
 
 """Add line numbers to a string."""
@@ -106,9 +108,7 @@ def dump_traceback(e: Exception) -> str {
         if (
             (idx == 0)
             and (
-                (frame.lineno is not None)
-                and frame.line
-                and (frame.line.strip() != '')
+                (frame.lineno is not None) and frame.line and (frame.line.strip() != '')
             )
         ) {
             line_o = frame.line;

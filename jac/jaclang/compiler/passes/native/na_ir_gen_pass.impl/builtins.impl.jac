@@ -517,7 +517,9 @@ impl NaIRGenPass._codegen_str_split(
     str_len = self.builder.call(strlen_fn, [str_val], name="str.len");
     sep_len = self.builder.call(strlen_fn, [sep_val], name="sep.len");
     memcpy = self._get_or_declare_extern("memcpy", i8p, [i8p, i8p, i64]);
-    strncmp_fn = self._get_or_declare_extern("strncmp", ir.IntType(32), [i8p, i8p, i64]);
+    strncmp_fn = self._get_or_declare_extern(
+        "strncmp", ir.IntType(32), [i8p, i8p, i64]
+    );
     # Loop: scan through string, find separator matches
     # i = current position, token_start = start of current token
     i_alloca = self.builder.alloca(i64, name="split.i");

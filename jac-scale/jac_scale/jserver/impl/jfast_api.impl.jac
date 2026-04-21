@@ -70,10 +70,7 @@ class ConsoleLogHandler(logging.Handler) {
 If the specified port is in use, tries subsequent ports up to max_retries times.
 """
 impl JFastApiServer.run_server(
-    self: JFastApiServer,
-    host: str = '0.0.0.0',
-    port: int = 8000,
-    max_retries: int = 10
+    self: JFastApiServer, host: str = '0.0.0.0', port: int = 8000, max_retries: int = 10
 ) -> None {
     import from jaclang.cli.console { console }
     app = self.create_server();
@@ -210,6 +207,190 @@ impl JFastApiServer._get_python_type(
     return type_mapping.get(type_string.lower(), str);
 }
 
+"""Check whether a type is a user-defined Jac archetype (obj/node/edge)."""
+def _is_jac_archetype(cls: Any) -> bool {
+    import from jaclang.jac0core.archetype { Archetype }
+    try {
+        return (
+            isinstance(cls, type)
+            and issubclass(cls, Archetype)
+            and (not cls.__dict__.get('__jac_base__', False))
+        );
+    } except TypeError {
+        return False;
+    }
+}
+
+"""Recursively convert a validated Pydantic/dict payload into Jac obj instances."""
+def _pydantic_to_jac(data: Any, jac_cls: Any) -> Any {
+    import from typing { get_type_hints, get_origin, get_args }
+    import inspect;
+    import from pydantic { BaseModel }
+    if data is None {
+        return None;
+    }
+    if isinstance(data, BaseModel) {
+        data = data.model_dump();
+    }
+    origin = get_origin(jac_cls);
+    if origin in (`list, list) {
+        args = get_args(jac_cls);
+        inner = args[0] if args else None;
+        return [_pydantic_to_jac(item, inner) for item in data];
+    }
+    if origin in (`dict, dict) {
+        args = get_args(jac_cls);
+        v_type = args[1] if (len(args) > 1) else None;
+        return {k: _pydantic_to_jac(v, v_type) for (k, v) in data.items()};
+    }
+    if origin is not None {
+        # Union / Optional: pick the first non-None archetype arg if data is dict-like
+        for arg in get_args(jac_cls) {
+            if (arg is type(None)) {
+                continue;
+            }
+            if _is_jac_archetype(arg) and isinstance(data, dict) {
+                return _pydantic_to_jac(data, arg);
+            }
+        }
+        return data;
+    }
+    if _is_jac_archetype(jac_cls) and isinstance(data, dict) {
+        hints = get_type_hints(jac_cls.init);
+        sig = inspect.signature(jac_cls.init);
+        kwargs: dict[str, Any] = {};
+        for (key, value) in data.items() {
+            if (key not in sig.parameters) {
+                continue;
+            }
+            field_type = hints.get(key);
+            kwargs[key] = _pydantic_to_jac(value, field_type);
+        }
+        return jac_cls(**kwargs);
+    }
+    return data;
+}
+
+"""Resolve a parameter type to a Pydantic-compatible Python type.
+
+Uses the actual type object (type_obj) when available to handle custom Jac
+obj types, generics (list[Obj], dict[str, Obj]), and Optional/Union. Falls
+back to the primitive string mapping when type_obj is None.
+"""
+impl JFastApiServer._resolve_type(
+    self: JFastApiServer, type_string: str, type_obj: Any = None
+) -> Any {
+    import from typing { get_origin, get_args, Union }
+    import types;
+    # Fast path: primitive string mapping
+    primitive = self._get_python_type(type_string);
+    if (type_obj is None) {
+        return primitive;
+    }
+    # Direct Jac archetype -> dynamic Pydantic model
+    if _is_jac_archetype(type_obj) {
+        return self._build_pydantic_model(type_obj);
+    }
+    # Generic types: list[X], dict[K, V], Optional[X], Union[...]
+    origin = get_origin(type_obj);
+    args = get_args(type_obj);
+    if origin in (`list, list) {
+        inner = args[0] if args else Any;
+        resolved = self._resolve_type(getattr(inner, '__name__', str(inner)), inner);
+        return (`list[resolved]);
+    }
+    if origin in (`dict, dict) {
+        k = args[0] if args else str;
+        v = args[1] if (len(args) > 1) else Any;
+        resolved_k = self._resolve_type(getattr(k, '__name__', str(k)), k);
+        resolved_v = self._resolve_type(getattr(v, '__name__', str(v)), v);
+        return (`dict[resolved_k, resolved_v]);
+    }
+    if (origin is Union)
+    or (types?.UnionType and isinstance(type_obj, types.UnionType)) {
+        resolved_args = tuple(
+            self._resolve_type(getattr(a, '__name__', str(a)), a) for a in args
+        );
+        return Union[resolved_args];
+    }
+    # Plain Python type (int, str, BaseModel subclass, Enum, etc.)
+    if isinstance(type_obj, type) {
+        return type_obj;
+    }
+    return primitive;
+}
+
+"""Build (and cache) a Pydantic model mirroring a Jac archetype's `has` fields.
+
+Registers a `ForwardRef` in the cache before recursing so self-referential
+types (e.g. `TreeNode` with `children: list[TreeNode]`) terminate; the
+forward refs are resolved via `model_rebuild` once the real model exists.
+"""
+impl JFastApiServer._build_pydantic_model(
+    self: JFastApiServer, jac_cls: Any
+) -> type[BaseModel] {
+    import from typing { get_type_hints, ForwardRef }
+    model_name = jac_cls.__name__;
+    cached = self._models.get(model_name);
+    if cached is not None {
+        return cached;
+    }
+    # Register a ForwardRef before recursing. Self-references inside this
+    # archetype's fields will resolve to this ForwardRef and be resolved
+    # by `model_rebuild` once the real model is registered.
+    self._models[model_name] = ForwardRef(model_name);
+    sig = inspect.signature(jac_cls.init);
+    try {
+        hints = get_type_hints(jac_cls.init);
+    } except Exception {
+        hints = {};
+    }
+    import dataclasses;
+    dc_fields: dict[(str, Any)] = getattr(jac_cls, '__dataclass_fields__', {});
+    fields: dict[str, Any] = {};
+    for (name, param) in sig.parameters.items() {
+        if (name in ('self', 'args', 'kwargs')) {
+            continue;
+        }
+        field_type_obj = hints.get(name, str);
+        resolved = self._resolve_type(
+            getattr(field_type_obj, '__name__', str(field_type_obj)), field_type_obj
+        );
+        if (param.default == inspect.Parameter.empty) {
+            fields[name] = (resolved, Field(...));
+        } else {
+            dc_field = dc_fields.get(name);
+            if (
+                dc_field is not None
+                and dc_field.default_factory is not dataclasses.MISSING
+            ) {
+                fields[name] = (
+                    resolved,
+                    Field(default_factory=dc_field.default_factory)
+                );
+            } else {
+                fields[name] = (resolved, Field(default=param.default));
+            }
+        }
+    }
+    model = create_model(model_name, **fields);
+    self._models[model_name] = model;
+    # Resolve any ForwardRefs now that every referenced model is built.
+    # Only pass fully-built models to the namespace (ForwardRef values in
+    # the cache belong to models still in the middle of building).
+    namespace = {
+        k: v
+        for (k, v) in self._models.items()
+        if isinstance(v, type)
+    };
+    try {
+        model.model_rebuild(force=True, _types_namespace=namespace);
+    } except Exception {
+        ;
+    }
+    return model;
+}
+
 """Implementation of PATH parameter handler."""
 impl PathParameterHandler.generate_param_string(param: APIParameter) -> str {
     type_name = self.get_type_name(param);
@@ -288,7 +469,7 @@ impl JSONBodyParameterHandler.generate_body_model -> (type[BaseModel] | None) {
         if not param.name {
             continue;
         }
-        param_type = self.type_converter._get_python_type(param.data_type);
+        param_type = self.type_converter._resolve_type(param.data_type, param.type_obj);
         description = param.description or '';
         if param.required {
             model_fields[param.name] = (
@@ -320,14 +501,15 @@ impl JFastApiServer._create_endpoint_function(
     self: JFastApiServer,
     callback: Callable[(..., Any)],
     parameters: list[APIParameter],
-    dependencies: list[Any]
+    dependencies: list[Any],
+    request_model: (type[BaseModel] | None) = None
 ) -> Callable[..., Any] {
     sig = inspect.signature(callback);
     accepts_kwargs = any(
         (p.kind == inspect.Parameter.VAR_KEYWORD) for p in sig.parameters.values()
     );
     needs_request_no_params = 'request' in sig.parameters;
-    if not parameters {
+    if not parameters and not request_model {
         if accepts_kwargs {
             if inspect.iscoroutinefunction(callback) {
                 async def async_endpoint_wrapper(
@@ -356,7 +538,9 @@ impl JFastApiServer._create_endpoint_function(
                 }
                 return async_endpoint_wrapper;
             } else {
-                def sync_endpoint_wrapper(__jac_request__: Request) -> EndpointResponse {
+                def sync_endpoint_wrapper(
+                    __jac_request__: Request
+                ) -> EndpointResponse {
                     import from jaclang.runtimelib.transport { TransportResponse }
                     try {
                         query_params = dict(__jac_request__.query_params);
@@ -501,7 +685,13 @@ impl JFastApiServer._create_endpoint_function(
     };
     # Handle body parameters using appropriate handler
     body_model: (type[BaseModel] | None) = None;
-    if (len(body_params) >= 1) {
+    use_request_model = request_model is not None;
+    if use_request_model {
+        # Use the provided Pydantic model directly as the request body
+        body_model = request_model;
+        param_strs.append('body_data: RequestBody');
+        param_mapping['body_data'] = 'body_data';
+    } elif (len(body_params) >= 1) {
         if has_file_params {
             # Use Form handler when files are present (multipart/form-data)
             form_handler = FormBodyParameterHandler(type_converter=self);
@@ -544,14 +734,37 @@ impl JFastApiServer._create_endpoint_function(
         }
     }
     params = ', '.join(param_strs);
+    # Map body-param names to their Jac type objects so the wrapper can
+    # reconstruct archetype instances from validated Pydantic data.
+    body_type_map: dict[str, Any] = {};
+    for param in body_params {
+        if param.name
+        and (param.type_obj is not None)
+        and (param.type_obj is not Any) {
+            body_type_map[param.name] = param.type_obj;
+        }
+    }
     callback_args_lines: list[str] = [];
     if body_model {
-        for param in body_params {
-            param_name = param.name;
-            if param_name {
-                callback_args_lines.append(
-                    f"        callback_args['{param_name}'] = body_data.{param_name}"
-                );
+        if use_request_model {
+            # Pass the whole Pydantic model to the callback as body_data
+            callback_args_lines.append(
+                "        callback_args['body_data'] = body_data"
+            );
+        } else {
+            for param in body_params {
+                param_name = param.name;
+                if param_name {
+                    if (param_name in body_type_map) {
+                        callback_args_lines.append(
+                            f"        callback_args['{param_name}'] = _pydantic_to_jac(body_data.{param_name}, _body_types['{param_name}'])"
+                        );
+                    } else {
+                        callback_args_lines.append(
+                            f"        callback_args['{param_name}'] = body_data.{param_name}"
+                        );
+                    }
+                }
             }
         }
         for name in param_mapping {
@@ -639,6 +852,8 @@ def endpoint_wrapper({params}):
         'dict': `dict,
         'TransportResponse': TransportResponse,
         '_convert_transport_response_to_json_response': _convert_transport_response_to_json_response,
+        '_pydantic_to_jac': _pydantic_to_jac,
+        '_body_types': body_type_map,
         'isinstance': isinstance
     };
     if body_model {
@@ -672,7 +887,10 @@ impl JFastApiServer._create_fastapi_route(
     self: JFastApiServer, method: HTTPMethod, endpoint: JEndPoint
 ) -> None {
     endpoint_func = self._create_endpoint_function(
-        endpoint.callback, (endpoint.parameters or []), []
+        endpoint.callback,
+        (endpoint.parameters or []),
+        [],
+        request_model=endpoint.request_model
     );
     route_kwargs: dict[(str, Any)] = {
         'response_model': endpoint.response_model,
@@ -834,6 +1052,16 @@ impl JFastApiServer._get(
     return self;
 }
 
+impl JFastApiServer.set_user_manager(self: JFastApiServer, user_manager: Any) -> None {
+    if user_manager is None {
+        raise RuntimeError(
+            "set_user_manager() called with None — jwt_validation_middleware will be "
+            "non-functional and all authenticated requests will run as the guest user."
+        );
+    }
+    self._user_manager = user_manager;
+}
+
 impl JFastApiServer.init(
     self: JFastApiServer,
     endpoints: (list[JEndPoint] | None) = None,
@@ -844,13 +1072,51 @@ impl JFastApiServer.init(
     self._models: dict[(str, type[BaseModel])] = {};
     self.__server_created = False;
 
+    async def jwt_validation_middleware(request: Request, call_next: Callable) {
+        import from fastapi.responses { JSONResponse }
+        authorization = request.headers.get('Authorization');
+        token: (str | None) = None;
+        username: (str | None) = None;
+        user_root_id: (str | None) = None;
+        token_attempted: bool = False;
+
+        if authorization
+        and isinstance(authorization, str)
+        and authorization.startswith('Bearer ') {
+            token = authorization[7:];
+            token_attempted = True;
+
+            if self._user_manager {
+                username = self._user_manager.validate_jwt_token(token);
+
+                if username {
+                    user_root_id = self._user_manager.get_root_id(username);
+                }
+            }
+        }
+
+        if token_attempted and not username {
+            return JSONResponse(
+                status_code=401,
+                content={
+                    'ok': False,
+                    'error': {'code': 'UNAUTHORIZED', 'message': 'Unauthorized'}
+                }
+            );
+        }
+
+        setattr(request.state, 'user_root_id', user_root_id);
+        setattr(request.state, 'username', username);
+
+        response = await call_next(request);
+        return response;
+    }
+
     async def request_context_middleware(request: Request, call_next: Callable) {
         ctx = JacRuntimeInterface.create_j_context(user_root=None);
         JacRuntime.set_request_context(ctx);
 
-        user_id = getattr(request.state, 'user_root_id', None)
-            if request?.state
-            else None;
+        user_id = request.state?.user_root_id if request?.state else None;
 
         if user_id {
             try {
@@ -881,5 +1147,9 @@ impl JFastApiServer.init(
             }
         }
     }
+
+    # Starlette insert(0,...): last registered = index 0 = outermost = runs FIRST.
+    # Register context first so JWT ends up at index 0 and runs before context.
     self.app.middleware('http')(request_context_middleware);
+    self.app.middleware('http')(jwt_validation_middleware);
 }

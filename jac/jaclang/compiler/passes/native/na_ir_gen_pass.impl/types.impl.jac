@@ -7,8 +7,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
     # Tag-first fast path: use pre-computed backend_type_tag from UniTreeEnrichPass.
     # This avoids re-walking type annotation AST nodes for primitive and simple
     # collection types that TypeCheckPass already resolved.
-    if isinstance(type_expr, uni.Expr)
-    and getattr(type_expr, 'backend_type_tag', None) is not None {
+    if isinstance(type_expr, uni.Expr) and type_expr?.backend_type_tag is not None {
         tag = type_expr.backend_type_tag;
         if tag == "void" {
             return ir.VoidType();
@@ -91,7 +90,7 @@ impl NaIRGenPass._resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type {
         }
     }
     # Generic fallback: any node with .value matching a known type (handles Tokens)
-    if type_expr?.value and isinstance(getattr(type_expr, "value", None), str) {
+    if type_expr?.value and isinstance(type_expr?.value, str) {
         type_name = type_expr.value;
         if type_name in self.type_map {
             return self.type_map[type_name];
@@ -451,7 +450,7 @@ impl NaIRGenPass._resolve_clib_type(type_expr: (uni.UniNode | None)) -> ir.Type 
     type_name: (str | None) = None;
     if isinstance(type_expr, uni.Name) {
         type_name = type_expr.value;
-    } elif type_expr?.value and isinstance(getattr(type_expr, "value", None), str) {
+    } elif type_expr?.value and isinstance(type_expr?.value, str) {
         type_name = type_expr.value;
     }
     if type_name is not None and type_name in self.clib_struct_names {
@@ -840,7 +839,9 @@ impl NaIRGenPass._emit_binary_op(
                     lmul_helpers["get"], [lmul_list, lmul_ei], name="lmul.elem"
                 );
                 self.builder.call(lmul_helpers["append"], [lmul_new, lmul_elem]);
-                lmul_ne = self.builder.add(lmul_ei, ir.Constant(i64, 1), name="lmul.ne");
+                lmul_ne = self.builder.add(
+                    lmul_ei, ir.Constant(i64, 1), name="lmul.ne"
+                );
                 lmul_ei.add_incoming(lmul_ne, lmul_ibody_bb);
                 self.builder.branch(lmul_inner_bb);
                 self.builder.position_at_start(lmul_onext_bb);
@@ -887,12 +888,16 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.branch(loop1_bb);
                 # Append all from right
                 self.builder.position_at_start(mid_bb);
-                right_len = self.builder.call(helpers["len"], [right], name="lcat.rlen");
+                right_len = self.builder.call(
+                    helpers["len"], [right], name="lcat.rlen"
+                );
                 self.builder.branch(loop2_bb);
                 self.builder.position_at_start(loop2_bb);
                 i2 = self.builder.phi(i64, name="lcat.i2");
                 i2.add_incoming(ir.Constant(i64, 0), mid_bb);
-                end2 = self.builder.icmp_unsigned(">=", i2, right_len, name="lcat.end2");
+                end2 = self.builder.icmp_unsigned(
+                    ">=", i2, right_len, name="lcat.end2"
+                );
                 self.builder.cbranch(end2, done_bb, body2_bb);
                 self.builder.position_at_start(body2_bb);
                 e2 = self.builder.call(helpers["get"], [right, i2], name="lcat.e2");
@@ -1485,13 +1490,17 @@ impl NaIRGenPass._emit_comparison(
                     # For < and <=: ea < eb → True, ea > eb → False
                     # For > and >=: ea > eb → True, ea < eb → False
                     if op == Tok.LT or op == Tok.LTE {
-                        self.builder.cbranch(lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_lt, lcmp_lex_true, lcmp_lex_lbody
+                        );
                         self.builder.position_at_start(lcmp_lex_lbody);
                         self.builder.cbranch(
                             lcmp_lex_gt, lcmp_lex_false, lcmp_lex_next
                         );
                     } else {
-                        self.builder.cbranch(lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody);
+                        self.builder.cbranch(
+                            lcmp_lex_gt, lcmp_lex_true, lcmp_lex_lbody
+                        );
                         self.builder.position_at_start(lcmp_lex_lbody);
                         self.builder.cbranch(
                             lcmp_lex_lt, lcmp_lex_false, lcmp_lex_next
@@ -1916,7 +1925,7 @@ impl NaIRGenPass._infer_compr_elem_struct(compr: object) -> (str | None) {
         full = f"{check}.{method_name}";
         if full in self.method_ast_sigs {
             sig = self.method_ast_sigs[full];
-            ret_type = getattr(sig, 'return_type', None);
+            ret_type = sig?.return_type;
             if ret_type is not None {
                 (inner, _, _) = self._peel_list_type(ret_type);
                 if inner is not None {

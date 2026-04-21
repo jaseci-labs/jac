@@ -93,6 +93,18 @@ class JacByllmPluginConfig {
                         }
                     }
                 },
+                "prompt_caching": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Anthropic prompt caching configuration — caches static prompt prefix (system prompt, tools) across ReAct iterations for ~90% input token savings",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Enable Anthropic prompt caching (auto-detected for Claude models, no effect on other providers)"
+                        }
+                    }
+                },
                 "system_prompt": {
                     "type": "string",
                     "default": "",

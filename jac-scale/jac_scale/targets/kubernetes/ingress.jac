@@ -3,11 +3,10 @@ import time;
 import subprocess;
 import bcrypt;
 import from typing { Any }
-import from kubernetes { client }
+import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils { delete_if_exists }
-import from kubernetes.client.exceptions { ApiException }
 
 """Deploys and manages an app-scoped NGINX Ingress controller plus Ingress routing rules.
 
@@ -1177,10 +1176,7 @@ obj IngressDeployer {
             'ServiceAccount'
         );
         delete_if_exists(
-            core_v1.delete_namespaced_config_map,
-            configmap_name,
-            namespace,
-            'ConfigMap'
+            core_v1.delete_namespaced_config_map, configmap_name, namespace, 'ConfigMap'
         );
 
         # Delete cluster-scoped resources (no namespace parameter)

@@ -247,14 +247,17 @@ impl ClassType.is_enum_class -> bool {
 
         If class_name is provided, also check if the class name matches.
 """
-impl ClassType.is_builtin(class_name: (str | None) = None) -> bool {
+impl ClassType.is_builtin(class_name: (str | list[str] | None) = None) -> bool {
     if not self.shared.is_builtin_class {
         return False;
     }
-    if (class_name is not None) {
-        return (self.shared.class_name == class_name);
+    if class_name is None {
+        return True;
     }
-    return True;
+    if isinstance(class_name, str) {
+        return self.shared.class_name == class_name;
+    }
+    return self.shared.class_name in class_name;
 }
 
 """Lookup a member in the class type."""
@@ -271,51 +274,62 @@ impl ClassType.lookup_member_symbol(
             return all_syms[0];
         }
     }
-    # Fallback: check __init__ parameters and body for self-assignments.
+    # Fallback: check init/postinit parameters and body for self-assignments.
     # When a class/obj is imported from another module, its impl file's self.x
     # assignments may not have been processed by _populate_self_member_symbols.
-    # This fallback scans init params and body to resolve instance attributes.
+    # This fallback scans init/postinit to resolve instance attributes.
     for cls in self.shared.mro {
         arch = cls.shared.symbol_table;
         if not isinstance(arch, uni.Archetype) {
             continue;
         }
-        init_sym = arch.lookup('init', deep=False);
-        if not init_sym or not isinstance(init_sym.decl.name_of, uni.Ability) {
-            continue;
-        }
-        init_ability = init_sym.decl.name_of;
-        if not isinstance(init_ability.signature, uni.FuncSignature) {
-            continue;
-        }
-        # Check init parameters
-        for param in init_ability.signature.params or [] {
-            if param.name.value == member and param.name.value != 'self' {
-                arch.def_insert(param.name, access_spec=arch);
-                return arch.lookup(member, deep=False);
-            }
-        }
-        # Check self.x = ... assignments in init body (including impl body).
-        # Only for class archetypes (Python-style) — obj/node/edge/walker
-        # require explicit 'has' declarations for instance attributes.
-        if arch.arch_type.name != 'KW_CLASS' {
-            continue;
-        }
-        for trailer in init_ability.get_all_sub_nodes(uni.AtomTrailer) {
-            if not (trailer.parent and isinstance(trailer.parent, uni.Assignment)) {
+        is_class = arch.arch_type.name == 'KW_CLASS';
+        # Scan both init and postinit (__post_init__) methods.
+        for method_name in ('init', '__post_init__') {
+            method_sym = arch.lookup(method_name, deep=False);
+            if not method_sym or not isinstance(method_sym.decl.name_of, uni.Ability) {
                 continue;
             }
-            if trailer != trailer.parent.target[0] {
-                continue;
-            }
-            chain = trailer.as_attr_list;
+            method_ability = method_sym.decl.name_of;
+            # Check init parameters (postinit typically has none)
             if (
-                len(chain) >= 2
-                and chain[0].sym_name == 'self'
-                and chain[1].sym_name == member
+                isinstance(method_ability.signature, uni.FuncSignature)
+                and method_ability.signature.params
             ) {
-                arch.def_insert(chain[1], access_spec=arch);
-                return arch.lookup(member, deep=False);
+                for param in method_ability.signature.params {
+                    if param.name.value == member and param.name.value != 'self' {
+                        arch.def_insert(param.name, access_spec=arch);
+                        return arch.lookup(member, deep=False);
+                    }
+                }
+            }
+            # Check self.x = ... assignments in method body (including impl body).
+            # For class archetypes: accept all self-assignments.
+            # For obj/node/edge/walker: only accept annotated assignments
+            # (self.x: Type = value) — these should be 'has' fields but we
+            # resolve them here to avoid cascading errors.
+            for trailer in method_ability.get_all_sub_nodes(uni.AtomTrailer) {
+                if not (
+                    trailer.parent and isinstance(trailer.parent, uni.Assignment)
+                ) {
+                    continue;
+                }
+                if trailer != trailer.parent.target[0] {
+                    continue;
+                }
+                # For obj types, only resolve annotated assignments.
+                if not is_class and trailer.parent.type_tag is None {
+                    continue;
+                }
+                chain = trailer.as_attr_list;
+                if (
+                    len(chain) >= 2
+                    and chain[0].sym_name == 'self'
+                    and chain[1].sym_name == member
+                ) {
+                    arch.def_insert(chain[1], access_spec=arch);
+                    return arch.lookup(member, deep=False);
+                }
             }
         }
     }
@@ -334,7 +348,7 @@ impl ClassType.specialize_generics(type_args: list[TypeBase]) -> ClassType {
         alias_name=self.private.alias_name,  # Preserve alias_name
         literal_value=self.private.literal_value  # Preserve literal_value
     );
-    return ClassType(shared=self.shared, private=new_private, flags=self.flags);
+    return ClassType(_shared=self.shared, private=new_private, flags=self.flags);
 }
 
 impl ClassType.clone_as_class -> ClassType {
@@ -349,7 +363,7 @@ impl ClassType.clone_as_class -> ClassType {
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instance));
     new_flags = TypeFlags((new_flag | TypeFlags.Instantiable));
-    new_class = ClassType(shared=self.shared, private=private, flags=new_flags);
+    new_class = ClassType(_shared=self.shared, private=private, flags=new_flags);
     return new_class;
 }
 
@@ -363,7 +377,7 @@ impl ClassType.clone_as_instance -> ClassType {
         alias_name=self.private.alias_name,  # Preserve alias_name
         literal_value=self.private.literal_value  # Preserve literal_value
     );
-    new_instance = ClassType(shared=self.shared, private=private, flags=self.flags);
+    new_instance = ClassType(_shared=self.shared, private=private, flags=self.flags);
     new_flag = self.flags;
     new_flag = TypeFlags((new_flag & ~TypeFlags.Instantiable));
     new_flags = TypeFlags((new_flag | TypeFlags.Instance));
@@ -379,7 +393,7 @@ Callable, Union, Optional are all _SpecialForm in typing.pyi but have
 different alias_names to distinguish them.
 """
 impl ClassType.is_special_form(name: str | None = None) -> bool {
-    if self.private is None or self.private.alias_name is None {
+    if self.private.alias_name is None {
         return False;
     }
     if name is None {
@@ -395,46 +409,35 @@ Creates a new ClassType instance representing a Literal type like Literal["hello
 Similar to Pyright's creating a class type with literalValue set.
 """
 impl ClassType.clone_with_literal(value: (str | int | bool | None)) -> ClassType {
-    private = ClassType.ClassDetailsPrivate(
+    new_private = ClassType.ClassDetailsPrivate(
         type_args=self.private.type_args[:],
         alias_name=None,  # Clear alias_name for literal types
         literal_value=value
     );
-    return ClassType(shared=self.shared, private=private, flags=self.flags);
+    return ClassType(_shared=self.shared, private=new_private, flags=self.flags);
 }
 
 """Check if this class type is a literal type (has a literal value)."""
 impl ClassType.is_literal_type -> bool {
-    return self.private is not None and self.private.literal_value is not None;
+    return self.private.literal_value is not None;
 }
 
 """Get the literal value of this type, or None if not a literal type."""
 impl ClassType.get_literal_value -> (str | int | bool | None) {
-    if self.private is None {
-        return None;
-    }
     return self.private.literal_value;
 }
 
 """Check if this ClassType is a property class (@property or @cached_property)."""
 impl ClassType.is_property_class -> bool {
-    priv = self.private;
-    if priv is None {
-        return False;
-    }
-    return priv.is_property_class;
+    return self.private.is_property_class;
 }
 
 """Get the return type of the property getter, or None if not a property."""
 impl ClassType.get_getter_type_from_property -> (TypeBase | None) {
-    priv = self.private;
-    if priv is None {
+    if not self.private.is_property_class {
         return None;
     }
-    if not priv.is_property_class {
-        return None;
-    }
-    fget = priv.fget_info;
+    fget = self.private.fget_info;
     if fget is None {
         return None;
     }
@@ -444,24 +447,28 @@ impl ClassType.get_getter_type_from_property -> (TypeBase | None) {
 """Return a string representation of the class type."""
 impl ClassType.__str__ -> str {
     # Display literal types as Literal[value]
-    if self.private is not None and self.private.literal_value is not None {
+    if self.private.literal_value is not None {
         lit_val = self.private.literal_value;
         if isinstance(lit_val, str) {
             return f"Literal[\"{lit_val}\"]";
         }
         return f"Literal[{lit_val}]";
     }
+    # `_shared` can legitimately be None for detached property ClassTypes
+    # produced by create_property without an enclosing class context.
+    class_name = self._shared.class_name if self._shared is not None else "<unbound>";
     # Include type_args in display for parameterized types (e.g., list[int], dict[str, bool])
-    if self.private and self.private.type_args {
+    if self.private.type_args {
         args_str = ", ".join(str(arg) for arg in self.private.type_args);
-        return f"{self.shared.class_name}[{args_str}]";
+        return f"{class_name}[{args_str}]";
     }
-    return f"{self.shared.class_name}";
+    return f"{class_name}";
 }
 
-"""Initialize the class type."""
-impl ClassType.postinit -> None {
-    self.private = self.private or ClassType.ClassDetailsPrivate();
+"""Non-null view of the shared details (asserted)."""
+impl ClassType.shared -> ClassType.ClassDetailsShared {
+    assert self._shared is not None , "ClassType.shared accessed before construction (detached property ClassType?)";
+    return self._shared;
 }
 
 """Initialize obviously."""
@@ -473,7 +480,7 @@ impl ClassType.ClassDetailsPrivate.postinit -> None {
 impl ClassType.ClassDetailsShared.postinit -> None {
     self.type_params = self.type_params or [];
     self.base_classes = self.base_classes or [];
-    self.mro: list[ClassType] = [];
+    self.mro = [];
 }
 
 """Return whether the class is an instance."""

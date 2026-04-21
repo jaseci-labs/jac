@@ -443,9 +443,12 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/register endpoint");
                     register_payload = {
-                        "username": test_username,
-                        "password": test_password,
-
+                        "identities": [
+                            {"type": "username", "value": test_username}
+                        ],
+                        "credential": {
+                            "type": "password", "password": test_password
+                        },
                     };
                     req_register = Request(
                         f"http://127.0.0.1:{server_port}/user/register",
@@ -486,9 +489,12 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/login endpoint");
                     login_payload = {
-                        "username": test_username,
-                        "password": test_password,
-
+                        "identity": {
+                            "type": "username", "value": test_username
+                        },
+                        "credential": {
+                            "type": "password", "password": test_password
+                        },
                     };
                     req_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",
@@ -524,9 +530,12 @@ test "all in one app endpoints" {
                         "[DEBUG] Sending POST request to /user/login with invalid credentials"
                     );
                     invalid_login_payload = {
-                        "username": "nonexistent_user",
-                        "password": "wrong_password",
-
+                        "identity": {
+                            "type": "username", "value": "nonexistent_user"
+                        },
+                        "credential": {
+                            "type": "password", "password": "wrong_password"
+                        },
                     };
                     req_invalid_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",

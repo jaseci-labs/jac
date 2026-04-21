@@ -35,14 +35,62 @@ on mt_run, then delegates all telemetry extraction to _emit_agent_telemetry.
 impl Model.invoke(mt_run: MTRuntime) -> object {
     import uuid;
     import time;
+    import types as _types_mod;
 
+    # Capture parent invocation if we're inside a nested by llm() call
+    _parent = _current_invocation_id.get(None);
+    mt_run._parent_invocation_id = _parent;
     mt_run._invocation_id = str(uuid.uuid4());
+    _ctx_token = _current_invocation_id.set(mt_run._invocation_id);
     _start = time.time();
 
     try {
         result = self._mock_delegate.invoke(mt_run)
             if self._mock_delegate
             else super.invoke(mt_run);
+
+        # For streaming (generator) results, wrap so ContextVar stays active
+        # during lazy iteration — tool calls inside the generator need the parent ID.
+        if isinstance(result, _types_mod.GeneratorType) {
+            def _wrap_generator(
+                gen: object,
+                mt: object,
+                model_name: str,
+                start: float,
+                ctx_token: object
+            ) -> object {
+                _completed = False;
+                try {
+                    yield from gen;
+                    _completed = True;
+                } except Exception as inner_e {
+                    _emit_agent_telemetry(
+                        mt,
+                        None,
+                        model_name,
+                        (time.time() - start) * 1000,
+                        "error",
+                        inner_e
+                    );
+                    raise;
+                } finally {
+                    if _completed {
+                        _emit_agent_telemetry(
+                            mt,
+                            "[streaming]",
+                            model_name,
+                            (time.time() - start) * 1000,
+                            "success",
+                            None
+                        );
+                    }
+                    _current_invocation_id.reset(ctx_token);
+                }
+            }
+            return _wrap_generator(
+                result, mt_run, self.model_name, _start, _ctx_token
+            );
+        }
 
         _emit_agent_telemetry(
             mt_run,
@@ -52,11 +100,13 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
             "success",
             None
         );
+        _current_invocation_id.reset(_ctx_token);
         return result;
     } except Exception as e {
         _emit_agent_telemetry(
             mt_run, None, self.model_name, (time.time() - _start) * 1000, "error", e
         );
+        _current_invocation_id.reset(_ctx_token);
         raise;
     }
 }
@@ -112,6 +162,10 @@ Uses OpenAI client if proxy mode is enabled, otherwise uses LiteLLM.
 Returns a generator that yields response chunks.
 """
 impl Model.model_call_with_stream(params: dict) {
+    # Ask the provider to include token usage in the final streamed chunk.
+    params["stream_options"] = (params.get("stream_options") or {}) | {
+        "include_usage": True
+    };
     try {
         if self.proxy {
             client = OpenAI(base_url=self.api_base, api_key=self.api_key or None);

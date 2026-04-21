@@ -183,7 +183,9 @@ impl Transform._is_suppressed(
     if loc {
         try {
             source = loc.orig_src;
-            if (source and source?.inline_suppressions and source.inline_suppressions) {
+            if (
+                source and source?.inline_suppressions and source.inline_suppressions
+            ) {
                 line = loc.first_line;
                 if line in source.inline_suppressions {
                     suppressed_codes = source.inline_suppressions[line];
@@ -316,7 +318,9 @@ impl Transform._is_suppressed(
     if loc {
         try {
             source = loc.orig_src;
-            if (source and source?.inline_suppressions and source.inline_suppressions) {
+            if (
+                source and source?.inline_suppressions and source.inline_suppressions
+            ) {
                 line = loc.first_line;
                 if line in source.inline_suppressions {
                     suppressed_codes = source.inline_suppressions[line];

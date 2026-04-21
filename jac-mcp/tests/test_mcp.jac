@@ -287,12 +287,20 @@ test "list examples returns results" {
 }
 
 test "list examples returns results when repo root is None (PyPI install)" {
-    import from unittest.mock { patch, MagicMock }
+    import from unittest.mock { patch }
 
-    # Mock find_repo_root to return None, simulating a PyPI (non-editable) install
+    # Mock find_repo_root to return None, simulating a PyPI (non-editable) install,
+    # and stub the GitHub API fetch so the test does not depend on live network
+    # access (which is rate-limited and flaky in CI).
+    fake_categories = ["data_spatial", "guess_game", "littleX"];
     with patch("jac_mcp.resources.find_repo_root", return_value=None) {
-        tp = ToolProvider();
-        result = tp.call_tool("list_examples", {});
+        with patch(
+            "jac_mcp.resources.ResourceProvider._fetch_github_categories",
+            return_value=fake_categories
+        ) {
+            tp = ToolProvider();
+            result = tp.call_tool("list_examples", {});
+        }
     }
     assert "examples" in result;
     examples = result["examples"];

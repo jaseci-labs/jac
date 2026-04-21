@@ -350,6 +350,9 @@ obj Example {
     }
 }
 
+# NOTE: All instance fields MUST be declared with `has`.
+# Dynamic assignment (e.g., `obj.new_attr = val`) is an anti-pattern.
+
 
 # ============================================================
 # Access Modifiers
@@ -1171,16 +1174,16 @@ with entry {
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
-#   sv { } = server (Python/PyPI)
-#   cl { } = client (JavaScript/npm)
-#   na { } = native (C ABI)
+#   to sv: = server (Python/PyPI)
+#   to cl: = client (JavaScript/npm)
+#   to na: = native (C ABI)
 
 
 # ============================================================
-# Codespace Blocks
+# Codespace Sections
 # ============================================================
 
-# Server code (default -- code outside any block is server)
+# Server code (default -- code before any header is server)
 node Todo {
     has title: str, done: bool = False;
 }
@@ -1189,29 +1192,32 @@ def:pub get_todos() -> list {
     return [{"title": t.title} for t in [root -->][?:Todo]];
 }
 
-# Client code (compiles to JavaScript/React)
-cl {
-    def:pub app() -> JsxElement {
-        has items: list = [];
+# Client section (compiles to JavaScript/React)
+to cl:
 
-        async can with entry {
-            items = await get_todos();
-        }
+def:pub app() -> JsxElement {
+    has items: list = [];
 
-        return <div>
-            {[<p key={i.title}>{i.title}</p> for i in items]}
-        </div>;
+    async can with entry {
+        items = await get_todos();
     }
+
+    return <div>
+        {[<p key={i.title}>{i.title}</p> for i in items]}
+    </div>;
 }
 
-# Explicit server block
-sv {
-    node Secret { has value: str; }
-}
+# Return to server section
+to sv:
 
-# Single-statement form (no braces)
+node Secret { has value: str; }
+
+# Single-statement form (no header, no braces)
 sv import from .database { connect_db }
 cl import from react { useState }
+
+# Braced form (cl { ... }) is still valid in inner scopes,
+# but emits W0064 at module scope -- prefer `to cl:` / `cl` prefix.
 
 
 # ============================================================
@@ -1229,18 +1235,18 @@ cl import from react { useState }
 # Client Components (JSX)
 # ============================================================
 
-cl {
-    def:pub Counter() -> JsxElement {
-        # `has` in client components becomes React useState
-        has count: int = 0;
+to cl:
 
-        return <div>
-            <p>Count: {count}</p>
-            <button onClick={lambda -> None { count = count + 1; }}>
-                Increment
-            </button>
-        </div>;
-    }
+def:pub Counter() -> JsxElement {
+    # `has` in client components becomes React useState
+    has count: int = 0;
+
+    return <div>
+        <p>Count: {count}</p>
+        <button onClick={lambda -> None { count = count + 1; }}>
+            Increment
+        </button>
+    </div>;
 }
 
 # JSX syntax reference:
@@ -1258,31 +1264,31 @@ cl {
 # Client State & Lifecycle
 # ============================================================
 
-cl {
-    def:pub DataView() -> JsxElement {
-        has data: list = [];
-        has loading: bool = True;
+to cl:
 
-        # Mount effect (runs once on component mount)
-        async can with entry {
-            data = await fetch("/api/data").then(
-                lambda r: any -> any { return r.json(); }
-            );
-            loading = False;
-        }
+def:pub DataView() -> JsxElement {
+    has data: list = [];
+    has loading: bool = True;
 
-        # Dependency effect (runs when userId changes)
-        # async can with [userId] entry { ... }
-
-        # Multiple dependencies
-        # can with (a, b) entry { ... }
-
-        # Cleanup on unmount
-        # can with exit { unsubscribe(); }
-
-        if loading { return <p>Loading...</p>; }
-        return <div>{data}</div>;
+    # Mount effect (runs once on component mount)
+    async can with entry {
+        data = await fetch("/api/data").then(
+            lambda r: any -> any { return r.json(); }
+        );
+        loading = False;
     }
+
+    # Dependency effect (runs when userId changes)
+    # async can with [userId] entry { ... }
+
+    # Multiple dependencies
+    # can with (a, b) entry { ... }
+
+    # Cleanup on unmount
+    # can with exit { unsubscribe(); }
+
+    if loading { return <p>Loading...</p>; }
+    return <div>{data}</div>;
 }
 
 
@@ -1293,26 +1299,26 @@ cl {
 # Import server walkers in client code
 sv import from ...main { AddTodo, GetTodos }
 
-cl {
-    def:pub TodoApp() -> JsxElement {
-        has todos: list = [];
+to cl:
 
-        async can with entry {
-            result = root spawn GetTodos();
-            if result.reports {
-                todos = result.reports[0];
-            }
+def:pub TodoApp() -> JsxElement {
+    has todos: list = [];
+
+    async can with entry {
+        result = root spawn GetTodos();
+        if result.reports {
+            todos = result.reports[0];
         }
-
-        async def add_todo(text: str) -> None {
-            result = root spawn AddTodo(title=text);
-            if result.reports {
-                todos = todos + [result.reports[0]];
-            }
-        }
-
-        return <div>...</div>;
     }
+
+    async def add_todo(text: str) -> None {
+        result = root spawn AddTodo(title=text);
+        if result.reports {
+            todos = todos + [result.reports[0]];
+        }
+    }
+
+    return <div>...</div>;
 }
 
 
@@ -1326,14 +1332,16 @@ cl {
 # pages/(auth)/layout.jac  -> route group  (no URL segment)
 # pages/layout.jac         -> root layout
 
-# Page files export a `page` function:
-# cl { def:pub page() -> JsxElement { ... } }
+# Page files export a `page` function under a `to cl:` section:
+# to cl:
+# def:pub page() -> JsxElement { ... }
 
 # Layout files use <Outlet /> for child routes:
 # cl import from "@jac/runtime" { Outlet }
-# cl { def:pub layout() -> JsxElement {
+# to cl:
+# def:pub layout() -> JsxElement {
 #     return <><nav>...</nav><Outlet /></>;
-# } }
+# }
 
 
 # ============================================================

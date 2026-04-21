@@ -8,10 +8,48 @@ For production, the `--scale` flag automates Docker image builds and Kubernetes 
 
 ## Installation
 
+jac-scale is lightweight by default. Install only the extras you need:
+
 ```bash
+# Core only - FastAPI server, auth, CLI (no heavy dependencies)
 pip install jac-scale
+
+# Add MongoDB + Redis for persistent storage and distributed cache
+pip install jac-scale[data]
+
+# Add Prometheus metrics and observability
+pip install jac-scale[monitoring]
+
+# Add APScheduler for cron and background task scheduling
+pip install jac-scale[scheduler]
+
+# Add Kubernetes + Docker for deployment and image building
+pip install jac-scale[deploy]
+
+# Everything - recommended for production or if unsure
+pip install jac-scale[all]
+```
+
+Groups are combinable: `pip install jac-scale[data,monitoring]`
+
+After installing, enable the plugin:
+
+```bash
 jac plugins enable scale
 ```
+
+!!! note
+    When a feature is used without its dependency installed, you get a clear error with the exact install command:
+    `ImportError: 'pymongo' is required for this feature. Install it with: pip install jac-scale[data]`
+
+| Group | What it adds | When you need it |
+|-------|-------------|-----------------|
+| _(core)_ | FastAPI, uvicorn, JWT auth, CLI | Always included |
+| `[data]` | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with database config) |
+| `[monitoring]` | prometheus-client | Prometheus `/metrics` endpoint |
+| `[scheduler]` | apscheduler | `@schedule(trigger=...)` on walkers/functions |
+| `[deploy]` | kubernetes, docker | `jac start --scale` or `jac start --build` |
+| `[all]` | All of the above | Production, or when you want everything |
 
 ---
 
@@ -64,6 +102,17 @@ jac start app.jac --port 8000 --profile prod
 ### Default Persistence
 
 When running locally (without `--scale`), Jac uses **SQLite** for graph persistence by default. You'll see `"Using SQLite for persistence"` in the server output. No external database setup is required for development.
+
+When `MONGODB_URI` is set (or `--scale` provisions Mongo on Kubernetes), persistence flips to `MongoBackend`. The MongoDB backend has full Layer 1+2+3 schema-migration support: every persisted document is stamped with `arch_module`, `arch_type`, `fingerprint`, and `format_version`; documents that can't be deserialized (un-resolvable archetype class, corrupt data, deserialize exception) are moved to a `<collection>_quarantine` companion collection instead of being silently dropped; and DB-resident class-rename aliases live in `<collection>_aliases` and are merged into the in-process Serializer registry on every connect. The same `jac db inspect / quarantine / alias / recover` operator commands work against Mongo deployments unchanged -- see [CLI → Database Operations](../cli/index.md#database-operations) and [Persistence & Schema Migration](../persistence.md) for the full model.
+
+```bash
+# Inspect a live Mongo-backed deployment.
+jac db inspect --app app.jac
+
+# Operator rescue: register a class-rename alias in production without redeploying.
+jac db alias add "old.module.LegacyName" "new.module.NewName" --app app.jac
+jac db recover-all --app app.jac
+```
 
 ### Server Configuration
 
@@ -261,29 +310,135 @@ See the [Webhooks](#webhooks) section below.
 
 ## Authentication
 
+jac-scale uses an **identity-based authentication system**. Each user can sign in through multiple identities (username, email, or an SSO provider like Google or GitHub), and all of them resolve to the same account.
+
+### Identity Model
+
+A user document has this shape:
+
+```
+user_id        UUID (primary key)
+status         "active" | "disabled"
+role           "admin" | "system" | "user"
+identities     [{type, value_raw, value_normalized, verified, is_recovery}, ...]
+credentials    [{type, password_hash}, ...]
+root_id        hex ID of the user's Jac graph root node
+created_at     ISO 8601 timestamp
+updated_at     ISO 8601 timestamp
+```
+
+**Identity types:**
+
+| Type | Description | Notes |
+|------|-------------|-------|
+| `username` | A unique username | Always verified on creation |
+| `email` | An email address | Marked as recovery identity by default |
+| `sso` | SSO provider link | Added automatically on SSO login; includes `provider` and `external_id` fields |
+
+A user can have at most **one** identity of each non-SSO type (one username, one email). All identity values are normalized (lowercased, stripped) before storage and lookup, preventing case-sensitivity duplicates.
+
+**Credential types:**
+
+| Type | Description |
+|------|-------------|
+| `password` | Bcrypt-hashed password |
+
+Passwords are hashed with [bcrypt](https://en.wikipedia.org/wiki/Bcrypt) (random salt per password). Plain-text passwords never leave the request handler.
+
+### Storage Backends
+
+The identity storage layer is backend-agnostic. jac-scale automatically selects the backend based on your database configuration:
+
+- **SQLite** (default) -- used when no `mongodb_uri` is configured. User data is stored in `.jac/data/users.db` relative to your project root using SQLAlchemy. Good for development and single-instance deployments.
+- **MongoDB** -- used when `mongodb_uri` is set (via `jac.toml` or `MONGODB_URI` environment variable). User data is stored in the `users` collection of the `jac_db` database. Required for multi-instance production deployments.
+
+Both backends implement the same `IdentityStorage` interface. Application code (endpoints, walkers, middleware) is completely unaware of which backend is in use.
+
+```toml
+# jac.toml -- use MongoDB
+[plugins.scale.database]
+mongodb_uri = "mongodb://localhost:27017"
+```
+
+```bash
+# Or via environment variable
+export MONGODB_URI="mongodb://localhost:27017"
+```
+
+When no MongoDB URI is configured, SQLite is used automatically with no additional setup.
+
 ### User Registration
 
 ```bash
 curl -X POST http://localhost:8000/user/register \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "secret"}'
+  -d '{
+    "identities": [
+      {"type": "username", "value": "myuser"},
+      {"type": "email", "value": "user@example.com"}
+    ],
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
+Returns on success (HTTP 201):
+
+```json
+{
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-...",
+    "message": "User registered successfully"
+  }
+}
+```
+
+Registration does **not** return a token. Use `/user/login` after registration to authenticate.
+
+**Validation rules:**
+
+- At least one identity is required
+- Only `username` and `email` types are accepted
+- No duplicate identity types (e.g., two usernames)
+- Identity values must be unique across all users (checked after normalization)
+- Credential type must be `password` with a non-empty password
+
 ### User Login
+
+Log in with **any** identity (username or email) and a password:
 
 ```bash
 curl -X POST http://localhost:8000/user/login \
   -H "Content-Type: application/json" \
-  -d '{"email": "user@example.com", "password": "secret"}'
+  -d '{
+    "identity": {"type": "username", "value": "myuser"},
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
-Returns:
+Returns on success (HTTP 200):
 
 ```json
 {
-  "access_token": "eyJ...",
-  "token_type": "bearer"
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-...",
+    "token": "eyJ...",
+    "root_id": "a1b2c3d4...",
+    "role": "user"
+  }
 }
+```
+
+The same user can log in with their email instead:
+
+```bash
+curl -X POST http://localhost:8000/user/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identity": {"type": "email", "value": "user@example.com"},
+    "credential": {"type": "password", "password": "secret"}
+  }'
 ```
 
 ### Authenticated Requests
@@ -295,27 +450,157 @@ curl -X POST http://localhost:8000/walker/my_walker \
   -d '{}'
 ```
 
+### Token Refresh
+
+Refresh a JWT token before it expires to get a new token with a fresh expiration window:
+
+```bash
+curl -X POST http://localhost:8000/user/refresh-token \
+  -H "Content-Type: application/json" \
+  -d '{"token": "eyJ..."}'
+```
+
+The `token` value can optionally include the `Bearer` prefix (it will be stripped automatically).
+
+Returns on success:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "token": "eyJ...(new token)...",
+    "message": "Token refreshed successfully"
+  }
+}
+```
+
+Returns HTTP 401 if the token is invalid or expired.
+
+### Password Update
+
+Update the authenticated user's password. Requires the current password for verification:
+
+```bash
+curl -X PUT http://localhost:8000/user/password \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "current_password": "old_secret",
+    "new_password": "new_secret"
+  }'
+```
+
+Returns on success:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-...",
+    "message": "Password updated successfully"
+  }
+}
+```
+
+Returns HTTP 400 if the current password is incorrect or the new password is empty.
+
 ### JWT Configuration
 
-Configure JWT authentication via environment variables:
+JWT tokens use `user_id` (UUID) as the primary claim, not the username. This means users can change their username or email without invalidating existing tokens.
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `JWT_SECRET` | Secret key for JWT signing | `supersecretkey` |
-| `JWT_ALGORITHM` | JWT algorithm | `HS256` |
-| `JWT_EXP_DELTA_DAYS` | Token expiration in days | `7` |
+Configure JWT via `jac.toml` or environment variables:
+
+```toml
+[plugins.scale.jwt]
+secret = "your-secret-key-here"
+algorithm = "HS256"
+exp_delta_days = 7
+```
+
+| Variable | `jac.toml` key | Description | Default |
+|----------|---------------|-------------|---------|
+| `JWT_SECRET` | `secret` | Secret key for JWT signing | `supersecretkey_for_testing_only!` |
+| `JWT_ALGORITHM` | `algorithm` | JWT signing algorithm | `HS256` |
+| `JWT_EXP_DELTA_DAYS` | `exp_delta_days` | Token expiration in days | `7` |
+
+!!! warning "Production: change the JWT secret"
+    The default JWT secret is for development only. In production, set a long, random secret via environment variable or `jac.toml`. Anyone who knows the secret can forge valid tokens for any user.
+
+**JWT claims:**
+
+| Claim | Description |
+|-------|-------------|
+| `user_id` | UUID of the authenticated user |
+| `role` | User role (`admin`, `system`, or `user`) |
+| `exp` | Expiration timestamp |
+| `iat` | Issued-at timestamp |
+
+**Current limitations:**
+
+- No token blacklist or revocation -- tokens remain valid until they expire
+- No refresh token rotation -- the refresh endpoint issues a new token but does not invalidate the old one
+
+### Roles
+
+jac-scale has three built-in roles:
+
+| Role | Value | Description |
+|------|-------|-------------|
+| Admin | `admin` | Full administrative access, including the admin portal |
+| System | `system` | Internal system account (cannot be deleted) |
+| User | `user` | Standard user (default for new registrations) |
+
+Roles are stored in the user document and included in JWT claims. The admin user is bootstrapped automatically on first server start (see [Admin Portal](#admin-portal) for configuration).
+
+**Protected accounts** that cannot be deleted:
+
+- The bootstrap admin (fixed UUID `00000000-0000-0000-0000-000000000000`)
+- System accounts (role `system`)
+- The guest account (identity `__guest__`)
+
+Roles are managed via the admin portal API or programmatically through the `UserManager`:
+
+```bash
+# Set user role via admin API
+curl -X PUT http://localhost:8000/admin/users/{username} \
+  -H "Authorization: Bearer <admin_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"role": "admin"}'
+```
 
 ### SSO (Single Sign-On)
 
-jac-scale supports SSO with external identity providers. Currently supported: Google.
+jac-scale supports SSO with **Google**, **Apple**, and **GitHub**. SSO accounts are stored as identities within the user document (type `sso` with a `provider` field), not in a separate collection.
 
-**Configuration:**
+**How SSO login works:**
 
-| Variable | Description |
-|----------|-------------|
-| `SSO_HOST` | SSO callback host URL (default: `http://localhost:8000/sso`) |
-| `SSO_GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `SSO_GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
+1. User is redirected to the provider's login page
+2. Provider calls back with an authorization code
+3. jac-scale exchanges the code for user info (email, external ID)
+4. If a user with that email exists, the SSO identity is linked and a JWT is returned
+5. If no user exists, a new account is created with a verified email identity, the SSO identity is linked, and a JWT is returned
+
+**Configuration via `jac.toml`:**
+
+```toml
+[plugins.scale.sso]
+host = "http://localhost:8000"  # Your server's public URL
+client_auth_callback_url = ""   # Optional: redirect to frontend after SSO
+
+[plugins.scale.sso.google]
+client_id = "your-google-client-id"
+client_secret = "your-google-client-secret"
+
+[plugins.scale.sso.apple]
+client_id = "your-apple-client-id"
+client_secret = "your-apple-client-secret"
+
+[plugins.scale.sso.github]
+client_id = "your-github-client-id"
+client_secret = "your-github-client-secret"
+```
+
+Only providers with both `client_id` and `client_secret` configured are enabled. Unconfigured providers return HTTP 501 with a descriptive message.
 
 **SSO Endpoints:**
 
@@ -323,7 +608,10 @@ jac-scale supports SSO with external identity providers. Currently supported: Go
 |--------|------|-------------|
 | GET | `/sso/{platform}/login` | Redirect to provider login page |
 | GET | `/sso/{platform}/register` | Redirect to provider registration |
-| GET | `/sso/{platform}/login/callback` | OAuth callback handler |
+| GET | `/sso/{platform}/callback` | OAuth callback handler (GET) |
+| POST | `/sso/{platform}/callback` | OAuth callback handler (POST, for Apple Sign In) |
+
+Where `{platform}` is `google`, `apple`, or `github`.
 
 **Frontend Callback Redirect:**
 
@@ -337,16 +625,49 @@ client_auth_callback_url = "http://localhost:3000/auth/callback"
 When set, the callback endpoint redirects to the configured URL with query parameters:
 
 - On success: `{client_auth_callback_url}?token={jwt_token}`
-- On failure: `{client_auth_callback_url}?error={error_message}`
+- On failure: `{client_auth_callback_url}?error={error_code}&message={error_message}`
 
-This enables seamless browser-based OAuth flows where the frontend receives the token via URL parameters.
+**SSO Account Linking/Unlinking:**
+
+SSO accounts can be linked and unlinked programmatically. An SSO identity is automatically linked when a user logs in via SSO. To unlink, use the admin portal API or the `UserManager.unlink_sso_account()` method. Unlinking removes the SSO identity from the user's identity array but does not delete the user account.
 
 **Example:**
 
 ```bash
 # Redirect user to Google login
-curl http://localhost:8000/sso/google/login
+curl -L http://localhost:8000/sso/google/login
+
+# Redirect user to GitHub login
+curl -L http://localhost:8000/sso/github/login
 ```
+
+### Legacy User Migration
+
+If you are upgrading from an older version of jac-scale that used flat username/password user documents, the MongoDB backend automatically migrates legacy users on server startup. This migration:
+
+1. Converts flat `username`/`email`/`password_hash` fields into the identity + credential array format
+2. **Progressively rehashes** old SHA-256 passwords to bcrypt on the next successful login (no user action required)
+3. Handles **case collisions** -- if normalization causes two legacy usernames to collide, the duplicate is marked as `disabled`
+4. Preserves existing `root_id`, `role`, and other fields
+
+The migration runs once during `UserManager` initialization and is idempotent. SQLite deployments do not need migration since they use the new format from the start.
+
+!!! note
+    The legacy SHA-256 migration code is marked as removable. Once all users have logged in at least once (triggering the bcrypt rehash), the migration path can be safely removed in a future release.
+
+### Auth Endpoint Summary
+
+| Method | Path | Auth Required | Description |
+|--------|------|--------------|-------------|
+| POST | `/user/register` | No | Create a new user |
+| POST | `/user/login` | No | Authenticate and get JWT |
+| POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
+| PUT | `/user/password` | Yes (Bearer) | Update password |
+| GET | `/sso/{platform}/{operation}` | No | Initiate SSO flow |
+| GET/POST | `/sso/{platform}/callback` | No | SSO callback handler |
+| POST | `/api-key/create` | Yes (Bearer) | Create an API key |
+| GET | `/api-key/list` | Yes (Bearer) | List API keys |
+| DELETE | `/api-key/{api_key_id}` | Yes (Bearer) | Revoke an API key |
 
 ---
 
@@ -387,8 +708,10 @@ session_expiry_hours = 24
 | Role | Value | Description |
 |------|-------|-------------|
 | `ADMIN` | `admin` | Full administrative access |
-| `MODERATOR` | `moderator` | Limited administrative access |
+| `SYSTEM` | `system` | Internal system account (cannot be deleted) |
 | `USER` | `user` | Standard user access |
+
+See [Roles](#roles) in the Authentication section for details on protected accounts and role management.
 
 ### Admin API Endpoints
 
@@ -761,6 +1084,161 @@ To create a private broadcasting walker, remove `: pub` from the walker definiti
 - Use `broadcast=True` to send responses to ALL connected clients (only valid with WEBSOCKET protocol)
 - WebSocket walkers are **only** accessible via `ws://host/ws/{walker_name}`
 - The connection stays open until the client disconnects
+
+## Microservice Interop (sv-to-sv)
+
+Jac Scale lets you split a server-side codebase into multiple independently-deployed microservices without changing call sites. When two `sv` (server) modules each run as their own server process, an `sv import` from one to the other generates HTTP client stubs at compile time, so calls become RPCs over the wire instead of in-process imports.
+
+### Overview
+
+The `sv import` keyword has two flavors depending on where the importer and the importee live:
+
+- **cl-to-sv**: client code calls server functions. Calls go over HTTP from browser to server.
+- **sv-to-sv**: one server module calls another server module that runs as a separate microservice. Calls go over HTTP from one server process to another.
+
+In the sv-to-sv flavor, `order_service.jac` doing `sv import from inventory_service { check_stock }` does not load `inventory_service` into the consumer's process. Calling `check_stock(sku)` issues a `POST /function/check_stock` against the inventory service's URL and returns the result. The same source runs unchanged whether `inventory_service` is a separate microservice, a sibling process started by the same `jac start` command, or (when `sv import` is absent) a normal in-process import.
+
+For a step-by-step walkthrough that covers project setup, running both services, and watching the round-trip, see the [Microservices tutorial](../../tutorials/production/microservices.md). The rest of this section is a reference for the discovery rules, wire contract, and plugin override surface.
+
+### Requirements
+
+A few preconditions for `sv import` to work:
+
+- **Public functions only.** Provider functions reached through `sv import` must be declared `def:pub`; non-public functions are not exposed as endpoints, and calls into them return 404. Walkers similarly need `walker:pub`.
+- **jac-scale on the consumer.** Explicit URLs and env vars work with any jaclang install. Automatic spawning of siblings is provided by jac-scale; a bare jaclang install can still call providers registered by URL.
+- **Project layout.** `jac start <relative-path>` requires a `jac.toml` in the current directory. Run `jac create` first, or pass an absolute path.
+- **Services in the same directory when auto-spawning.** If the consumer auto-spawns a provider, it loads the provider source from the directory you ran `jac start` in. Keep all services in the same project directory, or point the consumer at a provider URL explicitly so auto-spawning never runs.
+
+### Boundary Types
+
+Types that cross the service boundary use the same wire contract as cl-to-sv interop. The compiler emits a matching wrapper on the consumer side for every type referenced in an `sv import`, so values serialize transparently into JSON on the way out and deserialize back into the declared type on the way in.
+
+What works:
+
+- **`obj` types** -- fields hydrated recursively, including nested objects.
+- **`enum` types** -- serialized by name.
+- **Primitives** -- `int`, `float`, `str`, `bool`, `None`, `list[T]`, `dict[K, V]`.
+- **Bidirectional** -- typed function arguments are wrapped on the way out and unwrapped on the way in.
+
+What doesn't:
+
+- **Walkers, anchors, closures** -- not wire-friendly. Pass identifiers (e.g. `jid`) and re-resolve on the other side.
+- **Live database handles, file handles** -- service-local resources only.
+
+Failures (network errors, missing service, error envelope from the provider) raise `RuntimeError` with a message of the form `sv-to-sv RPC '{module}.{func}' failed: {msg}`.
+
+### Automatic Startup
+
+When you run `jac start consumer.jac`, the consumer finds every service it `sv import`s from and brings them all up **before** it starts accepting requests. Transitive dependencies are included: if A imports B and B imports C, starting A brings up all three.
+
+Startup is **fail-fast**: if any service fails to come up (missing source file, syntax error, port in use), the consumer crashes at startup with the underlying error. You find out at deploy time, not at first request.
+
+Automatic startup only applies to `jac start`. `jac run` is for one-shot scripts and does not bring up long-running sibling services; if it calls an `sv import`-ed function it will try to discover the provider lazily using the rules in [Service Discovery](#service-discovery) below.
+
+### Service Discovery
+
+For each `sv import`-ed provider, the consumer resolves it in this order. The first match wins:
+
+1. **Test client** -- if tests have wired up an in-process `TestClient` for the provider, calls go through it with no HTTP. See [Testing](#testing).
+2. **Explicit URL** -- a URL the consumer was handed programmatically (e.g. by a custom orchestrator). See the [sv_client API](#sv_client-api-reference).
+3. **`JAC_SV_<MODULE>_URL` environment variable** -- automatically consulted using the upper-cased module name. This is the knob to reach for when the provider lives on a different host.
+4. **Automatic spawn** -- jac-scale brings up the provider as a sibling inside the consumer process. This is the path that lets `jac start consumer.jac` run the whole cluster from one command.
+
+Automatically-spawned siblings are bound to `127.0.0.1` -- they are reachable from inside the consumer process but not from outside. This makes single-command mode a supported deployment for **single-host** setups, but you cannot reach a sibling from another machine. For multi-host deployments, wire the consumer with `JAC_SV_<MODULE>_URL` pointing at the provider running elsewhere.
+
+Siblings are assigned ports in the range `18000-18999`. Pick ports outside this range (e.g. in the 8000s) for your own `jac start --port` flags so a manual port does not collide with a future automatic spawn.
+
+### Production Patterns
+
+#### Kubernetes
+
+Each service is its own `Deployment` + `Service`. Wire the consumer with an env var pointing at the provider's cluster DNS name:
+
+```yaml
+# order-service deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+spec:
+  template:
+    spec:
+      containers:
+      - name: order-service
+        image: my-registry/order-service:latest
+        env:
+        - name: JAC_SV_INVENTORY_SERVICE_URL
+          value: "http://inventory-service.default.svc.cluster.local:8000"
+```
+
+The convention is `JAC_SV_<UPPERCASED_MODULE_NAME>_URL`. Module name is the value used in `sv import from <module_name>`.
+
+#### Local Development
+
+For multi-service local dev, the simplest pattern is `JAC_SV_*_URL` env vars in a `.env` file or your shell:
+
+```bash
+export JAC_SV_INVENTORY_SERVICE_URL=http://localhost:8001
+export JAC_SV_MATH_SERVICE_URL=http://localhost:8002
+jac start order_service.jac --port 8000
+```
+
+Alternatively, omit the env vars entirely and run `jac start order_service.jac` on its own. The consumer will find every service it `sv import`s from and bring them all up automatically (including transitive dependencies) before serving the first request. This is a supported deployment mode for **single-host** setups -- one process, many logical services. For **multi-host** deployments use the `JAC_SV_*_URL` path instead: automatically-started services bind `127.0.0.1` only and cannot serve traffic to other hosts.
+
+#### Troubleshooting
+
+- **`{"detail":"Invalid anchor id ..."}` 500s.** Stale anchors persisted from a previous run with a different schema. Stop the server, `rm -rf .jac/data/`, and restart. Not specific to sv-to-sv; any `def:pub` call can hit this after a schema change.
+- **Consumer crashes at startup with `ModuleNotFoundError: No module named '<provider>'`.** Automatic startup could not find the provider source in the directory you ran `jac start` from. Either move all services into the same project directory, or set `JAC_SV_<MODULE>_URL` to point the consumer at a provider running elsewhere.
+- **Cross-service call returns 404.** The provider function is not declared `def:pub`. Walkers similarly need `walker:pub`.
+
+### Testing
+
+To test cross-service behavior without real network I/O, wire each provider up as an in-process `TestClient` before constructing the consumer. `sv_client.register_test_client(module_name, client)` routes the consumer's calls through the registered client directly; no sockets, no port allocation, no background threads.
+
+```jac
+import from jaclang.runtimelib { sv_client }
+import from starlette.testclient { TestClient }
+
+test "consumer reaches provider" {
+    sv_client.clear_test_clients();
+
+    prov_client: TestClient = ...;  # build a TestClient over the provider app
+    cons_client: TestClient = ...;  # build a TestClient over the consumer app
+    sv_client.register_test_client("inventory_service", prov_client);
+
+    # Calls from the consumer into inventory_service now route through prov_client
+    resp = cons_client.post(
+        "/function/create_order",
+        json={"items": [{"sku": "W", "quantity": 2}]}
+    ).json();
+    assert resp["data"]["result"]["success"] is True;
+}
+```
+
+The two builder steps marked `...` are the boilerplate of standing up a consumer and provider in-process and wrapping each one in a `starlette.testclient.TestClient`. That scaffolding currently leans on hands-on use of jac-scale's server-construction APIs. The sv-to-sv test suite in the jac-scale source tree has a worked example that copies fixture files into a temp directory and brings both services up end-to-end; start there if you need a runnable harness.
+
+Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over from a previous test's registrations.
+
+### sv_client API Reference
+
+`jaclang.runtimelib.sv_client` exposes a small control surface for telling the runtime where to find providers. You rarely need it under normal use -- `JAC_SV_<MODULE>_URL` covers most production wiring, and automatic startup covers single-host setups. Reach for these functions when you are writing tests or a custom orchestrator.
+
+| Function | Purpose |
+|---|---|
+| `register(module_name: str, url: str)` | Point a provider name at a URL programmatically. Takes precedence over the env var path. |
+| `unregister(module_name: str)` | Remove a registration made via `register`. |
+| `register_test_client(module_name, client)` | Route calls to a provider through an in-process `TestClient` (tests only). See [Testing](#testing). |
+| `unregister_test_client(module_name: str)` | Remove a test-client registration. |
+| `clear_test_clients()` | Drop all test-client registrations. Call between tests to avoid bleed-over. |
+| `resolve_url(module_name: str) -> str` | Look up the URL the consumer would use for a provider (either from `register` or from `JAC_SV_<MOD>_URL`). Returns a string or raises if nothing is registered. |
+
+### Plugin Override: Custom Service Spawning
+
+`JacAPIServer.ensure_sv_service(module_name: str, base_path: str) -> None` is the hook a plugin overrides to change **how** services come up. Default jac-scale behavior spawns a sibling inside the consumer process; a plugin override can launch the service anywhere it wants -- Docker containers, Kubernetes Jobs, systemd units, remote VMs -- as long as it ends by calling `sv_client.register(module_name, <url>)` so subsequent calls skip the hook.
+
+The hook is called during automatic startup, once per provider, in parallel up to 8 at a time. Overrides must be idempotent and safe to run concurrently. Both properties were already true of the pre-existing lazy contract (concurrent first-call requests could race into the same hook), so a plugin written against any prior version continues to work without modification.
+
+The default jac-scale implementation at a high level: pick a free loopback port in `18000-18999`, start an HTTP listener on a daemon thread serving the module's `def:pub` endpoints, wait until the listener responds to an HTTP probe, then register the URL. Consult the jac-scale source if you need the exact details; the contract plugin authors should rely on is the `ensure_sv_service` signature and the requirement to call `sv_client.register` before returning.
 
 ## Storage
 
@@ -2489,7 +2967,7 @@ The proxy itself is a Jac application at `jac-scale/providers/proxy/sandbox_prox
 
 ```dockerfile
 FROM python:3.12-slim
-RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang jac-scale
+RUN pip install --no-cache-dir aiohttp kubernetes_asyncio jaclang "jac-scale[all]"
 COPY sandbox_proxy.jac /app/sandbox_proxy.jac
 WORKDIR /app
 EXPOSE 8080

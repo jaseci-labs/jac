@@ -21,7 +21,7 @@ jobs:
       - name: Install jaclang and jac-scale
         run: |
           pip install -e ./jac
-          pip install -e ./jac-scale
+          pip install -e "./jac-scale[all]"
       - name: Precompile bytecode
         run: jac run jac/scripts/precompile_bytecode.jac ./jac-scale
       - name: Upload precompiled artifacts

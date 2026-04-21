@@ -157,7 +157,7 @@ impl WebTarget.build(
 def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
-    mod_path = getattr(loaded_mod, '__file__', None);
+    mod_path = loaded_mod?.__file__;
     if not mod_path {
         return DEFAULT_FUNCTION_NAME;
     }
@@ -166,17 +166,17 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
     if not mod {
         return DEFAULT_FUNCTION_NAME;
     }
-    gen = getattr(mod, 'gen', None);
+    gen = mod?.gen;
     if not gen {
         return DEFAULT_FUNCTION_NAME;
     }
 
-    client_manifest = getattr(gen, 'client_manifest', None);
+    client_manifest = gen?.client_manifest;
     if not client_manifest {
         return DEFAULT_FUNCTION_NAME;
     }
 
-    client_exports = getattr(client_manifest, 'exports', None);
+    client_exports = client_manifest?.exports;
     if client_exports and len(client_exports) > 0 {
         return client_exports[0];
     }
@@ -238,7 +238,8 @@ def _generate_index_html(
         "argOrder": [],
         "globals": {}
     };
-    init_json = json.dumps(init_payload);
+    # Escape </ to prevent closing script tag early (don't use html.escape - breaks JSON)
+    init_json = json.dumps(init_payload).replace('</', '<\\/');
     bundle_filename = bundle_path.name;
 
     html_content = f'''<!DOCTYPE html>
@@ -248,9 +249,7 @@ def _generate_index_html(
   </head>
   <body>
     <div id="root"></div>
-    <script id="__jac_init__" type="application/json">{html.escape(
-        init_json
-    )}</script>
+    <script id="__jac_init__" type="application/json">{init_json}</script>
     <script type="module" src="{bundle_filename}"></script>
   </body>
 </html>''';

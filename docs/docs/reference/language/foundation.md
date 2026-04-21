@@ -640,6 +640,10 @@ obj Rectangle {
 }
 ```
 
+> [!WARNING]
+> **Strict Data Model**
+> Jac enforces a declarative data model. Only attributes declared with `has` are part of the object's structure. While the runtime may currently allow dynamic assignment of undeclared attributes, this is an anti-pattern that should be avoided. Future versions of the Jac compiler will strictly forbid this behavior.
+
 ### 3 Global Variables (glob)
 
 The `glob` keyword declares module-level variables, replacing Python's convention of bare global assignments.
@@ -1908,11 +1912,11 @@ Native and Python codespaces can call each other within the same module:
 
 ```jac
 # main.jac (Python/server codespace)
-sv {
-    def process_data(data: list) -> list {
-        # Python code with full PyPI access
-        return sorted(data);
-    }
+to sv:
+
+def process_data(data: list) -> list {
+    # Python code with full PyPI access
+    return sorted(data);
 }
 
 # main.na.jac (native codespace)

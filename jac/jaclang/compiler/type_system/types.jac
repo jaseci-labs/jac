@@ -128,7 +128,11 @@ obj ModuleType(TypeBase) {
         is_stub_file: bool = False,  # True if .pyi file
         is_stdlib_stub: bool = False,  # True if from vendor/typeshed/stdlib/
         is_typing_stub: bool = False,  # True if typing.pyi or typing_extensions.pyi
-        is_builtin_stub: bool = False;  # True if builtins.pyi, abc.pyi, etc.
+        is_builtin_stub: bool = False,  # True if builtins.pyi, abc.pyi, etc.
+        # True for modules backed by a file in a language the Jac compiler
+        # cannot parse (e.g. .js/.ts/.css/assets). Lookups against these
+        # modules yield AnyType (gradual) instead of erroring on missing names.
+        is_external: bool = False;
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Module;
@@ -166,12 +170,22 @@ obj TypeVarType(TypeBase) {
 
 """Represents a class type."""
 obj ClassType(TypeBase) {
-    has shared: (ClassType.ClassDetailsShared | None) = None,
-        private: (ClassType.ClassDetailsPrivate | None) = None;
+    # `private` is per-instance and always populated (the default
+    # factory creates a fresh `ClassDetailsPrivate` for every instance
+    # that doesn't override it).  `_shared` may legitimately be None
+    # for detached property ClassTypes produced by `create_property`
+    # without an enclosing class context — read `_shared` directly
+    # when handling that case, or use the `shared` accessor (which
+    # asserts non-null) for the common case.
+    has _shared: (ClassType.ClassDetailsShared | None) = None,
+        private: ClassType.ClassDetailsPrivate = ClassType.ClassDetailsPrivate();
 
     with entry {
         CATEGORY: ClassVar[TypeCategory] = TypeCategory.Class;
     }
+
+    @property
+    def shared -> ClassType.ClassDetailsShared;
 
     """
 Holds the shared details of class type.
@@ -230,7 +244,6 @@ Holds the private details of class type.
         def postinit -> None;
     }
 
-    def postinit -> None;
     def __str__ -> str;
     def clone_as_instance -> ClassType;
     def clone_as_class -> ClassType;
@@ -240,7 +253,9 @@ Holds the private details of class type.
         member: str, r_overloaded: list | None = None
     ) -> (Symbol | None);
 
-    def is_builtin(class_name: (str | None) = None) -> bool;
+    # `class_name` may be a single name, a list of acceptable names, or
+    # omitted to check only the builtin flag.
+    def is_builtin(class_name: (str | list[str] | None) = None) -> bool;
     def is_data_class -> bool;
     def is_namedtuple -> bool;
     def is_enum_class -> bool;

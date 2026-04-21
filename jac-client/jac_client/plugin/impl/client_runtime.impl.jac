@@ -337,14 +337,37 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
     );
 }
 
-impl jacSignup(username: str, password: str) -> dict {
+impl __normalizeIdentity(x: Any) -> dict {
+    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
+        return x;
+    }
+    return {"type": "username", "value": x};
+}
+
+impl __normalizeCredential(x: Any) -> dict {
+    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
+        return x;
+    }
+    return {"type": "password", "password": x};
+}
+
+impl jacSignup(
+    identities_or_username: (str | list), credential_or_password: (str | dict)
+) -> dict {
     base_url = __getApiBaseUrl();
+    credential = __normalizeCredential(credential_or_password);
+    identities = (
+        identities_or_username
+            if Array.isArray(identities_or_username)
+            else [__normalizeIdentity(identities_or_username)]
+    );
+    primary_username = identities[0]["value"] if len(identities) > 0 else "";
     response = await fetch(
         f"{base_url}/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"username": username, "password": password})
+            "body": JSON.stringify({"identities": identities, "credential": credential})
         }
     );
     if response.ok {
@@ -361,7 +384,7 @@ impl jacSignup(username: str, password: str) -> dict {
             }
             state["order"].splice(0, state["order"].length);
             __setLocalStorage("jac_token", token);
-            return {"success": True, "token": token, "username": username};
+            return {"success": True, "token": token, "username": primary_username};
         }
         return {"success": False, "error": "No token received"};
     } else {
@@ -380,14 +403,18 @@ impl jacSignup(username: str, password: str) -> dict {
     }
 }
 
-impl jacLogin(username: str, password: str) -> bool {
+impl jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool {
     base_url = __getApiBaseUrl();
+    identity = __normalizeIdentity(identity_or_username);
+    credential = __normalizeCredential(credential_or_password);
     response = await fetch(
         f"{base_url}/user/login",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"username": username, "password": password})
+            "body": JSON.stringify({"identity": identity, "credential": credential})
         }
     );
     if response.ok {
@@ -576,17 +603,13 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
                     }}
                 >
                     <div style={{marginBottom: 16}}>
-                        <div style={{color: "#888", marginBottom: 8}}>
-                            File:
-                        </div>
+                        <div style={{color: "#888", marginBottom: 8}}>File:</div>
                         <div style={{color: "#64b5f6", fontWeight: "bold"}}>
                             {filePath}
                         </div>
                     </div>
                     <div>
-                        <div style={{color: "#888", marginBottom: 8}}>
-                            Error:
-                        </div>
+                        <div style={{color: "#888", marginBottom: 8}}>Error:</div>
                         <pre
                             style={{
                                 background: "#2d2d2d",
@@ -759,9 +782,7 @@ impl JacForm(props: dict) -> JsxElement {
                         className={inputClassName}
                         style={{cursor: "pointer"}}
                     />
-                    <span className={labelClassName}>
-                        {label}
-                    </span>
+                    <span className={labelClassName}>{label}</span>
                 </label>
             );
         }
@@ -780,14 +801,10 @@ impl JacForm(props: dict) -> JsxElement {
                     className={inputClassName}
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
-                    <option value="">
-                        {placeholder or f"Select {label}"}
-                    </option>
+                    <option value="">{placeholder or f"Select {label}"}</option>
                     {options.map(
                         lambda opt: any -> JsxElement { return
-                            <option value={opt} key={opt}>
-                                {opt}
-                            </option>; }
+                            <option value={opt} key={opt}>{opt}</option>; }
                     )}
                 </select>
             );
@@ -821,9 +838,7 @@ impl JacForm(props: dict) -> JsxElement {
                                     className={inputClassName}
                                     style={{cursor: "pointer"}}
                                 />
-                                <span>
-                                    {opt}
-                                </span>
+                                <span>{opt}</span>
                             </label>
                         ); }
                     )}
@@ -892,15 +907,15 @@ impl JacForm(props: dict) -> JsxElement {
                             type="checkbox"
                             checked={isVisible}
                             onChange={lambda e: any { setPasswordVisible(
-                                lambda prev: any -> dict { newState = Object.assign(
-                                    {}, prev
-                                );newState[fieldName] = not isVisible;return newState; }
+                                lambda prev: any -> dict {
+                                    newState = Object.assign({}, prev);
+                                    newState[fieldName] = not isVisible;
+                                    return newState;
+                                }
                             );}}
                             style={{cursor: "pointer"}}
                         />
-                        <span>
-                            Show password
-                        </span>
+                        <span>Show password</span>
                     </label>
                 </div>
             );
@@ -988,9 +1003,7 @@ impl JacForm(props: dict) -> JsxElement {
     buttonClassName = submitClassName or "";
     return (
         <form onSubmit={form.handleSubmit(onSubmit)} className={formClassName}>
-            <div style={layoutStyle}>
-                {fields}
-            </div>
+            <div style={layoutStyle}>{fields}</div>
             <button
                 type="submit"
                 disabled={isSubmitting or not isDirty}
@@ -1062,11 +1075,17 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(
         "unhandledrejection",
-        lambda event: Any { reason = event.reason;message = "";stack = "";if reason {
-            message = reason.message or str(reason);
-            stack = reason.stack or "";
-        } else {
-            message = "Unhandled promise rejection";
-        } __jacReportError(message, stack, "", "unhandledrejection");}
+        lambda event: Any {
+            reason = event.reason;
+            message = "";
+            stack = "";
+            if reason {
+                message = reason.message or str(reason);
+                stack = reason.stack or "";
+            } else {
+                message = "Unhandled promise rejection";
+            }
+            __jacReportError(message, stack, "", "unhandledrejection");
+        }
     );
 }

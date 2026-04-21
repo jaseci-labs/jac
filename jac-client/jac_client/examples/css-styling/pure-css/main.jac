@@ -22,17 +22,11 @@ cl {
         return
             <div className="container">
                 <div className="card">
-                    <h1 className="title">
-                        Counter Application
-                    </h1>
+                    <h1 className="title">Counter Application</h1>
                     <div className="divider"></div>
                     <div className="counterSection">
-                        <div className="label">
-                            Current Count
-                        </div>
-                        <div className={countClass}>
-                            {count}
-                        </div>
+                        <div className="label">Current Count</div>
+                        <div className={countClass}>{count}</div>
                     </div>
                     <div className="divider"></div>
                     <div className="buttonGroup">

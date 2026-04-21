@@ -38,11 +38,6 @@ class SymTabBuildPass(UniPass) {
     @property
     def cur_scope(self: SymTabBuildPass) -> UniScopeNode;
 
-    """Find scope node of a given node."""
-    def find_python_scope_node_of(
-        self: SymTabBuildPass, nd: uni.UniNode
-    ) -> (UniScopeNode | None);
-
     """Create symbols for Name nodes in a module path."""
     def _bind_import_path_symbols(
         self: SymTabBuildPass, module_path: uni.ModulePath
@@ -98,11 +93,6 @@ class SymTabBuildPass(UniPass) {
     def exit_finally_stmt(self: SymTabBuildPass, nd: uni.FinallyStmt) -> None;
     def enter_iter_for_stmt(self: SymTabBuildPass, nd: uni.IterForStmt) -> None;
     def exit_iter_for_stmt(self: SymTabBuildPass, nd: uni.IterForStmt) -> None;
-    """Recursively define symbols in unpacking expressions."""
-    def _def_insert_unpacking(
-        self: SymTabBuildPass, nd: uni.Expr, sym_tab: UniScopeNode
-    ) -> None;
-
     def enter_in_for_stmt(self: SymTabBuildPass, nd: uni.InForStmt) -> None;
     def exit_in_for_stmt(self: SymTabBuildPass, nd: uni.InForStmt) -> None;
     def enter_while_stmt(self: SymTabBuildPass, nd: uni.WhileStmt) -> None;
@@ -125,3 +115,38 @@ class SymTabBuildPass(UniPass) {
     def enter_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
     def exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
 }
+
+"""Walk up ancestors to find the nearest Python-scoping node.
+
+Module-level helper so both SymTabBuildPass and DeclImplMatchPass can use it
+without taking a pass-instance reference."""
+def find_python_scope_node_of(nd: uni.UniNode) -> (UniScopeNode | None);
+
+"""Recursively define symbols in unpacking expressions.
+
+Module-level helper — the unpacking semantics are identical whether the
+assignment is encountered during SymTabBuildPass or rebound later by
+DeclImplMatchPass once an impl body has been connected to its decl.
+
+Two unpacking contexts:
+- `for (k, v) in d.items()` iterator binds `k`, `v` as iterator locals in
+  the for-statement's scope (no rebind).
+- `(x, y) = f()` as a statement must rebind an existing local when one is
+  in scope, otherwise bind in the nearest Python scope — same
+  Python-semantics path that plain assignments use. Without this, unpack
+  targets shadow the parameter they should be writing.
+
+`rebind_in_python_scope=True` selects the second behavior."""
+def def_insert_unpacking(
+    nd: uni.Expr, sym_tab: UniScopeNode, rebind_in_python_scope: bool = False
+) -> None;
+
+"""Bind the target Names of an assignment to symbols.
+
+Single source of truth for the "what does assigning to bare `x = ...` mean"
+decision: existing local → reuse; unannotated assignment with a reactive
+`has` var in an ancestor Ability scope → rebind that HasVar; otherwise
+introduce a local in the nearest Python scope. Used both during
+SymTabBuildPass and, for impl bodies, re-run after DeclImplMatchPass has
+connected the body to its declaration so decl-scope HasVars are reachable."""
+def bind_assignment_targets(nd: uni.Assignment) -> None;

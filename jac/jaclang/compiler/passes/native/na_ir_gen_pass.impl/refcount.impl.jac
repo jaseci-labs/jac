@@ -56,7 +56,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     # Uses chained arenas: when one fills up, a new one is malloc'd.
     # Arena size chosen to balance page-fault cost vs fragmentation.
     ARENA_SIZE = 128 * 1024 * 1024;  # 128 MB per arena
-    arena_base_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__jac_arena_base");
+    arena_base_gv = ir.GlobalVariable(
+        self.llvm_module, i8_ptr, name="__jac_arena_base"
+    );
     arena_base_gv.linkage = "private";
     arena_base_gv.initializer = ir.Constant(i8_ptr, None);
     arena_offset_gv = ir.GlobalVariable(self.llvm_module, i64, name="__jac_arena_off");
@@ -160,7 +162,9 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     # When proper retain/release balancing is implemented, this will need
     # arena-aware freeing. For now, all RC memory is bump-allocated and leaked.
     release_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
-    release_fn = ir.Function(self.llvm_module, release_fnty, name="__rc_release_simple");
+    release_fn = ir.Function(
+        self.llvm_module, release_fnty, name="__rc_release_simple"
+    );
     release_fn.linkage = "private";
     release_fn.args[0].name = "ptr";
     entry_bb = release_fn.append_basic_block("entry");

@@ -471,7 +471,9 @@ impl LayoutPass._validate_obj_fields(
 impl LayoutPass._is_layout_compatible_type(
     type_node: (uni.UniNode | None), arch_map: dict[str, uni.Archetype]
 ) -> bool {
-    import from jaclang.compiler.passes.main.layout_pass { LAYOUT_COMPATIBLE_PRIMITIVES }
+    import from jaclang.compiler.passes.main.layout_pass {
+        LAYOUT_COMPATIBLE_PRIMITIVES
+    }
     if type_node is None {
         return False;
     }
@@ -543,7 +545,7 @@ impl LayoutPass._is_layout_compatible_type(
         }
     }
     # Token with .value matching a type name (fallback)
-    if type_node?.value and isinstance(getattr(type_node, "value", None), str) {
+    if type_node?.value and isinstance(type_node?.value, str) {
         tname = type_node.value;
         if tname in LAYOUT_COMPATIBLE_PRIMITIVES {
             return True;

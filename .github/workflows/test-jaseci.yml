@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-core:
+  test-core-compiler:
     runs-on: ubuntu-latest
     steps:
     - name: Check out code
@@ -31,8 +31,32 @@ jobs:
         pip install pytest-xdist
         pip install watchdog
 
-    - name: Run Jac core tests
-      run: pytest -x jac -n auto
+    - name: Run compiler tests
+      run: pytest -x jac/tests/compiler -n auto
+
+  test-core-runtime:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v5
+      with:
+        submodules: true
+
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v3
+      with:
+        python-version: 3.12
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e jac
+        pip install pytest
+        pip install pytest-xdist
+        pip install watchdog
+
+    - name: Run runtime + langserve + language tests
+      run: pytest -x jac -n auto --ignore=jac/tests/compiler
 
   test-client:
     runs-on: ubuntu-latest
@@ -160,34 +184,18 @@ jobs:
     - name: Set up Bun
       uses: oven-sh/setup-bun@v2
 
-    - name: Install Jaseci scale package
+    - name: Install base jac-scale and test deps
       run: |
         python -m pip install --upgrade pip
         pip install -e jac
         pip install -e jac-scale
-        pip install pytest
-        pip install pytest-asyncio
         pip install -e jac-client
-        pip install testcontainers
-        pip install watchdog
-        pip install python-multipart  # Explicit install to ensure FastAPI form support
-        pip install websockets  # Required for WebSocket test cases
+        pip install pytest pytest-asyncio
+        pip install requests watchdog websockets
 
     - name: Run Backend tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serve.jac
-
-    - name: Run Webhook tests (without and with MongoDB)
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
-
-    - name: Run Memory Hierarchy tests
-      run: |
-        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
-
-    - name: Run jac-client examples
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_examples.jac
 
     - name: Run SSO tests
       run: |
@@ -197,6 +205,31 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_admin.jac
 
+    - name: Run RestSpec tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
+
+    - name: Run Microservice interop tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
+
+    - name: Run jac-client examples
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_examples.jac
+
+    - name: Install jac-scale[data] extras
+      run: |
+        pip install -e "jac-scale[data]"
+        pip install testcontainers
+
+    - name: Run Webhook tests (without and with MongoDB)
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_webhook.jac
+
+    - name: Run Memory Hierarchy tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
+
     - name: Run MongoDB user manager tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
@@ -205,13 +238,13 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
 
+    - name: Install jac-scale[scheduler] extras
+      run: |
+        pip install -e "jac-scale[scheduler]"
+
     - name: Run Scheduling tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
-
-    - name: Run RestSpec tests
-      run: |
-        pytest -x jac-scale/jac_scale/tests/test_restspec.jac
 
   test-scale-k8s:
     runs-on: ubuntu-latest
@@ -230,7 +263,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e jac
-          pip install -e jac-scale
+          pip install -e "jac-scale[deploy]"
           pip install -e jac-client
           pip install pytest
           pip install pytest-xdist
@@ -298,7 +331,7 @@ jobs:
     - name: Pre-build admin dashboard UI
       run: |
         pip install -e jac-client
-        pip install -e jac-scale
+        pip install -e "jac-scale[all]"
         cd jac-scale && jac run scripts/build_admin_ui.jac
 
     - name: Uninstall editable packages
@@ -320,7 +353,7 @@ jobs:
         python -m build jac-byllm --wheel
         pip install jac/dist/jaclang-*.whl
         pip install jac-client/dist/jac_client-*.whl
-        pip install jac-scale/dist/jac_scale-*.whl
+        SCALE_WHL=$(ls jac-scale/dist/jac_scale-*.whl) && pip install "${SCALE_WHL}[all]"
         pip install jac-byllm/dist/byllm-*.whl
         pip install pytest
         pip install pytest-asyncio
@@ -485,6 +518,62 @@ jobs:
           kill -9 ${{ env.ALGO_PID }} 2>/dev/null || true
         fi
 
+    # ========== fullstack eject smoke ==========
+    # Structural / codegen correctness of `jac eject` is covered by
+    # jac/tests/project/test_eject.jac (21 in-process unit tests, ~0.5s).
+    # The steps below are deliberately end-to-end: they exist to validate
+    # what the unit tests cannot — that `jac eject` works against the real
+    # fullstack template and that the ejected backend imports cleanly
+    # against the wheel-installed jaclang runtime and actually serves HTTP.
+    # The live `jac start` path is exercised separately by the test-client
+    # job (`start dev with client does initial compilation`), so this job
+    # focuses solely on the eject pipeline.
+    - name: Create fullstack project and eject it
+      run: |
+        jac create --use fullstack fs-smoke
+        jac eject fs-smoke
+
+    - name: Install ejected backend and start it
+      working-directory: fs-smoke-ejected
+      run: |
+        pip install -r backend/requirements.txt
+        PORT=8000 timeout 600 python backend/serve.py > /tmp/fullstack-ejected.log 2>&1 &
+        EJECTED_PID=$!
+        echo "EJECTED_PID=$EJECTED_PID" >> $GITHUB_ENV
+        sleep 5
+        if ! kill -0 $EJECTED_PID 2>/dev/null; then
+          echo "Ejected backend died during startup"
+          cat /tmp/fullstack-ejected.log
+          exit 1
+        fi
+
+    - name: Verify ejected fullstack backend responds
+      run: |
+        for i in $(seq 1 12); do
+          if ! kill -0 ${{ env.EJECTED_PID }} 2>/dev/null; then
+            echo "Ejected backend exited unexpectedly"
+            tail -100 /tmp/fullstack-ejected.log
+            exit 1
+          fi
+          if curl -sf --max-time 5 http://localhost:8000 -o /dev/null 2>&1; then
+            echo "Ejected backend responding (attempt $i)"
+            exit 0
+          fi
+          sleep 5
+        done
+        echo "Ejected backend failed to respond"
+        tail -100 /tmp/fullstack-ejected.log
+        exit 1
+
+    - name: Stop ejected fullstack server
+      if: always()
+      run: |
+        if [ -n "${{ env.EJECTED_PID }}" ]; then
+          kill ${{ env.EJECTED_PID }} 2>/dev/null || true
+          sleep 3
+          kill -9 ${{ env.EJECTED_PID }} 2>/dev/null || true
+        fi
+
     - name: Upload jac-gpt server logs
       if: always()
       uses: actions/upload-artifact@v4
@@ -501,6 +590,14 @@ jobs:
         path: /tmp/algo-server.log
         retention-days: 7
 
+    - name: Upload fullstack ejected backend logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: fullstack-ejected-logs
+        path: /tmp/fullstack-ejected.log
+        retention-days: 7
+
     - name: Jac pack test summary
       if: always()
       run: |
@@ -510,5 +607,6 @@ jobs:
         echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
         echo "| jac-gpt | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "| algo | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
+        echo "| fullstack (ejected) | \`${{ job.status }}\` |" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "| **Trigger** | \`${{ github.event_name }}\` |" >> $GITHUB_STEP_SUMMARY

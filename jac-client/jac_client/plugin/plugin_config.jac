@@ -11,7 +11,6 @@ configuration system, registering:
 import os;
 import shutil;
 import subprocess;
-import json;
 import from pathlib { Path }
 import from typing { Any }
 import from jaclang.jac0core.runtime { hookimpl }
@@ -122,7 +121,7 @@ class JacClientPluginConfig {
     static def register_project_template -> list[dict[str, Any]] {
         templates: list[dict[str, Any]] = [];
 
-        # Load templates from bundled JSON files
+        # Load templates from template directories
         for template_name in ["client", "fullstack"] {
             template = _load_template(template_name);
             if template {
@@ -137,40 +136,41 @@ class JacClientPluginConfig {
 # ===============================================================================
 # Template Loader
 # ===============================================================================
-"""Load a template from bundled JSON file."""
+"""Load a template from a template directory containing jac.toml with [jacpack] section."""
 def _load_template(template_name: str) -> dict[str, Any] | None {
-    # Find the template JSON file relative to this module
+    import from jaclang.project.template_loader { load_template_from_directory }
+    import from jaclang.cli.console { console }
+
+    # Find the template directory relative to this module
     # plugin_config.jac is in jac_client/plugin/, so .parent.parent = jac_client/
     module_dir = Path(__file__).parent.parent;  # jac_client directory
-    template_path = module_dir / "templates" / f"{template_name}.jacpack";
+    template_dir = module_dir / "templates" / template_name;
 
-    if not template_path.exists() {
+    if not template_dir.exists() {
         # Fallback: look in installed package location
         import from importlib.resources { files }
         try {
-            package_files = files("jac_client");
-            template_path = Path(str(package_files)) / "templates" / f"{template_name}.jacpack";
-        } except Exception as e {
-            import from jaclang.cli.console { console }
+            package_root = str(files("jac_client"));
+            template_dir = Path(package_root) / "templates" / template_name;
+        } except (TypeError, ModuleNotFoundError) as e {
             console.warning(
-                f"Failed to locate template package for '{template_name}': {e}"
+                f"Failed to locate template directory for '{template_name}': {e}"
             );
             return None;
         }
     }
 
-    if not template_path.exists() {
+    if not template_dir.exists() or not template_dir.is_dir() {
         return None;
     }
 
     try {
-        with open(template_path, "r") as f {
-            data = json.load(f);
-        }
-
-        # Attach the post_create hook
+        template = load_template_from_directory(
+            template_dir, post_create_hook=_post_create_client
+        );
+        # Convert to dict for registry registration
+        data = template.to_dict();
         data["post_create"] = _post_create_client;
-
         return data;
     } except Exception as e {
         console.error(f"Warning: Could not load {template_name} template: {e}");
@@ -284,8 +284,7 @@ def _post_create_client(project_path: Path, project_name: str) -> None {
         } except subprocess.CalledProcessError as e {
             console.warning(f"Failed to install packages: {e}");
             console.print(
-                "  💡 You can install packages later with: jac add --cl\n",
-                style="muted"
+                "  💡 You can install packages later with: jac add --cl\n", style="muted"
             );
         } finally {
             # Clean up temporary package.json

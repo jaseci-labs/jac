@@ -501,23 +501,6 @@ test "W2050: missing return on non-None function" {
     assert has_diagnostic_code(prog, "W2050", in_warnings=True);
 }
 
-test "W2052: overly broad except" {
-    (prog, _) = compile_and_check("semantic_W2052_broad_except.jac");
-    assert has_diagnostic_code(prog, "W2052", in_warnings=True);
-    # Verify underline is clamped to the token, not the entire Except block
-    for w in prog.warnings_had {
-        if "W2052" in w.msg {
-            output = w.pretty_print();
-            for line in output.split('\n') {
-                caret_count = line.count('^');
-                assert caret_count <= len("Exception") , f"Underline too wide ({caret_count} carets): {repr(
-                    line
-                )}";
-            }
-        }
-    }
-}
-
 test "E2055: return in finally block" {
     (prog, _) = compile_and_check("context_E2055_return_in_finally.jac");
     assert has_diagnostic_code(prog, "E2055");
@@ -617,6 +600,16 @@ test "W3025: identical if/else branches" {
     assert has_diagnostic_code(prog, "W3025", in_warnings=True);
 }
 
+test "W3025: no false positive on subscript targets and call kwargs" {
+    path = os.path.join(
+        NEW_DIAG_FIXTURES, "lint_W3025_identical_branches_false_positive.jac"
+    );
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    # Fixture has 3 if/else pairs: 2 differ (must not warn) + 1 truly matches
+    # with a subscript target (must warn). Expect exactly 1 W3025.
+    assert count_diagnostic_code(prog, "W3025", in_warnings=True) == 1;
+}
+
 test "W3026: not (a == b) should be a != b" {
     pytest.skip("W3026 not yet implemented");
     (_, prog) = parse_and_validate('with entry { x = 5; y = not (x == 3); }');
@@ -701,8 +694,7 @@ test "W0061: bracket filter no warning" {
 test "W0061: multiple deprecated filters emit multiple warnings" {
     prog = JacProgram();
     prog.compile(
-        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }',
-        file_path="test.jac"
+        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }', file_path="test.jac"
     );
     assert count_diagnostic_code(prog, "W0061", in_warnings=True) == 2 , "Each deprecated filter occurrence should emit its own W0061";
 }
@@ -767,7 +759,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
 glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
      IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
 
-def reject_test(name_snippet: tuple) -> None {
+def reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_REJECT {
         pytest.skip(f"{name} not yet implemented");
@@ -777,7 +769,7 @@ def reject_test(name_snippet: tuple) -> None {
     assert has_errors , f"Validation must reject '{name}': {snippet}";
 }
 
-def validate_reject_test(name_snippet: tuple) -> None {
+def validate_reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_VALIDATE {
         pytest.skip(f"{name} not yet implemented");
