@@ -271,51 +271,62 @@ impl ClassType.lookup_member_symbol(
             return all_syms[0];
         }
     }
-    # Fallback: check __init__ parameters and body for self-assignments.
+    # Fallback: check init/postinit parameters and body for self-assignments.
     # When a class/obj is imported from another module, its impl file's self.x
     # assignments may not have been processed by _populate_self_member_symbols.
-    # This fallback scans init params and body to resolve instance attributes.
+    # This fallback scans init/postinit to resolve instance attributes.
     for cls in self.shared.mro {
         arch = cls.shared.symbol_table;
         if not isinstance(arch, uni.Archetype) {
             continue;
         }
-        init_sym = arch.lookup('init', deep=False);
-        if not init_sym or not isinstance(init_sym.decl.name_of, uni.Ability) {
-            continue;
-        }
-        init_ability = init_sym.decl.name_of;
-        if not isinstance(init_ability.signature, uni.FuncSignature) {
-            continue;
-        }
-        # Check init parameters
-        for param in init_ability.signature.params or [] {
-            if param.name.value == member and param.name.value != 'self' {
-                arch.def_insert(param.name, access_spec=arch);
-                return arch.lookup(member, deep=False);
-            }
-        }
-        # Check self.x = ... assignments in init body (including impl body).
-        # Only for class archetypes (Python-style) — obj/node/edge/walker
-        # require explicit 'has' declarations for instance attributes.
-        if arch.arch_type.name != 'KW_CLASS' {
-            continue;
-        }
-        for trailer in init_ability.get_all_sub_nodes(uni.AtomTrailer) {
-            if not (trailer.parent and isinstance(trailer.parent, uni.Assignment)) {
+        is_class = arch.arch_type.name == 'KW_CLASS';
+        # Scan both init and postinit (__post_init__) methods.
+        for method_name in ('init', '__post_init__') {
+            method_sym = arch.lookup(method_name, deep=False);
+            if not method_sym or not isinstance(method_sym.decl.name_of, uni.Ability) {
                 continue;
             }
-            if trailer != trailer.parent.target[0] {
-                continue;
-            }
-            chain = trailer.as_attr_list;
+            method_ability = method_sym.decl.name_of;
+            # Check init parameters (postinit typically has none)
             if (
-                len(chain) >= 2
-                and chain[0].sym_name == 'self'
-                and chain[1].sym_name == member
+                isinstance(method_ability.signature, uni.FuncSignature)
+                and method_ability.signature.params
             ) {
-                arch.def_insert(chain[1], access_spec=arch);
-                return arch.lookup(member, deep=False);
+                for param in method_ability.signature.params {
+                    if param.name.value == member and param.name.value != 'self' {
+                        arch.def_insert(param.name, access_spec=arch);
+                        return arch.lookup(member, deep=False);
+                    }
+                }
+            }
+            # Check self.x = ... assignments in method body (including impl body).
+            # For class archetypes: accept all self-assignments.
+            # For obj/node/edge/walker: only accept annotated assignments
+            # (self.x: Type = value) — these should be 'has' fields but we
+            # resolve them here to avoid cascading errors.
+            for trailer in method_ability.get_all_sub_nodes(uni.AtomTrailer) {
+                if not (
+                    trailer.parent and isinstance(trailer.parent, uni.Assignment)
+                ) {
+                    continue;
+                }
+                if trailer != trailer.parent.target[0] {
+                    continue;
+                }
+                # For obj types, only resolve annotated assignments.
+                if not is_class and trailer.parent.type_tag is None {
+                    continue;
+                }
+                chain = trailer.as_attr_list;
+                if (
+                    len(chain) >= 2
+                    and chain[0].sym_name == 'self'
+                    and chain[1].sym_name == member
+                ) {
+                    arch.def_insert(chain[1], access_spec=arch);
+                    return arch.lookup(member, deep=False);
+                }
             }
         }
     }
@@ -466,7 +477,7 @@ impl ClassType.ClassDetailsPrivate.postinit -> None {
 impl ClassType.ClassDetailsShared.postinit -> None {
     self.type_params = self.type_params or [];
     self.base_classes = self.base_classes or [];
-    self.mro: list[ClassType] = [];
+    self.mro = [];
 }
 
 """Return whether the class is an instance."""
