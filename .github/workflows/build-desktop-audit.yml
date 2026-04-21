@@ -1,0 +1,347 @@
+name: Audit Desktop Build Time
+
+# Audit how much jac-scale and byllm add to desktop build time.
+#
+# Single workflow run = 12 jobs (4 variants × 3 OSes) running in parallel,
+# plus a final compare job that aggregates all results into one table.
+#
+# How to run:
+#   - Push any change to this file, OR
+#   - Actions tab -> Audit Desktop Build Time -> Run workflow.
+#   Wait ~30-60 min for all 12 jobs. The compare job's Summary tab has the
+#   final cross-variant table.
+#
+# jaclang is installed editable from this checkout. jac-scale and byllm
+# are installed from PyPI (which is what we're auditing). jac-client is
+# editable because `jac setup desktop` lives there.
+
+on:
+  push:
+    paths:
+      - .github/workflows/build-desktop-audit.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  EXAMPLE_DIR: jac-client/jac_client/examples/all-in-one
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  audit:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - jaclang-only
+          - jac-scale
+          - byllm
+          - jac-scale+byllm
+        os:
+          - ubuntu-22.04
+          - windows-latest
+          - macos-latest
+        include:
+          - os: ubuntu-22.04
+            platform: linux
+          - os: windows-latest
+            platform: windows
+          - os: macos-latest
+            platform: macos
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf libfuse2 \
+            libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-reg-${{ matrix.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-reg-${{ matrix.os }}-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # ── pip install (timed) ───────────────────────────────────
+      # jaclang + jac-client are always editable from the checkout.
+      # The variant controls which extras come from PyPI.
+      - name: Install Jac packages
+        id: install
+        shell: bash
+        run: |
+          START=$SECONDS
+          pip install --upgrade pip
+          pip install -e ./jac
+          pip install -e ./jac-client
+          case "${{ matrix.variant }}" in
+            jaclang-only)     ;;
+            jac-scale)        pip install jac-scale ;;
+            byllm)            pip install byllm ;;
+            jac-scale+byllm)  pip install jac-scale byllm ;;
+          esac
+          pip install pyinstaller Pillow
+          echo "secs=$((SECONDS-START))" >> "$GITHUB_OUTPUT"
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Tauri CLI
+        shell: bash
+        run: |
+          if command -v cargo-tauri &>/dev/null; then
+            echo "cargo-tauri already installed, skipping"
+          elif command -v cargo-binstall &>/dev/null || \
+               (curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash); then
+            cargo binstall tauri-cli --no-confirm --no-discover-github-token || \
+              cargo install tauri-cli --locked
+          else
+            cargo install tauri-cli --locked
+          fi
+
+      - name: Setup desktop target
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        run: |
+          rm -rf src-tauri
+          jac setup desktop
+
+      - name: Disable AppImage on Linux
+        if: matrix.platform == 'linux'
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        run: |
+          python3 -c "
+          import json
+          conf = 'src-tauri/tauri.conf.json'
+          with open(conf) as f: c = json.load(f)
+          c['bundle']['targets'] = ['deb', 'rpm']
+          with open(conf, 'w') as f: json.dump(c, f, indent=2)
+          "
+
+      - name: Set Linux AppImage env vars
+        if: matrix.platform == 'linux'
+        run: |
+          echo "APPIMAGE_EXTRACT_AND_RUN=1" >> "$GITHUB_ENV"
+          echo "NO_STRIP=true" >> "$GITHUB_ENV"
+
+      # ── jac build (timed) ─────────────────────────────────────
+      # This is the dominant cost: PyInstaller bundles the sidecar
+      # (sensitive to installed Python deps) then Tauri/Cargo bundles
+      # the installer (roughly constant across variants).
+      - name: Build desktop app
+        id: build
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        env:
+          JAC_BUILD: "1"
+        run: |
+          START=$SECONDS
+          jac build --client desktop --platform ${{ matrix.platform }}
+          echo "secs=$((SECONDS-START))" >> "$GITHUB_OUTPUT"
+        timeout-minutes: 90
+
+      # ── Installer size ────────────────────────────────────────
+      # Picks the largest artifact from the bundle dir as the headline
+      # installer (msi/dmg/deb/rpm). Reported in bytes + MB.
+      - name: Measure installer size
+        id: size
+        if: always() && steps.build.outcome == 'success'
+        working-directory: ${{ env.EXAMPLE_DIR }}
+        shell: bash
+        run: |
+          BIGGEST=$(find src-tauri/target -type f \
+            \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" \
+               -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) \
+            -printf '%s %p\n' 2>/dev/null \
+            | sort -rn | head -1)
+          if [ -z "$BIGGEST" ]; then
+            # macOS find lacks -printf
+            BIGGEST=$(find src-tauri/target -type f \
+              \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" \
+                 -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) \
+              -exec stat -f '%z %N' {} \; 2>/dev/null \
+              | sort -rn | head -1)
+          fi
+          BYTES=$(echo "$BIGGEST" | awk '{print $1}')
+          PATH_=$(echo "$BIGGEST" | awk '{print $2}')
+          MB=$(awk "BEGIN {printf \"%.1f\", ${BYTES:-0}/1048576}")
+          echo "bytes=${BYTES:-0}" >> "$GITHUB_OUTPUT"
+          echo "mb=$MB" >> "$GITHUB_OUTPUT"
+          echo "path=$PATH_" >> "$GITHUB_OUTPUT"
+
+      # ── Result artifact ───────────────────────────────────────
+      # Small JSON consumed by the compare job below. `+` is not
+      # allowed in artifact names, so we sanitize it for the name only.
+      - name: Write result JSON
+        if: always()
+        id: result
+        shell: bash
+        run: |
+          mkdir -p audit-out
+          V="${{ matrix.variant }}"
+          SAFE_V="${V//+/_}"
+          cat > audit-out/result.json <<EOF
+          {
+            "variant": "$V",
+            "os": "${{ matrix.os }}",
+            "platform": "${{ matrix.platform }}",
+            "commit": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "pip_install_secs": ${{ steps.install.outputs.secs || 'null' }},
+            "build_secs": ${{ steps.build.outputs.secs || 'null' }},
+            "installer_bytes": ${{ steps.size.outputs.bytes || 'null' }},
+            "installer_path": "${{ steps.size.outputs.path }}",
+            "build_outcome": "${{ steps.build.outcome }}"
+          }
+          EOF
+          cat audit-out/result.json
+          echo "safe_v=$SAFE_V" >> "$GITHUB_OUTPUT"
+
+      - name: Upload result artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audit-result-${{ steps.result.outputs.safe_v }}-${{ matrix.platform }}
+          path: audit-out/result.json
+          if-no-files-found: warn
+          retention-days: 90
+
+      - name: Per-job summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Build Time Audit — \`${{ matrix.variant }}\` on \`${{ matrix.platform }}\`"
+            echo ""
+            echo "| Phase            | Value |"
+            echo "|------------------|-------|"
+            echo "| pip install      | ${{ steps.install.outputs.secs }} s |"
+            echo "| jac build (total)| ${{ steps.build.outputs.secs }} s |"
+            echo "| Installer size   | ${{ steps.size.outputs.mb }} MB (${{ steps.size.outputs.bytes }} bytes) |"
+            echo "| Installer path   | \`${{ steps.size.outputs.path }}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ── Compare ───────────────────────────────────────────────
+  # Aggregates all 12 result.json artifacts into one comparison
+  # table per OS, with deltas vs the jaclang-only baseline.
+  compare:
+    needs: audit
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all audit results
+        uses: actions/download-artifact@v4
+        with:
+          path: audit-data
+          pattern: audit-result-*
+
+      - name: Build comparison table
+        env:
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        shell: bash
+        run: |
+          python3 <<'PY'
+          import json, os
+          from pathlib import Path
+
+          VARIANTS = ["jaclang-only", "jac-scale", "byllm", "jac-scale+byllm"]
+          PLATFORMS = ["linux", "macos", "windows"]
+          REPO = os.environ["GH_REPO"]
+          RUN_ID = os.environ["RUN_ID"]
+
+          results = {}
+          root = Path("audit-data")
+          if root.exists():
+              for artifact_dir in root.iterdir():
+                  rj = artifact_dir / "result.json"
+                  if not rj.exists():
+                      continue
+                  try:
+                      data = json.loads(rj.read_text())
+                  except json.JSONDecodeError:
+                      continue
+                  results[(data.get("variant"), data.get("platform"))] = data
+
+          def fmt_int(v):
+              return f"{v}" if isinstance(v, (int, float)) else "—"
+
+          def fmt_mb(b):
+              return f"{b/1048576:.1f}" if isinstance(b, (int, float)) else "—"
+
+          def diff_secs(r, base, field):
+              if not base or base.get(field) is None or r.get(field) is None:
+                  return "—"
+              return f"{r[field] - base[field]:+d} s"
+
+          def diff_mb(r, base):
+              if not base or base.get("installer_bytes") is None or r.get("installer_bytes") is None:
+                  return "—"
+              return f"{(r['installer_bytes'] - base['installer_bytes'])/1048576:+.1f} MB"
+
+          out = ["## Desktop Build Audit — Comparison", ""]
+          out.append(f"Run: [{RUN_ID}](https://github.com/{REPO}/actions/runs/{RUN_ID})")
+          out.append("")
+          out.append("Δ columns are vs `jaclang-only` on the same OS.")
+          out.append("")
+
+          for plat in PLATFORMS:
+              out.append(f"### {plat}")
+              out.append("")
+              out.append("| Variant | pip install | jac build | Installer | Δ build | Δ size |")
+              out.append("|---|---|---|---|---|---|")
+              base = results.get(("jaclang-only", plat))
+              for variant in VARIANTS:
+                  r = results.get((variant, plat))
+                  if not r:
+                      out.append(f"| `{variant}` | — | — | — | — | — |")
+                      continue
+                  pip_s = fmt_int(r.get("pip_install_secs"))
+                  build_s = fmt_int(r.get("build_secs"))
+                  size_mb = fmt_mb(r.get("installer_bytes"))
+                  if variant == "jaclang-only":
+                      d_build = "(base)"
+                      d_size = "(base)"
+                  else:
+                      d_build = diff_secs(r, base, "build_secs")
+                      d_size = diff_mb(r, base)
+                  out.append(f"| `{variant}` | {pip_s} s | {build_s} s | {size_mb} MB | {d_build} | {d_size} |")
+              out.append("")
+
+          missing = [(v, p) for v in VARIANTS for p in PLATFORMS if (v, p) not in results]
+          if missing:
+              out.append("### Missing data")
+              out.append("")
+              for v, p in missing:
+                  out.append(f"- `{v}` on `{p}`")
+              out.append("")
+
+          text = "\n".join(out)
+          print(text)
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+              with open(summary_path, "a") as f:
+                  f.write(text + "\n")
+          PY
