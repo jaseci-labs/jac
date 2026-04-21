@@ -131,18 +131,10 @@ fi
 MALFORMED_FRAGMENTS=()
 
 while IFS= read -r file; do
-    [ -z "$file" ] && continue
-    if [[ "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ ]] && [ -f "$file" ]; then
-        # Must not contain markdown headings (they break the heading hierarchy when injected)
-        if grep -qE '^#{1,6} ' "$file"; then
-            MALFORMED_FRAGMENTS+=("$file: contains a markdown heading — remove it and use '- **Category: Title**: description' format")
-            continue
-        fi
-        # Every non-empty line must be a bullet point or an indented continuation line
-        if grep -qE '^[^[:space:]-]' "$file" 2>/dev/null; then
-            MALFORMED_FRAGMENTS+=("$file: all entries must be bullet points starting with '- ' (indented continuation lines are allowed)")
-        fi
-    fi
+    [[ -z "$file" || ! "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ || ! -f "$file" ]] && continue
+    # Every non-empty line must start with '- ' or be indented (catches headings and plain paragraphs)
+    grep -qE '^[^[:space:]-]' "$file" 2>/dev/null && \
+        MALFORMED_FRAGMENTS+=("$file: all entries must be bullet points starting with '- ' (no headings or plain paragraphs)")
 done <<< "$CHANGED_FILES"
 
 if [ ${#MALFORMED_FRAGMENTS[@]} -gt 0 ]; then
@@ -151,9 +143,7 @@ if [ ${#MALFORMED_FRAGMENTS[@]} -gt 0 ]; then
     echo "ERROR: Malformed release note fragment(s)!"
     echo "=========================================="
     echo ""
-    for item in "${MALFORMED_FRAGMENTS[@]}"; do
-        echo "  - $item"
-    done
+    printf '  - %s\n' "${MALFORMED_FRAGMENTS[@]}"
     echo ""
     echo "Each fragment must be a single bullet point:"
     echo '  - **Category: Brief title**: Description of the change.'
