@@ -4004,6 +4004,32 @@ test "annotated_self_assign_no_false_e1001" {
     }
 }
 
+test "generator_yield_return_type_check" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_generator_yield_return.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        yield "hello";
+        ^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+    assert_error_pretty_found(
+        """
+        return 42;
+        ^^^^^^^^^^
+    """,
+        program.errors_had[1].pretty_print()
+    );
+}
+
 test "isinstance_and_narrowing" {
     # isinstance(x, T) in LHS of AND should narrow x to T for RHS operands.
     path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_and_narrowing.jac");

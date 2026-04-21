@@ -81,7 +81,7 @@ impl InteropAnalysisPass.enter_import(
 ) -> None {
     import_context = self._get_context(nd);
     if (nd.from_loc and isinstance(nd.from_loc, uni.ModulePath)) {
-        module_name = getattr(nd.from_loc, 'dot_path_str', None);
+        module_name = nd.from_loc?.dot_path_str;
         if (not module_name and nd.from_loc?.path and nd.from_loc.path) {
             module_name = '.'.join(
                 getattr(p, 'value', str(p)) for p in nd.from_loc.path
@@ -279,10 +279,7 @@ impl InteropAnalysisPass._parse_only_source_module(
 impl InteropAnalysisPass._find_archetype(
     self: InteropAnalysisPass, nd: Any, target: str
 ) -> Any {
-    if (
-        isinstance(nd, (uni.Archetype, uni.Enum))
-        and getattr(nd, 'sym_name', None) == target
-    ) {
+    if (isinstance(nd, (uni.Archetype, uni.Enum)) and nd?.sym_name == target) {
         return nd;
     }
     if nd?.kid and nd.kid {
