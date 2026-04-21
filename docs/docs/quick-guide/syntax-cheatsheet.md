@@ -350,6 +350,9 @@ obj Example {
     }
 }
 
+# NOTE: All instance fields MUST be declared with `has`.
+# Dynamic assignment (e.g., `obj.new_attr = val`) is an anti-pattern.
+
 
 # ============================================================
 # Access Modifiers
