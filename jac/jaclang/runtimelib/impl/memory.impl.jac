@@ -31,7 +31,7 @@ def _anchor_to_row(anchor: Anchor) -> tuple {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
-        fp = getattr(type(arch), '__jac_fingerprint__', None);
+        fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
     }
     return (
@@ -490,7 +490,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
     # deserialize exceptions below.
     if arch_module and arch_type and fingerprint {
         cls = Serializer._get_class(arch_module, arch_type);
-        current_fp = getattr(cls, '__jac_fingerprint__', None) if cls else None;
+        current_fp = cls?.__jac_fingerprint__ if cls else None;
         if current_fp and current_fp != fingerprint {
             logger.info(
                 f"SqliteMemory: schema drift on {arch_module}.{arch_type} "
@@ -900,7 +900,7 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
     # resolution and drift-detection logging.
     re_data = Serializer.serialize(anchor, include_type=True);
     re_data_json = json.dumps(re_data);
-    live_arch = getattr(anchor, 'archetype', None);
+    live_arch = anchor?.archetype;
     live_module = getattr(type(live_arch), '__module__', arch_module)
         if live_arch
         else arch_module;

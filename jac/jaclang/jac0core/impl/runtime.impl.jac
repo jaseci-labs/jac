@@ -942,7 +942,7 @@ impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
     deleted_count = 0;
     deleted_ids: set[UUID] = `set();
     persistence = mem.l3;
-    conn = getattr(persistence, '__conn__', None) if persistence else None;
+    conn = persistence?.__conn__ if persistence else None;
     if (conn and isinstance(conn, sqlite3.Connection)) {
         cursor = conn.execute('SELECT data FROM anchors');
         anchors = [pickle.loads(row[0]) for row in cursor.fetchall()];
@@ -2051,7 +2051,7 @@ impl JacByLLM.by_operator(lhs: Any, rhs: Any) -> Any {
     Model instance based on jac.toml settings.
     """
 impl JacByLLM.default_llm -> LLMModel {
-    _cache = getattr(JacByLLM, '_default_llm_instance', None);
+    _cache = JacByLLM?._default_llm_instance;
     if (_cache is not None) {
         return _cache;
     }
