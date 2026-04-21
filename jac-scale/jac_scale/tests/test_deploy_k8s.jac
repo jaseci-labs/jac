@@ -224,6 +224,8 @@ test "deploy all in one" {
     target_config["ingress_node_port"] = 30080;
     target_config["redis_dashboard"] = True;
     target_config["mongodb_dashboard"] = True;
+    target_config["cpu_request"] = "500m";
+    target_config["memory_request"] = "2Gi";
 
     (repo_url, branch, commit) = _get_git_config();
     assert repo_url , "repo_url must be a non-empty string";
@@ -315,7 +317,9 @@ test "deploy all in one" {
     assert "password" in mongodb_secret.data;
     assert base64.b64decode(mongodb_secret.data["username"]).decode() == "admin";
     assert base64.b64decode(mongodb_secret.data["password"]).decode() == "password";
-    print(f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials");
+    print(
+        f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials"
+    );
 
     # Validate MongoDB StatefulSet uses secretKeyRef (env value is None when secretKeyRef is used)
     mongo_user_value = next(
@@ -597,7 +601,9 @@ test "deploy all in one" {
     print(f"kube-state-metrics ClusterRoleBinding '{cluster_role_name}' exists");
 
     # Validate node-exporter DaemonSet and Service
-    ne_daemonset = apps_v1.read_namespaced_daemon_set(name=ne_name, namespace=namespace);
+    ne_daemonset = apps_v1.read_namespaced_daemon_set(
+        name=ne_name, namespace=namespace
+    );
     assert ne_daemonset.metadata.name == ne_name;
     print(f"node-exporter DaemonSet '{ne_name}' exists");
 
@@ -904,7 +910,9 @@ test "deploy all in one" {
     assert ri_ingress.metadata.name == redis_ingress_name;
     ri_paths = [p.path for rule in ri_ingress.spec.rules for p in rule.http.paths];
     assert any(p.startswith("/cache-dashboard") for p in ri_paths) , f"Redis Insight ingress must route '/cache-dashboard'; got: {ri_paths}";
-    print(f"Redis Insight Ingress '{redis_ingress_name}' exists with route: {ri_paths}");
+    print(
+        f"Redis Insight Ingress '{redis_ingress_name}' exists with route: {ri_paths}"
+    );
 
     # Send POST request to create a todo (with retry for 503)
     url = f"http://localhost:{ingress_node_port}/walker/create_todo";
@@ -1229,7 +1237,9 @@ test "deploy all in one" {
 
     # Verify database cleanup (first destroyed by full destroy)
     try {
-        apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
+        apps_v1.read_namespaced_stateful_set(
+            f"{app_name}-mongodb", namespace=namespace
+        );
         raise AssertionError("MongoDB StatefulSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
@@ -1450,7 +1460,9 @@ test "deploy all in one" {
     }
 
     try {
-        core_v1.read_namespaced_secret(name=redis_auth_secret_name, namespace=namespace);
+        core_v1.read_namespaced_secret(
+            name=redis_auth_secret_name, namespace=namespace
+        );
         raise AssertionError("Redis Insight auth Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
@@ -1525,7 +1537,9 @@ test "deploy all in one" {
     }
 
     try {
-        core_v1.read_namespaced_secret(name='letsencrypt-prod-key', namespace=namespace);
+        core_v1.read_namespaced_secret(
+            name='letsencrypt-prod-key', namespace=namespace
+        );
         raise AssertionError("ACME private key Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404 for letsencrypt-prod-key Secret, got {e.status}";
@@ -2006,7 +2020,9 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing (first deploy) so create path is taken
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
+        status=404
+    );
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
@@ -2050,7 +2066,9 @@ test "redis ingress rule must not set host before TLS is enabled" {
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing for both main and Redis ingresses
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
+        status=404
+    );
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
