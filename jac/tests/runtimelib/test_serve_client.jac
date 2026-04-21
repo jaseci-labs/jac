@@ -1564,6 +1564,63 @@ test "Memory async mirrors (aget/aput/adelete/ahas/acommit) work" {
     }
 }
 
+test "SqliteMemory concurrent writes from worker threads do not race" {
+    # Regression guard for the sqlite3 shared-connection race.
+    #
+    # When sync walkers finish, Jac.acommit offloads commit() to a worker
+    # thread via asyncio.to_thread. Multiple concurrent walker calls from
+    # one user share the same SqliteMemory instance (same connection,
+    # opened with check_same_thread=False). Python's sqlite3 module is
+    # NOT thread-safe for concurrent writes on a shared connection — on
+    # Linux the auto-BEGIN races collide as
+    # "cannot start a transaction within a transaction"; on macOS the
+    # same race corrupts the row and surfaces later as
+    # "stored anchor ... unreadable" warnings during sync().
+    #
+    # A threading.RLock inside SqliteMemory serializes all transactional
+    # paths. This test drives many concurrent put/commit calls and
+    # asserts both (a) no exceptions propagate and (b) the DB is not
+    # corrupted (every anchor we wrote reads back cleanly).
+    import asyncio;
+    import os;
+    import from uuid { uuid4 }
+    import from jaclang.jac0core.archetype { NodeAnchor, Root }
+    import from jaclang.runtimelib.memory { SqliteMemory }
+
+    with TemporaryDirectory() as tmpdir {
+        db_path = os.path.join(tmpdir, "concurrent.db");
+        mem = SqliteMemory(path=db_path);
+        n_threads = 32;
+        # Pre-build anchor ids on the main thread so the assertion loop
+        # below knows exactly what to expect.
+        anchor_ids = [uuid4() for _ in range(n_threads)];
+        def worker(idx: int) {
+            a = NodeAnchor(id=anchor_ids[idx], archetype=Root(), edges=[]);
+            a.persistent = True;
+            mem.put(a);
+            mem.commit(a);
+        }
+        async def run_concurrent {
+            await asyncio.gather(
+                *[asyncio.to_thread(worker, i) for i in range(n_threads)]
+            );
+        }
+        # Without the lock, on Linux this raises OperationalError (the
+        # exact CI failure); on macOS it succeeds but leaves corrupted
+        # rows that fail the readback below.
+        asyncio.run(run_concurrent());
+        # Fresh SqliteMemory reads from disk, bypassing any in-memory
+        # cache, so this genuinely exercises the stored rows.
+        reader = SqliteMemory(path=db_path);
+        for id in anchor_ids {
+            got = reader.get(id);
+            assert got is not None , f"anchor {id} missing after concurrent commit";
+        }
+        reader.close();
+        mem.close();
+    }
+}
+
 test "CallState.reports is thread-safe (sync walker worker threads put safely)" {
     # Sync walkers run inside asyncio.to_thread; their `report` statements
     # call log_report from a worker thread, which calls put_nowait on

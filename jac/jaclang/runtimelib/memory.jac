@@ -18,6 +18,7 @@ jac-scale extends this to override L2 (Redis) and L3 (database).
 
 import logging;
 import sqlite3;
+import threading;
 import from collections.abc { Callable, Generator, Iterable }
 import from uuid { UUID }
 
@@ -226,6 +227,7 @@ obj SqliteMemory(PersistentMemory) {
         __mem__: dict[UUID, Anchor] by postinit,
         __gc__: set[Anchor] by postinit,
         __conn__: (sqlite3.Connection | None) by postinit,
+        __lock__: threading.RLock by postinit,
         l3_fetch_count: int by postinit;
 
     def postinit -> None;
