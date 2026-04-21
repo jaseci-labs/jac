@@ -571,6 +571,12 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
                 }
                 anchor.edges = edges;
             }
+            # Snapshot initial edge IDs for merge-based conflict resolution
+            setattr(
+                anchor,
+                '_initial_edge_ids',
+                frozenset(UUID(eid) for eid in (edge_ids or []))
+            );
             # Topology index lives only on root anchors
             anchor.topology_index_data = None;
             if isinstance(anchor.__dict__.get('archetype'), Root) {

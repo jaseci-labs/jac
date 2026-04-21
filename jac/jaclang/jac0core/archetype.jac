@@ -94,6 +94,7 @@ obj NodeAnchor(Anchor) {
     def is_populated -> bool;
     def get_topology_index -> Any;
     def set_topology_index(index: Any) -> None;
+    def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
 }
 
 """Edge Anchor."""
