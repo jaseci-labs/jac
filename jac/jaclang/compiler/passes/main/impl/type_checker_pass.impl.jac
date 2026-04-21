@@ -94,6 +94,19 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
         return;
     }
 
+    # In a generator function, `return x` is validated against the R
+    # parameter of `Generator[Y, S, R]`, or skipped for iterator-family
+    # types that carry no R.
+    import from jaclang.compiler.type_system { type_utils }
+    if isinstance(scope, uni.Ability) and scope.get_all_sub_nodes(uni.YieldExpr) {
+        gen_return = type_utils.get_declared_generator_return_type(return_type);
+        if gen_return is not None {
+            return_type = self.evaluator._convert_to_instance(gen_return);
+        } elif type_utils.is_generator_family_type(return_type) {
+            return;
+        }
+    }
+
     returning_type = self.evaluator._convert_to_instance(
         self.evaluator.get_none_type()
     );
@@ -841,9 +854,9 @@ impl TypeCheckPass.exit_assert_stmt(self: TypeCheckPass, nd: uni.AssertStmt) -> 
     }
 }
 
-"""Type-check yield expressions against enclosing function's return type."""
+"""Type-check `yield x` against the yield type of the enclosing function."""
 impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> None {
-    import from jaclang.compiler.type_system { types }
+    import from jaclang.compiler.type_system { types, type_utils }
     if nd.expr is None {
         return;
     }
@@ -858,13 +871,21 @@ impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> No
         return;
     }
 
+    is_async = isinstance(scope, uni.Ability) and scope.is_async;
+    yield_type = type_utils.get_generator_yield_type(return_type, is_async);
+    expected_yield = (
+        self.evaluator._convert_to_instance(yield_type)
+            if yield_type is not None
+            else return_type
+    );
+
     if not nd.with_from {
-        if not self.evaluator.assign_type(yielded_type, return_type) {
+        if not self.evaluator.assign_type(yielded_type, expected_yield) {
             self.emit(
                 E1093,
                 node_override=nd,
                 actual=str(yielded_type),
-                expected=str(return_type)
+                expected=str(expected_yield)
             );
         }
     }

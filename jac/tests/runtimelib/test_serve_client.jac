@@ -124,7 +124,11 @@ test "serve user creation" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response = client.post(
-            "/user/register", json={"username": "alice", "password": "secret123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "alice"}],
+                "credential": {"type": "password", "password": "secret123"}
+            }
         );
         assert response.ok;
         data = response.data;
@@ -141,12 +145,20 @@ test "serve user login" {
         client = make_client(tmpdir);
         # Create user
         create_response = client.post(
-            "/user/register", json={"username": "bob", "password": "pass456"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "bob"}],
+                "credential": {"type": "password", "password": "pass456"}
+            }
         );
         create_data = create_response.data;
         # Login with correct credentials
         login_response = client.post(
-            "/user/login", json={"username": "bob", "password": "pass456"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "bob"},
+                "credential": {"type": "password", "password": "pass456"}
+            }
         );
         assert login_response.ok;
         login_data = login_response.data;
@@ -156,9 +168,44 @@ test "serve user login" {
         # Login with wrong password
         client.clear_auth();
         fail_response = client.post(
-            "/user/login", json={"username": "bob", "password": "wrongpass"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "bob"},
+                "credential": {"type": "password", "password": "wrongpass"}
+            }
         );
         assert not fail_response.ok or "error" in fail_response.json();
+        client.close();
+    }
+}
+
+test "serve register rejects legacy payload" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        response = client.post(
+            "/user/register",
+            json={"username": "legacy", "password": "pass123"}
+        );
+        assert not response.ok;
+        assert response.status_code == 400;
+        client.close();
+    }
+}
+
+test "serve login rejects email identity" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        response = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "email", "value": "a@b.c"},
+                "credential": {"type": "password", "password": "pass"}
+            }
+        );
+        assert not response.ok;
+        assert response.status_code == 400;
+        body = response.json();
+        assert "username" in body.get("error", "");
         client.close();
     }
 }
@@ -435,12 +482,20 @@ test "serve user isolation" {
         client = make_client(tmpdir);
         # Create two users
         user1_response = client.post(
-            "/user/register", json={"username": "user1", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user1"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         user1_data = user1_response.data;
         client.clear_auth();
         user2_response = client.post(
-            "/user/register", json={"username": "user2", "password": "pass2"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user2"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
         );
         user2_data = user2_response.data;
         # User1 creates a task
@@ -502,7 +557,11 @@ test "serve update username" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         create_response = client.post(
-            "/user/register", json={"username": "olduser", "password": "pass123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "olduser"}],
+                "credential": {"type": "password", "password": "pass123"}
+            }
         );
         assert create_response.ok;
         token = create_response.data["token"];
@@ -534,7 +593,11 @@ test "serve update username requires auth" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         client.post(
-            "/user/register", json={"username": "authtest", "password": "pass123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "authtest"}],
+                "credential": {"type": "password", "password": "pass123"}
+            }
         );
         client.clear_auth();
         response = client.put(
@@ -551,11 +614,21 @@ test "serve update username cannot update other users" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         user1_response = client.post(
-            "/user/register", json={"username": "user1", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user1"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         user1_token = user1_response.data["token"];
         client.clear_auth();
-        client.post("/user/register", json={"username": "user2", "password": "pass2"});
+        client.post(
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user2"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
+        );
         # User1 tries to update user2's username
         client.set_auth_token(user1_token);
         response = client.put(
@@ -572,11 +645,21 @@ test "serve update username already exists" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response1 = client.post(
-            "/user/register", json={"username": "user_a", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user_a"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         token = response1.data["token"];
         client.clear_auth();
-        client.post("/user/register", json={"username": "user_b", "password": "pass2"});
+        client.post(
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user_b"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
+        );
         # Try to update user_a to user_b (already exists)
         client.set_auth_token(token);
         response = client.put(
@@ -593,7 +676,11 @@ test "serve update password" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         create_response = client.post(
-            "/user/register", json={"username": "passuser", "password": "oldpass"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "passuser"}],
+                "credential": {"type": "password", "password": "oldpass"}
+            }
         );
         assert create_response.ok;
         token = create_response.data["token"];
@@ -626,7 +713,11 @@ test "serve update password requires auth" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         client.post(
-            "/user/register", json={"username": "noauthpass", "password": "pass123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "noauthpass"}],
+                "credential": {"type": "password", "password": "pass123"}
+            }
         );
         client.clear_auth();
         response = client.put(
@@ -647,7 +738,11 @@ test "serve update password wrong current" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         create_response = client.post(
-            "/user/register", json={"username": "wrongpass", "password": "correctpass"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "wrongpass"}],
+                "credential": {"type": "password", "password": "correctpass"}
+            }
         );
         token = create_response.data["token"];
         client.set_auth_token(token);
@@ -669,12 +764,20 @@ test "serve update password cannot update other users" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         user1_response = client.post(
-            "/user/register", json={"username": "pass_user1", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "pass_user1"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         user1_token = user1_response.data["token"];
         client.clear_auth();
         client.post(
-            "/user/register", json={"username": "pass_user2", "password": "pass2"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "pass_user2"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
         );
         # User1 tries to update user2's password
         client.set_auth_token(user1_token);

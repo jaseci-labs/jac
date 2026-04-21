@@ -152,7 +152,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
     }
 
     for container in containers {
-        body = getattr(container, 'body', None);
+        body = container?.body;
         if not body or not isinstance(body, Sequence) {
             continue;
         }
