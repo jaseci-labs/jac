@@ -95,7 +95,7 @@ Every PR that changes package code must include a release note fragment file:
 
 1. Create a file at `docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md`
    - **Packages**: `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-super`, `jac-mcp`
-   - **Categories**: `feature`, `bugfix`, or `breaking`
+   - **Categories**: `feature`, `bugfix`, `breaking`, `refactor`, or `docs`
    - **Example**: `docs/docs/community/release_notes/unreleased/jaclang/1234.bugfix.md`
 
 2. Add one or more bullet points:
@@ -106,6 +106,8 @@ Every PR that changes package code must include a release note fragment file:
    ```
 
 To skip this check, add the `skip-release-notes-check` label to your PR.
+
+**Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
 
 ## Code Rules and Guidelines
 

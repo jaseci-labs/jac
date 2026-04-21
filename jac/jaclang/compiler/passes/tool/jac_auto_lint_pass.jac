@@ -45,7 +45,8 @@ import from jaclang.jac0core.diagnostics {
     W3030,
     W3035,
     W3036,
-    W3037
+    W3037,
+    W3038
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
@@ -54,7 +55,9 @@ obj JacAutoLintPass(UniPass) {
         report_only: bool = False,
         main_module: (uni.Module | None) = None,
         _exclude_patterns: list[str] = [],
-        _project_root: str = "";
+        _project_root: str = "",
+        _did_convert_usestate: bool = False,
+        _pending_setters: list[dict[str, str]] = [];
 
     """Initialize the pass with linting options."""
     def postinit -> None;
@@ -139,6 +142,24 @@ obj JacAutoLintPass(UniPass) {
     def exit_archetype(nd: uni.Archetype) -> None;
     def exit_ability(ability_node: uni.Ability) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
+    def _body_to_key(body: list) -> str;
+    # useState-to-has conversion (W3038)
+    def _is_usestate_assignment(
+        stmt: uni.UniNode
+    ) -> (tuple[str, str, uni.Expr | None] | None);
+
+    def _infer_type_from_usestate_value(value: (uni.Expr | None)) -> str;
+    def _create_has_from_usestate(
+        ref_node: uni.UniNode,
+        var_name: str,
+        type_str: str,
+        init_value: (uni.Expr | None)
+    ) -> uni.ArchHas;
+
+    def _convert_usestate_vars(ability_node: uni.Ability) -> None;
+    def _strip_usestate_imports(nd: uni.Module) -> None;
+    def exit_expr_stmt(nd: uni.ExprStmt) -> None;
+    def exit_module(nd: uni.Module) -> None;
 }
 
 """Report-only lint pass for use in the standard compile/LSP pipeline.
