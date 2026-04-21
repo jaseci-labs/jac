@@ -4,10 +4,6 @@ This document provides a summary of new features, improvements, and bug fixes in
 
 ## jac-scale 0.2.14 (Latest Release)
 
-- **Docker Build Pathway (`--build`)**: `jac start app.jac --scale --build` now builds and pushes a Docker image to DockerHub before deploying. Auto-generates a `Dockerfile` (with Bun, `jac install`, and layer-cached `jac.toml`) and `.dockerignore` (excludes `jac.local.toml`) if not present. Sets the correct K8s startup command automatically.
-- **Private DockerHub Support**: Automatically creates and manages a K8s image pull secret for private DockerHub images. Secret is updated on re-deploy and deleted on `jac destroy`.
-- **Cross-Platform Builds**: Added `build_platform` config (default: `linux/amd64`) so ARM machines (Apple Silicon) produce images compatible with x86_64 K8s nodes. Configurable via `[plugins.scale.kubernetes]` in `jac.toml`.
-- **Health Check Tuning**: Interval reduced from 15s to 10s, max retries increased to 60, `aws_nlb_wait` reduced to 10s.
 - **Identity-based auth system**: Replaced flat username/password user model with a flexible identity + credential architecture. Users can register with multiple identities (username, email) and credentials (password), stored as arrays in MongoDB. Login accepts any identity type. SSO accounts are stored as identities (`type: sso`, `provider: google`) within the user document instead of a separate `sso_accounts` collection.
 - **JWT user_id claim**: JWT tokens now use `user_id` (UUID) instead of `username` as the primary claim, enabling identity changes without token invalidation.
 - **Feat: SV-to-SV Eager Auto-Spawn in `jac start`**: `jac start consumer.jac` now brings up every `sv import`-ed provider (including transitive ones) automatically before serving the first request, so single-host multi-service deployments need exactly one terminal and zero env vars.
