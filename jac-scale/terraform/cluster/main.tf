@@ -90,21 +90,24 @@ module "eks" {
       most_recent              = true
       service_account_role_arn = module.ebs_csi_irsa.iam_role_arn
     }
-    metrics-server = {
-      most_recent = true
-    }
   }
 
   # Managed nodegroup — always-on system nodes
   eks_managed_node_groups = {
     "${var.cluster_name}-ng" = {
-      instance_types = [var.node_instance_type]
+      # Multiple types = fallback across AZs if one is capacity-constrained
+      instance_types = var.node_instance_types
       ami_type       = "AL2023_x86_64_STANDARD"
       capacity_type  = "ON_DEMAND"
 
       min_size     = var.node_min_size
       max_size     = var.node_max_size
       desired_size = var.node_desired_size
+
+      # Rolling update: replace 1 node at a time during upgrades
+      update_config = {
+        max_unavailable = 1
+      }
 
       # Nodes in private subnets only
       subnet_ids = module.vpc.private_subnets
@@ -115,7 +118,17 @@ module "eks" {
         AmazonSSMManagedInstanceCore = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
       }
 
+      # Taint system nodes so only daemonsets + Karpenter run here
+      taints = {
+        dedicated = {
+          key    = "CriticalAddonsOnly"
+          value  = "true"
+          effect = "NO_SCHEDULE"
+        }
+      }
+
       labels = {
+        role                             = "system"
         "alpha.eksctl.io/cluster-name"   = var.cluster_name
         "alpha.eksctl.io/nodegroup-name" = "${var.cluster_name}-ng"
       }
