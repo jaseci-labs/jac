@@ -34,6 +34,34 @@ with entry {
 }
 ```
 
+### Typing Your Reports
+
+By default every walker has `reports: list[Any]` -- it accepts any value. You can declare the type explicitly with `has reports` to get compile-time checking on your `report` statements:
+
+```jac
+node Task {
+    has title: str;
+    has done: bool = False;
+}
+
+walker ListTasks {
+    has reports: list[list[Task]];
+
+    can collect with Root entry {
+        report [-->][?:Task];
+    }
+}
+
+with entry {
+    result = root spawn ListTasks();
+    tasks: list[Task] = result.reports[0];  # type-safe
+}
+```
+
+When `has reports` is declared, the type checker verifies that every `report` statement in the walker produces a value compatible with the element type of the list. If you `report "oops"` inside `ListTasks` above, the checker flags it as a type error.
+
+If you omit the declaration, the walker behaves exactly as before -- `reports` is `list[Any]` and any value can be reported.
+
 ## Common Patterns
 
 ### Pattern 1: Single Report (Recommended)
@@ -46,7 +74,8 @@ node Item {
 }
 
 walker:priv ListItems {
-    has items: list = [];
+    has reports: list[list[str]];
+    has items: list[str] = [];
 
     can collect with Root entry {
         visit [-->];
@@ -57,7 +86,7 @@ walker:priv ListItems {
     }
 
     can finish with Root exit {
-        report self.items;  # Single report with all data
+        report self.items;  # Single report with all data (type-checked)
     }
 }
 
@@ -269,9 +298,10 @@ with entry {
 
 1. **Prefer single reports** - Accumulate data and report once at the end
 2. **Use `with Root exit`** - Best place for final reports after traversal
-3. **Report typed objects directly** - Return node/obj instances instead of manually constructing dicts. The runtime automatically serializes typed objects with field metadata, and client code receives them as hydrated typed instances with proper field access (e.g., `task.title` instead of `task["title"]`)
-4. **Always check `.reports`** - It may be empty or undefined
-5. **Use typed return annotations** - For `def:pub` functions, annotate with `-> Task` or `-> list[Task]` instead of `-> dict` or `-> list` to enable automatic type hydration on the client
+3. **Declare `has reports` with a type** - Adding `has reports: list[MyType]` to your walker gives you compile-time checking that every `report` statement produces the right type, and communicates the walker's output contract to readers of the code
+4. **Report typed objects directly** - Return node/obj instances instead of manually constructing dicts. The runtime automatically serializes typed objects with field metadata, and client code receives them as hydrated typed instances with proper field access (e.g., `task.title` instead of `task["title"]`)
+5. **Always check `.reports`** - It may be empty or undefined
+6. **Use typed return annotations** - For `def:pub` functions, annotate with `-> Task` or `-> list[Task]` instead of `-> dict` or `-> list` to enable automatic type hydration on the client
 
 ## Anti-Patterns
 

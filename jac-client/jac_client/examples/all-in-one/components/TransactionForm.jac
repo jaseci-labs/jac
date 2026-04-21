@@ -6,12 +6,13 @@ cl import from ..constants.clients { CLIENTS }
 
 cl {
     def:pub TransactionForm -> JsxElement {
-        [description, setDescription] = useState("");
-        [amount, setAmount] = useState("");
-        [category, setCategory] = useState("OTHER");
-        [txType, setTxType] = useState("expense");
-        [isBusiness, setIsBusiness] = useState(false);
-        [clientName, setClientName] = useState("");
+        has description: str = "",
+            amount: str = "",
+            category: str = "OTHER",
+            txType: str = "expense",
+            isBusiness: Any = false,
+            clientName: str = "";
+
         budget = useBudgetContext();
 
         def handleSubmit(e: Any) -> None {
@@ -34,11 +35,11 @@ cl {
             );
 
             # Reset form
-            setDescription("");
-            setAmount("");
-            setCategory("OTHER");
-            setIsBusiness(false);
-            setClientName("");
+            description = "";
+            amount = "";
+            category = "OTHER";
+            isBusiness = false;
+            clientName = "";
         }
 
         # Filter categories based on type (income only has INCOME category)
@@ -60,7 +61,7 @@ cl {
                             className={("toggle-btn active")
                                 if txType == "expense"
                                 else ("toggle-btn")}
-                            onClick={lambda : setTxType("expense")}
+                            onClick={lambda -> any { txType = "expense";}}
                         >
                             Expense
                         </button>
@@ -69,7 +70,7 @@ cl {
                             className={("toggle-btn active income")
                                 if txType == "income"
                                 else ("toggle-btn")}
-                            onClick={lambda : setTxType("income")}
+                            onClick={lambda -> any { txType = "income";}}
                         >
                             Income
                         </button>
@@ -80,7 +81,7 @@ cl {
                             className={("toggle-btn active")
                                 if isBusiness
                                 else ("toggle-btn")}
-                            onClick={lambda : setIsBusiness(true)}
+                            onClick={lambda -> any { isBusiness = true;}}
                         >
                             Business
                         </button>
@@ -89,7 +90,7 @@ cl {
                             className={("toggle-btn active")
                                 if not isBusiness
                                 else ("toggle-btn")}
-                            onClick={lambda : setIsBusiness(false)}
+                            onClick={lambda -> any { isBusiness = false;}}
                         >
                             Personal
                         </button>
@@ -102,7 +103,7 @@ cl {
                             id="description"
                             type="text"
                             value={description}
-                            onChange={lambda e: Any { setDescription(e.target.value);}}
+                            onChange={lambda e: Any { description = e.target.value;}}
                             placeholder="Enter description..."
                             className="form-input"
                         />
@@ -113,7 +114,7 @@ cl {
                             id="amount"
                             type="number"
                             value={amount}
-                            onChange={lambda e: Any { setAmount(e.target.value);}}
+                            onChange={lambda e: Any { amount = e.target.value;}}
                             placeholder="0.00"
                             min="0"
                             step="0.01"
@@ -125,7 +126,7 @@ cl {
                         <select
                             id="category"
                             value={category}
-                            onChange={lambda e: Any { setCategory(e.target.value);}}
+                            onChange={lambda e: Any { category = e.target.value;}}
                             className="form-select"
                         >
                             {[
@@ -141,7 +142,7 @@ cl {
                         <select
                             id="client"
                             value={clientName}
-                            onChange={lambda e: Any { setClientName(e.target.value);}}
+                            onChange={lambda e: Any { clientName = e.target.value;}}
                             className="form-select"
                         >
                             <option value="">Select Client (Optional)</option>

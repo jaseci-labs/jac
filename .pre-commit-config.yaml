@@ -20,7 +20,7 @@ repos:
         args: [--fix=lf]
       - id: end-of-file-fixer
   - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.22.0
+    rev: v0.21.0
     hooks:
     - id: markdownlint-cli2
       args: [--fix]
@@ -69,6 +69,13 @@ repos:
               ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
               ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$
           )
+
+      - id: validate-fragments
+        name: Validate release note fragment filenames
+        entry: python scripts/validate_fragments.py
+        language: python
+        files: ^docs/docs/community/release_notes/unreleased/.*\.md$
+        exclude: README\.md
 
       - id: ban-em-dashes
         name: Ban em-dashes (—)

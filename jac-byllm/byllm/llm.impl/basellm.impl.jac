@@ -189,6 +189,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     try {
         agent_metadata = {
             "jac_invocation_id": getattr(mt_run, '_invocation_id', None),
+            "jac_parent_invocation_id": getattr(mt_run, '_parent_invocation_id', None),
             "jac_caller_name": mt_run.mtir.caller.__name__ if mt_run.mtir else None,
 
         };

@@ -43,3 +43,6 @@ obj FinishToolError(ByLLMError) {}
 
 """Raised for invalid byLLM usage such as unsupported type annotations or mismatched stream settings."""
 obj ConfigurationError(ByLLMError) {}
+
+"""Raised when an MCP server connection or tool call fails."""
+obj McpError(ByLLMError) {}

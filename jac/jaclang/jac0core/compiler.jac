@@ -360,14 +360,14 @@ obj JacCompiler {
         full_target: str,
         target_program: JacProgram,
         cached_ir: str,
-        cached_interop: (dict | None)
+        cached_interop: (dict[str, Any] | None)
     ) -> None;
 
     def _load_native_from_bitcode(
         full_target: str,
         target_program: JacProgram,
         section_data: bytes,
-        cached_interop: (dict | None)
+        cached_interop: (dict[str, Any] | None)
     ) -> None;
 
     def _restore_sections(
@@ -387,7 +387,7 @@ obj JacCompiler {
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,
-        options: (CompileOptions | None) = None
+        options: CompileOptions = CompileOptions()
     ) -> uni.Module;
 
     def build(

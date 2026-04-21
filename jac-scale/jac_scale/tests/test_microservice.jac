@@ -37,9 +37,8 @@ def make_server(mod: str, tmp: str) -> TestClient {
     srv.register_health_endpoint();
     srv.register_walkers_endpoints();
     srv.register_functions_endpoints();
-    srv.register_create_user_endpoint();
-    srv.register_login_endpoint();
-    srv.user_manager.create_user(Con.GUEST.value, '__no_password__');
+    srv.register_auth_endpoints();
+    srv.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
     srv.server.create_server();
     client = TestClient(srv.server.app, raise_server_exceptions=False);
     __jac_sv.register_test_client(mod, client);

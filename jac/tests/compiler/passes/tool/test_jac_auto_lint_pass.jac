@@ -1161,3 +1161,60 @@ test "W3037 auto-fix removes unnecessary -> None from lambdas" {
     # Lambda with no params: -> None removed
     assert "lambda {" in formatted;
 }
+
+# ── TestW3038UseStateToHas ────────────────────────────────────────────────
+test "W3038 auto-fix converts useState to has declaration" {
+    input_path = auto_lint_fixture_path("usestate_to_has.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # both state vars converted and combined into one has declaration
+    assert "has count: int = 0" in formatted;
+    assert "label: str = \"hello\"" in formatted;
+
+    # both setter calls replaced with direct assignments
+    assert "count = count + 1;" in formatted;
+    assert "label = \"clicked\";" in formatted;
+    assert "setCount" not in formatted;
+    assert "setLabel" not in formatted;
+
+    # import fully removed
+    assert "= useState(" not in formatted;
+    assert "import from \"react\"" not in formatted;
+}
+
+test "W3038 removes useState from partial import without breaking commas" {
+    input_path = auto_lint_fixture_path("usestate_partial_import.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # useState converted and setter replaced
+    assert "has name: str = \"\"" in formatted;
+    assert "name = str(e.target.value);" in formatted;
+    assert "setName" not in formatted;
+
+    # import line stays (JsxElement and useEffect remain), useState removed from it
+    assert "import from \"react\"" in formatted;
+    assert "= useState(" not in formatted;
+    assert "{ useState" not in formatted;
+    assert "useState," not in formatted;
+    assert "JsxElement" in formatted;
+    assert "useEffect" in formatted;
+
+    # no orphaned comma: should not contain ", }" or "{ ,"
+    assert ", }" not in formatted;
+    assert "{ ," not in formatted;
+}
+
+test "W3038 does not remove import when useState call is not a destructure assignment" {
+    input_path = auto_lint_fixture_path("usestate_calls_remain.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # non-destructure useState left untouched
+    assert "useState(" in formatted;
+
+    # import must stay since useState is still referenced
+    assert "import from \"react\"" in formatted;
+    assert "useState" in formatted;
+}
