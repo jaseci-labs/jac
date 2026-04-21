@@ -132,8 +132,8 @@ MALFORMED_FRAGMENTS=()
 
 while IFS= read -r file; do
     [[ -z "$file" || ! "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ || ! -f "$file" ]] && continue
-    # Every non-empty line must start with '- ' or be indented (catches headings and plain paragraphs)
-    grep -qE '^[^[:space:]-]' "$file" 2>/dev/null && \
+    # Every non-empty line must start with '- ' or be indented; heading inside a bullet is also rejected
+    grep -qE '^[^[:space:]-]|^-[[:space:]]+#{1,6}[[:space:]]' "$file" 2>/dev/null && \
         MALFORMED_FRAGMENTS+=("$file: all entries must be bullet points starting with '- ' (no headings or plain paragraphs)")
 done <<< "$CHANGED_FILES"
 
