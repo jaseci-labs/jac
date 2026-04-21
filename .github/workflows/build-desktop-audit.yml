@@ -196,33 +196,33 @@ jobs:
         timeout-minutes: 90
 
       # ── Installer size ────────────────────────────────────────
-      # Picks the largest artifact from the bundle dir as the headline
-      # installer (msi/dmg/deb/rpm). Reported in bytes + MB.
+      # Picks the largest installer artifact (msi/dmg/deb/rpm/exe/AppImage)
+      # under src-tauri/target. Python instead of find/awk for portability:
+      # macOS find lacks -printf and bash 3.2's set -e is unfriendly to the
+      # GNU/BSD fallback dance.
       - name: Measure installer size
         id: size
         if: always() && steps.build.outcome == 'success'
         working-directory: ${{ env.EXAMPLE_DIR }}
         shell: bash
         run: |
-          BIGGEST=$(find src-tauri/target -type f \
-            \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" \
-               -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) \
-            -printf '%s %p\n' 2>/dev/null \
-            | sort -rn | head -1)
-          if [ -z "$BIGGEST" ]; then
-            # macOS find lacks -printf
-            BIGGEST=$(find src-tauri/target -type f \
-              \( -name "*.exe" -o -name "*.msi" -o -name "*.dmg" \
-                 -o -name "*.AppImage" -o -name "*.deb" -o -name "*.rpm" \) \
-              -exec stat -f '%z %N' {} \; 2>/dev/null \
-              | sort -rn | head -1)
-          fi
-          BYTES=$(echo "$BIGGEST" | awk '{print $1}')
-          PATH_=$(echo "$BIGGEST" | awk '{print $2}')
-          MB=$(awk "BEGIN {printf \"%.1f\", ${BYTES:-0}/1048576}")
-          echo "bytes=${BYTES:-0}" >> "$GITHUB_OUTPUT"
-          echo "mb=$MB" >> "$GITHUB_OUTPUT"
-          echo "path=$PATH_" >> "$GITHUB_OUTPUT"
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          from pathlib import Path
+          exts = {'.exe', '.msi', '.dmg', '.AppImage', '.deb', '.rpm'}
+          root = Path('src-tauri/target')
+          files = [p for p in root.rglob('*')
+                   if p.is_file() and p.suffix in exts] if root.exists() else []
+          if files:
+              biggest = max(files, key=lambda p: p.stat().st_size)
+              size = biggest.stat().st_size
+              print(f"bytes={size}")
+              print(f"mb={size/1048576:.1f}")
+              print(f"path={biggest.as_posix()}")
+          else:
+              print("bytes=0")
+              print("mb=0.0")
+              print("path=")
+          PY
 
       # ── Result artifact ───────────────────────────────────────
       # Small JSON consumed by the compare job below. `+` is not
