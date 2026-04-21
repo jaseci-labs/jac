@@ -7,7 +7,9 @@ with entry {
             AutoscalingV2Api,
             V2CrossVersionObjectReference,
             V2HorizontalPodAutoscaler,
+            V2HorizontalPodAutoscalerBehavior,
             V2HorizontalPodAutoscalerSpec,
+            V2HPAScalingRules,
             V2MetricSpec,
             V2ResourceMetricSource
         }
@@ -22,7 +24,9 @@ with entry {
         AutoscalingV2Api = None;
         V2CrossVersionObjectReference = None;
         V2HorizontalPodAutoscaler = None;
+        V2HorizontalPodAutoscalerBehavior = None;
         V2HorizontalPodAutoscalerSpec = None;
+        V2HPAScalingRules = None;
         V2MetricSpec = None;
         V2ResourceMetricSource = None;
         HAS_KUBERNETES = False;
