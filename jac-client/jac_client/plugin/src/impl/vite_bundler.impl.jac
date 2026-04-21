@@ -530,6 +530,10 @@ export default defineConfig({{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
       }},
+      "/assets": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
     }},
 {server_config_str}
   }},
