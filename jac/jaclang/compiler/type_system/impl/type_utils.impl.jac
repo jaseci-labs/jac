@@ -61,10 +61,17 @@ impl is_generator_family_type(return_type: types.TypeBase) -> bool {
     if not isinstance(return_type, types.ClassType) {
         return False;
     }
-    return return_type.is_builtin([
-        "Generator", "AsyncGenerator", "AwaitableGenerator",
-        "Iterator", "Iterable", "AsyncIterator", "AsyncIterable"
-    ]);
+    return return_type.is_builtin(
+        [
+            "Generator",
+            "AsyncGenerator",
+            "AwaitableGenerator",
+            "Iterator",
+            "Iterable",
+            "AsyncIterator",
+            "AsyncIterable"
+        ]
+    );
 }
 
 
