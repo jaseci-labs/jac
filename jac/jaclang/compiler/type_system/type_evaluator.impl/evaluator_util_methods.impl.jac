@@ -393,6 +393,45 @@ impl TypeEvaluator._get_enclosing_function(nd: uni.UniNode) -> uni.Ability | Non
     return None;
 }
 
+
+"""Return the correct scope for resolving a name reference.
+
+By default this is the nearest enclosing UniScopeNode. Python semantics
+require base class expressions in `class Foo(Base)` to be resolved in
+the *enclosing* scope, not the class's own scope — otherwise an inner
+member named `Base` would shadow the outer class. PEP 695 type
+parameters declared on the class (`class Foo[T](Base[T])`) remain
+visible inside the base list, so names that match a declared type param
+keep resolving against the class scope.
+"""
+impl TypeEvaluator._resolution_scope_for(expr: uni.UniNode) -> uni.UniScopeNode | None {
+    scope = expr.find_parent_of_type(uni.UniScopeNode);
+    if scope is None {
+        return None;
+    }
+    if isinstance(scope, uni.Archetype) and scope.base_classes {
+        cur: uni.UniNode | None = expr;
+        while cur is not None and cur.parent is not scope {
+            cur = cur.parent;
+        }
+        if cur is not None {
+            for base in scope.base_classes {
+                if base is cur {
+                    if isinstance(expr, uni.Name) and scope.type_params {
+                        for tp in scope.type_params {
+                            if tp.name.value == expr.value {
+                                return scope;
+                            }
+                        }
+                    }
+                    return scope.parent_scope or scope;
+                }
+            }
+        }
+    }
+    return scope;
+}
+
 """Check if the expression is Name that is 'self' and in the method context."""
 impl TypeEvaluator._is_expr_self(expr: uni.Expr) -> bool {
     if (

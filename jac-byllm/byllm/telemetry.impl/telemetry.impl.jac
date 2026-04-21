@@ -57,6 +57,7 @@ impl _emit_agent_telemetry(
     # --- Build the telemetry record ---
     record = {
         "invocation_id": mt_run._invocation_id,
+        "parent_invocation_id": getattr(mt_run, '_parent_invocation_id', None),
         "caller_name": mt_run.mtir.caller.__name__ if mt_run.mtir else "unknown",
         "caller_args": caller_args,
         "user_prompt": user_prompt,
