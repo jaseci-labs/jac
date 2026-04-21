@@ -10,7 +10,7 @@ optimization used during backward CFG walks in type narrowing.
 """
 import from collections.abc { Sequence }
 import from threading { Event }
-import from typing { TYPE_CHECKING }
+import from typing { TYPE_CHECKING, cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 
@@ -97,7 +97,7 @@ obj CFGBuildPass(UniPass) {
 
 """Fetch basic blocks."""
 obj CoalesceBBPass(UniPass) {
-    has basic_blocks: dict = {},
+    has basic_blocks: dict[int, dict[str, list[uni.UniCFGNode]]] = {},
         bb_counter: int = 0;
 
     def before_pass -> None;

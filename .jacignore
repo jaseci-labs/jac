@@ -1,5 +1,3 @@
-bun_installer.impl.jac
-bun_installer.jac
 cfg_build_pass.jac
 client.jac
 client_runtime.cl.jac
@@ -11,8 +9,9 @@ config.impl.jac
 config.jac
 console.jac
 constant.jac
-context.impl.jac
-context.jac
+# context.impl.jac / context.jac — jac-scale passes, jaclang runtimelib fails
+jac/jaclang/runtimelib/impl/context.impl.jac
+jac/jaclang/runtimelib/context.jac
 decl_impl_match_pass.jac
 dependencies.jac
 dep_registry.jac
@@ -50,7 +49,6 @@ level_manager.jac
 llm.jac
 macho_linker.impl.jac
 macho_linker.jac
-main.jac
 memory_hierarchy.jac
 memory.jac
 modresolver.jac
@@ -66,13 +64,11 @@ normalize_pass.jac
 operations.jac
 parser.impl.jac
 parser.jac
-plugin_config.jac
 plugin.jac
 precompile_bytecode.jac
 program.jac
 project.impl.jac
 project.jac
-pwa_target.impl.jac
 pyast_gen_pass.impl.jac
 pyast_gen_pass.jac
 pyast_load_pass.impl.jac
@@ -95,7 +91,10 @@ template_registry.jac
 testing.impl.jac
 testing.jac
 tools.impl.jac
-tools.jac
+# tools.jac — test fixture passes, others fail
+jac-mcp/jac_mcp/tools.jac
+jac/jaclang/cli/commands/tools.jac
+jac/tests/compiler/fixtures/pkg_import_lib_py/tools.jac
 transform.jac
 transport.jac
 treeprinter.jac
@@ -127,10 +126,9 @@ mtir.jac
 serve.jac
 serve.core.impl.jac
 api.cl.jac
-cli.jac
-cli.impl.jac
+# cli.jac — jaclang passes, jac-client fails
+jac-client/jac_client/plugin/cli.jac
 bunch_of_statements.jac
-chapter_10_school.jac
 chess.impl.jac
 compiler_bridge.impl.jac
 console.impl.jac
@@ -161,8 +159,9 @@ client_bundle.jac
 client_deps.impl.jac
 client_deps.jac
 client_runtime.impl.jac
-config_loader.impl.jac
-config_loader.jac
+# config_loader — jac-byllm and jac-scale pass, jac-client fails
+jac-client/jac_client/plugin/src/impl/config_loader.impl.jac
+jac-client/jac_client/plugin/src/config_loader.jac
 core.impl.jac
 dicts.impl.jac
 engine.impl.jac
@@ -186,7 +185,6 @@ local_storage.jac
 math_solver.jac
 memory.impl.jac
 model.impl.jac
-module_manager.jac
 monitoring.jac
 native_accel.jac
 normalize_pass.impl.jac
@@ -197,14 +195,11 @@ receipt_analyzer.jac
 resources.impl.jac
 resources.jac
 search.jac
-sem_def_match_pass.impl.jac
-sem_def_match_pass.jac
 semantic_analysis_pass.jac
 serializer.impl.jac
 serializer.jac
 test.impl.jac
 test.jac
-transform.impl.jac
 unitree.impl.jac
 unparse_pass.impl.jac
 uris.impl.jac
@@ -228,11 +223,9 @@ client.impl.jac
 callback.cl.jac
 media.impl.jac
 basellm.impl.jac
-db.jac
 webhook.impl.jac
 serve.endpoints.impl.jac
 serve.static.impl.jac
-db.impl.jac
 # Stricter Unknown discipline -- these files have legitimate type gaps
 # that were previously silent (Unknown treated as Any). Added 2026-03-08.
 AlertContext.cl.jac
@@ -245,20 +238,16 @@ EditUserModal.cl.jac
 frontend.jac
 genius_lite.jac
 kubernetes_redis.jac
-lib.jac
+# lib.jac — jac-byllm and jac-scale pass, jaclang fails
+jac/jaclang/lib.jac
 LoginPage.cl.jac
 memory_hierarchy.main.impl.jac
 memory_hierarchy.mongo.impl.jac
 memory_hierarchy.redis.impl.jac
-metricsService.cl.jac
 PlaceholderPage.cl.jac
 prometheus_metrics.jac
-prompts.impl.jac
-prompts.jac
 ResetPage.cl.jac
-serve.impl.jac
 SSOPage.cl.jac
-standard_logger.jac
 SubTabs.cl.jac
 top_contributors.jac
 userService.cl.jac
@@ -307,7 +296,6 @@ interop_analysis_pass.impl.jac
 interop_bridge.jac
 jaccomplete.impl.jac
 jaccomplete.jac
-jir.impl.jac
 jsx_processor.impl.jac
 level.impl.jac
 lexer.impl.jac
@@ -320,12 +308,10 @@ login.cl.jac
 login.jac
 mockllm.impl.jac
 module_codegen_pass.jac
-module_manager.impl.jac
 mtir.impl.jac
 navigation.jac
 parameter_type_check.impl.jac
 player.impl.jac
-program.impl.jac
 pybc_gen_pass.jac
 refcount.impl.jac
 registry.impl.jac
@@ -339,13 +325,11 @@ tool.impl.jac
 toolcall.impl.jac
 TransactionForm.jac
 transport.impl.jac
-treeprinter.impl.jac
 tuples.impl.jac
 type_hints.jac
 types.impl.jac
 useBudget.jac
 useLocalStorage.jac
-whitespace.jac
 wikipedia_react.jac
 apple.jac
 google.jac
