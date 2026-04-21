@@ -1,6 +1,7 @@
 """Integration tests for memory hierarchy with testcontainers and jac start."""
 
 import contextlib;
+import concurrent.futures;
 import gc;
 import os;
 import socket;
@@ -79,11 +80,15 @@ def register_user(base_url: str, username: str, password: str = "password123") -
         timeout=2
     );
     assert login_res.status_code == 200 , f"Login failed: {login_res.status_code} - {login_res.text}";
-    login_data = cast(dict[str, Any], extract_transport_response_data(login_res.json()));
+    login_data = cast(
+        dict[str, Any], extract_transport_response_data(login_res.json())
+    );
     return login_data["token"];
 }
 
-def post_request(base_url: str, path: str, payload: dict, token: str) -> dict[str, Any] {
+def post_request(
+    base_url: str, path: str, payload: dict, token: str
+) -> dict[str, Any] {
     res = requests.post(
         f"{base_url}{path}",
         json=payload,
@@ -1108,6 +1113,107 @@ test "in-place mutations on list and dict are persisted via hash-based dirty che
         mongo_client.close();
         mongo_container.stop();
         redis_container.stop();
+        time.sleep(0.5);
+        gc.collect();
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
+    }
+}
+
+test "concurrent requests do not lose edges" {
+    if not JAC_FILE.exists() {
+        raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");
+    }
+
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
+    }
+
+    mongo_container = MongoDbContainer("mongo:latest");
+    mongo_container.start();
+    mongo_uri = mongo_container.get_connection_url();
+    os.environ["MONGODB_URI"] = mongo_uri;
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server = start_server(FIXTURES_DIR, JAC_FILE, port);
+
+    try {
+        token = register_user(base_url, "race_user", "pass123");
+
+        # Seed: first CreateTask ensures the root has ≥1 edge before we race
+        res = requests.post(
+            f"{base_url}/walker/CreateTask",
+            json={"id": 1, "title": "first"},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=2
+        );
+        assert res.status_code == 200;
+
+        # The real race: CreateTask adds a new edge to root, while CompleteTask
+        # traverses root (loading a stale edge snapshot) and mutates a scalar.
+        # On main, CompleteTask's sync overwrites root.edges, erasing the new edge.
+        def create_task -> int {
+            r = requests.post(
+                f"{base_url}/walker/CreateTask",
+                json={"id": 2, "title": "survivor"},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5
+            );
+            return r.status_code;
+        }
+
+        def complete_task -> int {
+            r = requests.post(
+                f"{base_url}/walker/CompleteTask",
+                json={"id": 1},
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=5
+            );
+            return r.status_code;
+        }
+
+        # Fire edge-add + scalar-mutation concurrently (multiple rounds)
+        for _ in range(3) {
+            with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool {
+                futures = [
+                    pool.submit(create_task),
+                    pool.submit(complete_task),
+                    pool.submit(complete_task),
+                    pool.submit(complete_task)
+                ];
+                concurrent.futures.wait(futures);
+            }
+        }
+
+        # Verify the new task edge survived concurrent scalar mutations
+        time.sleep(0.5);
+        res = requests.post(
+            f"{base_url}/walker/GetAllTasks",
+            json={},
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=2
+        );
+        response_data = cast(
+            dict[str, Any], extract_transport_response_data(res.json())
+        );
+        tasks = response_data["reports"][0];
+        task_titles = [t.get("title", "") for t in tasks];
+        assert "survivor" in task_titles , (
+            f"Edge lost after concurrent scalar mutations! Got: {task_titles}"
+        );
+    } finally {
+        if server {
+            server.terminate();
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
+        }
+        mongo_container.stop();
         time.sleep(0.5);
         gc.collect();
         if data_dir.exists() {
