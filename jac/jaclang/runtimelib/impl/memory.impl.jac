@@ -589,15 +589,84 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
     }
 }
 
-"""Store an anchor. Writes to memory and immediately persists to database."""
+"""Store an anchor. Writes to memory and persists to database.
+
+For NodeAnchors with a load snapshot, uses a BEGIN IMMEDIATE transaction
+to re-read the stored edges and apply the caller's delta, so concurrent
+writers cannot erase each other's edge additions. Newly-created anchors
+and non-NodeAnchor types take the direct write path.
+"""
 impl SqliteMemory.put(anchor: Anchor) -> None {
     self.__mem__[anchor.id] = anchor;
-    if anchor.persistent {
-        with self.__lock__ {
-            self._ensure_connection();
-            assert self.__conn__ is not None;
-            conn = self.__conn__;
-            try {
+    if not anchor.persistent {
+        return;
+    }
+    with self.__lock__ {
+        self._ensure_connection();
+        assert self.__conn__ is not None;
+        conn = self.__conn__;
+        try {
+            delta: (tuple[(set[UUID], set[UUID])] | None) = None;
+            if isinstance(anchor, NodeAnchor) {
+                delta = anchor.edge_delta();
+            }
+            if delta is not None {
+                # Merge-aware path: re-read stored edges inside a write lock
+                conn.commit();
+                conn.execute("BEGIN IMMEDIATE");
+                try {
+                    added = set(delta[0]);
+                    removed = set(delta[1]);
+                    cursor = conn.execute(
+                        "SELECT data FROM anchors WHERE id = ?", (str(anchor.id), )
+                    );
+                    row = cursor.fetchone();
+                    if row {
+                        try {
+                            stored = Serializer.deserialize(json.loads(row[0]));
+                        } except Exception {
+                            stored = None;
+                        }
+                        if (isinstance(stored, NodeAnchor) and stored.is_populated()) {
+                            stored_ids = set(e.id for e in stored.edges);
+                            merged_ids = (stored_ids | added) - removed;
+                            edge_by_id = {e.id: e for e in stored.edges};
+                            edge_by_id.update({e.id: e for e in anchor.edges});
+                            anchor.edges = [
+                                edge_by_id[eid]
+                                for eid in merged_ids
+                                if eid in edge_by_id
+                            ];
+                        }
+                    }
+                    if (
+                        isinstance(anchor, NodeAnchor)
+                        and not anchor.edges
+                        and not isinstance(anchor.archetype, Root)
+                    ) {
+                        conn.execute(
+                            "DELETE FROM anchors WHERE id = ?", (str(anchor.id), )
+                        );
+                    } else {
+                        row_data = _anchor_to_row(anchor);
+                        conn.execute(
+                            """
+                            INSERT OR REPLACE INTO anchors
+                                (id, type, arch_module, arch_type, fingerprint,
+                                 data, format_version, updated_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (str(anchor.id), ) + row_data
+                        );
+                    }
+                    conn.commit();
+                    anchor.hash = Serializer._compute_hash(anchor);
+                } except Exception {
+                    conn.rollback();
+                    raise;
+                }
+            } else {
+                # Direct write: newly-created anchor or non-NodeAnchor
                 row = _anchor_to_row(anchor);
                 conn.execute(
                     """
@@ -610,9 +679,9 @@ impl SqliteMemory.put(anchor: Anchor) -> None {
                 );
                 conn.commit();
                 anchor.hash = Serializer._compute_hash(anchor);
-            } except Exception as e {
-                logger.warning(f"SqliteMemory.put immediate persist failed: {e}");
             }
+        } except Exception as e {
+            logger.warning(f"SqliteMemory.put persist failed: {e}");
         }
     }
 }
@@ -635,8 +704,14 @@ impl SqliteMemory.delete(id: UUID) -> None {
     }
 }
 
-"""Close database connection and clear memory."""
+"""Flush pending writes and close database connection."""
 impl SqliteMemory.close -> None {
+    # Persist any pending L1 changes before closing
+    try {
+        self.sync();
+    } except Exception as e {
+        logger.warning(f"SqliteMemory.close sync failed: {e}");
+    }
     if self.__conn__ {
         self.__conn__.close();
         self.__conn__ = None;
@@ -743,6 +818,10 @@ impl SqliteMemory.sync -> None {
         self._ensure_connection();
         assert self.__conn__ is not None;
         conn = self.__conn__;
+        # Acquire write lock before reading to prevent concurrent commit races.
+        # Commit any implicit transaction first, then start an explicit one.
+        conn.commit();
+        conn.execute("BEGIN IMMEDIATE");
         # Handle garbage collected anchors (deletions)
         for anchor in self.__gc__ {
             conn.execute("DELETE FROM anchors WHERE id = ?", (str(anchor.id), ));
@@ -806,20 +885,38 @@ impl SqliteMemory.sync -> None {
                 if stored is not None and stored.is_populated() {
                     stored_anchor = cast(Anchor, stored);
                     changed = False;
-                    # Handle edge updates (CONNECT access)
+                    # Handle edge updates with merge-based conflict resolution
+                    # (CONNECT access)
                     if (
                         isinstance(stored_anchor, NodeAnchor)
                         and isinstance(anchor, NodeAnchor)
                         and stored_anchor.edges != anchor.edges
                         and Jac.check_connect_access(anchor)
                     ) {
+                        delta = anchor.edge_delta();
+                        if delta is not None {
+                            edges_added = set(delta[0]);
+                            edges_removed = set(delta[1]);
+                            # Apply delta to the stored (DB-current) edge list
+                            stored_set = set(e.id for e in stored_anchor.edges);
+                            merged_ids = (stored_set | edges_added) - edges_removed;
+                            edge_by_id = {e.id: e for e in stored_anchor.edges};
+                            edge_by_id.update({e.id: e for e in anchor.edges});
+                            stored_anchor.edges = [
+                                edge_by_id[eid]
+                                for eid in merged_ids
+                                if eid in edge_by_id
+                            ];
+                        } else {
+                            stored_anchor.edges = anchor.edges;
+                        }
                         if (
-                            not anchor.edges and not isinstance(anchor.archetype, Root)
+                            not stored_anchor.edges
+                            and not isinstance(anchor.archetype, Root)
                         ) {
                             conn.execute("DELETE FROM anchors WHERE id = ?", (key, ));
                             continue;
                         }
-                        stored_anchor.edges = anchor.edges;
                         changed = True;
                     }
                     # Handle access/archetype updates (WRITE access)

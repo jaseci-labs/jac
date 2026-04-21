@@ -5,6 +5,11 @@ import from jaclang.runtimelib.client_bundle {
     _lookup_module_in_hub,
     _ensure_js_generated
 }
+import from jaclang.runtimelib.auth_models {
+    IdentityType,
+    LoginRequest,
+    RegisterRequest
+}
 
 impl UserManager.postinit -> None {
     import sqlite3;
@@ -1772,15 +1777,46 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             if (path == '/user/register') {
+                try {
+                    register_req = RegisterRequest.from_dict(data);
+                } except ValueError as ve {
+                    Jac.send_json(self, 400, {'error': str(ve)});
+                    return;
+                }
+                username_identity = None;
+                for ident in register_req.identities {
+                    if ident.type == IdentityType.USERNAME.value {
+                        username_identity = ident;
+                        break;
+                    }
+                }
+                if username_identity is None {
+                    Jac.send_json(
+                        self, 400, {'error': "identity.type 'username' is required"}
+                    );
+                    return;
+                }
                 response = server.auth_handler.create_user(
-                    data.get('username', ''), data.get('password', '')
+                    username_identity.value, register_req.credential.password
                 );
                 self._send_response(response);
                 return;
             }
             if (path == '/user/login') {
+                try {
+                    login_req = LoginRequest.from_dict(data);
+                } except ValueError as ve {
+                    Jac.send_json(self, 400, {'error': str(ve)});
+                    return;
+                }
+                if login_req.identity.type != IdentityType.USERNAME.value {
+                    Jac.send_json(
+                        self, 400, {'error': "identity.type must be 'username'"}
+                    );
+                    return;
+                }
                 response = server.auth_handler.login(
-                    data.get('username', ''), data.get('password', '')
+                    login_req.identity.value, login_req.credential.password
                 );
                 self._send_response(response);
                 return;
