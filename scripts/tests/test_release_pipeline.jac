@@ -94,7 +94,7 @@ def get_current_version(pkg_key: str) -> str {
 }
 
 def make_clean_env -> dict {
-    """Remove CI env vars so check-release-notes.sh uses local (git diff --cached) mode."""
+    # Remove CI env vars so check-release-notes.sh uses local (git diff --cached) mode
     env = dict(os.environ);
     for key in ["CI", "PRE_COMMIT_FROM_REF", "PRE_COMMIT_TO_REF"] {
         env.pop(key, None);
@@ -300,7 +300,7 @@ def run_stage3(runner: ReleaseTestRunner, new_versions: dict) {
 
     # Build the PR title exactly as release.py would output it
     pr_title = "release: " + ", ".join(
-        f"{pkg} {ver}" for pkg, ver in new_versions.items()
+        [f"{pkg} {new_versions[pkg]}" for pkg in new_versions]
     );
     print(f"  PR title: {pr_title}");
 
