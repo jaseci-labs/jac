@@ -17,9 +17,9 @@ frozen app's startup chain.
 import os
 import sys
 
+import _jac_finder
 from PyInstaller.utils.hooks import collect_submodules
 
-import _jac_finder
 from jaclang.packaging import find_packages, iter_jaclang_data_files
 
 # Activate the path-level .jac hook now, while PyInstaller's analyzer is
