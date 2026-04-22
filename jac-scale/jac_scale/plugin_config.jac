@@ -194,6 +194,221 @@ class JacScalePluginConfig {
                             "type": "int",
                             "default": 300,
                             "description": "Seconds to wait before scaling down to avoid premature replica removal"
+                        },
+                        "health_check_path": {
+                            "type": "string",
+                            "default": "/docs",
+                            "description": "Path used for readiness and liveness HTTP probes"
+                        },
+                        "cpu_request": {
+                            "type": "string",
+                            "default": None,
+                            "description": "CPU request for the application container (e.g. '250m')"
+                        },
+                        "cpu_limit": {
+                            "type": "string",
+                            "default": None,
+                            "description": "CPU limit for the application container (e.g. '500m')"
+                        },
+                        "memory_request": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Memory request for the application container (e.g. '256Mi')"
+                        },
+                        "memory_limit": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Memory limit for the application container (e.g. '512Mi')"
+                        },
+                        "readiness_initial_delay": {
+                            "type": "int",
+                            "default": 10,
+                            "description": "Seconds before the first readiness probe"
+                        },
+                        "readiness_period": {
+                            "type": "int",
+                            "default": 20,
+                            "description": "Seconds between readiness probe checks"
+                        },
+                        "liveness_initial_delay": {
+                            "type": "int",
+                            "default": 10,
+                            "description": "Seconds before the first liveness probe"
+                        },
+                        "liveness_period": {
+                            "type": "int",
+                            "default": 20,
+                            "description": "Seconds between liveness probe checks"
+                        },
+                        "liveness_failure_threshold": {
+                            "type": "int",
+                            "default": 80,
+                            "description": "Consecutive liveness probe failures before pod restart"
+                        },
+                        "python_image": {
+                            "type": "string",
+                            "default": "python:3.12-slim",
+                            "description": "Python base image for init containers"
+                        },
+                        "busybox_image": {
+                            "type": "string",
+                            "default": "busybox:1.36",
+                            "description": "Busybox image for utility init containers"
+                        },
+                        "wait_image": {
+                            "type": "string",
+                            "default": "busybox",
+                            "description": "Image used in wait/polling init containers"
+                        },
+                        "pvc_size": {
+                            "type": "string",
+                            "default": "5Gi",
+                            "description": "Persistent volume claim size for the application workspace"
+                        },
+                        "resource_deletion_wait": {
+                            "type": "int",
+                            "default": 5,
+                            "description": "Seconds to wait after deleting a Kubernetes resource"
+                        },
+                        "aws_nlb_wait": {
+                            "type": "int",
+                            "default": 60,
+                            "description": "Seconds to wait for an AWS NLB to become available after creation"
+                        },
+                        "app_mount_path": {
+                            "type": "string",
+                            "default": "/app",
+                            "description": "Mount path for the application directory in the container"
+                        },
+                        "code_mount_path": {
+                            "type": "string",
+                            "default": "/code",
+                            "description": "Mount path for the code volume in the container"
+                        },
+                        "workspace_path": {
+                            "type": "string",
+                            "default": "/code/workspace",
+                            "description": "Path to the workspace directory inside the container"
+                        },
+                        "jaseci_repo_url": {
+                            "type": "string",
+                            "default": "https://github.com/jaseci-labs/jaseci.git",
+                            "description": "Git repository URL for jaseci source installation"
+                        },
+                        "jaseci_branch": {
+                            "type": "string",
+                            "default": "main",
+                            "description": "Git branch to clone when installing jaseci from source"
+                        },
+                        "jaseci_commit": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Specific git commit to pin when installing jaseci from source"
+                        },
+                        "install_jaseci": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Install jaseci from source instead of PyPI"
+                        },
+                        "additional_packages": {
+                            "type": "list",
+                            "default": [],
+                            "description": "Extra pip packages to install in the application container"
+                        },
+                        "monitoring_enabled": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Deploy Prometheus and Grafana monitoring stack alongside the application"
+                        },
+                        "k8s_metrics_enabled": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Enable Kubernetes Metrics Server for HPA resource metrics"
+                        },
+                        "redis_dashboard": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Deploy Redis Insight dashboard"
+                        },
+                        "mongodb_dashboard": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Deploy Mongo Express dashboard"
+                        },
+                        "mongo_express_username": {
+                            "type": "string",
+                            "default": "admin",
+                            "description": "Username for the Mongo Express dashboard"
+                        },
+                        "mongo_express_password": {
+                            "type": "string",
+                            "default": "admin",
+                            "description": "Password for the Mongo Express dashboard"
+                        },
+                        "redis_insight_username": {
+                            "type": "string",
+                            "default": "admin",
+                            "description": "Username for the Redis Insight dashboard"
+                        },
+                        "redis_insight_password": {
+                            "type": "string",
+                            "default": "admin",
+                            "description": "Password for the Redis Insight dashboard"
+                        },
+                        "mongodb_root_username": {
+                            "type": "string",
+                            "default": "admin",
+                            "description": "Root username for the MongoDB deployment"
+                        },
+                        "mongodb_root_password": {
+                            "type": "string",
+                            "default": "password",
+                            "description": "Root password for the MongoDB deployment"
+                        },
+                        "redis_username": {
+                            "type": "string",
+                            "default": "admin",
+                            "description": "Username for the Redis deployment"
+                        },
+                        "redis_password": {
+                            "type": "string",
+                            "default": "password",
+                            "description": "Password for the Redis deployment"
+                        },
+                        "ingress_node_port": {
+                            "type": "int",
+                            "default": 30080,
+                            "description": "NodePort used for the Ingress controller service"
+                        },
+                        "ingress_limit_rps": {
+                            "type": "int",
+                            "default": 20,
+                            "description": "Sustained requests per second per client IP for NGINX rate limiting"
+                        },
+                        "ingress_limit_burst_multiplier": {
+                            "type": "int",
+                            "default": 5,
+                            "description": "Burst multiplier for NGINX rate limiting (burst = limit_rps * multiplier)"
+                        },
+                        "ingress_limit_connections": {
+                            "type": "int",
+                            "default": 20,
+                            "description": "Max concurrent open connections per client IP"
+                        },
+                        "ingress_session_affinity": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Enable sticky sessions via NGINX Ingress session affinity"
+                        },
+                        "domain": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Custom domain for TLS Ingress (e.g. app.example.com)"
+                        },
+                        "cert_manager_email": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Email for Let's Encrypt certificate registration via cert-manager"
                         }
                     }
                 },

@@ -2096,3 +2096,148 @@ test "redis ingress rule must not set host before TLS is enabled" {
     redis_rule = redis_created_body["spec"]["rules"][0];
     assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
 }
+
+# ---------------------------------------------------------------------------
+# Unit tests for HPA warning cascade (_emit_hpa_warnings).
+# These tests do not require a live Kubernetes cluster.
+# ---------------------------------------------------------------------------
+def _make_hpa_target(extra_config: dict[str, Any] = {}) -> Any {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'warn-test';
+    target_config['namespace'] = 'warn-ns';
+    target_config.update(extra_config);
+    mock_logger = unittest.mock.MagicMock();
+    target = DeploymentTargetFactory.create('kubernetes', target_config, mock_logger);
+    return (target, mock_logger);
+}
+
+# Branch 1c: both utilization targets explicitly None → "both ... are disabled" warning
+test "hpa warn both targets explicitly disabled" {
+    (target, mock_logger) = _make_hpa_target(
+        {'cpu_utilization_target': None, 'memory_utilization_target': None}
+    );
+    target._emit_hpa_warnings(None, None, [], []);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "both cpu_utilization_target and memory_utilization_target are disabled" in msg;
+}
+
+# Branch 1b: both requests missing → critical only (no limits configured so non-critical suppressed
+#            by setting limits explicitly)
+test "hpa warn both requests missing critical only" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'memory_request': None,
+            'cpu_limit': '500m',
+            'memory_limit': '512Mi'
+        }
+    );
+    critical = [
+        "cpu_request (cpu_utilization_target will be ignored)",
+        "memory_request (memory_utilization_target will be ignored)"
+    ];
+    target._emit_hpa_warnings(None, None, critical, []);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_request" in msg;
+    assert "HPA has no active metrics" in msg;
+    assert "Also missing" not in msg;
+}
+
+# Branch 1a: both requests missing AND limits missing → critical + non-critical
+test "hpa warn both requests missing with non critical" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'memory_request': None,
+            'cpu_limit': None,
+            'memory_limit': None
+        }
+    );
+    critical = [
+        "cpu_request (cpu_utilization_target will be ignored)",
+        "memory_request (memory_utilization_target will be ignored)"
+    ];
+    non_critical = ["cpu_limit", "memory_limit"];
+    target._emit_hpa_warnings(None, None, critical, non_critical);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_request" in msg;
+    assert "Also missing (non-critical)" in msg;
+    assert "cpu_limit" in msg;
+    assert "HPA has no active metrics" in msg;
+}
+
+# Branch 2b: only memory_request missing (cpu active) → scales on CPU only, critical only
+test "hpa warn memory request missing cpu active critical only" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': '500m',
+            'memory_request': None,
+            'memory_limit': '512Mi'
+        }
+    );
+    critical = ["memory_request (memory_utilization_target will be ignored)"];
+    target._emit_hpa_warnings(70, None, critical, []);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "memory_request" in msg;
+    assert "HPA will scale on CPU only" in msg;
+    assert "Also missing" not in msg;
+}
+
+# Branch 2a: only cpu_request missing (memory active) → scales on memory only, critical + non-critical
+test "hpa warn cpu request missing memory active with non critical" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': None,
+            'memory_request': '256Mi',
+            'memory_limit': None
+        }
+    );
+    critical = ["cpu_request (cpu_utilization_target will be ignored)"];
+    non_critical = ["cpu_limit", "memory_limit"];
+    target._emit_hpa_warnings(None, 70, critical, non_critical);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_request" in msg;
+    assert "Also missing (non-critical)" in msg;
+    assert "HPA will scale on memory only" in msg;
+}
+
+# Branch 2c: both requests set (both metrics active) but limits missing → non-critical only
+test "hpa warn both active limits missing non critical only" {
+    (target, mock_logger) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'memory_request': '256Mi',
+            'cpu_limit': None,
+            'memory_limit': None
+        }
+    );
+    non_critical = ["cpu_limit", "memory_limit"];
+    target._emit_hpa_warnings(70, 70, [], non_critical);
+    mock_logger.warn.assert_called_once();
+    msg = mock_logger.warn.call_args[0][0];
+    assert "cpu_limit" in msg;
+    assert "memory_limit" in msg;
+    assert "HPA will still scale" in msg;
+}
+
+# No logger → no crash, no warn called
+test "hpa warn no logger is silent" {
+    scale_config = get_scale_config();
+    target_config = scale_config.get_kubernetes_config();
+    target_config['app_name'] = 'warn-test';
+    target_config['namespace'] = 'warn-ns';
+    # Pass None as logger — should not AttributeError
+    target = DeploymentTargetFactory.create('kubernetes', target_config, None);
+    # Should not raise
+    target._emit_hpa_warnings(
+        None, None, ["cpu_request (cpu_utilization_target will be ignored)"], []
+    );
+}

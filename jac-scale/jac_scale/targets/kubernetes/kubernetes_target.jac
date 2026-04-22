@@ -1217,6 +1217,67 @@ obj KubernetesTarget(DeploymentTarget) {
         return repository_name;
     }
 
+    def _emit_hpa_warnings(
+        cpu_target: (int | None),
+        memory_target: (int | None),
+        critical_missing: list[str],
+        non_critical_missing: list[str]
+    ) {
+        if not self.logger {
+            return;
+        }
+        if cpu_target is None and memory_target is None {
+            if critical_missing {
+                if non_critical_missing {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"Also missing (non-critical): {', '.join(
+                            non_critical_missing
+                        )}. "
+                        f"HPA has no active metrics and will not scale the deployment. "
+                        f"Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                } else {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"HPA has no active metrics and will not scale the deployment. "
+                        f"Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                }
+            } else {
+                self.logger.warn(
+                    "HPA: both cpu_utilization_target and memory_utilization_target are disabled. "
+                    "HPA has no active metrics and will not scale the deployment."
+                );
+            }
+        } else {
+            if critical_missing {
+                scales_on = "HPA will scale on CPU only."
+                    if cpu_target is not None
+                    else "HPA will scale on memory only.";
+                if non_critical_missing {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"Also missing (non-critical): {', '.join(
+                            non_critical_missing
+                        )}. "
+                        f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                } else {
+                    self.logger.warn(
+                        f"HPA: {', '.join(critical_missing)}. "
+                        f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
+                    );
+                }
+            } elif non_critical_missing {
+                self.logger.warn(
+                    f"HPA: {', '.join(non_critical_missing)} not configured. "
+                    f"HPA will still scale but setting limits is recommended for proper resource management."
+                );
+            }
+        }
+    }
+
     def deploy(app_config: AppConfig) -> DeploymentResult {
         # 1. Initialize and validate
         app_name = app_config.app_name or self.k8s_config.app_name;
@@ -1451,56 +1512,9 @@ obj KubernetesTarget(DeploymentTarget) {
                     non_critical_missing.append("memory_limit");
                 }
             }
-            if cpu_target is None and memory_target is None {
-                if critical_missing {
-                    if non_critical_missing {
-                        self.logger.warn(
-                            f"HPA: {', '.join(critical_missing)}. "
-                            f"Also missing (non-critical): {', '.join(
-                                non_critical_missing
-                            )}. "
-                            f"HPA has no active metrics and will not scale the deployment. "
-                            f"Configure the missing values in [plugins.scale.kubernetes]."
-                        );
-                    } else {
-                        self.logger.warn(
-                            f"HPA: {', '.join(critical_missing)}. "
-                            f"HPA has no active metrics and will not scale the deployment. "
-                            f"Configure the missing values in [plugins.scale.kubernetes]."
-                        );
-                    }
-                } else {
-                    self.logger.warn(
-                        "HPA: both cpu_utilization_target and memory_utilization_target are disabled. "
-                        "HPA has no active metrics and will not scale the deployment."
-                    );
-                }
-            } else {
-                if critical_missing {
-                    scales_on = "HPA will scale on CPU only."
-                        if cpu_target is not None
-                        else "HPA will scale on memory only.";
-                    if non_critical_missing {
-                        self.logger.warn(
-                            f"HPA: {', '.join(critical_missing)}. "
-                            f"Also missing (non-critical): {', '.join(
-                                non_critical_missing
-                            )}. "
-                            f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
-                        );
-                    } else {
-                        self.logger.warn(
-                            f"HPA: {', '.join(critical_missing)}. "
-                            f"{scales_on} Configure the missing values in [plugins.scale.kubernetes]."
-                        );
-                    }
-                } elif non_critical_missing {
-                    self.logger.warn(
-                        f"HPA: {', '.join(non_critical_missing)} not configured. "
-                        f"HPA will still scale but setting limits is recommended for proper resource management."
-                    );
-                }
-            }
+            self._emit_hpa_warnings(
+                cpu_target, memory_target, critical_missing, non_critical_missing
+            );
             create_hpa(
                 namespace=namespace,
                 deployment_name=app_name,
