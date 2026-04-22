@@ -736,7 +736,7 @@ test "deploy all in one" {
         scale_up_stabilization_window=120,
         scale_down_stabilization_window=600
     );
-    time.sleep(120);
+    time.sleep(10);
     hpa_updated = autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
         name=f"{app_name}-hpa", namespace=namespace
     );
