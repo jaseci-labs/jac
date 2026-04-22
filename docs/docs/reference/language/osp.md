@@ -212,9 +212,9 @@ edge Road {
 !!! warning "Known Limitation"
     Edge entry/exit abilities are not currently triggered during walker traversal. This feature is planned but not yet implemented. For now, perform edge-related logic in the walker's node abilities instead.
 
-### 3 Directed vs Undirected
+### 3 Edge Direction
 
-Edge direction is determined by connection operators:
+Edges are always stored as directed. The connect operators differ in syntax, not in storage semantics — both create a single directed edge from the left node to the right node:
 
 ```jac
 node Item {}
@@ -223,10 +223,12 @@ with entry {
     a = Item();
     b = Item();
 
-    a ++> b;          # Directed: a → b
-    a <++> b;         # Undirected: a ↔ b (creates edges both ways)
+    a ++> b;          # Creates directed edge a → b
+    a <++> b;         # Also creates directed edge a → b (alternate syntax)
 }
 ```
+
+For bidirectional *traversal* — visiting or querying neighbors regardless of edge direction — use the `[<-->]` filter at query time. See [Walkers § 3](#the-visit-statement) and [Data Spatial Queries § 1](#edge-reference-syntax) for `[<-->]`.
 
 ---
 
@@ -656,7 +658,7 @@ with entry {
     # Typed edge
     alice +>: Friend(since=2020) :+> bob;
 
-    # Bidirectional typed
+    # Typed edge, alternate syntax (same storage: directed alice → bob)
     alice <+: Colleague(department="Engineering") :+> bob;
 }
 ```
