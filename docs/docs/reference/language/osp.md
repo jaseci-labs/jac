@@ -228,7 +228,7 @@ with entry {
 }
 ```
 
-The `[<-->]` query filter walks edges incident to a node regardless of direction — useful when you want direction-agnostic traversal in queries over a mix of directed and undirected edges. See [Walkers § 3](#the-visit-statement) and [Data Spatial Queries § 1](#edge-reference-syntax).
+The `[<-->]` query filter walks edges incident to a node regardless of direction - useful when you want direction-agnostic traversal in queries over a mix of directed and undirected edges. See Walkers § 3 and Data Spatial Queries § 1.
 
 ---
 
@@ -658,7 +658,7 @@ with entry {
     # Typed edge
     alice +>: Friend(since=2020) :+> bob;
 
-    # Typed undirected edge — traversable from either endpoint
+    # Typed undirected edge - traversable from either endpoint
     alice <+: Colleague(department="Engineering") :+> bob;
 }
 ```
