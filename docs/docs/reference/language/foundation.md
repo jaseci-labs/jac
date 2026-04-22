@@ -1112,7 +1112,7 @@ with entry {
     # Untyped connections
     node1 ++> node2;         # Forward
     node1 <++ node2;         # Backward
-    node1 <++> node2;        # Also creates directed node1 → node2 (use [<-->] for direction-agnostic traversal)
+    node1 <++> node2;        # Undirected edge (traversable from either endpoint)
 
     # Typed connections
     alice = Person(name="Alice");

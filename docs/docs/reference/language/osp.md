@@ -214,7 +214,7 @@ edge Road {
 
 ### 3 Edge Direction
 
-Edges are always stored as directed. The connect operators differ in syntax, not in storage semantics — both create a single directed edge from the left node to the right node:
+Edges are always stored as a single edge between two nodes. The connect operators differ in how that edge is marked:
 
 ```jac
 node Item {}
@@ -223,12 +223,12 @@ with entry {
     a = Item();
     b = Item();
 
-    a ++> b;          # Creates directed edge a → b
-    a <++> b;         # Also creates directed edge a → b (alternate syntax)
+    a ++> b;          # Directed edge: traversable from a, not from b
+    a <++> b;         # Undirected edge: traversable from either endpoint
 }
 ```
 
-For bidirectional *traversal* — visiting or querying neighbors regardless of edge direction — use the `[<-->]` filter at query time. See [Walkers § 3](#the-visit-statement) and [Data Spatial Queries § 1](#edge-reference-syntax) for `[<-->]`.
+The `[<-->]` query filter walks edges incident to a node regardless of direction — useful when you want direction-agnostic traversal in queries over a mix of directed and undirected edges. See [Walkers § 3](#the-visit-statement) and [Data Spatial Queries § 1](#edge-reference-syntax).
 
 ---
 
@@ -658,7 +658,7 @@ with entry {
     # Typed edge
     alice +>: Friend(since=2020) :+> bob;
 
-    # Typed edge, alternate syntax (same storage: directed alice → bob)
+    # Typed undirected edge — traversable from either endpoint
     alice <+: Colleague(department="Engineering") :+> bob;
 }
 ```

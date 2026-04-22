@@ -744,7 +744,7 @@ with entry {
     root ++> a;             # Connect root -> a
     a ++> b;                # Connect a -> b
     c <++ a;                # Connect a -> c (backward syntax)
-    a <++> b;               # Also creates a → b (use [<-->] to query both directions)
+    a <++> b;               # Undirected edge: traversable from either endpoint
 
     # --- Typed connections (with edge data) ---
     a +>: Friendship(since=2020) :+> b;
