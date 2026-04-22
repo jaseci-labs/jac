@@ -166,6 +166,25 @@ test "E0028: fixture — <++ with edge type" {
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# E0029 — +> alone is not a valid connection operator
+#   Pattern:  node1 +> node2
+#   Correct:  node1 ++> node2   (simple forward connection)
+# ═══════════════════════════════════════════════════════════════════════
+test "E0029: +> used instead of ++>" {
+    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +> n2; }');
+    assert has_error(prog, "E0029") , "E0029 must fire when +> is used instead of ++>";
+}
+
+test "E0029: exactly one error emitted, no cascading noise" {
+    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +> n2; }');
+    assert has_error(prog, "E0029") , "E0029 must be emitted";
+    assert len(prog.errors_had) == 1 , f"Expected exactly 1 error but got {len(
+        prog.errors_had
+    )} — cascading errors must be suppressed";
+}
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # POSITIVE TESTS — valid syntax that must NOT trigger any of the new codes.
 # These must PASS both before and after implementation.
 # ═══════════════════════════════════════════════════════════════════════
