@@ -1,5 +1,4 @@
 """DockerHub registry implementation."""
-import docker;
 import os;
 import shutil;
 import from typing { Any }
