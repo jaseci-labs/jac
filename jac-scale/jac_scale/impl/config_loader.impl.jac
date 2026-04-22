@@ -33,6 +33,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'docker_image_name': '',
             'docker_username': '',
             'docker_password': '',
+            'build_platform': 'linux/amd64',
             'namespace': 'default',
             'container_port': 8000,
             'mongodb_enabled': True,

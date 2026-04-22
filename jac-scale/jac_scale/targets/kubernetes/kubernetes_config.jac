@@ -173,7 +173,7 @@ obj KubernetesConfig(BaseConfig) {
             wait_image=config.get('wait_image', 'busybox'),
             pvc_size=config.get('pvc_size', '5Gi'),
             resource_deletion_wait=config.get('resource_deletion_wait', 5),
-            aws_nlb_wait=config.get('aws_nlb_wait', 60),
+            aws_nlb_wait=config.get('aws_nlb_wait', 10),
             app_mount_path=config.get('app_mount_path', '/app'),
             code_mount_path=config.get('code_mount_path', '/code'),
             workspace_path=config.get('workspace_path', '/code/workspace'),

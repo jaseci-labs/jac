@@ -1682,12 +1682,22 @@ graph TD
 | **Production** | `jac start app.jac --scale --build` | Build and push Docker image to registry, then deploy |
 | **Enable HTTPS** | `jac start app.jac --scale --enable-tls` | Enable TLS on a live deployment (no redeploy, run after CNAME propagates) |
 
-**Production mode** requires Docker credentials in `jac.toml`:
+**Production mode** requires Docker credentials. Place them in `jac.local.toml` (not `jac.toml` - that file is typically committed to git):
 
 ```toml
+# jac.local.toml  ← gitignored, never committed
 [plugins.scale.kubernetes]
 docker_username = "your-dockerhub-username"
 docker_password = "your-dockerhub-token"
+```
+
+Alternatively, use environment-variable interpolation in `jac.toml`:
+
+```toml
+# jac.toml
+[plugins.scale.kubernetes]
+docker_username = "${DOCKER_USERNAME}"
+docker_password = "${DOCKER_PASSWORD}"
 ```
 
 #### Auto-generated Dockerfile
@@ -2507,7 +2517,7 @@ kubectl logs -l app=redis
 ### Build Failures (--build mode)
 
 - Ensure Docker daemon is running
-- Verify `docker_username` and `docker_password` are set under `[plugins.scale.kubernetes]` in `jac.toml`
+- Verify `docker_username` and `docker_password` are set under `[plugins.scale.kubernetes]` in `jac.local.toml` (never commit credentials to `jac.toml`)
 - If building on ARM (Apple Silicon) for x86_64 nodes, set `build_platform = "linux/amd64"`
 - Check disk space for image building
 

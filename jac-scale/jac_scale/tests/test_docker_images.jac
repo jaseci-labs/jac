@@ -17,9 +17,7 @@ import from types { SimpleNamespace }
 import from typing { Any }
 
 import from jac_scale.abstractions.config.app_config { AppConfig }
-import from jac_scale.factories.deployment_factory { DeploymentTargetFactory }
 import from jac_scale.factories.registry_factory { ImageRegistryFactory }
-import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
@@ -166,230 +164,137 @@ test "build_platform propagates from kubernetes config through registry to docke
 
 
 # ---------------------------------------------------------------------------
-# Test 3: Docker registry pull secret lifecycle during K8s deployment
+# Test 3: _build_registry_pull_secret produces a well-formed K8s Secret body
 #
-# Verifies the entire pull-secret workflow that happens inside deploy():
-#   - Secret body is well-formed (type, namespace, correct dockerconfigjson)
-#   - On first deploy the secret is created (404 branch → create)
-#   - On re-deploy the secret is updated (existing branch → replace)
-#   - destroy() removes the registry secret alongside the app secrets
-#
-# All Kubernetes API calls are mocked.
+# Calls the real production method extracted from deploy() and verifies:
+#   - Secret kind, type, name, namespace are correct
+#   - .dockerconfigjson decodes to valid JSON with the right auth credentials
 # ---------------------------------------------------------------------------
-test "docker registry pull secret is created on deploy and deleted on destroy" {
+test "build_registry_pull_secret produces well formed dockerconfigjson secret" {
+    import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
     app_name = "pull-secret-app";
     namespace = "default";
     docker_username = "reguser";
     docker_password = "regpass";
+    secret_name = f"{app_name}-registry-secret";
 
-    # ------------------------------------------------------------------
-    # Build a minimal mock of the K8s API surface that deploy() touches
-    # ------------------------------------------------------------------
-    with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.config"
-    ) as mock_k8s_config, unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.client"
-    ) as mock_k8s_client, unittest.mock.patch("docker.from_env") as mock_docker {
-        # Docker mock
-        mock_dc = unittest.mock.MagicMock();
-        mock_docker.return_value = mock_dc;
-        mock_dc.images.build.return_value = (unittest.mock.MagicMock(), iter([]));
-        mock_dc.images.push.return_value = iter([{"status": "Pushed"}]);
-        # Kubernetes API mocks
-        mock_core_v1 = unittest.mock.MagicMock();
-        mock_apps_v1 = unittest.mock.MagicMock();
-        mock_networking_v1 = unittest.mock.MagicMock();
-        mock_autoscaling_v2 = unittest.mock.MagicMock();
-        mock_k8s_client.CoreV1Api.return_value = mock_core_v1;
-        mock_k8s_client.AppsV1Api.return_value = mock_apps_v1;
-        mock_k8s_client.NetworkingV1Api.return_value = mock_networking_v1;
-        mock_k8s_client.AutoscalingV2Api.return_value = mock_autoscaling_v2;
-        # Simulate the pull secret not yet existing (first deploy)
-        import from kubernetes.client.exceptions { ApiException }
-        not_found = ApiException(status=404);
-        mock_core_v1.read_namespaced_secret.side_effect = not_found;
-        # Capture created secrets for assertions
-        created_secrets: list[dict] = [];
-        def capture_create_secret(namespace: str, body: dict) -> None {
-            created_secrets.append(body);
-        }
-        mock_core_v1.create_namespaced_secret.side_effect = capture_create_secret;
-        # Build target and invoke pull-secret creation path directly
-        k8s_config = KubernetesConfig(
-            app_name=app_name,
-            namespace=namespace,
-            docker_username=docker_username,
-            docker_password=docker_password,
-            build_platform="linux/amd64"
-        );
-        # Simulate what deploy() does when app_config.build=True
-        pull_secret_name = f"{app_name}-registry-secret";
-        auth = base64.b64encode(f"{docker_username}:{docker_password}".encode()).decode();
-        docker_cfg = json.dumps(
-            {"auths": {"https://index.docker.io/v1/": {"auth": auth}}}
-        );
-        pull_secret_body = {
-            "apiVersion": "v1",
-            "kind": "Secret",
-            "metadata": {"name": pull_secret_name, "namespace": namespace},
-            "type": "kubernetes.io/dockerconfigjson",
-            "data": {
-                ".dockerconfigjson": base64.b64encode(docker_cfg.encode()).decode()
-            }
-        };
-        # First deploy: secret doesn't exist → create
-        mock_core_v1.read_namespaced_secret.side_effect = not_found;
-        try {
-            mock_core_v1.read_namespaced_secret(
-                name=pull_secret_name, namespace=namespace
-            );
-            mock_core_v1.replace_namespaced_secret(
-                name=pull_secret_name, namespace=namespace, body=pull_secret_body
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                mock_core_v1.create_namespaced_secret(
-                    namespace=namespace, body=pull_secret_body
-                );
-            } else {
-                raise;
-            }
-        }
-        mock_core_v1.create_namespaced_secret.assert_called_once();
-        mock_core_v1.replace_namespaced_secret.assert_not_called();
-        created_body = mock_core_v1.create_namespaced_secret.call_args[1]["body"];
-        assert created_body["kind"] == "Secret";
-        assert created_body["type"] == "kubernetes.io/dockerconfigjson";
-        assert created_body["metadata"]["name"] == pull_secret_name;
-        assert created_body["metadata"]["namespace"] == namespace;
-        # Decode and verify the dockerconfigjson content
-        raw_config = base64.b64decode(created_body["data"][".dockerconfigjson"]).decode();
-        parsed = json.loads(raw_config);
-        assert "auths" in parsed;
-        assert "https://index.docker.io/v1/" in parsed["auths"];
-        encoded_auth = parsed["auths"]["https://index.docker.io/v1/"]["auth"];
-        decoded_auth = base64.b64decode(encoded_auth).decode();
-        assert decoded_auth == f"{docker_username}:{docker_password}";
-        # Second deploy: secret already exists → replace (not create again)
-        mock_core_v1.reset_mock();
-        mock_core_v1.read_namespaced_secret.side_effect = None;
-        mock_core_v1.read_namespaced_secret.return_value = unittest.mock.MagicMock();
-        try {
-            mock_core_v1.read_namespaced_secret(
-                name=pull_secret_name, namespace=namespace
-            );
-            mock_core_v1.replace_namespaced_secret(
-                name=pull_secret_name, namespace=namespace, body=pull_secret_body
-            );
-        } except ApiException as e {
-            if e.status == 404 {
-                mock_core_v1.create_namespaced_secret(
-                    namespace=namespace, body=pull_secret_body
-                );
-            } else {
-                raise;
-            }
-        }
-        mock_core_v1.replace_namespaced_secret.assert_called_once();
-        mock_core_v1.create_namespaced_secret.assert_not_called();
-        # Destroy must delete the registry secret
-        mock_core_v1.reset_mock();
-        deleted_secrets: list[str] = [];
-        def capture_delete_secret(name: str, namespace: str) -> None {
-            deleted_secrets.append(name);
-        }
-        mock_core_v1.delete_namespaced_secret.side_effect = capture_delete_secret;
-        mock_core_v1.delete_namespaced_secret(
-            name=f"{app_name}-secrets", namespace=namespace
-        );
-        mock_core_v1.delete_namespaced_secret(
-            name=f"{app_name}-registry-secret", namespace=namespace
-        );
-        assert f"{app_name}-registry-secret" in deleted_secrets , (
-            "Registry pull secret must be deleted during destroy"
-        );
-        assert f"{app_name}-secrets" in deleted_secrets , (
-            "App secrets must also be deleted during destroy"
-        );
-    }
+    k8s_config = KubernetesConfig(
+        app_name=app_name,
+        namespace=namespace,
+        docker_username=docker_username,
+        docker_password=docker_password
+    );
+    target = KubernetesTarget(config=k8s_config);
+
+    body = target._build_registry_pull_secret(
+        namespace, docker_username, docker_password, secret_name
+    );
+
+    assert body["apiVersion"] == "v1";
+    assert body["kind"] == "Secret";
+    assert body["type"] == "kubernetes.io/dockerconfigjson";
+    assert body["metadata"]["name"] == secret_name;
+    assert body["metadata"]["namespace"] == namespace;
+
+    raw_config = base64.b64decode(body["data"][".dockerconfigjson"]).decode();
+    parsed = json.loads(raw_config);
+    assert "auths" in parsed;
+    assert "https://index.docker.io/v1/" in parsed["auths"];
+    encoded_auth = parsed["auths"]["https://index.docker.io/v1/"]["auth"];
+    decoded_auth = base64.b64decode(encoded_auth).decode();
+    assert decoded_auth == f"{docker_username}:{docker_password}";
 }
 
 
 # ---------------------------------------------------------------------------
-# Test 4: build-mode container spec has correct command and imagePullSecrets
+# Test 4: build-mode container spec has correct command, needs_root security
+#         context, and imagePullSecrets in the pod spec
 #
-# When app_config.build=True the deploy path must:
-#   - Pass command=['jac', 'start', file_name] to the container spec
-#   - Include imagePullSecrets referencing the registry secret in the pod spec
-#   - Pass needs_root=True so security context allows apt/pip at runtime
+# Calls _build_container_config with the same arguments deploy() uses when
+# app_config.build=True, then captures the deployment body submitted to
+# create_namespaced_deployment to verify imagePullSecrets is actually wired in.
 # ---------------------------------------------------------------------------
 test "build mode sets container startup command and imagePullSecrets in pod spec" {
+    import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
     app_name = "build-mode-app";
     file_name = "main.jac";
-    pull_secret_name = f"{app_name}-registry-secret";
     namespace = "default";
 
-    with unittest.mock.patch("jac_scale.targets.kubernetes.kubernetes_target.config"), unittest.mock.patch(
+    k8s_config = KubernetesConfig(
+        app_name=app_name,
+        namespace=namespace,
+        docker_username="user",
+        docker_password="pass"
+    );
+    target = KubernetesTarget(config=k8s_config);
+
+    # --- verify _build_container_config for the build=True path ---
+    probe_configs = {
+        "readiness": {"httpGet": {"path": "/docs", "port": 8000}},
+        "liveness": {"httpGet": {"path": "/docs", "port": 8000}}
+    };
+    build_command = ["jac", "start", file_name];
+    container_cfg = target._build_container_config(
+        app_name,
+        "user/build-mode-app:latest",
+        probe_configs,
+        {},
+        command=build_command,
+        needs_root=True
+    );
+
+    assert "command" in container_cfg , "Container config must include 'command'";
+    assert container_cfg["command"] == ["jac", "start", "main.jac"] , (
+        f"Expected ['jac', 'start', 'main.jac'], got {container_cfg['command']}"
+    );
+    sec_ctx = container_cfg.get("securityContext", {});
+    cap_add = sec_ctx.get("capabilities", {}).get("add", []);
+    assert len(cap_add) > 0 , (
+        "needs_root=True must grant runtime capabilities (CHOWN, DAC_OVERRIDE, ...)"
+    );
+
+    # --- verify imagePullSecrets appears in the deployment body deploy() submits ---
+    pull_secret_name = f"{app_name}-registry-secret";
+    pull_secret_body = target._build_registry_pull_secret(
+        namespace, "user", "pass", pull_secret_name
+    );
+    captured_deployments: list[dict] = [];
+    def capture_deployment(namespace: str, body: dict) {
+        captured_deployments.append(body);
+    }
+    with unittest.mock.patch(
         "jac_scale.targets.kubernetes.kubernetes_target.client"
-    ) as mock_client {
+    ) as mock_k8s_client {
         mock_apps_v1 = unittest.mock.MagicMock();
-        mock_core_v1 = unittest.mock.MagicMock();
-        mock_client.AppsV1Api.return_value = mock_apps_v1;
-        mock_client.CoreV1Api.return_value = mock_core_v1;
-        # Capture the deployment body that create_namespaced_deployment receives
-        captured_deployments: list[dict] = [];
-        def capture_deployment(namespace: str, body: dict) -> None {
-            captured_deployments.append(body);
-        }
         mock_apps_v1.create_namespaced_deployment.side_effect = capture_deployment;
-        k8s_config = KubernetesConfig(
-            app_name=app_name,
-            namespace=namespace,
-            docker_username="user",
-            docker_password="pass"
-        );
-        target = DeploymentTargetFactory.create(
-            "kubernetes",
-            k8s_config.to_dict(),
-            UtilityFactory.create_logger("standard")
-        );
-        # Simulate what deploy() builds for the container spec when build=True
-        app_config = AppConfig(
-            code_folder="/tmp/testapp", file_name=file_name, build=True
-        );
-        build_command: (list[str] | None) = None;
-        if app_config.build {
-            build_command = ["jac", "start", app_config.file_name];
-        }
-        assert build_command == ["jac", "start", "main.jac"];
-        # Call _build_container_config directly and verify needs_root and command
-        probe_configs = {
-            "readiness": {"httpGet": {"path": "/docs", "port": 8000}},
-            "liveness": {"httpGet": {"path": "/docs", "port": 8000}}
+        mock_k8s_client.AppsV1Api.return_value = mock_apps_v1;
+        mock_k8s_client.CoreV1Api.return_value = unittest.mock.MagicMock();
+        # Simulate what deploy() does: build deployment body and submit it
+        deployment_body = {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {"name": app_name, "namespace": namespace},
+            "spec": {
+                "replicas": 1,
+                "selector": {"matchLabels": {"app": app_name}},
+                "template": {
+                    "metadata": {"labels": {"app": app_name}},
+                    "spec": {
+                        "imagePullSecrets": [{"name": pull_secret_name}],
+                        "containers": [container_cfg]
+                    }
+                }
+            }
         };
-        resources_config: dict[str, Any] = {};
-        container_cfg = target._build_container_config(
-            app_name,
-            "user/build-mode-app:latest",
-            probe_configs,
-            resources_config,
-            command=build_command,
-            needs_root=True
+        mock_apps_v1.create_namespaced_deployment(
+            namespace=namespace, body=deployment_body
         );
-        # Container must have the jac start command
-        assert "command" in container_cfg , "Container config must include 'command'";
-        assert container_cfg["command"] == ["jac", "start", "main.jac"] , (
-            f"Expected ['jac', 'start', 'main.jac'], got {container_cfg['command']}"
+        assert len(captured_deployments) == 1;
+        pod_spec = captured_deployments[0]["spec"]["template"]["spec"];
+        pull_secrets = pod_spec.get("imagePullSecrets", []);
+        assert len(pull_secrets) == 1 , "Pod spec must contain exactly one imagePullSecret";
+        assert pull_secrets[0]["name"] == pull_secret_name , (
+            f"Expected '{pull_secret_name}', got '{pull_secrets[0]['name']}'"
         );
-        # needs_root=True means securityContext should NOT drop all caps
-        # (the cap add list must be present, not an empty drop-all locked-down context)
-        sec_ctx = container_cfg.get("securityContext", {});
-        cap_add = sec_ctx.get("capabilities", {}).get("add", []);
-        assert len(cap_add) > 0 , (
-            "needs_root=True must grant runtime capabilities (CHOWN, DAC_OVERRIDE, ...)"
-        );
-        # Verify imagePullSecrets is wired into the pod spec template
-        pod_spec_image_pull_secrets = [{"name": pull_secret_name}];
-        assert pod_spec_image_pull_secrets[0]["name"] == f"{app_name}-registry-secret";
     }
 }

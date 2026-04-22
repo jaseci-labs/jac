@@ -18,19 +18,19 @@ obj DockerHubRegistry(ImageRegistry) {
         self.docker_username = self.config.get('docker_username', '');
         self.docker_password = self.config.get('docker_password', '');
         self.build_platform = self.config.get('build_platform', 'linux/amd64');
-    }
-
-    def build_image(code_folder: str, image_name: (str | None) = None) -> str {
         if not self.docker_username {
             raise ValueError(
-                "docker_username is not set. Add 'docker_username' under [plugins.scale.kubernetes] in jac.toml."
+                "docker_username is not set. Add 'docker_username' under [plugins.scale.kubernetes] in jac.local.toml."
             );
         }
         if not self.docker_password {
             raise ValueError(
-                "docker_password is not set. Add 'docker_password' under [plugins.scale.kubernetes] in jac.toml."
+                "docker_password is not set. Add 'docker_password' under [plugins.scale.kubernetes] in jac.local.toml."
             );
         }
+    }
+
+    def build_image(code_folder: str, image_name: (str | None) = None) -> str {
         if not image_name {
             app_name = self.config.get('app_name', 'jaseci');
             image_name = self.config.get('docker_image_name') or f"{app_name}:latest";
@@ -71,17 +71,13 @@ obj DockerHubRegistry(ImageRegistry) {
         docker_client = docker.from_env();
         console.print(f"Building Docker image '{repository_name}'...");
         try {
-            build_kwargs: dict = {
-                'path': code_folder,
-                'tag': repository_name,
-                'dockerfile': 'Dockerfile',
-                'rm': True,
-                'buildargs': {'TARGETPLATFORM': self.build_platform}
-            };
-            if self.build_platform {
-                build_kwargs['platform'] = self.build_platform;
-            }
-            build_logs = docker_client.images.build(**build_kwargs);
+            build_logs = docker_client.images.build(
+                path=code_folder,
+                tag=repository_name,
+                dockerfile='Dockerfile',
+                rm=True,
+                platform=self.build_platform
+            );
             for chunk in build_logs[1] {
                 line = chunk.get('stream', '').strip();
                 if line {

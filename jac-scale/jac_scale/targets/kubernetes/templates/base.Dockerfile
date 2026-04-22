@@ -1,6 +1,5 @@
 # Use Python 3.12 slim image as base
-ARG TARGETPLATFORM=linux/amd64
-FROM --platform=${TARGETPLATFORM} python:3.12-slim
+FROM python:3.12-slim
 
 # Set working directory
 WORKDIR /app

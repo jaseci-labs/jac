@@ -40,6 +40,8 @@ import from jac_scale.targets.kubernetes.monitoring { MonitoringDeployer }
 import from jac_scale.targets.kubernetes.ingress { IngressDeployer }
 import from jac_scale.targets.kubernetes.hpa.hpa { create_hpa }
 import time;
+import json;
+import base64;
 
 """Kubernetes deployment target implementation."""
 obj KubernetesTarget(DeploymentTarget) {
@@ -265,6 +267,25 @@ obj KubernetesTarget(DeploymentTarget) {
         full_command = ' && '.join(commands);
 
         return ['bash', '-c', full_command];
+    }
+
+    """Build a kubernetes.io/dockerconfigjson Secret body for DockerHub pulls."""
+    def _build_registry_pull_secret(
+        namespace: str, username: str, password: str, secret_name: str
+    ) -> dict {
+        auth = base64.b64encode(f"{username}:{password}".encode()).decode();
+        docker_config = json.dumps(
+            {'auths': {'https://index.docker.io/v1/': {'auth': auth}}}
+        );
+        return {
+            'apiVersion': 'v1',
+            'kind': 'Secret',
+            'metadata': {'name': secret_name, 'namespace': namespace},
+            'type': 'kubernetes.io/dockerconfigjson',
+            'data': {
+                '.dockerconfigjson': base64.b64encode(docker_config.encode()).decode()
+            }
+        };
     }
 
     """Build container configuration."""
@@ -1276,26 +1297,13 @@ obj KubernetesTarget(DeploymentTarget) {
             if app_config.build
             and self.k8s_config.docker_username
             and self.k8s_config.docker_password {
-                import json;
-                import base64;
                 pull_secret_name = f"{app_name}-registry-secret";
-                auth = base64.b64encode(
-                    f"{self.k8s_config.docker_username}:{self.k8s_config.docker_password}".encode()
-                ).decode();
-                docker_config = json.dumps(
-                    {'auths': {'https://index.docker.io/v1/': {'auth': auth}}}
+                pull_secret_body = self._build_registry_pull_secret(
+                    namespace,
+                    self.k8s_config.docker_username,
+                    self.k8s_config.docker_password,
+                    pull_secret_name
                 );
-                pull_secret_body = {
-                    'apiVersion': 'v1',
-                    'kind': 'Secret',
-                    'metadata': {'name': pull_secret_name, 'namespace': namespace},
-                    'type': 'kubernetes.io/dockerconfigjson',
-                    'data': {
-                        '.dockerconfigjson': base64.b64encode(
-                            docker_config.encode()
-                        ).decode()
-                    }
-                };
                 try {
                     core_v1.read_namespaced_secret(
                         name=pull_secret_name, namespace=namespace
