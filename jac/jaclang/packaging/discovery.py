@@ -16,9 +16,8 @@ plugins, etc.) without bootstrapping the full jaclang runtime.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Iterable, Iterator
-
 
 INIT_JAC = "__init__.jac"
 JAC_SUFFIX = ".jac"

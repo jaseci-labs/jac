@@ -88,7 +88,7 @@ class TestIterSources:
             "myapp",
             files={
                 "core/__init__.jac": "",
-                "core/greeter.jac": "def greet() -> str { return \"hi\"; }",
+                "core/greeter.jac": 'def greet() -> str { return "hi"; }',
                 "utils/__init__.jac": "",
                 "utils/helpers.jac": "",
             },
@@ -192,4 +192,6 @@ class TestIterJaclangDataFiles:
         frozen-app bootstrap — regressions that drop it would break
         every frozen jac app."""
         paths = [abs_path for abs_path, _ in iter_jaclang_data_files()]
-        assert any(p.endswith(os.path.join("jac0core", "modresolver.jac")) for p in paths)
+        assert any(
+            p.endswith(os.path.join("jac0core", "modresolver.jac")) for p in paths
+        )

@@ -25,6 +25,8 @@ hiddenimports = ["_jac_finder"] + collect_submodules("jaclang")
 
 datas = list(iter_jaclang_data_files())
 
-for _pkg in find_packages([os.getcwd()] + [p for p in sys.path if p and os.path.isdir(p)]):
+for _pkg in find_packages(
+    [os.getcwd()] + [p for p in sys.path if p and os.path.isdir(p)]
+):
     for _src in _pkg.iter_sources():
         datas.append((_src.path, os.path.dirname(_src.relative_path)))

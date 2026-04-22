@@ -130,8 +130,7 @@ def test_frozen_app_runs_jac_only_package(jac_only_project: Path) -> None:
         text=True,
     )
     assert build_result.returncode == 0, (
-        f"pyinstaller exited {build_result.returncode}\n"
-        f"stderr:\n{build_result.stderr}"
+        f"pyinstaller exited {build_result.returncode}\nstderr:\n{build_result.stderr}"
     )
 
     binary = project / "dist" / "main" / "main"
@@ -140,10 +139,10 @@ def test_frozen_app_runs_jac_only_package(jac_only_project: Path) -> None:
     # Confirm the bundler actually copied user .jac sources into _internal/.
     # This is the load-bearing step — if it regresses, the hook's data-walk is
     # broken even if the build claims success.
-    bundled_jac = list((project / "dist" / "main" / "_internal" / "myapp").rglob("*.jac"))
-    assert len(bundled_jac) >= 5, (
-        f"expected myapp/*.jac bundled, got: {bundled_jac}"
+    bundled_jac = list(
+        (project / "dist" / "main" / "_internal" / "myapp").rglob("*.jac")
     )
+    assert len(bundled_jac) >= 5, f"expected myapp/*.jac bundled, got: {bundled_jac}"
 
     # Run from cwd=/ so sys.path can't accidentally resolve myapp from the
     # source tree.

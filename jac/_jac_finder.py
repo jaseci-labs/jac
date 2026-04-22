@@ -22,14 +22,13 @@ from collections.abc import Sequence
 from importlib.machinery import (
     BYTECODE_SUFFIXES,
     EXTENSION_SUFFIXES,
+    SOURCE_SUFFIXES,
     ExtensionFileLoader,
     FileFinder,
-    SOURCE_SUFFIXES,
     SourceFileLoader,
     SourcelessFileLoader,
 )
 from types import ModuleType
-
 
 _JAC_SUFFIX = ".jac"
 
