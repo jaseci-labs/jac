@@ -1112,7 +1112,7 @@ with entry {
     # Untyped connections
     node1 ++> node2;         # Forward
     node1 <++ node2;         # Backward
-    node1 <++> node2;        # Bidirectional
+    node1 <++> node2;        # Undirected
 
     # Typed connections
     alice = Person(name="Alice");

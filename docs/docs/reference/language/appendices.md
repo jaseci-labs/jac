@@ -141,10 +141,10 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 |----------|-------------|
 | `++>` | Forward connect |
 | `<++` | Backward connect |
-| `<++>` | Bidirectional connect |
+| `<++>` | Undirected connect |
 | `+>:T:+>` | Typed forward |
 | `<+:T:<+` | Typed backward |
-| `<+:T:+>` | Typed bidirectional |
+| `<+:T:+>` | Typed undirected |
 | `[-->]` | Outgoing edges |
 | `[<--]` | Incoming edges |
 | `[<-->]` | All edges |

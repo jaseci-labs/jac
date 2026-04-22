@@ -374,7 +374,7 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 |----------|-------------|------------|
 | `connect(left, right, edge, undir, conn_assign, edges_only)` | Connect nodes with edge | `left`: source node(s)<br>`right`: target node(s)<br>`edge`: edge class (optional)<br>`undir`: undirected flag<br>`conn_assign`: attribute assignments<br>`edges_only`: return edges instead of nodes |
 | `disconnect(left, right, dir, filter)` | Remove edges between nodes | `left`: source node(s)<br>`right`: target node(s)<br>`dir`: edge direction<br>`filter`: edge filter function |
-| `build_edge(is_undirected, conn_type, conn_assign)` | Create edge builder function | `is_undirected`: bidirectional flag<br>`conn_type`: edge class<br>`conn_assign`: initial attributes |
+| `build_edge(is_undirected, conn_type, conn_assign)` | Create edge builder function | `is_undirected`: flag for undirected edge<br>`conn_type`: edge class<br>`conn_assign`: initial attributes |
 | `assign_all(target, attr_val)` | Assign attributes to list of objects | `target`: list of objects<br>`attr_val`: tuple of (attrs, values) |
 
 ### **Graph Traversal & Walker Operations**

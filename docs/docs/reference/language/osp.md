@@ -223,8 +223,8 @@ with entry {
     a = Item();
     b = Item();
 
-    a ++> b;          # Directed: a → b
-    a <++> b;         # Undirected: a ↔ b (creates edges both ways)
+    a ++> b;          # Directed: Traversable only from a to b
+    a <++> b;         # Undirected: Traversable from either a or b
 }
 ```
 

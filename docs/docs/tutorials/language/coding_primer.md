@@ -1519,7 +1519,7 @@ graph TD
 
 ### 9.3 Directed vs Undirected Graphs
 
-**Undirected:** Relationship goes both ways
+**Undirected:** Relationship is mutual and traversable in either direction.
 
 ```mermaid
 graph LR
@@ -1717,7 +1717,7 @@ graph TD
 |----------|-----------|---------|
 | `++>` | Forward | `alice ++> bob;` (alice → bob) |
 | `<++` | Backward | `alice <++ bob;` (bob → alice) |
-| `<++>` | Both ways | `alice <++> bob;` (alice ↔ bob) |
+| `<++>` | Undirected | `alice <++> bob;` (alice ↔ bob) |
 
 <div class="code-block">
 
@@ -1730,7 +1730,8 @@ with entry {
     alice = Person(name="Alice");
     bob = Person(name="Bob");
 
-    # Bidirectional connection (mutual friendship)
+    # Undirected connection (mutual friendship)
+    # This creates a single edge traversable from either alice or bob
     alice <++> bob;
 }
 ```
