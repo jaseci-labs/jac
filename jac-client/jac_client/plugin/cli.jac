@@ -60,6 +60,13 @@ with entry {
             choices=["development", "preview", "production"],
             short="b"  # Use -b for build-type
         ),
+        Arg.create(
+            "non_interactive",
+            typ=bool,
+            default=False,
+            help="Non-interactive mode (fail instead of prompting)",
+            short="n"
+        ),
 
     ],
     examples=[
@@ -83,7 +90,8 @@ def build(
     filename: str = "main.jac",
     client: str = "web",
     platform: str | None = None,
-    build_type: str = "production"
+    build_type: str = "production",
+    non_interactive: bool = False
 ) -> int {
     # This will be handled by the pre_hook
     return 0;
@@ -315,9 +323,19 @@ def _handle_build_target(ctx: HookContext) -> None {
     target_name = ctx.get_arg("client", "web");
     platform = ctx.get_arg("platform", None);
     build_type = ctx.get_arg("build_type", "production");
+    non_interactive = ctx.get_arg("non_interactive", False);
 
     # For mobile builds, prompt for platform and build_type if not provided
     if target_name == "mobile" and platform is None {
+        # In non-interactive mode, fail if required arguments are missing
+        if non_interactive {
+            console.error("Error: --platform (-p) is required in non-interactive mode");
+            console.print("  Use: --platform android|ios|all", style="muted");
+            ctx.set_data("cancel_execution", True);
+            ctx.set_data("cancel_return_code", 1);
+            return;
+        }
+
         console.print("\n📱 Mobile Build Configuration", style="bold");
         console.print("  Platform options:", style="muted");
         console.print("    • android  - Build for Android devices", style="muted");

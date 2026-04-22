@@ -10,18 +10,3 @@ exclude = [
     "console.impl.jac",
     "cli_boot.jac"
 ]
-
-
-[mobile]
-name = "jaclang"
-bundle_id = "com.example.jaclang"
-version = "0.1.0"
-display_name = "jaclang"
-
-[mobile.platforms]
-ios = true
-android = true
-
-[mobile.features]
-use_sidecar = false
-api_url = ""

@@ -20,25 +20,34 @@ def _get_toml_api_base_url(project_dir: Path) -> str {
     return config_loader.get_api_config().get('base_url', '');
 }
 
-"""Get local network IP address for mobile dev server."""
+"""Get local network IP address for mobile dev server (offline-compatible)."""
 def _get_local_ip -> str {
     import socket;
 
     try {
-        # Create a socket to determine the local IP
-        # We connect to an external address (doesn't actually connect)
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
-        s.settimeout(0);
-        try {
-            # Connect to a public DNS server to find local IP
-            s.connect(('8.8.8.8', 80));
-            local_ip = s.getsockname()[0];
-        } finally {
-            s.close();
+        # Try primary method: get hostname IP (works offline)
+        hostname = socket.gethostname();
+        local_ip = socket.gethostbyname(hostname);
+
+        # If we get localhost, try alternative method
+        if local_ip.startswith('127.') {
+            # Create a socket to determine the local IP
+            # We connect to an external address (doesn't actually connect)
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
+            s.settimeout(0);
+            try {
+                # Connect to a public DNS server to find local IP
+                # This doesn't send packets, just determines routing
+                s.connect(('8.8.8.8', 80));
+                local_ip = s.getsockname()[0];
+            } finally {
+                s.close();
+            }
         }
+
         return local_ip;
     } except Exception {
-        # Fallback to localhost if detection fails
+        # Fallback to localhost if all detection methods fail
         return '127.0.0.1';
     }
 }
@@ -343,7 +352,7 @@ import { WebView } from 'react-native-webview';
 
 // Dev mode: load from Vite dev server for HMR
 // Production: load from bundled HTML
-const USE_DEV_SERVER = __DEV__ && false; // Set to true for dev server mode
+const USE_DEV_SERVER = __DEV__; // Automatically enabled in dev mode
 
 let JAC_BUNDLE_HTML: string | null = null;
 if (!USE_DEV_SERVER) {
@@ -356,7 +365,7 @@ if (!USE_DEV_SERVER) {
 }
 
 // Load dev server configuration
-let DEV_CONFIG = { localIP: '127.0.0.1' };
+let DEV_CONFIG = { localIP: '127.0.0.1', productionApiUrl: '' };
 try {
   const config = require('../dev-config.json');
   DEV_CONFIG = config;
@@ -372,14 +381,20 @@ const getDevServerUrl = () => {
 
 const getBackendApiUrl = () => {
   if (__DEV__) {
-    if (Platform.OS === 'android') {
+    // Use local network IP for development
+    const localIP = DEV_CONFIG.localIP || '127.0.0.1';
+    // Android emulator uses 10.0.2.2 as fallback if localIP is localhost
+    if (Platform.OS === 'android' && (localIP === '127.0.0.1' || localIP === 'localhost')) {
       return 'http://10.0.2.2:9000';
     }
-    // Use local network IP for iOS
-    const localIP = DEV_CONFIG.localIP || '127.0.0.1';
     return `http://${localIP}:9000`;
   }
-  return 'https://your-production-url.com';
+  // Production: use API URL from config or fail with helpful error
+  if (!DEV_CONFIG.productionApiUrl) {
+    console.error('Production API URL not configured! Set [mobile.features].api_url in jac.toml');
+    return '';
+  }
+  return DEV_CONFIG.productionApiUrl;
 };
 
 export default function JacWebViewScreen() {
@@ -405,10 +420,10 @@ export default function JacWebViewScreen() {
       if (!JAC_BUNDLE_HTML) {
         throw new Error('Bundle not available');
       }
-      // Inject the backend API URL into the bundle
+      // Inject the backend API URL into the bundle using explicit marker
       const html = JAC_BUNDLE_HTML.replace(
-        `window.JAC_BACKEND_URL = window.JAC_BACKEND_URL || 'http://localhost:9000';`,
-        `window.JAC_BACKEND_URL = '${backendApiUrl}';`
+        `'%%__JAC_BACKEND_URL__%%'`,
+        `'${backendApiUrl}'`
       );
 
       setHtmlContent(html);
@@ -640,8 +655,8 @@ const css = fs.readFileSync(cssPath, 'utf8');
 const js = fs.readFileSync(jsPath, 'utf8');
 const sourceHtml = fs.readFileSync(htmlPath, 'utf8');
 
-// Extract __jac_init__ config from original HTML
-const jacInitMatch = sourceHtml.match(/<script id="__jac_init__" type="application\\/json">(.*?)<\\/script>/);
+// Extract __jac_init__ config from original HTML (with 's' flag for multiline)
+const jacInitMatch = sourceHtml.match(/<script id="__jac_init__" type="application\\/json">(.*?)<\\/script>/s);
 const jacInitConfig = jacInitMatch ? jacInitMatch[1].replace(/&quot;/g, '"') : '{"module": "main", "function": "app", "args": {}, "argOrder": [], "globals": {}}';
 
 // Create a complete standalone HTML
@@ -663,7 +678,7 @@ const html = `<!DOCTYPE html>
 
     <!-- Backend API URL - will be injected by mobile app -->
     <script>
-        window.JAC_BACKEND_URL = window.JAC_BACKEND_URL || 'http://localhost:9000';
+        window.JAC_BACKEND_URL = '%%__JAC_BACKEND_URL__%%';
     </script>
 
     <!-- Jac client bundle as blob URL -->
@@ -691,9 +706,9 @@ const html = `<!DOCTYPE html>
 fs.writeFileSync(path.join(__dirname, 'bundle.html'), html);
 console.log('✓ Created bundle.html');
 
-// Also create TypeScript export
+// Also create TypeScript export (properly escape backticks and dollars)
 const tsContent = `// Auto-generated standalone Jac app bundle
-export const JAC_BUNDLE_HTML = \\`${html.replace(/`/g, '\\\\`').replace(/\\$/g, '\\\\$')}\\`;
+export const JAC_BUNDLE_HTML = \\`${html.replace(/\\\\/g, '\\\\\\\\').replace(/`/g, '\\\\`').replace(/\\$/g, '\\\\$')}\\`;
 `;
 
 fs.writeFileSync(path.join(__dirname, 'bundle.ts'), tsContent);
@@ -1237,57 +1252,22 @@ def _create_mobile_bundle(mobile_dir: Path) {
     }
 }
 
-"""Build mobile app for production."""
-def _build_mobile_app(mobile_dir: Path, platform: str) {
-    console.print(
-        f"  Building for {platform} (this may take several minutes)...", style="muted"
-    );
-
-    # Check if node_modules exists
-    if not (mobile_dir / "node_modules").exists() {
-        console.warning("  node_modules not found, running yarn install first...");
-        try {
-            subprocess.run(
-                ["yarn", "install"],
-                cwd=str(mobile_dir),
-                check=True,
-                timeout=300,
-                text=True
-            );
-        } except Exception as e {
-            raise RuntimeError(f"yarn install failed: {e}");
-        }
-    }
-
-    # Build using Expo
+"""Write dev configuration file with local IP and production API URL for mobile app."""
+def _write_dev_config(mobile_dir: Path, project_dir: Path, local_ip: str) {
+    # Load production API URL from mobile config
+    import from jac_client.plugin.src.mobile_config { MobileConfig }
     try {
-        if platform == "ios" {
-            console.print(
-                "  Building iOS app (requires Mac with Xcode)...", style="muted"
-            );
-            subprocess.run(
-                ["npx", "expo", "build:ios"], cwd=str(mobile_dir), check=True
-            );
-        } elif platform == "android" {
-            console.print("  Building Android app...", style="muted");
-            subprocess.run(
-                ["npx", "expo", "build:android"], cwd=str(mobile_dir), check=True
-            );
-        } else {
-            console.warning(f"  Unknown platform: {platform}, skipping native build");
-        }
-    } except Exception as e {
-        console.warning(f"  Native build failed: {e}");
-        console.print(
-            "  Note: Use 'expo build:ios' or 'expo build:android' manually",
-            style="muted"
-        );
+        mobile_config = MobileConfig(project_dir=project_dir);
+        config_data = mobile_config.load();
+        production_api_url = config_data.get('features', {}).get('api_url', '');
+    } except Exception {
+        production_api_url = '';
     }
-}
 
-"""Write dev configuration file with local IP for mobile app."""
-def _write_dev_config(mobile_dir: Path, local_ip: str) {
-    dev_config = {'localIP': local_ip};
+    dev_config = {
+        'localIP': local_ip,
+        'productionApiUrl': production_api_url
+    };
 
     dev_config_path = mobile_dir / "dev-config.json";
     with open(dev_config_path, "w") as f {
@@ -1319,7 +1299,7 @@ impl MobileTarget.dev(
     # Detect local IP and write dev config
     local_ip = _get_local_ip();
     console.print(f"  Detected local IP: {local_ip}", style="muted");
-    _write_dev_config(mobile_build_dir, local_ip);
+    _write_dev_config(mobile_build_dir, project_dir, local_ip);
 
     # Step 1: Build web bundle for dev (for bundled mode)
     console.print("  Step 1: Building web bundle for bundled mode...", style="muted");
@@ -1469,8 +1449,8 @@ def _start_backend_server(
         process = subprocess.Popen(
             ["jac", "serve", str(entry_file), "--port", str(port)],
             cwd=str(project_dir),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         );
         return process;
     } except Exception as e {
@@ -1514,7 +1494,8 @@ def _generate_eas_json(mobile_dir: Path, project_dir: Path) {
 }
 
 """Check if EAS is configured and user is logged in.
-Returns dict with {is_ready: bool, error_message: str}
+Returns dict with {is_ready: bool, error_code: str, error_message: str}
+Error codes: 'CLI_NOT_FOUND', 'NOT_LOGGED_IN', 'CLI_CHECK_FAILED', 'LOGIN_CHECK_FAILED'
 """
 def _check_eas_ready(mobile_dir: Path) -> dict {
     # Check if eas-cli is available
@@ -1525,16 +1506,22 @@ def _check_eas_ready(mobile_dir: Path) -> dict {
         if result.returncode != 0 {
             return {
                 'is_ready': False,
+                'error_code': 'CLI_NOT_FOUND',
                 'error_message': "EAS CLI not found. Install with: npm install -g eas-cli"
             };
         }
     } except FileNotFoundError {
         return {
             'is_ready': False,
+            'error_code': 'CLI_NOT_FOUND',
             'error_message': "EAS CLI not found. Install with: npm install -g eas-cli"
         };
     } except Exception as e {
-        return {'is_ready': False, 'error_message': f"Failed to check EAS CLI: {e}"};
+        return {
+            'is_ready': False,
+            'error_code': 'CLI_CHECK_FAILED',
+            'error_message': f"Failed to check EAS CLI: {e}"
+        };
     }
 
     # Check if user is logged in
@@ -1545,18 +1532,20 @@ def _check_eas_ready(mobile_dir: Path) -> dict {
         if result.returncode != 0 or not result.stdout.strip() {
             return {
                 'is_ready': False,
+                'error_code': 'NOT_LOGGED_IN',
                 'error_message': "Not logged into EAS. Run: eas login"
             };
         }
     } except Exception as e {
         return {
             'is_ready': False,
+            'error_code': 'LOGIN_CHECK_FAILED',
             'error_message': f"Failed to check EAS login status: {e}"
         };
     }
 
     # Note: We don't check for eas.json here because it will be generated automatically later
-    return {'is_ready': True, 'error_message': ""};
+    return {'is_ready': True, 'error_code': '', 'error_message': ""};
 }
 
 """Build mobile app using EAS.
@@ -1581,13 +1570,14 @@ def _build_with_eas(
     # Check if EAS CLI is installed
     eas_status = _check_eas_ready(mobile_dir);
     if not eas_status['is_ready'] {
+        error_code = eas_status.get('error_code', '');
         error_msg = eas_status['error_message'];
 
-        # Handle different error scenarios
-        if "EAS CLI not found" in error_msg {
+        # Handle different error scenarios based on error code
+        if error_code == 'CLI_NOT_FOUND' {
             console.error(f"  {error_msg}");
             raise RuntimeError(error_msg);
-        } elif "Not logged into EAS" in error_msg {
+        } elif error_code == 'NOT_LOGGED_IN' {
             # Prompt user to login interactively
             console.warning("  Not logged into EAS");
             console.print("\n💡 EAS login required for building:", style="bold");
