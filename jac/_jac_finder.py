@@ -1,15 +1,16 @@
 """Lightweight lazy finder for .jac modules.
 
-Registered via jaclang.pth at Python startup. Costs ~0ms for non-Jac Python.
-On first .jac import, triggers ``import jaclang`` to bootstrap the full
-compiler, then delegates to the real JacMetaImporter.
+Registered via ``jaclang.pth`` at Python startup. Costs ~0 ms for non-Jac
+Python. On first ``.jac`` import, triggers ``import jaclang`` to bootstrap
+the full compiler, then delegates to the real ``JacMetaImporter``.
 
-Also extends Python's *path-based* import machinery so ``.jac`` counts as a
-recognized source suffix. This is what lets build-time tools that bypass
-``sys.meta_path`` (PyInstaller's analyzer, setuptools' ``find_packages``,
-Nuitka, etc.) still discover Jac packages — they all consult ``importlib``'s
-path machinery, which we make Jac-aware here in one place instead of
-writing a separate adapter per tool.
+Also provides an **opt-in** path-level ``.jac`` hook
+(``_install_jac_path_hook``) for build-time tools that bypass
+``sys.meta_path`` and go straight to ``importlib``'s path machinery —
+notably PyInstaller's analyzer. The hook is *not* called by ``install()``:
+activating it at runtime would make pytest's assertion rewriter and
+similar tooling try to AST-parse ``.jac`` source as Python. The PyInstaller
+adapter in ``jaclang._pyinstaller`` is the only caller.
 """
 
 from __future__ import annotations
@@ -106,21 +107,32 @@ class _JacLazyFinder:
             sys.meta_path.remove(self)
 
 
+_JAC_PATH_HOOK_INSTALLED = False
+
+
 def _install_jac_path_hook() -> None:
     """Make Python's path-based import machinery recognize ``.jac``.
 
-    Rebuilds the default ``FileFinder.path_hook`` with a loader pair for
-    ``.jac`` placed ahead of the standard source loader, and flushes the
-    importer cache so cached finders pick up the change. Idempotent.
+    Installs a replacement ``FileFinder`` path hook whose loader list
+    includes ``_JacSourceFileLoader`` for ``.jac``, alongside the standard
+    Python loaders. The Python suffix list
+    (``importlib.machinery.SOURCE_SUFFIXES``) is *deliberately NOT*
+    mutated: pytest's assertion-rewriting hook and other tools that
+    introspect ``SOURCE_SUFFIXES`` would otherwise pick ``.jac`` up as a
+    Python source file and try to AST-parse it.
+
+    Our replacement ``FileFinder`` sees ``.jac`` via its own loader-suffix
+    pair and produces specs with ``_JacSourceFileLoader`` — good enough
+    for PyInstaller's analyzer and similar path-based tooling. Idempotent.
     """
-    if _JAC_SUFFIX in SOURCE_SUFFIXES:
+    global _JAC_PATH_HOOK_INSTALLED
+    if _JAC_PATH_HOOK_INSTALLED:
         return
-    SOURCE_SUFFIXES.append(_JAC_SUFFIX)
 
     new_hook = FileFinder.path_hook(
         (ExtensionFileLoader, EXTENSION_SUFFIXES),
         (_JacSourceFileLoader, [_JAC_SUFFIX]),
-        (SourceFileLoader, [s for s in SOURCE_SUFFIXES if s != _JAC_SUFFIX]),
+        (SourceFileLoader, SOURCE_SUFFIXES),
         (SourcelessFileLoader, BYTECODE_SUFFIXES),
     )
 
@@ -134,29 +146,19 @@ def _install_jac_path_hook() -> None:
         sys.path_hooks.insert(0, new_hook)
 
     sys.path_importer_cache.clear()
+    _JAC_PATH_HOOK_INSTALLED = True
 
 
 def install() -> None:
-    """Register Jac's Python-level hijacks if not already active.
+    """Register the lazy meta-path finder if no Jac importer is already present.
 
-    * Lazy meta-path finder — bootstraps full jaclang on first ``.jac``
-      import so normal user code works without an explicit ``import
-      jaclang``.
-    * Path-level source-suffix registration — makes ``.jac`` a first-class
-      Python source extension, so any tool that uses ``importlib``'s path
-      machinery (PyInstaller, setuptools, Nuitka, IDE indexers) discovers
-      Jac packages automatically with zero per-tool adapters.
-
-    The path hook is **only** installed outside of frozen applications. Its
-    loader returns empty Python source for ``.jac`` files — correct and
-    required at build time (PyInstaller's analyzer just needs to see the
-    file), but actively harmful at runtime, where it would shadow the real
-    compilation path that ``JacMetaImporter`` on ``sys.meta_path`` is
-    supposed to handle.
+    Does NOT install the path-level ``.jac`` hook. That hook makes ``.jac``
+    visible to tools that iterate ``importlib.machinery`` suffixes (pytest's
+    assertion rewriter, setuptools, etc.), which would then try to AST-parse
+    Jac source as Python and crash. PyInstaller's adapter calls
+    ``_install_jac_path_hook()`` directly at hook-load time — the only
+    moment when the path-level registration is useful and safe.
     """
-    if not getattr(sys, "frozen", False):
-        _install_jac_path_hook()
-
     for f in sys.meta_path:
         name = type(f).__name__
         if name in ("JacMetaImporter", "_JacLazyFinder"):

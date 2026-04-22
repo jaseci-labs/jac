@@ -19,7 +19,15 @@ import sys
 
 from PyInstaller.utils.hooks import collect_submodules
 
+import _jac_finder
 from jaclang.packaging import find_packages, iter_jaclang_data_files
+
+# Activate the path-level .jac hook now, while PyInstaller's analyzer is
+# about to start walking imports. Doing it here (rather than from
+# jaclang/__init__.py or jaclang.pth) keeps the hook confined to the
+# build-time process — pytest's assertion rewriter and similar tooling
+# that iterate importlib suffixes never see ``.jac`` at runtime.
+_jac_finder._install_jac_path_hook()
 
 hiddenimports = ["_jac_finder"] + collect_submodules("jaclang")
 
