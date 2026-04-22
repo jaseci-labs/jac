@@ -126,6 +126,11 @@ obj MongoBackend(PersistentMemory) {
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
     def _load_db_aliases -> int;
+    def _put_node_atomic(
+        anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+    ) -> None;
+
+    def _write_to_db(anchor: Anchor) -> None;
 }
 
 """

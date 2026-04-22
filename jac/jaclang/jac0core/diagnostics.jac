@@ -708,6 +708,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "'has {name}: {type_name} = {init}' [usestate-to-has]"
          "setter can be replaced with direct assignment to the field in the ability body"
      ),
+     W3039 = _warn(
+         "W3039",
+         Category.LINT,
+         "getattr(obj, 'attr', None) should use null-safe access [getattr-to-null-ok]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -732,7 +737,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "is-with-literal": "W3035",
          "usestate-to-has": "W3038",
          "mutable-default": "W3036",
-         "unnecessary-none-return": "W3037"
+         "unnecessary-none-return": "W3037",
+         "getattr-to-null-ok": "W3039"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

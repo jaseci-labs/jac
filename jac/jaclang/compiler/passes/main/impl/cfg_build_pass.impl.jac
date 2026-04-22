@@ -572,7 +572,7 @@ impl CFGBuildPass._find_parent_of_types(
             # but the types param guarantees UniCFGNode subtypes.
             return cast(uni.UniCFGNode, cur);
         }
-        cur = getattr(cur, 'parent', None);
+        cur = cur?.parent;
     }
     return None;
 }
@@ -581,7 +581,7 @@ impl CFGBuildPass._find_parent_of_types(
 impl CFGBuildPass._find_next_cfg_stmt_after(
     parent: uni.UniNode, child: uni.UniNode
 ) -> (uni.UniCFGNode | None) {
-    body = getattr(parent, 'body', None);
+    body = parent?.body;
     if body is not None and isinstance(body, Sequence) {
         found = False;
         for stmt in body {

@@ -22,7 +22,7 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     if site_pkgs {
         paths.extend(site_pkgs);
     }
-    user_site = getattr(site, 'getusersitepackages', None);
+    user_site = site?.getusersitepackages;
     if user_site {
         user_dir = user_site();
         if user_dir {
