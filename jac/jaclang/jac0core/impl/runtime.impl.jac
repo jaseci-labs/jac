@@ -950,6 +950,15 @@ impl JacBasics.commit(anchor: Anchor | Archetype | None = None) -> None {
     ctx.mem.commit(anchor);
 }
 
+"""Async commit — persists through the async Memory surface."""
+impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
+    if isinstance(anchor, Archetype) {
+        anchor = anchor.__jac__;
+    }
+    ctx = JacRuntimeInterface.get_context();
+    await ctx.mem.acommit(anchor);
+}
+
 """Purge current or target graph."""
 impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
     import pickle;
@@ -989,6 +998,18 @@ impl JacBasics.get_object(id: str) -> (Archetype | None) {
     if (id == 'root') {
         return JacRuntimeInterface.get_context().user_root.archetype;
     } elif (`obj := JacRuntimeInterface.get_context().mem.get(UUID(id))) {
+        return `obj.archetype;
+    }
+    return None;
+}
+
+"""Async mirror of get_object — resolves through the async Memory surface."""
+impl JacBasics.aget_object(id: str) -> (Archetype | None) {
+    if (id == 'root') {
+        return JacRuntimeInterface.get_context().user_root.archetype;
+    }
+    `obj = await JacRuntimeInterface.get_context().mem.aget(UUID(id));
+    if `obj is not None {
         return `obj.archetype;
     }
     return None;
@@ -2519,6 +2540,16 @@ impl JacRuntime.set_context(context: ExecutionContext) -> None {
 """Set request-scoped execution context (for web servers)."""
 impl JacRuntime.set_request_context(context: ExecutionContext) -> None {
     _request_context.set(context);
+}
+
+"""Push a request-scoped execution context; returns a reset token."""
+impl JacRuntime.push_request_context(context: ExecutionContext) -> Any {
+    return _request_context.set(context);
+}
+
+"""Reset the request-scoped context using a push token."""
+impl JacRuntime.reset_request_context(token: Any) -> None {
+    _request_context.reset(token);
 }
 
 """Clear request-scoped context and commit changes."""

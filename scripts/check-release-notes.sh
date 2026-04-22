@@ -126,3 +126,29 @@ if [ ${#MISSING_NOTES[@]} -gt 0 ]; then
     echo ""
     exit 1
 fi
+
+# Validate content format of newly added/modified fragment files
+MALFORMED_FRAGMENTS=()
+
+while IFS= read -r file; do
+    [[ -z "$file" || ! "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ || ! -f "$file" ]] && continue
+    # Every non-empty line must start with '- ' or be indented; heading inside a bullet is also rejected
+    grep -qE '^[^[:space:]-]|^-[[:space:]]+#{1,6}[[:space:]]' "$file" 2>/dev/null && \
+        MALFORMED_FRAGMENTS+=("$file: all entries must be bullet points starting with '- ' (no headings or plain paragraphs)")
+done <<< "$CHANGED_FILES"
+
+if [ ${#MALFORMED_FRAGMENTS[@]} -gt 0 ]; then
+    echo ""
+    echo "=========================================="
+    echo "ERROR: Malformed release note fragment(s)!"
+    echo "=========================================="
+    echo ""
+    printf '  - %s\n' "${MALFORMED_FRAGMENTS[@]}"
+    echo ""
+    echo "Each fragment must be a single bullet point:"
+    echo '  - **Category: Brief title**: Description of the change.'
+    echo ""
+    echo "To skip this check, add the 'skip-release-notes-check' label to your PR."
+    echo ""
+    exit 1
+fi

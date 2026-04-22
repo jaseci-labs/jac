@@ -21,7 +21,7 @@ import from typing {
 }
 import from urllib.parse { parse_qs, urlparse }
 import from jaclang.runtimelib.client_bundle { ClientBundleError }
-import from jaclang.runtimelib.context { CallState }
+import from jaclang.runtimelib.context { CallState, ExecutionContext }
 import from jaclang.runtimelib.transport {
     BaseTransport,
     TransportRequest,
@@ -59,11 +59,22 @@ obj UserData {
         root_id: str;
 }
 
-"""Manage users and their persistent roots (SQLite-backed)."""
+"""Manage users and their persistent roots (SQLite-backed).
+
+The `_lock` serializes access to `_conn`. Under the async server we now
+dispatch UserManager reads through `asyncio.to_thread`, which means
+multiple worker threads can hit the same sqlite3 Connection object
+concurrently. Even with `check_same_thread=False`, Python's sqlite3
+module can raise `InterfaceError: bad parameter or other API misuse`
+when cursor state is touched concurrently. The lock serializes cursor
+creation so readers don't trample each other. Long-term, a native async
+driver (aiosqlite) or per-thread connection pool would obviate this.
+"""
 obj UserManager {
     has base_path: str,
         _db_path: str by postinit,
-        _conn: Any by postinit;
+        _conn: Any by postinit,
+        _lock: Any by postinit;
 
     def postinit -> None;
     def _ensure_connection -> None;
@@ -79,9 +90,27 @@ obj UserManager {
     ) -> dict[str, str];
 
     def close -> None;
+    # Async hot-path mirror: `get_root_id` touches a blocking SQLite read
+    # on every request and runs under async handlers, so offload it.
+    async def aget_root_id(username: str) -> (str | None);
 }
 
-"""Manages execution contexts for user operations."""
+"""Manages execution contexts for user operations.
+
+Exposes two execution surfaces per call kind:
+
+- `*_sync` variants: for sync user code (functions / walkers without
+  `__jac_async__`). Run the user code via `asyncio.to_thread` so blocking
+  IO inside it (sleep, requests, byllm, SQLite writes) does not stall the
+  event loop. Surrounding context setup, report collection, and commit
+  stay on the loop.
+- `*_async` variants: for async user code. `await` the coroutine on the
+  loop directly — no thread hop.
+
+`spawn_walker` and `execute_function` remain as thin dispatchers that pick
+the right variant based on walker metadata / function kind. They are
+preserved for backwards compatibility with external callers (jac-scale).
+"""
 obj ExecutionManager {
     has base_path: str,
         user_manager: UserManager;
@@ -90,11 +119,30 @@ obj ExecutionManager {
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 
+    async def execute_function_sync(
+        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
+    async def execute_function_async(
+        func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
     async def spawn_walker(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
     ) -> dict[str, JsonValue];
 
+    async def spawn_walker_sync(
+        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
+    async def spawn_walker_async(
+        walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+    ) -> dict[str, JsonValue];
+
     async def report_collector(call_state: CallState) -> dict[str, JsonValue];
+    async def _finalize_call_response(
+        call_state: CallState, result: Any
+    ) -> dict[str, JsonValue];
 }
 
 """Introspects and caches module metadata."""

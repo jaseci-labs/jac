@@ -3771,6 +3771,30 @@ test "jsx_reserved_props_key_ref" {
     ].pretty_print()}";
 }
 
+test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
+    # Regression: Name nodes under a JsxElementName are resolved against the
+    # _JsxIntrinsicElements registry by the JsxElement handler, not against
+    # module scope. exit_name must skip these or it emits spurious W1051 on
+    # every tag name (<div>, <button>, </div>, ...).
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_intrinsic_tag_resolution.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    w1051_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051_warnings) == 0 , f"Expected no W1051 on intrinsic JSX tag names, got {len(
+        w1051_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051_warnings);
+    # And the module itself must still type-check without errors.
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "lambda_block_body_return_type_inference" {
     path = os.path.join(CHECKER_FIXTURES, "checker_lambda_block_body_return.jac");
     program = JacProgram();

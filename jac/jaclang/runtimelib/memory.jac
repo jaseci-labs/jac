@@ -18,6 +18,7 @@ jac-scale extends this to override L2 (Redis) and L3 (database).
 
 import logging;
 import sqlite3;
+import threading;
 import from collections.abc { Callable, Generator, Iterable }
 import from uuid { UUID }
 
@@ -66,6 +67,17 @@ obj Memory {
     def get_gc -> list[Anchor] abs;
     def remove_from_gc(anchor: Anchor) -> None abs;
     def get_mem -> dict[UUID, Anchor] abs;
+    # ---- Async hot-path mirrors ----
+    # Non-abstract: default implementations delegate to the sync variant via
+    # asyncio.to_thread so every existing backend (SQLite, Volatile, Tiered)
+    # gets non-blocking behavior under an event loop without a rewrite. Native
+    # async backends (aiosqlite, asyncpg, motor) can override these to drop
+    # the thread hop entirely.
+    async def aget(id: UUID) -> (Anchor | None);
+    async def aput(anchor: Anchor) -> None;
+    async def adelete(id: UUID) -> None;
+    async def ahas(id: UUID) -> bool;
+    async def acommit(anchor: (Anchor | None) = None) -> None;
 }
 
 """Cache Memory Interface.
@@ -215,6 +227,7 @@ obj SqliteMemory(PersistentMemory) {
         __mem__: dict[UUID, Anchor] by postinit,
         __gc__: set[Anchor] by postinit,
         __conn__: (sqlite3.Connection | None) by postinit,
+        __lock__: threading.RLock by postinit,
         l3_fetch_count: int by postinit;
 
     def postinit -> None;

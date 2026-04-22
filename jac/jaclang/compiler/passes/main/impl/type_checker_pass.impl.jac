@@ -21,6 +21,11 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
         #   — these are parameter labels, not variable references.
         # - SubTag child: type annotation tags (e.g. `: int` in `has x: int`)
         #   — resolved during type annotation processing, not expression eval.
+        # - JsxElementName part: JSX tag names (e.g. `div` in `<div>`, or
+        #   `UI`/`Button` in `<UI.Button>`) — lowercase intrinsics resolve
+        #   against the _JsxIntrinsicElements registry (not module scope) and
+        #   uppercase component parts are resolved with JSX context by the
+        #   JsxElement handler in the type evaluator.
         if isinstance(nd.parent, uni.AtomTrailer) and nd.parent.right is nd {
             return;
         }
@@ -28,6 +33,9 @@ impl TypeCheckPass.exit_name(self: TypeCheckPass, nd: uni.Name) -> None {
             return;
         }
         if isinstance(nd.parent, uni.SubTag) {
+            return;
+        }
+        if isinstance(nd.parent, uni.JsxElementName) {
             return;
         }
         self.evaluator.get_type_of_expression(nd);
