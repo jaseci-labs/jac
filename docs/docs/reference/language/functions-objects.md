@@ -437,7 +437,94 @@ with entry {
 }
 ```
 
-### 2 Inheritance
+### 2 Explicit vs. Dynamic Attributes
+
+Jac enforces a **declarative data model**. All instance attributes must be declared upfront using `has`. While the current runtime might permit dynamic attribute assignment (adding a field that wasn't in `has`), this is considered an **anti-pattern** and will be strictly forbidden in future compiler versions.
+
+> [!WARNING]
+> **Dynamic Attribute Assignment is an Anti-Pattern**
+> Explicitly declare all fields using `has`. Avoid adding new attributes to an instance after creation, as this violates the declarative nature of Jac objects and breaks portability across codespaces (server, client, native).
+
+**Anti-Pattern (Dynamic Assignment):**
+
+```jac
+obj Person {
+    has name: str;
+}
+
+with entry {
+    p = Person(name="Alice");
+    p.height = 175; # INVALID: 'height' is not in 'has'
+    print(p.height);
+}
+```
+
+**Correct Approach (Declarative):**
+
+```jac
+obj Person {
+    has name: str,
+        height: int = 0; # Declare all expected fields
+}
+
+with entry {
+    p = Person(name="Alice", height=175);
+    print(p.height);
+}
+```
+
+#### Initialization with `by postinit`
+
+If an attribute's value depends on other fields or requires complex calculation during setup, use the `by postinit` modifier and define a `postinit` method.
+
+```jac
+obj Rectangle {
+    has width: float,
+        height: float;
+    has area: float by postinit;
+
+    def postinit() {
+        self.area = self.width * self.height;
+    }
+}
+```
+
+#### More Examples (Using `class`)
+
+Even when using `class` for Python compatibility, you should avoid dynamic assignment within methods:
+
+**Avoid this pattern:**
+
+```jac
+class Dog {
+    def rename() -> None {
+        self.secret = "oops"; # Dynamic assignment - Avoid!
+    }
+
+    def train() -> None {
+        self.trick = "sit"; # Dynamic assignment - Avoid!
+    }
+}
+```
+
+**Prefer this pattern:**
+
+```jac
+obj Dog {
+    has secret: str = "",
+        trick: str = "";
+
+    def rename() -> None {
+        self.secret = "oops";
+    }
+
+    def train() -> None {
+        self.trick = "sit";
+    }
+}
+```
+
+### 3 Inheritance
 
 ```jac
 obj Animal {

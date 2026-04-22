@@ -825,6 +825,34 @@ test "same function name different files resolve distinctly" {
     assert beta_info.return_type.name == "BetaResult";
 }
 
+test "submodule MTIR keyed by import fullname" {
+    # Force re-execution so our exec_module rename fires against the fresh program.
+    for name in ["scope_main", "scope_dir.module_alpha", "scope_dir.module_beta", "scope_dir"] {
+        sys.modules.pop(name, None);
+    }
+
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+
+    try {
+        jac_import("scope_main", base_path=FIXTURE_DIR + "/");
+    } finally {
+        sys.stdout = sys.__stdout__;
+    }
+
+    assert JacRuntime.program is not None;
+    mtir_map = JacRuntime.program.mtir_map;
+
+    assert "scope_dir.module_alpha.process_data" in mtir_map ,
+        f"Expected fullname-keyed MTIR entry for module_alpha. Keys: {list(
+            mtir_map.keys()
+        )}";
+    assert "scope_dir.module_beta.process_data" in mtir_map ,
+        f"Expected fullname-keyed MTIR entry for module_beta. Keys: {list(
+            mtir_map.keys()
+        )}";
+}
+
 test "runtime scope resolution matches compile time" {
     prog = JacProgram();
     fixture = fixture_path("basic_compile.jac");

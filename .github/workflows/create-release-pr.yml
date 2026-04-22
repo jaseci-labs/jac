@@ -66,9 +66,12 @@ jobs:
       - name: Install dependencies
         run: pip install tomlkit==0.14.0
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Validate versions against PyPI
         run: |
-          python scripts/validate_release.py \
+          jac run scripts/validate_release.jac \
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
             --jac-client "${{ inputs.jac-client }}" \
@@ -80,7 +83,7 @@ jobs:
       - name: Bump versions
         id: release
         run: |
-          python scripts/release.py \
+          jac run scripts/release.jac \
             --jaclang "${{ inputs.jaclang }}" \
             --jac-byllm "${{ inputs.jac-byllm }}" \
             --jac-client "${{ inputs.jac-client }}" \
