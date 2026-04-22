@@ -1,15 +1,17 @@
 """Shell completion script generation for bash, zsh, and fish."""
 
+import from typing { Any, cast }
+
 """Generate a static shell completion script from pre-processed command data."""
 def static_shellcode(
-    commands: list, executable: str = "jac", shell: str = "bash"
+    commands: list[dict[str, Any]], executable: str = "jac", shell: str = "bash"
 ) -> str;
 
-def _static_bash(commands: list, exe: str) -> str;
+def _static_bash(commands: list[dict[str, Any]], exe: str) -> str;
 
-def _static_zsh(commands: list, exe: str) -> str;
+def _static_zsh(commands: list[dict[str, Any]], exe: str) -> str;
 
-def _static_fish(commands: list, exe: str) -> str;
+def _static_fish(commands: list[dict[str, Any]], exe: str) -> str;
 
 glob _BASH_TEMPLATE = (
          '_%s_complete() {\n'
