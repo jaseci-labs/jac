@@ -22,7 +22,9 @@ impl _static_bash(commands: list[dict[str, Any]], exe: str) -> str {
             continue;
         }
         prev_cases: list = [];
-        for (long, short, choices) in cast(list[tuple[str, str, list[str]]], c["value_opts"]) {
+        for (long, short, choices) in cast(
+            list[tuple[str, str, list[str]]], c["value_opts"]
+        ) {
             pattern = long;
             if short {
                 pattern += "|" + short;
@@ -46,7 +48,9 @@ impl _static_bash(commands: list[dict[str, Any]], exe: str) -> str {
             flag for (long, short, _) in c["flags"]
             for flag in ([long] + ([short] if short else []))
         );
-        for (long, short, _) in cast(list[tuple[str, str, list[str]]], c["value_opts"]) {
+        for (long, short, _) in cast(
+            list[tuple[str, str, list[str]]], c["value_opts"]
+        ) {
             flags += " " + long;
             if short {
                 flags += " " + short;
@@ -94,7 +98,9 @@ impl _static_zsh(commands: list[dict[str, Any]], exe: str) -> str {
                 args_lines.append("                '%s[%s]' \\" % (long, h));
             }
         }
-        for (long, short, choices) in cast(list[tuple[str, str, list[str]]], c["value_opts"]) {
+        for (long, short, choices) in cast(
+            list[tuple[str, str, list[str]]], c["value_opts"]
+        ) {
             vals = " ".join(choices);
             if short {
                 args_lines.append(
@@ -153,7 +159,9 @@ impl _static_fish(commands: list[dict[str, Any]], exe: str) -> str {
             parts.append("-d '%s'" % h);
             lines.append(" ".join(parts));
         }
-        for (long, short, choices) in cast(list[tuple[str, str, list[str]]], c["value_opts"]) {
+        for (long, short, choices) in cast(
+            list[tuple[str, str, list[str]]], c["value_opts"]
+        ) {
             l = long.lstrip("-");
             parts = ["complete -c %s -n '%s' -l '%s' -r" % (exe, cond, l)];
             if short {
