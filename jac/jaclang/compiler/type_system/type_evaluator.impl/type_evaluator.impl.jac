@@ -2821,8 +2821,13 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
 
         # Case 4: LiteralString -> any type that str is assignable to
         # LiteralString is a subtype of str, so if str is assignable to dest, so is LiteralString.
+        # Guard: skip delegation when dest is also LiteralString to avoid infinite recursion
+        # (LiteralString → str → assign_type(str, LiteralString) → LiteralString delegation → ∞).
         if self.prefetch.literal_string_class and self.prefetch.str_class {
-            if src_type.shared == self.prefetch.literal_string_class.shared {
+            if (
+                src_type.shared == self.prefetch.literal_string_class.shared
+                and dest_type.shared != self.prefetch.literal_string_class.shared
+            ) {
                 # Delegate to str for assignability check
                 str_instance = self._convert_to_instance(self.prefetch.str_class);
                 if self.assign_type(str_instance, dest_type) {
