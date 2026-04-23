@@ -2076,6 +2076,7 @@ impl JsxText.postinit -> None {
     """
 impl JsxText.get_normalized_text -> str {
     import re;
+    import html;
     raw = self.value.value if isinstance(self.value, Token) else str(self.value);
     stripped = raw.strip();
     if not stripped {
@@ -2086,8 +2087,8 @@ impl JsxText.get_normalized_text -> str {
     if not result {
         result = stripped;
     }
-    # Collapse internal newline+whitespace to single space
-    return re.sub(r'\s*\n\s*', ' ', result);
+    # Collapse internal newline+whitespace to single space, then decode HTML entities
+    return html.unescape(re.sub(r'\s*\n\s*', ' ', result));
 }
 
 impl JsxExpression.postinit -> None {
