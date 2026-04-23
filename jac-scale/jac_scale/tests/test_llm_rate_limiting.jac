@@ -104,8 +104,19 @@ test "monthly budget blocks when spent >= limit" {
     assert raised;
 }
 
-test "no Redis means no-op even with all limits set" {
+test "no Redis raises when limits are configured" {
     rl = make_rl(rpm=1, tpm=1, tpd=1, daily_budget_usd=0.01, monthly_budget_usd=0.01);
+    rl.rc = None;
+    raised = False;
+    try { rl.check_pre_call("alice"); } except Exception as e {
+        raised = True;
+        assert "redis" in str(e).lower();
+    }
+    assert raised;
+}
+
+test "no limits set means no-op even without Redis" {
+    rl = make_rl();
     rl.rc = None;
     rl.check_pre_call("alice");  # must not raise
 }

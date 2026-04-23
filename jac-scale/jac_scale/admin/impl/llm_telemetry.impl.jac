@@ -61,7 +61,7 @@ impl JacUserRateLimiter._get_budget_spent(
     if cached is not None {
         return float(cached);
     }
-    if not self.col {
+    if self.col is None {
         return 0.0;
     }
     import from datetime { datetime, timezone }
@@ -202,7 +202,7 @@ impl JacUserRateLimiter.record_success(
         }
     }
 
-    if self.col {
+    if self.col is not None {
         self.col.insert_one(
             {
                 'username': username,
