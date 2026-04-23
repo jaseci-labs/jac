@@ -1,7 +1,7 @@
-"""PyInstaller adapter — translates ``jaclang.packaging`` into datas/hiddenimports.
+"""PyInstaller adapter — datas + hiddenimports for jaclang and user Jac packages.
 
-Also activates the path-level ``.jac`` hook here (not from jaclang's init)
-so it's scoped to the build-time analyzer process only.
+Activates the path-level ``.jac`` hook here so it's scoped to the build-time
+analyzer process only.
 """
 
 import os
@@ -10,30 +10,22 @@ import sys
 import _jac_finder
 from PyInstaller.utils.hooks import collect_submodules
 
-from jaclang.packaging import find_packages, iter_jaclang_data_files
+from jaclang.packaging import iter_jaclang_data_files, iter_user_jac_sources
 
 _jac_finder._install_jac_path_hook()
 
-hiddenimports = ["_jac_finder"] + collect_submodules("jaclang")
-datas = list(iter_jaclang_data_files())
 
-
-def _user_project_search_dirs() -> list[str]:
-    """cwd + sys.argv entries + sys.path dirs — catches the project root
-    across spec-file builds, CI wrappers, and pytest-xdist workers."""
-    dirs: list[str] = [os.getcwd()]
+def _search_dirs() -> list[str]:
+    """cwd + sys.argv script/spec paths + sys.path dirs."""
+    dirs = [os.getcwd()]
     for arg in sys.argv:
         if not arg or arg.startswith("-"):
             continue
-        abs_arg = os.path.abspath(arg)
-        if os.path.isfile(abs_arg):
-            dirs.append(os.path.dirname(abs_arg))
-        elif os.path.isdir(abs_arg):
-            dirs.append(abs_arg)
+        p = os.path.abspath(arg)
+        dirs.append(os.path.dirname(p) if os.path.isfile(p) else p)
     dirs.extend(p for p in sys.path if p and os.path.isdir(p))
     return dirs
 
 
-for _pkg in find_packages(_user_project_search_dirs()):
-    for _src in _pkg.iter_sources():
-        datas.append((_src.path, os.path.dirname(_src.relative_path)))
+hiddenimports = ["_jac_finder"] + collect_submodules("jaclang")
+datas = list(iter_jaclang_data_files()) + list(iter_user_jac_sources(_search_dirs()))
