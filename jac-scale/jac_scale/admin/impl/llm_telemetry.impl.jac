@@ -44,7 +44,9 @@ impl JacUserRateLimiter._check_and_incr(
         self.rc.expire(key, ttl);
     }
     if count > limit {
-        raise LLMRateLimitExceeded("LLM rate limit exceeded. Retry after window resets.");
+        raise LLMRateLimitExceeded(
+            "LLM rate limit exceeded. Retry after window resets."
+        );
     }
 }
 
@@ -90,12 +92,19 @@ impl JacUserRateLimiter._get_budget_spent(
 impl JacUserRateLimiter.check_pre_call(
     self: JacUserRateLimiter, username: str
 ) -> None {
-    has_limits = self.rpm or self.rpd or self.tpm or self.tpd or self.daily_budget or self.monthly_budget;
+    has_limits = self.rpm
+    or self.rpd
+    or self.tpm
+    or self.tpd
+    or self.daily_budget
+    or self.monthly_budget;
     if not has_limits {
         return;
     }
     if not self.rc {
-        raise LLMRateLimitExceeded("LLM rate limiting is configured but Redis is unavailable.");
+        raise LLMRateLimitExceeded(
+            "LLM rate limiting is configured but Redis is unavailable."
+        );
     }
     import time as _time;
     import from datetime { datetime, timezone }
@@ -113,13 +122,17 @@ impl JacUserRateLimiter.check_pre_call(
     if self.tpm {
         current = int(self.rc.get(f"llm:tpm:{username}:{min_bucket}") or 0);
         if current >= int(self.tpm) {
-            raise LLMRateLimitExceeded("LLM token-per-minute limit exceeded. Retry next minute.");
+            raise LLMRateLimitExceeded(
+                "LLM token-per-minute limit exceeded. Retry next minute."
+            );
         }
     }
     if self.tpd {
         current = int(self.rc.get(f"llm:tpd:{username}:{ts // 86400}") or 0);
         if current >= int(self.tpd) {
-            raise LLMRateLimitExceeded("LLM token-per-day limit exceeded. Retry tomorrow.");
+            raise LLMRateLimitExceeded(
+                "LLM token-per-day limit exceeded. Retry tomorrow."
+            );
         }
     }
     if self.daily_budget {
@@ -128,7 +141,9 @@ impl JacUserRateLimiter.check_pre_call(
             username, 'day', f"llm:budget_daily:{username}:{today_utc}", 60
         );
         if spent >= float(self.daily_budget) {
-            raise LLMRateLimitExceeded(f"Daily LLM budget of ${self.daily_budget} exceeded.");
+            raise LLMRateLimitExceeded(
+                f"Daily LLM budget of ${self.daily_budget} exceeded."
+            );
         }
     }
     if self.monthly_budget {
@@ -137,7 +152,9 @@ impl JacUserRateLimiter.check_pre_call(
             username, 'month', f"llm:budget_monthly:{username}:{ym}", 60
         );
         if spent >= float(self.monthly_budget) {
-            raise LLMRateLimitExceeded(f"Monthly LLM budget of ${self.monthly_budget} exceeded.");
+            raise LLMRateLimitExceeded(
+                f"Monthly LLM budget of ${self.monthly_budget} exceeded."
+            );
         }
     }
 }
@@ -896,7 +913,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
             }
 
             # Pre-call: byllm hook that actually blocks before the LLM call fires
-            def _pre_invoke(model_name: Any, mt_run: Any) -> None {
+            def _pre_invoke(model_name: Any, mt_run: Any) {
                 ctx = JacRuntimeInterface.get_context();
                 username = getattr(ctx, 'username', None);
                 if username {

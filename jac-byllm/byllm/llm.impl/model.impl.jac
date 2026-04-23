@@ -101,20 +101,25 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
                         );
                         for hook in post_hooks {
                             try {
-                            hook(model_name, mt);
-                        } except Exception as _hook_err {
-                            import logging as _log;
-                            _log.getLogger(__name__).warning(
-                                "post_invoke hook error: " + str(_hook_err)
-                            );
-                        }
+                                hook(model_name, mt);
+                            } except Exception as _hook_err {
+                                import logging as _log;
+                                _log.getLogger(__name__).warning(
+                                    "post_invoke hook error: " + str(_hook_err)
+                                );
+                            }
                         }
                     }
                     _current_invocation_id.reset(ctx_token);
                 }
             }
             return _wrap_generator(
-                result, mt_run, self.model_name, _start, _ctx_token, list(_post_invoke_hooks)
+                result,
+                mt_run,
+                self.model_name,
+                _start,
+                _ctx_token,
+                list(_post_invoke_hooks)
             );
         }
 
