@@ -40,20 +40,35 @@ def test_frozen_app_runs_jac_only_package(tmp_path: Path) -> None:
         p.write_text(body)
 
     build = subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir",
-         "--collect-all", "jaclang",
-         "--distpath", str(tmp_path / "dist"),
-         "--workpath", str(tmp_path / "build"),
-         "--specpath", str(tmp_path),
-         str(tmp_path / "main.py")],
-        cwd=tmp_path, capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "--noconfirm",
+            "--onedir",
+            "--collect-all",
+            "jaclang",
+            "--distpath",
+            str(tmp_path / "dist"),
+            "--workpath",
+            str(tmp_path / "build"),
+            "--specpath",
+            str(tmp_path),
+            str(tmp_path / "main.py"),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
     )
     assert build.returncode == 0, build.stderr
     assert len(list((tmp_path / "dist/main/_internal/myapp").rglob("*.jac"))) >= 5
 
     run = subprocess.run(
         [str(tmp_path / "dist/main/main")],
-        cwd="/", capture_output=True, text=True, timeout=60,
+        cwd="/",
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert run.returncode == 0, run.stderr
     assert "Hello, world!!!" in run.stdout

@@ -27,12 +27,16 @@ def test_iter_user_jac_sources_filters_correctly(tmp_path: Path) -> None:
     _mk(tmp_path / "_priv" / "__init__.jac")
     _mk(tmp_path / "pyonly" / "__init__.py")
 
-    got = list(iter_user_jac_sources([str(tmp_path), str(tmp_path), "", "/nonexistent"]))
+    got = list(
+        iter_user_jac_sources([str(tmp_path), str(tmp_path), "", "/nonexistent"])
+    )
     srcs = [s for s, _ in got]
 
     assert len(got) == 3  # myapp/__init__, core/__init__, greeter
     assert all(s.endswith(".jac") for s in srcs)
-    assert not any(seg in s for s in srcs for seg in (".hidden", ".cache", "_priv", "pyonly"))
+    assert not any(
+        seg in s for s in srcs for seg in (".hidden", ".cache", "_priv", "pyonly")
+    )
 
 
 def test_iter_jaclang_data_files_includes_modresolver() -> None:
@@ -44,4 +48,6 @@ def test_iter_jaclang_data_files_includes_modresolver() -> None:
     assert files
     assert all(p.startswith(root) for p, _ in files)
     assert all(rel.split(os.sep, 1)[0] == "jaclang" for _, rel in files)
-    assert any(p.endswith(os.path.join("jac0core", "modresolver.jac")) for p, _ in files)
+    assert any(
+        p.endswith(os.path.join("jac0core", "modresolver.jac")) for p, _ in files
+    )
