@@ -58,7 +58,7 @@ impl JacUserRateLimiter._get_budget_spent(
 ) -> float {
     cached = self.rc.get(cache_key) if self.rc else None;
     if cached is not None {
-        return float(cached);
+        return float(cached.decode() if isinstance(cached, bytes) else cached);
     }
     if self.col is None {
         return 0.0;
@@ -120,7 +120,8 @@ impl JacUserRateLimiter.check_pre_call(
         );
     }
     if self.tpm {
-        current = int(self.rc.get(f"llm:tpm:{username}:{min_bucket}") or 0);
+        _raw = self.rc.get(f"llm:tpm:{username}:{min_bucket}");
+        current = int(_raw.decode() if isinstance(_raw, bytes) else (_raw or 0));
         if current >= int(self.tpm) {
             raise LLMRateLimitExceeded(
                 "LLM token-per-minute limit exceeded. Retry next minute."
@@ -128,7 +129,8 @@ impl JacUserRateLimiter.check_pre_call(
         }
     }
     if self.tpd {
-        current = int(self.rc.get(f"llm:tpd:{username}:{ts // 86400}") or 0);
+        _raw = self.rc.get(f"llm:tpd:{username}:{ts // 86400}");
+        current = int(_raw.decode() if isinstance(_raw, bytes) else (_raw or 0));
         if current >= int(self.tpd) {
             raise LLMRateLimitExceeded(
                 "LLM token-per-day limit exceeded. Retry tomorrow."
