@@ -8,9 +8,9 @@ import os
 import sys
 
 import _jac_finder
-import jaclang as _jaclang
 from PyInstaller.utils.hooks import collect_submodules
 
+import jaclang as _jaclang
 from jaclang.packaging import iter_jaclang_data_files, iter_user_jac_sources
 
 _jac_finder._install_jac_path_hook()
