@@ -23,7 +23,9 @@ def _mkpkg(root: Path, name: str, files: dict[str, str] | None = None) -> Path:
     return pkg
 
 
-def test_find_packages_ignores_non_jac_and_hidden_and_python_packages(tmp_path: Path) -> None:
+def test_find_packages_ignores_non_jac_and_hidden_and_python_packages(
+    tmp_path: Path,
+) -> None:
     _mkpkg(tmp_path, "myapp")
     _mkpkg(tmp_path, ".hidden")
     _mkpkg(tmp_path, "_private")
@@ -59,7 +61,9 @@ def test_iter_sources_walks_tree_and_builds_dotted_names(tmp_path: Path) -> None
         "myapp.utils",
         "myapp.utils.helpers",
     }
-    assert by_name["myapp.core.greeter"].relative_path == os.path.join("myapp", "core", "greeter.jac")
+    assert by_name["myapp.core.greeter"].relative_path == os.path.join(
+        "myapp", "core", "greeter.jac"
+    )
 
 
 def test_iter_jaclang_data_files_includes_bootstrap_modresolver() -> None:
@@ -75,4 +79,6 @@ def test_iter_jaclang_data_files_includes_bootstrap_modresolver() -> None:
         assert os.path.isfile(abs_path)
         assert rel_dir.split(os.sep, 1)[0] == "jaclang"
 
-    assert any(p.endswith(os.path.join("jac0core", "modresolver.jac")) for p, _ in files)
+    assert any(
+        p.endswith(os.path.join("jac0core", "modresolver.jac")) for p, _ in files
+    )
