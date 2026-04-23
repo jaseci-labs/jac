@@ -1116,9 +1116,7 @@ impl JFastApiServer.init(
         ctx = JacRuntimeInterface.create_j_context(user_root=None);
         JacRuntime.set_request_context(ctx);
 
-        user_id = getattr(request.state, 'user_root_id', None)
-            if request?.state
-            else None;
+        user_id = request.state?.user_root_id if request?.state else None;
 
         if user_id {
             try {

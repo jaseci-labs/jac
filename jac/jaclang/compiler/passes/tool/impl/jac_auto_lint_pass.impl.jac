@@ -799,25 +799,208 @@ impl JacAutoLintPass._bool_expr_has_matching_access(
     return False;
 }
 
-"""Process FuncCall to convert hasattr(obj, "attr") to null-safe access.
+"""Convert getattr(obj, "attr", None) to null-safe access.
 
-This replaces hasattr calls in the parent node's children with
-the equivalent null-safe access expression.
+Matches the 3-arg form with explicit `None` default, which is exactly the
+runtime behavior of `obj?.attr` (missing attribute or None base both yield
+None). The 2-arg form `getattr(obj, "attr")` raises AttributeError on miss,
+so it is not rewritten.
 
-Only converts in semantically safe patterns:
-- IfElseExpr: obj.attr if hasattr(obj, "attr") else default
-- BoolExpr: hasattr(obj, "attr") and obj.attr (guard-then-use with matching access)
+Requirements:
+- First arg: any expression (the object)
+- Second arg: a string literal that is a valid Python identifier and not a keyword
+- Third arg: the literal `None`
 
-Does NOT convert standalone boolean checks (IfStmt, WhileStmt, UnaryExpr, BinaryExpr,
-or BoolExpr without matching attr access) because hasattr() returns True/False
-while obj?.attr returns the attribute value which may be falsy ([], 0, "", None).
+Unlike hasattr, getattr(obj, "attr", None) returns the attribute value (not
+a bool), so `obj?.attr` is a drop-in replacement in every expression context.
+No parent-type guard is needed.
+"""
+impl JacAutoLintPass._convert_getattr_to_null_ok(
+    nd: uni.FuncCall
+) -> (uni.AtomTrailer | None) {
+    if not isinstance(nd.target, uni.Name) {
+        return None;
+    }
+    if nd.target.value != "getattr" {
+        return None;
+    }
+    if nd.params is None or len(nd.params) != 3 {
+        return None;
+    }
+    obj_expr = nd.params[0];
+    attr_expr = nd.params[1];
+    default_expr = nd.params[2];
+    if isinstance(obj_expr, uni.KWPair)
+    or isinstance(attr_expr, uni.KWPair)
+    or isinstance(default_expr, uni.KWPair) {
+        return None;
+    }
+    if not isinstance(default_expr, uni.Null) {
+        return None;
+    }
+    attr_value: str | None = None;
+    string_node: uni.String | None = None;
+    if isinstance(attr_expr, uni.String) {
+        attr_value = attr_expr.value;
+        string_node = attr_expr;
+    } elif isinstance(attr_expr, uni.MultiString) {
+        if len(attr_expr.strings) == 1
+        and isinstance(attr_expr.strings[0], uni.String) {
+            attr_value = attr_expr.strings[0].value;
+            string_node = attr_expr.strings[0];
+        }
+    }
+    if attr_value is None or string_node is None {
+        return None;
+    }
+    if (attr_value.startswith('"') and attr_value.endswith('"'))
+    or (attr_value.startswith("'") and attr_value.endswith("'")) {
+        attr_name = attr_value[1:-1];
+    } else {
+        return None;
+    }
+    if not attr_name.isidentifier() or keyword.iskeyword(attr_name) {
+        return None;
+    }
+    attr_name_node = uni.Name(
+        orig_src=string_node.loc.orig_src,
+        name=Tok.NAME.name,
+        value=attr_name,
+        line=string_node.loc.first_line,
+        end_line=string_node.loc.last_line,
+        col_start=string_node.loc.col_start,
+        col_end=string_node.loc.col_end,
+        pos_start=string_node.loc.pos_start,
+        pos_end=string_node.loc.pos_end,
+        is_kwesc=False
+    );
+    null_ok_access = uni.AtomTrailer(
+        target=obj_expr,
+        right=attr_name_node,
+        is_attr=True,
+        is_null_ok=True,
+        kid=[obj_expr, attr_name_node]
+    );
+    new_kid: list[uni.UniNode] = [obj_expr];
+    new_kid.append(null_ok_access.gen_token(Tok.NULL_OK));
+    new_kid.append(null_ok_access.gen_token(Tok.DOT));
+    new_kid.append(attr_name_node);
+    null_ok_access.set_kids(nodes=new_kid);
+    return null_ok_access;
+}
+
+"""Replace child `old` with `new` inside `parent`.
+
+Updates both `parent.kid` (authoritative for pretty-printing and DocIR) and
+the typed fields for common parent node types so later passes that read the
+typed fields see the rewrite. Parent types not covered here fall through to
+just the kid update, which is sufficient for formatter output.
+"""
+impl JacAutoLintPass._replace_child_in_parent(
+    parent: uni.UniNode, old: uni.UniNode, new: uni.Expr
+) -> None {
+    new_kid: list[uni.UniNode] = [];
+    for k in parent.kid {
+        new_kid.append(new if k is old else k);
+    }
+    parent.kid = new_kid;
+    if isinstance(parent, uni.CfgExpr) {
+        if parent.expr is old {
+            parent.expr = new;
+        }
+    } elif isinstance(parent, uni.Assignment) {
+        if parent.value is old {
+            parent.value = new;
+        }
+        new_targets: list[uni.Expr] = [];
+        for t in parent.target {
+            new_targets.append(new if t is old else t);
+        }
+        parent.target = new_targets;
+    } elif isinstance(parent, uni.ExprStmt) {
+        if parent.expr is old {
+            parent.expr = new;
+        }
+    } elif isinstance(parent, uni.ReturnStmt) {
+        if parent.expr is old {
+            parent.expr = new;
+        }
+    } elif isinstance(parent, uni.BinaryExpr) {
+        if parent.left is old {
+            parent.left = new;
+        }
+        if parent.right is old {
+            parent.right = new;
+        }
+    } elif isinstance(parent, uni.UnaryExpr) {
+        if parent.operand is old {
+            parent.operand = new;
+        }
+    } elif isinstance(parent, uni.CompareExpr) {
+        if parent.left is old {
+            parent.left = new;
+        }
+        new_rights: list[uni.Expr] = [];
+        for r in parent.rights {
+            new_rights.append(new if r is old else r);
+        }
+        parent.rights = new_rights;
+    } elif isinstance(parent, uni.AtomTrailer) {
+        if parent.target is old {
+            parent.target = new;
+        }
+        if parent.right is old {
+            parent.right = new;
+        }
+    } elif isinstance(parent, uni.FuncCall) {
+        if parent.target is old {
+            parent.target = new;
+        }
+        if parent.params is not None {
+            new_params: list[(uni.Expr | uni.KWPair)] = [];
+            for p in parent.params {
+                new_params.append(new if p is old else p);
+            }
+            parent.params = new_params;
+        }
+    } elif isinstance(parent, uni.KWPair) {
+        if parent.value is old {
+            parent.value = new;
+        }
+    }
+}
+
+"""Process FuncCall to convert hasattr/getattr to null-safe access.
+
+Handles two rewrites at the FuncCall exit:
+- hasattr(obj, "attr")         -> obj?.attr  (W3007; restricted to safe patterns)
+- getattr(obj, "attr", None)   -> obj?.attr  (W3039; safe in any expr context)
+
+hasattr is only safe to rewrite in IfElseExpr / BoolExpr guard patterns
+because hasattr() returns bool while obj?.attr returns the value (may be
+falsy). getattr's 3-arg form already returns the value, so it rewrites
+unconditionally.
 """
 impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
     if not self.lint_enabled {
         return;
     }
     self._check_no_print(nd);
-    if self.report_only or self._is_suppressed(W3007) {
+    if self.report_only {
+        return;
+    }
+    if not self._is_suppressed(W3039) {
+        getattr_replacement = self._convert_getattr_to_null_ok(nd);
+        if getattr_replacement is not None {
+            parent = nd.parent;
+            if parent is not None and self.emit(W3039, node_override=nd) {
+                getattr_replacement.parent = parent;
+                self._replace_child_in_parent(parent, nd, getattr_replacement);
+                return;
+            }
+        }
+    }
+    if self._is_suppressed(W3007) {
         return;
     }
     replacement = self._convert_hasattr_to_null_ok(nd);

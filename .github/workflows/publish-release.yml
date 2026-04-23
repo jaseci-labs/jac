@@ -37,12 +37,15 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Parse release info
         id: parse
         env:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
-          python scripts/parse_release.py --pr-title "$PR_TITLE"
+          jac run scripts/parse_release.jac --pr-title "$PR_TITLE"
 
   # ============================================================================
   # Approval gate - ONE click to approve all publishing
@@ -235,10 +238,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Wait for tier 1 on PyPI
         env:
           MATRIX: ${{ needs.parse-release.outputs.matrix }}
-        run: python scripts/wait_for_pypi.py --matrix "$MATRIX" --tier 1
+        run: jac run scripts/wait_for_pypi.jac --matrix "$MATRIX" --tier 1
 
   # ============================================================================
   # Publish Tier 2: packages depending on jaclang
@@ -290,10 +296,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Wait for tier 2 on PyPI
         env:
           MATRIX: ${{ needs.parse-release.outputs.matrix }}
-        run: python scripts/wait_for_pypi.py --matrix "$MATRIX" --tier 2
+        run: jac run scripts/wait_for_pypi.jac --matrix "$MATRIX" --tier 2
 
   # ============================================================================
   # Publish Tier 3: jaseci meta-package
@@ -345,10 +354,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install jaclang
+        run: pip install -e ./jac
+
       - name: Wait for tier 3 on PyPI
         env:
           MATRIX: ${{ needs.parse-release.outputs.matrix }}
-        run: python scripts/wait_for_pypi.py --matrix "$MATRIX" --tier 3
+        run: jac run scripts/wait_for_pypi.jac --matrix "$MATRIX" --tier 3
 
   # ============================================================================
   # Push tags after successful publish

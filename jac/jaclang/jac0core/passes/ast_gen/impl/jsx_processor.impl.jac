@@ -175,8 +175,9 @@ impl EsJsxProcessor.normal_attribute(
     if (nd.value is None) {
         value_expr = self.pass_ref.sync_loc(es.Literal(value=True), jac_node=nd);
     } elif isinstance(nd.value, uni.String) {
+        import html;
         value_expr = self.pass_ref.sync_loc(
-            es.Literal(value=nd.value.lit_value), jac_node=nd.value
+            es.Literal(value=html.unescape(nd.value.lit_value)), jac_node=nd.value
         );
     } else {
         value_expr = nd.value.gen.es_ast
@@ -199,9 +200,10 @@ impl EsJsxProcessor.normal_attribute(
 
 """Process JSX text node."""
 impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
+    import html;
     es = self.es;
     expr = self.pass_ref.sync_loc(
-        es.Literal(value=nd.get_normalized_text()), jac_node=nd
+        es.Literal(value=html.unescape(nd.get_normalized_text())), jac_node=nd
     );
     nd.gen.es_ast = expr;
     return expr;
@@ -323,7 +325,12 @@ impl PyJsxProcessor.normal_attribute(
     }
     key_ast = self.pass_ref.sync(ast3.Constant(value=nd.name.value), nd.name);
     value_ast: ast3.expr;
-    if (nd.value and nd.value.gen.py_ast) {
+    if (nd.value and isinstance(nd.value, uni.String)) {
+        import html;
+        value_ast = self.pass_ref.sync(
+            ast3.Constant(value=html.unescape(nd.value.lit_value)), nd.value
+        );
+    } elif (nd.value and nd.value.gen.py_ast) {
         value_ast = cast(ast3.expr, nd.value.gen.py_ast[0]);
     } else {
         value_ast = self.pass_ref.sync(ast3.Constant(value=True), nd);
@@ -336,7 +343,10 @@ impl PyJsxProcessor.normal_attribute(
 
 """Generate Python AST for JSX text nodes."""
 impl PyJsxProcessor.text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST] {
-    expr = self.pass_ref.sync(ast3.Constant(value=nd.get_normalized_text()), nd);
+    import html;
+    expr = self.pass_ref.sync(
+        ast3.Constant(value=html.unescape(nd.get_normalized_text())), nd
+    );
     nd.gen.py_ast = [expr];
     return nd.gen.py_ast;
 }

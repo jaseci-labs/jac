@@ -124,7 +124,11 @@ test "serve user creation" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response = client.post(
-            "/user/register", json={"username": "alice", "password": "secret123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "alice"}],
+                "credential": {"type": "password", "password": "secret123"}
+            }
         );
         assert response.ok;
         data = response.data;
@@ -141,12 +145,20 @@ test "serve user login" {
         client = make_client(tmpdir);
         # Create user
         create_response = client.post(
-            "/user/register", json={"username": "bob", "password": "pass456"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "bob"}],
+                "credential": {"type": "password", "password": "pass456"}
+            }
         );
         create_data = create_response.data;
         # Login with correct credentials
         login_response = client.post(
-            "/user/login", json={"username": "bob", "password": "pass456"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "bob"},
+                "credential": {"type": "password", "password": "pass456"}
+            }
         );
         assert login_response.ok;
         login_data = login_response.data;
@@ -156,9 +168,43 @@ test "serve user login" {
         # Login with wrong password
         client.clear_auth();
         fail_response = client.post(
-            "/user/login", json={"username": "bob", "password": "wrongpass"}
+            "/user/login",
+            json={
+                "identity": {"type": "username", "value": "bob"},
+                "credential": {"type": "password", "password": "wrongpass"}
+            }
         );
         assert not fail_response.ok or "error" in fail_response.json();
+        client.close();
+    }
+}
+
+test "serve register rejects legacy payload" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        response = client.post(
+            "/user/register", json={"username": "legacy", "password": "pass123"}
+        );
+        assert not response.ok;
+        assert response.status_code == 400;
+        client.close();
+    }
+}
+
+test "serve login rejects email identity" {
+    with TemporaryDirectory() as tmpdir {
+        client = make_client(tmpdir);
+        response = client.post(
+            "/user/login",
+            json={
+                "identity": {"type": "email", "value": "a@b.c"},
+                "credential": {"type": "password", "password": "pass"}
+            }
+        );
+        assert not response.ok;
+        assert response.status_code == 400;
+        body = response.json();
+        assert "username" in body.get("error", "");
         client.close();
     }
 }
@@ -435,12 +481,20 @@ test "serve user isolation" {
         client = make_client(tmpdir);
         # Create two users
         user1_response = client.post(
-            "/user/register", json={"username": "user1", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user1"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         user1_data = user1_response.data;
         client.clear_auth();
         user2_response = client.post(
-            "/user/register", json={"username": "user2", "password": "pass2"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user2"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
         );
         user2_data = user2_response.data;
         # User1 creates a task
@@ -502,7 +556,11 @@ test "serve update username" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         create_response = client.post(
-            "/user/register", json={"username": "olduser", "password": "pass123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "olduser"}],
+                "credential": {"type": "password", "password": "pass123"}
+            }
         );
         assert create_response.ok;
         token = create_response.data["token"];
@@ -534,7 +592,11 @@ test "serve update username requires auth" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         client.post(
-            "/user/register", json={"username": "authtest", "password": "pass123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "authtest"}],
+                "credential": {"type": "password", "password": "pass123"}
+            }
         );
         client.clear_auth();
         response = client.put(
@@ -551,11 +613,21 @@ test "serve update username cannot update other users" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         user1_response = client.post(
-            "/user/register", json={"username": "user1", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user1"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         user1_token = user1_response.data["token"];
         client.clear_auth();
-        client.post("/user/register", json={"username": "user2", "password": "pass2"});
+        client.post(
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user2"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
+        );
         # User1 tries to update user2's username
         client.set_auth_token(user1_token);
         response = client.put(
@@ -572,11 +644,21 @@ test "serve update username already exists" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         response1 = client.post(
-            "/user/register", json={"username": "user_a", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user_a"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         token = response1.data["token"];
         client.clear_auth();
-        client.post("/user/register", json={"username": "user_b", "password": "pass2"});
+        client.post(
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "user_b"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
+        );
         # Try to update user_a to user_b (already exists)
         client.set_auth_token(token);
         response = client.put(
@@ -593,7 +675,11 @@ test "serve update password" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         create_response = client.post(
-            "/user/register", json={"username": "passuser", "password": "oldpass"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "passuser"}],
+                "credential": {"type": "password", "password": "oldpass"}
+            }
         );
         assert create_response.ok;
         token = create_response.data["token"];
@@ -626,7 +712,11 @@ test "serve update password requires auth" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         client.post(
-            "/user/register", json={"username": "noauthpass", "password": "pass123"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "noauthpass"}],
+                "credential": {"type": "password", "password": "pass123"}
+            }
         );
         client.clear_auth();
         response = client.put(
@@ -647,7 +737,11 @@ test "serve update password wrong current" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         create_response = client.post(
-            "/user/register", json={"username": "wrongpass", "password": "correctpass"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "wrongpass"}],
+                "credential": {"type": "password", "password": "correctpass"}
+            }
         );
         token = create_response.data["token"];
         client.set_auth_token(token);
@@ -669,12 +763,20 @@ test "serve update password cannot update other users" {
     with TemporaryDirectory() as tmpdir {
         client = make_client(tmpdir);
         user1_response = client.post(
-            "/user/register", json={"username": "pass_user1", "password": "pass1"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "pass_user1"}],
+                "credential": {"type": "password", "password": "pass1"}
+            }
         );
         user1_token = user1_response.data["token"];
         client.clear_auth();
         client.post(
-            "/user/register", json={"username": "pass_user2", "password": "pass2"}
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": "pass_user2"}],
+                "credential": {"type": "password", "password": "pass2"}
+            }
         );
         # User1 tries to update user2's password
         client.set_auth_token(user1_token);
@@ -1383,5 +1485,398 @@ test "serve sync skips write access check on unchanged anchors" {
         }
         assert "Current root doesn't have write access" not in buf.getvalue() , "SqliteMemory.sync() should not check write access on unchanged anchors";
         client.close();
+    }
+}
+
+test "serve blocking sync walkers run concurrently via to_thread" {
+    import asyncio;
+    import from time { time }
+    import from jaclang.jac0core.runtime { JacRuntimeInterface as Jac }
+    import from jaclang.runtimelib.server {
+        ExecutionManager,
+        UserManager,
+        ModuleIntrospector
+    }
+
+    with TemporaryDirectory() as tmpdir {
+        # Load the blocking IO fixture
+        jac_file = fixture_abs_path("serve_blocking_io.jac");
+        introspector = ModuleIntrospector(
+            module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
+        );
+        introspector.load();
+        walkers = introspector.get_walkers();
+        assert "slow_blocking" in walkers , "slow_blocking walker not found";
+        walker_cls = walkers["slow_blocking"];
+        user_mgr = UserManager(base_path=tmpdir);
+        exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
+        # Create a test user so spawn_walker can resolve a root
+        user_mgr.create_user("testuser", "testpass");
+        # Each walker sleeps for 1 second. Launch 3 concurrently.
+        # If they run in threads (concurrent): ~1s total.
+        # If they run serially on event loop: ~3s total.
+        async def run_concurrent_walkers -> float {
+            start = time();
+            tasks = [
+                exec_mgr.spawn_walker(walker_cls, {"duration": 1.0}, "testuser")
+                for _ in range(3)
+            ];
+            results = await asyncio.gather(*tasks);
+            elapsed = time() - start;
+            # Verify all walkers completed successfully
+            for r in results {
+                assert "error" not in r , f"Walker failed: {r}";
+            }
+            return elapsed;
+        }
+        elapsed = asyncio.run(run_concurrent_walkers());
+        # With to_thread fix: ~1s. Without: ~3s. Use 2.5s as threshold.
+        assert elapsed < 2.5 , f"Blocking walkers took {elapsed:.2f}s (expected < 2.5s for concurrent execution)";
+    }
+}
+
+test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
+    # Verifies the explicit sync/async entrypoints on ExecutionManager work
+    # standalone (not via the back-compat dispatcher). The handler seam
+    # picks between these based on walker metadata.
+    import asyncio;
+    import from time { time }
+    import from jaclang.runtimelib.server {
+        ExecutionManager,
+        UserManager,
+        ModuleIntrospector
+    }
+
+    with TemporaryDirectory() as tmpdir {
+        jac_file = fixture_abs_path("serve_blocking_io.jac");
+        introspector = ModuleIntrospector(
+            module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
+        );
+        introspector.load();
+        walker_cls = introspector.get_walkers()["slow_blocking"];
+        user_mgr = UserManager(base_path=tmpdir);
+        exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
+        user_mgr.create_user("testuser", "testpass");
+        async def run -> tuple {
+            # Explicit sync path: must still run concurrently via to_thread.
+            start = time();
+            tasks = [
+                exec_mgr.spawn_walker_sync(walker_cls, {"duration": 0.5}, "testuser")
+                for _ in range(3)
+            ];
+            results = await asyncio.gather(*tasks);
+            sync_elapsed = time() - start;
+            for r in results {
+                assert "error" not in r , f"sync walker failed: {r}";
+            }
+            return (sync_elapsed, results);
+        }
+        (sync_elapsed, results) = asyncio.run(run());
+        assert sync_elapsed < 1.5 , f"spawn_walker_sync not concurrent: {sync_elapsed:.2f}s";
+        assert len(results) == 3 , "expected 3 results";
+    }
+}
+
+test "concurrent async walkers run concurrently end-to-end" {
+    # Direct response to amadolid's `async_long_cpu_process` observation:
+    # before end-to-end async wiring, concurrent async walkers all returned
+    # at the same time because the post-walker Jac.commit() ran sync on the
+    # event loop. With Jac.acommit + async context setup, they interleave
+    # through their awaits (asyncio.sleep) and finish concurrently.
+    import asyncio;
+    import from time { time }
+    import from jaclang.runtimelib.server {
+        ExecutionManager,
+        UserManager,
+        ModuleIntrospector
+    }
+
+    with TemporaryDirectory() as tmpdir {
+        jac_file = fixture_abs_path("serve_blocking_io.jac");
+        introspector = ModuleIntrospector(
+            module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
+        );
+        introspector.load();
+        walker_cls = introspector.get_walkers()["slow_async"];
+        assert getattr(walker_cls, "__jac_async__", False) , "slow_async walker must be async";
+        user_mgr = UserManager(base_path=tmpdir);
+        exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
+        user_mgr.create_user("testuser", "testpass");
+        async def run -> float {
+            start = time();
+            tasks = [
+                exec_mgr.spawn_walker_async(walker_cls, {"duration": 0.5}, "testuser")
+                for _ in range(3)
+            ];
+            results = await asyncio.gather(*tasks);
+            for r in results {
+                assert "error" not in r , f"async walker failed: {r}";
+            }
+            return time() - start;
+        }
+        elapsed = asyncio.run(run());
+        # 3 concurrent sleep(0.5) async walkers on the event loop: ~0.5s.
+        # If commit or context setup blocked the loop: 3*0.5 = ~1.5s.
+        assert elapsed < 1.2 , f"async walkers serialized on commit/setup: {elapsed:.2f}s (expected < 1.2s)";
+    }
+}
+
+test "Memory async mirrors (aget/aput/adelete/ahas/acommit) work" {
+    # Every Memory backend gets async mirrors by default via to_thread.
+    # This verifies the base-class impls round-trip correctly and do not
+    # block the caller's event loop.
+    import asyncio;
+    import from jaclang.jac0core.archetype { NodeAnchor, Root }
+    import from jaclang.runtimelib.memory { VolatileMemory, SqliteMemory }
+    import from uuid { uuid4 }
+
+    with TemporaryDirectory() as tmpdir {
+        # Volatile backend (pure in-memory).
+        vol = VolatileMemory();
+        anchor = NodeAnchor(id=uuid4(), archetype=Root(), edges=[]);
+        async def exercise_volatile -> bool {
+            await vol.aput(anchor);
+            assert await vol.ahas(anchor.id);
+            got = await vol.aget(anchor.id);
+            assert got is anchor;
+            await vol.acommit(anchor);  # no-op for volatile
+            await vol.adelete(anchor.id);
+            assert not await vol.ahas(anchor.id);
+            return True;
+        }
+        assert asyncio.run(exercise_volatile());
+        # SQLite backend (blocking IO wrapped in to_thread by default).
+        import os;
+        db_path = os.path.join(tmpdir, "test.db");
+        sq = SqliteMemory(path=db_path);
+        persist_anchor = NodeAnchor(id=uuid4(), archetype=Root(), edges=[]);
+        persist_anchor.persistent = True;
+        async def exercise_sqlite -> bool {
+            await sq.aput(persist_anchor);
+            assert await sq.ahas(persist_anchor.id);
+            got = await sq.aget(persist_anchor.id);
+            assert got is not None;
+            assert got.id == persist_anchor.id;
+            await sq.acommit(persist_anchor);
+            await sq.adelete(persist_anchor.id);
+            return True;
+        }
+        assert asyncio.run(exercise_sqlite());
+        sq.close();
+    }
+}
+
+test "SqliteMemory concurrent writes from worker threads do not race" {
+    # Regression guard for the sqlite3 shared-connection race at sync().
+    #
+    # When sync walkers finish, Jac.acommit offloads SqliteMemory.commit()
+    # (which calls sync()) to a worker thread via asyncio.to_thread.
+    # Multiple concurrent walker calls from one user share the same
+    # SqliteMemory instance and connection (opened with
+    # check_same_thread=False). sync() does a BEGIN IMMEDIATE; two racing
+    # invocations on one connection collide as "cannot start a
+    # transaction within a transaction" on Linux, or corrupt the stored
+    # row and surface as "stored anchor ... unreadable" later on macOS.
+    #
+    # A threading.RLock inside SqliteMemory serializes sync() and the
+    # other connection-touching methods. This test drives many concurrent
+    # commits and asserts both (a) no exceptions propagate and (b) every
+    # anchor reads back cleanly from a fresh connection.
+    import asyncio;
+    import os;
+    import from uuid { uuid4 }
+    import from jaclang.jac0core.archetype { NodeAnchor, Root }
+    import from jaclang.runtimelib.memory { SqliteMemory }
+
+    with TemporaryDirectory() as tmpdir {
+        db_path = os.path.join(tmpdir, "concurrent.db");
+        mem = SqliteMemory(path=db_path);
+        n_threads = 32;
+        # Pre-build anchor ids on the main thread so the assertion loop
+        # below knows exactly what to expect.
+        anchor_ids = [uuid4() for _ in range(n_threads)];
+        def worker(idx: int) {
+            a = NodeAnchor(id=anchor_ids[idx], archetype=Root(), edges=[]);
+            a.persistent = True;
+            mem.put(a);
+            mem.commit(a);
+        }
+        async def run_concurrent {
+            await asyncio.gather(
+                *[asyncio.to_thread(worker, i) for i in range(n_threads)]
+            );
+        }
+        # Without the lock, on Linux this raises OperationalError (the
+        # exact CI failure); on macOS it succeeds but leaves corrupted
+        # rows that fail the readback below.
+        asyncio.run(run_concurrent());
+        # Fresh SqliteMemory reads from disk, bypassing any in-memory
+        # cache, so this genuinely exercises the stored rows.
+        reader = SqliteMemory(path=db_path);
+        for id in anchor_ids {
+            got = reader.get(id);
+            assert got is not None , f"anchor {id} missing after concurrent commit";
+        }
+        reader.close();
+        mem.close();
+    }
+}
+
+test "CallState.reports is thread-safe (sync walker worker threads put safely)" {
+    # Sync walkers run inside asyncio.to_thread; their `report` statements
+    # call log_report from a worker thread, which calls put_nowait on
+    # CallState.reports. asyncio.Queue.put_nowait is not safe to call from
+    # a non-event-loop thread (its internal Future wakeup path relies on
+    # loop-affine state). The production flow "works" only because the
+    # drain runs strictly after the walker joins, so no getter is ever
+    # waiting — but that is a latent invariant. Use a thread-safe queue
+    # so the type itself documents and enforces cross-thread put.
+    import asyncio;
+    import from jaclang.runtimelib.context { CallState }
+
+    call_state = CallState();
+
+    # Type guard — fails today (asyncio.Queue), passes after fix.
+    assert not isinstance(call_state.reports, asyncio.Queue) , (
+        "CallState.reports must not be an asyncio.Queue: put_nowait from "
+        "a worker thread is thread-unsafe. Use queue.Queue (or another "
+        "thread-safe primitive) so sync-walker log_report calls are correct "
+        "by construction, not by relying on drain-after-join ordering."
+    );
+
+    # Behavioral guard — the invariant we want preserved after the fix:
+    # many worker threads put concurrently, event loop drains afterward,
+    # no lost or duplicated reports.
+    total_threads = 50;
+    items_per_thread = 100;
+    expected_count = total_threads * items_per_thread;
+
+    received: list = [];
+
+    def worker(tid: int) {
+        for i in range(items_per_thread) {
+            call_state.reports.put_nowait((tid, i));
+        }
+    }
+
+    async def run_and_drain -> int {
+        tasks = [asyncio.to_thread(worker, tid) for tid in range(total_threads)];
+        await asyncio.gather(*tasks);
+        call_state.reports.put_nowait(call_state._sentinel);
+        while True {
+            try {
+                item = call_state.reports.get_nowait();
+            } except Exception {
+                break;
+            }
+            if item is call_state._sentinel {
+                break;
+            }
+            received.append(item);
+        }
+        return len(received);
+    }
+
+    count = asyncio.run(run_and_drain());
+    assert count == expected_count , (
+        f"Expected {expected_count} reports from {total_threads} concurrent "
+        f"worker threads, got {count}"
+    );
+    expected_set = {
+        (t, i) for t in range(total_threads) for i in range(items_per_thread)
+    };
+    missing = len(expected_set - set(received));
+    extra = len(set(received) - expected_set);
+    assert set(received) == expected_set , (
+        f"Report set mismatch. Missing: {missing}, extra: {extra}"
+    );
+}
+
+test "concurrent multi-user requests do not race on ctx.user_root" {
+    # Regression guard for per-request ExecutionContext isolation.
+    #
+    # Before the fix, the server mutated `ctx.user_root` directly on the
+    # process-global ExecutionContext. Under N concurrent requests from
+    # *different* users, the `await ctx.aset_user_root(...)` calls
+    # interleave on the event loop and the last writer wins — so an
+    # in-flight walker launched by user A could end up executing against
+    # user B's root. This test would fail in that world.
+    #
+    # With per-request context forking (each request pushes its own
+    # ExecutionContext into the `_request_context` ContextVar), each
+    # asyncio Task gets a task-local view, so the start/end user_root
+    # observed inside a walker must match the user that spawned it.
+    import asyncio;
+    import from jaclang.runtimelib.server {
+        ExecutionManager,
+        UserManager,
+        ModuleIntrospector
+    }
+
+    with TemporaryDirectory() as tmpdir {
+        jac_file = fixture_abs_path("serve_blocking_io.jac");
+        introspector = ModuleIntrospector(
+            module_name="serve_blocking_io", base_path=str(Path(jac_file).parent)
+        );
+        introspector.load();
+        walkers = introspector.get_walkers();
+        async_walker = walkers["whoami_async"];
+        sync_walker = walkers["whoami_sync"];
+        user_mgr = UserManager(base_path=tmpdir);
+        exec_mgr = ExecutionManager(base_path=tmpdir, user_manager=user_mgr);
+        # Three distinct users with distinct roots.
+        users = [f"user_{i}" for i in range(3)];
+        root_ids = {};
+        for uname in users {
+            info = user_mgr.create_user(uname, "pw");
+            root_ids[uname] = info["root_id"];
+        }
+        # Sanity: each user got a unique root.
+        assert len(set(root_ids.values())) == 3;
+        async def run_probe(walker_cls: Any) -> list {
+            tasks = [
+                exec_mgr.spawn_walker(walker_cls, {"sleep_s": 0.1}, uname)
+                for uname in users
+            ];
+            return await asyncio.gather(*tasks);
+        }
+        # Async walker path — most sensitive: the await inside the walker
+        # guarantees interleaving at the point a shared-ctx bug would
+        # manifest. Each task must still observe its own user_root.
+        async_results = asyncio.run(run_probe(async_walker));
+        for (uname, result) in zip(users, async_results) {
+            assert "error" not in result , f"async whoami failed for {uname}: {result}";
+            reports = result["reports"];
+            assert len(reports) == 1 , f"expected 1 report, got {reports}";
+            got = reports[0];
+            expected = root_ids[uname];
+            assert got["start_root_id"] == expected , (
+                f"async: {uname} saw start_root_id={got['start_root_id']}, "
+                f"expected {expected} — ctx.user_root race regression"
+            );
+            assert got["end_root_id"] == expected , (
+                f"async: {uname} saw end_root_id={got['end_root_id']} after "
+                f"await, expected {expected} — another request overwrote "
+                f"user_root during the await"
+            );
+        }
+        # Sync walker path — proves isolation propagates across the
+        # asyncio.to_thread boundary (ContextVars copy into the worker).
+        sync_results = asyncio.run(run_probe(sync_walker));
+        for (uname, result) in zip(users, sync_results) {
+            assert "error" not in result , f"sync whoami failed for {uname}: {result}";
+            reports = result["reports"];
+            assert len(reports) == 1;
+            got = reports[0];
+            expected = root_ids[uname];
+            assert got["start_root_id"] == expected , (
+                f"sync: {uname} saw start_root_id={got['start_root_id']}, "
+                f"expected {expected}"
+            );
+            assert got["end_root_id"] == expected , (
+                f"sync: {uname} saw end_root_id={got['end_root_id']}, "
+                f"expected {expected}"
+            );
+        }
     }
 }
