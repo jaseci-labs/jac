@@ -35,12 +35,16 @@ def test_iter_user_jac_sources_filters_correctly(tmp_path: Path) -> None:
     _mk(tmp_path / "_priv" / "__init__.jac")
     _mk(tmp_path / "pyonly" / "__init__.py")
 
-    got = list(iter_user_jac_sources([str(tmp_path), str(tmp_path), "", "/nonexistent"]))
+    got = list(
+        iter_user_jac_sources([str(tmp_path), str(tmp_path), "", "/nonexistent"])
+    )
     srcs = [s for s, _ in got]
 
     assert len(got) == 3
     assert all(s.endswith(".jac") for s in srcs)
-    assert not any(seg in s for s in srcs for seg in (".hidden", ".cache", "_priv", "pyonly"))
+    assert not any(
+        seg in s for s in srcs for seg in (".hidden", ".cache", "_priv", "pyonly")
+    )
 
 
 def test_iter_jaclang_data_files_includes_modresolver() -> None:
@@ -52,7 +56,9 @@ def test_iter_jaclang_data_files_includes_modresolver() -> None:
     assert files
     assert all(p.startswith(root) for p, _ in files)
     assert all(rel.split(os.sep, 1)[0] == "jaclang" for _, rel in files)
-    assert any(p.endswith(os.path.join("jac0core", "modresolver.jac")) for p, _ in files)
+    assert any(
+        p.endswith(os.path.join("jac0core", "modresolver.jac")) for p, _ in files
+    )
 
 
 _FIXTURE = {
@@ -80,20 +86,35 @@ def test_frozen_app_runs_jac_only_package(tmp_path: Path) -> None:
         _mk(tmp_path / rel, body)
 
     build = subprocess.run(
-        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--onedir",
-         "--collect-all", "jaclang",
-         "--distpath", str(tmp_path / "dist"),
-         "--workpath", str(tmp_path / "build"),
-         "--specpath", str(tmp_path),
-         str(tmp_path / "main.py")],
-        cwd=tmp_path, capture_output=True, text=True,
+        [
+            sys.executable,
+            "-m",
+            "PyInstaller",
+            "--noconfirm",
+            "--onedir",
+            "--collect-all",
+            "jaclang",
+            "--distpath",
+            str(tmp_path / "dist"),
+            "--workpath",
+            str(tmp_path / "build"),
+            "--specpath",
+            str(tmp_path),
+            str(tmp_path / "main.py"),
+        ],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
     )
     assert build.returncode == 0, build.stderr
     assert len(list((tmp_path / "dist/main/_internal/myapp").rglob("*.jac"))) >= 5
 
     run = subprocess.run(
         [str(tmp_path / "dist/main/main")],
-        cwd="/", capture_output=True, text=True, timeout=60,
+        cwd="/",
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert run.returncode == 0, run.stderr
     assert "Hello, world!!!" in run.stdout
