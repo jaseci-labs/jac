@@ -125,6 +125,31 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot assign to '{name}' -- it is a built-in reference, not a variable",
          help="Use a different variable name, or use backtick escaping (e.g. `super) to create a local variable with the same name."
      ),
+     E0025 = _err(
+         "E0025",
+         Category.SYNTAX,
+         "Expected ':+>' to close forward typed connection -- did you mean '+>: <EdgeType> :+> <node>'?"
+     ),
+     E0026 = _err(
+         "E0026",
+         Category.SYNTAX,
+         "Expected ':<+' or ':+>' to close backward typed connection -- did you mean '<+: <EdgeType> :<+ <node>' (backward) or '<+: <EdgeType> :+> <node>' (bidirectional)?"
+     ),
+     E0027 = _err(
+         "E0027",
+         Category.SYNTAX,
+         "'++>' does not take an edge type -- use '+>: <EdgeType> :+> <node>' for a typed connection"
+     ),
+     E0028 = _err(
+         "E0028",
+         Category.SYNTAX,
+         "'<++' does not take an edge type -- use '<+: <EdgeType> :<+ <node>' for a typed connection"
+     ),
+     E0029 = _err(
+         "E0029",
+         Category.SYNTAX,
+         "'+>' is not a valid connection operator -- did you mean '++>' for a simple forward connection?"
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
