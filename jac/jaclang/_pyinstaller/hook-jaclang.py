@@ -8,11 +8,22 @@ import os
 import sys
 
 import _jac_finder
+import jaclang as _jaclang
 from PyInstaller.utils.hooks import collect_submodules
 
 from jaclang.packaging import iter_jaclang_data_files, iter_user_jac_sources
 
 _jac_finder._install_jac_path_hook()
+
+# Under PEP 660 editable installs (``pip install -e``), jaclang is reachable
+# via a ``sys.meta_path`` finder only — its source dir is never added to
+# ``sys.path``. PyInstaller's modulegraph uses path-based discovery
+# exclusively and would otherwise fail every ``jaclang.<sub>`` hidden import
+# lookup. Surface the source parent on ``sys.path`` so path-based lookup
+# resolves. No-op on wheel installs (site-packages is already on sys.path).
+_jaclang_parent = os.path.dirname(os.path.dirname(_jaclang.__file__))
+if _jaclang_parent and _jaclang_parent not in sys.path:
+    sys.path.insert(0, _jaclang_parent)
 
 
 def _search_dirs() -> list[str]:
