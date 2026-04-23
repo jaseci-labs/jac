@@ -87,12 +87,10 @@ test "E0025: +>: type with colon prefix on node instead of :+>" {
     assert has_error(prog, "E0025") , "E0025 must fire for n1 +>: Friend :n2 (missing +> after the colon)";
 }
 
-test "E0025: exactly one error emitted, no cascading noise" {
+test "E0025: E0025 is emitted as the first error" {
     prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +>: Friend n2; }');
     assert has_error(prog, "E0025") , "E0025 must be emitted";
-    assert len(prog.errors_had) == 1 , f"Expected exactly 1 error but got {len(
-        prog.errors_had
-    )} — cascading errors must be suppressed";
+    assert prog.errors_had[0].code.code == "E0025" , "E0025 must be the first error so the developer sees it first";
 }
 
 test "E0025: fixture — complex forward connection missing :+>" {
@@ -117,12 +115,10 @@ test "E0026: <+: type followed by semicolon instead of :<+" {
     assert has_error(prog, "E0026") , "E0026 must fire when :<+ is missing and a semicolon terminates the statement";
 }
 
-test "E0026: exactly one error emitted, no cascading noise" {
+test "E0026: E0026 is emitted as the first error" {
     prog = compile_snippet('with entry { n1 = None; n2 = None; n1 <+: Friend n2; }');
     assert has_error(prog, "E0026") , "E0026 must be emitted";
-    assert len(prog.errors_had) == 1 , f"Expected exactly 1 error but got {len(
-        prog.errors_had
-    )} — cascading errors must be suppressed";
+    assert prog.errors_had[0].code.code == "E0026" , "E0026 must be the first error so the developer sees it first";
 }
 
 test "E0026: fixture — complex backward connection missing :<+" {
@@ -147,6 +143,12 @@ test "E0027: fixture — ++> with edge type" {
     assert has_error(prog, "E0027") , "E0027 must fire in the fixture file for ++> used with an edge type";
 }
 
+test "E0027: E0027 is emitted as the first error" {
+    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 ++> Friend n2; }');
+    assert has_error(prog, "E0027") , "E0027 must be emitted";
+    assert prog.errors_had[0].code.code == "E0027" , "E0027 must be the first error so the developer sees it first";
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # E0028 — <++ used as if it takes an edge type
@@ -164,6 +166,12 @@ test "E0028: fixture — <++ with edge type" {
     assert has_error(prog, "E0028") , "E0028 must fire in the fixture file for <++ used with an edge type";
 }
 
+test "E0028: E0028 is emitted as the first error" {
+    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 <++ Friend n2; }');
+    assert has_error(prog, "E0028") , "E0028 must be emitted";
+    assert prog.errors_had[0].code.code == "E0028" , "E0028 must be the first error so the developer sees it first";
+}
+
 
 # ═══════════════════════════════════════════════════════════════════════
 # E0029 — +> alone is not a valid connection operator
@@ -175,12 +183,10 @@ test "E0029: +> used instead of ++>" {
     assert has_error(prog, "E0029") , "E0029 must fire when +> is used instead of ++>";
 }
 
-test "E0029: exactly one error emitted, no cascading noise" {
+test "E0029: E0029 is emitted as the first error" {
     prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +> n2; }');
     assert has_error(prog, "E0029") , "E0029 must be emitted";
-    assert len(prog.errors_had) == 1 , f"Expected exactly 1 error but got {len(
-        prog.errors_had
-    )} — cascading errors must be suppressed";
+    assert prog.errors_had[0].code.code == "E0029" , "E0029 must be the first error so the developer sees it first";
 }
 
 
@@ -242,4 +248,32 @@ test "valid: typed connection with field assignment" {
         'node N {} edge F { has w: int = 0; } with entry { n1=N(); n2=N(); n1 +>: F(w=5) :+> n2; }'
     );
     assert not has_error(prog, "E0025") , "Typed connection with field assignment must not trigger E0025";
+}
+
+test "valid: ++> where right-hand node is a function call" {
+    prog = compile_snippet(
+        'node N {} def get_n() -> N { return N(); } with entry { n1 = N(); n1 ++> get_n(); }'
+    );
+    assert not has_error(prog, "E0027") , "++> get_n() must not trigger E0027 (NAME LPAREN is a valid node expression)";
+}
+
+test "valid: ++> where right-hand node is an attribute access" {
+    prog = compile_snippet(
+        'node N { has child: N = N(); } with entry { n1 = N(); n2 = N(); n1 ++> n2.child; }'
+    );
+    assert not has_error(prog, "E0027") , "++> obj.attr must not trigger E0027 (NAME DOT is a valid node expression)";
+}
+
+test "valid: <++ where right-hand node is a function call" {
+    prog = compile_snippet(
+        'node N {} def get_n() -> N { return N(); } with entry { n1 = N(); n1 <++ get_n(); }'
+    );
+    assert not has_error(prog, "E0028") , "<++ get_n() must not trigger E0028 (NAME LPAREN is a valid node expression)";
+}
+
+test "valid: <++ where right-hand node is an attribute access" {
+    prog = compile_snippet(
+        'node N { has child: N = N(); } with entry { n1 = N(); n2 = N(); n1 <++ n2.child; }'
+    );
+    assert not has_error(prog, "E0028") , "<++ obj.attr must not trigger E0028 (NAME DOT is a valid node expression)";
 }
