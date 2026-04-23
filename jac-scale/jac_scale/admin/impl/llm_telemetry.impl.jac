@@ -19,6 +19,8 @@ import json as json_module;
 
 glob logger = logging.getLogger(__name__);
 
+import from byllm.exceptions { LLMRateLimitExceeded }
+
 """Initialize JacUserRateLimiter with Redis client, MongoDB collection, and config dict."""
 impl JacUserRateLimiter.init(
     self: JacUserRateLimiter, rc: Any, col: Any, cfg: dict
@@ -42,7 +44,7 @@ impl JacUserRateLimiter._check_and_incr(
         self.rc.expire(key, ttl);
     }
     if count > limit {
-        raise Exception("LLM rate limit exceeded. Retry after window resets.");
+        raise LLMRateLimitExceeded("LLM rate limit exceeded. Retry after window resets.");
     }
 }
 
@@ -79,7 +81,7 @@ impl JacUserRateLimiter._get_budget_spent(
     );
     spent = float(result[0]['total']) if result else 0.0;
     if self.rc {
-        self.rc.set(cache_key, spent, ex=ttl);
+        self.rc.set(cache_key, spent, ex=ttl, nx=True);
     }
     return spent;
 }
@@ -88,11 +90,15 @@ impl JacUserRateLimiter._get_budget_spent(
 impl JacUserRateLimiter.check_pre_call(
     self: JacUserRateLimiter, username: str
 ) -> None {
-    if not self.rc {
+    has_limits = self.rpm or self.rpd or self.tpm or self.tpd or self.daily_budget or self.monthly_budget;
+    if not has_limits {
         return;
     }
+    if not self.rc {
+        raise LLMRateLimitExceeded("LLM rate limiting is configured but Redis is unavailable.");
+    }
     import time as _time;
-    import from datetime { date, datetime, timezone }
+    import from datetime { datetime, timezone }
     ts = int(_time.time());
     min_bucket = ts // 60;
 
@@ -107,22 +113,22 @@ impl JacUserRateLimiter.check_pre_call(
     if self.tpm {
         current = int(self.rc.get(f"llm:tpm:{username}:{min_bucket}") or 0);
         if current >= int(self.tpm) {
-            raise Exception("LLM token-per-minute limit exceeded. Retry next minute.");
+            raise LLMRateLimitExceeded("LLM token-per-minute limit exceeded. Retry next minute.");
         }
     }
     if self.tpd {
         current = int(self.rc.get(f"llm:tpd:{username}:{ts // 86400}") or 0);
         if current >= int(self.tpd) {
-            raise Exception("LLM token-per-day limit exceeded. Retry tomorrow.");
+            raise LLMRateLimitExceeded("LLM token-per-day limit exceeded. Retry tomorrow.");
         }
     }
     if self.daily_budget {
-        today = str(date.today());
+        today_utc = _time.strftime('%Y-%m-%d', _time.gmtime(ts));
         spent = self._get_budget_spent(
-            username, 'day', f"llm:budget_daily:{username}:{today}", 60
+            username, 'day', f"llm:budget_daily:{username}:{today_utc}", 60
         );
         if spent >= float(self.daily_budget) {
-            raise Exception(f"Daily LLM budget of ${self.daily_budget} exceeded.");
+            raise LLMRateLimitExceeded(f"Daily LLM budget of ${self.daily_budget} exceeded.");
         }
     }
     if self.monthly_budget {
@@ -131,7 +137,7 @@ impl JacUserRateLimiter.check_pre_call(
             username, 'month', f"llm:budget_monthly:{username}:{ym}", 60
         );
         if spent >= float(self.monthly_budget) {
-            raise Exception(f"Monthly LLM budget of ${self.monthly_budget} exceeded.");
+            raise LLMRateLimitExceeded(f"Monthly LLM budget of ${self.monthly_budget} exceeded.");
         }
     }
 }
@@ -141,7 +147,7 @@ impl JacUserRateLimiter.record_success(
     self: JacUserRateLimiter, username: str, tokens: int, cost_usd: float, model: str
 ) -> None {
     import time as _time;
-    import from datetime { date, datetime, timezone }
+    import from datetime { datetime, timezone }
     ts = _time.time();
     ts_int = int(ts);
     min_bucket = ts_int // 60;
@@ -163,10 +169,10 @@ impl JacUserRateLimiter.record_success(
         }
         if cost_usd > 0 {
             if self.daily_budget {
-                today = str(date.today());
+                today_utc = _time.strftime('%Y-%m-%d', _time.gmtime(ts_int));
                 pipe = self.rc.pipeline();
-                pipe.incrbyfloat(f"llm:budget_daily:{username}:{today}", cost_usd);
-                pipe.expire(f"llm:budget_daily:{username}:{today}", 90000);
+                pipe.incrbyfloat(f"llm:budget_daily:{username}:{today_utc}", cost_usd);
+                pipe.expire(f"llm:budget_daily:{username}:{today_utc}", 90000);
                 pipe.execute();
             }
             if self.monthly_budget {
@@ -846,11 +852,14 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     }
 
     # --- Register LLM per-user rate limiting ---
+    # Pre-call blocking: byllm pre-invoke hook (actually blocks unlike litellm callbacks).
+    # Post-call tracking: litellm log_success_event (cost data only available here).
     try {
         import litellm;
         import from litellm.integrations.custom_logger { CustomLogger }
         import from jac_scale.config_loader { get_scale_config }
         import from jaclang.jac0core.runtime { JacRuntimeInterface }
+        import from byllm.llm { register_pre_invoke_hook }
 
         limits_cfg = get_scale_config().get_llm_limits_config();
         if limits_cfg.get('enabled', False) {
@@ -862,9 +871,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                     import redis as _redis_mod;
                     _redis_client = _redis_mod.from_url(redis_url);
                 } except Exception as e {
-                    logger.warning(
-                        f"LLM rate limiting: Redis unavailable, limiting disabled: {e}"
-                    );
+                    logger.warning(f"LLM rate limiting: Redis unavailable: {e}");
                 }
             }
 
@@ -888,36 +895,25 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                 setattr(_llm_mod, '_rate_limiter_instance', rl);
             }
 
-            # Thin litellm adapter — context lookup + delegation to pure-logic class
-            class _LiteLLMRateLimitAdapter(CustomLogger) {
-                def init(self: _LiteLLMRateLimitAdapter, rate_limiter: Any) {
+            # Pre-call: byllm hook that actually blocks before the LLM call fires
+            def _pre_invoke(model_name: Any, mt_run: Any) -> None {
+                ctx = JacRuntimeInterface.get_context();
+                username = getattr(ctx, 'username', None);
+                if username {
+                    rl.check_pre_call(username);
+                }
+            }
+            register_pre_invoke_hook(_pre_invoke);
+
+            # Post-call: litellm CustomLogger for cost/token extraction (non-blocking)
+            class _RateLimitSuccessLogger(CustomLogger) {
+                def init(self: _RateLimitSuccessLogger, rate_limiter: Any) {
                     self.rl = rate_limiter;
                     CustomLogger.__init__(self);
                 }
 
-                def log_pre_api_call(
-                    self: _LiteLLMRateLimitAdapter,
-                    model: Any,
-                    messages: Any,
-                    kwargs: Any
-                ) {
-                    try {
-                        ctx = JacRuntimeInterface.get_context();
-                        username = getattr(ctx, 'username', None);
-                        if username {
-                            self.rl.check_pre_call(username);
-                        }
-                    } except Exception as e {
-                        if 'limit exceeded' in str(e).lower()
-                        or 'budget' in str(e).lower() {
-                            raise;
-                        }
-                        logger.warning(f"LLM rate limiting: pre-call check error: {e}");
-                    }
-                }
-
                 def log_success_event(
-                    self: _LiteLLMRateLimitAdapter,
+                    self: _RateLimitSuccessLogger,
                     kwargs: Any,
                     response_obj: Any,
                     start_time: Any,
@@ -942,12 +938,11 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                     }
                 }
             }
-
-            litellm.callbacks.append(_LiteLLMRateLimitAdapter(rl));
+            litellm.success_callback.append(_RateLimitSuccessLogger(rl));
             logger.info("LLM rate limiting: per-user limiter registered");
         }
     } except ImportError {
-        logger.info("LLM rate limiting: litellm not available, skipping");
+        logger.info("LLM rate limiting: byllm/litellm not available, skipping");
     } except Exception as e {
         logger.warning(f"LLM rate limiting: setup failed: {e}");
     }

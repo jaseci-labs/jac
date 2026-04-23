@@ -1,3 +1,13 @@
+"""Register a pre-invoke hook. Called before every by llm() call. Raise to block."""
+impl register_pre_invoke_hook(fn: object) -> None {
+    _pre_invoke_hooks.append(fn);
+}
+
+"""Register a post-invoke hook. Called after a successful by llm() call."""
+impl register_post_invoke_hook(fn: object) -> None {
+    _post_invoke_hooks.append(fn);
+}
+
 """Post-initialization hook for Model.
 
 Sets up proxy mode and mock delegation based on config.
@@ -44,6 +54,11 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
     _ctx_token = _current_invocation_id.set(mt_run._invocation_id);
     _start = time.time();
 
+    # Run pre-invoke hooks — any hook may raise to block the call
+    for hook in _pre_invoke_hooks {
+        hook(self.model_name, mt_run);
+    }
+
     try {
         result = self._mock_delegate.invoke(mt_run)
             if self._mock_delegate
@@ -57,7 +72,8 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
                 mt: object,
                 model_name: str,
                 start: float,
-                ctx_token: object
+                ctx_token: object,
+                post_hooks: list[object]
             ) -> object {
                 _completed = False;
                 try {
@@ -83,12 +99,22 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
                             "success",
                             None
                         );
+                        for hook in post_hooks {
+                            try {
+                            hook(model_name, mt);
+                        } except Exception as _hook_err {
+                            import logging as _log;
+                            _log.getLogger(__name__).warning(
+                                "post_invoke hook error: " + str(_hook_err)
+                            );
+                        }
+                        }
                     }
                     _current_invocation_id.reset(ctx_token);
                 }
             }
             return _wrap_generator(
-                result, mt_run, self.model_name, _start, _ctx_token
+                result, mt_run, self.model_name, _start, _ctx_token, list(_post_invoke_hooks)
             );
         }
 
@@ -100,6 +126,16 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
             "success",
             None
         );
+        for hook in _post_invoke_hooks {
+            try {
+                hook(self.model_name, mt_run);
+            } except Exception as _hook_err {
+                import logging as _log;
+                _log.getLogger(__name__).warning(
+                    "post_invoke hook error: " + str(_hook_err)
+                );
+            }
+        }
         _current_invocation_id.reset(_ctx_token);
         return result;
     } except Exception as e {
