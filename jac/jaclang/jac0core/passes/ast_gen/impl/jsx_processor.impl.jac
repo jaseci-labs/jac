@@ -344,7 +344,9 @@ impl PyJsxProcessor.normal_attribute(
 """Generate Python AST for JSX text nodes."""
 impl PyJsxProcessor.text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST] {
     import html;
-    expr = self.pass_ref.sync(ast3.Constant(value=html.unescape(nd.get_normalized_text())), nd);
+    expr = self.pass_ref.sync(
+        ast3.Constant(value=html.unescape(nd.get_normalized_text())), nd
+    );
     nd.gen.py_ast = [expr];
     return nd.gen.py_ast;
 }
