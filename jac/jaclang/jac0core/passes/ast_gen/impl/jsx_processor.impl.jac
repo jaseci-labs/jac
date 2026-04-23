@@ -200,9 +200,10 @@ impl EsJsxProcessor.normal_attribute(
 
 """Process JSX text node."""
 impl EsJsxProcessor.text(self: EsJsxProcessor, nd: uni.JsxText) -> Expression {
+    import html;
     es = self.es;
     expr = self.pass_ref.sync_loc(
-        es.Literal(value=nd.get_normalized_text()), jac_node=nd
+        es.Literal(value=html.unescape(nd.get_normalized_text())), jac_node=nd
     );
     nd.gen.es_ast = expr;
     return expr;
@@ -342,7 +343,8 @@ impl PyJsxProcessor.normal_attribute(
 
 """Generate Python AST for JSX text nodes."""
 impl PyJsxProcessor.text(self: PyJsxProcessor, nd: uni.JsxText) -> list[ast3.AST] {
-    expr = self.pass_ref.sync(ast3.Constant(value=nd.get_normalized_text()), nd);
+    import html;
+    expr = self.pass_ref.sync(ast3.Constant(value=html.unescape(nd.get_normalized_text())), nd);
     nd.gen.py_ast = [expr];
     return nd.gen.py_ast;
 }
