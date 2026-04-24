@@ -2564,36 +2564,25 @@ impl JacAutoLintPass._make_name_node(ref_node: uni.UniNode, value: str) -> uni.N
     );
 }
 
-"""W3040: Replace arr.map(lambda item -> any { return <jsx>; }) with [<jsx> for item in arr].
-
-Detects the pattern inline, then builds the ListCompr replacement.
-When the lambda has a second int-typed parameter (the index), wraps the collection
-with enumerate() and uses a tuple target: [<jsx> for (idx, item) in enumerate(arr)].
-"""
-impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
-    if self.report_only or self._is_suppressed(W3040) {
-        return False;
-    }
-    # ── Detection ────────────────────────────────────────────────────────────
-    # Must be <expr>.map(lambda ...)
+"""Match <expr>.map(lambda -> JSX) and return (item, idx, jsx, collection), or None."""
+impl JacAutoLintPass._detect_map_lambda_jsx(
+    nd: uni.FuncCall
+) -> (tuple[str, (str | None), uni.JsxElement, uni.Expr] | None) {
     if not isinstance(nd.target, uni.AtomTrailer) {
-        return False;
+        return None;
     }
     trailer = nd.target;
     if not trailer.is_attr
     or not isinstance(trailer.right, uni.Name)
-    or trailer.right.value != "map" {
-        return False;
-    }
-    if nd.params is None
+    or trailer.right.value != "map"
+    or nd.params is None
     or len(nd.params) != 1
     or not isinstance(nd.params[0], uni.LambdaExpr) {
-        return False;
+        return None;
     }
     lam: uni.LambdaExpr = nd.params[0];
-    # Lambda body must be a block with exactly one statement: return <JsxElement>
     if not isinstance(lam.body, list) {
-        return False;
+        return None;
     }
     real_stmts = [
         s
@@ -2601,31 +2590,28 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         if not isinstance(s, uni.Semi)
     ];
     if len(real_stmts) != 1 or not isinstance(real_stmts[0], uni.ReturnStmt) {
-        return False;
+        return None;
     }
-    ret_stmt = real_stmts[0];
-    # Unwrap parentheses: `return (<jsx>)` produces AtomUnit(value=JsxElement)
-    ret_expr = ret_stmt.expr;
-    if isinstance(ret_expr, uni.AtomUnit)
-    and isinstance(ret_expr.value, uni.JsxElement) {
-        ret_expr = ret_expr.value;
+    # Unwrap `return (<jsx>)` — parentheses produce AtomUnit(value=JsxElement)
+    jsx: uni.Expr = real_stmts[0].expr;
+    if isinstance(jsx, uni.AtomUnit) and isinstance(jsx.value, uni.JsxElement) {
+        jsx = jsx.value;
     }
-    if ret_expr is None or not isinstance(ret_expr, uni.JsxElement) {
-        return False;
+    if jsx is None or not isinstance(jsx, uni.JsxElement) {
+        return None;
     }
-    # Extract item and optional index parameter names
+
     sig = lam.signature;
     if sig is None {
-        return False;
+        return None;
     }
-    all_params: list[uni.ParamVar] = list(sig.posonly_params or []);
-    if sig.params {
-        all_params.extend(sig.params);
-    }
+    all_params: list[uni.ParamVar] = list(sig.posonly_params or []) + list(
+        sig.params or []
+    );
     if len(all_params) < 1 or len(all_params) > 2 {
-        return False;
+        return None;
     }
-    # Default: first param is the item. Corrected below if it turns out to be the index.
+
     item_name: str = all_params[0].name.value;
     idx_name: (str | None) = None;
     if len(all_params) == 2 {
@@ -2644,46 +2630,75 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
             item_name = p1.name.value;
         }
     }
-    collection = trailer.target;
+    return (item_name, idx_name, jsx, trailer.target);
+}
 
-    # ── .filter(lambda) chain ───────────────────────────────────────
-    # Detect arr.filter(lambda item -> bool { return <cond>; }).map(...)
-    # and extract the conditional to produce [<jsx> for item in arr if <cond>]
-    filter_cond: (uni.Expr | None) = None;
-    if isinstance(collection, uni.FuncCall)
-    and isinstance(collection.target, uni.AtomTrailer)
-    and collection.target.is_attr
-    and isinstance(collection.target.right, uni.Name)
-    and collection.target.right.value == "filter"
-    and collection.params is not None
-    and len(collection.params) == 1
-    and isinstance(collection.params[0], uni.LambdaExpr) {
-        filter_lam: uni.LambdaExpr = collection.params[0];
-        if isinstance(filter_lam.body, list) {
-            filter_stmts = [
-                s
-                for s in filter_lam.body
-                if not isinstance(s, uni.Semi)
-            ];
-            if len(filter_stmts) == 1
-            and isinstance(filter_stmts[0], uni.ReturnStmt)
-            and filter_stmts[0].expr is not None {
-                filter_cond = filter_stmts[0].expr;
-                collection = collection.target.target;
-            }
-        }
+"""Check whether collection is arr.filter(lambda -> bool { return <cond>; }).
+Returns (cond_expr, real_collection) when the pattern matches, else None.
+"""
+impl JacAutoLintPass._extract_filter_cond(
+    collection: uni.Expr
+) -> (tuple[uni.Expr, uni.Expr] | None) {
+    if not isinstance(collection, uni.FuncCall)
+    or not isinstance(collection.target, uni.AtomTrailer) {
+        return None;
     }
-    # ── Emit warning (returns False if suppressed by inline comment) ─────────
+    ft = collection.target;
+    if not ft.is_attr
+    or not isinstance(ft.right, uni.Name)
+    or ft.right.value != "filter"
+    or collection.params is None
+    or len(collection.params) != 1
+    or not isinstance(collection.params[0], uni.LambdaExpr) {
+        return None;
+    }
+    filter_lam: uni.LambdaExpr = collection.params[0];
+    if not isinstance(filter_lam.body, list) {
+        return None;
+    }
+    filter_stmts = [
+        s
+        for s in filter_lam.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if len(filter_stmts) != 1
+    or not isinstance(filter_stmts[0], uni.ReturnStmt)
+    or filter_stmts[0].expr is None {
+        return None;
+    }
+    return (filter_stmts[0].expr, ft.target);
+}
+
+"""W3040: Replace arr.map(lambda -> JSX) with a list comprehension."""
+impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
+    if self.report_only or self._is_suppressed(W3040) {
+        return False;
+    }
+
+    # ── Detect pattern and extract all needed parts ───────────────────────────
+    detected = self._detect_map_lambda_jsx(nd);
+    if detected is None {
+        return False;
+    }
+    (item_name, idx_name, jsx_expr, collection) = detected;
+
+    # ── Optionally peel off a leading .filter(lambda) chain ──────────────────
+    filter_result = self._extract_filter_cond(collection);
+    filter_cond: (uni.Expr | None) = None;
+    if filter_result is not None {
+        (filter_cond, collection) = filter_result;
+    }
+
     if not self.emit(W3040, node_override=nd, name=item_name) {
         return False;
     }
-    # ── Build replacement nodes ───────────────────────────────────────────────
+
+    # ── Build the iteration target and source expression ──────────────────────
     item_node = self._make_name_node(nd, item_name);
     target_node: uni.Expr;
     iter_expr: uni.Expr;
     if idx_name is not None {
         idx_node = self._make_name_node(nd, idx_name);
-        # Tuple target (idx, item) — enumerate returns (index, value)
         target_node = uni.TupleVal(
             values=[idx_node, item_node],
             kid=[
@@ -2694,7 +2709,6 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
                 nd.gen_token(Tok.RPAREN)
             ]
         );
-        # enumerate(collection)
         enum_node = self._make_name_node(nd, "enumerate");
         iter_expr = uni.FuncCall(
             target=enum_node,
@@ -2712,6 +2726,8 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         target_node = item_node;
         iter_expr = collection;
     }
+
+    # ── Build [jsx_expr for target in iter_expr if filter_cond] ──────────────
     compr_kid: list = [
         nd.gen_token(Tok.KW_FOR),
         target_node,
@@ -2729,29 +2745,31 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         kid=compr_kid
     );
     list_compr = uni.ListCompr(
-        out_expr=ret_expr,
+        out_expr=jsx_expr,
         compr=[inner_compr],
         kid=[
             nd.gen_token(Tok.LSQUARE),
-            ret_expr,
+            jsx_expr,
             inner_compr,
             nd.gen_token(Tok.RSQUARE)
         ]
     );
-    # ── Wire parent references ────────────────────────────────────────────────
-    ret_expr.parent = list_compr;
+
+    # ── Wire internal parent links ────────────────────────────────────────────
+    jsx_expr.parent = list_compr;
     inner_compr.parent = list_compr;
     target_node.parent = inner_compr;
     iter_expr.parent = inner_compr;
     if filter_cond is not None {
         filter_cond.parent = inner_compr;
     }
+
+    # ── Splice list_compr in place of nd in the parent node ──────────────────
     parent = nd.parent;
     if parent is None {
         return False;
     }
     list_compr.parent = parent;
-    # Update the semantic attribute that holds the expression on common parent types
     if isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr)) {
         parent.expr = list_compr;
     } elif isinstance(parent, uni.Assignment) and parent.value is nd {
