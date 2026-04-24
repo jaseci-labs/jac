@@ -529,7 +529,7 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     if imp.from_loc.path and isinstance(imp.from_loc.path[0], uni.String) {
         return None;
     }
-    mod_name = getattr(imp.from_loc, 'dot_path_str', None);
+    mod_name = imp.from_loc?.dot_path_str;
     if not mod_name and imp.from_loc?.path and imp.from_loc.path {
         mod_name = '.'.join(getattr(p, 'value', str(p)) for p in imp.from_loc.path);
     }

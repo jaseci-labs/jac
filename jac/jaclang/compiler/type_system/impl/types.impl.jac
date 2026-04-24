@@ -247,14 +247,17 @@ impl ClassType.is_enum_class -> bool {
 
         If class_name is provided, also check if the class name matches.
 """
-impl ClassType.is_builtin(class_name: (str | None) = None) -> bool {
+impl ClassType.is_builtin(class_name: (str | list[str] | None) = None) -> bool {
     if not self.shared.is_builtin_class {
         return False;
     }
-    if (class_name is not None) {
-        return (self.shared.class_name == class_name);
+    if class_name is None {
+        return True;
     }
-    return True;
+    if isinstance(class_name, str) {
+        return self.shared.class_name == class_name;
+    }
+    return self.shared.class_name in class_name;
 }
 
 """Lookup a member in the class type."""

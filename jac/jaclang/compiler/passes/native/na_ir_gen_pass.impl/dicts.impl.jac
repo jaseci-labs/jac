@@ -53,7 +53,7 @@ impl NaIRGenPass._emit_dict_helpers(
     # Auto-detect key_size for tuple/struct pointer keys
     _key_sz: int = int(key_size);
     if _key_sz == 0 and isinstance(key_type, ir.PointerType) {
-        _pointee = getattr(key_type, "pointee", None);
+        _pointee = key_type?.pointee;
         if _pointee is not None and isinstance(_pointee, ir.LiteralStructType) {
             _key_sz = self._get_struct_size(_pointee);
         }
