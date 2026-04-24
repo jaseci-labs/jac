@@ -917,10 +917,8 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
             # Pre-call: byllm hook that actually blocks before the LLM call fires
             def _pre_invoke(model_name: Any, mt_run: Any) {
                 ctx = JacRuntimeInterface.get_context();
-                username = getattr(ctx, 'username', None);
-                if username {
-                    rl.check_pre_call(username);
-                }
+                username = getattr(ctx, 'username', None) or '__anonymous__';
+                rl.check_pre_call(username);
             }
             register_pre_invoke_hook(_pre_invoke);
 
@@ -940,16 +938,14 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                 ) {
                     try {
                         ctx = JacRuntimeInterface.get_context();
-                        username = getattr(ctx, 'username', None);
-                        if username {
-                            slp = kwargs.get("standard_logging_object", {}) or {};
-                            self.rl.record_success(
-                                username,
-                                int(slp.get("total_tokens") or 0),
-                                float(slp.get("response_cost") or 0.0),
-                                slp.get("model") or kwargs.get("model", "")
-                            );
-                        }
+                        username = getattr(ctx, 'username', None) or '__anonymous__';
+                        slp = kwargs.get("standard_logging_object", {}) or {};
+                        self.rl.record_success(
+                            username,
+                            int(slp.get("total_tokens") or 0),
+                            float(slp.get("response_cost") or 0.0),
+                            slp.get("model") or kwargs.get("model", "")
+                        );
                     } except Exception as e {
                         logger.warning(
                             f"LLM rate limiting: post-call tracking error: {e}"

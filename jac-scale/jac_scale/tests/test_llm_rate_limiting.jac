@@ -240,6 +240,17 @@ test "integration: monthly budget spans multiple days" {
     assert raised , "must block after $5.10 monthly";
 }
 
+test "unauthenticated calls pool under __anonymous__ and are rate limited" {
+    rc = fresh_rc();
+    rl = make_rl(rc=rc, rpm=2);
+    rl.check_pre_call('__anonymous__');
+    rl.check_pre_call('__anonymous__');  # second passes (limit=2)
+    raised = False;
+    try { rl.check_pre_call('__anonymous__'); } except Exception { raised = True; }
+    assert raised , "__anonymous__ must be blocked after rpm=2";
+    rl.check_pre_call("alice");  # authenticated user unaffected
+}
+
 # ---------------------------------------------------------------------------
 # Hook integration test (real byllm Model.invoke path)
 # ---------------------------------------------------------------------------
