@@ -37,7 +37,7 @@ impl JacUserRateLimiter.init(
 impl JacUserRateLimiter._check_and_incr(
     self: JacUserRateLimiter, key: str, limit: int, ttl: int
 ) -> None {
-    import from byllm.exceptions { LLMRateLimitExceeded }
+
     count = self.rc.incr(key);
     if count == 1 {
         self.rc.expire(key, ttl);
@@ -91,7 +91,7 @@ impl JacUserRateLimiter._get_budget_spent(
 impl JacUserRateLimiter.check_pre_call(
     self: JacUserRateLimiter, username: str
 ) -> None {
-    import from byllm.exceptions { LLMRateLimitExceeded }
+
     has_limits = self.rpm
     or self.rpd
     or self.tpm

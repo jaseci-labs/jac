@@ -23,6 +23,9 @@ obj JacAPIServerLLMTelemetry {
     def register_llm_telemetry_endpoints -> None;
 }
 
+"""Raised when any per-user LLM rate or budget limit is exceeded."""
+class LLMRateLimitExceeded(Exception) {}
+
 """Per-user LLM rate and budget limiter.
 
 Pure logic class, no litellm dependency. The litellm CustomLogger adapter

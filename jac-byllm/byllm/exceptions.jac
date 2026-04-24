@@ -46,6 +46,3 @@ obj ConfigurationError(ByLLMError) {}
 
 """Raised when an MCP server connection or tool call fails."""
 obj McpError(ByLLMError) {}
-
-"""Raised when a per-user LLM rate or budget limit is exceeded."""
-obj LLMRateLimitExceeded(ByLLMError) {}
