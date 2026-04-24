@@ -17,6 +17,7 @@ def get_hook_dirs() -> list[str]:
       only via ``sys.meta_path``.
     """
     import _jac_finder
+
     import jaclang
 
     _jac_finder._install_jac_path_hook()
