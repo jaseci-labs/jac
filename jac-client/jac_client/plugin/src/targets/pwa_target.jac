@@ -24,7 +24,10 @@ obj PWATarget(WebTarget) {
 
     """Build PWA bundle - web bundle + manifest + service worker."""
     override def build(
-        entry_file: Path, project_dir: Path, platform: Optional[str] = None
+        entry_file: Path,
+        project_dir: Path,
+        platform: Optional[str] = None,
+        build_type: str = "production"
     ) -> Path;
 
     """Start PWA dev server."""

@@ -1652,7 +1652,10 @@ def _check_and_install_tauri_cli -> None {
 Uses super().build() to get the web bundle, then adds sidecar and Tauri wrapping.
 """
 impl DesktopTarget.build(
-    entry_file: Path, project_dir: Path, platform: Optional[str] = None
+    entry_file: Path,
+    project_dir: Path,
+    platform: Optional[str] = None,
+    build_type: str = "production"
 ) -> Path {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import platform as platform_mod;

@@ -4,7 +4,7 @@ import { WebView } from 'react-native-webview';
 
 // Dev mode: load from Vite dev server for HMR
 // Production: load from bundled HTML
-const USE_DEV_SERVER = __DEV__ && false; // Set to true for dev server mode
+const USE_DEV_SERVER = __DEV__; // Automatically enabled in dev mode
 
 let JAC_BUNDLE_HTML: string | null = null;
 if (!USE_DEV_SERVER) {
@@ -17,7 +17,7 @@ if (!USE_DEV_SERVER) {
 }
 
 // Load dev server configuration
-let DEV_CONFIG = { localIP: '127.0.0.1' };
+let DEV_CONFIG = { localIP: '127.0.0.1', productionApiUrl: '' };
 try {
   const config = require('../dev-config.json');
   DEV_CONFIG = config;
@@ -33,14 +33,20 @@ const getDevServerUrl = () => {
 
 const getBackendApiUrl = () => {
   if (__DEV__) {
-    if (Platform.OS === 'android') {
+    const localIP = DEV_CONFIG.localIP || '127.0.0.1';
+    // Android emulator alias for host loopback; only used when IP detection
+    // falls back to 127.x (e.g. single-interface machine).
+    if (Platform.OS === 'android' && (localIP === '127.0.0.1' || localIP === 'localhost')) {
       return 'http://10.0.2.2:9000';
     }
-    // Use local network IP for iOS
-    const localIP = DEV_CONFIG.localIP || '127.0.0.1';
     return `http://${localIP}:9000`;
   }
-  return 'https://your-production-url.com';
+  // Production: read from dev-config.json (written by jac start/build from jac.toml)
+  if (!DEV_CONFIG.productionApiUrl) {
+    console.error('Production API URL not configured! Set [mobile.features].api_url in jac.toml');
+    return '';
+  }
+  return DEV_CONFIG.productionApiUrl;
 };
 
 export default function JacWebViewScreen() {

@@ -440,12 +440,7 @@ def _handle_build_target(ctx: HookContext) -> None {
         }
 
         # Polymorphic call - each target handles its own build logic
-        # Mobile target accepts build_type parameter
-        if target_name == "mobile" {
-            bundle_path = target.build(entry_path, project_dir, platform, build_type);
-        } else {
-            bundle_path = target.build(entry_path, project_dir, platform);
-        }
+        bundle_path = target.build(entry_path, project_dir, platform, build_type);
 
         console.success(f"Build complete: {bundle_path}");
         ctx.set_data("cancel_execution", True);

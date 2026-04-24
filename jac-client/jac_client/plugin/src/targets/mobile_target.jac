@@ -23,8 +23,7 @@ obj MobileTarget(WebTarget) {
         entry_file: Path,
         project_dir: Path,
         platform: Optional[str] = None,
-        build_type: str = "production",
-        use_eas: bool = True
+        build_type: str = "production"
     ) -> Path;
 
     """Start mobile dev server - start web dev server and launch Expo dev."""

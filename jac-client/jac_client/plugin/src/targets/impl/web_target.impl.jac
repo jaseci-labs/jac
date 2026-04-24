@@ -105,7 +105,10 @@ impl WebTarget.start(
 
 """Build web bundle using existing Vite pipeline."""
 impl WebTarget.build(
-    entry_file: Path, project_dir: Path, platform: Optional[str] = None
+    entry_file: Path,
+    project_dir: Path,
+    platform: Optional[str] = None,
+    build_type: str = "production"
 ) -> Path {
     import shutil;
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
