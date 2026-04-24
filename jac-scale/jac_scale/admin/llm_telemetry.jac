@@ -46,6 +46,7 @@ obj JacUserRateLimiter {
     def _get_budget_spent(
         username: str, period: str, cache_key: str, ttl: int
     ) -> float;
+
     def check_pre_call(username: str) -> None;
     def record_success(
         username: str, tokens: int, cost_usd: float, model: str
