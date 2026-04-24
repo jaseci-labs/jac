@@ -33,7 +33,16 @@ def make_rl(rc: any = None, col: any = None, **cfg) -> JacUserRateLimiter {
     }
     defaults = {'rpm': None, 'rpd': None, 'tpm': None, 'tpd': None, 'daily_budget_usd': None, 'monthly_budget_usd': None};
     defaults.update(cfg);
-    return JacUserRateLimiter(rc, col, defaults);
+    return JacUserRateLimiter(
+        rc=rc,
+        col=col,
+        rpm=defaults.get('rpm'),
+        rpd=defaults.get('rpd'),
+        tpm=defaults.get('tpm'),
+        tpd=defaults.get('tpd'),
+        daily_budget=defaults.get('daily_budget_usd'),
+        monthly_budget=defaults.get('monthly_budget_usd')
+    );
 }
 
 def fresh_rc -> any {

@@ -19,24 +19,9 @@ import json as json_module;
 
 glob logger = logging.getLogger(__name__);
 
-"""Initialize JacUserRateLimiter with Redis client, MongoDB collection, and config dict."""
-impl JacUserRateLimiter.init(
-    self: JacUserRateLimiter, rc: Any, col: Any, cfg: dict
-) -> None {
-    self.rc = rc;
-    self.col = col;
-    self.rpm = cfg.get('rpm');
-    self.rpd = cfg.get('rpd');
-    self.tpm = cfg.get('tpm');
-    self.tpd = cfg.get('tpd');
-    self.daily_budget = cfg.get('daily_budget_usd');
-    self.monthly_budget = cfg.get('monthly_budget_usd');
-}
 
 """Atomically increment a Redis counter and raise if the limit is exceeded."""
-impl JacUserRateLimiter._check_and_incr(
-    self: JacUserRateLimiter, key: str, limit: int, ttl: int
-) -> None {
+impl JacUserRateLimiter._check_and_incr(key: str, limit: int, ttl: int) -> None {
     count = self.rc.incr(key);
     if count == 1 {
         self.rc.expire(key, ttl);
@@ -53,7 +38,7 @@ impl JacUserRateLimiter._check_and_incr(
 Checks Redis cache first; on miss aggregates from MongoDB and populates the cache.
 """
 impl JacUserRateLimiter._get_budget_spent(
-    self: JacUserRateLimiter, username: str, period: str, cache_key: str, ttl: int
+    username: str, period: str, cache_key: str, ttl: int
 ) -> float {
     cached = self.rc.get(cache_key) if self.rc else None;
     if cached is not None {
@@ -87,9 +72,7 @@ impl JacUserRateLimiter._get_budget_spent(
 }
 
 """Check all configured limits for a user before an LLM call. Raises on violation."""
-impl JacUserRateLimiter.check_pre_call(
-    self: JacUserRateLimiter, username: str
-) -> None {
+impl JacUserRateLimiter.check_pre_call(username: str) -> None {
     has_limits = self.rpm
     or self.rpd
     or self.tpm
@@ -161,7 +144,7 @@ impl JacUserRateLimiter.check_pre_call(
 
 """Record a successful LLM call: update Redis counters and write persistent MongoDB log."""
 impl JacUserRateLimiter.record_success(
-    self: JacUserRateLimiter, username: str, tokens: int, cost_usd: float, model: str
+    username: str, tokens: int, cost_usd: float, model: str
 ) -> None {
     import time as _time;
     import from datetime { datetime, timezone }
@@ -903,7 +886,16 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
                 );
             }
 
-            rl = JacUserRateLimiter(_redis_client, _mongo_col, limits_cfg);
+            rl = JacUserRateLimiter(
+                rc=_redis_client,
+                col=_mongo_col,
+                rpm=limits_cfg.get('rpm'),
+                rpd=limits_cfg.get('rpd'),
+                tpm=limits_cfg.get('tpm'),
+                tpd=limits_cfg.get('tpd'),
+                daily_budget=limits_cfg.get('daily_budget_usd'),
+                monthly_budget=limits_cfg.get('monthly_budget_usd')
+            );
 
             # Expose instance so tests can access it via sys.modules
             import sys as _sys;
