@@ -72,10 +72,11 @@ repos:
 
       - id: validate-fragments
         name: Validate release note fragment filenames
-        entry: python scripts/validate_fragments.py
+        entry: env PYTHONPATH=jac python3 -m jaclang run scripts/validate_fragments.jac
         language: python
         files: ^docs/docs/community/release_notes/unreleased/.*\.md$
         exclude: README\.md
+        require_serial: true
 
       - id: ban-em-dashes
         name: Ban em-dashes (—)

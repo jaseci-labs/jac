@@ -150,7 +150,11 @@ impl JacTestClient.clear_auth -> None {
 """Register a new user and set auth token."""
 impl JacTestClient.register_user(username: str, password: str) -> TestResponse {
     response = self.post(
-        "/user/register", json={"username": username, "password": password}
+        "/user/register",
+        json={
+            "identities": [{"type": "username", "value": username}],
+            "credential": {"type": "password", "password": password}
+        }
     );
     if response.ok {
         data = response.data;
@@ -165,7 +169,11 @@ impl JacTestClient.register_user(username: str, password: str) -> TestResponse {
 """Login existing user and set auth token."""
 impl JacTestClient.login(username: str, password: str) -> TestResponse {
     response = self.post(
-        "/user/login", json={"username": username, "password": password}
+        "/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": password}
+        }
     );
     if response.ok {
         data = response.data;

@@ -602,6 +602,60 @@ test "hasattr no lint preserves" {
     assert "instance?." not in formatted;
 }
 
+# ── TestGetattrConversion ────────────────────────────────────────────────
+test "getattr to null ok" {
+    input_path = auto_lint_fixture_path("getattr_conversion.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # Basic rewrites in various expression contexts
+    assert "instance?.value" in formatted;
+    assert "instance?.name" in formatted;
+
+    # The safe 3-arg form with None default should all be gone
+    assert 'getattr(instance, "value", None)' not in formatted;
+    assert "getattr(instance, 'name', None)" not in formatted;
+    assert 'getattr(instance, "name", None)' not in formatted;
+    assert 'getattr(obj, "name", None)' not in formatted;
+
+    # Specific context checks
+    assert "instance?.value is None" in formatted;
+    assert "return o?.name" in formatted;
+    assert "echo(instance?.name)" in formatted;
+    assert "if instance?.value {" in formatted;
+
+    # Non-None default should be preserved (semantics differ from ?.)
+    assert 'getattr(instance, "value", 0)' in formatted;
+
+    # 2-arg form should be preserved (raises on miss; not equivalent to ?.)
+    assert 'getattr(instance, "value")' in formatted;
+
+    # Dynamic attribute name should be preserved
+    assert "getattr(instance, attr_name, None)" in formatted;
+
+    # Non-identifier string should be preserved
+    assert 'getattr(instance, "not-an-ident", None)' in formatted;
+
+    # Python keyword as attribute name should be preserved
+    assert 'getattr(instance, "class", None)' in formatted;
+
+    # Lookalike function should be preserved
+    assert "getattr_lookalike(instance" in formatted;
+}
+
+test "getattr no lint preserves" {
+    input_path = auto_lint_fixture_path("getattr_conversion.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+    formatted = prog.mod.main.gen.jac;
+
+    # Without linting, getattr calls should remain
+    assert "getattr(instance" in formatted;
+    # No null-safe rewrites should happen
+    assert "instance?." not in formatted;
+}
+
 # ── TestTernaryToOrConversion ────────────────────────────────────────────
 test "ternary to or" {
     input_path = auto_lint_fixture_path("ternary_to_or.jac");

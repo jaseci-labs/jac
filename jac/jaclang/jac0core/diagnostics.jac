@@ -711,6 +711,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W3039 = _warn(
          "W3039",
          Category.LINT,
+         "getattr(obj, 'attr', None) should use null-safe access [getattr-to-null-ok]"
+     ),
+     W3040 = _warn(
+         "W3040",
+         Category.LINT,
          "'.map(lambda {name} -> any {{ return <jsx>; }})' can be replaced with "
          "'[<jsx> for {name} in collection]' comprehension syntax [map-lambda-to-comprehension]"
      ),
@@ -737,9 +742,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "too-many-params": "W3030",
          "is-with-literal": "W3035",
          "usestate-to-has": "W3038",
-         "map-lambda-to-comprehension": "W3039",
          "mutable-default": "W3036",
-         "unnecessary-none-return": "W3037"
+         "unnecessary-none-return": "W3037",
+         "getattr-to-null-ok": "W3039",
+         "map-lambda-to-comprehension": "W3040",
+
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)
