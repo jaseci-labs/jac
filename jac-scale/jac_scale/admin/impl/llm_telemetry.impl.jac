@@ -750,6 +750,108 @@ obj TelemetryStore {
 glob _telemetry_store: TelemetryStore | None = None;
 
 
+"""Set up per-user rate limiting: connect Redis/MongoDB, register pre-invoke hook and post-call logger."""
+impl JacAPIServerLLMTelemetry._init_rate_limiting(store: Any) -> None {
+    try {
+        import litellm;
+        import from litellm.integrations.custom_logger { CustomLogger }
+        import from jac_scale.config_loader { get_scale_config }
+        import from jaclang.jac0core.runtime { JacRuntimeInterface }
+        import from byllm.llm { register_pre_invoke_hook }
+
+        limits_cfg = get_scale_config().get_llm_limits_config();
+        if not limits_cfg.get('enabled', False) {
+            return;
+        }
+
+        db_cfg = get_scale_config().get_database_config();
+        _redis_client = None;
+        redis_url = db_cfg.get('redis_url');
+        if redis_url {
+            try {
+                import redis as _redis_mod;
+                _redis_client = _redis_mod.from_url(redis_url);
+            } except Exception as e {
+                logger.warning(f"LLM rate limiting: Redis unavailable: {e}");
+            }
+        }
+
+        _mongo_col = None;
+        try {
+            import from jac_scale.db { get_mongo_client }
+            _mongo_col = get_mongo_client()['jac_scale']['llm_usage'];
+            _mongo_col.create_index([('username', 1), ('ts', 1)]);
+        } except Exception as e {
+            logger.warning(
+                f"LLM rate limiting: MongoDB unavailable, budget limiting disabled: {e}"
+            );
+        }
+
+        rl = JacUserRateLimiter(
+            rc=_redis_client,
+            col=_mongo_col,
+            rpm=limits_cfg.get('rpm'),
+            rpd=limits_cfg.get('rpd'),
+            tpm=limits_cfg.get('tpm'),
+            tpd=limits_cfg.get('tpd'),
+            daily_budget=limits_cfg.get('daily_budget_usd'),
+            monthly_budget=limits_cfg.get('monthly_budget_usd')
+        );
+
+        # Expose instance so tests can access it via sys.modules
+        import sys as _sys;
+        _llm_mod = _sys.modules.get('jac_scale.admin.llm_telemetry');
+        if _llm_mod {
+            setattr(_llm_mod, '_rate_limiter_instance', rl);
+        }
+
+        # Pre-call: byllm hook that blocks before the LLM call fires
+        def _pre_invoke(model_name: Any, mt_run: Any) {
+            ctx = JacRuntimeInterface.get_context();
+            username = getattr(ctx, 'username', None) or '__anonymous__';
+            rl.check_pre_call(username);
+        }
+        register_pre_invoke_hook(_pre_invoke);
+
+        # Post-call: litellm CustomLogger for cost/token extraction (non-blocking)
+        class _RateLimitSuccessLogger(CustomLogger) {
+            def init(self: _RateLimitSuccessLogger, rate_limiter: Any) {
+                self.rl = rate_limiter;
+                CustomLogger.__init__(self);
+            }
+
+            def log_success_event(
+                self: _RateLimitSuccessLogger,
+                kwargs: Any,
+                response_obj: Any,
+                start_time: Any,
+                end_time: Any
+            ) {
+                try {
+                    ctx = JacRuntimeInterface.get_context();
+                    username = getattr(ctx, 'username', None) or '__anonymous__';
+                    slp = kwargs.get("standard_logging_object", {}) or {};
+                    self.rl.record_success(
+                        username,
+                        int(slp.get("total_tokens") or 0),
+                        float(slp.get("response_cost") or 0.0),
+                        slp.get("model") or kwargs.get("model", "")
+                    );
+                } except Exception as e {
+                    logger.warning(f"LLM rate limiting: post-call tracking error: {e}");
+                }
+            }
+        }
+        litellm.success_callback.append(_RateLimitSuccessLogger(rl));
+        logger.info("LLM rate limiting: per-user limiter registered");
+    } except ImportError {
+        logger.info("LLM rate limiting: byllm/litellm not available, skipping");
+    } except Exception as e {
+        logger.warning(f"LLM rate limiting: setup failed: {e}");
+    }
+}
+
+
 """Register LLM telemetry endpoints and set up litellm callback + byllm agent callback."""
 impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     global _telemetry_store;
@@ -852,105 +954,7 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
     }
 
     # --- Register LLM per-user rate limiting ---
-    # Pre-call blocking: byllm pre-invoke hook (actually blocks unlike litellm callbacks).
-    # Post-call tracking: litellm log_success_event (cost data only available here).
-    try {
-        import litellm;
-        import from litellm.integrations.custom_logger { CustomLogger }
-        import from jac_scale.config_loader { get_scale_config }
-        import from jaclang.jac0core.runtime { JacRuntimeInterface }
-        import from byllm.llm { register_pre_invoke_hook }
-
-        limits_cfg = get_scale_config().get_llm_limits_config();
-        if limits_cfg.get('enabled', False) {
-            db_cfg = get_scale_config().get_database_config();
-            redis_url = db_cfg.get('redis_url');
-            _redis_client = None;
-            if redis_url {
-                try {
-                    import redis as _redis_mod;
-                    _redis_client = _redis_mod.from_url(redis_url);
-                } except Exception as e {
-                    logger.warning(f"LLM rate limiting: Redis unavailable: {e}");
-                }
-            }
-
-            _mongo_col = None;
-            try {
-                import from jac_scale.db { get_mongo_client }
-                _mongo_col = get_mongo_client()['jac_scale']['llm_usage'];
-                _mongo_col.create_index([('username', 1), ('ts', 1)]);
-            } except Exception as e {
-                logger.warning(
-                    f"LLM rate limiting: MongoDB unavailable, budget limiting disabled: {e}"
-                );
-            }
-
-            rl = JacUserRateLimiter(
-                rc=_redis_client,
-                col=_mongo_col,
-                rpm=limits_cfg.get('rpm'),
-                rpd=limits_cfg.get('rpd'),
-                tpm=limits_cfg.get('tpm'),
-                tpd=limits_cfg.get('tpd'),
-                daily_budget=limits_cfg.get('daily_budget_usd'),
-                monthly_budget=limits_cfg.get('monthly_budget_usd')
-            );
-
-            # Expose instance so tests can access it via sys.modules
-            import sys as _sys;
-            _llm_mod = _sys.modules.get('jac_scale.admin.llm_telemetry');
-            if _llm_mod {
-                setattr(_llm_mod, '_rate_limiter_instance', rl);
-            }
-
-            # Pre-call: byllm hook that actually blocks before the LLM call fires
-            def _pre_invoke(model_name: Any, mt_run: Any) {
-                ctx = JacRuntimeInterface.get_context();
-                username = getattr(ctx, 'username', None) or '__anonymous__';
-                rl.check_pre_call(username);
-            }
-            register_pre_invoke_hook(_pre_invoke);
-
-            # Post-call: litellm CustomLogger for cost/token extraction (non-blocking)
-            class _RateLimitSuccessLogger(CustomLogger) {
-                def init(self: _RateLimitSuccessLogger, rate_limiter: Any) {
-                    self.rl = rate_limiter;
-                    CustomLogger.__init__(self);
-                }
-
-                def log_success_event(
-                    self: _RateLimitSuccessLogger,
-                    kwargs: Any,
-                    response_obj: Any,
-                    start_time: Any,
-                    end_time: Any
-                ) {
-                    try {
-                        ctx = JacRuntimeInterface.get_context();
-                        username = getattr(ctx, 'username', None) or '__anonymous__';
-                        slp = kwargs.get("standard_logging_object", {}) or {};
-                        self.rl.record_success(
-                            username,
-                            int(slp.get("total_tokens") or 0),
-                            float(slp.get("response_cost") or 0.0),
-                            slp.get("model") or kwargs.get("model", "")
-                        );
-                    } except Exception as e {
-                        logger.warning(
-                            f"LLM rate limiting: post-call tracking error: {e}"
-                        );
-                    }
-                }
-            }
-            litellm.success_callback.append(_RateLimitSuccessLogger(rl));
-            logger.info("LLM rate limiting: per-user limiter registered");
-        }
-    } except ImportError {
-        logger.info("LLM rate limiting: byllm/litellm not available, skipping");
-    } except Exception as e {
-        logger.warning(f"LLM rate limiting: setup failed: {e}");
-    }
+    self._init_rate_limiting(store);
 
     # --- Register byllm agent callback ---
     try {

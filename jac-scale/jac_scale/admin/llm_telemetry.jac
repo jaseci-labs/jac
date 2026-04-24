@@ -21,6 +21,7 @@ import from jac_scale.jserver.jserver {
 """LLM Telemetry mixin providing telemetry storage, litellm logger, and REST endpoints."""
 obj JacAPIServerLLMTelemetry {
     def register_llm_telemetry_endpoints -> None;
+    def _init_rate_limiting(store: Any) -> None;
 }
 
 """Raised when any per-user LLM rate or budget limit is exceeded."""
