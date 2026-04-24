@@ -113,9 +113,7 @@ impl JacAPIServerEndpoints.create_walker_callback(
     async def callback(
         request: Request, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
-        username: (str | None) = getattr(request.state, 'username', None)
-            if request?.state
-            else None;
+        username: (str | None) = request.state?.username if request?.state else None;
         if requires_auth and not username {
             return TransportResponse.fail(
                 code='UNAUTHORIZED',
@@ -245,9 +243,7 @@ impl JacAPIServerEndpoints.create_function_callback(
     async def callback(
         request: Request, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
-        username: (str | None) = getattr(request.state, 'username', None)
-            if request?.state
-            else None;
+        username: (str | None) = request.state?.username if request?.state else None;
         if requires_auth and not username {
             return TransportResponse.fail(
                 code='UNAUTHORIZED',

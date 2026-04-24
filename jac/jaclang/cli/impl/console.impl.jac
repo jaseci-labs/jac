@@ -78,7 +78,7 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
     # Handle Windows console encoding - replace unencodable chars
     if sys.platform == 'win32' and not os.environ.get('WT_SESSION') {
         # Windows cmd/PowerShell can't handle many Unicode chars
-        encoding: str = str(getattr(sys.stdout, 'encoding', None) or 'cp1252');
+        encoding: str = str(sys.stdout?.encoding or 'cp1252');
         processed_args: list = [];
         for arg in args {
             if isinstance(arg, str) {

@@ -418,3 +418,38 @@ test "jsx comprehension with filter" {
         "Filtered JSX comprehension should chain .filter().map()"
     );
 }
+
+test "jsx html entity decoding in text and attributes" {
+    es_ast = compile_to_esast(fixture_path("jsx_entity_decode.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Attribute value: &amp; must be decoded to &
+    assert '"A & B"' in js_code , (
+        "HTML entity &amp; in attribute should be decoded to & in emitted JS"
+    );
+    assert '"A &amp; B"' not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS attribute value"
+    );
+
+    # Text children: named entities must be decoded
+    assert "Before > After & More" in js_code , (
+        "HTML entities &gt; and &amp; in text content should be decoded"
+    );
+    assert "&gt;" not in js_code , (
+        "Raw &gt; should NOT appear in emitted JS text content"
+    );
+    assert "&amp;" not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS text content"
+    );
+
+    # Decimal and hex numeric references must be decoded
+    assert "Decimal > and Hex > refs" in js_code , (
+        "Decimal &#62; and hex &#x3e; references should both decode to >"
+    );
+    assert "&#62;" not in js_code , (
+        "Raw decimal entity should NOT appear in emitted JS"
+    );
+    assert "&#x3e;" not in js_code , (
+        "Raw hex entity should NOT appear in emitted JS"
+    );
+}

@@ -3771,6 +3771,30 @@ test "jsx_reserved_props_key_ref" {
     ].pretty_print()}";
 }
 
+test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
+    # Regression: Name nodes under a JsxElementName are resolved against the
+    # _JsxIntrinsicElements registry by the JsxElement handler, not against
+    # module scope. exit_name must skip these or it emits spurious W1051 on
+    # every tag name (<div>, <button>, </div>, ...).
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_intrinsic_tag_resolution.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    w1051_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051_warnings) == 0 , f"Expected no W1051 on intrinsic JSX tag names, got {len(
+        w1051_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051_warnings);
+    # And the module itself must still type-check without errors.
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "lambda_block_body_return_type_inference" {
     path = os.path.join(CHECKER_FIXTURES, "checker_lambda_block_body_return.jac");
     program = JacProgram();
@@ -4002,6 +4026,32 @@ test "annotated_self_assign_no_false_e1001" {
         assert not ("assign str to str" in err) , f"False positive E1001 same-type error: {err}";
         assert not ("assign float to float" in err) , f"False positive E1001 same-type error: {err}";
     }
+}
+
+test "generator_yield_return_type_check" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_generator_yield_return.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+
+    assert_error_pretty_found(
+        """
+        yield "hello";
+        ^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+    assert_error_pretty_found(
+        """
+        return 42;
+        ^^^^^^^^^^
+    """,
+        program.errors_had[1].pretty_print()
+    );
 }
 
 test "isinstance_and_narrowing" {
