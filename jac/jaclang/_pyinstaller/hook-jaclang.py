@@ -1,9 +1,4 @@
-"""PyInstaller adapter — datas + hiddenimports for jaclang and user Jac packages.
-
-The ``.jac`` path hook and PEP 660 sys.path workaround are set up earlier
-in ``jaclang._pyinstaller.get_hook_dirs``. By the time this file runs,
-jaclang is fully reachable via PyInstaller's path-based analyzer.
-"""
+"""PyInstaller hook: datas + hiddenimports for jaclang and user Jac packages."""
 
 import os
 import sys
