@@ -43,9 +43,13 @@ obj JacUserRateLimiter {
         monthly_budget: Any = None;
 
     def _check_and_incr(key: str, limit: int, ttl: int) -> None;
-    def _get_budget_spent(username: str, period: str, cache_key: str, ttl: int) -> float;
+    def _get_budget_spent(
+        username: str, period: str, cache_key: str, ttl: int
+    ) -> float;
     def check_pre_call(username: str) -> None;
-    def record_success(username: str, tokens: int, cost_usd: float, model: str) -> None;
+    def record_success(
+        username: str, tokens: int, cost_usd: float, model: str
+    ) -> None;
 }
 
 glob _rate_limiter_instance: JacUserRateLimiter | None = None;
