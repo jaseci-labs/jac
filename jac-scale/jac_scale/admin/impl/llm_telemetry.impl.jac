@@ -808,7 +808,7 @@ impl JacAPIServerLLMTelemetry._init_rate_limiting(store: Any) -> None {
         # Pre-call: byllm hook that blocks before the LLM call fires
         def _pre_invoke(model_name: Any, mt_run: Any) {
             ctx = JacRuntimeInterface.get_context();
-            username = getattr(ctx, 'username', None) or '__anonymous__';
+            username = ctx?.username or '__anonymous__';
             rl.check_pre_call(username);
         }
         register_pre_invoke_hook(_pre_invoke);
@@ -829,7 +829,7 @@ impl JacAPIServerLLMTelemetry._init_rate_limiting(store: Any) -> None {
             ) {
                 try {
                     ctx = JacRuntimeInterface.get_context();
-                    username = getattr(ctx, 'username', None) or '__anonymous__';
+                    username = ctx?.username or '__anonymous__';
                     slp = kwargs.get("standard_logging_object", {}) or {};
                     self.rl.record_success(
                         username,

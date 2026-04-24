@@ -1126,7 +1126,7 @@ impl JFastApiServer.init(
             }
         }
 
-        username = getattr(request.state, 'username', None) if request?.state else None;
+        username = request.state?.username if request?.state else None;
         if hasattr(ctx, 'username') and username {
             ctx.username = username;
         }
