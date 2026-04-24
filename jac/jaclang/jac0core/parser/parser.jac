@@ -10,6 +10,10 @@ This parser outputs unitree.py AST nodes directly.
 import from .tokens { Token, TokenKind, SourceLoc }
 import from .lexer { Lexer }
 
+# Set externally by native_accel to enable native tokenize acceleration.
+# Signature: (source: str, file_path: str) -> list[Token]  (or None on error)
+glob _native_tokenize: object | None = None;
+
 # Import unitree classes from Python
 import from jaclang.jac0core.unitree { UniNode, Token as UniToken, Expr }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
@@ -599,15 +603,38 @@ obj Parser {
 def parse(
     source: str, file_path: str = "<input>", prog: object | None = None
 ) -> tuple[Module, bool] {
-    lexer = Lexer(source=source, file_path=file_path);
-    lexer.prog = prog;
-    tokens = lexer.tokenize();
+    # Try native tokenize if available (set by native_accel).
+    na_tokens: list | None = None;
+    if _native_tokenize is not None {
+        try {
+            na_tokens = _native_tokenize(source, file_path);
+        } except Exception {
+            na_tokens = None;
+        }
+    }
+
+    lexer: Lexer | None = None;
+    if na_tokens is not None {
+        tokens = na_tokens;
+        lexer_error_count = 0;
+    } else {
+        lexer = Lexer(source=source, file_path=file_path);
+        lexer.prog = prog;
+        tokens = lexer.tokenize();
+        lexer_error_count = lexer.error_count;
+    }
+
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    # Transfer captured comments from lexer to module source
-    if module.source and lexer.comments {
-        for cdata in lexer.comments {
-            # cdata is (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
+
+    # Transfer comments. When native tokenize was used, re-lex for comments.
+    comment_lexer = lexer;
+    if comment_lexer is None and module.source and "#" in source {
+        comment_lexer = Lexer(source=source, file_path=file_path);
+        comment_lexer.tokenize();
+    }
+    if comment_lexer is not None and module.source and comment_lexer.comments {
+        for cdata in comment_lexer.comments {
             ct = CommentToken(
                 orig_src=module.source,
                 name="COMMENT",
@@ -641,6 +668,6 @@ def parse(
             }
         }
     }
-    had_error = parser.error_count > 0 or lexer.error_count > 0;
+    had_error = parser.error_count > 0 or lexer_error_count > 0;
     return (module, had_error);
 }

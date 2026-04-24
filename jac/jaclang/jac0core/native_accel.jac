@@ -77,12 +77,137 @@ def accelerate_module(mod_name: str, na_file: str) -> int {
     }
 }
 
-"""Compile all discovered .na.jac modules."""
+"""Compile all discovered .na.jac modules and install native tokenize."""
 def _compile_all(modules: dict[str, str]) {
     for (mod_name, na_file) in modules.items() {
         accelerate_module(mod_name, na_file);
     }
+    _install_native_tokenize(modules);
     _acceleration_complete.set();
+}
+
+"""Build a fast native tokenize wrapper and install it on the parser module.
+
+Compiles lexer.na.jac to LLVM, creates a wrapper that bulk-converts native
+tokens to Python Token objects using direct ctypes struct access (bypassing
+NativeStructView for speed), and sets parser._native_tokenize.
+"""
+def _install_native_tokenize(modules: dict[str, str]) {
+    import ctypes;
+    import sys;
+
+    lexer_file = modules.get("jaclang.jac0core.parser.lexer");
+    if lexer_file is None {
+        return;
+    }
+    try {
+        import from jaclang.jac0core.program { JacProgram }
+        import from jaclang.jac0core.native_marshal {
+            build_ctypes_classes,
+            build_enum_maps,
+            wrap_native_function
+        }
+        import from jaclang.jac0core.parser.tokens { Token, TokenKind, SourceLoc }
+
+        prog = JacProgram();
+        ir = prog.compile(file_path=lexer_file);
+        if prog.errors_had or ir is None or ir.gen is None {
+            return;
+        }
+        engine = ir.gen.native_engine;
+        layout = ir.gen.native_layout;
+        if engine is None or layout is None {
+            return;
+        }
+        # Initialize globals (tokens module first, then lexer)
+        for init_name in ["__jac_glob_init_tokens_na", "__jac_glob_init"] {
+            addr = engine.get_function_address(init_name);
+            if addr {
+                ctypes.CFUNCTYPE(None)(addr)();
+            }
+        }
+        ct_classes = build_ctypes_classes(layout);
+        lexer_mod = sys.modules.get("jaclang.jac0core.parser.lexer");
+        ns = lexer_mod.__dict__ if lexer_mod else {};
+        enum_maps = build_enum_maps(layout, ns);
+        func_layout = layout.functions.get("tokenize");
+        if func_layout is None {
+            return;
+        }
+        na_tok_wrapper = wrap_native_function(
+            engine, func_layout, ct_classes, enum_maps, {}, layout=layout
+        );
+        if na_tok_wrapper is None {
+            return;
+        }
+
+        # Build enum ordinal→TokenKind map for fast conversion
+        tk_map = enum_maps.get("TokenKind", []);
+        tk_map_len = len(tk_map);
+
+        # Define ctypes structs for direct memory access (bypasses NativeStructView)
+        class _SL(ctypes.Structure) {
+            has _fields_: list = [
+                ("fp", ctypes.c_void_p), ("line", ctypes.c_int64),
+                ("end_line", ctypes.c_int64), ("col_start", ctypes.c_int64),
+                ("col_end", ctypes.c_int64), ("pos_start", ctypes.c_int64),
+                ("pos_end", ctypes.c_int64)
+            ];
+        }
+        class _NT(ctypes.Structure) {
+            has _fields_: list = [
+                ("kind", ctypes.c_int64), ("value", ctypes.c_void_p),
+                ("loc", ctypes.c_void_p)
+            ];
+        }
+        string_at = ctypes.string_at;
+
+        def native_tokenize(source: str, file_path: str) -> list | None {
+            """Tokenize natively and bulk-convert to Python Token objects."""
+            try {
+                (na_toks, errs) = na_tok_wrapper(source, file_path);
+                if errs != 0 {
+                    return None;
+                }
+                count = na_toks._count;
+                if count == 0 {
+                    return [];
+                }
+                arr = na_toks._arr;
+                tokens: list = [None] * count;
+                for i in range(count) {
+                    ptr = arr[i];
+                    nt = _NT.from_address(ptr);
+                    kind_ord = nt.kind;
+                    kind = tk_map[kind_ord] if kind_ord < tk_map_len else TokenKind.ERROR;
+                    val_ptr = nt.value;
+                    value = string_at(val_ptr).decode("utf-8") if val_ptr else "";
+                    nloc = _SL.from_address(nt.loc);
+                    loc = SourceLoc(
+                        file_path=file_path, line=nloc.line,
+                        end_line=nloc.end_line, col_start=nloc.col_start,
+                        col_end=nloc.col_end, pos_start=nloc.pos_start,
+                        pos_end=nloc.pos_end
+                    );
+                    tokens[i] = Token(kind=kind, value=value, loc=loc);
+                }
+                return tokens;
+            } except Exception {
+                return None;
+            }
+        }
+
+        # Install on parser module
+        parser_mod = sys.modules.get("jaclang.jac0core.parser.parser");
+        if parser_mod is not None {
+            parser_mod._native_tokenize = native_tokenize;
+            # Keep engine alive
+            parser_mod._native_engine_ref = engine;
+            _logger.info("Native tokenize installed on parser");
+        }
+    } except Exception as e {
+        _logger.debug(f"Failed to install native tokenize: {e}");
+    }
 }
 
 """Schedule deferred native acceleration of bootstrap .na.jac modules.
