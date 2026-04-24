@@ -239,3 +239,54 @@ test "integration: monthly budget spans multiple days" {
     }
     assert raised , "must block after $5.10 monthly";
 }
+
+# ---------------------------------------------------------------------------
+# Hook integration test (real byllm Model.invoke path)
+# ---------------------------------------------------------------------------
+
+test "integration: byllm pre-invoke hook blocks call when RPM exceeded" {
+    import from byllm.lib { Model }
+    import from byllm.mtir { MTRuntime }
+    import from byllm.llm { register_pre_invoke_hook, _pre_invoke_hooks }
+    import from jac_scale.admin.llm_telemetry { LLMRateLimitExceeded }
+
+    rc = fresh_rc();
+    rl = make_rl(rc=rc, rpm=1);
+
+    # Register a hook that checks rate limits for a fixed test user
+    def _hook(_model_name: any, _mt_run: any) {
+        rl.check_pre_call("alice");
+    }
+    hooks_before = list(_pre_invoke_hooks);
+    register_pre_invoke_hook(_hook);
+
+    model = Model(model_name="mockllm", config={"outputs": ["hello", "hello"]});
+    mt = MTRuntime(
+        messages=[
+            {"role": "system", "content": "You are a test assistant."},
+            {"role": "user", "content": "test"}
+        ],
+        resp_type=str,
+        stream=False,
+        tools=[],
+        call_params={},
+        mtir=None
+    );
+
+    try {
+        model.invoke(mt);  # first call passes (rpm=1)
+
+        raised = False;
+        try {
+            model.invoke(mt);  # second call blocked
+        } except LLMRateLimitExceeded as e {
+            raised = True;
+            assert "rate limit" in str(e).lower();
+        }
+        assert raised , "second call must be blocked by RPM hook";
+    } finally {
+        # Restore hooks to avoid polluting other tests
+        _pre_invoke_hooks.clear();
+        _pre_invoke_hooks.extend(hooks_before);
+    }
+}
