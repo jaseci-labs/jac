@@ -1,8 +1,8 @@
 """Integration tests for memory hierarchy with testcontainers and jac start."""
 
+import atexit;
 import contextlib;
 import concurrent.futures;
-import gc;
 import os;
 import socket;
 import subprocess;
@@ -24,7 +24,60 @@ def get_free_port -> int {
 }
 
 glob FIXTURES_DIR = Path(__file__).parent / "fixtures",
-     JAC_FILE = FIXTURES_DIR / "todo_app.jac";
+     JAC_FILE = FIXTURES_DIR / "todo_app.jac",
+     _shared: dict = {};
+
+"""Lazily start a shared MongoDB container; return (MongoClient, uri)."""
+def _get_mongo -> tuple {
+    if "mongo_client" not in _shared {
+        c = MongoDbContainer("mongo:latest");
+        c.start();
+        uri = c.get_connection_url();
+        _shared["mongo_container"] = c;
+        _shared["mongo_uri"] = uri;
+        _shared["mongo_client"] = MongoClient(uri);
+        atexit.register(c.stop);
+    }
+    return (_shared["mongo_client"], _shared["mongo_uri"]);
+}
+
+"""Lazily start a shared Redis container; return (redis.Redis, url)."""
+def _get_redis -> tuple {
+    if "redis_client" not in _shared {
+        c = RedisContainer("redis:latest", port=6379);
+        c.start();
+        host = c.get_container_host_ip();
+        exposed_port = c.get_exposed_port(6379);
+        url = f"redis://{host}:{exposed_port}/0";
+        _shared["redis_container"] = c;
+        _shared["redis_url"] = url;
+        _shared["redis_client"] = redis.Redis(
+            host=host, port=int(exposed_port), decode_responses=False
+        );
+        atexit.register(c.stop);
+    }
+    return (_shared["redis_client"], _shared["redis_url"]);
+}
+
+"""Drop all non-system databases (resets jac_db between tests)."""
+def _reset_mongo -> None {
+    if "mongo_client" not in _shared {
+        return;
+    }
+    system_dbs = {"admin","config","local"};
+    for db_name in _shared["mongo_client"].list_database_names() {
+        if db_name not in system_dbs {
+            _shared["mongo_client"].drop_database(db_name);
+        }
+    }
+}
+
+"""Flush all Redis keys (resets state between tests)."""
+def _reset_redis {
+    if "redis_client" in _shared {
+        _shared["redis_client"].flushall();
+    }
+}
 
 """Extract data from TransportResponse envelope format."""
 def extract_transport_response_data(
@@ -145,29 +198,14 @@ test "read and write" {
         shutil.rmtree(data_dir);
     }
 
-    # Start Redis container
-    redis_container = RedisContainer("redis:latest", port=6379);
-    redis_container.start();
-
-    redis_host = redis_container.get_container_host_ip();
-    redis_port = redis_container.get_exposed_port(6379);
-    redis_url = f"redis://{redis_host}:{redis_port}/0";
-
-    redis_client = redis.Redis(
-        host=redis_host, port=int(redis_port), decode_responses=False
-    );
-    assert redis_client.dbsize() == 0;
-
-    # Start Mongo container
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-
-    mongo_uri = mongo_container.get_connection_url();
-    mongo_client = MongoClient(mongo_uri);
-
+    _reset_mongo();
+    _reset_redis();
+    (mongo_client, mongo_uri) = _get_mongo();
+    (redis_client, redis_url) = _get_redis();
     os.environ["MONGODB_URI"] = mongo_uri;
     os.environ["REDIS_URL"] = redis_url;
 
+    assert redis_client.dbsize() == 0;
     assert "jac_db" not in mongo_client.list_database_names();
 
     port = get_free_port();
@@ -220,7 +258,6 @@ test "read and write" {
             "Redis should have 9 entries (super root, guest user, admin, __system__, user, 2 task nodes, 2 edges)"
         );
     } finally {
-        # Teardown
         if server {
             server.terminate();
             with contextlib.suppress(Exception) {
@@ -228,21 +265,7 @@ test "read and write" {
             }
         }
 
-        system_dbs = {"admin","config","local"};
-        for db_name in mongo_client.list_database_names() {
-            if db_name not in system_dbs {
-                mongo_client.drop_database(db_name);
-            }
-        }
-
-        mongo_container.stop();
-        redis_container.stop();
-
-        time.sleep(0.5);
-        gc.collect();
-
         # Clean up data files
-        data_dir = FIXTURES_DIR / ".jac" / "data";
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -262,11 +285,12 @@ test "data persists after server restart for mongo db" {
         shutil.rmtree(data_dir);
     }
 
-    # Start MongoDB container
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
+    _reset_mongo();
+    (_, mongo_uri) = _get_mongo();
     os.environ["MONGODB_URI"] = mongo_uri;
+    if "REDIS_URL" in os.environ {
+        del os.environ["REDIS_URL"];
+    }
 
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -320,10 +344,6 @@ test "data persists after server restart for mongo db" {
                 server.wait(timeout=2);
             }
         }
-        mongo_container.stop();
-        time.sleep(0.5);
-        gc.collect();
-
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -343,19 +363,11 @@ test "no unnecessary saves on read-only operations" {
         shutil.rmtree(data_dir);
     }
 
-    # Start MongoDB container
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
+    _reset_mongo();
+    _reset_redis();
+    (mongo_client, mongo_uri) = _get_mongo();
+    (_, redis_url) = _get_redis();
     os.environ["MONGODB_URI"] = mongo_uri;
-    mongo_client = MongoClient(mongo_uri);
-
-    # Start Redis container
-    redis_container = RedisContainer("redis:latest", port=6379);
-    redis_container.start();
-    redis_host = redis_container.get_container_host_ip();
-    redis_port = redis_container.get_exposed_port(6379);
-    redis_url = f"redis://{redis_host}:{redis_port}/0";
     os.environ["REDIS_URL"] = redis_url;
 
     port = get_free_port();
@@ -448,18 +460,6 @@ test "no unnecessary saves on read-only operations" {
             }
         }
 
-        system_dbs = {"admin","config","local"};
-        for db_name in mongo_client.list_database_names() {
-            if db_name not in system_dbs {
-                mongo_client.drop_database(db_name);
-            }
-        }
-
-        mongo_container.stop();
-        redis_container.stop();
-        time.sleep(0.5);
-        gc.collect();
-
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -551,9 +551,6 @@ test "data persists after server restart for sqlite" {
             os.environ[key] = value;
         }
 
-        time.sleep(0.5);
-        gc.collect();
-
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -574,21 +571,12 @@ test "L2 and L3 commit with server restart" {
         shutil.rmtree(data_dir);
     }
 
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
+    _reset_mongo();
+    _reset_redis();
+    (mongo_client, mongo_uri) = _get_mongo();
+    (redis_client, redis_url) = _get_redis();
     os.environ["MONGODB_URI"] = mongo_uri;
-    mongo_client = MongoClient(mongo_uri);
-
-    redis_container = RedisContainer("redis:latest", port=6379);
-    redis_container.start();
-    redis_host = redis_container.get_container_host_ip();
-    redis_port = redis_container.get_exposed_port(6379);
-    redis_url = f"redis://{redis_host}:{redis_port}/0";
     os.environ["REDIS_URL"] = redis_url;
-    redis_client = redis.Redis(
-        host=redis_host, port=int(redis_port), decode_responses=False
-    );
 
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -746,16 +734,6 @@ test "L2 and L3 commit with server restart" {
                 server.wait(timeout=2);
             }
         }
-        system_dbs = {"admin","config","local"};
-        for db_name in mongo_client.list_database_names() {
-            if db_name not in system_dbs {
-                mongo_client.drop_database(db_name);
-            }
-        }
-        mongo_container.stop();
-        redis_container.stop();
-        time.sleep(0.5);
-        gc.collect();
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -774,21 +752,12 @@ test "Redis write cycle via commit" {
         shutil.rmtree(data_dir);
     }
 
-    # Setup MongoDB + Redis
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
+    _reset_mongo();
+    _reset_redis();
+    (_, mongo_uri) = _get_mongo();
+    (redis_client, redis_url) = _get_redis();
     os.environ["MONGODB_URI"] = mongo_uri;
-
-    redis_container = RedisContainer("redis:latest", port=6379);
-    redis_container.start();
-    redis_host = redis_container.get_container_host_ip();
-    redis_port = redis_container.get_exposed_port(6379);
-    redis_url = f"redis://{redis_host}:{redis_port}/0";
     os.environ["REDIS_URL"] = redis_url;
-    redis_client = redis.Redis(
-        host=redis_host, port=int(redis_port), decode_responses=False
-    );
 
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -833,10 +802,6 @@ test "Redis write cycle via commit" {
                 server.wait(timeout=2);
             }
         }
-        mongo_container.stop();
-        redis_container.stop();
-        time.sleep(0.5);
-        gc.collect();
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -888,9 +853,12 @@ test "hash-based dirty check detects all mutation types" {
 
 test "sequential requests work correctly" {
     # Validates: Multiple sequential requests don't cause crashes or data corruption
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    os.environ["MONGODB_URI"] = mongo_container.get_connection_url();
+    _reset_mongo();
+    (_, mongo_uri) = _get_mongo();
+    os.environ["MONGODB_URI"] = mongo_uri;
+    if "REDIS_URL" in os.environ {
+        del os.environ["REDIS_URL"];
+    }
 
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -918,8 +886,6 @@ test "sequential requests work correctly" {
         with contextlib.suppress(Exception) {
             server.wait(timeout=2);
         }
-        mongo_container.stop();
-        gc.collect();
     }
 }
 
@@ -937,11 +903,9 @@ test "batch_get reduces MongoDB queries for edge traversals" {
         shutil.rmtree(data_dir);
     }
 
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
+    _reset_mongo();
+    (mongo_client, mongo_uri) = _get_mongo();
     os.environ["MONGODB_URI"] = mongo_uri;
-    mongo_client = MongoClient(mongo_uri);
 
     # No Redis — force all reads through MongoDB to measure query count accurately
     env_backup = {};
@@ -1019,22 +983,10 @@ test "batch_get reduces MongoDB queries for edge traversals" {
             }
         }
 
-        system_dbs = {"admin","config","local"};
-        for db_name in mongo_client.list_database_names() {
-            if db_name not in system_dbs {
-                mongo_client.drop_database(db_name);
-            }
-        }
-        mongo_client.close();
-        mongo_container.stop();
-
         # Restore environment
         for (key, value) in env_backup.items() {
             os.environ[key] = value;
         }
-
-        time.sleep(0.5);
-        gc.collect();
 
         if data_dir.exists() {
             import shutil;
@@ -1048,16 +1000,12 @@ glob MUTATION_JAC_FILE = FIXTURES_DIR / "mutation_app.jac";
 """Validates that in-place mutations (list.append, dict[k]=v) which bypass
 __setattr__ are still detected and persisted through hash comparison."""
 test "in-place mutations on list and dict are persisted via hash-based dirty check" {
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    os.environ["MONGODB_URI"] = mongo_container.get_connection_url();
-    mongo_client = MongoClient(mongo_container.get_connection_url());
-
-    redis_container = RedisContainer("redis:latest", port=6379);
-    redis_container.start();
-    redis_host = redis_container.get_container_host_ip();
-    redis_port = redis_container.get_exposed_port(6379);
-    os.environ["REDIS_URL"] = f"redis://{redis_host}:{redis_port}/0";
+    _reset_mongo();
+    _reset_redis();
+    (_, mongo_uri) = _get_mongo();
+    (_, redis_url) = _get_redis();
+    os.environ["MONGODB_URI"] = mongo_uri;
+    os.environ["REDIS_URL"] = redis_url;
 
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -1110,11 +1058,6 @@ test "in-place mutations on list and dict are persisted via hash-based dirty che
         with contextlib.suppress(Exception) {
             server.wait(timeout=2);
         }
-        mongo_client.close();
-        mongo_container.stop();
-        redis_container.stop();
-        time.sleep(0.5);
-        gc.collect();
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
@@ -1133,10 +1076,12 @@ test "concurrent requests do not lose edges" {
         shutil.rmtree(data_dir);
     }
 
-    mongo_container = MongoDbContainer("mongo:latest");
-    mongo_container.start();
-    mongo_uri = mongo_container.get_connection_url();
+    _reset_mongo();
+    (_, mongo_uri) = _get_mongo();
     os.environ["MONGODB_URI"] = mongo_uri;
+    if "REDIS_URL" in os.environ {
+        del os.environ["REDIS_URL"];
+    }
 
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -1213,9 +1158,6 @@ test "concurrent requests do not lose edges" {
                 server.wait(timeout=2);
             }
         }
-        mongo_container.stop();
-        time.sleep(0.5);
-        gc.collect();
         if data_dir.exists() {
             import shutil;
             shutil.rmtree(data_dir);
