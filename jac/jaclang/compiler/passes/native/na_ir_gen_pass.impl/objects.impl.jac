@@ -394,9 +394,15 @@ impl NaIRGenPass._codegen_archetype(nd: uni.Archetype) -> None {
 impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) -> None {
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
-    # Guard: skip if already declared (duplicate Ability nodes or re-visited module)
+    # Distinguish property getters from setters: if a method with the same
+    # name already exists but this one has parameters, it's a setter.
+    sig = method.signature;
     if full_name in self.method_funcs {
-        return;
+        if sig is not None and len(list(sig.get_parameters())) > 0 {
+            full_name = f"{full_name}.setter";
+        } else {
+            return;
+        }
     }
     sig = method.signature;
     struct_type = self.struct_types.get(arch_name);
@@ -434,6 +440,14 @@ impl NaIRGenPass._forward_declare_method(arch_name: str, method: uni.Ability) ->
 impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     method_name = method.name_ref.sym_name if method.name_ref else "unnamed";
     full_name = f"{arch_name}.{method_name}";
+    # Check for property setter variant
+    sig = method.signature;
+    if sig is not None and len(list(sig.get_parameters())) > 0 {
+        setter_name = f"{full_name}.setter";
+        if setter_name in self.method_funcs {
+            full_name = setter_name;
+        }
+    }
     func = self.method_funcs.get(full_name);
     if func is None {
         return;
@@ -479,6 +493,9 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     sig = method.signature;
     for (i, p) in enumerate(sig.get_parameters()) {
         param_name = p.name.value if p.name else f"arg{i}";
+        if i + 1 >= len(func.args) {
+            break;  # Guard: more AST params than LLVM args (e.g. property getter/setter mismatch)
+        }
         arg_val = func.args[i + 1];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
         self.builder.store(arg_val, alloca);
