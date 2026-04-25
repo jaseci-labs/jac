@@ -30,6 +30,7 @@ CORE_ONLY=false
 STANDALONE=false
 VERSION=""
 UNINSTALL=false
+NO_VERIFY_CHECKSUM=false
 
 # --- Colors and output helpers ---
 
@@ -68,11 +69,12 @@ USAGE:
     curl -fsSL ... | bash -s -- [OPTIONS]
 
 OPTIONS:
-    --core        Install only jaclang (no plugins)
-    --standalone  Download a pre-built standalone binary from GitHub Releases
-    --version V   Install a specific version (e.g., 2.3.1)
-    --uninstall   Remove Jac installation
-    --help        Print this help message
+    --core                Install only jaclang (no plugins)
+    --standalone          Download a pre-built standalone binary from GitHub Releases
+    --version V           Install a specific version (e.g., 2.3.1)
+    --uninstall           Remove Jac installation
+    --no-verify-checksum  Skip SHA-256 verification of standalone binary (NOT recommended)
+    --help                Print this help message
 
 EXAMPLES:
     # Full ecosystem (all plugins) via uv
@@ -146,6 +148,10 @@ parse_args() {
                 ;;
             --uninstall)
                 UNINSTALL=true
+                shift
+                ;;
+            --no-verify-checksum)
+                NO_VERIFY_CHECKSUM=true
                 shift
                 ;;
             --help | -h)
@@ -354,9 +360,15 @@ install_standalone() {
         exit 1
     fi
 
-    # Verify checksum if available
-    if curl -fsSL -o "${tmpdir}/${asset}.sha256" "$checksum_url" 2>/dev/null; then
-        info "Verifying checksum..."
+    # Verify checksum (fail closed unless --no-verify-checksum is set)
+    if [[ "$NO_VERIFY_CHECKSUM" == "true" ]]; then
+        warn "Skipping checksum verification (--no-verify-checksum)."
+    elif ! curl -fsSL -o "${tmpdir}/${asset}.sha256" "$checksum_url" 2>/dev/null; then
+        err "Could not download checksum file: ${checksum_url}"
+        err "Refusing to install an unverified binary."
+        err "Re-run with --no-verify-checksum to override (NOT recommended)."
+        exit 1
+    else
         local expected actual
         expected=$(awk '{print $1}' "${tmpdir}/${asset}.sha256")
 
@@ -365,10 +377,13 @@ install_standalone() {
         elif has_cmd shasum; then
             actual=$(shasum -a 256 "${tmpdir}/${asset}" | awk '{print $1}')
         else
-            warn "Neither sha256sum nor shasum found, skipping checksum verification."
-            actual="$expected"
+            err "Neither sha256sum nor shasum is available."
+            err "Refusing to install an unverified binary."
+            err "Install one of those tools, or re-run with --no-verify-checksum (NOT recommended)."
+            exit 1
         fi
 
+        info "Verifying checksum..."
         if [[ "$expected" != "$actual" ]]; then
             err "Checksum verification failed!"
             err "  Expected: ${expected}"
@@ -376,8 +391,6 @@ install_standalone() {
             exit 1
         fi
         info "Checksum verified."
-    else
-        warn "Checksum file not available, skipping verification."
     fi
 
     # Install binary
