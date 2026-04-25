@@ -2875,6 +2875,37 @@ test "self_typevar_attr_access_via_enclosing_class" {
     }
 }
 
+"""Classmethod and instance-method calls returning `Self` resolve via the
+receiver for chained access (issue #5688).
+
+Before the fix, `datetime.now(...).isoformat()` and `Box.make().kick()` both
+raised E1031 ("Cannot access attribute X for type Self"). The fix pre-seeds
+the Self binding from the receiver expression in `_collect_type_var_bindings`
+when the implicit cls/self param will be stripped — without disturbing the
+staticmethod path (`object.__new__(self.__class__)`) covered above.
+"""
+test "self_return_resolves_via_receiver_5688" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_self_classmethod_return.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+    assert len(user_errors) == 0 , f"Expected 0 user errors, got {len(
+        user_errors
+    )}:\n" + "\n".join(e.pretty_print() for e in user_errors);
+    for err in program.errors_had {
+        if "checker_self_classmethod_return" in err.loc.mod_path {
+            assert "type \"Self\"" not in err.pretty_print() , f"Error should not refer to opaque Self type, got:\n{err.pretty_print()}";
+        }
+    }
+}
+
 # ============================================================================
 # Narrowing gap exposure tests
 #

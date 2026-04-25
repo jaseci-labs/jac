@@ -1134,6 +1134,46 @@ impl TypeEvaluator._collect_type_var_bindings(
     is_constructor_call: bool = False
 ) -> dict[str, TypeBase] {
     bindings: dict[str, TypeBase] = {};
+    # PEP 673: For bound classmethod calls invoked via attribute access
+    # (e.g. `datetime.now(...)`, `Box.make(...)`), the implicit cls
+    # parameter is stripped below, leaving no anchor for `Self` to be
+    # solved from argument types. Pre-seed Self from the receiver class.
+    # Without this, a classmethod whose return type is `Self` (PEP 673)
+    # leaves the call expression typed as the raw `Self` TypeVar, causing
+    # spurious E1031 ("Cannot access attribute X for type Self") on any
+    # chained access (issue #5688).
+    #
+    # Constraints:
+    #   - Skip when the cls/self param will NOT be stripped — e.g.
+    #     `object.__new__(self.__class__)` is a staticmethod whose
+    #     `cls: type[Self]` param consumes the first positional arg and
+    #     binds Self via the normal arg-based path.
+    #   - Skip for unbound `Class.method(instance, ...)` and constructor
+    #     calls — those go through different binding paths below.
+    will_strip_first_param = (
+        len(method.parameters) >= 1
+        and not is_unbound_call
+        and not is_constructor_call
+        and (
+            method.parameters[0].is_self
+            or (
+                method.parameters[0].is_cls
+                and method.function_flags & types.FunctionTypeFlags.ClassMethod
+            )
+        )
+    );
+    if (
+        will_strip_first_param
+        and isinstance(expr.target, uni.AtomTrailer)
+        and expr.target.is_attr
+    ) {
+        recv_type = self.get_type_of_expression(expr.target.target);
+        if isinstance(recv_type, types.ClassType) {
+            bindings["Self"] = recv_type.clone_as_instance()
+                if recv_type.is_instantiable_class()
+                else recv_type;
+        }
+    }
     # Effective parameter list must mirror match_args_to_params so that
     # positional args line up with the same params used during argument
     # validation. Key cases:
