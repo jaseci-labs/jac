@@ -746,6 +746,15 @@ impl SqliteMemory.sync -> None {
             if not anchor.is_populated() {
                 continue;
             }
+            # Hash-based dirty check: if the in-memory anchor is byte-identical
+            # to its loaded state, the walker hasn't mutated anything — skip
+            # writeback. Without this check, a long-running read-only walker's
+            # snapshot would clobber concurrent writes from sibling walkers
+            # at exit (issue #5696). MongoBackend.sync uses the same gate.
+            current_hash = Serializer._compute_hash(anchor);
+            if current_hash == anchor.hash {
+                continue;
+            }
 
             key = str(id);
             try {
@@ -858,6 +867,10 @@ impl SqliteMemory.sync -> None {
                             """,
                             (key, ) + merged_row
                         );
+                        # Refresh in-memory hash to match what's now in the DB,
+                        # mirroring MongoBackend's post-write behavior so future
+                        # syncs in the same context don't redundantly re-write.
+                        anchor.hash = Serializer._compute_hash(anchor);
                     }
                 } else {
                     # No stored or stored is a stub - save anchor if valid
@@ -877,6 +890,7 @@ impl SqliteMemory.sync -> None {
                             """,
                             (key, ) + new_row
                         );
+                        anchor.hash = Serializer._compute_hash(anchor);
                     }
                 }
             } except (AttributeError, ModuleNotFoundError) {

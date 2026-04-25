@@ -27,7 +27,7 @@ obj _DemoArchV1(Root) {
 
 
 test "fingerprint is present on archetypes and stable across instances" {
-    fp = getattr(_DemoArchV1, '__jac_fingerprint__', None);
+    fp = _DemoArchV1?.__jac_fingerprint__;
     assert isinstance(fp, str) , "archetype must have __jac_fingerprint__";
     assert len(fp) == 16 , f"fingerprint length should be 16 hex chars, got {len(fp)}";
     # Same class => same fingerprint; deterministic.
@@ -166,6 +166,57 @@ test "legacy pickle DB with unreadable rows migrates and quarantines" {
             assert err and 'legacy pickle' in err;
         }
         mem.close();
+    }
+}
+
+
+test "read-only walker snapshot does not clobber concurrent writes (#5696)" {
+    # In local mode (SqliteMemory), a long-running read-only walker would
+    # commit its stale snapshot at exit, overwriting any concurrent write
+    # that landed on the same anchor in the meantime. The hash-based dirty
+    # check in sync() must skip writeback when the in-memory anchor is
+    # byte-identical to its loaded state, even if the DB has since diverged.
+    with TemporaryDirectory() as tmpdir {
+        db_path = os.path.join(tmpdir, "test.db");
+        # 1. Walker A: create anchor with name="A=10" and persist.
+        mem_a = SqliteMemory(path=db_path);
+        anchor = NodeAnchor(archetype=_DemoArchV1(name="A=10", age=1), edges=[]);
+        anchor.persistent = True;
+        mem_a.put(anchor);
+        anchor_id = anchor.id;
+        mem_a.sync();
+        mem_a.close();
+        # 2. Walker B (read-only): load the same anchor into a fresh memory,
+        #    DO NOT mutate it.
+        mem_b = SqliteMemory(path=db_path);
+        snapshot = mem_b.get(anchor_id);
+        assert snapshot is not None;
+        # Capture the hash that was set at deserialize time.
+        loaded_hash = snapshot.hash;
+        assert loaded_hash != 0 , "deserialize must populate anchor.hash";
+        # 3. Walker C: while B holds its snapshot, write a new value.
+        mem_c = SqliteMemory(path=db_path);
+        c_anchor = mem_c.get(anchor_id);
+        assert c_anchor is not None;
+        c_anchor.archetype.name = "B=11";
+        c_anchor.archetype.age = 2;
+        mem_c.sync();
+        mem_c.close();
+        # 4. Walker B exits. sync() must not overwrite C's write.
+        mem_b.sync();
+        mem_b.close();
+        # 5. Final read: C's write must have survived.
+        mem_check = SqliteMemory(path=db_path);
+        final = mem_check.get(anchor_id);
+        assert final is not None;
+        assert final.archetype.name == "B=11" , (
+            f"Read-only walker B clobbered C's write. "
+            f"Expected name='B=11', got '{final.archetype.name}'"
+        );
+        assert final.archetype.age == 2 , (
+            f"Expected age=2, got {final.archetype.age}"
+        );
+        mem_check.close();
     }
 }
 
