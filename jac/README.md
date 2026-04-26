@@ -7,9 +7,9 @@
          width="20%">
   </picture>
 
-[Jac Website] | [Getting started] | [Learn] | [Documentation] | [Contributing]
+[Jac Website] | [Getting Started] | [Learn] | [Documentation] | [Contributing]
 
-  [![PyPI version](https://img.shields.io/pypi/v/jaclang.svg)](https://pypi.org/project/jaclang/) [![Tests](https://github.com/Jaseci-Labs/jaclang/actions/workflows/run_pytest.yml/badge.svg)](https://github.com/Jaseci-Labs/jaclang/actions/workflows/run_pytest.yml) [![codecov](https://codecov.io/github/chandralegend/jaclang/graph/badge.svg?token=OAX26B0FE4)](https://codecov.io/github/chandralegend/jaclang)
+  [![PyPI version](https://img.shields.io/pypi/v/jaclang.svg)](https://pypi.org/project/jaclang/) [![Tests](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml/badge.svg)](https://github.com/jaseci-labs/jaseci/actions/workflows/test-jaseci.yml) [![codecov](https://codecov.io/gh/Jaseci-Labs/jaseci/graph/badge.svg)](https://codecov.io/gh/Jaseci-Labs/jaseci)
 </div>
 
 This is the main source code repository for the [Jac] programming language. It contains the compiler, language server, and documentation.
@@ -59,19 +59,18 @@ pip install git+https://github.com/jaseci-labs/jaseci#subdirectory=jac
 
 ## Getting Help
 
-Submit and issue! Community links coming soon.
+Submit an issue or join the Jaseci community Discord from the main repository README.
 
 ## Contributing
 
-See [CONTRIBUTING.md](.github/CONTRIBUTING.md).
+See the [contribution guide](https://www.jac-lang.org/internals/contrib/).
 
 ## License
 
 Jaclang is distributed under the terms of both the MIT license with a few other open source projects vendored
 within with various other licenses that are very permissive.
 
-See [LICENSE-MIT](.guthub/LICENSE), and
-[COPYRIGHT](COPYRIGHT) for details.
+See the repository [LICENSE](../LICENSE) and [COPYRIGHT](COPYRIGHT) for details.
 
 ## Trademark
 

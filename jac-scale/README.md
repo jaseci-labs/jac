@@ -34,7 +34,7 @@ Whether you're developing locally with `jac start` or deploying to production wi
 
 ## Prerequisites
 
-- kubenetes(K8s) installed
+- Kubernetes installed
   - [Minikube Kubernetes](https://minikube.sigs.k8s.io/docs/start/?arch=%2Fwindows%2Fx86-64%2Fstable%2F.exe+download/) (for Windows/Linux)
   - [Docker Desktop with Kubernetes](https://www.docker.com/resources/kubernetes-and-docker/) (alternative for Windows - easier setup)
 

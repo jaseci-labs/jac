@@ -176,12 +176,42 @@ The best way to learn Jac is by building something real. The [**Build an AI Day 
 <br>
 
 Get the complete, stable toolkit from PyPI:
-
 ```bash
 pip install jaseci
 ```
 
 The `jaseci` package is a meta-package that bundles `jaclang`, `byllm`, `jac-client`, `jac-scale`, `jac-super`, and `jac-mcp` together for convenience. This is the fastest way to get started with building applications.
+
+</details>
+
+<details>
+<summary><strong>Set up from source</strong></summary>
+
+<br>
+
+If you want to contribute to the Jaseci stack or run the latest code from `main`, clone with submodules and install the package you are working on in editable mode:
+
+```bash
+git clone --recurse-submodules https://github.com/jaseci-labs/jaseci.git
+cd jaseci
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install -e jac pytest pytest-xdist watchdog
+jac --version
+```
+
+If you already cloned without submodules, initialize them before running compiler/type-checker tests:
+
+```bash
+git submodule update --init --recursive
+```
+
+Core language smoke test:
+
+```bash
+pytest -q jac/tests/language/test_cli.jac -x
+```
 
 </details>
 
