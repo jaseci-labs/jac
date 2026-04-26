@@ -636,15 +636,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if member := self._lookup_class_member(
                         lookup_type, expr.right.value
                     ) {
-                        value = self._set_symbol_to_expr(expr.right, member.symbol);
-                        # Handle direct enum member access (e.g., Color.RED)
+                        # Direct enum member access (e.g. Color.RED) returns
+                        # EnumMemberType, bypassing bound-member specialization.
                         if lookup_type.is_enum_class() {
                             member_name = expr.right.value;
-                            # Return EnumMemberType for recognized enum members
                             if (
                                 lookup_type.shared.enum_members
                                 and member_name in lookup_type.shared.enum_members
                             ) {
+                                self._set_symbol_to_expr(expr.right, member.symbol);
                                 member_info = lookup_type.shared.enum_members[
                                     member_name
                                 ];
@@ -654,10 +654,33 @@ impl TypeEvaluator._get_type_of_expression_core(
                                     flags=types.TypeFlags.Instance
                                 );
                             }
-                            # For non-enum-member access (e.g., static methods),
-                            # fall through to return the actual member type
+                            # Non-member access (e.g. classmethods on the enum)
+                            # falls through to bound-member specialization.
                         }
-                        return value;
+                        # Bind `Self` and class TypeVars for the receiver — without
+                        # this, `Self` leaks through chained calls like
+                        # `datetime.now(tz).isoformat()`.
+                        overloaded_ty: types.OverloadedType | None = None;
+                        member_ty = self.get_type_of_member(member, lookup_type);
+                        if isinstance(member_ty, types.FunctionType) {
+                            overloaded_fns: list[types.FunctionType] = [member_ty];
+                            for overload in member.overloads {
+                                overload_ty = self.specialize_member_type(
+                                    self.get_type_of_symbol(overload), lookup_type
+                                );
+                                if isinstance(overload_ty, types.FunctionType) {
+                                    overloaded_fns.append(overload_ty);
+                                }
+                            }
+                            if len(overloaded_fns) > 1 {
+                                overloaded_ty = types.OverloadedType(
+                                    overloads=overloaded_fns
+                                );
+                            }
+                        }
+                        member.symbol.add_use(expr.right);
+                        expr.right.type = overloaded_ty or member_ty;
+                        return expr.right.type;
                     }
                     # Optional chaining (?.): attribute not found is not an error —
                     # the ?. operator returns None when the attribute doesn't exist.
