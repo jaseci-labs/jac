@@ -60,6 +60,200 @@ def _apply_prompt_caching(messages: list, tools: list | None) {
 }
 
 
+"""Resolve the effective context window size for a model name via LiteLLM registry."""
+def _litellm_ctx_window(model_name: str) -> int {
+    try {
+        info = litellm.get_model_info(model_name);
+        return int(info.get("max_input_tokens") or info.get("max_tokens") or 0);
+    } except Exception {
+        return 0;
+    }
+}
+
+
+"""Make a lightweight copy of a model for the compaction summarisation call.
+
+Resets call_params to {"compaction_enabled": False} so the copy cannot trigger
+another compaction and does not inherit any per-call settings from the active
+ReAct invocation. Works for both Model and ModelPool — copy.copy shares the
+already-built _router for pools so there is zero rebuild cost.
+"""
+def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
+    import copy;
+    m = copy.copy(model);
+    m.call_params = {"compaction_enabled": False};
+    return m;
+}
+
+
+"""Default compaction logic: summarise old tool-call rounds into one message.
+
+Keeps messages[0] (system) and messages[1] (initial user task) verbatim.
+Walks from the end of the list, preserving the most-recent `keep_recent`
+assistant+tool-result blocks. Everything in between is sent to the LLM
+for summarisation and replaced with a single USER message.
+
+`model` is the BaseLLM instance to use for the summarisation call — either
+a copy of the active model (default) or a user-specified compaction model.
+It must already have compaction_enabled=False in its call_params to prevent
+recursion.
+"""
+def _default_compact(
+    messages: list,
+    keep_recent: int,
+    model: BaseLLM
+) -> list {
+    # Need at least: system + user + 1 assistant + something to compact
+    if len(messages) < 4 {
+        return messages;
+    }
+    # Walk backwards counting assistant turns to find the keep boundary
+    kept_tail: list = [];
+    assistant_rounds = 0;
+    i = len(messages) - 1;
+    while i >= 2 and assistant_rounds < keep_recent {
+        msg = messages[i];
+        role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None);
+        if str(role) == "assistant" {
+            assistant_rounds += 1;
+        }
+        kept_tail.insert(0, msg);
+        i -= 1;
+    }
+    # The slice to compact is messages[2 .. i+1]
+    compact_slice = messages[2:i + 1];
+    if not compact_slice {
+        return messages;
+    }
+    # Serialise the slice for the summarisation call
+    lines: list = [];
+    for msg in compact_slice {
+        if isinstance(msg, dict) {
+            role = msg.get("role", "");
+            content = msg.get("content") or "";
+            if isinstance(content, list) {
+                content = " ".join(
+                    p.get("text", "") if isinstance(p, dict) else str(p)
+                    for p in content
+                );
+            }
+            lines.append(f"[{role}] {content}");
+        } else {
+            lines.append(str(msg));
+        }
+    }
+    history_text = "\n".join(lines);
+    summary_prompt = (
+        "Summarise the following agent tool-call history concisely. "
+        "Preserve key findings, decisions, and intermediate results that "
+        "may be needed to complete the ongoing task. Output plain text only.\n\n"
+        + history_text
+    );
+    try {
+        # Single no-tools invocation through the full byLLM stack —
+        # inherits telemetry, prompt caching, and proxy config from the model.
+        # compaction_enabled=False (already set on model.call_params) prevents recursion.
+        # Two messages (system + user) are required so make_model_params / format_prompt
+        # can safely index messages[0] and messages[1].
+        comp_mt_run = MTRuntime(
+            messages=[
+                Message(role=MessageRole.SYSTEM, content="You are a concise summariser."),
+                Message(role=MessageRole.USER,   content=summary_prompt)
+            ],
+            tools=[],
+            resp_type=str,
+            stream=False,
+            call_params={"compaction_enabled": False},
+            mtir=None
+        );
+        summary = str(model.invoke(comp_mt_run));
+    } except Exception as e {
+        logger.warning(f"byLLM compaction: summarisation call failed — {e}. Skipping compaction.");
+        return messages;
+    }
+    summary_msg = {"role": "user", "content": f"[Compacted context summary]\n{summary}"};
+    return [messages[0], messages[1], summary_msg] + kept_tail;
+}
+
+
+"""Resolve the effective context window for this model instance.
+
+Priority: call_params["ctx_window"] > self.ctx_window > jac.toml compaction.ctx_window
+          > litellm.get_model_info() > 0 (unknown — disable threshold check).
+"""
+impl BaseLLM._get_ctx_window(call_params: dict) -> int {
+    override = int(
+        call_params.get("ctx_window")
+        or self.ctx_window
+        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+        or 0
+    );
+    if override > 0 {
+        return override;
+    }
+    return _litellm_ctx_window(self.model_name);
+}
+
+
+"""Compact mt_run.messages in-place.
+
+Resolves the `on_compaction` hook: if the caller supplied one (via call_params
+or model.call_params) it is called instead of the built-in default. Either way
+the compacted list is written back to mt_run.messages and the summary is returned.
+"""
+impl BaseLLM._compact_messages(
+    mt_run: MTRuntime,
+    keep_recent: int,
+    comp_model: str | None
+) -> str {
+    on_compaction = (
+        mt_run.call_params.get("on_compaction")
+        or self.call_params.get("on_compaction")
+    );
+    original_len = len(mt_run.messages);
+    msg_dicts = mt_run.get_msg_list();
+    if on_compaction {
+        compacted = on_compaction(msg_dicts, keep_recent);
+    } else {
+        if comp_model {
+            # User specified a different model name for compaction —
+            # create a fresh Model inheriting api_key and config (proxy, base_url)
+            # from self so routing still works.
+            model_for_compaction = Model(
+                model_name=comp_model,
+                api_key=self.api_key,
+                config=self.config,
+                call_params={"compaction_enabled": False}
+            );
+        } else {
+            # Default: shallow-copy the active model (works for Model and ModelPool).
+            # The copy shares the already-built _router for pools at zero cost.
+            model_for_compaction = _copy_for_compaction(self);
+        }
+        compacted = _default_compact(msg_dicts, keep_recent, model_for_compaction);
+    }
+    # Write the compacted list back — replace Message objects with plain dicts
+    # (get_msg_list already serialised them; dicts are accepted by get_msg_list)
+    mt_run.messages = compacted;
+    removed = original_len - len(compacted);
+    logger.info(
+        f"byLLM compaction: reduced message list from {original_len} to {len(compacted)} "
+        f"({removed} messages replaced with summary)"
+    );
+    # Extract the summary text from the injected summary message if present
+    if len(compacted) >= 3 {
+        summary_msg = compacted[2];
+        if isinstance(summary_msg, dict) {
+            content = summary_msg.get("content", "");
+            if isinstance(content, str) and content.startswith("[Compacted context summary]") {
+                return content;
+            }
+        }
+    }
+    return "";
+}
+
+
 """Construct the call parameters and return self (factory pattern).
 
 Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
@@ -92,10 +286,34 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     on_iteration = (
         mt_run.call_params.get("on_iteration") or self.call_params.get("on_iteration")
     );
+    comp_cfg = get_byllm_config().get_compaction_config();
+    comp_enabled = bool(
+        mt_run.call_params.get("compaction_enabled")
+        if mt_run.call_params.get("compaction_enabled") is not None
+        else comp_cfg.get("enabled", True)
+    );
+    comp_threshold = float(
+        mt_run.call_params.get("threshold_ratio")
+        or self.call_params.get("threshold_ratio")
+        or comp_cfg.get("threshold_ratio", 0.80)
+    );
+    comp_keep_recent = int(
+        mt_run.call_params.get("keep_recent_iterations")
+        or self.call_params.get("keep_recent_iterations")
+        or comp_cfg.get("keep_recent_iterations", 3)
+    );
+    _raw_comp_model = (
+        mt_run.call_params.get("compaction_model")
+        or self.call_params.get("compaction_model")
+        or comp_cfg.get("compaction_model")
+    );
+    comp_model: str | None = str(_raw_comp_model) if _raw_comp_model else None;
+    ctx_window = self._get_ctx_window(mt_run.call_params);
     iter_count = 0;
     last_tool = "";
     last_result = "";
     total_tokens = 0;
+    just_compacted = False;
     while True {
         iter_count += 1;
         if on_iteration and iter_count > 1 {
@@ -126,6 +344,13 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
         }
         try {
             resp = self.dispatch_no_streaming(mt_run);
+        } except litellm.exceptions.ContextWindowExceededError {
+            # Context window exceeded — compact and retry once before giving up.
+            logger.warning(
+                "byLLM compaction: context window exceeded, triggering emergency compaction."
+            );
+            self._compact_messages(mt_run, comp_keep_recent, comp_model);
+            resp = self.dispatch_no_streaming(mt_run);
         } except OutputConversionError {
             # gpt-4o returned plain text that can't be parsed — attempt recovery.
             recovery_resp = self._attempt_recovery(mt_run);
@@ -148,6 +373,35 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 if isinstance(usage, dict)
                 else getattr(usage, "total_tokens", 0)
         );
+        # Threshold-based proactive compaction: check current input size against the
+        # context window and compact before the next iteration crosses the limit.
+        if comp_enabled and ctx_window > 0 {
+            prompt_tokens = int(
+                usage.get("prompt_tokens", 0)
+                    if isinstance(usage, dict)
+                    else getattr(usage, "prompt_tokens", 0)
+            );
+            if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
+                if just_compacted {
+                    raise CompactionNotEffectiveError(
+                        f"{prompt_tokens}/{ctx_window} tokens "
+                        f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
+                        f"{comp_threshold:.0%} after compaction — provide a custom "
+                        "on_compaction hook, increase ctx_window, or switch to a model "
+                        "with a larger context window."
+                    );
+                }
+                logger.info(
+                    f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
+                    f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
+                    "Compacting message history."
+                );
+                self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                just_compacted = True;
+            } else {
+                just_compacted = False;
+            }
+        }
         if resp.tool_calls {
             # Split at first finish_tool — anything after it is discarded.
             # This normalizes history regardless of parallel/sequential mode:

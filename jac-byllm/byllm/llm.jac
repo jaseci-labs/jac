@@ -22,7 +22,8 @@ import from byllm.exceptions {
     OutputConversionError,
     RateLimitError,
     ModelNotFoundError,
-    UnknownToolError
+    UnknownToolError,
+    CompactionNotEffectiveError
 }
 import from byllm.types {
     CompletionResult,
@@ -69,6 +70,7 @@ obj BaseLLM {
         config: dict = {},
         api_key: str = "",
         call_params: dict[(str, object)] = {},
+        ctx_window: int = 0,
         _usage_history: list = [];
 
     def __call__(**kwargs: object) -> BaseLLM;
@@ -88,6 +90,8 @@ obj BaseLLM {
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
+    def _get_ctx_window(call_params: dict) -> int;
+    def _compact_messages(mt_run: MTRuntime, keep_recent: int, comp_model: str | None) -> str;
 }
 
 """Mock LLM connector that simulates responses for testing.
@@ -119,6 +123,7 @@ obj ModelPool(BaseLLM) {
     def postinit -> None;
     override def model_call_no_stream(params: dict) -> dict;
     override def model_call_with_stream(params: dict) -> Generator[str, None, None];
+    override def _get_ctx_window(call_params: dict) -> int;
 }
 
 """Primary LLM connector that abstracts LiteLLM functionality

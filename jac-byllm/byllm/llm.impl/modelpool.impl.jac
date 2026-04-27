@@ -84,6 +84,33 @@ impl ModelPool.postinit -> None {
     );
 }
 
+"""Resolve ctx_window for a ModelPool.
+
+Explicit overrides (call_params > self.ctx_window > config) take priority.
+When none are set, takes the minimum across pool members so we never
+over-fill the most constrained model in the pool.
+"""
+impl ModelPool._get_ctx_window(call_params: dict) -> int {
+    override = int(
+        call_params.get("ctx_window")
+        or self.ctx_window
+        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+        or 0
+    );
+    if override > 0 {
+        return override;
+    }
+    windows: list = [];
+    for m in self.models {
+        w = m._get_ctx_window({});
+        if w > 0 {
+            windows.append(w);
+        }
+    }
+    return min(windows) if windows else 0;
+}
+
+
 """Make a direct model call without streaming via the LiteLLM Router.
 
 For most strategies, router.completion() works synchronously. For

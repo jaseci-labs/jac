@@ -11,12 +11,25 @@ impl MockLLM.postinit -> None {
 
 Pops the next output from the configured 'outputs' list and returns it.
 Supports both regular outputs and MockToolCall objects.
+
+Each entry in 'outputs' may optionally be a (payload, usage) tuple to inject
+token-usage metadata — useful for testing threshold-based compaction:
+    outputs=[
+        (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
+        (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {})
+    ]
+Non-tuple entries behave exactly as before.
 """
 impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mt_run);
     message = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
     mt_run.add_message(message);
     output = self.config["outputs"].pop(0);  # type: ignore
+    # Unpack (payload, usage) tuple when tests need to inject usage metadata.
+    usage: dict[str, object] = {};
+    if isinstance(output, tuple) and len(output) == 2 {
+        (output, usage) = output;
+    }
     # Support batch tool calls: list[MockToolCall] → multiple ToolCalls in one response.
     if isinstance(output, list)
     and len(output) > 0
@@ -25,13 +38,13 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
         self.log_info(
             f"Mock LLM call completed with {len(tool_calls)} batch tool calls"
         );
-        return CompletionResult(output=None, tool_calls=tool_calls);
+        return CompletionResult(output=None, tool_calls=tool_calls, usage=usage);
     }
     if isinstance(output, MockToolCall) {
         self.log_info(
             f"Mock LLM call completed with tool call:\n{output.to_tool_call()}"
         );
-        return CompletionResult(output=None, tool_calls=[output.to_tool_call()],);
+        return CompletionResult(output=None, tool_calls=[output.to_tool_call()], usage=usage);
     }
     log_params = self.format_prompt(params);
     params.pop("api_key", None);
@@ -42,7 +55,7 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
             f"Mock LLM call completed with response: {output} with params: {log_params}"
         );
     }
-    return CompletionResult(output=output, tool_calls=[],);
+    return CompletionResult(output=output, tool_calls=[], usage=usage);
 }
 
 """Dispatch the mock LLM call with streaming.
