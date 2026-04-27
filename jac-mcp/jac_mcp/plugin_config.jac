@@ -86,6 +86,11 @@ class JacMcpPluginConfig {
                     "type": "string",
                     "default": ".",
                     "description": "Root directory for project-aware tools"
+                },
+                "mode": {
+                    "type": "string",
+                    "default": "full",
+                    "description": "Tool/prompt exposure mode: lite, standard, or full"
                 }
             }
         };

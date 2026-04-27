@@ -1,6 +1,8 @@
 """Generate a static shell completion script from pre-processed command data."""
+import from typing { cast }
+
 impl static_shellcode(
-    commands: list, executable: str = "jac", shell: str = "bash"
+    commands: list[dict[str, Any]], executable: str = "jac", shell: str = "bash"
 ) -> str {
     if shell == "fish" {
         return _static_fish(commands, executable);
@@ -11,7 +13,7 @@ impl static_shellcode(
     return _static_bash(commands, executable);
 }
 
-impl _static_bash(commands: list, exe: str) -> str {
+impl _static_bash(commands: list[dict[str, Any]], exe: str) -> str {
     cmd_names = " ".join(c["name"] for c in commands);
     # Build per-command value-option cases
     value_cases: list = [];
@@ -19,8 +21,10 @@ impl _static_bash(commands: list, exe: str) -> str {
         if not c["value_opts"] {
             continue;
         }
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
         prev_cases: list = [];
-        for (long, short, choices) in c["value_opts"] {
+
+        for (long, short, choices) in cast_ValueOpts {
             pattern = long;
             if short {
                 pattern += "|" + short;
@@ -40,11 +44,12 @@ impl _static_bash(commands: list, exe: str) -> str {
     # Build per-command flag/positional cases
     cmd_cases: list = [];
     for c in commands {
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
         flags = " ".join(
             flag for (long, short, _) in c["flags"]
             for flag in ([long] + ([short] if short else []))
         );
-        for (long, short, _) in c["value_opts"] {
+        for (long, short, _) in cast_ValueOpts {
             flags += " " + long;
             if short {
                 flags += " " + short;
@@ -67,7 +72,7 @@ impl _static_bash(commands: list, exe: str) -> str {
     );
 }
 
-impl _static_zsh(commands: list, exe: str) -> str {
+impl _static_zsh(commands: list[dict[str, Any]], exe: str) -> str {
     cmd_descs: list = [];
     for c in commands {
         h = c["help"].replace("'", "'\\''");
@@ -75,8 +80,10 @@ impl _static_zsh(commands: list, exe: str) -> str {
     }
     subcases: list = [];
     for c in commands {
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
+        cast_Flags = cast(list[tuple[str, str, str]], c["flags"]);
         args_lines: list = [];
-        for (long, short, helptext) in c["flags"] {
+        for (long, short, helptext) in cast_Flags {
             h = helptext.replace("'", "'\\''").replace("[", "\\[").replace("]", "\\]");
             if short {
                 args_lines.append(
@@ -92,7 +99,7 @@ impl _static_zsh(commands: list, exe: str) -> str {
                 args_lines.append("                '%s[%s]' \\" % (long, h));
             }
         }
-        for (long, short, choices) in c["value_opts"] {
+        for (long, short, choices) in cast_ValueOpts {
             vals = " ".join(choices);
             if short {
                 args_lines.append(
@@ -124,7 +131,7 @@ impl _static_zsh(commands: list, exe: str) -> str {
     return _ZSH_TEMPLATE % (exe, exe, "\n".join(cmd_descs), "\n".join(subcases), exe);
 }
 
-impl _static_fish(commands: list, exe: str) -> str {
+impl _static_fish(commands: list[dict[str, Any]], exe: str) -> str {
     lines: list = ["# Fish completions for " + exe];
     lines.append("complete -c %s -f" % exe);
     # Subcommand completions
@@ -140,8 +147,10 @@ impl _static_fish(commands: list, exe: str) -> str {
     }
     # Per-command flags
     for c in commands {
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
+        cast_Flags = cast(list[tuple[str, str, str]], c["flags"]);
         cond = "__fish_seen_subcommand_from " + c["name"];
-        for (long, short, helptext) in c["flags"] {
+        for (long, short, helptext) in cast_Flags {
             h = helptext.replace("'", "\\'");
             l = long.lstrip("-");
             parts = ["complete -c %s -n '%s' -l '%s'" % (exe, cond, l)];
@@ -151,7 +160,7 @@ impl _static_fish(commands: list, exe: str) -> str {
             parts.append("-d '%s'" % h);
             lines.append(" ".join(parts));
         }
-        for (long, short, choices) in c["value_opts"] {
+        for (long, short, choices) in cast_ValueOpts {
             l = long.lstrip("-");
             parts = ["complete -c %s -n '%s' -l '%s' -r" % (exe, cond, l)];
             if short {

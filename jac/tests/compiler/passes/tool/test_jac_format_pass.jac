@@ -518,6 +518,63 @@ test "jsx attributes and children group independently" {
     );
 }
 
+"""Regression: formatter must preserve `by <name>;` (bare genai ability
+without parentheses) — previously both `by` and `;` were stripped."""
+test "genai ability bare name preserves by and semicolon" {
+    source = "def classify(s: str) -> str by llm;\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "by" in formatted , (
+        f"`by` keyword was stripped from genai ability:\n{repr(formatted)}"
+    );
+    assert formatted.rstrip().endswith(";") , (
+        f"semicolon was stripped from genai ability:\n{repr(formatted)}"
+    );
+    assert "by llm;" in formatted , (
+        f"expected `by llm;` in formatted output, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "genai bare-name formatting is not idempotent";
+}
+
+"""Regression: formatter must preserve `by <name>()` (genai ability with
+empty parentheses) — both `by` and `()` must survive the format pass."""
+test "genai ability empty parens preserves by and parens" {
+    source = "def get_emoji(input: str) -> str by llm();\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "by llm()" in formatted , (
+        f"expected `by llm()` in formatted output, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "genai empty-parens formatting is not idempotent";
+}
+
+"""Regression: formatter must preserve `by <name>(kwargs)` (genai ability
+with keyword arguments) — the full argument list must survive the format pass."""
+test "genai ability with kwargs preserves by and arguments" {
+    source = "def get_emoji(input: str) -> str by llm(temperature=0.7, incl_info={\"examples\": emoji_examples});\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "by llm(" in formatted , (
+        f"expected `by llm(` in formatted output, got:\n{repr(formatted)}"
+    );
+    assert "temperature=0.7" in formatted , (
+        f"expected `temperature=0.7` in formatted output, got:\n{repr(formatted)}"
+    );
+    assert "incl_info=" in formatted , (
+        f"expected `incl_info=` in formatted output, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {
@@ -533,7 +590,6 @@ test "syntax error preserves original source" {
     # return formatted if no errors, else return original source
     result = gen_output if not prog.errors_had else bad_source;
     assert result == bad_source , (
-        "Formatter must return original source on syntax error, "
-        f"got: {repr(result)}"
+        "Formatter must return original source on syntax error, " f"got: {repr(result)}"
     );
 }

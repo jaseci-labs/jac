@@ -713,6 +713,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "getattr(obj, 'attr', None) should use null-safe access [getattr-to-null-ok]"
      ),
+     W3040 = _warn(
+         "W3040",
+         Category.LINT,
+         "Filter comparison '{name} == {name}' is always true — "
+         "both sides resolve to the same node field [filter-compare-tautology]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -738,7 +744,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "usestate-to-has": "W3038",
          "mutable-default": "W3036",
          "unnecessary-none-return": "W3037",
-         "getattr-to-null-ok": "W3039"
+         "getattr-to-null-ok": "W3039",
+         "filter-compare-tautology": "W3040"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

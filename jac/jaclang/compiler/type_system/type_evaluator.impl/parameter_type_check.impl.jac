@@ -1203,7 +1203,7 @@ impl TypeEvaluator._collect_type_var_bindings(
             return p.param_type;
         }
         if p.is_self {
-            return types.TypeVarType(name="Self", is_self=True);
+            return type_utils.synthesize_self_type_var();
         }
         if (
             p.is_cls
@@ -1211,7 +1211,7 @@ impl TypeEvaluator._collect_type_var_bindings(
             and self.prefetch.type_class is not None
         ) {
             synth = self.prefetch.type_class.clone_as_instance();
-            synth.private.type_args = [types.TypeVarType(name="Self", is_self=True)];
+            synth.private.type_args = [type_utils.synthesize_self_type_var()];
             return synth;
         }
         return p.param_type;
