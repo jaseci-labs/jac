@@ -7,6 +7,7 @@ import time;
 import pytest;
 import from subprocess { Popen, run }
 import from urllib.request { urlopen }
+import from urllib.error { HTTPError }
 
 import from test_helpers {
     get_env_with_npm,
@@ -86,6 +87,22 @@ test "dev mode properly proxies static assets" {
 
         content = response.read().decode("utf-8");
         assert 'asset proxy works' in content;
+    } finally {
+        _stop_running_server(server, temp_dir, original_cwd);
+    }
+}
+
+test "dev mode proxy returns 404 for missing assets" {
+    (server, dev_port, api_port, temp_dir, original_cwd) = _start_dev_server_with_assets();
+    try {
+        dev_url = f"http://localhost:{dev_port}/assets/does_not_exist.css";
+
+        try {
+            urlopen(dev_url, timeout=10);
+            pytest.fail("Expected 404 error but got 200 OK");
+        } except HTTPError as e {
+            assert e.code == 404;
+        }
     } finally {
         _stop_running_server(server, temp_dir, original_cwd);
     }
