@@ -651,6 +651,8 @@ obj MonitoringDeployer {
 
         # Datasource ConfigMap Prometheus is always ClusterIP at port 9090
         prometheus_url = f"http://{prometheus_name}-service:9090";
+        loki_name = f"{app_name}-loki";
+        loki_url = f"http://{loki_name}-service:3100";
         datasource_yaml = (
             "apiVersion: 1\n"
             "datasources:\n"
@@ -662,6 +664,16 @@ obj MonitoringDeployer {
             "    access: proxy\n"
             "    editable: true\n"
         );
+        if self.k8s_config.loki_enabled {
+            datasource_yaml = datasource_yaml + (
+                "  - name: Loki\n"
+                "    uid: loki\n"
+                "    type: loki\n"
+                f"    url: {loki_url}\n"
+                "    access: proxy\n"
+                "    editable: true\n"
+            );
+        }
         grafana_ds_configmap = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
@@ -994,6 +1006,36 @@ obj MonitoringDeployer {
             f'"legendFormat":"{{{{node}}}}","datasource":{ds}' + '}]}' ']}'
         );
 
+        lds = '{"type":"loki","uid":"loki"}';
+        logs_dashboard_json = (
+            '{"title":"Pod Logs","uid":"pod-logs",'
+            '"schemaVersion":36,"refresh":"30s","time":{"from":"now-1h","to":"now"},'
+            '"panels":['
+            '{"id":1,"type":"timeseries","title":"Log Volume (lines/min)",'
+            '"gridPos":{"x":0,"y":0,"w":24,"h":6},'
+            '"fieldConfig":{"defaults":{"unit":"short"}},'
+            f'"datasource":{lds},'
+            '"targets":[{"refId":"A",'
+            '"expr":"sum(count_over_time({namespace=~\\".+\\"}[1m])) by (namespace,pod)",'
+            f'"legendFormat":"{{{{namespace}}}}/{{{{pod}}}}","datasource":{lds}' + '}]},'
+            '{"id":2,"type":"logs","title":"All Pod Logs",'
+            '"gridPos":{"x":0,"y":6,"w":24,"h":20},'
+            f'"datasource":{lds},'
+            '"options":{"dedupStrategy":"none","showLabels":true,'
+            '"showCommonLabels":false,"wrapLogMessage":true,"sortOrder":"Descending"},'
+            '"targets":[{"refId":"A",'
+            '"expr":"{namespace=~\\".+\\"}",'
+            f'"datasource":{lds}' + '}]}]}'
+        );
+
+        dashboard_data: dict[str, str] = {'jac-scale.json': app_dashboard_json};
+        if self.k8s_config.k8s_metrics_enabled {
+            dashboard_data['k8s-metrics.json'] = k8s_dashboard_json;
+        }
+        if self.k8s_config.loki_enabled {
+            dashboard_data['pod-logs.json'] = logs_dashboard_json;
+        }
+
         grafana_dashboard_configmap = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
@@ -1002,14 +1044,7 @@ obj MonitoringDeployer {
                 'namespace': namespace,
                 'labels': {'app': grafana_name, 'managed': 'jac-scale'}
             },
-            'data': (
-                {
-                    'jac-scale.json': app_dashboard_json,
-                    'k8s-metrics.json': k8s_dashboard_json
-                }
-                    if self.k8s_config.k8s_metrics_enabled
-                    else {'jac-scale.json': app_dashboard_json}
-            )
+            'data': dashboard_data
         };
         try {
             core_v1.read_namespaced_config_map(
@@ -1195,6 +1230,454 @@ obj MonitoringDeployer {
         }
     }
 
+    """Deploy Loki as a single-process log store.
+
+    Loki is always ClusterIP — Grafana and Promtail talk to it internally.
+    Data is stored in emptyDir so it is ephemeral (suitable for dev/staging).
+    """
+    def _deploy_loki(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+        loki_name = f"{app_name}-loki";
+        loki_sa_name = f"{loki_name}-sa";
+
+        loki_config_yaml = (
+            "auth_enabled: false\n"
+            "server:\n"
+            "  http_listen_port: 3100\n"
+            "  grpc_listen_port: 9096\n"
+            "common:\n"
+            "  path_prefix: /loki\n"
+            "  storage:\n"
+            "    filesystem:\n"
+            "      chunks_directory: /loki/chunks\n"
+            "      rules_directory: /loki/rules\n"
+            "  replication_factor: 1\n"
+            "  ring:\n"
+            "    instance_addr: 127.0.0.1\n"
+            "    kvstore:\n"
+            "      store: inmemory\n"
+            "schema_config:\n"
+            "  configs:\n"
+            "    - from: 2020-10-24\n"
+            "      store: tsdb\n"
+            "      object_store: filesystem\n"
+            "      schema: v13\n"
+            "      index:\n"
+            "        prefix: index_\n"
+            "        period: 24h\n"
+            "limits_config:\n"
+            "  reject_old_samples: true\n"
+            "  reject_old_samples_max_age: 168h\n"
+        );
+        loki_configmap = {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+                'name': f"{loki_name}-config",
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'data': {'loki.yaml': loki_config_yaml}
+        };
+        try {
+            core_v1.read_namespaced_config_map(
+                name=f"{loki_name}-config", namespace=namespace
+            );
+            core_v1.replace_namespaced_config_map(
+                name=f"{loki_name}-config", namespace=namespace, body=loki_configmap
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=loki_configmap
+                );
+            } else {
+                raise;
+            }
+        }
+
+        loki_sa = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': loki_sa_name,
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'automountServiceAccountToken': False
+        };
+        try {
+            core_v1.read_namespaced_service_account(
+                name=loki_sa_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=loki_sa
+                );
+            } else {
+                raise;
+            }
+        }
+
+        loki_deployment = {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': loki_name,
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': loki_name}},
+                'template': {
+                    'metadata': {'labels': {'app': loki_name}},
+                    'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': loki_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'containers': [
+                            {
+                                'name': 'loki',
+                                'image': 'grafana/loki:3.4.2',
+                                'securityContext': {
+                                    'runAsNonRoot': True,
+                                    'runAsUser': 10001,
+                                    'readOnlyRootFilesystem': True,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']}
+                                },
+                                'args': ['-config.file=/etc/loki/loki.yaml'],
+                                'ports': [{'containerPort': 3100, 'name': 'http'}],
+                                'readinessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3100},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'livenessProbe': {
+                                    'httpGet': {'path': '/ready', 'port': 3100},
+                                    'initialDelaySeconds': 15,
+                                    'timeoutSeconds': 5
+                                },
+                                'volumeMounts': [
+                                    {
+                                        'name': 'loki-config-vol',
+                                        'mountPath': '/etc/loki'
+                                    },
+                                    {'name': 'loki-data', 'mountPath': '/loki'},
+                                    {'name': 'tmp', 'mountPath': '/tmp'}
+                                ]
+                            }
+                        ],
+                        'volumes': [
+                            {
+                                'name': 'loki-config-vol',
+                                'configMap': {'name': f"{loki_name}-config"}
+                            },
+                            {'name': 'loki-data', 'emptyDir': {}},
+                            {'name': 'tmp', 'emptyDir': {}}
+                        ]
+                    }
+                }
+            }
+        };
+        try {
+            apps_v1.patch_namespaced_deployment(
+                name=loki_name, namespace=namespace, body=loki_deployment
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                apps_v1.create_namespaced_deployment(
+                    namespace=namespace, body=loki_deployment
+                );
+            } else {
+                raise;
+            }
+        }
+
+        loki_service = {
+            'apiVersion': 'v1',
+            'kind': 'Service',
+            'metadata': {
+                'name': f"{loki_name}-service",
+                'namespace': namespace,
+                'labels': {'app': loki_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'type': 'ClusterIP',
+                'selector': {'app': loki_name},
+                'ports': [{'protocol': 'TCP', 'port': 3100, 'targetPort': 3100}]
+            }
+        };
+        try {
+            core_v1.read_namespaced_service(
+                name=f"{loki_name}-service", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=loki_service
+                );
+            } else {
+                raise;
+            }
+        }
+
+        if self.logger {
+            self.logger.info(f"Loki deployed for '{app_name}'");
+        }
+    }
+
+    """Deploy Promtail as a DaemonSet to tail pod logs and ship them to Loki.
+
+    Promtail uses Kubernetes SD to discover pods, reads logs from /var/log/pods
+    on each node, and forwards them to the Loki ClusterIP service.
+    """
+    def _deploy_promtail(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+        loki_name = f"{app_name}-loki";
+        promtail_name = f"{app_name}-promtail";
+        promtail_sa_name = f"{promtail_name}-sa";
+        cluster_role_name = f"{namespace}-{promtail_name}";
+        cluster_role_binding_name = f"{namespace}-{promtail_name}";
+        rbac_v1 = client.RbacAuthorizationV1Api();
+        loki_push_url = f"http://{loki_name}-service:3100/loki/api/v1/push";
+
+        promtail_config_yaml = (
+            "server:\n"
+            "  http_listen_port: 9080\n"
+            "  grpc_listen_port: 0\n"
+            "positions:\n"
+            "  filename: /run/promtail/positions.yaml\n"
+            "clients:\n"
+            f"  - url: {loki_push_url}\n"
+            "scrape_configs:\n"
+            "  - job_name: kubernetes-pods\n"
+            "    kubernetes_sd_configs:\n"
+            "      - role: pod\n"
+            "    pipeline_stages:\n"
+            "      - cri: {}\n"
+            "    relabel_configs:\n"
+            "      - source_labels: [__meta_kubernetes_pod_node_name]\n"
+            "        target_label: __host__\n"
+            "      - action: labelmap\n"
+            "        regex: __meta_kubernetes_pod_label_(.+)\n"
+            "      - source_labels: [__meta_kubernetes_namespace]\n"
+            "        target_label: namespace\n"
+            "      - source_labels: [__meta_kubernetes_pod_name]\n"
+            "        target_label: pod\n"
+            "      - source_labels: [__meta_kubernetes_pod_container_name]\n"
+            "        target_label: container\n"
+            "      - action: replace\n"
+            "        separator: /\n"
+            "        source_labels:\n"
+            "          - __meta_kubernetes_pod_uid\n"
+            "          - __meta_kubernetes_pod_container_name\n"
+            "        target_label: __path__\n"
+            "        replacement: /var/log/pods/*$1/*.log\n"
+        );
+        promtail_configmap = {
+            'apiVersion': 'v1',
+            'kind': 'ConfigMap',
+            'metadata': {
+                'name': f"{promtail_name}-config",
+                'namespace': namespace,
+                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+            },
+            'data': {'promtail.yaml': promtail_config_yaml}
+        };
+        try {
+            core_v1.read_namespaced_config_map(
+                name=f"{promtail_name}-config", namespace=namespace
+            );
+            core_v1.replace_namespaced_config_map(
+                name=f"{promtail_name}-config",
+                namespace=namespace,
+                body=promtail_configmap
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_config_map(
+                    namespace=namespace, body=promtail_configmap
+                );
+            } else {
+                raise;
+            }
+        }
+
+        promtail_sa = {
+            'apiVersion': 'v1',
+            'kind': 'ServiceAccount',
+            'metadata': {
+                'name': promtail_sa_name,
+                'namespace': namespace,
+                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+            }
+        };
+        try {
+            core_v1.read_namespaced_service_account(
+                name=promtail_sa_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service_account(
+                    namespace=namespace, body=promtail_sa
+                );
+            } else {
+                raise;
+            }
+        }
+
+        cluster_role_body = {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRole',
+            'metadata': {
+                'name': cluster_role_name,
+                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+            },
+            'rules': [
+                {
+                    'apiGroups': [''],
+                    'resources': [
+                        'nodes',
+                        'nodes/proxy',
+                        'pods',
+                        'namespaces',
+                        'services',
+                        'endpoints'
+                    ],
+                    'verbs': ['get', 'watch', 'list']
+                }
+            ]
+        };
+        try {
+            rbac_v1.read_cluster_role(name=cluster_role_name);
+        } except ApiException as e {
+            if e.status == 404 {
+                rbac_v1.create_cluster_role(body=cluster_role_body);
+            } else {
+                raise;
+            }
+        }
+
+        crb_body = {
+            'apiVersion': 'rbac.authorization.k8s.io/v1',
+            'kind': 'ClusterRoleBinding',
+            'metadata': {
+                'name': cluster_role_binding_name,
+                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+            },
+            'roleRef': {
+                'apiGroup': 'rbac.authorization.k8s.io',
+                'kind': 'ClusterRole',
+                'name': cluster_role_name
+            },
+            'subjects': [
+                {
+                    'kind': 'ServiceAccount',
+                    'name': promtail_sa_name,
+                    'namespace': namespace
+                }
+            ]
+        };
+        try {
+            rbac_v1.read_cluster_role_binding(name=cluster_role_binding_name);
+        } except ApiException as e {
+            if e.status == 404 {
+                rbac_v1.create_cluster_role_binding(body=crb_body);
+            } else {
+                raise;
+            }
+        }
+
+        promtail_daemonset = {
+            'apiVersion': 'apps/v1',
+            'kind': 'DaemonSet',
+            'metadata': {
+                'name': promtail_name,
+                'namespace': namespace,
+                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'selector': {'matchLabels': {'app': promtail_name}},
+                'template': {
+                    'metadata': {
+                        'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+                    },
+                    'spec': {
+                        'automountServiceAccountToken': True,
+                        'serviceAccountName': promtail_sa_name,
+                        'tolerations': [{'operator': 'Exists', 'effect': 'NoSchedule'}],
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'containers': [
+                            {
+                                'name': 'promtail',
+                                'image': 'grafana/promtail:3.4.2',
+                                'securityContext': {
+                                    'runAsUser': 0,
+                                    'allowPrivilegeEscalation': False,
+                                    'capabilities': {'drop': ['ALL']}
+                                },
+                                'args': ['-config.file=/etc/promtail/promtail.yaml'],
+                                'ports': [{'containerPort': 9080, 'name': 'http'}],
+                                'volumeMounts': [
+                                    {
+                                        'name': 'promtail-config-vol',
+                                        'mountPath': '/etc/promtail'
+                                    },
+                                    {
+                                        'name': 'varlogpods',
+                                        'mountPath': '/var/log/pods',
+                                        'readOnly': True
+                                    },
+                                    {
+                                        'name': 'varlogcontainers',
+                                        'mountPath': '/var/lib/docker/containers',
+                                        'readOnly': True
+                                    },
+                                    {'name': 'positions', 'mountPath': '/run/promtail'}
+                                ]
+                            }
+                        ],
+                        'volumes': [
+                            {
+                                'name': 'promtail-config-vol',
+                                'configMap': {'name': f"{promtail_name}-config"}
+                            },
+                            {
+                                'name': 'varlogpods',
+                                'hostPath': {'path': '/var/log/pods'}
+                            },
+                            {
+                                'name': 'varlogcontainers',
+                                'hostPath': {'path': '/var/lib/docker/containers'}
+                            },
+                            {'name': 'positions', 'emptyDir': {}}
+                        ]
+                    }
+                }
+            }
+        };
+        try {
+            apps_v1.read_namespaced_daemon_set(name=promtail_name, namespace=namespace);
+        } except ApiException as e {
+            if e.status == 404 {
+                apps_v1.create_namespaced_daemon_set(
+                    namespace=namespace, body=promtail_daemonset
+                );
+            } else {
+                raise;
+            }
+        }
+
+        if self.logger {
+            self.logger.info(f"Promtail deployed for '{app_name}'");
+        }
+    }
+
     """Deploy the full monitoring stack (Prometheus, kube-state-metrics, node-exporter, Grafana) for an app namespace."""
     def deploy(
         app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
@@ -1208,15 +1691,21 @@ obj MonitoringDeployer {
             self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
         }
         self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, cluster_env);
+        if self.k8s_config.loki_enabled {
+            self._deploy_loki(app_name, namespace, apps_v1, core_v1);
+            self._deploy_promtail(app_name, namespace, apps_v1, core_v1);
+        }
         self._deploy_grafana(app_name, namespace, apps_v1, core_v1, cluster_env);
     }
 
-    """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter."""
+    """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter, Loki, Promtail."""
     def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         prometheus_name = f"{app_name}-prometheus";
         grafana_name = f"{app_name}-grafana";
         ksm_name = f"{app_name}-kube-state-metrics";
         ne_name = f"{app_name}-node-exporter";
+        loki_name = f"{app_name}-loki";
+        promtail_name = f"{app_name}-promtail";
         cluster_role_name = f"{namespace}-{ksm_name}";
         cluster_role_binding_name = f"{namespace}-{ksm_name}";
 
@@ -1292,6 +1781,79 @@ obj MonitoringDeployer {
             namespace,
             'Service'
         );
+
+        # Loki resources
+        delete_if_exists(
+            apps_v1.delete_namespaced_deployment, loki_name, namespace, 'Deployment'
+        );
+        delete_if_exists(
+            core_v1.delete_namespaced_service,
+            f"{loki_name}-service",
+            namespace,
+            'Service'
+        );
+        try {
+            core_v1.delete_namespaced_config_map(
+                name=f"{loki_name}-config", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_service_account(
+                name=f"{loki_name}-sa", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Promtail resources
+        try {
+            apps_v1.delete_namespaced_daemon_set(
+                name=promtail_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_config_map(
+                name=f"{promtail_name}-config", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            core_v1.delete_namespaced_service_account(
+                name=f"{promtail_name}-sa", namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        promtail_cr_name = f"{namespace}-{promtail_name}";
+        try {
+            rbac_v1.delete_cluster_role(name=promtail_cr_name);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+        try {
+            rbac_v1.delete_cluster_role_binding(name=promtail_cr_name);
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
 
         # Grafana resources
         delete_if_exists(
