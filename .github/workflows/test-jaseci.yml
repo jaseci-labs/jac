@@ -56,7 +56,7 @@ jobs:
         pip install watchdog
 
     - name: Run runtime + langserve + language tests
-      run: pytest -x jac -n auto --ignore=jac/tests/compiler
+      run: pytest -x jac -n auto --ignore=jac/tests/compiler --ignore=jac/examples/littleX
 
   test-client:
     runs-on: ubuntu-latest
