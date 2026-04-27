@@ -1065,6 +1065,145 @@ test "in-place mutations on list and dict are persisted via hash-based dirty che
     }
 }
 
+"""Verify that put_partial touches only the mutated field's dot-path in MongoDB."""
+test "partial update only writes mutated fields — unmodified fields survive in MongoDB" {
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
+    }
+
+    _reset_mongo();
+    (mongo_client, mongo_uri) = _get_mongo();
+    os.environ["MONGODB_URI"] = mongo_uri;
+
+    env_backup = {};
+    if "REDIS_URL" in os.environ {
+        env_backup["REDIS_URL"] = os.environ["REDIS_URL"];
+        del os.environ["REDIS_URL"];
+    }
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server: subprocess.Popen = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
+
+    try {
+        token = register_user(base_url, "sentinel_tester");
+        post_request(base_url, "/walker/CreateItem", {"id": 42}, token);
+
+        db = mongo_client["jac_db"];
+        collection = db["_anchors"];
+
+        item_doc = collection.find_one({"arch_type": "Item"});
+        assert item_doc is not None , "Item not found in MongoDB after creation";
+        item_id = item_doc["_id"];
+
+        # Inject a sentinel key directly into the metadata sub-document.
+        # A full $set would wipe it; a targeted $set on data.archetype.tags must not.
+        collection.update_one(
+            {"_id": item_id},
+            {"$set": {"data.archetype.metadata.__sentinel__": "PRESERVED"}}
+        );
+        sentinel_check = collection.find_one({"_id": item_id});
+        assert sentinel_check["data"]["archetype"]["metadata"].get("__sentinel__") == "PRESERVED" , (
+            "Sentinel injection failed"
+        );
+
+        # Mutate only tags (in-place list.append — no __setattr__ signal,
+        # goes through field-hash fallback → put_partial on data.archetype.tags only).
+        post_request(base_url, "/walker/AppendTag", {"id": 42, "tag": "urgent"}, token);
+
+        doc = collection.find_one({"_id": item_id});
+        assert "urgent" in doc["data"]["archetype"]["tags"] , (
+            "tags mutation was not persisted to MongoDB"
+        );
+        assert doc["data"]["archetype"]["metadata"].get("__sentinel__") == "PRESERVED" , (
+            "put_partial overwrote metadata — a full $set was issued instead of a partial one"
+        );
+    } finally {
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.wait(timeout=2);
+        }
+        for (key, value) in env_backup.items() {
+            os.environ[key] = value;
+        }
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
+    }
+}
+
+
+test "mixed direct and in-place mutations in one request both persist after restart" {
+    data_dir = FIXTURES_DIR / ".jac" / "data";
+    if data_dir.exists() {
+        import shutil;
+        shutil.rmtree(data_dir);
+    }
+
+    _reset_mongo();
+    (_, mongo_uri) = _get_mongo();
+    os.environ["MONGODB_URI"] = mongo_uri;
+
+    env_backup = {};
+    if "REDIS_URL" in os.environ {
+        env_backup["REDIS_URL"] = os.environ["REDIS_URL"];
+        del os.environ["REDIS_URL"];
+    }
+
+    port = get_free_port();
+    base_url = f"http://localhost:{port}";
+    server: subprocess.Popen = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
+
+    try {
+        token = register_user(base_url, "mixed_tester");
+        post_request(base_url, "/walker/CreateItem", {"id": 7}, token);
+
+        # MixedMutate does: here.completed = True  (direct → __setattr__ tracks it)
+        #                   here.tags.append(tag)  (in-place → only field-hash catches it)
+        result = post_request(
+            base_url, "/walker/MixedMutate", {"id": 7, "tag": "mixed"}, token
+        );
+        item = result["reports"][0];
+        assert item["completed"] == True , "completed not set in response";
+        assert "mixed" in item["tags"] , "tag not in response";
+
+        # Restart with no Redis — forces cold reload from MongoDB only.
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.wait(timeout=2);
+        }
+        server = start_server(FIXTURES_DIR, MUTATION_JAC_FILE, port);
+
+        result = post_request(base_url, "/walker/GetItems", {}, token);
+        items = result["reports"][0];
+        assert len(items) == 1 , f"Expected 1 item after restart, got {len(items)}";
+        item = items[0];
+        assert item["completed"] == True , (
+            "completed=True (direct assignment) was not persisted after restart"
+        );
+        assert "mixed" in item["tags"] , (
+            "tags.append (in-place mutation) was not persisted after restart — "
+            "combined dirty detection failed for mixed mutations"
+        );
+    } finally {
+        server.terminate();
+        with contextlib.suppress(Exception) {
+            server.wait(timeout=2);
+        }
+        for (key, value) in env_backup.items() {
+            os.environ[key] = value;
+        }
+        if data_dir.exists() {
+            import shutil;
+            shutil.rmtree(data_dir);
+        }
+    }
+}
+
+
 test "concurrent requests do not lose edges" {
     if not JAC_FILE.exists() {
         raise FileNotFoundError(f"Missing Jac file: {JAC_FILE}");

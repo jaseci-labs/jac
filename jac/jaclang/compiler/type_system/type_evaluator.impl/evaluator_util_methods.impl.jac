@@ -180,11 +180,33 @@ Get member type and specialize it with class type_args. (Pyright: getTypeOfMembe
 
 This is the proper way to get a member's type from a specialized generic class.
 Instead of getting raw type then manually specializing, this does it in one place.
+
+For `__new__`-style methods (cls-first param without the ClassMethod flag) and
+staticmethods, `Self` binding is deferred to the call site so it can be solved
+from the receiver argument — `object.__new__(self.__class__)` must resolve
+`Self -> type(self.__class__)`, not the lookup-time class.
 """
 impl TypeEvaluator.get_type_of_member(
     member: Any, class_type: types.ClassType
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
+    if isinstance(raw_type, types.FunctionType) {
+        params = raw_type.parameters or [];
+        is_static_cls = (
+            len(params) >= 1
+            and params[0].is_cls
+            and not (raw_type.function_flags & types.FunctionTypeFlags.ClassMethod)
+        );
+        is_static = bool(
+            raw_type.function_flags & types.FunctionTypeFlags.StaticMethod
+        );
+        if is_static_cls or is_static {
+            # class_type=None keeps the is_self shortcut inert so Self stays
+            # symbolic for the call-site binder.
+            solution = type_utils.build_type_var_solution(class_type);
+            return type_utils.apply_solved_type_vars(raw_type, solution);
+        }
+    }
     return self.specialize_member_type(raw_type, class_type);
 }
 
@@ -1095,7 +1117,7 @@ impl TypeEvaluator._get_special_form_type(
 
         case "Self":
             # Pyright: createSelfType (line 21227-21228) - returns TypeVarType for Self
-            return types.TypeVarType(name="Self", is_self=True);
+            return type_utils.synthesize_self_type_var();
 
         # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
         # Requires _create_literal_type() method to parse type args into literal ClassTypes.
@@ -1132,7 +1154,7 @@ impl TypeEvaluator.create_self_type(
     }
     # Check if it's a _SpecialForm
     if symbol_type.shared == self.prefetch.callable_class.shared {
-        return types.TypeVarType(name="Self", is_self=True);
+        return type_utils.synthesize_self_type_var();
     }
     return None;
 }
