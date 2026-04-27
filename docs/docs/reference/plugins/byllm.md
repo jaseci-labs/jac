@@ -552,7 +552,7 @@ Parameters passed to `by llm()` at call time:
 | `compaction_enabled` | bool | Enable/disable auto-compaction for this call. Overrides `[plugins.byllm.compaction] enabled`. Default: `True` |
 | `threshold_ratio` | float | Fraction of the context window at which compaction triggers. Default: `0.80` |
 | `keep_recent_iterations` | int | Number of most-recent tool-call rounds to preserve verbatim; older rounds are summarised. Default: `3` |
-| `ctx_window` | int | Context window size override in tokens. Highest priority — overrides `Model.ctx_window`, `jac.toml`, and LiteLLM auto-detect. `0` = use lower-priority source |
+| `ctx_window` | int | Context window size override in tokens. Highest priority - overrides `Model.ctx_window`, `jac.toml`, and LiteLLM auto-detect. `0` = use lower-priority source |
 | `compaction_model` | str | Model name to use for the summarisation call. Empty string / omitted = copy of the active model |
 | `on_compaction` | callable | Hook called instead of built-in summarisation. Signature: `(messages: list, keep_recent: int) -> list`. Must return the compacted message list |
 
@@ -879,7 +879,7 @@ After every LLM response byLLM compares `prompt_tokens / ctx_window` against a t
 3. The system message and original user task (`messages[0]` and `messages[1]`) are always preserved verbatim.
 4. The most-recent `keep_recent_iterations` tool-call rounds are also kept verbatim for immediate context.
 
-The summarisation call goes through the full byLLM stack — it inherits telemetry, prompt caching, and proxy configuration from the active model.
+The summarisation call goes through the full byLLM stack - it inherits telemetry, prompt caching, and proxy configuration from the active model.
 
 A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up.
 
@@ -890,15 +890,15 @@ byLLM resolves the effective context window for each model in priority order:
 1. `ctx_window` passed in `by llm(ctx_window=N)` call params *(highest)*
 2. `ctx_window` field on the `Model` object
 3. `[plugins.byllm.compaction] ctx_window` in `jac.toml`
-4. LiteLLM model registry (`litellm.get_model_info()`) — covers 100+ providers automatically
-5. `0` — unknown; threshold check is disabled, only the emergency exception path remains *(lowest)*
+4. LiteLLM model registry (`litellm.get_model_info()`) - covers 100+ providers automatically
+5. `0` - unknown; threshold check is disabled, only the emergency exception path remains *(lowest)*
 
-For **`ModelPool`**, when no explicit override is set, the effective window is `min(ctx_window for each member)` — the most conservative value in the pool.
+For **`ModelPool`**, when no explicit override is set, the effective window is `min(ctx_window for each member)` - the most conservative value in the pool.
 
 ### Per-call and per-object override
 
 ```jac
-# Per-call — highest priority
+# Per-call - highest priority
 def my_agent(query: str) -> str by llm(
     tools=[search, compute],
     ctx_window=128000,
@@ -909,7 +909,7 @@ def my_agent(query: str) -> str by llm(
     on_compaction=my_hook
 );
 
-# Per-object — applied to every call on this model instance
+# Per-object - applied to every call on this model instance
 glob llm = Model(model_name="gpt-4o", ctx_window=128000);
 ```
 
@@ -919,7 +919,7 @@ Replace the built-in summarisation with your own logic by passing `on_compaction
 
 ```jac
 def my_compactor(messages: list, keep_recent: int) -> list {
-    # messages[0] = system, messages[1] = original user task — always preserve
+    # messages[0] = system, messages[1] = original user task - always preserve
     # messages[2:] = tool-call history to summarise
     summary = my_domain_summariser(messages[2:]);
     summary_msg = {"role": "user", "content": f"[Summary] {summary}"};
@@ -932,14 +932,14 @@ def my_agent(query: str) -> str by llm(
 );
 ```
 
-When `on_compaction` is set the built-in summarisation call is skipped entirely — the hook's return value becomes the new message history.
+When `on_compaction` is set the built-in summarisation call is skipped entirely - the hook's return value becomes the new message history.
 
 ### Using a separate model for compaction
 
 By default byLLM reuses a copy of the active model for the summarisation call, inheriting its `api_key` and `base_url`. Set `compaction_model` to use a cheaper or faster model instead:
 
 ```jac
-# In jac.toml — applies globally
+# In jac.toml - applies globally
 # [plugins.byllm.compaction]
 # compaction_model = "ollama/llama3.2:1b"
 
@@ -952,7 +952,7 @@ def my_agent(query: str) -> str by llm(
 
 ### `CompactionNotEffectiveError`
 
-If the threshold fires on two consecutive iterations with a compaction between them — meaning the summarisation produced no meaningful reduction — byLLM raises `CompactionNotEffectiveError` rather than looping forever. See [Error Handling](#error-handling) for how to catch it.
+If the threshold fires on two consecutive iterations with a compaction between them - meaning the summarisation produced no meaningful reduction - byLLM raises `CompactionNotEffectiveError` rather than looping forever. See [Error Handling](#error-handling) for how to catch it.
 
 ---
 
@@ -1631,15 +1631,15 @@ glob llm = MockLLM(
     model_name="mockllm",
     ctx_window=1000,
     config={"outputs": [
-        # (tool_call, usage) — triggers compaction at 85 % of 1000 tokens
+        # (tool_call, usage) - triggers compaction at 85 % of 1000 tokens
         (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
-        # plain entry — no usage injection, loop exits via finish_tool
+        # plain entry - no usage injection, loop exits via finish_tool
         MockToolCall(tool=finish_tool, args={"final_output": "done"})
     ]}
 );
 ```
 
-Non-tuple entries behave exactly as before — usage defaults to `{}`.
+Non-tuple entries behave exactly as before - usage defaults to `{}`.
 
 ---
 
