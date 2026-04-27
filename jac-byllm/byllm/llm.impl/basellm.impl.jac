@@ -98,11 +98,7 @@ a copy of the active model (default) or a user-specified compaction model.
 It must already have compaction_enabled=False in its call_params to prevent
 recursion.
 """
-def _default_compact(
-    messages: list,
-    keep_recent: int,
-    model: BaseLLM
-) -> list {
+def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
     # Need at least: system + user + 1 assistant + something to compact
     if len(messages) < 4 {
         return messages;
@@ -113,7 +109,7 @@ def _default_compact(
     i = len(messages) - 1;
     while i >= 2 and assistant_rounds < keep_recent {
         msg = messages[i];
-        role = msg.get("role") if isinstance(msg, dict) else getattr(msg, "role", None);
+        role = msg.get("role") if isinstance(msg, dict) else msg?.role;
         if str(role) == "assistant" {
             assistant_rounds += 1;
         }
@@ -146,8 +142,7 @@ def _default_compact(
     summary_prompt = (
         "Summarise the following agent tool-call history concisely. "
         "Preserve key findings, decisions, and intermediate results that "
-        "may be needed to complete the ongoing task. Output plain text only.\n\n"
-        + history_text
+        "may be needed to complete the ongoing task. Output plain text only.\n\n" + history_text
     );
     try {
         # Single no-tools invocation through the full byLLM stack -
@@ -157,8 +152,10 @@ def _default_compact(
         # can safely index messages[0] and messages[1].
         comp_mt_run = MTRuntime(
             messages=[
-                Message(role=MessageRole.SYSTEM, content="You are a concise summariser."),
-                Message(role=MessageRole.USER,   content=summary_prompt)
+                Message(
+                    role=MessageRole.SYSTEM, content="You are a concise summariser."
+                ),
+                Message(role=MessageRole.USER, content=summary_prompt)
             ],
             tools=[],
             resp_type=str,
@@ -168,10 +165,15 @@ def _default_compact(
         );
         summary = str(model.invoke(comp_mt_run));
     } except Exception as e {
-        logger.warning(f"byLLM compaction: summarisation call failed - {e}. Skipping compaction.");
+        logger.warning(
+            f"byLLM compaction: summarisation call failed - {e}. Skipping compaction."
+        );
         return messages;
     }
-    summary_msg = {"role": "user", "content": f"[Compacted context summary]\n{summary}"};
+    summary_msg = {
+        "role": "user",
+        "content": f"[Compacted context summary]\n{summary}"
+    };
     return [messages[0], messages[1], summary_msg] + kept_tail;
 }
 
@@ -202,13 +204,10 @@ or model.call_params) it is called instead of the built-in default. Either way
 the compacted list is written back to mt_run.messages and the summary is returned.
 """
 impl BaseLLM._compact_messages(
-    mt_run: MTRuntime,
-    keep_recent: int,
-    comp_model: str | None
+    mt_run: MTRuntime, keep_recent: int, comp_model: str | None
 ) -> str {
     on_compaction = (
-        mt_run.call_params.get("on_compaction")
-        or self.call_params.get("on_compaction")
+        mt_run.call_params.get("on_compaction") or self.call_params.get("on_compaction")
     );
     original_len = len(mt_run.messages);
     msg_dicts = mt_run.get_msg_list();
@@ -237,7 +236,9 @@ impl BaseLLM._compact_messages(
     mt_run.messages = compacted;
     removed = original_len - len(compacted);
     logger.info(
-        f"byLLM compaction: reduced message list from {original_len} to {len(compacted)} "
+        f"byLLM compaction: reduced message list from {original_len} to {len(
+            compacted
+        )} "
         f"({removed} messages replaced with summary)"
     );
     # Extract the summary text from the injected summary message if present
@@ -245,7 +246,8 @@ impl BaseLLM._compact_messages(
         summary_msg = compacted[2];
         if isinstance(summary_msg, dict) {
             content = summary_msg.get("content", "");
-            if isinstance(content, str) and content.startswith("[Compacted context summary]") {
+            if isinstance(content, str)
+            and content.startswith("[Compacted context summary]") {
                 return content;
             }
         }
@@ -289,8 +291,8 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     comp_cfg = get_byllm_config().get_compaction_config();
     comp_enabled = bool(
         mt_run.call_params.get("compaction_enabled")
-        if mt_run.call_params.get("compaction_enabled") is not None
-        else comp_cfg.get("enabled", True)
+            if mt_run.call_params.get("compaction_enabled") is not None
+            else comp_cfg.get("enabled", True)
     );
     comp_threshold = float(
         mt_run.call_params.get("threshold_ratio")
@@ -379,7 +381,7 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             prompt_tokens = int(
                 usage.get("prompt_tokens", 0)
                     if isinstance(usage, dict)
-                    else getattr(usage, "prompt_tokens", 0)
+                    else usage?.prompt_tokens or 0
             );
             if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
                 if just_compacted {

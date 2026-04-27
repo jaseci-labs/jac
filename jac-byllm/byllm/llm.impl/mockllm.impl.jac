@@ -44,7 +44,9 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
         self.log_info(
             f"Mock LLM call completed with tool call:\n{output.to_tool_call()}"
         );
-        return CompletionResult(output=None, tool_calls=[output.to_tool_call()], usage=usage);
+        return CompletionResult(
+            output=None, tool_calls=[output.to_tool_call()], usage=usage
+        );
     }
     log_params = self.format_prompt(params);
     params.pop("api_key", None);

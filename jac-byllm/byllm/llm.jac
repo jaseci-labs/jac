@@ -91,7 +91,9 @@ obj BaseLLM {
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
     def _get_ctx_window(call_params: dict) -> int;
-    def _compact_messages(mt_run: MTRuntime, keep_recent: int, comp_model: str | None) -> str;
+    def _compact_messages(
+        mt_run: MTRuntime, keep_recent: int, comp_model: str | None
+    ) -> str;
 }
 
 """Mock LLM connector that simulates responses for testing.
