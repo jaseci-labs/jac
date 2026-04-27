@@ -3,9 +3,9 @@
 import from typing { Any }
 import re;
 
-"""Return list of available tools with schemas."""
+"""Return list of available tools with schemas, filtered by active mode."""
 impl ToolProvider.list_tools -> list[dict[str, Any]] {
-    return [
+    all_tools: list[dict[str, Any]] = [
         {
             "name": "validate_jac",
             "description": "Validate Jac code with full type checking. Returns structured errors and warnings.",
@@ -331,6 +331,17 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
             }
         },
 
+    ];
+
+    import from jac_mcp.mode { get_mcp_mode, disabled_tools_for_mode }
+    disabled = disabled_tools_for_mode(get_mcp_mode());
+    if not disabled {
+        return all_tools;
+    }
+    return [
+        t
+        for t in all_tools
+        if t["name"] not in disabled
     ];
 }
 
