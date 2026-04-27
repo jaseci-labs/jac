@@ -135,6 +135,7 @@ obj Archetype {
 
     def __init_subclass__(cls: Any, **kwargs: object) -> None;
     def __setattr__(name: str, value: Any) -> None;
+    def postinit -> None;
     def __repr__ -> str;
     def __jac_access__ -> (AccessLevel | str | int | None);
 }
