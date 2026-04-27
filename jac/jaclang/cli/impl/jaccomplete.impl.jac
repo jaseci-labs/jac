@@ -21,6 +21,7 @@ impl _static_bash(commands: list[dict[str, Any]], exe: str) -> str {
         if not c["value_opts"] {
             continue;
         }
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
         prev_cases: list = [];
 
         for (long, short, choices) in cast_ValueOpts {
@@ -43,6 +44,7 @@ impl _static_bash(commands: list[dict[str, Any]], exe: str) -> str {
     # Build per-command flag/positional cases
     cmd_cases: list = [];
     for c in commands {
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
         flags = " ".join(
             flag for (long, short, _) in c["flags"]
             for flag in ([long] + ([short] if short else []))
@@ -78,6 +80,8 @@ impl _static_zsh(commands: list[dict[str, Any]], exe: str) -> str {
     }
     subcases: list = [];
     for c in commands {
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
+        cast_Flags = cast(list[tuple[str, str, str]], c["flags"]);
         args_lines: list = [];
         for (long, short, helptext) in cast_Flags {
             h = helptext.replace("'", "'\\''").replace("[", "\\[").replace("]", "\\]");
@@ -143,6 +147,8 @@ impl _static_fish(commands: list[dict[str, Any]], exe: str) -> str {
     }
     # Per-command flags
     for c in commands {
+        cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]);
+        cast_Flags = cast(list[tuple[str, str, str]], c["flags"]);
         cond = "__fish_seen_subcommand_from " + c["name"];
         for (long, short, helptext) in cast_Flags {
             h = helptext.replace("'", "\\'");
