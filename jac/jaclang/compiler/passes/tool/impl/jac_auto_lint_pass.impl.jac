@@ -1979,6 +1979,36 @@ impl JacAutoLintPass._check_is_with_literal(nd: uni.CompareExpr) -> None {
     }
 }
 
+"""W3040: Warn when a filter comparison has identical LHS and RHS names.
+
+In a filter expression like [?:Type, field == field], the LHS is resolved
+as a node field and the RHS — intended to reference an enclosing-scope
+variable — silently rebinds to the same node field, making the comparison
+a tautology (always true).
+"""
+impl JacAutoLintPass._check_filter_compare_tautology(nd: uni.CompareExpr) -> None {
+    import from jaclang.jac0core.diagnostics { W3040 }
+    if self._is_suppressed(W3040) {
+        return;
+    }
+    # Only applies inside a FilterCompr context
+    if not nd.find_parent_of_type(uni.FilterCompr) {
+        return;
+    }
+    left = nd.left;
+    for (i, right) in enumerate(nd.rights) {
+        if (
+            isinstance(left, uni.Name)
+            and isinstance(right, uni.Name)
+            and left.value == right.value
+        ) {
+            self.emit(W3040, node_override=nd, name=left.value);
+        }
+        # For chained comparisons, next left is the current right
+        left = right;
+    }
+}
+
 """W3036: Warn on mutable default argument (list, dict, set)."""
 impl JacAutoLintPass._check_mutable_default(nd: uni.ParamVar) -> None {
     if self._is_suppressed(W3036) {
@@ -2024,6 +2054,7 @@ impl JacAutoLintPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         return;
     }
     self._check_is_with_literal(nd);
+    self._check_filter_compare_tautology(nd);
 }
 
 """Visitor: check function signatures for too many params."""
