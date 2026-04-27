@@ -42,7 +42,7 @@ test "topology_index_data survives Serializer round-trip" {
         ctx = ExecutionContext();
         JacRuntime.set_context(ctx);
 
-        r = root();
+        r = root;
         Jac.save(r);
 
         for i in range(5) {
@@ -103,7 +103,7 @@ test "topology index resolve_chain works after Serializer round-trip" {
         ctx = ExecutionContext();
         JacRuntime.set_context(ctx);
 
-        r = root();
+        r = root;
         Jac.save(r);
 
         for i in range(10) {
@@ -156,7 +156,7 @@ test "topology index survives sqlite persistence round-trip" {
         ctx1 = ExecutionContext();
         JacRuntime.set_context(ctx1);
 
-        r = root();
+        r = root;
         Jac.save(r);
 
         for i in range(5) {
@@ -169,7 +169,9 @@ test "topology index survives sqlite persistence round-trip" {
 
         # Verify queries work before persistence
         persons_before = [r->:Knows:->[?:Person]];
-        assert len(persons_before) == 5 , f"Expected 5 persons, got {len(persons_before)}";
+        assert len(persons_before) == 5 , f"Expected 5 persons, got {len(
+            persons_before
+        )}";
         cities_before = [r->:LivesIn:->[?:City]];
         assert len(cities_before) == 3 , f"Expected 3 cities, got {len(cities_before)}";
 

@@ -92,6 +92,7 @@ enum TokenKind {
     KW_DISENGAGE = "disengage",
     KW_HERE = "here",
     KW_VISITOR = "visitor",
+    KW_ROOT = "root",
     KW_ASYNC = "async",
     KW_AWAIT = "await",
     KW_FLOW = "flow",
@@ -326,6 +327,7 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "disengage": TokenKind.KW_DISENGAGE,
          "here": TokenKind.KW_HERE,
          "visitor": TokenKind.KW_VISITOR,
+         "root": TokenKind.KW_ROOT,
          # Async keywords
          "async": TokenKind.KW_ASYNC,
          "await": TokenKind.KW_AWAIT,

@@ -191,8 +191,8 @@ def fail_ternary_attr_isinstance(val: Animal) -> int {
 }
 
 # GAP C3: Method-like attribute access on narrowed variable in ternary
-def fail_ternary_attr_chain(root: Root | None) -> int {
-    return use_anchor(root.anchor) if root else 0;  # Error
+def fail_ternary_attr_chain(`root: Root | None) -> int {
+    return use_anchor(`root.anchor) if `root else 0;  # Error
 }
 
 # ============================================================================
