@@ -13,8 +13,8 @@ def _static_zsh(commands: list[dict[str, Any]], exe: str) -> str;
 
 def _static_fish(commands: list[dict[str, Any]], exe: str) -> str;
 
-glob Flags: TypeAlias = list[tuple[str, str, str]],
-     ValueOpts: TypeAlias = list[tuple[str, str, list[str]]],
+glob cast_ValueOpts = cast(list[tuple[str, str, list[str]]], c["value_opts"]),
+     cast_Flags = cast(list[tuple[str, str, str]], c["flags"]),
      _BASH_TEMPLATE = (
          '_%s_complete() {\n'
          '    local cur prev cmd\n'
