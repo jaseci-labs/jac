@@ -5,8 +5,8 @@ import sys;
 import from pathlib { Path }
 
 
+"""Verify DesktopConfig supports client_only field."""
 test "client_only config is supported" {
-    """Verify DesktopConfig supports client_only field."""
     import jaclang;
     import from jac_client.plugin.src.desktop_config { DesktopConfig }
     config = DesktopConfig();
@@ -18,8 +18,8 @@ test "client_only config is supported" {
 }
 
 
+"""Verify DesktopConfig has is_client_only method."""
 test "is_client_only method exists" {
-    """Verify DesktopConfig has is_client_only method."""
     import jaclang;
     import from jac_client.plugin.src.desktop_config { DesktopConfig }
     config = DesktopConfig();
@@ -33,8 +33,8 @@ test "is_client_only method exists" {
 }
 
 
+"""Verify the desktop build sets JAC_BUILD=1 to prevent server startup."""
 test "JAC_BUILD env var set during build" {
-    """Verify the desktop build sets JAC_BUILD=1 to prevent server startup."""
     target_file = Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl" / "desktop_target.impl.jac";
     if target_file.exists() {
         with open(str(target_file), "r", encoding="utf-8") as f {
@@ -46,8 +46,8 @@ test "JAC_BUILD env var set during build" {
 }
 
 
+"""Verify the build logic checks client_only to skip sidecar."""
 test "client_only skips sidecar bundling" {
-    """Verify the build logic checks client_only to skip sidecar."""
     target_file = Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl" / "desktop_target.impl.jac";
     if target_file.exists() {
         with open(str(target_file), "r", encoding="utf-8") as f {
@@ -61,8 +61,8 @@ test "client_only skips sidecar bundling" {
 }
 
 
+"""Verify client_only mode validates that base_url is set."""
 test "client_only requires base_url" {
-    """Verify client_only mode validates that base_url is set."""
     target_file = Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl" / "desktop_target.impl.jac";
     if target_file.exists() {
         with open(str(target_file), "r", encoding="utf-8") as f {
