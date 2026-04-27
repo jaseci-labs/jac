@@ -14,6 +14,13 @@ impl Tool.postinit -> None {
     } else {
         self.params_desc = {name: str(type) for (name, type) in annotations.items()};
     }
+    # Pick up serialize/timeout_sec from function attributes if set by the user.
+    if hasattr(self.func, '_serialize') {
+        self.serialize = self.func._serialize;
+    }
+    if hasattr(self.func, '_timeout_sec') {
+        self.timeout_sec = self.func._timeout_sec;
+    }
 }
 
 """Call the tool function with the provided arguments."""
