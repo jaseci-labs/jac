@@ -8,7 +8,7 @@ compiler.jac
 config.impl.jac
 jac/jaclang/cli/commands/config.jac
 jac/jaclang/project/config.jac
-console.jac
+jac/jaclang/cli/console.jac
 constant.jac
 # context.impl.jac / context.jac — jac-scale passes, jaclang runtimelib fails
 jac/jaclang/runtimelib/impl/context.impl.jac
