@@ -50,7 +50,7 @@ obj McpError(ByLLMError) {}
 """Raised when compaction failed to reduce the context window sufficiently.
 
 Occurs when the threshold triggers two consecutive iterations with a compaction
-in between — meaning the summarisation produced no meaningful reduction. The
+in between - meaning the summarisation produced no meaningful reduction. The
 caller should either provide a custom on_compaction hook, increase ctx_window,
 or switch to a model with a larger context.
 """

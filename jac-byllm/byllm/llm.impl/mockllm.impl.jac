@@ -13,7 +13,7 @@ Pops the next output from the configured 'outputs' list and returns it.
 Supports both regular outputs and MockToolCall objects.
 
 Each entry in 'outputs' may optionally be a (payload, usage) tuple to inject
-token-usage metadata — useful for testing threshold-based compaction:
+token-usage metadata - useful for testing threshold-based compaction:
     outputs=[
         (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
         (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {})

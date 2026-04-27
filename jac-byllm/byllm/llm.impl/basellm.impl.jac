@@ -75,7 +75,7 @@ def _litellm_ctx_window(model_name: str) -> int {
 
 Resets call_params to {"compaction_enabled": False} so the copy cannot trigger
 another compaction and does not inherit any per-call settings from the active
-ReAct invocation. Works for both Model and ModelPool — copy.copy shares the
+ReAct invocation. Works for both Model and ModelPool - copy.copy shares the
 already-built _router for pools so there is zero rebuild cost.
 """
 def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
@@ -93,7 +93,7 @@ Walks from the end of the list, preserving the most-recent `keep_recent`
 assistant+tool-result blocks. Everything in between is sent to the LLM
 for summarisation and replaced with a single USER message.
 
-`model` is the BaseLLM instance to use for the summarisation call — either
+`model` is the BaseLLM instance to use for the summarisation call - either
 a copy of the active model (default) or a user-specified compaction model.
 It must already have compaction_enabled=False in its call_params to prevent
 recursion.
@@ -150,7 +150,7 @@ def _default_compact(
         + history_text
     );
     try {
-        # Single no-tools invocation through the full byLLM stack —
+        # Single no-tools invocation through the full byLLM stack -
         # inherits telemetry, prompt caching, and proxy config from the model.
         # compaction_enabled=False (already set on model.call_params) prevents recursion.
         # Two messages (system + user) are required so make_model_params / format_prompt
@@ -168,7 +168,7 @@ def _default_compact(
         );
         summary = str(model.invoke(comp_mt_run));
     } except Exception as e {
-        logger.warning(f"byLLM compaction: summarisation call failed — {e}. Skipping compaction.");
+        logger.warning(f"byLLM compaction: summarisation call failed - {e}. Skipping compaction.");
         return messages;
     }
     summary_msg = {"role": "user", "content": f"[Compacted context summary]\n{summary}"};
@@ -179,7 +179,7 @@ def _default_compact(
 """Resolve the effective context window for this model instance.
 
 Priority: call_params["ctx_window"] > self.ctx_window > jac.toml compaction.ctx_window
-          > litellm.get_model_info() > 0 (unknown — disable threshold check).
+          > litellm.get_model_info() > 0 (unknown - disable threshold check).
 """
 impl BaseLLM._get_ctx_window(call_params: dict) -> int {
     override = int(
@@ -216,7 +216,7 @@ impl BaseLLM._compact_messages(
         compacted = on_compaction(msg_dicts, keep_recent);
     } else {
         if comp_model {
-            # User specified a different model name for compaction —
+            # User specified a different model name for compaction -
             # create a fresh Model inheriting api_key and config (proxy, base_url)
             # from self so routing still works.
             model_for_compaction = Model(
@@ -232,7 +232,7 @@ impl BaseLLM._compact_messages(
         }
         compacted = _default_compact(msg_dicts, keep_recent, model_for_compaction);
     }
-    # Write the compacted list back — replace Message objects with plain dicts
+    # Write the compacted list back - replace Message objects with plain dicts
     # (get_msg_list already serialised them; dicts are accepted by get_msg_list)
     mt_run.messages = compacted;
     removed = original_len - len(compacted);
@@ -345,14 +345,14 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
         try {
             resp = self.dispatch_no_streaming(mt_run);
         } except litellm.exceptions.ContextWindowExceededError {
-            # Context window exceeded — compact and retry once before giving up.
+            # Context window exceeded - compact and retry once before giving up.
             logger.warning(
                 "byLLM compaction: context window exceeded, triggering emergency compaction."
             );
             self._compact_messages(mt_run, comp_keep_recent, comp_model);
             resp = self.dispatch_no_streaming(mt_run);
         } except OutputConversionError {
-            # gpt-4o returned plain text that can't be parsed — attempt recovery.
+            # gpt-4o returned plain text that can't be parsed - attempt recovery.
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
                 raise;
@@ -386,7 +386,7 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                     raise CompactionNotEffectiveError(
                         f"{prompt_tokens}/{ctx_window} tokens "
                         f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
-                        f"{comp_threshold:.0%} after compaction — provide a custom "
+                        f"{comp_threshold:.0%} after compaction - provide a custom "
                         "on_compaction hook, increase ctx_window, or switch to a model "
                         "with a larger context window."
                     );
@@ -403,7 +403,7 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             }
         }
         if resp.tool_calls {
-            # Split at first finish_tool — anything after it is discarded.
+            # Split at first finish_tool - anything after it is discarded.
             # This normalizes history regardless of parallel/sequential mode:
             # both modes see the same tool calls and produce the same mt_run.messages.
             non_finish_calls: list = [];
@@ -416,7 +416,7 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 non_finish_calls.append(tc);
             }
 
-            # Always route through dispatch_batch — one code path for both modes.
+            # Always route through dispatch_batch - one code path for both modes.
             # Parallel: full batch (concurrent). Sequential: one-at-a-time (inline, no pool overhead).
             if non_finish_calls {
                 batches = (
@@ -450,7 +450,7 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
         } else {
             # LLM returned plain text without calling any tool.
             # If finish_tool is available and a structured return type was expected,
-            # the model skipped the expected workflow — attempt recovery.
+            # the model skipped the expected workflow - attempt recovery.
             # (This also handles subclasses like MockLLM that bypass parse_response
             # and thus don't trigger OutputConversionError.)
             recovery_resp = self._attempt_recovery(mt_run);
@@ -522,7 +522,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
                 desc = fn.get("description", "");
                 if is_serial {
                     serial_names.append(fn.get("name", "unknown"));
-                    tag = " [SEQUENTIAL: has side-effects — must be called alone, never batch with other tools]";
+                    tag = " [SEQUENTIAL: has side-effects - must be called alone, never batch with other tools]";
                 } else {
                     tag = " [PARALLEL-SAFE: can be batched with other independent tools in one response]";
                 }
@@ -551,7 +551,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
                     "\n - A tool's argument depends on another tool's return value"
                     "\n - Two tools write to the same file or shared state"
                     "\n - A tool is labeled [SEQUENTIAL] in its description"
-                    "\n\nKEY TEST: For each tool ask — 'Can I fill in ALL of this tool's arguments RIGHT NOW"
+                    "\n\nKEY TEST: For each tool ask - 'Can I fill in ALL of this tool's arguments RIGHT NOW"
                     " without waiting for any other tool's result?' YES for all → batch. NO for any → separate it."
                 );
 
@@ -798,7 +798,7 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
     original_tools = mt_run.tools;
     finish_tool_obj = mt_run.get_tool("finish_tool");
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
-    # Force text generation — tool_choice="none" tells the LLM
+    # Force text generation - tool_choice="none" tells the LLM
     # "tools are defined but do NOT call any, just produce text"
     # Save caller's original tool_choice (if any) so we can restore it after.
     original_tool_choice = mt_run.call_params.pop("tool_choice", None);
@@ -975,7 +975,7 @@ impl BaseLLM._invoke_streaming(
             try {
                 resp = self.dispatch_no_streaming(mt_run);
             } except OutputConversionError {
-                # gpt-4o returned plain text that can't be parsed — attempt recovery.
+                # gpt-4o returned plain text that can't be parsed - attempt recovery.
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
                     raise;
@@ -1010,7 +1010,7 @@ impl BaseLLM._invoke_streaming(
             }
 
             if resp.tool_calls {
-                # Split at first finish_tool — normalizes history for both modes.
+                # Split at first finish_tool - normalizes history for both modes.
                 non_finish_calls: list = [];
                 finish_tc = None;
                 for tc in resp.tool_calls {
@@ -1104,12 +1104,12 @@ impl BaseLLM._invoke_streaming(
                     break;
                 }
             } else {
-                # No tool calls — check if recovery is needed.
+                # No tool calls - check if recovery is needed.
                 # (OutputConversionError catch above handles real Model;
                 # this branch handles MockLLM which bypasses parse_response.)
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
-                    # Plain string return or no finish_tool — yield and exit
+                    # Plain string return or no finish_tool - yield and exit
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );

@@ -7,7 +7,7 @@ Covers:
   4.  _get_ctx_window: jac.toml config wins over litellm auto-detect
   5.  _get_ctx_window: returns 0 when all sources unknown
   6.  _default_compact: too-few messages returns list unchanged
-  7.  _default_compact: correct structure — system+user+summary+kept tail
+  7.  _default_compact: correct structure - system+user+summary+kept tail
   8.  _default_compact: keep_recent respects N assistant rounds in tail
   9.  _default_compact: litellm.completion failure returns list unchanged
   10. _compact_messages: custom on_compaction hook is called
@@ -156,7 +156,7 @@ test "_default_compact produces system user summary and kept tail" {
         + _make_round(2)
         + _make_round(3)
     );
-    # MockLLM pops outputs sequentially — one output for the summarisation call
+    # MockLLM pops outputs sequentially - one output for the summarisation call
     mock_model = MockLLM(model_name="mockllm", config={"outputs": [summary_text]});
     result = _byllm_llm_mod._default_compact(messages, 1, mock_model);
     assert result[0]["role"] == "system",  "messages[0] must stay as system";
@@ -279,12 +279,12 @@ test "_compact_messages default path used when no hook provided" {
 # 13-19. invoke() threshold and guard logic
 #
 # All tests use Model(model_name="mockllm") with MockLLM's outputs list and
-# the "by llm()" syntax — matching the established test discipline.
+# the "by llm()" syntax - matching the established test discipline.
 # Each outputs entry may be a plain MockToolCall or a (MockToolCall, usage)
 # tuple; the tuple form injects prompt_tokens so threshold logic can be tested.
 #
 # byLLM auto-generates and appends finish_tool internally (mtir.impl.jac).
-# We define a local function named "finish_tool" only for use in MockToolCall —
+# We define a local function named "finish_tool" only for use in MockToolCall -
 # Tool.is_finish_tool() checks the function name, so the name must match exactly.
 # ---------------------------------------------------------------------------
 
@@ -391,7 +391,7 @@ test "invoke CompactionNotEffectiveError on consecutive threshold triggers" {
     def step_a -> str { return "a"; }
 
     def my_hook(msgs: list, keep_recent: int) -> list {
-        return msgs;  # no-op — compaction produces no reduction
+        return msgs;  # no-op - compaction produces no reduction
     }
 
     # Two identical high-usage entries: iter 1 compact fires, iter 2 fires again → error
@@ -475,7 +475,7 @@ test "invoke just_compacted resets after a below-threshold iteration" {
 # 18. ContextWindowExceededError emergency path
 #
 # MockLLM cannot raise provider exceptions, so we patch model_call_no_stream
-# (the LiteLLM boundary) — consistent with the existing exception-test pattern
+# (the LiteLLM boundary) - consistent with the existing exception-test pattern
 # in test_byllm.jac (see "unknown tool error" and exception-logging tests).
 # ---------------------------------------------------------------------------
 
@@ -493,7 +493,7 @@ test "invoke ContextWindowExceededError triggers compact and retry and succeeds"
 
     # Build a minimal finish_tool response in LiteLLM response-dict format.
     # dispatch_no_streaming looks up "finish_tool" in mt_run.tools, which is the
-    # auto-generated one appended by MTRuntime.factory — so the name must match.
+    # auto-generated one appended by MTRuntime.factory - so the name must match.
     fake_fn  = types.SimpleNamespace(name="finish_tool", arguments='{"final_output": "recovered"}');
     fake_tc  = types.SimpleNamespace(id="call_1", function=fake_fn);
     ok_resp: dict = {
