@@ -510,6 +510,11 @@ impl convert_to_instance(ty: types.TypeBase) -> types.TypeBase {
     return ty;
 }
 
+"""Synthesize the implicit `Self` TypeVar marker."""
+impl synthesize_self_type_var -> types.TypeVarType {
+    return types.TypeVarType(name="Self", is_self=True);
+}
+
 """
 Apply type variable substitutions to a type.
 
@@ -830,7 +835,8 @@ def _apply_to_function(
     solution: dict[str, types.TypeBase],
     class_type: (types.ClassType | None)
 ) -> types.FunctionType {
-    # Clone the function
+    # `function_flags` must be carried over — losing the ClassMethod /
+    # StaticMethod markers breaks the call site's cls/self auto-strip.
     clone = types.FunctionType(
         func_name=func.func_name,
         return_type=func.return_type,
@@ -845,6 +851,7 @@ def _apply_to_function(
                 param_kind=param.param_kind
             ) for param in func.parameters
         ],
+        function_flags=func.function_flags,
         type_params=func.type_params,
     );
 

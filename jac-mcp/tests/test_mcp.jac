@@ -6,6 +6,14 @@ import from jac_mcp.resources { ResourceProvider }
 import from jac_mcp.tools { ToolProvider }
 import from jac_mcp.prompts { PromptProvider }
 import from jac_mcp.compiler_bridge { CompilerBridge }
+import from jac_mcp.mode {
+    get_mcp_mode,
+    set_mcp_mode,
+    disabled_tools_for_mode,
+    disabled_prompts_for_mode,
+    VALID_MODES,
+    DEFAULT_MODE
+}
 
 # ── Server Tests ──
 test "server creation with defaults" {
@@ -113,6 +121,9 @@ test "get config schema" {
     assert "host" in options;
     assert "expose_grammar" in options;
     assert "enable_validate" in options;
+    assert "mode" in options;
+    mode_opt = options["mode"];
+    assert mode_opt["default"] == "full";
 }
 
 # ── Resource Provider Tests ──
@@ -932,7 +943,9 @@ test "jac to js via tool" {
 
 test "run jac prints output" {
     tp = ToolProvider();
-    result = tp.call_tool("run_jac", {"code": "with entry { print(\"hello world\"); }"});
+    result = tp.call_tool(
+        "run_jac", {"code": "with entry { print(\"hello world\"); }"}
+    );
     assert "stdout" in result;
     assert "exit_code" in result;
     assert result["exit_code"] == 0;
@@ -1008,4 +1021,60 @@ test "get resource fetches valid URIs and rejects invalid ones" {
     assert "error" in bad;
     empty = tp.call_tool("get_resource", {});
     assert "error" in empty;
+}
+
+# ── Mode Tests ──
+test "valid modes and default" {
+    assert VALID_MODES == ["lite", "standard", "full"];
+    assert DEFAULT_MODE == "full";
+}
+
+test "get_mcp_mode defaults to full when unset" {
+    set_mcp_mode("");
+    assert get_mcp_mode() == "full";
+}
+
+test "set_mcp_mode writes into the plugin config" {
+    for m in ["lite", "standard", "full"] {
+        set_mcp_mode(m);
+        assert get_mcp_mode() == m;
+    }
+    set_mcp_mode("");
+}
+
+test "get_mcp_mode falls back on invalid value" {
+    set_mcp_mode("bogus");
+    assert get_mcp_mode() == DEFAULT_MODE;
+    set_mcp_mode("");
+}
+
+test "disabled sets are empty for every mode (placeholder)" {
+    for m in VALID_MODES {
+        assert disabled_tools_for_mode(m) == set();
+        assert disabled_prompts_for_mode(m) == set();
+    }
+}
+
+test "list_tools returns same surface in every mode" {
+    set_mcp_mode("");
+    tp = ToolProvider();
+    baseline = [t["name"] for t in tp.list_tools()];
+    for m in VALID_MODES {
+        set_mcp_mode(m);
+        mode_tools = [t["name"] for t in tp.list_tools()];
+        assert mode_tools == baseline , f"mode `{m}` surface diverged from baseline";
+    }
+    set_mcp_mode("");
+}
+
+test "list_prompts returns same surface in every mode" {
+    set_mcp_mode("");
+    pp = PromptProvider();
+    baseline = [p["name"] for p in pp.list_prompts()];
+    for m in VALID_MODES {
+        set_mcp_mode(m);
+        mode_prompts = [p["name"] for p in pp.list_prompts()];
+        assert mode_prompts == baseline , f"mode `{m}` prompt surface diverged from baseline";
+    }
+    set_mcp_mode("");
 }

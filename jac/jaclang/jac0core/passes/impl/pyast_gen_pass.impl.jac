@@ -212,8 +212,8 @@ impl PyastGenPass._gen_py_sv_func_stub(
     local_name: str,
     func_name: str,
     module_name: str,
-    binding: object,
-    boundary_types: dict
+    binding: InteropBinding,
+    boundary_types: dict[str, BoundaryTypeInfo]
 ) -> str {
     params = ', '.join(binding.param_names) if binding.param_names else '';
     args_kvs: list[str] = [];
@@ -242,7 +242,9 @@ impl PyastGenPass._gen_py_sv_func_stub(
 }
 
 """Build a Python source string for a boundary type stub class."""
-impl PyastGenPass._gen_py_boundary_stub_class(class_name: str, info: object) -> str {
+impl PyastGenPass._gen_py_boundary_stub_class(
+    class_name: str, info: BoundaryTypeInfo
+) -> str {
     field_names: list[str] = [];
     for f in info.fields {
         field_names.append(f[0]);
@@ -372,8 +374,6 @@ impl PyastGenPass._function_expr_from_def(
     self._hoisted_funcs.append(func_def);
     return self.sync(ast3.Name(id=func_def.name, ctx=ast3.Load()), jac_node=jac_node);
 }
-
-impl PyastGenPass.get_weather(city: str) { }
 
 """Create a semstring decorator for the given semantic strings.
 
