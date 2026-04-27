@@ -19,7 +19,7 @@ walker:pub CreateItem {
 
 walker:pub GetItems {
     can read with Root entry {
-        report [-->];
+        report [-->][?:Item];
     }
 }
 
@@ -28,7 +28,7 @@ walker:pub AppendTag {
         tag: str;
 
     can find with Root entry {
-        for item in [-->] {
+        for item in [-->][?:Item] {
             if (self.id == item.id) {
                 visit item;
             }
@@ -47,7 +47,7 @@ walker:pub SetMeta {
         value: str;
 
     can find with Root entry {
-        for item in [-->] {
+        for item in [-->][?:Item] {
             if (self.id == item.id) {
                 visit item;
             }
@@ -64,7 +64,7 @@ walker:pub SetCompleted {
     has id: int;
 
     can find with Root entry {
-        for item in [-->] {
+        for item in [-->][?:Item] {
             if (self.id == item.id) {
                 visit item;
             }
@@ -73,6 +73,25 @@ walker:pub SetCompleted {
 
     can mutate with Item entry {
         here.completed = True;
+        report here;
+    }
+}
+
+walker:pub MixedMutate {
+    has id: int,
+        tag: str;
+
+    can find with Root entry {
+        for item in [-->][?:Item] {
+            if (self.id == item.id) {
+                visit item;
+            }
+        }
+    }
+
+    can mutate with Item entry {
+        here.completed = True;
+        here.tags.append(self.tag);
         report here;
     }
 }

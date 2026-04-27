@@ -24,6 +24,7 @@ import from .schema { tool_to_schema }
 import from byllm.exceptions { ByLLMError, FinishToolError, UnknownToolError }
 
 import from jaclang.jac0core.mtp { Info }
+import from byllm.mcp { McpTool }
 
 # The message can be a jaclang defined message or what ever the llm
 # returned object that was feed back to the llm as it was given (dict).
@@ -83,7 +84,7 @@ Created from LLM responses and can be executed to get results.
 """
 obj ToolCall {
     has call_id: str,
-        tool: Tool,
+        tool: Tool | McpTool,
         args: dict;
 
     def __call__ -> ToolCallResultMsg;

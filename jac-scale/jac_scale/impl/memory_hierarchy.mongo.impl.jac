@@ -42,6 +42,58 @@ def _mongo_a_collection(backend: MongoBackend) -> Any {
     return backend.db[backend.collection_name + '_aliases'];
 }
 
+"""Return True when the anchor's outer document must be fully rewritten."""
+def _anchor_has_structural_change(anchor: Anchor) -> bool {
+    return anchor.hash == 0;
+}
+
+"""Stable hash of any serialized field value (dict, list, or scalar)."""
+def _field_hash(val: object) -> int {
+    import from json { dumps }
+    try {
+        return hash(dumps(val, sort_keys=True, default=str));
+    } except Exception {
+        return hash(str(val));
+    }
+}
+
+"""Snapshot per-field hashes onto the archetype after a successful save or load."""
+def _snapshot_field_hashes(anchor: Anchor) -> None {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return;
+    }
+    arch = anchor.archetype;
+    known = Serializer._get_field_types(type(arch)).keys();
+    _seen: tuple[set, set] = (set(), set());
+    hashes: dict[str, int] = {};
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        hashes[name] = _field_hash(serialized);
+    }
+    object.__setattr__(arch, '__jac_field_hashes__', hashes);
+}
+
+"""Derive the dirty field set by comparing current field hashes to the stored snapshot."""
+def _derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return set();
+    }
+    arch = anchor.archetype;
+    stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
+    known = Serializer._get_field_types(type(arch)).keys();
+    dirty: set[str] = set();
+    _seen: tuple[set, set] = (set(), set());
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        if _field_hash(serialized) != stored.get(name) {
+            dirty.add(name);
+        }
+    }
+    return dirty;
+}
+
 """Build a stored document for an anchor, including Layer 2 fingerprint
 and Layer 1 archetype identity fields. Parallels _anchor_to_row in
 SqliteMemory; kept here so schema evolution stays per-backend."""
@@ -55,7 +107,7 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
-        fp = getattr(type(arch), '__jac_fingerprint__', None);
+        fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
     }
     return {
@@ -170,7 +222,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     # Fingerprint drift check (INFO-only; best-effort load proceeds below).
     if arch_module and arch_type and fingerprint {
         cls = Serializer._get_class(arch_module, arch_type);
-        current_fp = getattr(cls, '__jac_fingerprint__', None) if cls else None;
+        current_fp = cls?.__jac_fingerprint__ if cls else None;
         if current_fp and current_fp != fingerprint {
             logger.info(
                 f"MongoBackend: schema drift on {arch_module}.{arch_type} "
@@ -218,21 +270,58 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
         );
         return None;
     }
+    _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 
-"""Store anchor in MongoDB with fingerprint and archetype identity fields."""
-impl MongoBackend.put(anchor: Anchor) -> None {
+"""Stage anchor for persistence — all writes are deferred to sync()."""
+impl MongoBackend.put(anchor: Anchor) -> None { }
+
+"""Full document upsert for an anchor. Used by sync() when no partial or
+atomic-edge path applies (first insert, or non-NodeAnchor full rewrite)."""
+impl MongoBackend._write_to_db(anchor: Anchor) -> None {
     if self.client is None or not anchor.persistent {
         return;
     }
     _id = to_uuid(anchor.id);
+    arch = anchor.archetype if anchor.is_populated() else None;
     try {
         doc = _anchor_to_doc(anchor);
         self.collection.update_one({'_id': str(_id)}, {'$set': doc}, upsert=True);
         anchor.hash = Serializer._compute_hash(anchor);
+        if arch is not None {
+            arch.__dict__.pop('__jac_dirty_fields__', None);
+        }
+        _snapshot_field_hashes(anchor);
     } except Exception as e {
-        logger.error(f"MongoDB put failed: {e}");
+        logger.error(f"MongoDB _write_to_db failed: {e}");
+    }
+}
+
+"""Persist only the specified archetype fields without replacing the full document."""
+impl MongoBackend.put_partial(anchor: Anchor, field_names: set[str]) -> None {
+    if self.client is None or not anchor.persistent or not field_names {
+        return;
+    }
+    _id = to_uuid(anchor.id);
+    try {
+        partial_data = Serializer.serialize_fields(anchor, field_names);
+        if not partial_data {
+            return;
+        }
+        update: dict[str, object] = {
+            f"data.archetype.{k}": v for (k, v) in partial_data.items()
+        };
+        update['updated_at'] = datetime.now(timezone.utc).isoformat();
+        self.collection.update_one({'_id': str(_id)}, {'$set': update});
+        anchor.hash = Serializer._compute_hash(anchor);
+        arch = anchor.archetype if anchor.is_populated() else None;
+        if arch is not None {
+            arch.__dict__.pop('__jac_dirty_fields__', None);
+        }
+        _snapshot_field_hashes(anchor);
+    } except Exception as e {
+        logger.error(f"MongoDB put_partial failed: {e}");
     }
 }
 
@@ -249,8 +338,14 @@ impl MongoBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close MongoDB connection."""
+"""Flush pending writes and close MongoDB connection."""
 impl MongoBackend.close -> None {
+    # Persist any pending L1 changes before closing
+    try {
+        self.sync();
+    } except Exception as e {
+        logger.warning(f"MongoBackend.close sync failed: {e}");
+    }
     if self.client {
         try {
             self.client.close();
@@ -358,10 +453,94 @@ impl MongoBackend.sync -> None {
             continue;
         }
         try {
-            self.put(anchor);
+            # NodeAnchors with a load snapshot: atomic edge-merge pipeline
+            # preserves edge changes from sibling walkers.
+            if isinstance(anchor, NodeAnchor) {
+                delta = anchor.edge_delta();
+                if delta is not None {
+                    added = [str(eid) for eid in delta[0]];
+                    removed = [str(eid) for eid in delta[1]];
+                    self._put_node_atomic(anchor, added, removed);
+                    continue;
+                }
+            }
+            # Union __setattr__-tracked fields (direct assignments) with
+            # field-hash-derived fields (in-place mutations) to get the complete
+            # dirty set. Both must be combined — running only one silently drops
+            # the other category (e.g. direct + in-place in the same request).
+            if anchor.hash != 0 {
+                arch = anchor.archetype if anchor.is_populated() else None;
+                setattr_dirty: set[str] = (
+                    arch.__dict__.get('__jac_dirty_fields__') or set()
+                ).copy()
+                    if arch is not None
+                    else set();
+                derived = _derive_dirty_from_field_hashes(anchor);
+                dirty = setattr_dirty | derived;
+                if dirty {
+                    self.put_partial(anchor, dirty);
+                    continue;
+                }
+            }
+            # First insert (hash == 0) or no field changes found — full upsert.
+            self._write_to_db(anchor);
         } except Exception as e {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");
         }
+    }
+}
+
+"""Atomically update a NodeAnchor, merging edge changes with DB state."""
+impl MongoBackend._put_node_atomic(
+    anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+) -> None {
+    if self.client is None {
+        return;
+    }
+    _id = str(to_uuid(anchor.id));
+    try {
+        data: dict[str, object] = dict(Serializer.serialize(anchor, include_type=True));
+        # Separate edge list from the rest of the serialized data
+        data_no_edges = {
+            k: v
+            for (k, v) in data.items()
+            if k != 'edges'
+        };
+        # Single atomic operation: merge non-edge fields + apply edge delta
+        self.collection.update_one(
+            {'_id': _id},
+            [
+                {
+                    '$set': {
+                        'data': {
+                            '$mergeObjects': [
+                                '$data',
+                                data_no_edges,
+                                {
+                                    'edges': {
+                                        '$setUnion': [
+                                            {
+                                                '$setDifference': [
+                                                    {'$ifNull': ['$data.edges', []]},
+                                                    edges_removed
+                                                ]
+                                            },
+                                            edges_added
+                                        ]
+                                    }
+                                }
+                            ]
+                        },
+                        'type': 'NodeAnchor'
+                    }
+                }
+            ],
+            upsert=True
+        );
+        anchor.hash = Serializer._compute_hash(anchor);
+        _snapshot_field_hashes(anchor);
+    } except Exception as e {
+        logger.error(f"MongoDB _put_node_atomic failed: {e}");
     }
 }
 
@@ -463,6 +642,7 @@ impl MongoBackend._load_anchor(raw: dict[(str, Any)]) -> (Anchor | None) {
         );
         return None;
     }
+    _snapshot_field_hashes(cast(Anchor, anchor));
     return cast(Anchor, anchor);
 }
 

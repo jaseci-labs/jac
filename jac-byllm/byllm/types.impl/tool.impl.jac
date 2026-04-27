@@ -1,6 +1,10 @@
 """Validate the function and extract its type annotations and description."""
 impl Tool.postinit -> None {
-    annotations = get_type_hints(self.func);
+    try {
+        annotations = get_type_hints(self.func);
+    } except Exception {
+        annotations = getattr(self.func, '__annotations__', {}) or {};
+    }
     with suppress(Exception) {
         self.func.__annotations__ = annotations;
     }

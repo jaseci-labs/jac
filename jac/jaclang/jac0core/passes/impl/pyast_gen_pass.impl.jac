@@ -3505,18 +3505,31 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
             return;
         }
     }
-    if (name == "root" and nd.py_ctx_func == ast3.Load and nd.sym is None) {
-        is_root_call = isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd;
-        if not is_root_call {
-            # Bare `root` usage — emit deprecation, compile as root() call
-            self.emit(W0062, node_override=nd);
-            nd.gen.py_ast = [
-                self.sync(ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[]))
-            ];
-            return;
+    if (name == "root" and nd.py_ctx_func == ast3.Load) {
+        # Detect whether this is the Jac ambient builtin root or a user-defined
+        # local/parameter. The type checker may resolve root from jac_builtins.pyi
+        # (setting nd.sym), so we check the declaration's source file.
+        is_jac_root = nd.sym is None
+        or (
+            nd.sym.decl is not None
+            and nd.sym.decl.loc.mod_path.endswith("jac_builtins.pyi")
+        );
+        if is_jac_root {
+            is_root_call = isinstance(nd.parent, uni.FuncCall)
+            and nd.parent.target is nd;
+            if not is_root_call {
+                # Bare `root` usage — emit deprecation, compile as root() call
+                self.emit(W0062, node_override=nd);
+                nd.gen.py_ast = [
+                    self.sync(
+                        ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[])
+                    )
+                ];
+                return;
+            }
+            # Explicit root() call — just resolve the name from jaclib
+            self.jaclib_imports.add('root');
         }
-        # Explicit root() call — just resolve the name from jaclib
-        self.jaclib_imports.add('root');
     }
     if (name in self._get_builtin_names()) {
         self.builtin_imports.add(name);

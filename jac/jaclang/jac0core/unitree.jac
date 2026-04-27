@@ -97,6 +97,13 @@ obj UniNode {
 
 """Symbol."""
 obj Symbol {
+    has defn: list[NameAtom] by postinit,
+        uses: list[NameAtom] by postinit,
+        access: SymbolAccess by postinit,
+        parent_tab: (UniScopeNode | None) by postinit,
+        imported: bool by postinit,
+        semstr: str by postinit;
+
     def init(
         defn: NameAtom,
         access: SymbolAccess,
@@ -480,7 +487,9 @@ obj Module(AstDocNode, UniScopeNode) {
 
 """Whole Program node type for Jac Ast."""
 obj ProgramModule(UniNode) {
-    has main_mod: (Module | None) = None;
+    has main_mod: (Module | None) = None,
+        main: Module by postinit,
+        hub: dict[(str, Module)] by postinit;
 
     def postinit -> None;
 }
@@ -569,7 +578,8 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
     has from_loc: (ModulePath | None),
         items: (Sequence[ModuleItem] | Sequence[ModulePath]),
         is_absorb: bool,
-        clib_decls: (Sequence[UniNode] | None) = None;
+        clib_decls: (Sequence[UniNode] | None) = None,
+        hint: (SubTag[Token] | None) by postinit;
 
     def postinit -> None;
     @property
@@ -586,7 +596,8 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
 obj ModulePath(UniNode) {
     has path: (Sequence[(Name | String)] | None),
         level: int,
-        alias: (Name | None);
+        alias: (Name | None),
+        abs_path: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -608,7 +619,8 @@ obj ModulePath(UniNode) {
     """
 obj ModuleItem(UniNode) {
     has name: (Name | Token),
-        alias: (Name | None);
+        alias: (Name | None),
+        abs_path: (str | None) by postinit;
 
     def postinit -> None;
     @property
@@ -737,7 +749,8 @@ class ParamKind(IntEnum) {
 obj ParamVar(AstSymbolNode, AstTypedVarNode) {
     has name: Name,
         unpack: (Token | None),
-        value: (Expr | None);
+        value: (Expr | None),
+        param_kind: ParamKind by postinit;
 
     def postinit -> None;
     @property
@@ -1384,6 +1397,14 @@ obj MatchArch(MatchPattern) {
 
 """Token node type for Jac Ast."""
 obj Token(UniNode) {
+    has orig_src: Source by postinit,
+        line_no: int by postinit,
+        end_line: int by postinit,
+        c_start: int by postinit,
+        c_end: int by postinit,
+        pos_start: int by postinit,
+        pos_end: int by postinit;
+
     def init(
         orig_src: Source,
         name: str,
@@ -1440,6 +1461,8 @@ obj Name(Token, NameAtom) {
 
 """SpecialVarRef node type for Jac Ast."""
 obj SpecialVarRef(Name) {
+    has orig: Name by postinit;
+
     def init(var: Name, is_enum_stmt: bool = False) -> None;
     def py_resolve_name -> str;
 }
@@ -1595,6 +1618,10 @@ obj CommentToken(Token) {
 
 """SourceString node type for Jac Ast."""
 obj Source(EmptyToken) {
+    has comments: list[CommentToken] by postinit,
+        inline_suppressions: dict[int, set[str]] by postinit,
+        file_path: str by postinit;
+
     def init(source: str, mod_path: str) -> None;
     @property
     def code -> str;
@@ -1602,5 +1629,8 @@ obj Source(EmptyToken) {
 
 """SourceString node type for Jac Ast."""
 obj PythonModuleAst(EmptyToken) {
+    has orig_src: Source by postinit,
+        file_path: str by postinit;
+
     def init(ast: ast3.Module, orig_src: Source) -> None;
 }

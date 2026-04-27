@@ -635,6 +635,12 @@ test "W3036: mutable default argument" {
     assert has_diagnostic_code(prog, "W3036", in_warnings=True);
 }
 
+test "W3040: filter comparison tautology on shadowed name" {
+    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3040_filter_tautology.jac");
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    assert has_diagnostic_code(prog, "W3040", in_warnings=True);
+}
+
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 7: IMPORT DIAGNOSTICS (E/W 4001-4010)

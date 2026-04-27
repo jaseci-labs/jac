@@ -4,7 +4,7 @@ import mimetypes;
 import from collections.abc { Callable }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
-import from pydantic { BaseModel, Field }
+import from pydantic { BaseModel, Field, ValidationError }
 import from typing { Any }
 import jwt;
 import json;
@@ -49,7 +49,6 @@ import from jac_scale.auth_models {
     LoginRequest,
     UpdatePasswordRequest
 }
-import from pydantic { ValidationError }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),

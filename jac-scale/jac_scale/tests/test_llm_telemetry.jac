@@ -831,3 +831,310 @@ test "REST filters returns populated filter values" {
         client.close();
     }
 }
+
+# --- Trace Hierarchy Tests ---
+
+test "parent_invocation_id stored from llm_event metadata" {
+    store = TelemetryStore();
+    event = make_llm_event(inv_id="child-001", caller_name="inner_agent");
+    event["metadata"]["jac_parent_invocation_id"] = "parent-001";
+    store.record_llm_event(event);
+
+    traces = store.get_traces();
+    assert traces["total"] == 1;
+    trace = traces["traces"][0];
+    assert trace["parent_invocation_id"] == "parent-001";
+    assert trace["invocation_id"] == "child-001";
+}
+
+test "parent_invocation_id is None for root traces from llm_event" {
+    store = TelemetryStore();
+    event = make_llm_event(inv_id="root-001", caller_name="root_agent");
+    # No jac_parent_invocation_id in metadata
+    store.record_llm_event(event);
+
+    traces = store.get_traces();
+    trace = traces["traces"][0];
+    assert trace["parent_invocation_id"] is None;
+}
+
+test "parent_invocation_id stored from agent_completion record" {
+    store = TelemetryStore();
+    # Create trace via llm event first
+    store.record_llm_event(make_llm_event(inv_id="child-002"));
+    # Then complete it with parent info
+    record = make_agent_record(inv_id="child-002", caller_name="nested_agent");
+    record["parent_invocation_id"] = "parent-002";
+    store.record_agent_completion(record);
+
+    traces = store.get_traces();
+    trace = traces["traces"][0];
+    assert trace["parent_invocation_id"] == "parent-002";
+}
+
+test "agent_completion creates new trace with parent when no prior llm_event" {
+    store = TelemetryStore();
+    record = make_agent_record(inv_id="orphan-001", caller_name="orphan_agent");
+    record["parent_invocation_id"] = "parent-003";
+    store.record_agent_completion(record);
+
+    traces = store.get_traces();
+    trace = traces["traces"][0];
+    assert trace["parent_invocation_id"] == "parent-003";
+}
+
+test "get_traces root_only filter returns only root traces" {
+    store = TelemetryStore();
+    # Root trace
+    root_event = make_llm_event(inv_id="root-r1", caller_name="root_agent");
+    store.record_llm_event(root_event);
+    store.record_agent_completion(make_agent_record(inv_id="root-r1", caller_name="root_agent"));
+
+    # Child trace
+    child_event = make_llm_event(inv_id="child-r1", caller_name="inner_agent");
+    child_event["metadata"]["jac_parent_invocation_id"] = "root-r1";
+    store.record_llm_event(child_event);
+    child_rec = make_agent_record(inv_id="child-r1", caller_name="inner_agent");
+    child_rec["parent_invocation_id"] = "root-r1";
+    store.record_agent_completion(child_rec);
+
+    # All traces (no filter)
+    all_result = store.get_traces();
+    assert all_result["total"] == 2;
+
+    # Root only
+    root_result = store.get_traces(root_only=True);
+    assert root_result["total"] == 1;
+    assert root_result["traces"][0]["invocation_id"] == "root-r1";
+    assert root_result["traces"][0]["parent_invocation_id"] is None;
+}
+
+test "get_trace returns child_traces for parent" {
+    store = TelemetryStore();
+    # Root trace
+    store.record_llm_event(make_llm_event(inv_id="parent-det", caller_name="parent_agent"));
+    store.record_agent_completion(
+        make_agent_record(inv_id="parent-det", caller_name="parent_agent")
+    );
+
+    # Child trace 1
+    child1_event = make_llm_event(inv_id="child-det-1", caller_name="tool_agent_1");
+    child1_event["metadata"]["jac_parent_invocation_id"] = "parent-det";
+    store.record_llm_event(child1_event);
+    child1_rec = make_agent_record(inv_id="child-det-1", caller_name="tool_agent_1");
+    child1_rec["parent_invocation_id"] = "parent-det";
+    store.record_agent_completion(child1_rec);
+
+    # Child trace 2
+    child2_event = make_llm_event(inv_id="child-det-2", caller_name="tool_agent_2");
+    child2_event["metadata"]["jac_parent_invocation_id"] = "parent-det";
+    store.record_llm_event(child2_event);
+    child2_rec = make_agent_record(inv_id="child-det-2", caller_name="tool_agent_2");
+    child2_rec["parent_invocation_id"] = "parent-det";
+    store.record_agent_completion(child2_rec);
+
+    detail = store.get_trace("parent-det");
+    assert detail is not None;
+    assert "child_traces" in detail;
+    assert len(detail["child_traces"]) == 2;
+    child_ids = [c["invocation_id"] for c in detail["child_traces"]];
+    assert "child-det-1" in child_ids;
+    assert "child-det-2" in child_ids;
+}
+
+test "get_trace returns empty child_traces for leaf trace" {
+    store = TelemetryStore();
+    store.record_llm_event(make_llm_event(inv_id="leaf-001"));
+    store.record_agent_completion(make_agent_record(inv_id="leaf-001"));
+
+    detail = store.get_trace("leaf-001");
+    assert detail is not None;
+    assert detail["child_traces"] == [];
+}
+
+test "to_dict includes parent_invocation_id field" {
+    store = TelemetryStore();
+    event = make_llm_event(inv_id="dict-check");
+    event["metadata"]["jac_parent_invocation_id"] = "dict-parent";
+    store.record_llm_event(event);
+
+    traces = store.get_traces();
+    trace = traces["traces"][0];
+    assert "parent_invocation_id" in trace;
+    assert trace["parent_invocation_id"] == "dict-parent";
+}
+
+test "child trace detail includes full llm_calls and conversation_history" {
+    store = TelemetryStore();
+    # Parent
+    store.record_llm_event(make_llm_event(inv_id="full-parent"));
+    store.record_agent_completion(make_agent_record(inv_id="full-parent"));
+
+    # Child with data
+    child_event = make_llm_event(
+        inv_id="full-child",
+        caller_name="child_agent",
+        model="gpt-4o",
+        prompt_tokens=200,
+        completion_tokens=100,
+        total_tokens=300,
+        response_cost=0.001
+    );
+    child_event["metadata"]["jac_parent_invocation_id"] = "full-parent";
+    store.record_llm_event(child_event);
+    child_rec = make_agent_record(
+        inv_id="full-child",
+        caller_name="child_agent",
+        user_prompt="nested question",
+        agent_response="nested answer"
+    );
+    child_rec["parent_invocation_id"] = "full-parent";
+    store.record_agent_completion(child_rec);
+
+    detail = store.get_trace("full-parent");
+    assert len(detail["child_traces"]) == 1;
+    child = detail["child_traces"][0];
+    assert child["invocation_id"] == "full-child";
+    assert child["caller_name"] == "child_agent";
+    assert child["total_tokens"] == 300;
+    assert child["total_cost"] == 0.001;
+    # Detail includes llm_calls since include_detail=True
+    assert "llm_calls" in child;
+    assert len(child["llm_calls"]) == 1;
+}
+
+#  --- Aggregated cost/token roll-up tests ---
+
+test "get_trace aggregates tokens and cost from child traces" {
+    store = TelemetryStore();
+    # Parent: 150 tokens, cost 0.0001
+    store.record_llm_event(
+        make_llm_event(inv_id="agg-parent", total_tokens=150, response_cost=0.0001)
+    );
+    store.record_agent_completion(make_agent_record(inv_id="agg-parent"));
+
+    # Child 1: 200 tokens, cost 0.0005
+    child1_event = make_llm_event(
+        inv_id="agg-child-1", total_tokens=200, response_cost=0.0005
+    );
+    child1_event["metadata"]["jac_parent_invocation_id"] = "agg-parent";
+    store.record_llm_event(child1_event);
+    child1_rec = make_agent_record(inv_id="agg-child-1");
+    child1_rec["parent_invocation_id"] = "agg-parent";
+    store.record_agent_completion(child1_rec);
+
+    # Child 2: 300 tokens, cost 0.001
+    child2_event = make_llm_event(
+        inv_id="agg-child-2", total_tokens=300, response_cost=0.001
+    );
+    child2_event["metadata"]["jac_parent_invocation_id"] = "agg-parent";
+    store.record_llm_event(child2_event);
+    child2_rec = make_agent_record(inv_id="agg-child-2");
+    child2_rec["parent_invocation_id"] = "agg-parent";
+    store.record_agent_completion(child2_rec);
+
+    detail = store.get_trace("agg-parent");
+    # Own values
+    assert detail["total_tokens"] == 150;
+    assert detail["total_cost"] == 0.0001;
+    assert detail["llm_call_count"] == 1;
+
+    # Aggregated = parent + child1 + child2
+    assert detail["aggregated_total_tokens"] == 650;  # 150 + 200 + 300
+    assert detail["aggregated_total_cost"] == round(0.0001 + 0.0005 + 0.001, 6);
+    assert detail["aggregated_llm_call_count"] == 3;
+}
+
+test "get_trace aggregated fields equal own values when no children" {
+    store = TelemetryStore();
+    store.record_llm_event(
+        make_llm_event(inv_id="agg-leaf", total_tokens=100, response_cost=0.0002)
+    );
+    store.record_agent_completion(make_agent_record(inv_id="agg-leaf"));
+
+    detail = store.get_trace("agg-leaf");
+    assert detail["aggregated_total_tokens"] == detail["total_tokens"];
+    assert detail["aggregated_total_cost"] == detail["total_cost"];
+    assert detail["aggregated_llm_call_count"] == detail["llm_call_count"];
+}
+
+test "get_trace aggregated fields include multi-call children" {
+    store = TelemetryStore();
+    # Parent: 1 LLM call, 100 tokens
+    store.record_llm_event(
+        make_llm_event(inv_id="agg-multi-p", total_tokens=100, response_cost=0.0001)
+    );
+    store.record_agent_completion(make_agent_record(inv_id="agg-multi-p"));
+
+    # Child with 2 LLM calls (ReAct loop)
+    child_evt1 = make_llm_event(
+        inv_id="agg-multi-c", total_tokens=80, response_cost=0.00005
+    );
+    child_evt1["metadata"]["jac_parent_invocation_id"] = "agg-multi-p";
+    store.record_llm_event(child_evt1);
+    child_evt2 = make_llm_event(
+        inv_id="agg-multi-c", total_tokens=120, response_cost=0.00008
+    );
+    child_evt2["metadata"]["jac_parent_invocation_id"] = "agg-multi-p";
+    store.record_llm_event(child_evt2);
+    child_rec = make_agent_record(inv_id="agg-multi-c");
+    child_rec["parent_invocation_id"] = "agg-multi-p";
+    store.record_agent_completion(child_rec);
+
+    detail = store.get_trace("agg-multi-p");
+    # Parent: 1 call, 100 tokens. Child: 2 calls, 200 tokens.
+    assert detail["aggregated_total_tokens"] == 300;
+    assert detail["aggregated_llm_call_count"] == 3;
+    assert detail["aggregated_total_cost"] == round(0.0001 + 0.00005 + 0.00008, 6);
+}
+
+test "get_traces recursive aggregation includes grandchildren" {
+    store = TelemetryStore();
+    # Root: 100 tokens, cost 0.0001
+    store.record_llm_event(
+        make_llm_event(inv_id="rec-root", total_tokens=100, response_cost=0.0001)
+    );
+    store.record_agent_completion(make_agent_record(inv_id="rec-root"));
+
+    # Child: 200 tokens, cost 0.0005
+    child_evt = make_llm_event(
+        inv_id="rec-child", total_tokens=200, response_cost=0.0005
+    );
+    child_evt["metadata"]["jac_parent_invocation_id"] = "rec-root";
+    store.record_llm_event(child_evt);
+    child_rec = make_agent_record(inv_id="rec-child");
+    child_rec["parent_invocation_id"] = "rec-root";
+    store.record_agent_completion(child_rec);
+
+    # Grandchild: 50 tokens, cost 0.0002
+    gc_evt = make_llm_event(
+        inv_id="rec-grandchild", total_tokens=50, response_cost=0.0002
+    );
+    gc_evt["metadata"]["jac_parent_invocation_id"] = "rec-child";
+    store.record_llm_event(gc_evt);
+    gc_rec = make_agent_record(inv_id="rec-grandchild");
+    gc_rec["parent_invocation_id"] = "rec-child";
+    store.record_agent_completion(gc_rec);
+
+    # Root-only list should aggregate root + child + grandchild.
+    root_result = store.get_traces(root_only=True);
+    assert root_result["total"] == 1;
+    root_trace = root_result["traces"][0];
+    assert root_trace["child_count"] == 1;
+    assert root_trace["aggregated_total_tokens"] == 350;  # 100 + 200 + 50
+    assert root_trace["aggregated_total_cost"] == 0.0001 + 0.0005 + 0.0002;
+    assert root_trace["aggregated_llm_call_count"] == 3;
+
+    # Detail endpoint should also aggregate recursively.
+    detail = store.get_trace("rec-root");
+    assert detail["aggregated_total_tokens"] == 350;
+    assert detail["aggregated_llm_call_count"] == 3;
+
+    # Child in detail should have its own child_count and aggregated stats.
+    child_detail = detail["child_traces"][0];
+    assert child_detail["invocation_id"] == "rec-child";
+    assert child_detail["child_count"] == 1;
+    assert child_detail["aggregated_total_tokens"] == 250;  # 200 + 50
+    assert child_detail["aggregated_total_cost"] == round(0.0005 + 0.0002, 6);
+    assert child_detail["aggregated_llm_call_count"] == 2;
+}

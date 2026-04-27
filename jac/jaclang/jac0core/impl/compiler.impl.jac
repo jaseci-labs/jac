@@ -112,11 +112,11 @@ impl JacCompiler.get_native_layout(
     actual_program = self._resolve_program(full_target, target_program);
     if (full_target in actual_program._native_cache) {
         gen = actual_program._native_cache[full_target];
-        return getattr(gen, 'native_layout', None);
+        return gen?.native_layout;
     }
     if (full_target in actual_program.mod.hub) {
         mod = actual_program.mod.hub[full_target];
-        return getattr(mod.gen, 'native_layout', None);
+        return mod.gen?.native_layout;
     }
     return None;
 }
@@ -262,7 +262,7 @@ impl JacCompiler._load_native_from_cache(
     full_target: str,
     target_program: JacProgram,
     cached_ir: str,
-    cached_interop: (dict | None)
+    cached_interop: (dict[str, Any] | None)
 ) -> None {
     try {
         import llvmlite.binding as llvm;
@@ -334,7 +334,7 @@ impl JacCompiler._load_native_from_bitcode(
     full_target: str,
     target_program: JacProgram,
     section_data: bytes,
-    cached_interop: (dict | None)
+    cached_interop: (dict[str, Any] | None)
 ) -> None {
     import struct as _struct;
     import llvmlite.binding as llvm;
@@ -418,7 +418,7 @@ impl JacCompiler._restore_sections(
     if native_obj_bytes is not None {
         try {
             import json;
-            cached_interop: (dict | None) = None;
+            cached_interop: (dict[str, Any] | None) = None;
             interop_bytes = secs.get(SEC_INTEROP);
             if interop_bytes is not None {
                 cached_interop = json.loads(interop_bytes.decode('utf-8'));
@@ -438,7 +438,7 @@ impl JacCompiler._restore_sections(
             import zlib;
             import json;
             cached_ir = zlib.decompress(llvm_bytes).decode('utf-8');
-            cached_interop2: (dict | None) = None;
+            cached_interop2: (dict[str, Any] | None) = None;
             interop_bytes2 = secs.get(SEC_INTEROP);
             if interop_bytes2 is not None {
                 cached_interop2 = json.loads(interop_bytes2.decode('utf-8'));
@@ -603,11 +603,8 @@ impl JacCompiler.compile(
     file_path: str,
     target_program: JacProgram,
     use_str: (str | None) = None,
-    options: (CompileOptions | None) = None
+    options: CompileOptions = CompileOptions()
 ) -> uni.Module {
-    if (options is None) {
-        options = CompileOptions();
-    }
     # For impl/test annex files compiled standalone, redirect to compile the
     # parent module instead. The parent's JacAnnexPass discovers and attaches
     # the impl, and DeclImplMatchPass connects them with full scope context.

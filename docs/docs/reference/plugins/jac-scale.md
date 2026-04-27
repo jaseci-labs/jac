@@ -310,7 +310,7 @@ See the [Webhooks](#webhooks) section below.
 
 ## Authentication
 
-jac-scale uses an **identity-based authentication system**. Instead of a flat username/password pair, each user has an array of _identities_ (username, email, SSO) and an array of _credentials_ (password). This allows users to log in with any of their identities and enables SSO accounts to coexist alongside password-based credentials without schema changes.
+jac-scale uses an **identity-based authentication system**. Each user can sign in through multiple identities (username, email, or an SSO provider like Google or GitHub), and all of them resolve to the same account.
 
 ### Identity Model
 

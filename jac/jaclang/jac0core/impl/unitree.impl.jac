@@ -297,13 +297,13 @@ impl Symbol.init(
     parent_tab: (UniScopeNode | None) = None,
     imported: bool = False
 ) -> None {
-    self.defn: list[NameAtom] = [defn];
-    self.uses: list[NameAtom] = [];
-    self.imported: bool = imported;
+    self.defn = [defn];
+    self.uses = [];
+    self.imported = imported;
     defn.sym = self;
-    self.access: SymbolAccess = access;
+    self.access = access;
     self.parent_tab = parent_tab;
-    self.semstr: str = '';
+    self.semstr = '';
 }
 
 """Get decl."""
@@ -937,9 +937,7 @@ impl ProgramModule.postinit -> None {
     self.main = self.main_mod or Module.make_stub();
     self.kid = [self.main];
     UniNode.postinit(self);
-    self.hub: dict[(str, Module)] = {self.loc.mod_path: self.main_mod}
-        if self.main_mod
-        else {};
+    self.hub = {self.loc.mod_path: self.main_mod} if self.main_mod else {};
 }
 
 
@@ -1113,7 +1111,7 @@ impl Import.__jac_detected -> bool {
 }
 
 impl ModulePath.postinit -> None {
-    self.abs_path: (str | None) = None;
+    self.abs_path = None;
     UniNode.postinit(self);
 }
 
@@ -1199,7 +1197,7 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
 
 impl ModuleItem.postinit -> None {
     UniNode.postinit(self);
-    self.abs_path: (str | None) = None;
+    self.abs_path = None;
 }
 
 
@@ -2541,8 +2539,8 @@ impl Source.init(source: str, mod_path: str) -> None {
     self.value = source;
     self.hash = md5(source.encode()).hexdigest();
     self.file_path = mod_path;
-    self.comments: list[CommentToken] = [];
-    self.inline_suppressions: dict[int, set[str]] = {};
+    self.comments = [];
+    self.inline_suppressions = {};
 }
 
 """Return the source code as string."""
