@@ -17,6 +17,16 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     message = "{'role': 'assistant', 'content': {'text': 'Mock response'}}";
     mt_run.add_message(message);
     output = self.config["outputs"].pop(0);  # type: ignore
+    # Support batch tool calls: list[MockToolCall] → multiple ToolCalls in one response.
+    if isinstance(output, list)
+    and len(output) > 0
+    and isinstance(output[0], MockToolCall) {
+        tool_calls = [o.to_tool_call() for o in output];
+        self.log_info(
+            f"Mock LLM call completed with {len(tool_calls)} batch tool calls"
+        );
+        return CompletionResult(output=None, tool_calls=tool_calls);
+    }
     if isinstance(output, MockToolCall) {
         self.log_info(
             f"Mock LLM call completed with tool call:\n{output.to_tool_call()}"
