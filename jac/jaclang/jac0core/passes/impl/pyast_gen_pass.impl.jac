@@ -242,7 +242,9 @@ impl PyastGenPass._gen_py_sv_func_stub(
 }
 
 """Build a Python source string for a boundary type stub class."""
-impl PyastGenPass._gen_py_boundary_stub_class(class_name: str, info: BoundaryTypeInfo) -> str {
+impl PyastGenPass._gen_py_boundary_stub_class(
+    class_name: str, info: BoundaryTypeInfo
+) -> str {
     field_names: list[str] = [];
     for f in info.fields {
         field_names.append(f[0]);
