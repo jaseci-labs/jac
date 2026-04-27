@@ -65,6 +65,21 @@ class ConsoleLogHandler(logging.Handler) {
     }
 }
 
+"""Filter that suppresses noisy health-check access log entries."""
+class HealthCheckFilter(logging.Filter) {
+    _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP'};
+
+    def filter(self: HealthCheckFilter, record: logging.LogRecord) -> bool {
+        msg = record.getMessage();
+        for pat in self._SUPPRESSED {
+            if pat in msg {
+                return False;
+            }
+        }
+        return True;
+    }
+}
+
 """Run the FastAPI server using Uvicorn.
 
 If the specified port is in use, tries subsequent ports up to max_retries times.
@@ -77,6 +92,7 @@ impl JFastApiServer.run_server(
     # Create custom handler for console logging
     console_handler = ConsoleLogHandler();
     console_handler.setFormatter(logging.Formatter("%(message)s"));
+    console_handler.addFilter(HealthCheckFilter());
     # Suppress startup logs but route access logs through jac-super console
     log_config = {
         "version": 1,
