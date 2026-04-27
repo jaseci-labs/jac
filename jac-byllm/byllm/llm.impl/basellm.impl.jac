@@ -579,12 +579,13 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     messages = mt_run.get_msg_list();
     tools = mt_run.get_tool_list() or None;
 
-    # Intelligent parallel scheduling: when parallel is active for this call,
-    # annotate tool descriptions and inject scheduling rules into the system prompt
-    # so the LLM can intelligently decide which tools to batch vs sequence.
+    # Optional scheduling hints: when parallel is active AND the caller has
+    # opted in via parallel_hint=True, annotate tool descriptions and inject
+    # scheduling rules into the system prompt. Off by default — modern LLMs
+    # already batch independent tool calls without the extra prompt tokens.
     if _should_parallelize(mt_run)
     and tools
-    and mt_run.call_params.get("parallel_hint", True)
+    and mt_run.call_params.get("parallel_hint", False)
     and messages
     and len(messages) > 0 {
         # --- Annotate each tool's description with scheduling metadata ---
