@@ -1068,6 +1068,23 @@ test "any_type_works_with_any_type" {
     assert len(program.errors_had) == 0;
 }
 
+test "jac any keyword works as annotation" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_jac_any_keyword_annotation.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1;
+    assert_error_pretty_found(
+        """
+        builtin_any_bad: str = `any([0]);  # Error: Python any() returns bool.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
 test "dict_pop" {
     program = JacProgram();
     mod = program.compile(
@@ -2853,6 +2870,30 @@ test "self_typevar_attr_access_via_enclosing_class" {
     # for the user fixture's positions — that would mean the fix didn't take.
     for err in program.errors_had {
         if "checker_self_type_attr_access" in err.loc.mod_path {
+            assert "type \"Self\"" not in err.pretty_print() , f"Error should not refer to opaque Self type, got:\n{err.pretty_print()}";
+        }
+    }
+}
+
+"""Self-typed return values resolve via the receiver class for chained and
+indirected access (issue #5688)."""
+test "self_class_member_access_5688" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_self_class_member_access.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+    assert len(user_errors) == 0 , f"Expected 0 user errors, got {len(
+        user_errors
+    )}:\n" + "\n".join(e.pretty_print() for e in user_errors);
+    for err in program.errors_had {
+        if "checker_self_class_member_access" in err.loc.mod_path {
             assert "type \"Self\"" not in err.pretty_print() , f"Error should not refer to opaque Self type, got:\n{err.pretty_print()}";
         }
     }

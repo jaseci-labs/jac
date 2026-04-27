@@ -93,6 +93,7 @@ obj MongoBackend(PersistentMemory) {
     # PersistentMemory interface (Memory methods + persistence-specific)
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
+    def put_partial(anchor: Anchor, field_names: set[str]) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
     def `has(id: UUID) -> bool;
