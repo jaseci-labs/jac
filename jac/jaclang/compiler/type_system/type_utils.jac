@@ -168,6 +168,13 @@ Convert a type to its instance form.
 """
 def convert_to_instance(ty: types.TypeBase) -> types.TypeBase;
 
+"""Synthesize the implicit `Self` TypeVar marker.
+
+The marker is keyed by `is_self=True`. The binding context (which class
+`Self` resolves to) is supplied by the caller of `apply_solved_type_vars`.
+"""
+def synthesize_self_type_var -> types.TypeVarType;
+
 """
 Apply type variable substitutions to a type.
 

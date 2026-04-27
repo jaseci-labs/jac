@@ -38,9 +38,9 @@ impl build_system_prompt(extra_uris: list[str] = []) -> str {
     return "\n".join(parts);
 }
 
-"""Return list of available prompts."""
+"""Return list of available prompts, filtered by active mode."""
 impl PromptProvider.list_prompts -> list[dict[str, Any]] {
-    return [
+    all_prompts: list[dict[str, Any]] = [
         {
             "name": "write_module",
             "description": "Generate a new Jac module with optional .impl.jac file",
@@ -180,6 +180,17 @@ impl PromptProvider.list_prompts -> list[dict[str, Any]] {
             ]
         },
 
+    ];
+
+    import from jac_mcp.mode { get_mcp_mode, disabled_prompts_for_mode }
+    disabled = disabled_prompts_for_mode(get_mcp_mode());
+    if not disabled {
+        return all_prompts;
+    }
+    return [
+        p
+        for p in all_prompts
+        if p["name"] not in disabled
     ];
 }
 
