@@ -23,6 +23,7 @@ import from byllm.exceptions {
     RateLimitError,
     ModelNotFoundError,
     UnknownToolError,
+    ConfigurationError,
     CompactionNotEffectiveError
 }
 import from byllm.types {
@@ -93,7 +94,7 @@ obj BaseLLM {
     def _get_ctx_window(call_params: dict) -> int;
     def _compact_messages(
         mt_run: MTRuntime, keep_recent: int, comp_model: str | None
-    ) -> str;
+    ) -> None;
 }
 
 """Mock LLM connector that simulates responses for testing.

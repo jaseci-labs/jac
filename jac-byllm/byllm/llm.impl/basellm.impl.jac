@@ -82,6 +82,9 @@ def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
     import copy;
     m = copy.copy(model);
     m.call_params = {"compaction_enabled": False};
+    # Shallow copy shares the list object — give the compaction call its own
+    # history so its token usage does not inflate the outer ReAct loop totals.
+    m._usage_history = [];
     return m;
 }
 
@@ -201,11 +204,11 @@ impl BaseLLM._get_ctx_window(call_params: dict) -> int {
 
 Resolves the `on_compaction` hook: if the caller supplied one (via call_params
 or model.call_params) it is called instead of the built-in default. Either way
-the compacted list is written back to mt_run.messages and the summary is returned.
+the compacted list is written back to mt_run.messages.
 """
 impl BaseLLM._compact_messages(
     mt_run: MTRuntime, keep_recent: int, comp_model: str | None
-) -> str {
+) -> None {
     on_compaction = (
         mt_run.call_params.get("on_compaction") or self.call_params.get("on_compaction")
     );
@@ -213,6 +216,14 @@ impl BaseLLM._compact_messages(
     msg_dicts = mt_run.get_msg_list();
     if on_compaction {
         compacted = on_compaction(msg_dicts, keep_recent);
+        if not isinstance(compacted, list) or len(compacted) < 2 {
+            got_type = type(compacted).__name__;
+            got_len = len(compacted) if isinstance(compacted, list) else "N/A";
+            raise ConfigurationError(
+                "on_compaction hook must return a list with at least 2 messages "
+                f"(system + user task). Got: {got_type} of length {got_len}."
+            );
+        }
     } else {
         if comp_model {
             # User specified a different model name for compaction -
@@ -236,23 +247,9 @@ impl BaseLLM._compact_messages(
     mt_run.messages = compacted;
     removed = original_len - len(compacted);
     logger.info(
-        f"byLLM compaction: reduced message list from {original_len} to {len(
-            compacted
-        )} "
+        f"byLLM compaction: reduced message list from {original_len} to {len(compacted)} "
         f"({removed} messages replaced with summary)"
     );
-    # Extract the summary text from the injected summary message if present
-    if len(compacted) >= 3 {
-        summary_msg = compacted[2];
-        if isinstance(summary_msg, dict) {
-            content = summary_msg.get("content", "");
-            if isinstance(content, str)
-            and content.startswith("[Compacted context summary]") {
-                return content;
-            }
-        }
-    }
-    return "";
 }
 
 
@@ -294,16 +291,22 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             if mt_run.call_params.get("compaction_enabled") is not None
             else comp_cfg.get("enabled", True)
     );
-    comp_threshold = float(
+    _raw_threshold = (
         mt_run.call_params.get("threshold_ratio")
-        or self.call_params.get("threshold_ratio")
-        or comp_cfg.get("threshold_ratio", 0.80)
+            if mt_run.call_params.get("threshold_ratio") is not None
+            else self.call_params.get("threshold_ratio")
+                if self.call_params.get("threshold_ratio") is not None
+                else None
     );
-    comp_keep_recent = int(
+    comp_threshold = float(str(_raw_threshold)) if _raw_threshold is not None else float(comp_cfg.get("threshold_ratio", 0.80));
+    _raw_keep_recent = (
         mt_run.call_params.get("keep_recent_iterations")
-        or self.call_params.get("keep_recent_iterations")
-        or comp_cfg.get("keep_recent_iterations", 3)
+            if mt_run.call_params.get("keep_recent_iterations") is not None
+            else self.call_params.get("keep_recent_iterations")
+                if self.call_params.get("keep_recent_iterations") is not None
+                else None
     );
+    comp_keep_recent = int(str(_raw_keep_recent)) if _raw_keep_recent is not None else int(comp_cfg.get("keep_recent_iterations", 3));
     _raw_comp_model = (
         mt_run.call_params.get("compaction_model")
         or self.call_params.get("compaction_model")
@@ -348,10 +351,22 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
             resp = self.dispatch_no_streaming(mt_run);
         } except litellm.exceptions.ContextWindowExceededError {
             # Context window exceeded - compact and retry once before giving up.
+            # Honour the opt-out: if compaction is disabled, re-raise immediately.
+            if not comp_enabled {
+                raise;
+            }
+            if just_compacted {
+                raise CompactionNotEffectiveError(
+                    "Context window exceeded again after emergency compaction - "
+                    "provide a custom on_compaction hook, increase ctx_window, "
+                    "or switch to a model with a larger context window."
+                );
+            }
             logger.warning(
                 "byLLM compaction: context window exceeded, triggering emergency compaction."
             );
             self._compact_messages(mt_run, comp_keep_recent, comp_model);
+            just_compacted = True;
             resp = self.dispatch_no_streaming(mt_run);
         } except OutputConversionError {
             # gpt-4o returned plain text that can't be parsed - attempt recovery.
@@ -912,10 +927,40 @@ impl BaseLLM._invoke_streaming(
             mt_run.call_params.get("on_iteration")
             or self.call_params.get("on_iteration")
         );
+        comp_cfg = get_byllm_config().get_compaction_config();
+        comp_enabled = bool(
+            mt_run.call_params.get("compaction_enabled")
+                if mt_run.call_params.get("compaction_enabled") is not None
+                else comp_cfg.get("enabled", True)
+        );
+        _raw_threshold = (
+            mt_run.call_params.get("threshold_ratio")
+                if mt_run.call_params.get("threshold_ratio") is not None
+                else self.call_params.get("threshold_ratio")
+                    if self.call_params.get("threshold_ratio") is not None
+                    else None
+        );
+        comp_threshold = float(str(_raw_threshold)) if _raw_threshold is not None else float(comp_cfg.get("threshold_ratio", 0.80));
+        _raw_keep_recent = (
+            mt_run.call_params.get("keep_recent_iterations")
+                if mt_run.call_params.get("keep_recent_iterations") is not None
+                else self.call_params.get("keep_recent_iterations")
+                    if self.call_params.get("keep_recent_iterations") is not None
+                    else None
+        );
+        comp_keep_recent = int(str(_raw_keep_recent)) if _raw_keep_recent is not None else int(comp_cfg.get("keep_recent_iterations", 3));
+        _raw_comp_model = (
+            mt_run.call_params.get("compaction_model")
+            or self.call_params.get("compaction_model")
+            or comp_cfg.get("compaction_model")
+        );
+        comp_model: str | None = str(_raw_comp_model) if _raw_comp_model else None;
+        ctx_window = self._get_ctx_window(mt_run.call_params);
         iter_count = 0;
         last_tool = "";
         last_result = "";
         total_tokens = 0;
+        just_compacted = False;
         while True {
             iter_count += 1;
 
@@ -976,6 +1021,23 @@ impl BaseLLM._invoke_streaming(
             _llm_t0 = _time.time();
             try {
                 resp = self.dispatch_no_streaming(mt_run);
+            } except litellm.exceptions.ContextWindowExceededError {
+                if not comp_enabled {
+                    raise;
+                }
+                if just_compacted {
+                    raise CompactionNotEffectiveError(
+                        "Context window exceeded again after emergency compaction - "
+                        "provide a custom on_compaction hook, increase ctx_window, "
+                        "or switch to a model with a larger context window."
+                    );
+                }
+                logger.warning(
+                    "byLLM compaction: context window exceeded, triggering emergency compaction."
+                );
+                self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                just_compacted = True;
+                resp = self.dispatch_no_streaming(mt_run);
             } except OutputConversionError {
                 # gpt-4o returned plain text that can't be parsed - attempt recovery.
                 recovery_resp = self._attempt_recovery(mt_run);
@@ -996,6 +1058,34 @@ impl BaseLLM._invoke_streaming(
                     if isinstance(usage, dict)
                     else getattr(usage, "total_tokens", 0)
             );
+            # Threshold-based proactive compaction - identical logic to invoke().
+            if comp_enabled and ctx_window > 0 {
+                prompt_tokens = int(
+                    usage.get("prompt_tokens", 0)
+                        if isinstance(usage, dict)
+                        else usage?.prompt_tokens or 0
+                );
+                if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
+                    if just_compacted {
+                        raise CompactionNotEffectiveError(
+                            f"{prompt_tokens}/{ctx_window} tokens "
+                            f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
+                            f"{comp_threshold:.0%} after compaction - provide a custom "
+                            "on_compaction hook, increase ctx_window, or switch to a model "
+                            "with a larger context window."
+                        );
+                    }
+                    logger.info(
+                        f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
+                        f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
+                        "Compacting message history."
+                    );
+                    self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                    just_compacted = True;
+                } else {
+                    just_compacted = False;
+                }
+            }
 
             # Metrics: emit LLM call duration for this iteration
             yield StreamEvent(

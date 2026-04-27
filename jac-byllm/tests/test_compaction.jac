@@ -33,7 +33,7 @@ import from byllm.lib { Model, ModelPool, MockLLM }
 import from byllm.llm { BaseLLM }
 import from byllm.mtir { MTRuntime }
 import from byllm.types { Tool, MockToolCall, Message, MessageRole, CompletionResult }
-import from byllm.exceptions { CompactionNotEffectiveError }
+import from byllm.exceptions { CompactionNotEffectiveError, ConfigurationError }
 import from byllm.config_loader { reset_byllm_config, get_byllm_config }
 import litellm;
 
@@ -474,9 +474,11 @@ test "invoke just_compacted resets after a below-threshold iteration" {
 # ---------------------------------------------------------------------------
 # 18. ContextWindowExceededError emergency path
 #
-# MockLLM cannot raise provider exceptions, so we patch model_call_no_stream
-# (the LiteLLM boundary) - consistent with the existing exception-test pattern
-# in test_byllm.jac (see "unknown tool error" and exception-logging tests).
+# MockLLM cannot raise provider exceptions natively, so we patch at
+# model_call_no_stream (the LiteLLM call boundary) - the established pattern
+# for exception testing in test_byllm.jac (see "unknown tool error" and
+# exception-logging tests). The SimpleNamespace response on the retry mirrors
+# LiteLLM's dict format so dispatch_no_streaming can process it normally.
 # ---------------------------------------------------------------------------
 
 test "invoke ContextWindowExceededError triggers compact and retry and succeeds" {
@@ -572,6 +574,203 @@ test "invoke on_compaction hook receives correct arguments" {
     assert received_msg_count[0] >= 2, "Hook should receive at least system+user messages";
 }
 
+
+# ---------------------------------------------------------------------------
+# Streaming path (_invoke_streaming) compaction tests
+#
+# _invoke_streaming is triggered by stream=True + logging=True.
+# The ReAct tool-calling iterations still use dispatch_no_streaming internally;
+# compaction fires between iterations just like in invoke(). The final answer
+# is streamed from dispatch_streaming, so the outputs list needs one extra
+# text entry for that call.
+# ---------------------------------------------------------------------------
+
+test "invoke streaming threshold triggers compaction" {
+    compaction_called = False;
+
+    def my_hook(msgs: list, keep_recent: int) -> list {
+        nonlocal compaction_called;
+        compaction_called = True;
+        return msgs;
+    }
+
+    def step_a -> str { return "stepped"; }
+    def finish_tool(final_output: str) -> str { return final_output; }
+
+    llm = Model(
+        model_name="mockllm",
+        ctx_window=1000,
+        config={"outputs": [
+            (MockToolCall(tool=step_a,      args={}),                        {"prompt_tokens": 850, "total_tokens": 950}),
+            (MockToolCall(tool=finish_tool, args={"final_output": "done"}),  {}),
+            "done"  # dispatched by dispatch_streaming for the final streamed answer
+        ]}
+    );
+
+    def my_task(q: str) -> str by llm(
+        tools=[step_a],
+        stream=True,
+        logging=True,
+        ctx_window=1000,
+        threshold_ratio=0.80,
+        on_compaction=my_hook
+    );
+
+    # Consume all StreamEvents to drive the generator to completion
+    for event in my_task("test") { }
+
+    assert compaction_called, "Compaction should fire in _invoke_streaming when threshold exceeded";
+}
+
+test "invoke streaming compaction_enabled False suppresses threshold trigger" {
+    compaction_called = False;
+
+    def my_hook(msgs: list, keep_recent: int) -> list {
+        nonlocal compaction_called;
+        compaction_called = True;
+        return msgs;
+    }
+
+    def step_a -> str { return "stepped"; }
+    def finish_tool(final_output: str) -> str { return final_output; }
+
+    llm = Model(
+        model_name="mockllm",
+        ctx_window=1000,
+        config={"outputs": [
+            (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {"prompt_tokens": 900, "total_tokens": 1000}),
+            "done"
+        ]}
+    );
+
+    def my_task(q: str) -> str by llm(
+        tools=[step_a],
+        stream=True,
+        logging=True,
+        ctx_window=1000,
+        threshold_ratio=0.80,
+        compaction_enabled=False,
+        on_compaction=my_hook
+    );
+
+    for event in my_task("test") { }
+
+    assert not compaction_called, "Compaction should NOT fire in streaming path when disabled";
+}
+
+# ---------------------------------------------------------------------------
+# New tests added to address PR review findings
+# ---------------------------------------------------------------------------
+
+test "_compact_messages hook returning None raises ConfigurationError" {
+    # Return type intentionally omitted so Jac allows returning None
+    def bad_hook(msgs: list, keep_recent: int) {
+        return None;
+    }
+
+    mt_run = _make_mt_run(
+        extra_messages=_make_round(1) + _make_round(2),
+        call_params={"on_compaction": bad_hook}
+    );
+    model = Model(model_name="gpt-4o-mini");
+
+    raised = False;
+    try {
+        model._compact_messages(mt_run, keep_recent=1, comp_model=None);
+    } except ConfigurationError as e {
+        raised = True;
+        assert "on_compaction hook" in str(e), f"Error should mention the hook, got: {e}";
+    }
+    assert raised, "ConfigurationError should be raised when hook returns None";
+}
+
+test "_compact_messages hook returning empty list raises ConfigurationError" {
+    def bad_hook(msgs: list, keep_recent: int) -> list {
+        return [];  # intentionally too short
+    }
+
+    mt_run = _make_mt_run(
+        extra_messages=_make_round(1) + _make_round(2),
+        call_params={"on_compaction": bad_hook}
+    );
+    model = Model(model_name="gpt-4o-mini");
+
+    raised = False;
+    try {
+        model._compact_messages(mt_run, keep_recent=1, comp_model=None);
+    } except ConfigurationError as e {
+        raised = True;
+        assert "at least 2 messages" in str(e), f"Error should mention minimum length, got: {e}";
+    }
+    assert raised, "ConfigurationError should be raised when hook returns empty list";
+}
+
+test "invoke threshold_ratio 0.0 always compacts" {
+    compaction_called = False;
+
+    def my_hook(msgs: list, keep_recent: int) -> list {
+        nonlocal compaction_called;
+        compaction_called = True;
+        return msgs;
+    }
+
+    def step_a -> str { return "a"; }
+    def finish_tool(final_output: str) -> str { return final_output; }
+
+    # threshold_ratio=0.0 means even 1 prompt token triggers compaction.
+    # Falsy-zero fix ensures 0.0 is not treated as "unset".
+    llm = Model(
+        model_name="mockllm",
+        ctx_window=1000,
+        config={"outputs": [
+            (MockToolCall(tool=step_a,      args={}),                        {"prompt_tokens": 1, "total_tokens": 50}),
+            (MockToolCall(tool=finish_tool, args={"final_output": "done"}),  {})
+        ]}
+    );
+
+    def my_task(q: str) -> str by llm(
+        tools=[step_a],
+        ctx_window=1000,
+        threshold_ratio=0.0,
+        on_compaction=my_hook
+    );
+
+    result = my_task("test");
+    assert compaction_called, "threshold_ratio=0.0 should always trigger compaction";
+}
+
+test "invoke compaction_enabled False blocks emergency ContextWindowExceededError path" {
+    model = Model(model_name="gpt-4o-mini");
+
+    def step_a -> str { return "a"; }
+
+    call_count = 0;
+    def fake_model_call(params: dict) -> dict {
+        nonlocal call_count;
+        call_count += 1;
+        raise litellm.exceptions.ContextWindowExceededError(
+            message="context length exceeded",
+            model="gpt-4o-mini",
+            llm_provider="openai"
+        );
+    }
+
+    def my_task(q: str) -> str by model(
+        tools=[step_a],
+        compaction_enabled=False
+    );
+
+    raised = False;
+    with unittest.mock.patch.object(model, "model_call_no_stream", fake_model_call) {
+        try {
+            my_task("test");
+        } except litellm.exceptions.ContextWindowExceededError {
+            raised = True;
+        }
+    }
+    assert raised, "ContextWindowExceededError should propagate when compaction_enabled=False";
+    assert call_count == 1, "Should not retry when compaction is disabled";
+}
 
 # ---------------------------------------------------------------------------
 # 20-21. ModelPool._get_ctx_window
