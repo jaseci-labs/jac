@@ -3484,6 +3484,11 @@ impl TypeEvaluator._get_type_from_flow_node(
             has_unnarrowed_pred = True;
             continue;
         }
+        # Wrapper CfgExpr around a nested BoolExpr has no real inflow
+        # (real flow is patched to inner operands); skip to avoid widening.
+        if isinstance(pred, uni.CfgExpr) and not pred.bb_in {
+            continue;
+        }
         if is_loop_header {
             ancestor: uni.UniNode | None = None;
             if isinstance(flow_node, uni.InForStmt) {

@@ -12,25 +12,25 @@ obj Primate(Mammal) {
     has is_primate: bool = True;
 }
 
-def test_and_most_specific(x: Animal) -> None {
+def test_and_most_specific(x: Animal) {
     if isinstance(x, Animal) and isinstance(x, Mammal) {
         x.offspring;  # Ok
     }
 }
 
-def test_and_with_not_isinstance(x: Animal) -> None {
+def test_and_with_not_isinstance(x: Animal) {
     if isinstance(x, Mammal) and not isinstance(x, Primate) {
         x.offspring;  # Ok
     }
 }
 
-def test_and_three_types(x: Animal) -> None {
+def test_and_three_types(x: Animal) {
     if isinstance(x, Animal) and isinstance(x, Mammal) and isinstance(x, Primate) {
         x.is_primate;  # Ok
     }
 }
 
-def test_and_with_flag(x: Animal, flag: bool) -> None {
+def test_and_with_flag(x: Animal, flag: bool) {
     if isinstance(x, Mammal) and flag {
         x.offspring;  # Ok
     }
@@ -108,7 +108,7 @@ def test_member_is_not_none_in_and(c: MaybeContainer, flag: bool) -> str {
     return "";
 }
 
-def test_parenthesized_isinstance_in_and(x: Animal, flag: bool) -> None {
+def test_parenthesized_isinstance_in_and(x: Animal, flag: bool) {
     if (isinstance(x, Mammal)) and flag {
         x.offspring;  # Ok
     }
@@ -202,4 +202,59 @@ def test_error_after_and_block(x: Animal) -> list[Mammal] | None {
     }
     return x.offspring;  # Error: Animal has no attribute offspring
 
+}
+
+def use_mammal_for_truthy(m: Mammal) -> str {
+    return m.name;
+}
+
+def test_truthy_name_and_narrowing(x: Mammal | None) -> str {
+    if x and use_mammal_for_truthy(x) {
+        return use_mammal_for_truthy(x);  # Ok: x narrowed to Mammal on RHS of `and`
+
+    }
+    return "";
+}
+
+def test_truthy_and_with_nested_or(x: Mammal | None) -> str {
+    if x and (use_mammal_for_truthy(x) or use_mammal_for_truthy(x)) {
+        return use_mammal_for_truthy(x);  # Ok
+
+    }
+    return "";
+}
+
+def test_truthy_and_with_three_operand_or(x: Mammal | None) -> str {
+    if x
+    and (
+        use_mammal_for_truthy(x) or use_mammal_for_truthy(x) or use_mammal_for_truthy(x)
+    ) {
+        return use_mammal_for_truthy(x);  # Ok
+
+    }
+    return "";
+}
+
+def test_truthy_and_with_nested_and(x: Mammal | None, flag: bool) -> str {
+    if x and (use_mammal_for_truthy(x) and flag) {
+        return use_mammal_for_truthy(x);  # Ok
+
+    }
+    return "";
+}
+
+def test_truthy_member_and_with_nested_or(c: MaybeContainer) -> str {
+    if c.field and (use_mammal(c.field) or use_mammal(c.field)) {
+        return use_mammal(c.field);  # Ok
+
+    }
+    return "";
+}
+
+def test_truthy_and_with_deeply_nested_or(x: Mammal | None, flag: bool) -> str {
+    if x and (use_mammal_for_truthy(x) or (use_mammal_for_truthy(x) and flag)) {
+        return use_mammal_for_truthy(x);  # Ok
+
+    }
+    return "";
 }
