@@ -50,6 +50,12 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return caller_type;
     }
 
+    # Compatibility: `root()` is accepted as a deprecated spelling of bare
+    # `root`, which resolves directly to the Root instance.
+    if isinstance(expr.target, uni.SpecialVarRef) and expr.target.name == Tok.KW_ROOT {
+        return caller_type;
+    }
+
     # Special-form handling for enum.auto() -> int
     if isinstance(caller_type, types.ClassType)
     and caller_type.is_builtin("auto")

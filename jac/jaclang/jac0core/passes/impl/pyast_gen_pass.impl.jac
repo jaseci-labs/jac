@@ -3038,6 +3038,9 @@ impl PyastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
         # Integration point: check if nd.target is an AtomTrailer on a
         # primitive type, then call PyListEmitter/PyStrEmitter/etc.
         func = self.py_ast_val(nd.target);
+        if isinstance(nd.target, uni.SpecialVarRef) and nd.target.name == Tok.KW_ROOT {
+            func = self.jaclib_obj('root');
+        }
         (args, keywords) = self.gen_call_args(nd);
         nd.gen.py_ast = [
             self.sync(
@@ -3113,9 +3116,17 @@ impl PyastGenPass.exit_special_var_ref(nd: uni.SpecialVarRef) -> None {
             )
         ];
     } elif (nd.name == Tok.KW_ROOT) {
-        nd.gen.py_ast = [
-            self.sync(ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[]))
-        ];
+        if isinstance(nd.parent, uni.FuncCall) and nd.parent.target is nd {
+            nd.gen.py_ast = [self.jaclib_obj('root')];
+        } elif isinstance(nd.parent, (uni.ParamVar, uni.HasVar)) {
+            nd.gen.py_ast = [
+                self.sync(ast3.Name(id=self._py_name(nd), ctx=nd.py_ctx_func()))
+            ];
+        } else {
+            nd.gen.py_ast = [
+                self.sync(ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[]))
+            ];
+        }
     } else {
         nd.gen.py_ast = [
             self.sync(ast3.Name(id=self._py_name(nd), ctx=nd.py_ctx_func()))

@@ -32,7 +32,8 @@ import from jaclang.jac0core.diagnostics {
     E0066,
     E0071,
     E0075,
-    E0076
+    E0076,
+    W0062
 }
 
 """Validates structural AST invariants after parsing."""
@@ -43,6 +44,7 @@ class ASTValidationPass(UniPass) {
     def enter_binary_expr(self: ASTValidationPass, nd: uni.BinaryExpr) -> None;
     def enter_name(self: ASTValidationPass, nd: uni.Name) -> None;
     def enter_func_signature(self: ASTValidationPass, nd: uni.FuncSignature) -> None;
+    def enter_has_var(self: ASTValidationPass, nd: uni.HasVar) -> None;
     def enter_iter_for_stmt(self: ASTValidationPass, nd: uni.IterForStmt) -> None;
     def enter_import(self: ASTValidationPass, nd: uni.Import) -> None;
     def enter_enum(self: ASTValidationPass, nd: uni.Enum) -> None;

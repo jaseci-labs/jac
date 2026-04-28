@@ -3882,22 +3882,22 @@ test "component_impl_scope_resolves_has_vars" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
-test "root_special_var_returns_root_type" {
-    # Bare `root` should resolve as a SpecialVarRef returning Root, so that
-    # `root spawn Walker()` resolves the walker type and `.reports` is accessible.
+test "root_special_var_and_legacy_call_return_root_type" {
+    # Bare `root` and compatibility `root()` should both resolve as Root, so
+    # graph operations and assignments do not produce Unknown-type warnings.
     path = os.path.join(CHECKER_FIXTURES, "checker_root_call_type.jac");
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
-        program.errors_had
-    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    assert len(program.errors_had) == 0 , "Expected no errors, got: " + "\n---\n".join(
+        e.pretty_print() for e in program.errors_had
+    );
     w1051 = [
         w
         for w in program.warnings_had
         if w.code.code == "W1051"
     ];
-    assert len(w1051) == 0 , f"Expected no W1051 warnings for bare `root`, got {len(
+    assert len(w1051) == 0 , f"Expected no W1051 warnings for `root`/`root()`, got {len(
         w1051
     )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
 }

@@ -67,6 +67,9 @@ impl ASTValidationPass.enter_name(self: ASTValidationPass, nd: uni.Name) -> None
 impl ASTValidationPass.enter_param_var(
     self: ASTValidationPass, nd: uni.ParamVar
 ) -> None {
+    if isinstance(nd.name, uni.SpecialVarRef) and nd.name.name == Tok.KW_ROOT {
+        self.emit(E0024, node_override=nd.name, name=nd.name.value);
+    }
     # Skip lambda parameters — lambdas allow type inference.
     sig = nd.parent;
     if isinstance(sig, uni.FuncSignature) and isinstance(sig.parent, uni.LambdaExpr) {
@@ -75,6 +78,15 @@ impl ASTValidationPass.enter_param_var(
     if nd.type_tag is None {
         param_name = nd.name.value if isinstance(nd.name, uni.Name) else str(nd.name);
         self.emit(E0052, node_override=nd, name=param_name);
+    }
+}
+
+"""Validate has-variable declarations do not bind reserved root."""
+impl ASTValidationPass.enter_has_var(
+    self: ASTValidationPass, nd: uni.HasVar
+) -> None {
+    if isinstance(nd.name, uni.SpecialVarRef) and nd.name.name == Tok.KW_ROOT {
+        self.emit(E0024, node_override=nd.name, name=nd.name.value);
     }
 }
 
@@ -238,6 +250,9 @@ E0075: duplicate base classes."""
 impl ASTValidationPass.enter_func_call(
     self: ASTValidationPass, nd: uni.FuncCall
 ) -> None {
+    if isinstance(nd.target, uni.SpecialVarRef) and nd.target.name == Tok.KW_ROOT {
+        self.emit(W0062, node_override=nd);
+    }
     if nd.params is None {
         return;
     }

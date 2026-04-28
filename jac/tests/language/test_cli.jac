@@ -125,6 +125,43 @@ test "jac cli run" {
     assert "Hello World!" in stdout_value;
 }
 
+test "root special ref keeps legacy root call compatibility" {
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        execution.run(fixture_path("root_builtin.jac"));
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    assert captured.getvalue().split() == ["Root", "Root", "2"];
+}
+
+test "unescaped root declarations fail cleanly" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        cases = {
+            "root_param.jac": "def foo(root: int) -> None {\n    print(root);\n}\nwith entry { foo(1); }\n",
+            "root_has.jac": "obj Foo { has root: int; }\nwith entry { f = Foo(root=1); print(f.root); }\n"
+        };
+        for (filename, source) in cases.items() {
+            path = os.path.join(tmpdir, filename);
+            with open(path, "w") as f {
+                f.write(source);
+            }
+            result = subprocess.run(
+                [sys.executable, "-m", "jaclang", "run", path],
+                capture_output=True,
+                text=True
+            );
+            combined = result.stdout + result.stderr;
+            assert result.returncode != 0;
+            assert "E0024" in combined , combined;
+            assert "E9001" not in combined , combined;
+            assert "E5043" not in combined , combined;
+        }
+    }
+}
+
 test "diagnostics flag" {
     err_file = os.path.join(
         JAC_ROOT, "tests", "compiler", "fixtures", "new_keyword_err.jac"
