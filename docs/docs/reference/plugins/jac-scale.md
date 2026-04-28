@@ -58,7 +58,7 @@ jac plugins enable scale
 ### Basic Server
 
 ```bash
-jac start app.jac
+jac start main.jac
 ```
 
 ### Server Options
@@ -84,19 +84,19 @@ jac start app.jac
 
 ```bash
 # Custom port
-jac start app.jac --port 3000
+jac start main.jac --port 3000
 
 # Development with HMR (requires jac-client)
-jac start app.jac --dev
+jac start main.jac --dev
 
 # API only -- skip client bundling
-jac start app.jac --dev --no_client
+jac start main.jac --dev --no_client
 
 # Preview generated API endpoints without starting
-jac start app.jac --faux
+jac start main.jac --faux
 
 # Production with profile
-jac start app.jac --port 8000 --profile prod
+jac start main.jac --port 8000 --profile prod
 ```
 
 ### Default Persistence
