@@ -285,6 +285,117 @@ Same code, different deployer:
 | Scaling | 1 replica | HPA per service |
 | Data | `.jac/data/{module}/` per process | Separate PVC per pod |
 
+## Kubernetes Deployment
+
+When `[plugins.scale.microservices].enabled = true` AND you pass
+`--scale` to `jac start`, the same dispatch that drives monolith K8s
+deploys auto-routes to the microservice variant: one image is built and
+pushed, then per-service `Deployment` + `ClusterIP Service` manifests
+are applied for every `sv import`-discovered service plus the gateway.
+
+```bash
+# One command, full topology:
+jac start app.jac --scale --build
+```
+
+That builds + pushes the image, generates manifests, and applies them.
+Each pod boots with `JAC_SV_NAME=<service>` (the gateway gets
+`JAC_SV_NAME=__gateway__`); the entrypoint reads that env var to know
+which service to host. Inside the cluster, the gateway resolves other
+services via DNS (`<svc>-service.<namespace>.svc.cluster.local`)
+automatically - no code changes from local mode.
+
+### Per-service config
+
+`[plugins.scale.microservices.services.NAME]` is the per-service
+override table. All keys are optional; omit any and you get the
+defaults. The gateway uses the same table keyed by `__gateway__`.
+
+| Key | Type | Default | What it does |
+|-----|------|---------|--------------|
+| `replicas` | int | `1` | `Deployment.spec.replicas` |
+| `cpu_request`, `cpu_limit` | str | unset | Container CPU resource (`"100m"`, `"2000m"`) |
+| `memory_request`, `memory_limit` | str | unset | Container memory resource (`"128Mi"`, `"4Gi"`) |
+| `env` | dict[str,str] | `{}` | Extra env vars (merged with the protected `JAC_SV_NAME`) |
+| `image_tag` | str | unset | Override the global image tag (canary deploys) |
+| `rpc_timeout` | float | `10.0` | Inter-service `sv import` httpx timeout (seconds) |
+| `http_forward_timeout` | float | `30.0` | Gateway-to-service forward timeout (seconds) |
+| `hpa.enabled` | bool | `true` | Emit HorizontalPodAutoscaler at all |
+| `hpa.min` | int | `1` | HPA `minReplicas` |
+| `hpa.max` | int | `3` | HPA `maxReplicas` |
+| `hpa.cpu_target` | int | `70` | HPA target CPU utilization (%) |
+| `pdb.enabled` | bool | `true` | Emit PodDisruptionBudget at all |
+| `pdb.max_unavailable` | int | `1` | PDB `maxUnavailable` |
+
+Example - an LLM service that needs more resources, longer timeouts,
+and aggressive autoscaling:
+
+```toml
+[plugins.scale.microservices.services.llm_app]
+replicas = 2
+cpu_request = "500m"
+cpu_limit = "2000m"
+memory_request = "1Gi"
+memory_limit = "4Gi"
+rpc_timeout = 120.0
+http_forward_timeout = 300.0
+env = { LOG_LEVEL = "DEBUG", MODEL_CACHE = "/cache" }
+
+[plugins.scale.microservices.services.llm_app.hpa]
+min = 3
+max = 20
+cpu_target = 60
+```
+
+### Rolling deploy (zero downtime)
+
+Every Deployment is generated with the four wires that make rolling
+updates not drop requests:
+
+| Wire | What it does |
+|------|--------------|
+| `strategy: RollingUpdate { maxSurge: 1, maxUnavailable: 0 }` | Surges a new pod BEFORE terminating an old one |
+| `readinessProbe` on `/healthz` | New pods only get traffic once ready |
+| `terminationGracePeriodSeconds` = `drain_timeout_seconds + 5` | Lets our drain middleware flush in-flight requests |
+| `lifecycle.preStop: sleep 5` | Bridges the kube-proxy endpoint-propagation gap so other nodes stop sending traffic before this pod stops accepting it |
+
+Together with the existing drain middleware (`P13`), `kubectl rollout
+restart deployment/<svc>-deployment` completes with **zero non-2xx
+responses during the rollout window**. `drain_timeout_seconds` (default
+10s) is the dial that controls how long we wait for in-flight requests
+to finish before the pod hard-exits.
+
+### Autoscaling
+
+Each service (and the gateway) gets a `HorizontalPodAutoscaler` by
+default. Defaults: `min=1, max=3, cpu_target=70%`. Tune per service
+under `[...services.NAME.hpa]`, or opt out with `hpa.enabled = false`
+for services that need fixed replica counts (leader-only workers,
+stateful services tied to single PVCs).
+
+Each service also gets a `PodDisruptionBudget` with
+`maxUnavailable=1`, so node drains and voluntary disruptions can't
+take all replicas down simultaneously. Combined with the rolling-
+update settings above, voluntary disruptions stay bounded across both
+scheduled (rollouts) and unscheduled (node maintenance) events.
+
+For services that are explicitly OK with full eviction during node
+maintenance, set `pdb.enabled = false`.
+
+### Tear down
+
+```bash
+# Programmatically:
+target.destroy("app-name")
+
+# Or by label, directly:
+kubectl delete deployment,service,hpa,pdb -l managed=jac-scale -n <ns>
+```
+
+`destroy()` deletes by label selector
+(`managed=jac-scale,jac-scale.role in (microservice,gateway)`) rather
+than per-name, so renamed services in `jac.toml` still get cleaned up.
+
 ## Built-in Route Passthrough
 
 The gateway forwards these to healthy services (tries all, skips 404):
