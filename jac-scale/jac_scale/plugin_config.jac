@@ -220,6 +220,11 @@ class JacScalePluginConfig {
                             "default": 30.0,
                             "description": "Gateway-to-service forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from `services.NAME.rpc_timeout`, which controls inter-service `sv import` calls. Override per-service with `[plugins.scale.microservices.services.NAME].http_forward_timeout`."
                         },
+                        "ingress": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "K10: optional K8s Ingress for the gateway. Default off (no Ingress emitted) so existing deployments don't grow one unexpectedly. Subkeys: `enabled` (bool, opt-in), `host` (str, omitted means match-any-host), `ingress_class_name` (str, e.g. \"nginx\", \"alb\", \"gce\"), `annotations` (dict[str,str], controller-specific knobs like nginx.ingress.kubernetes.io/proxy-body-size). HTTP only - TLS via cert-manager / ACM is P-track work. Routes all external traffic to gateway-service:container_port; the gateway dispatches /api/{svc}/* internally."
+                        },
                         "routes": {
                             "type": "dict",
                             "default": {},

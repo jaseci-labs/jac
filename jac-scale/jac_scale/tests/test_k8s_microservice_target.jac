@@ -88,11 +88,13 @@ def _install_k8s_mocks_with_k6 -> tuple[Any, Any, Any, Any, Any] {
     mock_core_v1 = unittest.mock.MagicMock();
     mock_autoscaling_v2 = unittest.mock.MagicMock();
     mock_policy_v1 = unittest.mock.MagicMock();
+    mock_networking_v1 = unittest.mock.MagicMock();
     mock_client = unittest.mock.MagicMock();
     mock_client.AppsV1Api.return_value = mock_apps_v1;
     mock_client.CoreV1Api.return_value = mock_core_v1;
     mock_client.AutoscalingV2Api.return_value = mock_autoscaling_v2;
     mock_client.PolicyV1Api.return_value = mock_policy_v1;
+    mock_client.NetworkingV1Api.return_value = mock_networking_v1;
 
     mock_cfg = unittest.mock.MagicMock();
 
@@ -110,6 +112,42 @@ def _install_k8s_mocks_with_k6 -> tuple[Any, Any, Any, Any, Any] {
     }
 
     return (mock_apps_v1, mock_core_v1, mock_autoscaling_v2, mock_policy_v1, restore);
+}
+
+
+"""Variant that ALSO returns the NetworkingV1 mock for K10 tests."""
+def _install_k8s_mocks_with_k10 -> tuple[Any, Any, Any, Any, Any, Any] {
+    mock_apps_v1 = unittest.mock.MagicMock();
+    mock_core_v1 = unittest.mock.MagicMock();
+    mock_autoscaling_v2 = unittest.mock.MagicMock();
+    mock_policy_v1 = unittest.mock.MagicMock();
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_client = unittest.mock.MagicMock();
+    mock_client.AppsV1Api.return_value = mock_apps_v1;
+    mock_client.CoreV1Api.return_value = mock_core_v1;
+    mock_client.AutoscalingV2Api.return_value = mock_autoscaling_v2;
+    mock_client.PolicyV1Api.return_value = mock_policy_v1;
+    mock_client.NetworkingV1Api.return_value = mock_networking_v1;
+
+    mock_cfg = unittest.mock.MagicMock();
+
+    orig_client = getattr(k8s_mod, "client");
+    orig_cfg = getattr(k8s_mod, "k8s_cluster_config");
+    orig_ens = getattr(k8s_mod, "ensure_namespace_exists");
+    setattr(k8s_mod, "client", mock_client);
+    setattr(k8s_mod, "k8s_cluster_config", mock_cfg);
+    setattr(k8s_mod, "ensure_namespace_exists", unittest.mock.MagicMock());
+
+    def restore -> None {
+        setattr(k8s_mod, "client", orig_client);
+        setattr(k8s_mod, "k8s_cluster_config", orig_cfg);
+        setattr(k8s_mod, "ensure_namespace_exists", orig_ens);
+    }
+
+    return (
+        mock_apps_v1, mock_core_v1, mock_autoscaling_v2,
+        mock_policy_v1, mock_networking_v1, restore
+    );
 }
 
 
@@ -1698,4 +1736,223 @@ test "_pod_entrypoint command/args are stable (regression guard)" {
     assert entry["command"] == ["sh", "-c"];
     assert isinstance(entry["args"], list);
     assert len(entry["args"]) == 1;
+}
+
+
+# =============================================================================
+# K10 - optional Ingress manifest pointing at the gateway
+# =============================================================================
+
+test "_build_ingress_manifest returns None when not enabled" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    # Default: disabled.
+    assert target._build_ingress_manifest({}) is None;
+    # Explicit disable.
+    assert target._build_ingress_manifest({"enabled": False}) is None;
+}
+
+
+test "_build_ingress_manifest emits Ingress with sensible defaults" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo", namespace="prod", container_port=8000
+        )
+    );
+    ing = target._build_ingress_manifest({"enabled": True});
+
+    assert ing is not None;
+    assert ing["apiVersion"] == "networking.k8s.io/v1";
+    assert ing["kind"] == "Ingress";
+    assert ing["metadata"]["name"] == "gateway-ingress";
+    assert ing["metadata"]["namespace"] == "prod";
+    assert ing["metadata"]["labels"]["app"] == "gateway";
+    assert ing["metadata"]["labels"]["managed"] == "jac-scale";
+
+    rules = ing["spec"]["rules"];
+    assert len(rules) == 1;
+    rule = rules[0];
+    # No host -> Ingress matches any host.
+    assert "host" not in rule;
+    paths = rule["http"]["paths"];
+    assert len(paths) == 1;
+    path = paths[0];
+    assert path["path"] == "/";
+    assert path["pathType"] == "Prefix";
+    backend = path["backend"]["service"];
+    assert backend["name"] == "gateway-service";
+    assert backend["port"]["number"] == 8000;
+    # No ingressClassName by default - user picks their controller.
+    assert "ingressClassName" not in ing["spec"];
+}
+
+
+test "_build_ingress_manifest honors host + ingress_class_name" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    ing = target._build_ingress_manifest({
+        "enabled": True,
+        "host": "shop.example.com",
+        "ingress_class_name": "nginx"
+    });
+    assert ing is not None;
+    assert ing["spec"]["rules"][0]["host"] == "shop.example.com";
+    assert ing["spec"]["ingressClassName"] == "nginx";
+}
+
+
+test "_build_ingress_manifest carries controller-specific annotations" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    ing = target._build_ingress_manifest({
+        "enabled": True,
+        "annotations": {
+            "nginx.ingress.kubernetes.io/proxy-body-size": "10m",
+            "alb.ingress.kubernetes.io/scheme": "internet-facing"
+        }
+    });
+    assert ing is not None;
+    annotations = ing["metadata"]["annotations"];
+    assert annotations["nginx.ingress.kubernetes.io/proxy-body-size"] == "10m";
+    assert annotations["alb.ingress.kubernetes.io/scheme"] == "internet-facing";
+}
+
+
+test "generate_manifests includes ingress when enabled" {
+    import jac_scale.config_loader as cfg_mod;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={
+            "routes": {"orders": "/api/orders"},
+            "ingress": {
+                "enabled": True,
+                "host": "demo.example.com",
+                "ingress_class_name": "nginx"
+            }
+        }
+    ));
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        bundle = target.generate_manifests(ac);
+        assert "ingress" in bundle;
+        assert bundle["ingress"]["spec"]["rules"][0]["host"] == "demo.example.com";
+        assert bundle["ingress"]["spec"]["ingressClassName"] == "nginx";
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+test "generate_manifests OMITS ingress when not enabled" {
+    import jac_scale.config_loader as cfg_mod;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"routes": {"orders": "/api/orders"}}
+    ));
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        bundle = target.generate_manifests(ac);
+        # Default-off: no ingress key at all in the bundle.
+        assert "ingress" not in bundle;
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+test "apply_manifests applies Ingress when present" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (apps_v1, core_v1, autoscaling_v2, policy_v1, networking_v1, restore) = (
+        _install_k8s_mocks_with_k10()
+    );
+
+    ingress = target._build_ingress_manifest({
+        "enabled": True, "host": "demo.example.com"
+    });
+    bundle = {
+        "services": {},
+        "deployments": {},
+        "hpas": {},
+        "pdbs": {},
+        "ingress": ingress,
+        "pod_specs": {}
+    };
+
+    try {
+        target.apply_manifests(bundle);
+        # MagicMock default: read returns ok -> patch path taken.
+        assert networking_v1.patch_namespaced_ingress.call_count == 1;
+        call_kwargs = networking_v1.patch_namespaced_ingress.call_args.kwargs;
+        assert call_kwargs["name"] == "gateway-ingress";
+        assert call_kwargs["namespace"] == "prod";
+    } finally {
+        restore();
+    }
+}
+
+
+test "apply_manifests skips Ingress when bundle has none" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (apps_v1, core_v1, autoscaling_v2, policy_v1, networking_v1, restore) = (
+        _install_k8s_mocks_with_k10()
+    );
+
+    bundle = {
+        "services": {},
+        "deployments": {},
+        "hpas": {},
+        "pdbs": {},
+        "pod_specs": {}
+        # No "ingress" key at all (default-off path).
+    };
+
+    try {
+        target.apply_manifests(bundle);
+        # NetworkingV1Api should never have been called for Ingress ops.
+        assert networking_v1.read_namespaced_ingress.call_count == 0;
+        assert networking_v1.create_namespaced_ingress.call_count == 0;
+        assert networking_v1.patch_namespaced_ingress.call_count == 0;
+    } finally {
+        restore();
+    }
+}
+
+
+test "destroy also tears down Ingresses by label" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (apps_v1, core_v1, autoscaling_v2, policy_v1, networking_v1, restore) = (
+        _install_k8s_mocks_with_k10()
+    );
+    core_v1.list_namespaced_service.return_value = (
+        unittest.mock.MagicMock(items=[])
+    );
+
+    try {
+        target.destroy("demo");
+        # Ingress is batched-deleted by the same `managed=jac-scale` label.
+        kw = networking_v1.delete_collection_namespaced_ingress.call_args.kwargs;
+        assert kw["namespace"] == "prod";
+        assert kw["label_selector"] == "managed=jac-scale";
+    } finally {
+        restore();
+    }
 }

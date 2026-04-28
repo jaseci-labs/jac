@@ -382,6 +382,35 @@ scheduled (rollouts) and unscheduled (node maintenance) events.
 For services that are explicitly OK with full eviction during node
 maintenance, set `pdb.enabled = false`.
 
+### External traffic - Ingress
+
+Default off. Opt in to get an external URL pointing at the gateway:
+
+```toml
+[plugins.scale.microservices.ingress]
+enabled = true
+host = "shop.example.com"          # optional; match-any-host if unset
+ingress_class_name = "nginx"       # or "alb", "gce", "traefik"
+annotations = {
+    "nginx.ingress.kubernetes.io/proxy-body-size" = "10m",
+}
+```
+
+Generates a single `networking.k8s.io/v1 Ingress` named
+`gateway-ingress` that routes `/` (Prefix) to `gateway-service`. The
+gateway itself dispatches `/api/{svc}/*` internally; only one Ingress
+is needed for the whole topology.
+
+**HTTP only.** TLS automation (cert-manager + Let's Encrypt, or ALB
++ ACM cert) is deployment-specific - install your own controller and
+add the relevant annotations / `tls:` block. We don't bake those in
+because the right answer differs by cluster (managed vs self-hosted)
+and CA (Let's Encrypt vs internal vs ACM).
+
+When `enabled = false` (the default) no Ingress is emitted; users
+relying on `kubectl port-forward svc/gateway-service` for local-cluster
+testing don't need to change anything.
+
 ### Tear down
 
 ```bash
@@ -389,7 +418,7 @@ maintenance, set `pdb.enabled = false`.
 target.destroy("app-name")
 
 # Or by label, directly:
-kubectl delete deployment,service,hpa,pdb -l managed=jac-scale -n <ns>
+kubectl delete deployment,service,hpa,pdb,ingress -l managed=jac-scale -n <ns>
 ```
 
 `destroy()` deletes by label selector

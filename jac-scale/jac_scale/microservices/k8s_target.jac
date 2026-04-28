@@ -8,6 +8,7 @@ K5 (done): rolling-deploy correctness (RollingUpdate strategy +
 readinessProbe/livenessProbe + terminationGracePeriodSeconds + preStop).
 
 K6 (done): HorizontalPodAutoscaler + PodDisruptionBudget per service.
+K10 (this file): optional Ingress manifest pointing at the gateway.
 
 K7 scope (this file): per-service config layering. Knobs at
 `[plugins.scale.microservices.services.NAME]` flow through the
@@ -182,6 +183,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         core_v1 = client.CoreV1Api();
         autoscaling_v2 = client.AutoscalingV2Api();
         policy_v1 = client.PolicyV1Api();
+        networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
 
         ensure_namespace_exists(namespace);
@@ -233,6 +235,24 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.info(
                     f"Applied PDB for '{svc_name}'",
                     {"name": pdb_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
+        # K10: Ingress, applied LAST. References gateway-service by
+        # name; the Ingress controller (nginx, ALB, etc.) will resolve
+        # the Service the moment it sees the Ingress object regardless
+        # of order, but applying after gateway-service exists avoids a
+        # transient "no backend" event.
+        ingress_manifest: Any = bundle.get("ingress");
+        if ingress_manifest {
+            self._apply_or_replace_ingress(
+                networking_v1, namespace, ingress_manifest
+            );
+            if self.logger {
+                self.logger.info(
+                    "Applied Ingress for gateway",
+                    {"name": ingress_manifest["metadata"]["name"]}
                 );
             }
         }
@@ -332,6 +352,29 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
+    """K10: Idempotent Ingress apply - mirrors the deployment shape."""
+    def _apply_or_replace_ingress(
+        networking_v1: Any, namespace: str, manifest: dict[str, Any]
+    ) -> None {
+        name: str = manifest["metadata"]["name"];
+        try {
+            networking_v1.read_namespaced_ingress(
+                name=name, namespace=namespace
+            );
+            networking_v1.patch_namespaced_ingress(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                networking_v1.create_namespaced_ingress(
+                    namespace=namespace, body=manifest
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
     """Tear down all microservice Deployments + Services in the namespace.
 
     Uses a label selector (`managed=jac-scale,jac-scale.role in
@@ -362,6 +405,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # K6: also clean up HPAs and PDBs we applied.
         autoscaling_v2 = client.AutoscalingV2Api();
         policy_v1 = client.PolicyV1Api();
+        # K10: Ingress cleanup.
+        networking_v1 = client.NetworkingV1Api();
 
         # Label selector matches anything this target has ever applied.
         # `in (...)` syntax is K8s set-based selector grammar. PDBs use
@@ -401,6 +446,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # PDBs - batched.
         try {
             policy_v1.delete_collection_namespaced_pod_disruption_budget(
+                namespace=namespace, label_selector=ms_selector
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # K10: Ingresses - batched. Same `managed=jac-scale` selector
+        # since the Ingress carries that label too.
+        try {
+            networking_v1.delete_collection_namespaced_ingress(
                 namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
@@ -467,13 +524,28 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 pdbs[svc_name] = pdb;
             }
         }
-        return {
+
+        # K10: Optional Ingress at [...microservices.ingress]. Default
+        # off; user opts in to get an external URL.
+        bundle: dict[str, Any] = {
             "deployments": deployments,
             "services": services,
             "hpas": hpas,
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            ms_cfg = get_scale_config().get_microservices_config();
+            ingress_cfg: dict[str, Any] = ms_cfg.get("ingress", {});
+        } except Exception {
+            ingress_cfg = {};
+        }
+        ingress = self._build_ingress_manifest(ingress_cfg);
+        if ingress is not None {
+            bundle["ingress"] = ingress;
+        }
+        return bundle;
     }
 
     """K5: read drain_timeout_seconds from config (defaults to 10s).
@@ -790,6 +862,92 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     }
                 ]
             }
+        };
+    }
+
+    """K10: Build an Ingress manifest pointing at the gateway Service.
+
+    Returns None unless `[plugins.scale.microservices.ingress].enabled
+    = true` in jac.toml (default off so existing deployments don't grow
+    an Ingress unexpectedly).
+
+    Scope is intentionally narrow:
+      - One Ingress for the gateway, NOT per-service. All external
+        traffic flows through the gateway, which dispatches to services
+        internally via ClusterIP DNS.
+      - HTTP only. TLS automation (cert-manager + Let's Encrypt or ACM)
+        is P-track work because it requires installing controllers and
+        configuring Issuers - too cluster-specific to bake in here.
+      - Controller-agnostic. Users set `ingress_class_name` to nginx /
+        alb / gce / traefik / etc. We don't emit controller-specific
+        annotations; users add them via the `annotations` map for any
+        controller-specific knobs (proxy-body-size, scheme, etc).
+
+    Config schema at [plugins.scale.microservices.ingress]:
+      enabled            bool        opt-in
+      host               str         optional - omits the host clause
+                                     entirely if unset (Ingress matches
+                                     any host)
+      ingress_class_name str         e.g. "nginx", "alb", "gce"
+      annotations        dict        controller-specific annotations
+    """
+    def _build_ingress_manifest(ingress_cfg: dict[str, Any]) -> dict[str, Any] | None {
+        if not ingress_cfg.get("enabled", False) {
+            return None;
+        }
+        host: str = str(ingress_cfg.get("host", "")).strip();
+        ingress_class: str = str(ingress_cfg.get("ingress_class_name", "")).strip();
+        annotations: dict[str, str] = {};
+        for (k, v) in ingress_cfg.get("annotations", {}).items() {
+            annotations[str(k)] = str(v);
+        }
+
+        # Backend always points at the gateway Service. Gateway path is
+        # always "/" with Prefix matching - the gateway itself owns
+        # /api/{svc}/* dispatch internally.
+        backend: dict[str, Any] = {
+            "service": {
+                "name": "gateway-service",
+                "port": {"number": self.k8s_config.container_port}
+            }
+        };
+        path_entry: dict[str, Any] = {
+            "path": "/",
+            "pathType": "Prefix",
+            "backend": backend
+        };
+
+        # `host` is optional in K8s Ingress: omitted means "match any
+        # host." Useful for clusters without DNS automation, dev minikube,
+        # or apps fronted by an external LB that does its own host routing.
+        rule: dict[str, Any] = {"http": {"paths": [path_entry]}};
+        if host {
+            rule["host"] = host;
+        }
+
+        metadata: dict[str, Any] = {
+            "name": "gateway-ingress",
+            "namespace": self.k8s_config.namespace,
+            "labels": {
+                "app": "gateway",
+                "managed": "jac-scale",
+                "jac-scale.role": "gateway"
+            }
+        };
+        if annotations {
+            metadata["annotations"] = annotations;
+        }
+
+        spec: dict[str, Any] = {"rules": [rule]};
+        if ingress_class {
+            spec["ingressClassName"] = ingress_class;
+        }
+
+        return {
+            "apiVersion": "networking.k8s.io/v1",
+            "kind": "Ingress",
+            "metadata": metadata,
+            "spec": spec
         };
     }
 
