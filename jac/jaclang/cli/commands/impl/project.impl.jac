@@ -1,7 +1,4 @@
-"""Implementation of project commands.
-
-Direct implementations - no delegation.
-"""
+"""Direct implementations of project CLI commands."""
 
 import subprocess;
 import shlex;
@@ -943,4 +940,95 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     console.error(f"Unknown action: {action}");
     console.print("Available actions: list, pack, info");
     return 1;
+}
+
+impl publish(
+    output: str = "dist", build_only: bool = False, repository: str = "pypi",
+) -> int {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.project.validator { validate_package }
+    import from jaclang.publish.builder { WheelBuilder }
+    import from jaclang.publish.wheel_meta { wheel_filename }
+
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
+        return 1;
+    }
+    if config.package is None {
+        console.error(
+            "No [package] section in jac.toml",
+            hint="Add [package] with name and version to use jac publish."
+        );
+        return 1;
+    }
+
+    # ── Validate ─────────────────────────────────────────────────────────────
+    console.print(
+        f"\n📦 Publishing [cyan]{config.package.name}[/cyan] "
+        f"v{config.package.version}",
+        style="bold"
+    );
+    result = validate_package(config, project_root=config.project_root);
+    if result.errors {
+        for err in result.errors {
+            console.error(err);
+        }
+        return 1;
+    }
+    for w in result.warnings {
+        console.print(f"  ⚠  {w}", style="warning");
+    }
+
+    # ── Build — WheelBuilder.build() runs precompile + collect + zip ─────────
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    console.print("\n  Pre-compiling .jac → .jir + building wheel...", style="muted");
+    try {
+        builder = WheelBuilder(config=config, project_root=config.project_root);
+        whl_path = builder.build_to(out_dir);
+    } except Exception as e {
+        console.error(f"Build failed: {e}");
+        return 1;
+    }
+    console.print(
+        f"  ✔ Built [bold]{whl_path.name}[/bold] "
+        f"({whl_path.stat().st_size:,} bytes)",
+        style="success"
+    );
+
+    if build_only {
+        console.print(f"\n  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
+        return 0;
+    }
+
+    # ── Upload ────────────────────────────────────────────────────────────────
+    import from jaclang.publish.uploader { load_credentials, upload_wheel }
+    console.print(f"\n  Uploading to [cyan]{repository}[/cyan]...", style="muted");
+    try {
+        creds = load_credentials(repository=repository);
+    } except ValueError as e {
+        console.error(
+            f"No credentials found: {e}",
+            hint="Set JAC_PYPI_TOKEN or add credentials to ~/.jac/credentials.toml"
+        );
+        return 1;
+    }
+    upload_result = upload_wheel(whl_path, config=config, credentials=creds);
+    if upload_result.success {
+        console.print(f"  ✔ Published successfully!", style="success");
+        if upload_result.release_url {
+            console.print(f"  → {upload_result.release_url}", style="bold cyan");
+        }
+        return 0;
+    } else {
+        console.error(
+            f"Upload failed (HTTP {upload_result.status_code}): "
+            f"{upload_result.message}"
+        );
+        return 1;
+    }
 }
