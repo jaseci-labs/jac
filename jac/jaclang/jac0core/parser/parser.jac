@@ -179,7 +179,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
@@ -604,7 +604,9 @@ def parse(
     tokens = lexer.tokenize();
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    # Transfer captured comments from lexer to module source
+    # Promote lexer comments to source.comments.  JSX-body comments are
+    # emitted as JSX_BLOCK_COMMENT tokens and never reach lexer.comments,
+    # so this list contains only free-floating comments.
     if module.source and lexer.comments {
         for cdata in lexer.comments {
             # cdata is (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
