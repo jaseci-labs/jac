@@ -103,6 +103,10 @@ cd "${PROJECT_DIR}"
 python - <<PYEOF
 import sys
 
+# Activate jaclang's import hook so .jac submodules under jac_scale
+# are importable from plain Python.
+import jaclang  # noqa: F401
+
 from jac_scale.microservices.k8s_target import KubernetesMicroserviceTarget
 from jac_scale.targets.kubernetes.kubernetes_config import KubernetesConfig
 from jac_scale.abstractions.config.app_config import AppConfig

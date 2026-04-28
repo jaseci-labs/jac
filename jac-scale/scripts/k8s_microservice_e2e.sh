@@ -45,6 +45,11 @@ echo "=== deploy: generate + apply manifests via KubernetesMicroserviceTarget ==
 python - <<PYEOF
 import sys
 
+# Activate jaclang's import hook so .jac submodules under jac_scale
+# are importable from plain Python (jac_scale's __init__.py is empty
+# so just `import jac_scale` doesn't auto-bootstrap jaclang).
+import jaclang  # noqa: F401
+
 from jac_scale.microservices.k8s_target import KubernetesMicroserviceTarget
 from jac_scale.targets.kubernetes.kubernetes_config import KubernetesConfig
 from jac_scale.abstractions.config.app_config import AppConfig
@@ -187,6 +192,8 @@ fi
 
 echo "=== destroy + verify cleanup ==="
 python - <<PYEOF
+import jaclang  # noqa: F401  - activate .jac import hook
+
 from jac_scale.microservices.k8s_target import KubernetesMicroserviceTarget
 from jac_scale.targets.kubernetes.kubernetes_config import KubernetesConfig
 
