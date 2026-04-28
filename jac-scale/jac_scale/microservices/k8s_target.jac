@@ -7,24 +7,29 @@ K4 (done): runtime DNS adapter (KubernetesDeployer + get_sv_registry).
 K5 (done): rolling-deploy correctness (RollingUpdate strategy +
 readinessProbe/livenessProbe + terminationGracePeriodSeconds + preStop).
 
-K6 scope (this file): HorizontalPodAutoscaler + PodDisruptionBudget
-per service.
+K6 (done): HorizontalPodAutoscaler + PodDisruptionBudget per service.
 
-  - HPA (autoscaling/v2): each service Deployment gets its own HPA
-    targeting CPU utilization. Defaults: minReplicas=1, maxReplicas=3,
-    averageUtilization=70%. The gateway also gets one. K7 will make
-    these per-service-configurable via [plugins.scale.microservices.
-    services.NAME.hpa].
-  - PDB (policy/v1): each service Deployment gets a PodDisruptionBudget
-    with maxUnavailable=1, so node drains and voluntary disruptions
-    can't take all replicas down simultaneously. Combined with the K5
-    rolling-update settings, this protects availability across both
-    scheduled (rollout) and unscheduled (node maintenance) events.
+K7 scope (this file): per-service config layering. Knobs at
+`[plugins.scale.microservices.services.NAME]` flow through the
+manifest builders:
 
-Both manifests are emitted by default with conservative bounds. K7
-will let users disable or tune them per service.
+  - `replicas` (int)             -> Deployment.spec.replicas
+  - `cpu_request`, `cpu_limit`   -> container resources (e.g. "100m")
+  - `memory_request`,
+    `memory_limit`               -> container resources (e.g. "128Mi")
+  - `env` (dict[str,str])        -> extra container env vars (merged
+                                    with JAC_SV_NAME, no override of it)
+  - `image_tag` (str)            -> override the global image tag
+                                    (useful for canary)
+  - `hpa.enabled` (bool)         -> emit HPA at all (default true)
+  - `hpa.min` / `hpa.max` /
+    `hpa.cpu_target` (int)       -> HPA bounds + threshold
+  - `pdb.enabled` (bool)         -> emit PDB at all (default true)
+  - `pdb.max_unavailable` (int)  -> PDB tolerance
 
-K7 adds per-service config layering (replicas/cpu/mem/env overrides).
+The gateway uses the same table keyed by GATEWAY_NAME ("__gateway__").
+All knobs are optional - omit and you get the K5/K6 defaults.
+
 K8 adds minikube e2e + CI workflow.
 """
 
@@ -449,8 +454,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 svc_name, pod_spec
             );
             services[svc_name] = self._build_service_manifest(svc_name);
-            hpas[svc_name] = self._build_hpa_manifest(svc_name);
-            pdbs[svc_name] = self._build_pdb_manifest(svc_name);
+            # K7: HPA / PDB builders return None when the user opts out
+            # via [...services.NAME.{hpa,pdb}].enabled = false. Skip
+            # those so the bundle only carries enabled entries (which
+            # apply_manifests + destroy can iterate without nil checks).
+            hpa = self._build_hpa_manifest(svc_name);
+            if hpa is not None {
+                hpas[svc_name] = hpa;
+            }
+            pdb = self._build_pdb_manifest(svc_name);
+            if pdb is not None {
+                pdbs[svc_name] = pdb;
+            }
         }
         return {
             "deployments": deployments,
@@ -476,6 +491,96 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception {
             return 10;
         }
+    }
+
+    """K7: read per-service config from [...services.NAME], or {} if unset.
+
+    Returns a defensive dict copy. Read failure (e.g. no jac.toml in
+    tests) returns {} so the manifest builders fall through to defaults.
+    """
+    def _service_config(svc_name: str) -> dict[str, Any] {
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            ms_cfg = get_scale_config().get_microservices_config();
+            return dict(ms_cfg.get("services", {}).get(svc_name, {}));
+        } except Exception {
+            return {};
+        }
+    }
+
+    """K7: extra env vars merged with the auto-set JAC_SV_NAME.
+
+    JAC_SV_NAME ALWAYS comes first and is never overrideable (it's
+    what the entrypoint uses to pick the service). User-defined keys
+    follow. List shape matches the K8s container.env schema.
+    """
+    def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, str]] {
+        env: list[dict[str, str]] = [
+            {"name": "JAC_SV_NAME", "value": svc_name}
+        ];
+        extra: dict[str, Any] = svc_cfg.get("env", {});
+        for (k, v) in extra.items() {
+            if k == "JAC_SV_NAME" {
+                continue;  # protected; users can't shadow the sentinel
+            }
+            env.append({"name": k, "value": str(v)});
+        }
+        return env;
+    }
+
+    """K7: container resources (requests + limits).
+
+    Returns the K8s `resources: {requests: {...}, limits: {...}}` dict
+    or {} if no overrides set. Empty resources field is omitted from
+    the container so we don't emit invalid manifests.
+    """
+    def _build_resources(svc_cfg: dict[str, Any]) -> dict[str, Any] {
+        requests: dict[str, str] = {};
+        limits: dict[str, str] = {};
+        if svc_cfg.get("cpu_request") {
+            requests["cpu"] = str(svc_cfg["cpu_request"]);
+        }
+        if svc_cfg.get("memory_request") {
+            requests["memory"] = str(svc_cfg["memory_request"]);
+        }
+        if svc_cfg.get("cpu_limit") {
+            limits["cpu"] = str(svc_cfg["cpu_limit"]);
+        }
+        if svc_cfg.get("memory_limit") {
+            limits["memory"] = str(svc_cfg["memory_limit"]);
+        }
+        out: dict[str, Any] = {};
+        if requests {
+            out["requests"] = requests;
+        }
+        if limits {
+            out["limits"] = limits;
+        }
+        return out;
+    }
+
+    """K7: apply per-service `image_tag` override if set.
+
+    Replaces the tag part of `repo/name:tag` URLs. Careful: registry
+    hostnames can have ports like `myregistry.io:5000/name:tag`, so
+    split on the LAST colon, then verify the part after it has no `/`
+    (that would mean it's actually a registry-port colon, not a tag).
+    """
+    def _resolve_image(image: str, svc_cfg: dict[str, Any]) -> str {
+        tag = svc_cfg.get("image_tag");
+        if not tag {
+            return image;
+        }
+        if ":" not in image {
+            return f"{image}:{tag}";
+        }
+        idx: int = image.rindex(":");
+        after: str = image[idx + 1:];
+        if "/" in after {
+            # The colon was a registry port, not a tag separator.
+            return f"{image}:{tag}";
+        }
+        return f"{image[:idx]}:{tag}";
     }
 
     """K5: standard probe pointing at /healthz on the container port.
@@ -574,6 +679,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "managed": "jac-scale",
             "jac-scale.role": role
         };
+        # K7: per-service replicas override; default 1.
+        svc_cfg = self._service_config(svc_name);
+        replicas: int = int(svc_cfg.get("replicas", 1));
         return {
             "apiVersion": "apps/v1",
             "kind": "Deployment",
@@ -583,7 +691,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 "labels": labels
             },
             "spec": {
-                "replicas": 1,
+                "replicas": replicas,
                 # K5: surge a new pod before terminating an old one,
                 # never go below the current replica count during
                 # rollout. With drain + preStop on the pod side, this
@@ -636,20 +744,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K6: Build a HorizontalPodAutoscaler manifest targeting the Deployment.
+    """K6: Build an HPA targeting the Deployment. K7 layers per-service
+    overrides at `[...services.NAME.hpa]`.
 
-    `autoscaling/v2` lets us scale on CPU and any custom metric; for K6
-    v1 we scale on CPU averageUtilization with conservative defaults
-    (min=1, max=3, target=70%). K7 will source these from
-    `[plugins.scale.microservices.services.NAME.hpa]` so each service
-    can be tuned independently (a low-traffic service might cap at 2,
-    a chatty LLM service might want max=20).
-
-    The `scaleTargetRef` points at the Deployment by name; the K8s
-    autoscaling controller does the rest.
+    Returns None when `hpa.enabled = false` so the user can opt OUT of
+    autoscaling for services that need fixed replica counts (e.g. a
+    leader-only worker, or a stateful service tied to PVCs that don't
+    multiplex).
     """
-    def _build_hpa_manifest(svc_name: str) -> dict[str, Any] {
+    def _build_hpa_manifest(svc_name: str) -> dict[str, Any] | None {
+        cfg: dict[str, Any] = self._service_config(svc_name).get("hpa", {});
+        if not cfg.get("enabled", True) {
+            return None;
+        }
         k8s_name = self._k8s_safe_name(svc_name);
+        min_r: int = int(cfg.get("min", 1));
+        max_r: int = int(cfg.get("max", 3));
+        cpu: int = int(cfg.get("cpu_target", 70));
         return {
             "apiVersion": "autoscaling/v2",
             "kind": "HorizontalPodAutoscaler",
@@ -664,8 +775,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     "kind": "Deployment",
                     "name": f"{k8s_name}-deployment"
                 },
-                "minReplicas": 1,
-                "maxReplicas": 3,
+                "minReplicas": min_r,
+                "maxReplicas": max_r,
                 "metrics": [
                     {
                         "type": "Resource",
@@ -673,7 +784,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                             "name": "cpu",
                             "target": {
                                 "type": "Utilization",
-                                "averageUtilization": 70
+                                "averageUtilization": cpu
                             }
                         }
                     }
@@ -682,22 +793,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K6: Build a PodDisruptionBudget manifest matching the Deployment pods.
+    """K6: Build a PodDisruptionBudget matching the Deployment pods.
+    K7 layers per-service overrides at `[...services.NAME.pdb]`.
 
-    `maxUnavailable: 1` lets at most one pod be voluntarily disrupted
-    at a time (node drain, eviction, voluntary delete). Combined with
-    the K5 rolling-update settings (`maxSurge: 1, maxUnavailable: 0`),
-    this means rollouts surge a fresh pod first AND scheduled disruptions
-    stay bounded. For multi-replica services this protects availability
-    during cluster maintenance; for single-replica services the PDB
-    blocks node-drain on that pod (intentional - the operator must
-    consciously override).
-
-    K7 will let users disable PDB or switch to `minAvailable: N` for
-    services that need stricter HA guarantees.
+    Returns None when `pdb.enabled = false`. Useful for services that
+    are explicitly OK with full eviction during node maintenance, or
+    for single-replica services where a PDB just blocks routine
+    cluster operations without giving real HA value.
     """
-    def _build_pdb_manifest(svc_name: str) -> dict[str, Any] {
+    def _build_pdb_manifest(svc_name: str) -> dict[str, Any] | None {
+        cfg: dict[str, Any] = self._service_config(svc_name).get("pdb", {});
+        if not cfg.get("enabled", True) {
+            return None;
+        }
         k8s_name = self._k8s_safe_name(svc_name);
+        max_u: int = int(cfg.get("max_unavailable", 1));
         return {
             "apiVersion": "policy/v1",
             "kind": "PodDisruptionBudget",
@@ -707,26 +817,36 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 "labels": {"app": k8s_name, "managed": "jac-scale"}
             },
             "spec": {
-                "maxUnavailable": 1,
+                "maxUnavailable": max_u,
                 "selector": {"matchLabels": {"app": k8s_name}}
             }
         };
     }
 
-    """Per-service pod-spec stub. K2 wraps in Deployment metadata; K5
-    adds readiness/liveness probes, preStop hook, and grace period."""
+    """Per-service pod-spec.
+
+    K2 wraps in Deployment metadata. K5 adds readiness/liveness probes,
+    preStop hook, and grace period. K7 layers per-service config:
+    image_tag override, resources, extra env vars.
+    """
     def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
         drain_t: int = self._drain_timeout();
+        svc_cfg = self._service_config(svc_name);
+        container: dict[str, Any] = {
+            "name": svc_name,
+            "image": self._resolve_image(image, svc_cfg),
+            "env": self._build_env(svc_name, svc_cfg),
+            "ports": [{"containerPort": self.k8s_config.container_port}],
+            "readinessProbe": self._build_probe(),
+            "livenessProbe": self._build_probe(),
+            "lifecycle": {"preStop": self._build_prestop_hook()}
+        };
+        resources = self._build_resources(svc_cfg);
+        if resources {
+            container["resources"] = resources;
+        }
         return {
-            "containers": [{
-                "name": svc_name,
-                "image": image,
-                "env": [{"name": "JAC_SV_NAME", "value": svc_name}],
-                "ports": [{"containerPort": self.k8s_config.container_port}],
-                "readinessProbe": self._build_probe(),
-                "livenessProbe": self._build_probe(),
-                "lifecycle": {"preStop": self._build_prestop_hook()}
-            }],
+            "containers": [container],
             # +5s cushion lets uvicorn finish exiting AFTER our drain
             # middleware completes; without it, SIGKILL can arrive
             # mid-drain.
@@ -734,20 +854,29 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Gateway pod-spec stub. Same image as services; the entrypoint
-    selects gateway-mode based on JAC_SV_NAME = GATEWAY_NAME."""
+    """Gateway pod-spec. Same image as services; entrypoint selects
+    gateway-mode based on JAC_SV_NAME = GATEWAY_NAME. K7 lets the
+    user tune the gateway via [...services.__gateway__] just like a
+    regular service.
+    """
     def _build_gateway_pod_spec(image: str) -> dict[str, Any] {
         drain_t: int = self._drain_timeout();
+        svc_cfg = self._service_config(GATEWAY_NAME);
+        container: dict[str, Any] = {
+            "name": "gateway",
+            "image": self._resolve_image(image, svc_cfg),
+            "env": self._build_env(GATEWAY_NAME, svc_cfg),
+            "ports": [{"containerPort": self.k8s_config.container_port}],
+            "readinessProbe": self._build_probe(),
+            "livenessProbe": self._build_probe(),
+            "lifecycle": {"preStop": self._build_prestop_hook()}
+        };
+        resources = self._build_resources(svc_cfg);
+        if resources {
+            container["resources"] = resources;
+        }
         return {
-            "containers": [{
-                "name": "gateway",
-                "image": image,
-                "env": [{"name": "JAC_SV_NAME", "value": GATEWAY_NAME}],
-                "ports": [{"containerPort": self.k8s_config.container_port}],
-                "readinessProbe": self._build_probe(),
-                "livenessProbe": self._build_probe(),
-                "lifecycle": {"preStop": self._build_prestop_hook()}
-            }],
+            "containers": [container],
             "terminationGracePeriodSeconds": drain_t + 5
         };
     }

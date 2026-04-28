@@ -1298,3 +1298,340 @@ test "destroy also tears down HPAs and PDBs by label" {
         restore();
     }
 }
+
+
+# =============================================================================
+# K7 - per-service config layering
+# =============================================================================
+
+"""Helper: stub get_scale_config to return a fixed services config.
+
+Tests use this to inject `[plugins.scale.microservices.services.NAME]`
+overrides without needing a jac.toml fixture.
+"""
+def _with_services_config(services: dict[str, Any], routes: dict[str, str] = {}) -> tuple[Any, Any] {
+    import jac_scale.config_loader as cfg_mod;
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"routes": routes, "services": services}
+    ));
+    def restore -> None {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+    return (cfg_mod, restore);
+}
+
+
+test "Deployment.spec.replicas honors per-service config" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (_cfg, restore) = _with_services_config({"orders": {"replicas": 5}});
+    try {
+        dep = target._build_deployment_manifest(
+            "orders",
+            {"containers": [{"name": "orders", "image": "demo:latest"}]}
+        );
+        assert dep["spec"]["replicas"] == 5;
+    } finally {
+        restore();
+    }
+}
+
+
+test "container env merges JAC_SV_NAME with per-service env (sentinel always first)" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "orders": {
+            "env": {
+                "LOG_LEVEL": "DEBUG",
+                "JAC_SV_NAME": "evil_override_attempt"  # must be ignored
+            }
+        }
+    });
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        env: list[dict[str, str]] = spec["containers"][0]["env"];
+
+        # JAC_SV_NAME must be FIRST and uncorrupted.
+        assert env[0] == {"name": "JAC_SV_NAME", "value": "orders"};
+        # Other env keys appended after.
+        log_level_entries = [e for e in env if e["name"] == "LOG_LEVEL"];
+        assert len(log_level_entries) == 1;
+        assert log_level_entries[0]["value"] == "DEBUG";
+        # Attempted shadow of JAC_SV_NAME was dropped.
+        assert sum(1 for e in env if e["name"] == "JAC_SV_NAME") == 1;
+    } finally {
+        restore();
+    }
+}
+
+
+test "container resources reflect cpu/memory request and limit overrides" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "llm_app": {
+            "cpu_request": "500m",
+            "cpu_limit": "2000m",
+            "memory_request": "1Gi",
+            "memory_limit": "4Gi"
+        }
+    });
+    try {
+        spec = target._build_service_pod_spec("llm_app", "demo:latest");
+        resources = spec["containers"][0]["resources"];
+        assert resources["requests"] == {"cpu": "500m", "memory": "1Gi"};
+        assert resources["limits"] == {"cpu": "2000m", "memory": "4Gi"};
+    } finally {
+        restore();
+    }
+}
+
+
+test "container has no resources field when no overrides set" {
+    # We don't want to emit an empty `resources: {}` since it serializes
+    # noisy in K8s manifests; if no overrides, just omit the field.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({});
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        assert "resources" not in spec["containers"][0];
+    } finally {
+        restore();
+    }
+}
+
+
+test "container resources can be partial (only requests, no limits)" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "orders": {"cpu_request": "100m", "memory_request": "64Mi"}
+    });
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        resources = spec["containers"][0]["resources"];
+        assert resources == {
+            "requests": {"cpu": "100m", "memory": "64Mi"}
+        };
+        # No limits key emitted.
+        assert "limits" not in resources;
+    } finally {
+        restore();
+    }
+}
+
+
+test "image_tag override replaces tag in repo/name:tag" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "orders": {"image_tag": "v2.0-canary"}
+    });
+    try {
+        spec = target._build_service_pod_spec("orders", "myorg/demo:latest");
+        assert spec["containers"][0]["image"] == "myorg/demo:v2.0-canary";
+    } finally {
+        restore();
+    }
+}
+
+
+test "image_tag override preserves registry hostname with port" {
+    # Regression guard: registry hostnames can have ports
+    # (myregistry.io:5000/name:tag); we must split on the LAST colon
+    # AND verify the part after has no slash, otherwise we'd mistake
+    # the registry port for a tag.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "orders": {"image_tag": "canary"}
+    });
+    try {
+        # No tag in input, just registry+port+name.
+        spec1 = target._build_service_pod_spec(
+            "orders", "myregistry.io:5000/demo"
+        );
+        assert spec1["containers"][0]["image"] == "myregistry.io:5000/demo:canary";
+
+        # Already has a tag.
+        spec2 = target._build_service_pod_spec(
+            "orders", "myregistry.io:5000/demo:latest"
+        );
+        assert spec2["containers"][0]["image"] == "myregistry.io:5000/demo:canary";
+    } finally {
+        restore();
+    }
+}
+
+
+test "HPA bounds reflect per-service hpa overrides" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "llm_app": {"hpa": {"min": 3, "max": 20, "cpu_target": 60}}
+    });
+    try {
+        hpa = target._build_hpa_manifest("llm_app");
+        assert hpa is not None;
+        assert hpa["spec"]["minReplicas"] == 3;
+        assert hpa["spec"]["maxReplicas"] == 20;
+        assert hpa["spec"]["metrics"][0]["resource"]["target"]["averageUtilization"] == 60;
+    } finally {
+        restore();
+    }
+}
+
+
+test "HPA returns None when hpa.enabled = false" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "leader_only": {"hpa": {"enabled": False}}
+    });
+    try {
+        hpa = target._build_hpa_manifest("leader_only");
+        assert hpa is None;
+    } finally {
+        restore();
+    }
+}
+
+
+test "PDB max_unavailable reflects per-service override" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "orders": {"pdb": {"max_unavailable": 3}}
+    });
+    try {
+        pdb = target._build_pdb_manifest("orders");
+        assert pdb is not None;
+        assert pdb["spec"]["maxUnavailable"] == 3;
+    } finally {
+        restore();
+    }
+}
+
+
+test "PDB returns None when pdb.enabled = false" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        "orders": {"pdb": {"enabled": False}}
+    });
+    try {
+        pdb = target._build_pdb_manifest("orders");
+        assert pdb is None;
+    } finally {
+        restore();
+    }
+}
+
+
+test "generate_manifests skips disabled HPAs and PDBs" {
+    import jac_scale.config_loader as cfg_mod;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={
+            "routes": {"orders": "/api/orders", "leader": "/api/leader"},
+            "services": {
+                "leader": {
+                    "hpa": {"enabled": False},
+                    "pdb": {"enabled": False}
+                }
+            }
+        }
+    ));
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        bundle = target.generate_manifests(ac);
+
+        # `orders` and gateway: HPA + PDB present.
+        # `leader`: skipped from both sections.
+        assert "orders" in bundle["hpas"];
+        assert GATEWAY_NAME in bundle["hpas"];
+        assert "leader" not in bundle["hpas"];
+        assert "orders" in bundle["pdbs"];
+        assert GATEWAY_NAME in bundle["pdbs"];
+        assert "leader" not in bundle["pdbs"];
+        # Deployment + Service still present for leader (only HPA/PDB
+        # are opt-out).
+        assert "leader" in bundle["deployments"];
+        assert "leader" in bundle["services"];
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+test "gateway honors per-service config under __gateway__ key" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    (_cfg, restore) = _with_services_config({
+        GATEWAY_NAME: {
+            "replicas": 3,
+            "cpu_request": "200m",
+            "env": {"GATEWAY_DEBUG": "1"}
+        }
+    });
+    try {
+        # Deployment replicas
+        dep = target._build_deployment_manifest(
+            GATEWAY_NAME,
+            target._build_gateway_pod_spec("demo:latest")
+        );
+        assert dep["spec"]["replicas"] == 3;
+
+        # Pod-spec resources + env
+        spec = target._build_gateway_pod_spec("demo:latest");
+        container = spec["containers"][0];
+        assert container["resources"]["requests"]["cpu"] == "200m";
+        gateway_debug = [e for e in container["env"] if e["name"] == "GATEWAY_DEBUG"];
+        assert len(gateway_debug) == 1;
+    } finally {
+        restore();
+    }
+}
+
+
+test "_service_config returns {} on read failure (graceful)" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    import jac_scale.config_loader as cfg_mod;
+
+    obj _ExplodingCfg {
+        def get_microservices_config -> dict[str, Any] {
+            raise RuntimeError("simulated config failure");
+        }
+    }
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _ExplodingCfg());
+
+    try {
+        # No raise; empty dict so all manifest paths use defaults.
+        assert target._service_config("orders") == {};
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
