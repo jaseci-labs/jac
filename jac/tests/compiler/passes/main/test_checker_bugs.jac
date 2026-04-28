@@ -25,6 +25,7 @@ Bug index:
   #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
+  #DC-1   - @dataclass class fields inside 'with entry' block not recognized
 """
 
 import os;
@@ -581,6 +582,39 @@ test "bug_super1_super_call_returns_parent_instance" {
         "Bug #SUPER-1: `super()` in a method must type-check as the "
         "parent instance so that attribute access dispatches through the "
         "parent's MRO. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #DC-1: @dataclass class fields inside 'with entry' block not recognized
+#
+# When a @dataclass class is declared inside a function body using the 'class'
+# keyword and its fields are written inside a 'with entry' block, three bugs
+# caused the type checker to fail:
+#
+#   1. Local 'class' parses as an Ability node. get_type_of_ability returned
+#      NoneType instead of a ClassType for abilities with @dataclass decorator.
+#   2. Fields in 'with entry' live in a nested WithStmt scope. _build_field_params
+#      was only scanning the Ability's own scope (empty) and missed them.
+#   3. lookup_member_symbol did not walk WithStmt children, so attribute access
+#      on instances failed with E1030.
+#
+# Bonus: _build_field_params was also scanning builtin base classes like object,
+# picking up __doc__, __module__, __annotations__ as fake constructor params.
+#
+# Fix: detect @dataclass in get_type_of_ability and return a ClassType;
+# walk WithStmt bodies in _build_field_params; add a WithStmt child walk
+# in lookup_member_symbol; guard _build_field_params with is_builtin_class.
+# =========================================================================
+test "bug_dc1_dataclass_with_entry_fields_recognized" {
+    program = compile_and_check("checker_bug_dataclass_with_entry.jac");
+
+    # Expected after fix: 0 errors. Before fix: E1030 ("Type NoneType has no
+    # attribute is_match/value") and E1001 errors on every field access.
+    assert len(program.errors_had) == 0 , (
+        "Bug #DC-1: @dataclass class fields inside 'with entry' must be "
+        "recognized by the type checker for both local and module-level classes. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
