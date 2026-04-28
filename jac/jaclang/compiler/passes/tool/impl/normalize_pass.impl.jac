@@ -1695,8 +1695,7 @@ impl NormalizePass.enter_jsx_expression(nd: uni.JsxExpression) -> None {
 (the JSX_BLOCK_COMMENT slot token) with real positions.  Normalizing
 to synthetic LBRACE/RBRACE here would only erase those positions —
 keep the parser-built kid as-is."""
-impl NormalizePass.enter_jsx_comment(nd: uni.JsxComment) -> None {
-}
+impl NormalizePass.enter_jsx_comment(nd: uni.JsxComment) -> None { }
 
 """Normalize MatchStmt kid list."""
 impl NormalizePass.enter_match_stmt(nd: uni.MatchStmt) -> None {

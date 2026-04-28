@@ -18,9 +18,7 @@ CommentToken lives on the node, not in source.comments, so
 CommentInjectionPass never sees it.  `source_token=nd.comment` keeps
 source-map entries pointing at the actual comment text."""
 impl DocIRGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
-    nd.gen.doc_ir = doc.Text(
-        "{ " + nd.comment.value + " }", source_token=nd.comment
-    );
+    nd.gen.doc_ir = doc.Text("{ " + nd.comment.value + " }", source_token=nd.comment);
 }
 
 """Generate DocIR for JSX normal attributes."""
