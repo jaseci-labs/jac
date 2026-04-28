@@ -196,18 +196,18 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
                 for d in node_.decorators
             )
         );
-        
+
         # If it's a @dataclass, treat it as a class, not a function
         if has_dataclass_deco {
             # Create a ClassType for this local dataclass
             # Get any base classes (if specified, though unlikely for local classes)
             base_classes: list[TypeBase] = [];
-            
+
             # Add object as implicit base class
             if self.prefetch and self.prefetch.object_class {
                 base_classes.append(self.prefetch.object_class);
             }
-            
+
             # Create the ClassType
             cls_type = types.ClassType(
                 _shared=types.ClassType.ClassDetailsShared(
@@ -229,7 +229,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
             node_.name_spec.type = cls_type;
             return cls_type;
         }
-        
+
         # Otherwise, treat as a regular function (e.g., event handler)
         flags = types.FunctionTypeFlags.Null;
         if node_.is_static {
