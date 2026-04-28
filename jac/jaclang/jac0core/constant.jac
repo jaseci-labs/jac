@@ -331,6 +331,7 @@ class Tokens(StrEnum) {
         JSX_FRAG_OPEN = 'JSX_FRAG_OPEN';
         JSX_FRAG_CLOSE = 'JSX_FRAG_CLOSE';
         JSX_NAME = 'JSX_NAME';
+        JSX_BLOCK_COMMENT = 'JSX_BLOCK_COMMENT';
         COMMENT = 'COMMENT';
         WS = 'WS';
         F_DQ_START = 'F_DQ_START';

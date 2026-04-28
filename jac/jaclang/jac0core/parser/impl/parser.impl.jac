@@ -126,7 +126,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
 
 import from jaclang.jac0core.constant { Tokens as Tok, SymbolAccess, SymbolType }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
@@ -3348,7 +3348,35 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
-    # Expression: {expr}
+    # JSX block-comment slot: lexer emits one JSX_BLOCK_COMMENT token
+    # spanning `{ #* ... *# }`.  Slice out the inner `#* ... *#` for the
+    # CommentToken; the slot token itself is the kid — its real source
+    # positions are needed for source maps and doc-IR anchoring, so do
+    # not synthesize LBRACE/RBRACE here (normalize_pass leaves it alone
+    # for the same reason).
+    if self.check(TokenKind.JSX_BLOCK_COMMENT) {
+        jsx_cmt = self.advance();
+        slot_text = jsx_cmt.value;
+        cmt_s = slot_text.find("#*");
+        cmt_e = slot_text.rfind("*#") + 2;
+        ct = CommentToken(
+            orig_src=self.get_source(),
+            name="COMMENT",
+            value=slot_text[cmt_s:cmt_e],
+            line=jsx_cmt.loc.line,
+            end_line=jsx_cmt.loc.end_line,
+            col_start=jsx_cmt.loc.col_start + cmt_s,
+            col_end=jsx_cmt.loc.col_start + cmt_e,
+            pos_start=jsx_cmt.loc.pos_start + cmt_s,
+            pos_end=jsx_cmt.loc.pos_start + cmt_e,
+            kid=[],
+            is_inline=False
+        );
+        return JsxComment(comment=ct, kid=[self.make_uni_token(jsx_cmt)]);
+    }
+    # Expression: {expr}.  Bare `{}` / `{   }` is rejected by
+    # parse_expression (RBRACE is not a valid expression start) — same
+    # as TSX, deliberately.
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
         lbrace_uni = self.make_uni_token(lbrace);

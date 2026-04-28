@@ -237,7 +237,7 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::= JSX_TEXT jsx_child? | "{" expression "}" | jsx_element
+jsx_child ::= JSX_TEXT jsx_child? | JSX_BLOCK_COMMENT | "{" expression "}" | jsx_element
 
 element_stmt ::=
     ";"
