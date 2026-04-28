@@ -739,6 +739,44 @@ class JacScalePlugin {
             return;
         }
 
+        # K9.2: in K8s mode, peer pods are managed by the K8s controller,
+        # NOT by this process. Don't spawn a local subprocess - just
+        # register the peer's DNS URL so sv_service_call (K9.1) can
+        # resolve it. Detected via KUBERNETES_SERVICE_HOST (set in every
+        # pod by K8s automatically). Mirrors K4's get_sv_registry pattern.
+        # Falls through to local-mode subprocess-spawn if config read
+        # fails so the local path stays unaffected.
+        if "KUBERNETES_SERVICE_HOST" in os.environ {
+            try {
+                import from jac_scale.config_loader { get_scale_config }
+                import from jac_scale.microservices.k8s_target { k8s_safe_name }
+                ms_cfg = get_scale_config().get_microservices_config();
+                port: int = int(ms_cfg.get("gateway_port", 8000));
+                namespace: str = os.environ.get("POD_NAMESPACE", "");
+                if not namespace {
+                    try {
+                        ns_file = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
+                        with open(ns_file) as f {
+                            namespace = f.read().strip();
+                        }
+                    } except Exception {
+                        namespace = "default";
+                    }
+                }
+                k8s_name = k8s_safe_name(module_name);
+                dns_url = (
+                    f"http://{k8s_name}-service.{namespace}"
+                    f".svc.cluster.local:{port}"
+                );
+                sv_client.register(module_name, dns_url);
+                return;
+            } except Exception {
+                # Defensive: fall through to local-mode spawn on config
+                # error so we don't hard-fail on a transient issue.
+                ;
+            }
+        }
+
         base_dir = Path(base_path);
         module_file = base_dir / f"{module_name}.jac";
         if not module_file.exists() {

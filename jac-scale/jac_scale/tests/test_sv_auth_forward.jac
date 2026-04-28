@@ -619,3 +619,98 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
         sv_client.unregister("k9_fallback_mod");
     }
 }
+
+
+# =============================================================================
+# K9.2: ensure_sv_service registers DNS URLs in K8s mode instead of
+# spawning subprocesses (peer pods are managed by the K8s controller)
+# =============================================================================
+
+test "ensure_sv_service registers DNS URL when in K8s mode" {
+    import os;
+    import jac_scale.config_loader as cfg_mod;
+    import from jac_scale.plugin { JacScalePlugin }
+
+    # Stub config so we don't need a jac.toml.
+    obj _StubMsCfg {
+        has data: dict[str, Any];
+        def get_microservices_config -> dict[str, Any] {
+            return self.data;
+        }
+    }
+
+    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
+    orig_ns = os.environ.get("POD_NAMESPACE");
+    original_cfg = getattr(cfg_mod, "get_scale_config");
+
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";  # signal "in cluster"
+    os.environ["POD_NAMESPACE"] = "prod";
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={
+            "routes": {"k9_2_peer": "/api/peer"},
+            "gateway_port": 8000
+        }
+    ));
+
+    # Make sure registry is empty for our module so the early-return
+    # branch doesn't fire.
+    if "k9_2_peer" in sv_client._registry {
+        sv_client.unregister("k9_2_peer");
+    }
+
+    try {
+        # No subprocess spawn; just registers DNS URL and returns.
+        JacScalePlugin.ensure_sv_service("k9_2_peer", ".");
+        url = sv_client._registry.get("k9_2_peer", "");
+        assert url == "http://k9-2-peer-service.prod.svc.cluster.local:8000", (
+            f"expected DNS URL, got '{url}'"
+        );
+    } finally {
+        if "k9_2_peer" in sv_client._registry {
+            sv_client.unregister("k9_2_peer");
+        }
+        if orig_k8s_host is None {
+            del os.environ["KUBERNETES_SERVICE_HOST"];
+        } else {
+            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
+        }
+        if orig_ns is None {
+            del os.environ["POD_NAMESPACE"];
+        } else {
+            os.environ["POD_NAMESPACE"] = orig_ns;
+        }
+        setattr(cfg_mod, "get_scale_config", original_cfg);
+    }
+}
+
+
+test "ensure_sv_service early-returns when peer already registered" {
+    # Regression guard: even in K8s mode, the existing idempotency
+    # check (registered? -> early return) must fire BEFORE the K9.2
+    # branch tries to register again.
+    import os;
+    import from jac_scale.plugin { JacScalePlugin }
+
+    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
+
+    sv_client.register(
+        "k9_2_already_registered",
+        "http://prior-url.example.com:8000"
+    );
+
+    try {
+        # Should early-return without touching the registry.
+        JacScalePlugin.ensure_sv_service("k9_2_already_registered", ".");
+        assert sv_client._registry["k9_2_already_registered"] == (
+            "http://prior-url.example.com:8000"
+        );
+    } finally {
+        sv_client.unregister("k9_2_already_registered");
+        if orig_k8s_host is None {
+            del os.environ["KUBERNETES_SERVICE_HOST"];
+        } else {
+            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
+        }
+    }
+}
