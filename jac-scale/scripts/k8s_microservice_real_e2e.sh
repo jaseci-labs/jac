@@ -181,6 +181,71 @@ for prefix in ${ROUTES}; do
     echo "  ${prefix}/walker/__missing__ -> ${code} (gateway reached upstream)"
 done
 
+# K10: if the project's jac.toml has [...microservices.ingress].enabled = true,
+# also exercise the Ingress path. Skipped silently otherwise so users
+# without ingress configured still get the rest of the e2e.
+echo "=== K10: optional Ingress path test ==="
+INGRESS_INFO=$(python - <<PYEOF
+import tomllib
+with open("${PROJECT_DIR}/jac.toml", "rb") as f:
+    cfg = tomllib.load(f)
+ing = cfg.get("plugins", {}).get("scale", {}).get("microservices", {}).get("ingress", {})
+enabled = bool(ing.get("enabled", False))
+host = str(ing.get("host", "")).strip()
+print(f"{int(enabled)}|{host}")
+PYEOF
+)
+INGRESS_ENABLED="${INGRESS_INFO%%|*}"
+INGRESS_HOST="${INGRESS_INFO#*|}"
+
+if [ "${INGRESS_ENABLED}" != "1" ]; then
+    echo "  skipping (ingress.enabled is not set in jac.toml)"
+elif [ "${USE_MINIKUBE}" != "1" ]; then
+    echo "  skipping (Ingress test only runs against minikube; remote-cluster tests need controller-specific setup)"
+else
+    echo "  ingress.enabled = true (host: '${INGRESS_HOST:-<any>}')"
+
+    # Verify the Ingress object exists.
+    if ! kubectl get ingress gateway-ingress -n "${NAMESPACE}" >/dev/null 2>&1; then
+        echo "FAIL: ingress.enabled is true but gateway-ingress wasn't created"
+        kubectl get ingress -n "${NAMESPACE}" || true
+        exit 1
+    fi
+    echo "  gateway-ingress exists"
+
+    # Make sure the nginx-ingress controller is running (minikube
+    # `ingress` addon enables it). Without this, the Ingress object
+    # exists but no controller serves it -> our curl hangs.
+    if ! kubectl get pods -n ingress-nginx -l app.kubernetes.io/component=controller \
+            --no-headers 2>/dev/null | grep -q "Running"; then
+        echo "  WARN: nginx-ingress controller not running. Enable with:"
+        echo "        minikube addons enable ingress"
+        echo "  skipping Ingress request test"
+    else
+        # minikube exposes the ingress controller on the minikube IP
+        # at port 80 by default. We curl with a Host header to match
+        # the configured ingress.host (or any host if none set).
+        MINIKUBE_IP=$(minikube ip 2>/dev/null || echo "")
+        if [ -z "${MINIKUBE_IP}" ]; then
+            echo "  WARN: minikube ip returned empty; skipping Ingress request"
+        else
+            HOST_HEADER="${INGRESS_HOST:-localhost}"
+            INGRESS_CODE=$(curl -s -o /dev/null \
+                -w "%{http_code}" \
+                --max-time 10 \
+                -H "Host: ${HOST_HEADER}" \
+                "http://${MINIKUBE_IP}/health" || echo "000")
+            if [ "${INGRESS_CODE}" != "200" ]; then
+                echo "FAIL: Ingress -> /health expected 200, got '${INGRESS_CODE}'"
+                kubectl describe ingress gateway-ingress -n "${NAMESPACE}" || true
+                kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=30 || true
+                exit 1
+            fi
+            echo "  Ingress -> /health = 200 (host=${HOST_HEADER}, ip=${MINIKUBE_IP})"
+        fi
+    fi
+fi
+
 echo "=== rolling restart: hammer gateway, expect zero non-2xx ==="
 # Background curl loop hitting /health while we trigger a rollout. With
 # K5's RollingUpdate + readiness + grace + preStop, no request should
