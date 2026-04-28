@@ -200,6 +200,58 @@ impl BaseLLM._get_ctx_window(call_params: dict) -> int {
 }
 
 
+"""Resolve compaction parameters for the current invocation.
+
+Reads from call_params (highest priority), self.call_params, and jac.toml
+in that order. Returns a plain dict so both invoke() and _invoke_streaming()
+can unpack the same values without duplicating the resolution logic.
+
+Keys: enabled (bool), threshold (float), keep_recent (int), model (str|None),
+      ctx_window (int).
+"""
+impl BaseLLM._resolve_compaction_params(mt_run: MTRuntime) -> dict {
+    comp_cfg = get_byllm_config().get_compaction_config();
+    enabled = bool(
+        mt_run.call_params.get("compaction_enabled")
+            if mt_run.call_params.get("compaction_enabled") is not None
+            else comp_cfg.get("enabled", True)
+    );
+    _raw_threshold = (
+        mt_run.call_params.get("threshold_ratio")
+            if mt_run.call_params.get("threshold_ratio") is not None
+            else self.call_params.get("threshold_ratio")
+                if self.call_params.get("threshold_ratio") is not None
+                else None
+    );
+    threshold = float(str(_raw_threshold))
+        if _raw_threshold is not None
+        else float(comp_cfg.get("threshold_ratio", 0.80));
+    _raw_keep_recent = (
+        mt_run.call_params.get("keep_recent_iterations")
+            if mt_run.call_params.get("keep_recent_iterations") is not None
+            else self.call_params.get("keep_recent_iterations")
+                if self.call_params.get("keep_recent_iterations") is not None
+                else None
+    );
+    keep_recent = int(str(_raw_keep_recent))
+        if _raw_keep_recent is not None
+        else int(comp_cfg.get("keep_recent_iterations", 3));
+    _raw_model = (
+        mt_run.call_params.get("compaction_model")
+        or self.call_params.get("compaction_model")
+        or comp_cfg.get("compaction_model")
+    );
+    model: str | None = str(_raw_model) if _raw_model else None;
+    return {
+        "enabled": enabled,
+        "threshold": threshold,
+        "keep_recent": keep_recent,
+        "model": model,
+        "ctx_window": self._get_ctx_window(mt_run.call_params)
+    };
+}
+
+
 """Compact mt_run.messages in-place.
 
 Resolves the `on_compaction` hook: if the caller supplied one (via call_params
@@ -287,39 +339,12 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     on_iteration = (
         mt_run.call_params.get("on_iteration") or self.call_params.get("on_iteration")
     );
-    comp_cfg = get_byllm_config().get_compaction_config();
-    comp_enabled = bool(
-        mt_run.call_params.get("compaction_enabled")
-            if mt_run.call_params.get("compaction_enabled") is not None
-            else comp_cfg.get("enabled", True)
-    );
-    _raw_threshold = (
-        mt_run.call_params.get("threshold_ratio")
-            if mt_run.call_params.get("threshold_ratio") is not None
-            else self.call_params.get("threshold_ratio")
-                if self.call_params.get("threshold_ratio") is not None
-                else None
-    );
-    comp_threshold = float(str(_raw_threshold))
-        if _raw_threshold is not None
-        else float(comp_cfg.get("threshold_ratio", 0.80));
-    _raw_keep_recent = (
-        mt_run.call_params.get("keep_recent_iterations")
-            if mt_run.call_params.get("keep_recent_iterations") is not None
-            else self.call_params.get("keep_recent_iterations")
-                if self.call_params.get("keep_recent_iterations") is not None
-                else None
-    );
-    comp_keep_recent = int(str(_raw_keep_recent))
-        if _raw_keep_recent is not None
-        else int(comp_cfg.get("keep_recent_iterations", 3));
-    _raw_comp_model = (
-        mt_run.call_params.get("compaction_model")
-        or self.call_params.get("compaction_model")
-        or comp_cfg.get("compaction_model")
-    );
-    comp_model: str | None = str(_raw_comp_model) if _raw_comp_model else None;
-    ctx_window = self._get_ctx_window(mt_run.call_params);
+    _cp = self._resolve_compaction_params(mt_run);
+    comp_enabled = bool(_cp["enabled"]);
+    comp_threshold = float(_cp["threshold"]);
+    comp_keep_recent = int(_cp["keep_recent"]);
+    comp_model: str | None = _cp["model"];
+    ctx_window = int(_cp["ctx_window"]);
     iter_count = 0;
     last_tool = "";
     last_result = "";
@@ -933,39 +958,12 @@ impl BaseLLM._invoke_streaming(
             mt_run.call_params.get("on_iteration")
             or self.call_params.get("on_iteration")
         );
-        comp_cfg = get_byllm_config().get_compaction_config();
-        comp_enabled = bool(
-            mt_run.call_params.get("compaction_enabled")
-                if mt_run.call_params.get("compaction_enabled") is not None
-                else comp_cfg.get("enabled", True)
-        );
-        _raw_threshold = (
-            mt_run.call_params.get("threshold_ratio")
-                if mt_run.call_params.get("threshold_ratio") is not None
-                else self.call_params.get("threshold_ratio")
-                    if self.call_params.get("threshold_ratio") is not None
-                    else None
-        );
-        comp_threshold = float(str(_raw_threshold))
-            if _raw_threshold is not None
-            else float(comp_cfg.get("threshold_ratio", 0.80));
-        _raw_keep_recent = (
-            mt_run.call_params.get("keep_recent_iterations")
-                if mt_run.call_params.get("keep_recent_iterations") is not None
-                else self.call_params.get("keep_recent_iterations")
-                    if self.call_params.get("keep_recent_iterations") is not None
-                    else None
-        );
-        comp_keep_recent = int(str(_raw_keep_recent))
-            if _raw_keep_recent is not None
-            else int(comp_cfg.get("keep_recent_iterations", 3));
-        _raw_comp_model = (
-            mt_run.call_params.get("compaction_model")
-            or self.call_params.get("compaction_model")
-            or comp_cfg.get("compaction_model")
-        );
-        comp_model: str | None = str(_raw_comp_model) if _raw_comp_model else None;
-        ctx_window = self._get_ctx_window(mt_run.call_params);
+        _cp = self._resolve_compaction_params(mt_run);
+        comp_enabled = bool(_cp["enabled"]);
+        comp_threshold = float(_cp["threshold"]);
+        comp_keep_recent = int(_cp["keep_recent"]);
+        comp_model: str | None = _cp["model"];
+        ctx_window = int(_cp["ctx_window"]);
         iter_count = 0;
         last_tool = "";
         last_result = "";

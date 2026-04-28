@@ -92,6 +92,7 @@ obj BaseLLM {
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
     def _get_ctx_window(call_params: dict) -> int;
+    def _resolve_compaction_params(mt_run: MTRuntime) -> dict;
     def _compact_messages(
         mt_run: MTRuntime, keep_recent: int, comp_model: str | None
     ) -> None;
