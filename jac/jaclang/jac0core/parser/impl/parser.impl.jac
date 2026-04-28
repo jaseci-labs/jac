@@ -814,32 +814,6 @@ impl Parser.parse_expression -> Expr {
         return self.parse_lambda_expr();
     }
     expr = self.parse_concurrent_expr();
-    # `=>` recovery: lexer emitted E0025; drain the RHS — a brace-balanced
-    # block or a single expression — so parsing continues cleanly.
-    if self.check(TokenKind.ERROR) {
-        self.advance();
-        if self.check(TokenKind.LBRACE) {
-            depth = 0;
-            while not self.at_end() {
-                if self.check(TokenKind.LBRACE) {
-                    depth += 1;
-                } elif self.check(TokenKind.RBRACE) {
-                    if depth > 0 {
-                        depth -= 1;
-                        if depth == 0 {
-                            self.advance();
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                self.advance();
-            }
-        } else {
-            self.parse_concurrent_expr();
-        }
-    }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
         condition = self.parse_expression();
@@ -2053,10 +2027,6 @@ impl Parser.parse_special_ref -> Expr {
 }
 
 impl Parser.parse_atom -> Expr {
-    # Lexer already diagnosed the ERROR token; consume to skip duplicate E0004.
-    if self.check(TokenKind.ERROR) {
-        return self.make_name(self.advance());
-    }
     # Literals: INT, HEX, BIN, OCT, FLOAT, BOOL, NULL, ELLIPSIS
     if self.check_any(
         TokenKind.INT,

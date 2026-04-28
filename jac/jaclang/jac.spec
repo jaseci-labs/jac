@@ -2,10 +2,7 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::=
-    lambda_expr
-    | concurrent_expr (ERROR (("{" | "}")* | concurrent_expr))?
-      ("if" expression "else" expression)?
+expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 

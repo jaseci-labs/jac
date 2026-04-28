@@ -1490,20 +1490,6 @@ impl Lexer.scan_operator -> Token {
             );
         }
     }
-    # Detect `=>` atomically before the single-char switch — keeps `>` from
-    # leaking into JSX tag context and cascading into "Missing }" errors.
-    if self.match_string("=>") {
-        self.error(
-            "JavaScript arrow function syntax ('=>') is not supported in Jac",
-            start_line,
-            start_col,
-            start_pos,
-            code_str="E0025"
-        );
-        return self.make_token(
-            TokenKind.ERROR, "=>", start_line, start_col, start_pos
-        );
-    }
     # Single-character operators and delimiters
     self.advance();
     switch ch {
