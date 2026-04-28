@@ -53,11 +53,12 @@ edge_op_ref_inline ::=
 
 connect_op ::=
     "del" edge_op_ref_inline
-    | "++>"
+    | "++>" NAME?
     | "+>:" expression (":" (expression ("=" expression)?)*)? ":+>"
-    | "<++"
+    | "<++" NAME?
     | "<+:" expression (":" (expression ("=" expression)?)*)? (":<+" | ":+>")?
     | "<++>"
+    | "+"
 
 atomic_pipe ::= atomic_pipe_back (":>" atomic_pipe_back)*
 
