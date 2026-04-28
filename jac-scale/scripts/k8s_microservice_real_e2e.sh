@@ -136,11 +136,37 @@ PYEOF
 echo "=== wait for pods to become ready ==="
 # Wait up to 3 minutes for ALL Deployments to roll out. Real readiness
 # probes pass means the entrypoint dispatched, jac started, and
-# /healthz responds.
+# /healthz responds. On failure, dump pod state BEFORE the trap-cleanup
+# wipes the namespace - otherwise CI loses all diagnostic evidence.
+dump_pod_state() {
+    echo "--- pods ---"
+    kubectl get pods -n "${NAMESPACE}" -o wide || true
+    echo "--- describe pods ---"
+    kubectl describe pods -n "${NAMESPACE}" || true
+    echo "--- events ---"
+    kubectl get events -n "${NAMESPACE}" --sort-by=.lastTimestamp || true
+    for app in gateway $(kubectl get pods -n "${NAMESPACE}" -l managed=jac-scale -o jsonpath='{.items[*].metadata.labels.app}' 2>/dev/null | tr ' ' '\n' | sort -u | grep -v '^gateway$' || true); do
+        echo "--- ${app} container logs (last 200 lines) ---"
+        kubectl logs -n "${NAMESPACE}" -l "app=${app}" --tail=200 --all-containers=true || true
+        echo "--- ${app} previous container logs ---"
+        kubectl logs -n "${NAMESPACE}" -l "app=${app}" --tail=200 --previous=true 2>/dev/null || true
+    done
+}
+
+ROLLOUT_FAILED=0
 for dep in $(kubectl get deployments -n "${NAMESPACE}" -l managed=jac-scale -o name); do
     echo "  waiting on ${dep}..."
-    kubectl rollout status "${dep}" -n "${NAMESPACE}" --timeout=180s
+    if ! kubectl rollout status "${dep}" -n "${NAMESPACE}" --timeout=180s; then
+        echo "FAIL: rollout for ${dep} did not complete in 180s"
+        ROLLOUT_FAILED=1
+        break
+    fi
 done
+
+if [ "${ROLLOUT_FAILED}" = "1" ]; then
+    dump_pod_state
+    exit 1
+fi
 
 echo "=== port-forward gateway + curl /health ==="
 GATEWAY_LOCAL_PORT="${GATEWAY_LOCAL_PORT:-18000}"
