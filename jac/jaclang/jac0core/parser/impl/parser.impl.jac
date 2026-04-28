@@ -3350,9 +3350,10 @@ impl Parser.parse_jsx_child -> Expr {
     }
     # JSX block-comment slot: lexer emits one JSX_BLOCK_COMMENT token
     # spanning `{ #* ... *# }`.  Slice out the inner `#* ... *#` for the
-    # CommentToken; the slot token itself is the kid (normalize_pass
-    # rewrites kid to canonical LBRACE/RBRACE before any downstream pass
-    # reads it, so synthesizing brace tokens here is wasted work).
+    # CommentToken; the slot token itself is the kid — its real source
+    # positions are needed for source maps and doc-IR anchoring, so do
+    # not synthesize LBRACE/RBRACE here (normalize_pass leaves it alone
+    # for the same reason).
     if self.check(TokenKind.JSX_BLOCK_COMMENT) {
         jsx_cmt = self.advance();
         slot_text = jsx_cmt.value;
