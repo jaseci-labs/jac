@@ -82,7 +82,7 @@ def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
     import copy;
     m = copy.copy(model);
     m.call_params = {"compaction_enabled": False};
-    # Shallow copy shares the list object — give the compaction call its own
+    # Shallow copy shares the list object - give the compaction call its own
     # history so its token usage does not inflate the outer ReAct loop totals.
     m._usage_history = [];
     return m;
@@ -247,7 +247,9 @@ impl BaseLLM._compact_messages(
     mt_run.messages = compacted;
     removed = original_len - len(compacted);
     logger.info(
-        f"byLLM compaction: reduced message list from {original_len} to {len(compacted)} "
+        f"byLLM compaction: reduced message list from {original_len} to {len(
+            compacted
+        )} "
         f"({removed} messages replaced with summary)"
     );
 }
@@ -298,7 +300,9 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 if self.call_params.get("threshold_ratio") is not None
                 else None
     );
-    comp_threshold = float(str(_raw_threshold)) if _raw_threshold is not None else float(comp_cfg.get("threshold_ratio", 0.80));
+    comp_threshold = float(str(_raw_threshold))
+        if _raw_threshold is not None
+        else float(comp_cfg.get("threshold_ratio", 0.80));
     _raw_keep_recent = (
         mt_run.call_params.get("keep_recent_iterations")
             if mt_run.call_params.get("keep_recent_iterations") is not None
@@ -306,7 +310,9 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 if self.call_params.get("keep_recent_iterations") is not None
                 else None
     );
-    comp_keep_recent = int(str(_raw_keep_recent)) if _raw_keep_recent is not None else int(comp_cfg.get("keep_recent_iterations", 3));
+    comp_keep_recent = int(str(_raw_keep_recent))
+        if _raw_keep_recent is not None
+        else int(comp_cfg.get("keep_recent_iterations", 3));
     _raw_comp_model = (
         mt_run.call_params.get("compaction_model")
         or self.call_params.get("compaction_model")
@@ -940,7 +946,9 @@ impl BaseLLM._invoke_streaming(
                     if self.call_params.get("threshold_ratio") is not None
                     else None
         );
-        comp_threshold = float(str(_raw_threshold)) if _raw_threshold is not None else float(comp_cfg.get("threshold_ratio", 0.80));
+        comp_threshold = float(str(_raw_threshold))
+            if _raw_threshold is not None
+            else float(comp_cfg.get("threshold_ratio", 0.80));
         _raw_keep_recent = (
             mt_run.call_params.get("keep_recent_iterations")
                 if mt_run.call_params.get("keep_recent_iterations") is not None
@@ -948,7 +956,9 @@ impl BaseLLM._invoke_streaming(
                     if self.call_params.get("keep_recent_iterations") is not None
                     else None
         );
-        comp_keep_recent = int(str(_raw_keep_recent)) if _raw_keep_recent is not None else int(comp_cfg.get("keep_recent_iterations", 3));
+        comp_keep_recent = int(str(_raw_keep_recent))
+            if _raw_keep_recent is not None
+            else int(comp_cfg.get("keep_recent_iterations", 3));
         _raw_comp_model = (
             mt_run.call_params.get("compaction_model")
             or self.call_params.get("compaction_model")
