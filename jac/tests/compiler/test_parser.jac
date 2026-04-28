@@ -758,7 +758,7 @@ test "bracket filter on list" {
     assert not err , "Failed to parse list bracket filter";
 }
 
-# ── `_try_scan_jsx_block_comment` invariants — match, miss, rewind ──
+# ── `scan_jsx_block_comment` invariants — match, miss, rewind ──
 def _jsx_lex(src: str) -> tuple[list, list] {
     lex = Lexer(source=src, file_path="<test>");
     return (lex.tokenize(), list(lex.comments));

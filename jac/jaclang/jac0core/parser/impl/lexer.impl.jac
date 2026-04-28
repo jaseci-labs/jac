@@ -252,7 +252,7 @@ impl Lexer.skip_block_comment -> bool {
 """Atomically scan `{ \\s* #* ... *# \\s* }` from the cursor at `{`.
 Returns a JSX_BLOCK_COMMENT token on match, or None after restoring
 pos/line/col on miss.  Caller must be in JSX_CONTENT mode."""
-impl Lexer._try_scan_jsx_block_comment(
+impl Lexer.scan_jsx_block_comment(
     start_line: int, start_col: int, start_pos: int
 ) -> Token | None {
     saved_pos = self.pos;
@@ -1005,7 +1005,7 @@ impl Lexer.scan_jsx_content -> Token {
     if ch == "{" {
         # JSX block-comment fast path: try to fuse `{ #* ... *# }` into
         # one JSX_BLOCK_COMMENT token; fall through on miss.
-        jsx_cmt = self._try_scan_jsx_block_comment(start_line, start_col, start_pos);
+        jsx_cmt = self.scan_jsx_block_comment(start_line, start_col, start_pos);
         if jsx_cmt is not None {
             return jsx_cmt;
         }
