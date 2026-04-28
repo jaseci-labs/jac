@@ -1635,3 +1635,67 @@ test "_service_config returns {} on read failure (graceful)" {
         setattr(cfg_mod, "get_scale_config", original);
     }
 }
+
+
+# =============================================================================
+# K9 - pod entrypoint dispatch (command + args on container spec)
+# =============================================================================
+
+test "service pod-spec carries command + args that exec jac start" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    container = spec["containers"][0];
+
+    # The pod-spec wires entrypoint logic into the container itself
+    # so any image with `jac` + `jac-scale[deploy]` installed Just Works
+    # (no app-side ENTRYPOINT needed).
+    assert container["command"] == ["sh", "-c"];
+    assert len(container["args"]) == 1;
+    arg = container["args"][0];
+    # JAC_SV_SIBLING=1 prevents the in-pod jac process from re-entering
+    # the local-mode orchestrator (it would try to spawn peers again).
+    assert "JAC_SV_SIBLING=1" in arg;
+    # Service path: jac start <name>.jac
+    assert "jac start" in arg;
+    # Sentinel branch: gateway-only mode
+    assert "jac scale gateway" in arg;
+    # JAC_SV_NAME drives the dispatch
+    assert "JAC_SV_NAME" in arg;
+}
+
+
+test "gateway pod-spec carries the same dispatch wiring" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    spec = target._build_gateway_pod_spec("demo:latest");
+    container = spec["containers"][0];
+
+    # Same dispatch script - the JAC_SV_NAME=__gateway__ env (set by
+    # _build_env) flips the if/else inside the script at runtime.
+    assert container["command"] == ["sh", "-c"];
+    assert "jac scale gateway" in container["args"][0];
+    # Gateway env still sets JAC_SV_NAME to the sentinel; runtime
+    # script reads it and takes the gateway branch.
+    sv_name_entries = [
+        e for e in container["env"] if e["name"] == "JAC_SV_NAME"
+    ];
+    assert len(sv_name_entries) == 1;
+    assert sv_name_entries[0]["value"] == GATEWAY_NAME;
+}
+
+
+test "_pod_entrypoint command/args are stable (regression guard)" {
+    # If we ever change the entrypoint shape, the Dockerfile template
+    # documentation might drift. Pin the structure so that's caught
+    # by the test suite.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    entry = target._pod_entrypoint();
+    assert entry["command"] == ["sh", "-c"];
+    assert isinstance(entry["args"], list);
+    assert len(entry["args"]) == 1;
+}

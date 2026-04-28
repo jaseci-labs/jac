@@ -230,3 +230,68 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     # 6. Cleanup (runs when gateway shuts down)
     deployer.destroy_all();
 }
+
+
+"""K9: start ONLY the gateway, no service spawning, no orchestrator.
+
+Used by the K8s gateway pod (where K8s manages the service pod
+lifecycle independently). Skips local-mode steps 1-4 (client build,
+process start, health waits) since none apply when peers are real
+K8s pods reachable via DNS.
+
+URL resolution at runtime goes through `JacRuntime.get_sv_registry()`,
+which our K4 hookimpl turns into a DNS map when KUBERNETES_SERVICE_HOST
+is set. So the gateway code is unchanged - only the registry source
+differs between local and K8s.
+"""
+def start_gateway_only(ms_config: dict[str, Any]) -> None {
+    if not ms_config.get("routes", {}) {
+        logger.error("No routes declared in [plugins.scale.microservices.routes]");
+        return;
+    }
+
+    # Path-prefix metadata only (URLs come from the get_sv_registry
+    # hookspec at request time, so the per-entry .url field is unused).
+    registry = build_registry(ms_config);
+
+    gateway_port = int(ms_config.get("gateway_port", 8000));
+    gateway_host = ms_config.get("gateway_host", "0.0.0.0");
+
+    client_config = ms_config.get("client", {});
+    client_dist: str = str(dict(client_config).get(
+        "dist_dir", ".jac/client/dist"
+    )) if client_config else ".jac/client/dist";
+
+    static_mounts: list[dict[str, str]] = [];
+    if client_config {
+        raw_mounts: list[Any] = [];
+        _raw = dict(client_config).get("static_mounts", []);
+        if isinstance(_raw, list) {
+            raw_mounts = list(_raw);
+        }
+        for entry in raw_mounts {
+            ed = dict(entry) if isinstance(entry, dict) else {};
+            url_prefix = str(ed.get("url_prefix", "")).strip();
+            local_path = str(ed.get("local_path", "")).strip();
+            if url_prefix and local_path {
+                static_mounts.append({
+                    "url_prefix": url_prefix,
+                    "local_path": local_path,
+                });
+            }
+        }
+    }
+
+    gateway = MicroserviceGateway(
+        registry=registry,
+        port=gateway_port,
+        host=gateway_host,
+        client_dist_dir=client_dist,
+        static_mounts=static_mounts
+    );
+    logger.info(
+        f"Starting gateway-only mode on {gateway_host}:{gateway_port} "
+        f"(K8s pod context; no service spawning)"
+    );
+    gateway.start();
+}

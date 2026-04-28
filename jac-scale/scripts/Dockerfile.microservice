@@ -1,0 +1,56 @@
+# Dockerfile template for jac-scale microservice mode (K9 v1).
+#
+# Single image, fanned out to one pod per service via JAC_SV_NAME env.
+# The pod-spec command (set by KubernetesMicroserviceTarget) reads
+# JAC_SV_NAME at startup and dispatches:
+#   __gateway__ -> `jac scale gateway`  (gateway-only, no spawning)
+#   <svc>       -> `jac start <name>.jac`  (with JAC_SV_SIBLING=1)
+#
+# Copy this file to the root of your jac-scale microservice project,
+# adjust the COPY paths for your layout, build, and either push to a
+# registry or `minikube image load` it for local dev.
+#
+# Example workflow (minikube, no registry):
+#   eval $(minikube docker-env)
+#   docker build -f Dockerfile.microservice -t jac-shop:dev .
+#   jac start main.jac --scale       # microservices.enabled + --scale
+#                                    # auto-routes to KubernetesMicroservice
+#                                    # Target which uses jac-shop:dev image.
+
+FROM python:3.12-slim
+
+# Build deps:
+#   - git: occasionally needed by pip for VCS-installed dependencies
+#   - curl: useful for liveness/readiness debug from inside the pod
+# Switch to a lighter image (slim already small) once we're sure no
+# transitive dep needs gcc/make.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install jaclang + jac-scale with the K8s deploy extras (kubernetes
+# Python client, etc.). Pin versions to match what your local CI tests
+# against to avoid silent skew between dev and prod.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+        jaclang \
+        "jac-scale[deploy]"
+
+WORKDIR /app
+
+# Copy the whole project. Adjust the .dockerignore alongside this file
+# to exclude .jac/data/, .jac/logs/, node_modules/, .git/, etc.
+COPY . /app
+
+# Pre-compile .jac files for faster cold start. `jac tool jac2py` is
+# best-effort; if compilation fails for some files (e.g. they import
+# optional deps), we don't want to fail the build - the runtime
+# compile path will handle them. K9 v1 compiles all .jac files; K9b
+# could narrow this to just the entrypoints.
+RUN find . -name "*.jac" -not -path "*/.jac/*" -not -path "*/__jac_gen__/*" \
+        -exec jac tool jac2py {} + 2>/dev/null || true
+
+# The pod-spec sets command + args so we don't need an ENTRYPOINT.
+# Just expose the port jac-scale binds to (matches container_port in
+# KubernetesConfig, default 8000).
+EXPOSE 8000

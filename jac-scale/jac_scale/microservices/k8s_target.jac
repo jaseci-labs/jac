@@ -823,18 +823,55 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
+    """K9: pod entrypoint dispatch.
+
+    Each pod runs the same image with `JAC_SV_NAME` env set; this
+    container command reads the env at runtime and routes:
+      __gateway__ -> `jac scale gateway`  (K9.2; gateway-only mode)
+      <svc_name>  -> `jac start <name>.jac`
+
+    `JAC_SV_SIBLING=1` is exported BEFORE the dispatch so the
+    JacScalePlugin pre-hook skips its local-mode orchestrator block
+    (which would try to spawn peers). DNS-based peer URL resolution is
+    handled by K4's get_sv_registry hookimpl + K9.1's sv_service_call
+    routing through that hookspec.
+
+    Returns the K8s container `command` + `args` pair. Image must have
+    `jac` + `jac-scale[deploy]` installed; see the Dockerfile template
+    in `jac-scale/jac_scale/microservices/scripts/`.
+    """
+    def _pod_entrypoint -> dict[str, Any] {
+        return {
+            "command": ["sh", "-c"],
+            "args": [
+                "set -euo pipefail; "
+                "export JAC_SV_SIBLING=1; "
+                'if [ "$JAC_SV_NAME" = "__gateway__" ]; then '
+                "  exec jac scale gateway; "
+                "else "
+                '  exec jac start "${JAC_SV_NAME}.jac"; '
+                "fi"
+            ]
+        };
+    }
+
     """Per-service pod-spec.
 
     K2 wraps in Deployment metadata. K5 adds readiness/liveness probes,
     preStop hook, and grace period. K7 layers per-service config:
-    image_tag override, resources, extra env vars.
+    image_tag override, resources, extra env vars. K9 sets command/args
+    so pods actually start the right service / gateway based on
+    JAC_SV_NAME.
     """
     def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
+        entry = self._pod_entrypoint();
         container: dict[str, Any] = {
             "name": svc_name,
             "image": self._resolve_image(image, svc_cfg),
+            "command": entry["command"],
+            "args": entry["args"],
             "env": self._build_env(svc_name, svc_cfg),
             "ports": [{"containerPort": self.k8s_config.container_port}],
             "readinessProbe": self._build_probe(),
@@ -862,9 +899,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _build_gateway_pod_spec(image: str) -> dict[str, Any] {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(GATEWAY_NAME);
+        entry = self._pod_entrypoint();
         container: dict[str, Any] = {
             "name": "gateway",
             "image": self._resolve_image(image, svc_cfg),
+            "command": entry["command"],
+            "args": entry["args"],
             "env": self._build_env(GATEWAY_NAME, svc_cfg),
             "ports": [{"containerPort": self.k8s_config.container_port}],
             "readinessProbe": self._build_probe(),

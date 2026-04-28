@@ -641,9 +641,21 @@ class JacCmd {
             } elif action == "destroy" {
                 deployer.destroy_all();
                 console.print("[green]All services stopped[/green]");
+            } elif action == "gateway" {
+                # K9: gateway-only mode for K8s pods. Skips local-mode
+                # service spawning (K8s manages service pods); just runs
+                # the MicroserviceGateway, which uses get_sv_registry to
+                # resolve services via DNS in cluster.
+                import from jac_scale.microservices.orchestrator {
+                    start_gateway_only
+                }
+                start_gateway_only(ms_config);
+                return 0;
             } else {
                 console.print(f"[bold red]Unknown action:[/bold red] '{action}'");
-                console.print("Actions: status, stop, restart, logs, destroy");
+                console.print(
+                    "Actions: status, stop, restart, logs, destroy, gateway"
+                );
                 return 1;
             }
 
@@ -905,7 +917,19 @@ class JacScalePlugin {
             );
         }
 
-        url = sv_client.resolve_url(module_name);
+        # K9: consult the get_sv_registry hookspec FIRST so the K4 K8s
+        # DNS map wins inside a pod (where sv_client._registry is empty
+        # because there's no local orchestrator pre-spawning peers).
+        # In local mode, the default hookimpl returns
+        # `dict(sv_client._registry)` so the result is the same as
+        # before. Fall back to sv_client.resolve_url for the JAC_SV_*_URL
+        # env-var path used by sub-spawned services.
+        import jaclang;
+        ms_registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
+        url: str = ms_registry.get(module_name, "");
+        if not url {
+            url = sv_client.resolve_url(module_name);
+        }
         try {
             import httpx;
         } except ImportError {

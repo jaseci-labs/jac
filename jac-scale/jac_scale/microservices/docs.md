@@ -396,6 +396,56 @@ kubectl delete deployment,service,hpa,pdb -l managed=jac-scale -n <ns>
 (`managed=jac-scale,jac-scale.role in (microservice,gateway)`) rather
 than per-name, so renamed services in `jac.toml` still get cleaned up.
 
+### Pod entrypoint + image requirements
+
+Every pod runs the same image. The K8s pod-spec sets `command +
+args` so the image only needs `jac` and `jac-scale[deploy]` installed -
+no app-side `ENTRYPOINT` required. The container script reads
+`JAC_SV_NAME` at startup and dispatches:
+
+| `JAC_SV_NAME`     | Pod runs                              |
+|-------------------|---------------------------------------|
+| `<svc>` (e.g. `cart_app`) | `jac start <svc>.jac`         |
+| `__gateway__`     | `jac scale gateway` (gateway-only mode, no spawning) |
+
+`JAC_SV_SIBLING=1` is exported before dispatch so the JacScalePlugin
+pre-hook skips its local-mode orchestrator (which would try to spawn
+peers as subprocesses; in K8s the controller manages peer pods
+independently).
+
+A starter Dockerfile + .dockerignore live at
+`jac-scale/scripts/Dockerfile.microservice` and
+`jac-scale/scripts/dockerignore.microservice`. Copy them into your
+project root, adjust the COPY paths if your layout differs, and
+build.
+
+### End-to-end smoke test
+
+A real-app smoke test lives at
+`jac-scale/scripts/k8s_microservice_real_e2e.sh`. Given a project
+directory (a jac-scale microservice project with `jac.toml`), it:
+
+1. Copies the Dockerfile template into the project
+2. Builds the image inside minikube's docker daemon (or pushes to
+   `$REGISTRY` if you set that env)
+3. Deploys via `KubernetesMicroserviceTarget`
+4. Waits for all Deployments to roll out (real readiness probes)
+5. Port-forwards to the gateway, curls `/health` + each route prefix
+   to verify gateway-to-service reachability
+6. Triggers a rolling restart while hammering `/health`, asserts
+   **zero non-2xx responses** during the rollout window
+7. Tears down
+
+```bash
+# minikube path:
+minikube start
+bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/your/jac-scale/project
+
+# remote-cluster path (with a registry):
+USE_MINIKUBE=0 REGISTRY=myregistry.io/myorg \
+    bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/project
+```
+
 ## Built-in Route Passthrough
 
 The gateway forwards these to healthy services (tries all, skips 404):
