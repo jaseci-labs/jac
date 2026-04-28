@@ -25,6 +25,9 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
     comment
 *#
 
+# Inside a JSX body, # is literal text so block comments must use braces:
+# {#* this is a JSX body comment *#}
+
 # Module-level docstring (no semicolon needed)
 """This module does something useful."""
 
@@ -349,6 +352,9 @@ obj Example {
         self.computed = self.count * 2;
     }
 }
+
+# NOTE: All instance fields MUST be declared with `has`.
+# Dynamic assignment (e.g., `obj.new_attr = val`) is an anti-pattern.
 
 
 # ============================================================

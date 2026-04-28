@@ -107,6 +107,8 @@ Every PR that changes package code must include a release note fragment file:
 
 To skip this check, add the `skip-release-notes-check` label to your PR.
 
+**Example PR with a release note fragment**: [#5573](https://github.com/jaseci-labs/jaseci/pull/5573)
+
 ## Code Rules and Guidelines
 
 **Jac Style**

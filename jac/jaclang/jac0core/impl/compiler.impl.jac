@@ -112,11 +112,11 @@ impl JacCompiler.get_native_layout(
     actual_program = self._resolve_program(full_target, target_program);
     if (full_target in actual_program._native_cache) {
         gen = actual_program._native_cache[full_target];
-        return getattr(gen, 'native_layout', None);
+        return gen?.native_layout;
     }
     if (full_target in actual_program.mod.hub) {
         mod = actual_program.mod.hub[full_target];
-        return getattr(mod.gen, 'native_layout', None);
+        return mod.gen?.native_layout;
     }
     return None;
 }

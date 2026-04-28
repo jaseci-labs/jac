@@ -518,6 +518,152 @@ test "jsx attributes and children group independently" {
     );
 }
 
+"""Format `source`; assert no errors and idempotency; return output."""
+def _fmt_jsx(source: str) -> str {
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"format errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , "not idempotent";
+    return formatted;
+}
+
+"""Regressions for `{#* ... *#}` in JSX body — preserved, no E5051
+displacement, ordering preserved across siblings/expressions, no
+false-positive on non-JSX same-line braces."""
+test "jsx body comment between siblings is preserved in correct position" {
+    formatted = _fmt_jsx(
+        'def app -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            <span>before</span>\n'
+        '            {#* this is a block comment *#}\n'
+        '            <span>after</span>\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    b = formatted.index("before");
+    c = formatted.index("#* this is a block comment *#");
+    a = formatted.index("after");
+    assert b < c < a , f"wrong order:\n{formatted}";
+}
+
+test "jsx body comment as only child does not lose parent element" {
+    formatted = _fmt_jsx(
+        'def app -> JsxElement {\n'
+        '    return\n'
+        '        <section>{#* nothing to render *#}</section>;\n'
+        '}\n'
+    );
+    assert "<section>" in formatted and "#* nothing to render *#" in formatted , formatted;
+}
+
+test "jsx body comment adjacent to expression — both survive" {
+    formatted = _fmt_jsx(
+        'def app -> JsxElement {\n'
+        '    count: int = 42;\n'
+        '    return <p>{#* label: *#}{count}</p>;\n'
+        '}\n'
+    );
+    assert formatted.index("#* label: *#") < formatted.index("{count}") , formatted;
+}
+
+test "jsx body comment does not displace comments to end of file" {
+    # Direct signal of the bug: the comment-injection pass dumps the
+    # comment at end of file when its anchor isn't in the doc tree
+    # (E5051/W5050).  `_fmt_jsx` asserts on errors, so this returning
+    # cleanly is the assertion.
+    _fmt_jsx(
+        'def app -> JsxElement {\n'
+        '    return <div><span>before</span>{#* orphan *#}<span>after</span></div>;\n'
+        '}\n'
+    );
+}
+
+"""Regression: same-line `{ #* x *# }` in regular blocks/dict literals
+must not be misclassified as a JSX-body comment."""
+test "non-jsx same-line block comments survive jac format" {
+    formatted = _fmt_jsx(
+        'def f1 {\n    if True { #* a *# }\n}\n\n'
+        'def f2 {\n    if True { #* b *# }\n    if True { #* c *# }\n}\n\n'
+        'def f3 {\n    x = { #* d *# };\n}\n\n'
+        'with entry { f1(); }\n'
+    );
+    for needle in ["#* a *#", "#* b *#", "#* c *#", "#* d *#"] {
+        assert needle in formatted , f"lost {needle!r}:\n{formatted}";
+    }
+}
+
+"""Regression: JSX-body and non-JSX braces in the same module must
+disambiguate correctly."""
+test "mixed jsx and non-jsx same-line braces format correctly" {
+    formatted = _fmt_jsx(
+        'def app -> JsxElement {\n'
+        '    if True { #* not jsx *# }\n'
+        '    return <div>{#* jsx body *#}</div>;\n'
+        '}\n'
+    );
+    assert "#* not jsx *#" in formatted and "#* jsx body *#" in formatted , formatted;
+}
+
+"""Regression: formatter must preserve `by <name>;` (bare genai ability
+without parentheses) — previously both `by` and `;` were stripped."""
+test "genai ability bare name preserves by and semicolon" {
+    source = "def classify(s: str) -> str by llm;\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "by" in formatted , (
+        f"`by` keyword was stripped from genai ability:\n{repr(formatted)}"
+    );
+    assert formatted.rstrip().endswith(";") , (
+        f"semicolon was stripped from genai ability:\n{repr(formatted)}"
+    );
+    assert "by llm;" in formatted , (
+        f"expected `by llm;` in formatted output, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "genai bare-name formatting is not idempotent";
+}
+
+"""Regression: formatter must preserve `by <name>()` (genai ability with
+empty parentheses) — both `by` and `()` must survive the format pass."""
+test "genai ability empty parens preserves by and parens" {
+    source = "def get_emoji(input: str) -> str by llm();\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "by llm()" in formatted , (
+        f"expected `by llm()` in formatted output, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "genai empty-parens formatting is not idempotent";
+}
+
+"""Regression: formatter must preserve `by <name>(kwargs)` (genai ability
+with keyword arguments) — the full argument list must survive the format pass."""
+test "genai ability with kwargs preserves by and arguments" {
+    source = "def get_emoji(input: str) -> str by llm(temperature=0.7, incl_info={\"examples\": emoji_examples});\n";
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "by llm(" in formatted , (
+        f"expected `by llm(` in formatted output, got:\n{repr(formatted)}"
+    );
+    assert "temperature=0.7" in formatted , (
+        f"expected `temperature=0.7` in formatted output, got:\n{repr(formatted)}"
+    );
+    assert "incl_info=" in formatted , (
+        f"expected `incl_info=` in formatted output, got:\n{repr(formatted)}"
+    );
+    # Idempotency
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {
@@ -533,7 +679,6 @@ test "syntax error preserves original source" {
     # return formatted if no errors, else return original source
     result = gen_output if not prog.errors_had else bad_source;
     assert result == bad_source , (
-        "Formatter must return original source on syntax error, "
-        f"got: {repr(result)}"
+        "Formatter must return original source on syntax error, " f"got: {repr(result)}"
     );
 }

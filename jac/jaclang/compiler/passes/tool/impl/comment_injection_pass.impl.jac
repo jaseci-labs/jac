@@ -398,7 +398,7 @@ impl CommentInjectionPass._handle_empty_body_comments(
     if not self._comments {
         return parts;
     }
-    body = getattr(nd, 'body', None);
+    body = nd?.body;
     if ((body is None) or (isinstance(body, Sequence) and (len(body) > 0))) {
         return parts;
     }
@@ -971,7 +971,7 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
         has_body = (
             nd.ast_node
             and (
-                (getattr(ctx, 'body', None) is not None)
+                (ctx?.body is not None)
                 or (isinstance(ctx, uni.JsxElement) and ctx.children)
                 or (isinstance(ctx, uni.ArchHas) and ctx.vars)
                 or (isinstance(ctx, uni.DictVal) and ctx.kv_pairs)

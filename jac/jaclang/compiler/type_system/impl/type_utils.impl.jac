@@ -1,3 +1,80 @@
+# Generator / Iterator return-type helpers.
+"""Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
+impl get_generator_type_args(
+    return_type: types.TypeBase
+) -> (list[types.TypeBase] | None) {
+    if not isinstance(return_type, types.ClassType) {
+        return None;
+    }
+    if return_type.is_builtin(["Generator", "AsyncGenerator"]) {
+        return return_type.private.type_args;
+    }
+    if return_type.is_builtin("AwaitableGenerator") {
+        # AwaitableGenerator has four type args; the first three mirror
+        # Generator[Y, S, R].
+        if return_type.private.type_args {
+            return return_type.private.type_args[0:3];
+        }
+        return None;
+    }
+    return None;
+}
+
+"""Yield type Y of a generator-like return type, or None."""
+impl get_generator_yield_type(
+    declared_return_type: types.TypeBase, is_async: bool
+) -> (types.TypeBase | None) {
+    if not isinstance(declared_return_type, types.ClassType) {
+        return None;
+    }
+    sync_names = ["Iterable", "Iterator", "Generator", "AwaitableGenerator"];
+    async_names = ["AsyncIterable", "AsyncIterator", "AsyncGenerator"];
+    candidates = async_names if is_async else sync_names;
+    if not declared_return_type.is_builtin(candidates) {
+        return None;
+    }
+    if (
+        declared_return_type.private.type_args
+        and len(declared_return_type.private.type_args) >= 1
+    ) {
+        return declared_return_type.private.type_args[0];
+    }
+    return None;
+}
+
+"""R parameter of Generator[Y, S, R] (send/return), or None."""
+impl get_declared_generator_return_type(
+    return_type: types.TypeBase
+) -> (types.TypeBase | None) {
+    args = get_generator_type_args(return_type);
+    if args is None {
+        return None;
+    }
+    if len(args) >= 3 {
+        return args[2];
+    }
+    return None;
+}
+
+"""True for any generator/iterator-family builtin."""
+impl is_generator_family_type(return_type: types.TypeBase) -> bool {
+    if not isinstance(return_type, types.ClassType) {
+        return False;
+    }
+    return return_type.is_builtin(
+        [
+            "Generator",
+            "AsyncGenerator",
+            "AwaitableGenerator",
+            "Iterator",
+            "Iterable",
+            "AsyncIterator",
+            "AsyncIterable"
+        ]
+    );
+}
+
+
 """Determine if a class implements a protocol.
 
 This checks if a class has all the methods required by a protocol,
@@ -433,6 +510,11 @@ impl convert_to_instance(ty: types.TypeBase) -> types.TypeBase {
     return ty;
 }
 
+"""Synthesize the implicit `Self` TypeVar marker."""
+impl synthesize_self_type_var -> types.TypeVarType {
+    return types.TypeVarType(name="Self", is_self=True);
+}
+
 """
 Apply type variable substitutions to a type.
 
@@ -753,7 +835,8 @@ def _apply_to_function(
     solution: dict[str, types.TypeBase],
     class_type: (types.ClassType | None)
 ) -> types.FunctionType {
-    # Clone the function
+    # `function_flags` must be carried over — losing the ClassMethod /
+    # StaticMethod markers breaks the call site's cls/self auto-strip.
     clone = types.FunctionType(
         func_name=func.func_name,
         return_type=func.return_type,
@@ -768,6 +851,7 @@ def _apply_to_function(
                 param_kind=param.param_kind
             ) for param in func.parameters
         ],
+        function_flags=func.function_flags,
         type_params=func.type_params,
     );
 

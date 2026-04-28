@@ -38,6 +38,49 @@ if [ -z "$CHANGED_FILES" ]; then
     exit 0
 fi
 
+# Release PRs created by the release script legitimately edit protected files - skip all checks
+if [[ "${PR_TITLE:-}" == release:* ]] || [[ "${PR_AUTHOR:-}" == "github-actions[bot]" ]]; then
+    exit 0
+fi
+
+# Check if any release notes .md files were directly modified
+PROTECTED_FILES=(
+    "docs/docs/community/release_notes/jaclang.md"
+    "docs/docs/community/release_notes/byllm.md"
+    "docs/docs/community/release_notes/jac-client.md"
+    "docs/docs/community/release_notes/jac-scale.md"
+    "docs/docs/community/release_notes/jac-super.md"
+    "docs/docs/community/release_notes/jac-mcp.md"
+)
+
+DIRECTLY_MODIFIED=()
+while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    for protected in "${PROTECTED_FILES[@]}"; do
+        if [[ "$file" == "$protected" ]]; then
+            DIRECTLY_MODIFIED+=("$file")
+        fi
+    done
+done <<< "$CHANGED_FILES"
+
+if [ ${#DIRECTLY_MODIFIED[@]} -gt 0 ]; then
+    echo ""
+    echo "=========================================="
+    echo "ERROR: Do not edit release notes files directly!"
+    echo "=========================================="
+    echo ""
+    echo "The following files were modified directly:"
+    echo ""
+    for item in "${DIRECTLY_MODIFIED[@]}"; do
+        echo "  - $item"
+    done
+    echo ""
+    echo "Release notes are managed via fragment files."
+    echo "Add a fragment at: docs/docs/community/release_notes/unreleased/<package>/<PR#>.<category>.md"
+    echo ""
+    exit 1
+fi
+
 MISSING_NOTES=()
 
 for folder in "${!FOLDER_TO_FRAGMENTS[@]}"; do
@@ -78,6 +121,32 @@ if [ ${#MISSING_NOTES[@]} -gt 0 ]; then
     echo ""
     echo "Fragment content should be a single bullet point, e.g.:"
     echo '  - **Fix: Brief title**: Description of the change.'
+    echo ""
+    echo "To skip this check, add the 'skip-release-notes-check' label to your PR."
+    echo ""
+    exit 1
+fi
+
+# Validate content format of newly added/modified fragment files
+MALFORMED_FRAGMENTS=()
+
+while IFS= read -r file; do
+    [[ -z "$file" || ! "$file" =~ /[0-9]+\.(feature|bugfix|breaking|refactor|docs)\.md$ || ! -f "$file" ]] && continue
+    # Every non-empty line must start with '- ' or be indented; heading inside a bullet is also rejected
+    grep -qE '^[^[:space:]-]|^-[[:space:]]+#{1,6}[[:space:]]' "$file" 2>/dev/null && \
+        MALFORMED_FRAGMENTS+=("$file: all entries must be bullet points starting with '- ' (no headings or plain paragraphs)")
+done <<< "$CHANGED_FILES"
+
+if [ ${#MALFORMED_FRAGMENTS[@]} -gt 0 ]; then
+    echo ""
+    echo "=========================================="
+    echo "ERROR: Malformed release note fragment(s)!"
+    echo "=========================================="
+    echo ""
+    printf '  - %s\n' "${MALFORMED_FRAGMENTS[@]}"
+    echo ""
+    echo "Each fragment must be a single bullet point:"
+    echo '  - **Category: Brief title**: Description of the change.'
     echo ""
     echo "To skip this check, add the 'skip-release-notes-check' label to your PR."
     echo ""

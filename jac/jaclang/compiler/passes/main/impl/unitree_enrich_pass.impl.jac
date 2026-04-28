@@ -88,14 +88,14 @@ impl UniTreeEnrichPass.before_pass -> None {
 
 
 impl UniTreeEnrichPass.enter_expr(nd: uni.Expr) -> None {
-    if getattr(nd, 'backend_type_tag', None) is None and nd.type is not None {
+    if nd?.backend_type_tag is None and nd.type is not None {
         nd.backend_type_tag = _typebase_to_tag(nd.type);
     }
 }
 
 
 impl UniTreeEnrichPass.enter_name(nd: uni.Name) -> None {
-    if getattr(nd, 'js_decl_kind', None) is not None {
+    if nd?.js_decl_kind is not None {
         return;
     }
     if nd.name_of is nd {

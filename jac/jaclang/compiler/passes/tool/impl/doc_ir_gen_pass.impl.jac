@@ -13,6 +13,14 @@ impl DocIRGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     nd.gen.doc_ir = doc.Text(nd.get_normalized_text(), source_token=source_tok);
 }
 
+"""DocIR for `{#* ... *#}`: render `{ comment }` inline.  The
+CommentToken lives on the node, not in source.comments, so
+CommentInjectionPass never sees it.  `source_token=nd.comment` keeps
+source-map entries pointing at the actual comment text."""
+impl DocIRGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.doc_ir = doc.Text("{ " + nd.comment.value + " }", source_token=nd.comment);
+}
+
 """Generate DocIR for JSX normal attributes."""
 impl DocIRGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
     parts: list[doc.DocType] = [];
@@ -104,7 +112,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                 child_parts.append(self.hard_line());
             }
             self.trim_trailing_line(child_parts);
-            inline_child_types = (uni.JsxText, uni.JsxExpression);
+            inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
             all_inline_children = (
                 nd.children
                 and all(isinstance(child, inline_child_types) for child in nd.children)
@@ -179,7 +187,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         child_parts.append(self.hard_line());
     }
     self.trim_trailing_line(child_parts);
-    inline_child_types = (uni.JsxText, uni.JsxExpression);
+    inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
     all_inline_children = (
         nd.children
         and all(isinstance(child, inline_child_types) for child in nd.children)
@@ -228,7 +236,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         );
     }
     parts.append(closing_doc);
-    nd.gen.doc_ir = self.group(self.concat(parts), ast_node=nd);
+    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
 """Generate DocIR for ellipsis."""
@@ -284,10 +292,37 @@ impl DocIRGenPass.exit_int(nd: uni.Int) -> None {
 
 """Generate DocIR for names."""
 impl DocIRGenPass.exit_name(nd: uni.Name) -> None {
-    if nd.is_kwesc {
-        nd.gen.doc_ir = self.text(f"`{nd.value}", source_token=nd);
+    name_text = f"`{nd.value}" if nd.is_kwesc else nd.value;
+    by_kid = next(
+        (
+            k
+            for k in nd.kid
+            if isinstance(k, uni.Token) and k.name == Tok.KW_BY
+        ),
+        None
+    );
+    if by_kid is not None {
+        # Bare genai body (`by <name>;`): the parser attaches `by` and `;`
+        # as kids of this Name node. Render them so they are not lost.
+        semi_kid = next(
+            (
+                k
+                for k in nd.kid
+                if isinstance(k, uni.Semi)
+            ),
+            None
+        );
+        parts: list[doc.DocType] = [
+            by_kid.gen.doc_ir,
+            self.space(),
+            self.text(name_text, source_token=nd)
+        ];
+        if semi_kid is not None {
+            parts.append(semi_kid.gen.doc_ir);
+        }
+        nd.gen.doc_ir = self.concat(parts, ast_node=nd);
     } else {
-        nd.gen.doc_ir = self.text(nd.value, source_token=nd);
+        nd.gen.doc_ir = self.text(name_text, source_token=nd);
     }
 }
 

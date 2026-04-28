@@ -127,6 +127,41 @@ test "client fixture generates client bundle" {
     assert "server_only" not in js_code;
 }
 
+"""Regression: JSX-body comments must compile to nothing — `__jacJsx`
+children array must not contain `null` slots, or the runtime renderer
+would receive null children."""
+test "jsx comment is filtered from runtime children" {
+    es_ast = compile_to_esast(fixture_path("jsx_comment_codegen.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    for needle in [
+        "function comment_only_child()",
+        "function comment_between_siblings()",
+        "function comment_adjacent_to_expression()"
+    ] {
+        assert needle in js_code , f"Missing {needle!r}:\n" + js_code;
+    }
+
+    # The whole point: NO `null` children in any `__jacJsx` call.
+    # If JsxComment leaked into the children list as `null`, a runtime
+    # render would crash on `children.map(...)`.
+    assert "__jacJsx" in js_code , "JSX runtime call missing";
+    assert "null" not in js_code , (
+        "JsxComment leaked into runtime as a `null` child.  "
+        "Check `EsJsxProcessor.element`'s `child_expr is None` filter:\n" + js_code
+    );
+
+    # Comment-only-child should produce __jacJsx("section", ..., []) — an
+    # empty children array, not a one-element array containing nothing.
+    # The substring search is intentionally permissive (matches any prop
+    # shape) but specific enough to catch a regression that produces
+    # `[null]` or similar.
+    assert "[]" in js_code , (
+        "Expected at least one empty children array (e.g. for "
+        "<section>{#* ... *#}</section>):\n" + js_code
+    );
+}
+
 # SKIP: es_node_to_dict isinstance checks fail when compiling Jac from
 # within a Jac execution context (dual class loading issue).
 # test "es ast serializes to json" { ... }
@@ -416,5 +451,40 @@ test "jsx comprehension with filter" {
     # Check that filter is chained with map
     assert ".filter(" in js_code and ".map(" in js_code , (
         "Filtered JSX comprehension should chain .filter().map()"
+    );
+}
+
+test "jsx html entity decoding in text and attributes" {
+    es_ast = compile_to_esast(fixture_path("jsx_entity_decode.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Attribute value: &amp; must be decoded to &
+    assert '"A & B"' in js_code , (
+        "HTML entity &amp; in attribute should be decoded to & in emitted JS"
+    );
+    assert '"A &amp; B"' not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS attribute value"
+    );
+
+    # Text children: named entities must be decoded
+    assert "Before > After & More" in js_code , (
+        "HTML entities &gt; and &amp; in text content should be decoded"
+    );
+    assert "&gt;" not in js_code , (
+        "Raw &gt; should NOT appear in emitted JS text content"
+    );
+    assert "&amp;" not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS text content"
+    );
+
+    # Decimal and hex numeric references must be decoded
+    assert "Decimal > and Hex > refs" in js_code , (
+        "Decimal &#62; and hex &#x3e; references should both decode to >"
+    );
+    assert "&#62;" not in js_code , (
+        "Raw decimal entity should NOT appear in emitted JS"
+    );
+    assert "&#x3e;" not in js_code , (
+        "Raw hex entity should NOT appear in emitted JS"
     );
 }
