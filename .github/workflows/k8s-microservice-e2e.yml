@@ -1,0 +1,65 @@
+name: K8s Microservice E2E
+
+# Spins up a minikube cluster and runs the K-track smoke test, which
+# exercises K1-K7 against a real K8s API. Triggered manually
+# (workflow_dispatch) or on PRs that touch the K-track surface so we
+# don't burn minikube minutes on unrelated changes.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'jac-scale/jac_scale/microservices/k8s_target.jac'
+      - 'jac-scale/jac_scale/microservices/k8s_deployer.jac'
+      - 'jac-scale/jac_scale/factories/deployment_factory.jac'
+      - 'jac-scale/scripts/k8s_microservice_e2e.sh'
+      - '.github/workflows/k8s-microservice-e2e.yml'
+
+jobs:
+  e2e:
+    name: minikube smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install jaclang + jac-scale[deploy]
+        run: |
+          pip install --upgrade pip
+          pip install -e jac
+          pip install -e "jac-scale[deploy]"
+
+      - name: Set up minikube
+        uses: medyagh/setup-minikube@latest
+        with:
+          # Pin a known-good K8s version. Bump as new minor versions
+          # land and we want to validate against them.
+          kubernetes-version: v1.30.0
+
+      - name: Show cluster info
+        run: |
+          kubectl version
+          kubectl cluster-info
+          kubectl get nodes
+
+      - name: Run K8s microservice e2e smoke
+        run: bash jac-scale/scripts/k8s_microservice_e2e.sh
+
+      - name: Dump kubectl state on failure
+        if: failure()
+        run: |
+          echo "=== events ==="
+          kubectl get events --sort-by='.lastTimestamp' --all-namespaces || true
+          echo "=== pods ==="
+          kubectl get pods -A -o wide || true
+          echo "=== describe pods ==="
+          kubectl describe pods -A || true
+          echo "=== deployments ==="
+          kubectl get deployments -A -o yaml || true
