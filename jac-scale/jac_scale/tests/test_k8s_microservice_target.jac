@@ -239,7 +239,7 @@ test "deploy returns success with pod_specs in details" {
 }
 
 
-test "deploy returns failure DeploymentResult on pod-spec generation error" {
+test "deploy returns failure DeploymentResult on generation error" {
     # If config read raises, deploy() returns success=False rather than
     # bubbling an exception out to the CLI caller.
     import jac_scale.config_loader as cfg_mod;
@@ -261,7 +261,168 @@ test "deploy returns failure DeploymentResult on pod-spec generation error" {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
         result = target.deploy(ac);
         assert not result.success;
-        assert "K1 pod-spec generation failed" in (result.message or "");
+        assert "manifest generation failed" in (result.message or "");
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+# =============================================================================
+# K2 - manifest generation (Deployment + ClusterIP Service per service)
+# =============================================================================
+
+test "_k8s_safe_name maps GATEWAY_NAME to a DNS-1123 string" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    # Sentinel underscored name -> DNS-1123 valid resource name.
+    assert target._k8s_safe_name(GATEWAY_NAME) == "gateway";
+    # Underscores in user names get hyphenated (K8s rejects underscores).
+    assert target._k8s_safe_name("orders_app") == "orders-app";
+    # Already-valid names pass through unchanged.
+    assert target._k8s_safe_name("orders") == "orders";
+    # Mixed case is lowered.
+    assert target._k8s_safe_name("Orders") == "orders";
+}
+
+
+test "_build_deployment_manifest wraps pod-spec in Deployment template" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo", namespace="prod", container_port=8000
+        )
+    );
+    pod_spec = {
+        "containers": [{
+            "name": "orders",
+            "image": "demo:latest",
+            "env": [{"name": "JAC_SV_NAME", "value": "orders"}],
+            "ports": [{"containerPort": 8000}]
+        }]
+    };
+    dep = target._build_deployment_manifest("orders", pod_spec);
+
+    assert dep["apiVersion"] == "apps/v1";
+    assert dep["kind"] == "Deployment";
+    assert dep["metadata"]["name"] == "orders-deployment";
+    assert dep["metadata"]["namespace"] == "prod";
+    assert dep["metadata"]["labels"]["app"] == "orders";
+    assert dep["metadata"]["labels"]["jac-scale.role"] == "microservice";
+    assert dep["spec"]["replicas"] == 1;  # K6 will make configurable
+    assert dep["spec"]["selector"]["matchLabels"] == {"app": "orders"};
+    # The pod-spec lives at spec.template.spec - must match exactly.
+    assert dep["spec"]["template"]["spec"] == pod_spec;
+    # Pod-template labels MUST match the selector or the Deployment is
+    # rejected by K8s API server.
+    assert dep["spec"]["template"]["metadata"]["labels"]["app"] == "orders";
+}
+
+
+test "_build_deployment_manifest tags gateway with role=gateway" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    pod_spec = {"containers": [{"name": "gateway", "image": "demo:latest"}]};
+    dep = target._build_deployment_manifest(GATEWAY_NAME, pod_spec);
+
+    assert dep["metadata"]["name"] == "gateway-deployment";
+    assert dep["metadata"]["labels"]["jac-scale.role"] == "gateway";
+    # Pod-template uses the same DNS-safe name (not GATEWAY_NAME sentinel).
+    assert dep["spec"]["selector"]["matchLabels"] == {"app": "gateway"};
+}
+
+
+test "_build_service_manifest emits ClusterIP with matching selector" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo", namespace="prod", container_port=9090
+        )
+    );
+    svc = target._build_service_manifest("cart");
+
+    assert svc["apiVersion"] == "v1";
+    assert svc["kind"] == "Service";
+    assert svc["metadata"]["name"] == "cart-service";
+    assert svc["metadata"]["namespace"] == "prod";
+    assert svc["spec"]["type"] == "ClusterIP";
+    # Selector MUST match the Deployment's pod labels for kube-proxy to
+    # route traffic to the right pods.
+    assert svc["spec"]["selector"] == {"app": "cart"};
+    port = svc["spec"]["ports"][0];
+    assert port["port"] == 9090;
+    assert port["targetPort"] == 9090;
+    assert port["protocol"] == "TCP";
+}
+
+
+test "generate_manifests produces deployments + services per pod-spec" {
+    import jac_scale.config_loader as cfg_mod;
+
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"routes": {"orders": "/api/orders", "cart": "/api/cart"}}
+    ));
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        bundle = target.generate_manifests(ac);
+
+        # Bundle has all three keyed sections.
+        assert set(bundle.keys()) == {"deployments", "services", "pod_specs"};
+
+        # Each section has 1 entry per service + 1 for the gateway.
+        for section in ("deployments", "services", "pod_specs") {
+            assert len(bundle[section]) == 3, (
+                f"section {section} expected 3 entries, got {len(bundle[section])}"
+            );
+            assert "orders" in bundle[section];
+            assert "cart" in bundle[section];
+            assert GATEWAY_NAME in bundle[section];
+        }
+
+        # Selectors must match across paired Deployment + Service so
+        # kube-proxy routes correctly.
+        for svc_name in ["orders", "cart"] {
+            dep_selector = bundle["deployments"][svc_name]["spec"]["selector"]["matchLabels"];
+            svc_selector = bundle["services"][svc_name]["spec"]["selector"];
+            assert dep_selector == svc_selector, (
+                f"selector mismatch for {svc_name}: deployment={dep_selector}, service={svc_selector}"
+            );
+        }
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+test "deploy returns K2 manifest bundle in details" {
+    import jac_scale.config_loader as cfg_mod;
+
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"routes": {"orders": "/api/orders"}}
+    ));
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        result = target.deploy(ac);
+
+        assert result.success;
+        # K2 bundle now in details (K1's pod_specs is preserved as one section).
+        details: dict[str, Any] = result.details;
+        assert "deployments" in details;
+        assert "services" in details;
+        assert "pod_specs" in details;
+        assert (result.message or "").startswith("K2 manifests generated");
     } finally {
         setattr(cfg_mod, "get_scale_config", original);
     }
