@@ -287,10 +287,10 @@ def clean(
 )
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
-"""Build a wheel from jac.toml and optionally publish it to PyPI."""
+"""Build a wheel from jac.toml into the output directory."""
 @registry.command(
     name="publish",
-    help="Build a wheel from jac.toml and publish to PyPI",
+    help="Build a .whl from jac.toml (upload separately with twine)",
     args=[
         Arg.create(
             "output",
@@ -298,30 +298,13 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
             help="Output directory for the built .whl file",
             short="o"
         ),
-        Arg.create(
-            "build_only",
-            typ=bool,
-            default=False,
-            help="Build the wheel but do not upload it",
-            short="b"
-        ),
-        Arg.create(
-            "repository",
-            default="pypi",
-            help="Target registry: 'pypi', 'testpypi', or a full https:// URL",
-            short="r"
-        ),
 
     ],
     examples=[
-        ("jac publish --build-only", "Build wheel into dist/ without uploading"),
-        ("jac publish", "Build and upload to PyPI (reads JAC_PYPI_TOKEN from env)"),
-        ("jac publish --repository testpypi", "Upload to TestPyPI"),
-        ("jac publish -o /tmp/wheels --build-only", "Build to custom output directory"),
+        ("jac publish", "Build wheel into dist/"),
+        ("jac publish -o /tmp/wheels", "Build to custom output directory"),
 
     ],
     group="project"
 )
-def publish(
-    output: str = "dist", build_only: bool = False, repository: str = "pypi",
-) -> int;
+def publish(output: str = "dist") -> int;

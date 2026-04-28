@@ -942,9 +942,7 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
-impl publish(
-    output: str = "dist", build_only: bool = False, repository: str = "pypi",
-) -> int {
+impl publish(output: str = "dist") -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.validator { validate_package }
@@ -999,36 +997,6 @@ impl publish(
         f"({whl_path.stat().st_size:,} bytes)",
         style="success"
     );
-
-    if build_only {
-        console.print(f"\n  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
-        return 0;
-    }
-
-    # ── Upload ────────────────────────────────────────────────────────────────
-    import from jaclang.publish.uploader { load_credentials, upload_wheel }
-    console.print(f"\n  Uploading to [cyan]{repository}[/cyan]...", style="muted");
-    try {
-        creds = load_credentials(repository=repository);
-    } except ValueError as e {
-        console.error(
-            f"No credentials found: {e}",
-            hint="Set JAC_PYPI_TOKEN or add credentials to ~/.jac/credentials.toml"
-        );
-        return 1;
-    }
-    upload_result = upload_wheel(whl_path, config=config, credentials=creds);
-    if upload_result.success {
-        console.print(f"  ✔ Published successfully!", style="success");
-        if upload_result.release_url {
-            console.print(f"  → {upload_result.release_url}", style="bold cyan");
-        }
-        return 0;
-    } else {
-        console.error(
-            f"Upload failed (HTTP {upload_result.status_code}): "
-            f"{upload_result.message}"
-        );
-        return 1;
-    }
+    console.print(f"\n  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
+    return 0;
 }
