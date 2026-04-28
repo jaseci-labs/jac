@@ -29,7 +29,7 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 ```jac
 # Single-line comment
 
-# *
+#*
     Multi-line
     comment
 *#
@@ -1592,5 +1592,3 @@ def:pub TodoApp() -> JsxElement {
 # Other:    import, include, from, as, try, except, finally, with, lambda,
 
 # global, nonlocal, self, super, init, postinit
-
-```
