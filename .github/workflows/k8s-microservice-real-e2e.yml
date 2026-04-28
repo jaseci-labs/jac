@@ -1,0 +1,104 @@
+name: K8s Microservice Real E2E
+
+# Real-app end-to-end test: builds an actual image from the
+# micr-s-example fixture, deploys via the K-track pipeline against a
+# minikube cluster, verifies pods come up, exercises the gateway via
+# port-forward, hits the K10 Ingress path, then triggers a rolling
+# restart while hammering /health and asserts ZERO non-2xx during the
+# rollout window. Closes the loop on K1-K10.
+#
+# Heavier than the manifest-only smoke (k8s-microservice-e2e.yml) - it
+# builds the full image and runs real pods. Triggered manually
+# (workflow_dispatch) and on PRs that touch the K-track surface OR
+# the fixture itself.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'jac-scale/jac_scale/microservices/k8s_target.jac'
+      - 'jac-scale/jac_scale/microservices/k8s_deployer.jac'
+      - 'jac-scale/jac_scale/microservices/orchestrator.jac'
+      - 'jac-scale/jac_scale/factories/deployment_factory.jac'
+      - 'jac-scale/jac_scale/plugin.jac'
+      - 'jac-scale/scripts/k8s_microservice_real_e2e.sh'
+      - 'jac-scale/scripts/Dockerfile.microservice'
+      - 'jac-scale/scripts/dockerignore.microservice'
+      - 'jac-scale/jac_scale/tests/fixtures/k8s_e2e/**'
+      - '.github/workflows/k8s-microservice-real-e2e.yml'
+
+jobs:
+  real-e2e:
+    name: minikube real-app smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install jaclang + jac-scale[deploy]
+        run: |
+          pip install --upgrade pip
+          pip install -e jac
+          pip install -e "jac-scale[deploy]"
+
+      - name: Set up minikube
+        uses: medyagh/setup-minikube@latest
+        with:
+          # Pinned for reproducibility - bump as new K8s versions land
+          # and we want to validate against them.
+          kubernetes-version: v1.30.0
+
+      - name: Enable required addons
+        run: |
+          # metrics-server: HPA targets need it (K6)
+          minikube addons enable metrics-server
+          # ingress: K10 Ingress needs nginx-ingress controller running
+          minikube addons enable ingress
+
+          # Wait for ingress controller to be Ready (it takes ~30-60s
+          # to come up after addon enable). Without this, the e2e's
+          # Ingress test would race the controller readiness.
+          kubectl wait --namespace ingress-nginx \
+              --for=condition=ready pod \
+              --selector=app.kubernetes.io/component=controller \
+              --timeout=180s
+
+      - name: Show cluster info
+        run: |
+          kubectl version
+          kubectl cluster-info
+          kubectl get nodes
+          kubectl get pods -A
+
+      - name: Run K8s microservice real-app e2e
+        run: |
+          bash jac-scale/scripts/k8s_microservice_real_e2e.sh \
+              jac-scale/jac_scale/tests/fixtures/k8s_e2e
+
+      - name: Dump kubectl state on failure
+        if: failure()
+        run: |
+          echo "=== events ==="
+          kubectl get events --sort-by='.lastTimestamp' --all-namespaces || true
+          echo "=== pods ==="
+          kubectl get pods -A -o wide || true
+          echo "=== describe pods (jac-e2e ns) ==="
+          kubectl describe pods -n jac-e2e || true
+          echo "=== gateway logs ==="
+          kubectl logs -n jac-e2e -l app=gateway --tail=100 || true
+          echo "=== service-app logs (sample) ==="
+          for app in cart-app orders-app products-app; do
+              echo "--- $app ---"
+              kubectl logs -n jac-e2e -l app=$app --tail=50 || true
+          done
+          echo "=== ingress status ==="
+          kubectl describe ingress -n jac-e2e || true
+          echo "=== ingress-nginx controller logs ==="
+          kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=50 || true
