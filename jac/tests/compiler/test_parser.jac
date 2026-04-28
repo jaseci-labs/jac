@@ -15,6 +15,8 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse as rd_parse }
+import from jaclang.jac0core.parser.tokens { TokenKind }
+import from jaclang.jac0core.parser.lexer { Lexer }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
@@ -754,6 +756,117 @@ test "bracket vs paren filter produce same AST" {
 test "bracket filter on list" {
     (mod, err) = rd_parse('with entry { print(my_list[?:MyObj, a<4]); }', "");
     assert not err , "Failed to parse list bracket filter";
+}
+
+# ── JS arrow function syntax (E0025) ──
+test "arrow func outside jsx: one E0025 at `=>` with help hint" {
+    prog = JacProgram();
+    prog.parse_str('glob f = x => x + 1;', "test.jac");
+    assert len(prog.errors_had) == 1;
+    err = prog.errors_had[0];
+    assert err.code is not None and err.code.code == "E0025";
+    # `=>` starts at col 12 in 'glob f = x => x + 1;'
+    assert err.loc.first_line == 1 and err.loc.col_start == 12;
+    err_str = str(err);
+    assert "help:" in err_str and "lambda" in err_str;
+}
+
+test "arrow func in jsx expression slot: one E0025, no cascade" {
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <button onClick={v => v + 1} />; }', "test.jac");
+    assert len(prog.errors_had) == 1;
+    assert prog.errors_had[0].code.code == "E0025";
+}
+
+test "arrow func with block body drains braces cleanly" {
+    prog = JacProgram();
+    prog.parse_str(
+        'def f() -> JsxElement { return <button onClick={(e) => { count += 1; }}>{count}</button>; }',
+        "test.jac"
+    );
+    assert len(prog.errors_had) == 1;
+    assert prog.errors_had[0].code.code == "E0025";
+}
+
+test "arrow with stray RBRACE does not over-consume jsx slot" {
+    # `=>` followed by `}` (no expression body). Drain's else-branch must not
+    # let parse_concurrent_expr eat past the `}` that closes the JSX slot.
+    prog = JacProgram();
+    prog.parse_str('with entry { x = <div onClick={(e) => } />; }', "test.jac");
+    e0025 = [
+        e
+        for e in prog.errors_had
+        if e.code and e.code.code == "E0025"
+    ];
+    assert len(e0025) == 1;
+}
+
+# ── regression guards: lookalikes must still parse ──
+test "gte operator not confused with arrow syntax" {
+    (_, had_error) = rd_parse('with entry { x = a >= b; }', "");
+    assert not had_error;
+}
+
+test "lambda syntax unaffected by arrow fix" {
+    (_, had_error) = rd_parse('with entry { f = lambda x: x + 1; }', "");
+    assert not had_error;
+}
+
+# ── `scan_jsx_block_comment` invariants — match, miss, rewind ──
+def _jsx_lex(src: str) -> tuple[list, list] {
+    lex = Lexer(source=src, file_path="<test>");
+    return (lex.tokenize(), list(lex.comments));
+}
+
+"""Comment-only `{#* ... *#}` fuses into a single JSX_BLOCK_COMMENT
+token; anything else (expression slot, comment+expression, two
+comments, non-JSX context) rewinds to normal `{` handling and the
+inner `#* *#` becomes a free block comment."""
+test "JSX block-comment lookahead match/rewind invariants" {
+    # (source, fused?, expected free count, optional needle)
+    cases = [
+        ('<p>{#* hi *#}</p>', True, 0, ""),
+        ('<p>{   #* hi *#   }</p>', True, 0, ""),
+        ('<p>{count #* trailing *#}</p>', False, 1, "trailing"),
+        ('<p>{#* lead *# count}</p>', False, 1, "lead"),
+        ('<p>{#* a *# #* b *#}</p>', False, 2, "a"),
+        ('with entry { x = { #* nope *# }; }', False, 1, "nope"),
+
+    ];
+    for (src, fused, expected_count, needle) in cases {
+        (tokens, frees) = _jsx_lex(src);
+        kinds = [
+            t.kind
+            for t in tokens
+            if t.kind != TokenKind.EOF
+        ];
+        if fused {
+            assert TokenKind.JSX_BLOCK_COMMENT in kinds , f"{src!r}: not fused";
+            assert TokenKind.LBRACE not in kinds , f"{src!r}: LBRACE leaked";
+        } else {
+            assert TokenKind.JSX_BLOCK_COMMENT not in kinds , f"{src!r}: wrongly fused";
+            assert TokenKind.LBRACE in kinds , f"{src!r}: LBRACE missing";
+        }
+        assert len(frees) == expected_count , f"{src!r}: frees={frees}";
+        if needle {
+            assert any(needle in c[0] for c in frees) , f"{src!r}: missing {needle!r}";
+        }
+    }
+}
+
+"""LBRACE position must survive a partial-lookahead rewind."""
+test "rewind preserves token position" {
+    (tokens, _) = _jsx_lex('<p>{count}</p>');
+    lb = next(
+        (
+            t
+            for t in tokens
+            if t.kind == TokenKind.LBRACE
+        ),
+        None
+    );
+    # `{` is at byte offset 3 (`<p>{`).
+    assert lb is not None and lb.loc.pos_start == 3 , f"LBRACE drift: {lb}";
 }
 
 with entry {
