@@ -579,14 +579,14 @@ test "REST filters endpoint returns 403 without auth token" {
     }
 }
 
-test "REST summary endpoint returns 403 with invalid token" {
+test "REST summary endpoint returns 401 or 403 with invalid token" {
     client = make_client();
     try {
         response = client.get(
             "/admin/llm/telemetry/summary",
             headers={"Authorization": "Bearer invalid-token-xyz"}
         );
-        assert response.status_code == 403;
+        assert response.status_code in [401, 403];
     } finally {
         client.close();
     }

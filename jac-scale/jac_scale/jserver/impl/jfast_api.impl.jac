@@ -1126,6 +1126,11 @@ impl JFastApiServer.init(
             }
         }
 
+        username = request.state?.username if request?.state else None;
+        if hasattr(ctx, 'username') and username {
+            ctx.username = username;
+        }
+
         try {
             response = await call_next(request);
             try {

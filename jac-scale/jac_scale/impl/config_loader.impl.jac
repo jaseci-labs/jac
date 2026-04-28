@@ -110,7 +110,16 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'system_user_password': 'system_secret',
             'collection': 'scheduled_jobs'
         },
-        'telemetry': {'max_traces': 1000}
+        'telemetry': {'max_traces': 1000},
+        'llm_limits': {
+            'enabled': False,
+            'rpm': None,
+            'rpd': None,
+            'tpm': None,
+            'tpd': None,
+            'daily_budget_usd': None,
+            'monthly_budget_usd': None
+        }
     };
 }
 
@@ -332,5 +341,20 @@ impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, Any] {
         'default_password': admin_config.get('default_password', 'changeme'),
         'session_expiry_hours': int(admin_config.get('session_expiry_hours', 24)),
         'require_password_reset': admin_config.get('require_password_reset', True)
+    };
+}
+
+"""Get LLM per-user rate/usage limit configuration from jac.toml."""
+impl JacScaleConfig.get_llm_limits_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    limits = config.get('llm_limits', {});
+    return {
+        'enabled': bool(limits.get('enabled', False)),
+        'rpm': limits.get('rpm', None),
+        'rpd': limits.get('rpd', None),
+        'tpm': limits.get('tpm', None),
+        'tpd': limits.get('tpd', None),
+        'daily_budget_usd': limits.get('daily_budget_usd', None),
+        'monthly_budget_usd': limits.get('monthly_budget_usd', None)
     };
 }

@@ -11,5 +11,7 @@ Storage backend is configured via environment variables (e.g., MONGODB_URI),
 not per-context parameters.
 """
 class JScaleExecutionContext(ExecutionContext) {
+    has username: (str | None) = None;
+
     def init(self: JScaleExecutionContext) -> None;
 }

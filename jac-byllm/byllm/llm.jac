@@ -58,6 +58,15 @@ with entry {
 glob DEFAULT_BASE_URL = "http://localhost:4000",
      MODEL_MOCK = "mockllm";
 
+# Hook lists for pre/post invoke interception.
+# Pre-hooks: called before every by llm() call. Signature: (model_name: str, username: str | None) -> None. Raise to block.
+# Post-hooks: called after a successful call. Signature: (model_name: str, username: str | None, tokens: int, cost_usd: float) -> None.
+glob _pre_invoke_hooks: list[object] = [],
+     _post_invoke_hooks: list[object] = [];
+
+def register_pre_invoke_hook(fn: object) -> None;
+def register_post_invoke_hook(fn: object) -> None;
+
 """Base class for LLM implementations.
 
 Provides the core interface and shared functionality for all LLM connectors.

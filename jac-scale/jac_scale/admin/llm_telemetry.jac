@@ -21,4 +21,37 @@ import from jac_scale.jserver.jserver {
 """LLM Telemetry mixin providing telemetry storage, litellm logger, and REST endpoints."""
 obj JacAPIServerLLMTelemetry {
     def register_llm_telemetry_endpoints -> None;
+    def _init_rate_limiting(store: Any) -> None;
 }
+
+"""Raised when any per-user LLM rate or budget limit is exceeded."""
+class LLMRateLimitExceeded(Exception) {}
+
+"""Per-user LLM rate and budget limiter.
+
+Pure logic class, no litellm dependency. The litellm CustomLogger adapter
+that delegates to this is created inside register_llm_telemetry_endpoints.
+Exposed at module level so tests can instantiate it directly.
+"""
+obj JacUserRateLimiter {
+    has rc: Any = None,
+        col: Any = None,
+        rpm: Any = None,
+        rpd: Any = None,
+        tpm: Any = None,
+        tpd: Any = None,
+        daily_budget: Any = None,
+        monthly_budget: Any = None;
+
+    def _check_and_incr(key: str, limit: int, ttl: int) -> None;
+    def _get_budget_spent(
+        username: str, period: str, cache_key: str, ttl: int
+    ) -> float;
+
+    def check_pre_call(username: str) -> None;
+    def record_success(
+        username: str, tokens: int, cost_usd: float, model: str
+    ) -> None;
+}
+
+glob _rate_limiter_instance: JacUserRateLimiter | None = None;
