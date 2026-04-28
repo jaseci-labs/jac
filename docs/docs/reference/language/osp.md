@@ -422,7 +422,7 @@ walker DataCollector {
 }
 ```
 
-If omitted, `reports` defaults to `list[Any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
+If omitted, `reports` defaults to `list[any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
 
 ### 5 The `disengage` Statement
 
@@ -952,7 +952,6 @@ Typed context blocks let you conditionally execute code based on the runtime typ
 The syntax uses `->Type{code}` with no space between the arrow and type name:
 
 ```jac
-import from typing { Any }
 walker AnimalVisitor {
     can visit with Animal entry {
         # Typed context block for Dog (subtype of Animal)
@@ -1079,7 +1078,6 @@ walker:priv DeleteItem {
 ### Search Walker
 
 ```jac
-import from typing { Any }
 node Item {
     has name: str;
 }
@@ -1107,7 +1105,7 @@ walker:priv SearchItems {
     }
 
     can finish with Root exit {
-        self.matches.sort(key=lambda x: Any: x["score"], reverse=True);
+        self.matches.sort(key=lambda x: any: x["score"], reverse=True);
         report self.matches;
     }
 }
@@ -1121,7 +1119,7 @@ walker:priv SearchItems {
 
 ```
 walker:priv GetTree {
-    def build_tree(node: Any) -> dict {
+    def build_tree(node: any) -> dict {
         children = [];
         for child in [node -->] {
             children.append(self.build_tree(child));

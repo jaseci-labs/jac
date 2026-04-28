@@ -64,7 +64,6 @@ obj Person {
 **Required Parameter Order:**
 
 ```jac
-import from typing { Any }
 def complete_example(
     pos_only1: int,           # 1. Positional-only parameters
     pos_only2: str,
@@ -74,7 +73,7 @@ def complete_example(
     *args: int,                # 5. Variadic positional
     kw_only: str,              # 6. Keyword-only (after * or *args)
     kw_default: bool = True,   # 7. Keyword-only with default
-    **kwargs: Any              # 8. Variadic keyword (must be last)
+    **kwargs: any              # 8. Variadic keyword (must be last)
 ) -> None {
     print("called");
 }

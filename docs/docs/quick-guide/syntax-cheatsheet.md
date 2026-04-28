@@ -27,7 +27,7 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 
 # Module-level docstring (no semicolon needed)
 """This module does something useful."""
-import from typing { Any }
+
 
 # Docstrings go BEFORE the declaration they document
 """Object-level docstring."""
@@ -138,7 +138,7 @@ def kitchen_sink(
     regular: str = "default",
     *args: int,
     kw_only: bool = True,
-    **kwargs: Any
+    **kwargs: any
 ) -> str {
     return "ok";
 }

@@ -593,7 +593,6 @@ Entries execute depth-first, exits execute in reverse order (LIFO/stack unwindin
 **Example migration for disengage pattern:**
 
 ```jac
-import from typing { Any }
 # Before: Exit ability would run before disengage stops traversal
 walker MyWalker {
     can process with MyNode entry {

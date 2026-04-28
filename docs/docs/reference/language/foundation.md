@@ -335,7 +335,7 @@ If you later add runtime usage like `MyClass()`, the compiler automatically prom
 Jac will support generic type parameters using Python-style syntax (coming soon):
 
 ```jac
-import from typing { Any }
+
 # Generic function (coming soon):
 # def first[T](items: list[T]) -> T {
 #     return items[0];
@@ -346,13 +346,13 @@ import from typing { Any }
 #     has value: T;
 # }
 
-# For now, use `Any` as a placeholder:
-def first(items: list) -> Any {
+# For now, use `any` as a placeholder:
+def first(items: list) -> any {
     return items[0];
 }
 
 obj Container {
-    has value: Any;
+    has value: any;
 }
 ```
 
@@ -1490,13 +1490,12 @@ Pattern matching lets you destructure and test complex data in a single construc
 **Basic Patterns:**
 
 ```jac
-import from typing { Any }
 obj Point {
     has x: int = 0;
     has y: int = 0;
 }
 
-def example(value: Any) {
+def example(value: any) {
     match value {
         case 0:
             print("zero");
@@ -1522,8 +1521,7 @@ def example(value: Any) {
 **Advanced Patterns:**
 
 ```jac
-import from typing { Any }
-def example(data: Any) {
+def example(data: any) {
     match data {
         case [1, *middle, 5]:              # Spread: capture remainder
             print(f"Middle: {middle}");
@@ -1644,12 +1642,11 @@ def example(input: str) {
 **Multiple exception types:**
 
 ```jac
-import from typing { Any }
-def process(data: Any) -> None {
+def process(data: any) -> None {
     print(data);
 }
 
-def example(data: Any) {
+def example(data: any) {
     try {
         process(data);
     } except (TypeError, ValueError) as e {
@@ -1793,8 +1790,7 @@ def fibonacci(limit: int) -> int {
 **yield from (delegation):**
 
 ```jac
-import from typing { Any }
-def flatten(nested: list) -> Any {
+def flatten(nested: list) -> any {
     for item in nested {
         if isinstance(item, list) {
             yield from flatten(item);  # Delegate to sub-generator

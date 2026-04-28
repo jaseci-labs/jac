@@ -18,8 +18,7 @@ These patterns are drawn from [JacBuilder](https://github.com/jaseci-labs/jacBui
 In Jac client code, use `Reflect.construct()` instead of the `new` keyword to instantiate browser built-in objects like `WebSocket`:
 
 ```jac
-import from typing { Any }
-glob _ws: Any = None;
+glob _ws: any = None;
 
 def connectWebSocket(url: str) -> None {
     _ws = Reflect.construct(WebSocket, [url]);
@@ -28,7 +27,7 @@ def connectWebSocket(url: str) -> None {
         console.log("WebSocket connected");
     };
 
-    _ws.onmessage = lambda(event: Any) {
+    _ws.onmessage = lambda(event: any) {
         try {
             msg = JSON.parse(event.data);
             handleMessage(msg);
@@ -37,7 +36,7 @@ def connectWebSocket(url: str) -> None {
         }
     };
 
-    _ws.onerror = lambda(e: Any) {
+    _ws.onerror = lambda(e: any) {
         console.warn("WS error:", e);
     };
 
@@ -50,8 +49,8 @@ def connectWebSocket(url: str) -> None {
 ### Sending Messages
 
 ```jac
-import from typing { Any }
-def sendMessage(action: str, data: Any) -> None {
+
+def sendMessage(action: str, data: any) -> None {
     if not _ws or _ws.readyState != 1 {
         console.warn("WebSocket not connected");
         return;
@@ -75,11 +74,11 @@ def sendMessage(action: str, data: Any) -> None {
 For WebSocket protocols that use request IDs:
 
 ```jac
-import from typing { Any }
-glob _nextReqId: int = 1;
-glob _pendingCallbacks: Any = {};
 
-def wsRequest(method: str, params: Any, callback: Any) -> None {
+glob _nextReqId: int = 1;
+glob _pendingCallbacks: any = {};
+
+def wsRequest(method: str, params: any, callback: any) -> None {
     reqId = _nextReqId;
     _nextReqId = _nextReqId + 1;
 
@@ -93,7 +92,7 @@ def wsRequest(method: str, params: Any, callback: Any) -> None {
     _ws.send(JSON.stringify(msg));
 }
 
-def handleResponse(msg: Any) -> None {
+def handleResponse(msg: any) -> None {
     if msg and msg.id != undefined and _pendingCallbacks[String(msg.id)] {
         cb = _pendingCallbacks[String(msg.id)];
         _pendingCallbacks[String(msg.id)] = undefined;
@@ -126,7 +125,7 @@ Jac does not have a `new` keyword. For browser built-in constructors, use `Refle
 
 <!-- jac-skip -->
 ```jac
-import from typing { Any }
+
 # WebSocket
 ws = Reflect.construct(WebSocket, [url]);
 
@@ -137,7 +136,7 @@ url = Reflect.construct(URL, [String(base)]);
 now = Reflect.construct(Date, []);
 
 # Promise
-promise = Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+promise = Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
     # ... async work ...
     resolve.call(None, result);
 }]);
@@ -159,22 +158,22 @@ When passing callbacks that will be invoked later, use `.call(None, ...)` to avo
 
 <!-- jac-skip -->
 ```jac
-import from typing { Any }
+
 # Assign callback to local variable, then use .call()
 msgHandler = onMessage;
-ws.onmessage = lambda(e: Any) {
+ws.onmessage = lambda(e: any) {
     msg = JSON.parse(e.data);
     msgHandler.call(None, msg);
 };
 
 # Promise resolve/reject
-Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
     resolveFn = resolve;
     rejectFn = reject;
 
     doAsyncWork(
-        lambda(result: Any) { resolveFn.call(None, result); },
-        lambda(err: Any) { rejectFn.call(None, err); }
+        lambda(result: any) { resolveFn.call(None, result); },
+        lambda(err: any) { rejectFn.call(None, err); }
     );
 }]);
 ```
@@ -210,13 +209,13 @@ output = lines.join(_NL);
 Use `glob` for state that persists across component renders and is shared across the module:
 
 ```jac
-import from typing { Any }
+
 # Module-level state (like JavaScript module variables)
 glob monacoInitialized: bool = False;
-glob cachedConfig: Any = None;
-glob initPromise: Any = None;
+glob cachedConfig: any = None;
+glob initPromise: any = None;
 
-async def:pub initializeOnce() -> Any {
+async def:pub initializeOnce() -> any {
     if monacoInitialized {
         return cachedConfig;
     }
@@ -234,7 +233,7 @@ Access browser globals through `globalThis` or directly:
 
 <!-- jac-skip -->
 ```jac
-import from typing { Any }
+
 # localStorage
 localStorage.getItem("auth_token");
 localStorage.setItem("auth_token", token);
@@ -245,14 +244,13 @@ version = globalThis.__APP_VERSION__;
 apiBase = globalThis.__API_BASE_URL__;
 
 # Browser APIs
-window.addEventListener("resize", lambda(e: Any) { handleResize(); });
+window.addEventListener("resize", lambda(e: any) { handleResize(); });
 document.querySelector(".my-element");
 ```
 
 ### Custom Events (Cross-Component Communication)
 
 ```jac
-import from typing { Any }
 glob _THEME_EVENT: str = "theme-change";
 
 # Dispatch
@@ -271,7 +269,7 @@ def:pub ThemeListener() -> JsxElement {
     has theme: str = "light";
 
     useEffect(lambda -> None {
-        handler = lambda(e: Any) {
+        handler = lambda(e: any) {
             theme = e.detail.theme;
         };
         window.addEventListener(_THEME_EVENT, handler);
@@ -291,16 +289,16 @@ def:pub ThemeListener() -> JsxElement {
 ### Async File Reading with Promises
 
 ```jac
-import from typing { Any }
-def readAllEntries(reader: Any) -> Any {
-    return Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+
+def readAllEntries(reader: any) -> any {
+    return Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
         allEntries: list = [];
         resolveFn = resolve;
         rejectFn = reject;
 
         def readBatch() -> None {
             reader.readEntries(
-                lambda(entries: Any) {
+                lambda(entries: any) {
                     if not entries or entries.length == 0 {
                         resolveFn.call(None, allEntries);
                     } else {
@@ -310,7 +308,7 @@ def readAllEntries(reader: Any) -> Any {
                         readBatch();
                     }
                 },
-                lambda(err: Any) { rejectFn.call(None, err); }
+                lambda(err: any) { rejectFn.call(None, err); }
             );
         }
         readBatch();
@@ -396,11 +394,11 @@ console.error("[DataLoader] Failed to fetch:", err);
 ### Error Recovery with Retry Limits
 
 ```jac
-import from typing { Any }
+
 glob _errorCount: int = 0;
 glob _maxRetries: int = 10;
 
-def handleError(context: str, err: Any) -> None {
+def handleError(context: str, err: any) -> None {
     _errorCount = _errorCount + 1;
     console.error(f"[{context}] Error #{_errorCount}:", err);
 
