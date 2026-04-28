@@ -2,7 +2,10 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
+expression ::=
+    lambda_expr
+    | concurrent_expr (ERROR (("{" | "}")* | concurrent_expr))?
+      ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 
@@ -237,7 +240,7 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::= JSX_TEXT jsx_child? | "{" expression "}" | jsx_element
+jsx_child ::= JSX_TEXT jsx_child? | JSX_BLOCK_COMMENT | "{" expression "}" | jsx_element
 
 element_stmt ::=
     ";"

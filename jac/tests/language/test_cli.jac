@@ -1676,7 +1676,9 @@ test "syntax error pretty print" {
     program = JacProgram();
     program.compile(fixture_path("test_syntax_err.jac"));
     assert len(program.errors_had) == 3 , (
-        f"Expected 3 errors with improved error reporting, got {len(program.errors_had)}"
+        f"Expected 3 errors with improved error reporting, got {len(
+            program.errors_had
+        )}"
     );
     _assert_error_pretty_found(
         """
@@ -1838,6 +1840,33 @@ test "bare lt in jsx content is treated as text" {
     sys.stdout = captured;
     try {
         result = execution.run(fixture_path("jsx_bare_lt_in_content.jac"));
+        stderr = captured_stderr.getvalue();
+    } finally {
+        sys.stdout = old_stdout;
+        sys.stderr = old_stderr;
+    }
+
+    assert result == 0 , f"should compile successfully, got errors: {stderr}";
+}
+
+test "comment-only brace in jsx body is silently dropped" {
+    # {#* ... *#} inside a JSX body used to crash: the lexer silently
+    # swallows the block comment, so parse_expression() immediately saw
+    # RBRACE as its first token — not a valid expression start.
+    # The fix guards for an empty brace pair and recurses instead of
+    # crashing. Three cases are covered by the fixture:
+    #   1. Comment between siblings — both siblings must survive.
+    #   2. Comment as the only child — element compiles with no children.
+    #   3. Comment adjacent to a real {expr} — both must survive.
+    captured_stderr = io.StringIO();
+    old_stderr = sys.stderr;
+    sys.stderr = captured_stderr;
+
+    captured = io.StringIO();
+    old_stdout = sys.stdout;
+    sys.stdout = captured;
+    try {
+        result = execution.run(fixture_path("jsx_body_comment.jac"));
         stderr = captured_stderr.getvalue();
     } finally {
         sys.stdout = old_stdout;
