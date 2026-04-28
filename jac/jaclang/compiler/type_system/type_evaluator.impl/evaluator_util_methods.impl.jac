@@ -60,13 +60,25 @@ impl TypeEvaluator._build_field_params(
         }
         # For `@dataclass class` (Python-style class), fields may be declared
         # inside `with entry` blocks as typed assignments instead of `has` vars.
-        # Walk ModuleCode and WithStmt bodies to collect them.
-        # Works for both Archetype (with ModuleCode) and Ability (with WithStmt).
-        if isinstance(cls.shared.symbol_table, (uni.Archetype, uni.Ability))
-        and not cls.shared.is_builtin_class {
+        # Only applies to Python-style `class` (arch_type KW_CLASS) and local
+        # dataclass `Ability` nodes - NOT to obj/walker/node/edge whose `with
+        # entry` blocks contain execution code, not field declarations.
+        arch_sym = cls.shared.symbol_table;
+        is_py_class_arch = (
+            isinstance(arch_sym, uni.Archetype)
+            and not cls.shared.is_builtin_class
+            and arch_sym.arch_type.name == Tok.KW_CLASS
+            and arch_sym.decorators is not None
+            and any(
+                isinstance(d, uni.Name) and d.value == 'dataclass'
+                for d in arch_sym.decorators
+            )
+        );
+        is_local_class_ability = isinstance(arch_sym, uni.Ability);
+        if is_py_class_arch or is_local_class_ability {
             body_iter: list[uni.UniNode] = [];
-            if isinstance(cls.shared.symbol_table, uni.Archetype) {
-                body_iter = cls.shared.symbol_table._get_impl_resolved_body();
+            if is_py_class_arch {
+                body_iter = arch_sym._get_impl_resolved_body();
             } else {
                 # For Ability (local class), get body directly
                 body_iter = cls.shared.symbol_table.body or [];
