@@ -55,20 +55,32 @@ jobs:
           # and we want to validate against them.
           kubernetes-version: v1.30.0
 
-      - name: Enable required addons
+      - name: Enable required addons (best-effort)
+        # Both addons pull images from registry.k8s.io which has been
+        # flaky on GitHub runners ("unknown blob" on ErrImagePull).
+        # Don't fail the pipeline if an addon doesn't come up; the e2e
+        # script gracefully skips downstream tests that need them
+        # (HPA targets stay <unknown>, K10 Ingress test skips).
+        continue-on-error: true
         run: |
-          # metrics-server: HPA targets need it (K6)
-          minikube addons enable metrics-server
-          # ingress: K10 Ingress needs nginx-ingress controller running
-          minikube addons enable ingress
+          # metrics-server: HPA targets need it (K6). Without it HPA
+          # shows <unknown>/70% but Deployments still run.
+          minikube addons enable metrics-server \
+              || echo "WARN: metrics-server enable failed; HPA targets will be unknown"
 
-          # Wait for ingress controller to be Ready (it takes ~30-60s
-          # to come up after addon enable). Without this, the e2e's
-          # Ingress test would race the controller readiness.
+          # ingress: K10 Ingress needs nginx-ingress controller running.
+          # Without it the K10 path is skipped by the e2e's existing
+          # "controller not Running" branch.
+          minikube addons enable ingress \
+              || echo "WARN: ingress addon enable failed; K10 Ingress test will skip"
+
+          # Wait briefly; if it doesn't come up in 3min, downstream
+          # gracefully handles "no controller."
           kubectl wait --namespace ingress-nginx \
               --for=condition=ready pod \
               --selector=app.kubernetes.io/component=controller \
-              --timeout=180s
+              --timeout=180s \
+              || echo "WARN: ingress-nginx controller not ready; K10 path will skip"
 
       - name: Show cluster info
         run: |
