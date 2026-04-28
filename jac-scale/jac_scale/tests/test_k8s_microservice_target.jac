@@ -46,13 +46,22 @@ import jac_scale.microservices.k8s_target as k8s_mod;
 `(mock_apps_v1, mock_core_v1, restore)` - call `restore()` in finally
 to undo the patches. Used by deploy() / apply_manifests() / destroy()
 tests so they don't need a live cluster.
+
+K6 added AutoscalingV2Api (HPA) and PolicyV1Api (PDB) usage; they're
+mocked through the shared `mock_client` so existing K3 tests still
+work and new K6 tests can read `mock_client.AutoscalingV2Api.return_value`
+when they need to assert against HPA/PDB calls.
 """
 def _install_k8s_mocks -> tuple[Any, Any, Any] {
     mock_apps_v1 = unittest.mock.MagicMock();
     mock_core_v1 = unittest.mock.MagicMock();
+    mock_autoscaling_v2 = unittest.mock.MagicMock();
+    mock_policy_v1 = unittest.mock.MagicMock();
     mock_client = unittest.mock.MagicMock();
     mock_client.AppsV1Api.return_value = mock_apps_v1;
     mock_client.CoreV1Api.return_value = mock_core_v1;
+    mock_client.AutoscalingV2Api.return_value = mock_autoscaling_v2;
+    mock_client.PolicyV1Api.return_value = mock_policy_v1;
 
     mock_cfg = unittest.mock.MagicMock();
 
@@ -70,6 +79,37 @@ def _install_k8s_mocks -> tuple[Any, Any, Any] {
     }
 
     return (mock_apps_v1, mock_core_v1, restore);
+}
+
+
+"""Variant that also returns the AutoscalingV2 + PolicyV1 mocks for K6 tests."""
+def _install_k8s_mocks_with_k6 -> tuple[Any, Any, Any, Any, Any] {
+    mock_apps_v1 = unittest.mock.MagicMock();
+    mock_core_v1 = unittest.mock.MagicMock();
+    mock_autoscaling_v2 = unittest.mock.MagicMock();
+    mock_policy_v1 = unittest.mock.MagicMock();
+    mock_client = unittest.mock.MagicMock();
+    mock_client.AppsV1Api.return_value = mock_apps_v1;
+    mock_client.CoreV1Api.return_value = mock_core_v1;
+    mock_client.AutoscalingV2Api.return_value = mock_autoscaling_v2;
+    mock_client.PolicyV1Api.return_value = mock_policy_v1;
+
+    mock_cfg = unittest.mock.MagicMock();
+
+    orig_client = getattr(k8s_mod, "client");
+    orig_cfg = getattr(k8s_mod, "k8s_cluster_config");
+    orig_ens = getattr(k8s_mod, "ensure_namespace_exists");
+    setattr(k8s_mod, "client", mock_client);
+    setattr(k8s_mod, "k8s_cluster_config", mock_cfg);
+    setattr(k8s_mod, "ensure_namespace_exists", unittest.mock.MagicMock());
+
+    def restore -> None {
+        setattr(k8s_mod, "client", orig_client);
+        setattr(k8s_mod, "k8s_cluster_config", orig_cfg);
+        setattr(k8s_mod, "ensure_namespace_exists", orig_ens);
+    }
+
+    return (mock_apps_v1, mock_core_v1, mock_autoscaling_v2, mock_policy_v1, restore);
 }
 
 
@@ -414,8 +454,12 @@ test "generate_manifests produces deployments + services per pod-spec" {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
         bundle = target.generate_manifests(ac);
 
-        # Bundle has all three keyed sections.
-        assert set(bundle.keys()) == {"deployments", "services", "pod_specs"};
+        # Bundle has all keyed sections (K2 + K6).
+        # Use a superset assertion so additions in later K-tasks don't
+        # break this test.
+        for required in ("deployments", "services", "pod_specs") {
+            assert required in bundle, f"missing required section: {required}";
+        }
 
         # Each section has 1 entry per service + 1 for the gateway.
         for section in ("deployments", "services", "pod_specs") {
@@ -1060,5 +1104,197 @@ test "_drain_timeout falls back to 10s default on config read failure" {
         assert target._drain_timeout() == 10;
     } finally {
         setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+# =============================================================================
+# K6 - HPA + PodDisruptionBudget per service
+# =============================================================================
+
+test "_build_hpa_manifest targets the Deployment with conservative defaults" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    hpa = target._build_hpa_manifest("orders");
+
+    assert hpa["apiVersion"] == "autoscaling/v2";
+    assert hpa["kind"] == "HorizontalPodAutoscaler";
+    assert hpa["metadata"]["name"] == "orders-hpa";
+    assert hpa["metadata"]["namespace"] == "prod";
+    # scaleTargetRef must point at the matching Deployment so the
+    # autoscaling controller knows what to scale.
+    ref = hpa["spec"]["scaleTargetRef"];
+    assert ref["kind"] == "Deployment";
+    assert ref["name"] == "orders-deployment";
+    assert ref["apiVersion"] == "apps/v1";
+
+    # K6 conservative defaults; K7 will source from per-service config.
+    assert hpa["spec"]["minReplicas"] == 1;
+    assert hpa["spec"]["maxReplicas"] == 3;
+    cpu_metric = hpa["spec"]["metrics"][0];
+    assert cpu_metric["type"] == "Resource";
+    assert cpu_metric["resource"]["name"] == "cpu";
+    assert cpu_metric["resource"]["target"]["averageUtilization"] == 70;
+}
+
+
+test "_build_pdb_manifest selects matching pods with maxUnavailable=1" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    pdb = target._build_pdb_manifest("orders");
+
+    assert pdb["apiVersion"] == "policy/v1";
+    assert pdb["kind"] == "PodDisruptionBudget";
+    assert pdb["metadata"]["name"] == "orders-pdb";
+    assert pdb["metadata"]["namespace"] == "prod";
+    # Selector MUST match the Deployment's pod template labels.
+    assert pdb["spec"]["selector"] == {"matchLabels": {"app": "orders"}};
+    # K6 conservative default: at most 1 voluntary disruption at a time.
+    assert pdb["spec"]["maxUnavailable"] == 1;
+}
+
+
+test "_build_hpa_manifest maps gateway sentinel to 'gateway' resource name" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    hpa = target._build_hpa_manifest(GATEWAY_NAME);
+
+    assert hpa["metadata"]["name"] == "gateway-hpa";
+    assert hpa["spec"]["scaleTargetRef"]["name"] == "gateway-deployment";
+}
+
+
+test "generate_manifests includes hpas + pdbs sections" {
+    import jac_scale.config_loader as cfg_mod;
+
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"routes": {"orders": "/api/orders"}}
+    ));
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        bundle = target.generate_manifests(ac);
+
+        assert "hpas" in bundle;
+        assert "pdbs" in bundle;
+        # 1 service + 1 gateway = 2 entries each.
+        assert len(bundle["hpas"]) == 2;
+        assert len(bundle["pdbs"]) == 2;
+        assert "orders" in bundle["hpas"];
+        assert "orders" in bundle["pdbs"];
+        assert GATEWAY_NAME in bundle["hpas"];
+        assert GATEWAY_NAME in bundle["pdbs"];
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+test "apply_manifests applies HPAs and PDBs after Deployments" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (apps_v1, core_v1, autoscaling_v2, policy_v1, restore) = (
+        _install_k8s_mocks_with_k6()
+    );
+
+    bundle = {
+        "services": {"orders": target._build_service_manifest("orders")},
+        "deployments": {
+            "orders": target._build_deployment_manifest(
+                "orders",
+                {"containers": [{"name": "orders", "image": "demo:latest"}]}
+            )
+        },
+        "hpas": {"orders": target._build_hpa_manifest("orders")},
+        "pdbs": {"orders": target._build_pdb_manifest("orders")},
+        "pod_specs": {}
+    };
+
+    try {
+        target.apply_manifests(bundle);
+
+        # Default MagicMock return on read = exists -> patch path.
+        assert autoscaling_v2.patch_namespaced_horizontal_pod_autoscaler.call_count == 1;
+        assert policy_v1.patch_namespaced_pod_disruption_budget.call_count == 1;
+    } finally {
+        restore();
+    }
+}
+
+
+test "apply_manifests creates new HPA + PDB on 404" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (apps_v1, core_v1, autoscaling_v2, policy_v1, restore) = (
+        _install_k8s_mocks_with_k6()
+    );
+
+    orig_api_exc = getattr(k8s_mod, "ApiException");
+    setattr(k8s_mod, "ApiException", Exception);
+
+    hpa_404 = Exception("hpa not found");
+    setattr(hpa_404, "status", 404);
+    pdb_404 = Exception("pdb not found");
+    setattr(pdb_404, "status", 404);
+    autoscaling_v2.read_namespaced_horizontal_pod_autoscaler.side_effect = hpa_404;
+    policy_v1.read_namespaced_pod_disruption_budget.side_effect = pdb_404;
+
+    bundle = {
+        "services": {},
+        "deployments": {},
+        "hpas": {"orders": target._build_hpa_manifest("orders")},
+        "pdbs": {"orders": target._build_pdb_manifest("orders")},
+        "pod_specs": {}
+    };
+
+    try {
+        target.apply_manifests(bundle);
+        assert autoscaling_v2.create_namespaced_horizontal_pod_autoscaler.call_count == 1;
+        assert policy_v1.create_namespaced_pod_disruption_budget.call_count == 1;
+        # Patch should NOT have been called.
+        assert autoscaling_v2.patch_namespaced_horizontal_pod_autoscaler.call_count == 0;
+        assert policy_v1.patch_namespaced_pod_disruption_budget.call_count == 0;
+    } finally {
+        setattr(k8s_mod, "ApiException", orig_api_exc);
+        restore();
+    }
+}
+
+
+test "destroy also tears down HPAs and PDBs by label" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (apps_v1, core_v1, autoscaling_v2, policy_v1, restore) = (
+        _install_k8s_mocks_with_k6()
+    );
+    core_v1.list_namespaced_service.return_value = (
+        unittest.mock.MagicMock(items=[])
+    );
+
+    try {
+        target.destroy("demo");
+
+        # HPAs use batched delete_collection.
+        hpa_kwargs = autoscaling_v2.delete_collection_namespaced_horizontal_pod_autoscaler.call_args.kwargs;
+        assert hpa_kwargs["namespace"] == "prod";
+        assert hpa_kwargs["label_selector"] == "managed=jac-scale";
+
+        # PDBs use batched delete_collection.
+        pdb_kwargs = policy_v1.delete_collection_namespaced_pod_disruption_budget.call_args.kwargs;
+        assert pdb_kwargs["namespace"] == "prod";
+        assert pdb_kwargs["label_selector"] == "managed=jac-scale";
+    } finally {
+        restore();
     }
 }

@@ -4,35 +4,28 @@ K1 (done): scaffold + image build + pod-spec stubs + factory dispatch.
 K2 (done): full Deployment + ClusterIP Service manifests per service.
 K3 (done): apply / destroy lifecycle via the kubernetes Python client.
 K4 (done): runtime DNS adapter (KubernetesDeployer + get_sv_registry).
+K5 (done): rolling-deploy correctness (RollingUpdate strategy +
+readinessProbe/livenessProbe + terminationGracePeriodSeconds + preStop).
 
-K5 scope (this file): rolling-deploy correctness. Without these wires,
-every deploy drops requests; with them, rolling updates and pod evictions
-are graceful end-to-end.
+K6 scope (this file): HorizontalPodAutoscaler + PodDisruptionBudget
+per service.
 
-  1. Deployment.spec.strategy = RollingUpdate{maxSurge:1, maxUnavailable:0}
-     - never go below the current replica count during a rollout.
-  2. Container.readinessProbe + livenessProbe on /healthz - readiness
-     gates whether kube-proxy includes the pod in the Service endpoints
-     (so newly-booted pods don't get traffic until ready), liveness
-     restarts the pod if it hangs.
-  3. PodSpec.terminationGracePeriodSeconds = drain_timeout_seconds + 5
-     - K8s sends SIGTERM, our drain middleware (P13) flips the flag,
-     existing requests finish, uvicorn exits. The +5s cushion gives
-     uvicorn time to actually exit AFTER drain returns; without it
-     SIGKILL can arrive while the loop is still draining.
-  4. Container.lifecycle.preStop = sleep 5 - bridges the gap between
-     SIGTERM arriving at the pod and other nodes' kube-proxy tables
-     removing the pod from rotation. Without preStop sleep, the pod
-     stops accepting traffic BEFORE remote kube-proxy stops sending
-     it traffic - instant 503s for clients on existing connections.
+  - HPA (autoscaling/v2): each service Deployment gets its own HPA
+    targeting CPU utilization. Defaults: minReplicas=1, maxReplicas=3,
+    averageUtilization=70%. The gateway also gets one. K7 will make
+    these per-service-configurable via [plugins.scale.microservices.
+    services.NAME.hpa].
+  - PDB (policy/v1): each service Deployment gets a PodDisruptionBudget
+    with maxUnavailable=1, so node drains and voluntary disruptions
+    can't take all replicas down simultaneously. Combined with the K5
+    rolling-update settings, this protects availability across both
+    scheduled (rollout) and unscheduled (node maintenance) events.
 
-K5 v1 uses /healthz for both readinessProbe and livenessProbe. The
-endpoint returns the full registry summary today, which means liveness
-will trip if a downstream dependency is degraded. A future task should
-split into /healthz/ready (gates traffic) and /healthz/live (gates
-restart) and point the probes at their respective endpoints.
+Both manifests are emitted by default with conservative bounds. K7
+will let users disable or tune them per service.
 
-K6 adds HorizontalPodAutoscaler + PodDisruptionBudget per service.
+K7 adds per-service config layering (replicas/cpu/mem/env overrides).
+K8 adds minikube e2e + CI workflow.
 """
 
 import logging;
@@ -167,18 +160,23 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Apply the K2 manifest bundle to the cluster.
+    """Apply the K2 + K6 manifest bundle to the cluster.
 
-    Order: namespace exists -> Services -> Deployments. Services first
-    so DNS resolution works the moment a Deployment's first pod becomes
-    ready. Each apply is idempotent (read -> patch on exists; create on
-    404), so re-running deploy() is safe and produces a rolling update
-    on the Deployments.
+    Order: namespace exists -> Services -> Deployments -> HPAs -> PDBs.
+    Services first so DNS resolution works the moment a Deployment's
+    first pod becomes ready. HPAs and PDBs come AFTER Deployments because
+    they reference Deployment names in scaleTargetRef / selector match;
+    the K8s controllers re-resolve when the targets show up so out-of-
+    order apply still eventually-converges, but applying after avoids
+    a transient "no targets" warning. Each apply is idempotent (read ->
+    patch on exists; create on 404).
     """
     def apply_manifests(bundle: dict[str, Any]) -> None {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
+        autoscaling_v2 = client.AutoscalingV2Api();
+        policy_v1 = client.PolicyV1Api();
         namespace: str = self.k8s_config.namespace;
 
         ensure_namespace_exists(namespace);
@@ -198,15 +196,38 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         # Deployments next - patching an existing Deployment kicks off
-        # a rolling update via K8s Deployment controller (default
-        # RollingUpdate strategy; K5 tightens this with explicit
-        # maxSurge / maxUnavailable / preStop).
+        # a rolling update via K8s Deployment controller (K5
+        # RollingUpdate + readiness + grace + preStop).
         for (svc_name, dep_manifest) in bundle["deployments"].items() {
             self._apply_or_replace_deployment(apps_v1, namespace, dep_manifest);
             if self.logger {
                 self.logger.info(
                     f"Applied Deployment for '{svc_name}'",
                     {"name": dep_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
+        # HPAs - target Deployments by name; safe to apply after the
+        # Deployments exist. K6 default: min=1, max=3, cpu=70%.
+        for (svc_name, hpa_manifest) in bundle.get("hpas", {}).items() {
+            self._apply_or_replace_hpa(autoscaling_v2, namespace, hpa_manifest);
+            if self.logger {
+                self.logger.info(
+                    f"Applied HPA for '{svc_name}'",
+                    {"name": hpa_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
+        # PDBs - select pods by label, safe to apply alongside HPAs.
+        # K6 default: maxUnavailable=1.
+        for (svc_name, pdb_manifest) in bundle.get("pdbs", {}).items() {
+            self._apply_or_replace_pdb(policy_v1, namespace, pdb_manifest);
+            if self.logger {
+                self.logger.info(
+                    f"Applied PDB for '{svc_name}'",
+                    {"name": pdb_manifest["metadata"]["name"]}
                 );
             }
         }
@@ -236,9 +257,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Idempotent Deployment apply - read first, patch on hit, create on 404.
 
     A patch on an existing Deployment triggers the K8s Deployment
-    controller's rolling update. Default strategy (without K5's
-    explicit RollingUpdate { maxSurge, maxUnavailable } config) will
-    surge one new pod and tear down one old pod at a time.
+    controller's rolling update. K5 added the explicit
+    RollingUpdate { maxSurge: 1, maxUnavailable: 0 } config so this
+    surges a new pod before terminating the old one.
     """
     def _apply_or_replace_deployment(
         apps_v1: Any, namespace: str, manifest: dict[str, Any]
@@ -252,6 +273,52 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status == 404 {
                 apps_v1.create_namespaced_deployment(
+                    namespace=namespace, body=manifest
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
+    """Idempotent HPA apply - mirrors _apply_or_replace_deployment shape."""
+    def _apply_or_replace_hpa(
+        autoscaling_v2: Any, namespace: str, manifest: dict[str, Any]
+    ) -> None {
+        name: str = manifest["metadata"]["name"];
+        try {
+            autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
+                name=name, namespace=namespace
+            );
+            autoscaling_v2.patch_namespaced_horizontal_pod_autoscaler(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                autoscaling_v2.create_namespaced_horizontal_pod_autoscaler(
+                    namespace=namespace, body=manifest
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
+    """Idempotent PDB apply - mirrors _apply_or_replace_deployment shape."""
+    def _apply_or_replace_pdb(
+        policy_v1: Any, namespace: str, manifest: dict[str, Any]
+    ) -> None {
+        name: str = manifest["metadata"]["name"];
+        try {
+            policy_v1.read_namespaced_pod_disruption_budget(
+                name=name, namespace=namespace
+            );
+            policy_v1.patch_namespaced_pod_disruption_budget(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                policy_v1.create_namespaced_pod_disruption_budget(
                     namespace=namespace, body=manifest
                 );
             } else {
@@ -287,19 +354,49 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         core_v1 = client.CoreV1Api();
         namespace: str = self.k8s_config.namespace;
 
+        # K6: also clean up HPAs and PDBs we applied.
+        autoscaling_v2 = client.AutoscalingV2Api();
+        policy_v1 = client.PolicyV1Api();
+
         # Label selector matches anything this target has ever applied.
-        # `in (...)` syntax is K8s set-based selector grammar.
+        # `in (...)` syntax is K8s set-based selector grammar. PDBs use
+        # the role-less label selector since they only carry the basic
+        # `managed=jac-scale` label (PDBs select pods by app=<name>, not
+        # role; the role label is only on Deployments + their templates).
         selector: str = (
             "managed=jac-scale,jac-scale.role in (microservice,gateway)"
         );
+        ms_selector: str = "managed=jac-scale";
 
         # Deployments first - delete_collection_namespaced_deployment
         # is batched. Pods stop receiving traffic as the Deployment
-        # controller scales them down; K5 will add preStop hooks that
-        # bridge the kube-proxy propagation gap.
+        # controller scales them down; K5's preStop hooks bridge the
+        # kube-proxy propagation gap.
         try {
             apps_v1.delete_collection_namespaced_deployment(
                 namespace=namespace, label_selector=selector
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # HPAs - batched.
+        try {
+            autoscaling_v2.delete_collection_namespaced_horizontal_pod_autoscaler(
+                namespace=namespace, label_selector=ms_selector
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # PDBs - batched.
+        try {
+            policy_v1.delete_collection_namespaced_pod_disruption_budget(
+                namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
             if e.status != 404 {
@@ -331,28 +428,35 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Lift K1 pod-specs into full Deployment + Service manifests.
+    """Lift K1 pod-specs into full Deployment + Service + HPA + PDB
+    manifests.
 
     Returns `{"deployments": {svc: manifest}, "services": {svc: manifest},
+    "hpas": {svc: manifest}, "pdbs": {svc: manifest},
     "pod_specs": {svc: spec}}`. The `pod_specs` entry is the same dict
-    K1 returned; deployments wrap each pod-spec in a Deployment template
-    (replicas=1 for now; K6 will make per-service-configurable), and
-    services emit a paired ClusterIP Service so kube-proxy can route
-    inter-service traffic.
+    K1 returned; deployments wrap each pod-spec; services emit a paired
+    ClusterIP Service for kube-proxy. K6 adds the per-service HPA
+    (autoscaling/v2) and PDB (policy/v1) entries.
     """
     def generate_manifests(app_config: AppConfig) -> dict[str, Any] {
         pod_specs = self.generate_service_pod_specs(app_config);
         deployments: dict[str, dict[str, Any]] = {};
         services: dict[str, dict[str, Any]] = {};
+        hpas: dict[str, dict[str, Any]] = {};
+        pdbs: dict[str, dict[str, Any]] = {};
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(
                 svc_name, pod_spec
             );
             services[svc_name] = self._build_service_manifest(svc_name);
+            hpas[svc_name] = self._build_hpa_manifest(svc_name);
+            pdbs[svc_name] = self._build_pdb_manifest(svc_name);
         }
         return {
             "deployments": deployments,
             "services": services,
+            "hpas": hpas,
+            "pdbs": pdbs,
             "pod_specs": pod_specs
         };
     }
@@ -528,6 +632,83 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                         "targetPort": port
                     }
                 ]
+            }
+        };
+    }
+
+    """K6: Build a HorizontalPodAutoscaler manifest targeting the Deployment.
+
+    `autoscaling/v2` lets us scale on CPU and any custom metric; for K6
+    v1 we scale on CPU averageUtilization with conservative defaults
+    (min=1, max=3, target=70%). K7 will source these from
+    `[plugins.scale.microservices.services.NAME.hpa]` so each service
+    can be tuned independently (a low-traffic service might cap at 2,
+    a chatty LLM service might want max=20).
+
+    The `scaleTargetRef` points at the Deployment by name; the K8s
+    autoscaling controller does the rest.
+    """
+    def _build_hpa_manifest(svc_name: str) -> dict[str, Any] {
+        k8s_name = self._k8s_safe_name(svc_name);
+        return {
+            "apiVersion": "autoscaling/v2",
+            "kind": "HorizontalPodAutoscaler",
+            "metadata": {
+                "name": f"{k8s_name}-hpa",
+                "namespace": self.k8s_config.namespace,
+                "labels": {"app": k8s_name, "managed": "jac-scale"}
+            },
+            "spec": {
+                "scaleTargetRef": {
+                    "apiVersion": "apps/v1",
+                    "kind": "Deployment",
+                    "name": f"{k8s_name}-deployment"
+                },
+                "minReplicas": 1,
+                "maxReplicas": 3,
+                "metrics": [
+                    {
+                        "type": "Resource",
+                        "resource": {
+                            "name": "cpu",
+                            "target": {
+                                "type": "Utilization",
+                                "averageUtilization": 70
+                            }
+                        }
+                    }
+                ]
+            }
+        };
+    }
+
+    """K6: Build a PodDisruptionBudget manifest matching the Deployment pods.
+
+    `maxUnavailable: 1` lets at most one pod be voluntarily disrupted
+    at a time (node drain, eviction, voluntary delete). Combined with
+    the K5 rolling-update settings (`maxSurge: 1, maxUnavailable: 0`),
+    this means rollouts surge a fresh pod first AND scheduled disruptions
+    stay bounded. For multi-replica services this protects availability
+    during cluster maintenance; for single-replica services the PDB
+    blocks node-drain on that pod (intentional - the operator must
+    consciously override).
+
+    K7 will let users disable PDB or switch to `minAvailable: N` for
+    services that need stricter HA guarantees.
+    """
+    def _build_pdb_manifest(svc_name: str) -> dict[str, Any] {
+        k8s_name = self._k8s_safe_name(svc_name);
+        return {
+            "apiVersion": "policy/v1",
+            "kind": "PodDisruptionBudget",
+            "metadata": {
+                "name": f"{k8s_name}-pdb",
+                "namespace": self.k8s_config.namespace,
+                "labels": {"app": k8s_name, "managed": "jac-scale"}
+            },
+            "spec": {
+                "maxUnavailable": 1,
+                "selector": {"matchLabels": {"app": k8s_name}}
             }
         };
     }
