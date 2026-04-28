@@ -77,6 +77,9 @@ with entry {
     msg = f"Value: {x}, Pi: {pi:.2f}";
 }
 
+!!! info "any vs `any"
+    Use `any` for the built-in type (placeholder for any type) and `` `any `` for the built-in Python function.
+
 
 # ============================================================
 # Imports
