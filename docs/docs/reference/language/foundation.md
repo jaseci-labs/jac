@@ -358,11 +358,11 @@ def first(items: list) -> any {
 obj Container {
     has value: any;
 }
+```
 
 !!! tip "Remember the backtick"
     If you need to use the built-in function to check if `any` item is truthy, use `` `any ``:
-    `if `any([True, False]) { ... }`
-```
+    `if`any([True, False]) { ... }`
 
 ### 4 The `Self` Type
 
