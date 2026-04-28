@@ -518,22 +518,22 @@ test "jsx attributes and children group independently" {
     );
 }
 
-"""Regression: {#* block comment *#} inside a JSX body must be preserved
-by the formatter — not displaced to the end of the file.
+"""Format `source`; assert no errors and idempotency; return output."""
+def _fmt_jsx(source: str) -> str {
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"format errors: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , "not idempotent";
+    return formatted;
+}
 
-Root cause: the comment injection pass classified the comment as inline
-(anchored to the LBRACE token), but the parser consumed and dropped that
-LBRACE without adding it to any AST node.  The anchor was therefore never
-found in the doc tree, leaving the comment stranded as a leftover.
-
-Four cases are verified:
-  1. Comment between siblings — both siblings survive and the comment sits
-     between them in the output.
-  2. Comment as the only child — the parent element is not lost.
-  3. Comment adjacent to a real {expr} — comment precedes the expression.
-  4. No E5051 "displaced comment" error is raised by the formatter."""
+"""Regressions for `{#* ... *#}` in JSX body — preserved, no E5051
+displacement, ordering preserved across siblings/expressions, no
+false-positive on non-JSX same-line braces."""
 test "jsx body comment between siblings is preserved in correct position" {
-    source = (
+    formatted = _fmt_jsx(
         'def app -> JsxElement {\n'
         '    return\n'
         '        <div>\n'
@@ -543,235 +543,68 @@ test "jsx body comment between siblings is preserved in correct position" {
         '        </div>;\n'
         '}\n'
     );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter raised errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-
-    assert "#* this is a block comment *#" in formatted , (
-        "Block comment was lost:\n" + formatted
-    );
-
-    lines = formatted.splitlines();
-    before_idx = next(
-        (
-            i
-            for (i, ln) in enumerate(lines)
-            if "before" in ln
-        ),
-        None
-    );
-    comment_idx = next(
-        (
-            i
-            for (i, ln) in enumerate(lines)
-            if "#* this is a block comment *#" in ln
-        ),
-        None
-    );
-    after_idx = next(
-        (
-            i
-            for (i, ln) in enumerate(lines)
-            if "after" in ln
-        ),
-        None
-    );
-
-    assert before_idx is not None
-    and comment_idx is not None
-    and after_idx is not None , (
-        "Could not locate before/comment/after lines in:\n" + formatted
-    );
-    assert before_idx < comment_idx < after_idx , (
-        f"Comment (line {comment_idx + 1}) must sit between 'before' "
-        f"(line {before_idx + 1}) and 'after' (line {after_idx + 1}):\n" + formatted
-    );
-
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , "JSX body comment formatting is not idempotent";
+    b = formatted.index("before");
+    c = formatted.index("#* this is a block comment *#");
+    a = formatted.index("after");
+    assert b < c < a , f"wrong order:\n{formatted}";
 }
 
 test "jsx body comment as only child does not lose parent element" {
-    source = (
+    formatted = _fmt_jsx(
         'def app -> JsxElement {\n'
         '    return\n'
-        '        <section>\n'
-        '            {#* nothing to render *#}\n'
-        '        </section>;\n'
+        '        <section>{#* nothing to render *#}</section>;\n'
         '}\n'
     );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter raised errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-
-    assert "<section>" in formatted , "<section> element was lost:\n" + formatted;
-    assert "#* nothing to render *#" in formatted , (
-        "Comment-only child was lost:\n" + formatted
-    );
-
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , "JSX body comment formatting is not idempotent";
+    assert "<section>" in formatted and "#* nothing to render *#" in formatted , formatted;
 }
 
 test "jsx body comment adjacent to expression — both survive" {
-    source = (
+    formatted = _fmt_jsx(
         'def app -> JsxElement {\n'
         '    count: int = 42;\n'
-        '    return\n'
-        '        <p>\n'
-        '            {#* label: *#}\n'
-        '            {count}\n'
-        '        </p>;\n'
+        '    return <p>{#* label: *#}{count}</p>;\n'
         '}\n'
     );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"formatter raised errors: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-
-    assert "#* label: *#" in formatted , "Comment was lost:\n" + formatted;
-    assert "{count}" in formatted , "{count} expression was lost:\n" + formatted;
-
-    lines = formatted.splitlines();
-    comment_idx = next(
-        (
-            i
-            for (i, ln) in enumerate(lines)
-            if "#* label: *#" in ln
-        ),
-        None
-    );
-    expr_idx = next(
-        (
-            i
-            for (i, ln) in enumerate(lines)
-            if "{count}" in ln
-        ),
-        None
-    );
-
-    assert comment_idx is not None and expr_idx is not None , (
-        "Could not find comment or expression in:\n" + formatted
-    );
-    if comment_idx == expr_idx {
-        # Single-line layout (e.g. `<p>{ #* label: *# }{count}</p>`):
-        # the comment must still precede {count} in source order.
-        line = lines[comment_idx];
-        assert line.index("#* label: *#") < line.index("{count}") , (
-            f"Comment must appear before {{count}} on line "
-            f"{comment_idx + 1}:\n" + formatted
-        );
-    } else {
-        assert comment_idx < expr_idx , (
-            f"Comment (line {comment_idx + 1}) must appear before "
-            f"{{count}} (line {expr_idx + 1}):\n" + formatted
-        );
-    }
-
-    # Idempotency
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , "JSX body comment formatting is not idempotent";
+    assert formatted.index("#* label: *#") < formatted.index("{count}") , formatted;
 }
 
 test "jsx body comment does not displace comments to end of file" {
-    # This is the direct signal of the bug: when the comment injection pass
-    # cannot find the anchor token in the doc tree it dumps the comment as a
-    # leftover at the end of the file and emits E5051 / W5050.
-    source = (
+    # Direct signal of the bug: the comment-injection pass dumps the
+    # comment at end of file when its anchor isn't in the doc tree
+    # (E5051/W5050).  `_fmt_jsx` asserts on errors, so this returning
+    # cleanly is the assertion.
+    _fmt_jsx(
         'def app -> JsxElement {\n'
-        '    return\n'
-        '        <div>\n'
-        '            <span>before</span>\n'
-        '            {#* orphan comment *#}\n'
-        '            <span>after</span>\n'
-        '        </div>;\n'
+        '    return <div><span>before</span>{#* orphan *#}<span>after</span></div>;\n'
         '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , (
-        "Formatter raised E5051 displaced-comment error — "
-        "orphaned anchor bug still present:\n" + str(prog.errors_had)
     );
 }
 
-"""Regression: same-line `{ #* x *# }` in a regular block, dict, or
-set literal must not be misclassified as a JSX-body comment.  The
-lexer's `_try_scan_jsx_block_comment` only fires inside JSX_CONTENT
-mode, so non-JSX brace pairs go through the normal block-comment
-path and the comments stay in `lexer.comments` as free comments —
-the cases below are the regression bait."""
+"""Regression: same-line `{ #* x *# }` in regular blocks/dict literals
+must not be misclassified as a JSX-body comment."""
 test "non-jsx same-line block comments survive jac format" {
-    source = (
-        'def empty_block_with_comment {\n'
-        '    if True { #* same-line comment *# }\n'
-        '}\n'
-        '\n'
-        'def empty_block_multi_call {\n'
-        '    if True { #* a *# }\n'
-        '    if True { #* b *# }\n'
-        '}\n'
-        '\n'
-        'def empty_dict_set {\n'
-        '    x = { #* nothing *# };\n'
-        '}\n'
-        '\n'
-        'with entry {\n'
-        '    empty_block_with_comment();\n'
-        '}\n'
+    formatted = _fmt_jsx(
+        'def f1 {\n    if True { #* a *# }\n}\n\n'
+        'def f2 {\n    if True { #* b *# }\n    if True { #* c *# }\n}\n\n'
+        'def f3 {\n    x = { #* d *# };\n}\n\n'
+        'with entry { f1(); }\n'
     );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , (
-        "non-JSX same-line block comments wrongly classified as JSX-body: " + str(
-            prog.errors_had
-        )
-    );
-    formatted = prog.mod.main.gen.jac;
-
-    # Every comment must round-trip.
-    for needle in ["#* same-line comment *#", "#* a *#", "#* b *#", "#* nothing *#"] {
-        assert needle in formatted , (
-            f"Lost block comment {needle!r} — JSX-body false-positive "
-            f"regression:\n" + formatted
-        );
+    for needle in ["#* a *#", "#* b *#", "#* c *#", "#* d *#"] {
+        assert needle in formatted , f"lost {needle!r}:\n{formatted}";
     }
-
-    # Idempotency.
-    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
-    assert not prog2.errors_had;
-    assert formatted == prog2.mod.main.gen.jac , (
-        "Formatting non-JSX same-line block comments is not idempotent"
-    );
 }
 
 """Regression: JSX-body and non-JSX braces in the same module must
-disambiguate correctly — proves the lexer mode is JSX-aware."""
+disambiguate correctly."""
 test "mixed jsx and non-jsx same-line braces format correctly" {
-    source = (
+    formatted = _fmt_jsx(
         'def app -> JsxElement {\n'
         '    if True { #* not jsx *# }\n'
-        '    return\n'
-        '        <div>\n'
-        '            <span>before</span>\n'
-        '            {#* jsx body comment *#}\n'
-        '            <span>after</span>\n'
-        '        </div>;\n'
+        '    return <div>{#* jsx body *#}</div>;\n'
         '}\n'
     );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , (
-        "mixed jsx/non-jsx braces broke the formatter: " + str(prog.errors_had)
-    );
-    formatted = prog.mod.main.gen.jac;
-    assert "#* not jsx *#" in formatted , (
-        "non-JSX comment was dropped:\n" + formatted
-    );
-    assert "#* jsx body comment *#" in formatted , (
-        "JSX-body comment was dropped:\n" + formatted
-    );
+    assert "#* not jsx *#" in formatted and "#* jsx body *#" in formatted , formatted;
 }
 
 """Regression: jac_str_formatter must populate errors_had on syntax error
