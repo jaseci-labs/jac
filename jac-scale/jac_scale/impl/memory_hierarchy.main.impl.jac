@@ -47,30 +47,14 @@ impl ScaleTieredMemory.postinit -> None {
 }
 
 
-"""Commit changes: delegate to L3's sync() which handles change detection."""
+"""Commit changes: delegate to L3's sync() which handles change detection
+and merge-aware atomic writes."""
 impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 is None {
         return;
     }
-    # Single anchor commit (explicit save via Jac.commit)
-    if anchor is not None {
-        if not anchor.persistent {
-            return;
-        }
-        if not Jac.check_write_access(anchor) {
-            return;
-        }
-        try {
-            self.l3.put(anchor);
-            if self.l2 {
-                self.l2.put(anchor);
-            }
-        } except Exception as e {
-            logger.warning(f"ScaleTieredMemory.commit(anchor) failed: {e}");
-        }
-        return;
-    }
-    # Batch commit: delegate to L3's sync() which uses hash-based change detection.
+    # Both single-anchor and batch commits go through sync() to ensure
+    # all writes use merge-aware paths (no direct L3 put bypass).
     # Capture L2-pending anchors BEFORE L3 sync (which updates hashes).
     if self.l3 {
         try {

@@ -13,7 +13,7 @@ cl import from ..constants.categories { CATEGORY_COLORS }
 
 # cl import from "..components.PieChart.tsx" { PieChart }
 cl def:pub BudgetPlanner -> JsxElement {
-    [filter, setFilter] = useState("ALL");
+    has filter: str = "ALL";
     budget = useBudgetContext();
 
     # Filter transactions based on selected category
@@ -50,7 +50,10 @@ cl def:pub BudgetPlanner -> JsxElement {
                     <Summary/>
                     <ProfitOverview/>
                     <TransactionForm/>
-                    <CategoryFilter selectedCategory={filter} onSelect={setFilter}/>
+                    <CategoryFilter
+                        selectedCategory={filter}
+                        onSelect={lambda val: str { filter = val;}}
+                    />
                     <TransactionList
                         transactions={sorted}
                         onDelete={budget["deleteTransaction"]}

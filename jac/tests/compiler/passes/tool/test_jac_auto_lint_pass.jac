@@ -602,6 +602,60 @@ test "hasattr no lint preserves" {
     assert "instance?." not in formatted;
 }
 
+# ── TestGetattrConversion ────────────────────────────────────────────────
+test "getattr to null ok" {
+    input_path = auto_lint_fixture_path("getattr_conversion.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # Basic rewrites in various expression contexts
+    assert "instance?.value" in formatted;
+    assert "instance?.name" in formatted;
+
+    # The safe 3-arg form with None default should all be gone
+    assert 'getattr(instance, "value", None)' not in formatted;
+    assert "getattr(instance, 'name', None)" not in formatted;
+    assert 'getattr(instance, "name", None)' not in formatted;
+    assert 'getattr(obj, "name", None)' not in formatted;
+
+    # Specific context checks
+    assert "instance?.value is None" in formatted;
+    assert "return o?.name" in formatted;
+    assert "echo(instance?.name)" in formatted;
+    assert "if instance?.value {" in formatted;
+
+    # Non-None default should be preserved (semantics differ from ?.)
+    assert 'getattr(instance, "value", 0)' in formatted;
+
+    # 2-arg form should be preserved (raises on miss; not equivalent to ?.)
+    assert 'getattr(instance, "value")' in formatted;
+
+    # Dynamic attribute name should be preserved
+    assert "getattr(instance, attr_name, None)" in formatted;
+
+    # Non-identifier string should be preserved
+    assert 'getattr(instance, "not-an-ident", None)' in formatted;
+
+    # Python keyword as attribute name should be preserved
+    assert 'getattr(instance, "class", None)' in formatted;
+
+    # Lookalike function should be preserved
+    assert "getattr_lookalike(instance" in formatted;
+}
+
+test "getattr no lint preserves" {
+    input_path = auto_lint_fixture_path("getattr_conversion.jac");
+
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=False);
+    formatted = prog.mod.main.gen.jac;
+
+    # Without linting, getattr calls should remain
+    assert "getattr(instance" in formatted;
+    # No null-safe rewrites should happen
+    assert "instance?." not in formatted;
+}
+
 # ── TestTernaryToOrConversion ────────────────────────────────────────────
 test "ternary to or" {
     input_path = auto_lint_fixture_path("ternary_to_or.jac");
@@ -1160,4 +1214,61 @@ test "W3037 auto-fix removes unnecessary -> None from lambdas" {
 
     # Lambda with no params: -> None removed
     assert "lambda {" in formatted;
+}
+
+# ── TestW3038UseStateToHas ────────────────────────────────────────────────
+test "W3038 auto-fix converts useState to has declaration" {
+    input_path = auto_lint_fixture_path("usestate_to_has.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # both state vars converted and combined into one has declaration
+    assert "has count: int = 0" in formatted;
+    assert "label: str = \"hello\"" in formatted;
+
+    # both setter calls replaced with direct assignments
+    assert "count = count + 1;" in formatted;
+    assert "label = \"clicked\";" in formatted;
+    assert "setCount" not in formatted;
+    assert "setLabel" not in formatted;
+
+    # import fully removed
+    assert "= useState(" not in formatted;
+    assert "import from \"react\"" not in formatted;
+}
+
+test "W3038 removes useState from partial import without breaking commas" {
+    input_path = auto_lint_fixture_path("usestate_partial_import.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # useState converted and setter replaced
+    assert "has name: str = \"\"" in formatted;
+    assert "name = str(e.target.value);" in formatted;
+    assert "setName" not in formatted;
+
+    # import line stays (JsxElement and useEffect remain), useState removed from it
+    assert "import from \"react\"" in formatted;
+    assert "= useState(" not in formatted;
+    assert "{ useState" not in formatted;
+    assert "useState," not in formatted;
+    assert "JsxElement" in formatted;
+    assert "useEffect" in formatted;
+
+    # no orphaned comma: should not contain ", }" or "{ ,"
+    assert ", }" not in formatted;
+    assert "{ ," not in formatted;
+}
+
+test "W3038 does not remove import when useState call is not a destructure assignment" {
+    input_path = auto_lint_fixture_path("usestate_calls_remain.jac");
+    prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
+    formatted = prog.mod.main.gen.jac;
+
+    # non-destructure useState left untouched
+    assert "useState(" in formatted;
+
+    # import must stay since useState is still referenced
+    assert "import from \"react\"" in formatted;
+    assert "useState" in formatted;
 }

@@ -518,6 +518,80 @@ test "user registration and login" {
     }
 }
 
+test "email identity register and login" {
+    client = make_client();
+    try {
+        suffix = uuid.uuid4().hex[:8];
+        cred = {"type": "password", "password": "pw"};
+
+        # Username-only identity
+        uname = f"u_{suffix}";
+        r = client.post("/user/register", json={
+            "identities": [{"type": "username", "value": uname}],
+            "credential": cred
+        });
+        assert r.status_code == 201;
+        r = client.post("/user/login", json={
+            "identity": {"type": "username", "value": uname},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+        assert "token" in extract_data(r.json());
+
+        # Email-only identity
+        email = f"e_{suffix}@example.com";
+        r = client.post("/user/register", json={
+            "identities": [{"type": "email", "value": email}],
+            "credential": cred
+        });
+        assert r.status_code == 201;
+        r = client.post("/user/login", json={
+            "identity": {"type": "email", "value": email},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+        assert "token" in extract_data(r.json());
+
+        # Both username + email: login works via either identity
+        both_u = f"both_{suffix}";
+        both_e = f"both_{suffix}@example.com";
+        r = client.post("/user/register", json={
+            "identities": [
+                {"type": "username", "value": both_u},
+                {"type": "email", "value": both_e}
+            ],
+            "credential": cred
+        });
+        assert r.status_code == 201;
+        r = client.post("/user/login", json={
+            "identity": {"type": "username", "value": both_u},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+        r = client.post("/user/login", json={
+            "identity": {"type": "email", "value": both_e},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+
+        # Invalid email strings are rejected by validation
+        for bad in ["notanemail", "bad@", "@bad.com", "a b@x.com", ""] {
+            r = client.post("/user/register", json={
+                "identities": [{"type": "email", "value": bad}],
+                "credential": cred
+            });
+            assert r.status_code in (400, 422) , f"bad email '{bad}' accepted on register";
+            r = client.post("/user/login", json={
+                "identity": {"type": "email", "value": bad},
+                "credential": cred
+            });
+            assert r.status_code in (400, 422) , f"bad email '{bad}' accepted on login";
+        }
+    } finally {
+        client.close();
+    }
+}
+
 test "token refresh functionality" {
     client = make_client();
     try {

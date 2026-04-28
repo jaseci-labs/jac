@@ -1,6 +1,10 @@
 """Validate the function and extract its type annotations and description."""
 impl Tool.postinit -> None {
-    annotations = get_type_hints(self.func);
+    try {
+        annotations = get_type_hints(self.func);
+    } except Exception {
+        annotations = getattr(self.func, '__annotations__', {}) or {};
+    }
     with suppress(Exception) {
         self.func.__annotations__ = annotations;
     }
@@ -9,6 +13,13 @@ impl Tool.postinit -> None {
         self.params_desc = self.func._jac_semstr_inner;  # type: ignore
     } else {
         self.params_desc = {name: str(type) for (name, type) in annotations.items()};
+    }
+    # Pick up serialize/timeout_sec from function attributes if set by the user.
+    if hasattr(self.func, '_serialize') {
+        self.serialize = self.func._serialize;
+    }
+    if hasattr(self.func, '_timeout_sec') {
+        self.timeout_sec = self.func._timeout_sec;
     }
 }
 

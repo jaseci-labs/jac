@@ -323,10 +323,9 @@ impl DesktopTarget.setup(project_dir: Path) -> None {
             );
         }
 
-        # Check and install required dependencies (wrap in try-except to not fail setup)
         console.print("\n📦 Checking required dependencies...", style="bold");
         try {
-            _check_and_install_dependencies();
+            _check_dependencies();
         } except Exception as e {
             console.warning(f"  Dependency check encountered an issue: {e}");
             console.print(
@@ -497,96 +496,54 @@ def _generate_build_rs(tauri_dir: Path) {
 }
 
 """Generate default placeholder icons for Tauri."""
-def _generate_default_icons(tauri_dir: Path) -> None {
+def _generate_default_icons(tauri_dir: Path) {
     icons_dir = tauri_dir / "icons";
     icons_dir.mkdir(exist_ok=True);
-
-    # Create a 1024x1024 PNG icon as placeholder (AppImage requires square icons, 1024x1024 recommended)
-    # Try using PIL/Pillow first (most common), then fallback to subprocess with ImageMagick/convert,
-    # finally use a simple Python-based PNG generator
     icon_path = icons_dir / "icon.png";
 
-    # Method 1: Try using Python with PIL to generate icon
+    # Try Pillow in-process first (best quality, no subprocess overhead).
     try {
-        import subprocess;
-        # Use Python to create a 1024x1024 PNG using PIL if available
-        python_code = '''
-import sys
-try:
-    from PIL import Image, ImageDraw
-    size = 1024
-    img = Image.new("RGBA", (size, size), color=(66, 139, 202, 255))
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([20, 20, size-20, size-20], outline=(255, 255, 255, 255), width=10)
-    img.save(sys.argv[1], "PNG")
-    sys.exit(0)
-except ImportError:
-    sys.exit(1)
-''';
-        result = subprocess.run(
-            ["python3", "-c", python_code, str(icon_path)],
-            capture_output=True,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
+        import from PIL { Image, ImageDraw }
+        size = 1024;
+        img = Image.new("RGBA", (size, size), color=(66, 139, 202, 255));
+        draw = ImageDraw.Draw(img);
+        draw.rectangle(
+            [20, 20, size - 20, size - 20], outline=(255, 255, 255, 255), width=10
         );
+        img.save(str(icon_path), "PNG");
         console.print("  ✔ Generated default icon (1024x1024)", style="success");
-        console.warning(
-            "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
+    } except ImportError {
+        # Pillow not installed; use hand-crafted PNG as fallback.
+        _generate_fallback_png(icon_path);
+        console.print(
+            "  ✔ Generated default icon (1024x1024, fallback)", style="success"
         );
-        return;
-    } except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired
-    ) {
-    # PIL not available, try next method
+    } except Exception as e {
+        _generate_fallback_png(icon_path);
+        console.warning(f"  Pillow icon generation failed ({e}), used fallback");
     }
 
-    # Method 2: Try ImageMagick convert command
-    try {
-        import subprocess;
-        # Create a 1024x1024 solid blue PNG with alpha channel using ImageMagick
-        result = subprocess.run(
-            [
-                "convert",
-                "-size",
-                "1024x1024",
-                "xc:#428BCA",
-                "-alpha",
-                "set",
-                "-channel",
-                "RGBA",
-                str(icon_path)
-            ],
-            capture_output=True,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
-        );
-        console.print("  ✔ Generated default icon (1024x1024)", style="success");
-        console.warning(
-            "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
-        );
-        return;
-    } except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired
-    ) {
-    # ImageMagick not available, try next method
-    }
+    console.warning(
+        "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
+    );
 
-    # Method 3: Fallback - create a minimal but valid 1024x1024 PNG using Python
-    # This creates a simple solid color PNG
+    # Always generate platform-specific derivatives from whatever icon.png
+    # was created. Tauri requires .ico (Windows), .icns (macOS), and
+    # multiple PNG sizes (Linux).
+    _generate_platform_icons(icons_dir);
+}
+
+
+"""Create a minimal valid 1024x1024 RGBA PNG without any dependencies."""
+def _generate_fallback_png(icon_path: Path) {
     import struct;
     import zlib;
 
     width = 1024;
     height = 1024;
 
-    # PNG signature
     png = bytearray([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
 
-    # IHDR chunk - RGBA, 8-bit per channel (color type 6 = RGBA)
     ihdr_data = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0);
     ihdr_crc = zlib.crc32(b"IHDR" + ihdr_data) & 0xffffffff;
     png.extend(struct.pack(">I", 13));
@@ -594,15 +551,8 @@ except ImportError:
     png.extend(ihdr_data);
     png.extend(struct.pack(">I", ihdr_crc));
 
-    # IDAT chunk - solid blue color with alpha (RGBA: 66, 139, 202, 255 = #428BCA)
-    # PNG scanlines: each row is prefixed with filter byte (0 = none)
-    row_size = width * 4;  # RGBA = 4 bytes per pixel
-    scanline = bytes([0]) + bytes(
-        [66, 139, 202, 255]
-    ) * width;  # Filter byte + RGBA data
+    scanline = bytes([0]) + bytes([66, 139, 202, 255]) * width;
     image_data = scanline * height;
-
-    # Compress
     compressed = zlib.compress(image_data, level=9);
     idat_crc = zlib.crc32(b"IDAT" + compressed) & 0xffffffff;
     png.extend(struct.pack(">I", len(compressed)));
@@ -610,21 +560,134 @@ except ImportError:
     png.extend(compressed);
     png.extend(struct.pack(">I", idat_crc));
 
-    # IEND chunk
     png.extend(struct.pack(">I", 0));
     png.extend(b"IEND");
     png.extend(struct.pack(">I", 0xAE426082));
 
-    # Write icon.png
     with open(icon_path, "wb") as f {
         f.write(png);
     }
+}
 
-    console.print("  ✔ Generated default icon (1024x1024)", style="success");
+
+"""Generate all platform icon formats from icon.png.
+
+Produces:
+  - icon.ico   (Windows NSIS/MSI bundler)
+  - icon.icns  (macOS .app bundler)
+  - 32x32.png, 128x128.png, 128x128@2x.png (Tauri standard sizes)
+
+Uses Pillow in-process first. Falls back to a subprocess invocation so a
+Pillow install in a different Python environment still works. If Pillow
+is completely unavailable, warns the user.
+"""
+def _generate_platform_icons(icons_dir: Path) -> None {
+    import sys;
+    png_path = icons_dir / "icon.png";
+
+    if not png_path.exists() {
+        return;
+    }
+
+    # Try Pillow in-process first (fast, best error messages).
+    try {
+        import from PIL { Image }
+        _generate_icons_with_pillow(icons_dir, Image);
+        return;
+    } except ImportError {
+    # Pillow not in this process; try subprocess fallback.
+    } except Exception as e {
+        console.warning(f"  Icon generation error: {e}");
+    }
+
+    # Subprocess fallback: call Python with Pillow from PATH.
+    try {
+        python_cmd = "python" if sys.platform == "win32" else "python3";
+        python_code = '''
+import sys, os
+try:
+    from PIL import Image
+    icons_dir = sys.argv[1]
+    png_path = os.path.join(icons_dir, "icon.png")
+    img = Image.open(png_path).convert("RGBA")
+
+    # ICO (Windows)
+    ico_sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
+    img.save(os.path.join(icons_dir, "icon.ico"), format="ICO", sizes=ico_sizes)
+
+    # ICNS (macOS)
+    try:
+        img.save(os.path.join(icons_dir, "icon.icns"), format="ICNS")
+    except Exception:
+        pass  # ICNS support is optional in some Pillow builds
+
+    # Tauri standard PNG sizes
+    for size in [32, 128, 256]:
+        resized = img.resize((size, size), Image.LANCZOS)
+        resized.save(os.path.join(icons_dir, f"{size}x{size}.png"))
+    # 128x128@2x is 256x256 pixels
+    img.resize((256, 256), Image.LANCZOS).save(
+        os.path.join(icons_dir, "128x128@2x.png")
+    )
+
+    sys.exit(0)
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+''';
+        result = subprocess.run(
+            [python_cmd, "-c", python_code, str(icons_dir)],
+            capture_output=True,
+            text=True,
+            timeout=SUBPROCESS_TIMEOUT_SHORT
+        );
+        if result.returncode == 0 {
+            console.print(
+                "  ✔ Generated platform icons (ico, icns, png sizes)", style="success"
+            );
+            return;
+        } else {
+            console.warning(f"  Icon generation failed: {result.stderr}");
+        }
+    } except Exception as e {
+        console.warning(f"  Icon generation error: {e}");
+    }
+
     console.warning(
-        "  Note: Replace icons/icon.png with your app icon (1024x1024 PNG recommended)"
+        "  Could not generate platform icons. Install Pillow: pip install Pillow"
     );
 }
+
+
+"""Generate all icon formats using Pillow (in-process)."""
+def _generate_icons_with_pillow(icons_dir: Path, Image: type) {
+    png_path = icons_dir / "icon.png";
+    img = Image.open(str(png_path)).convert("RGBA");
+
+    # ICO (Windows) -- multiple sizes embedded in one file
+    ico_sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)];
+    img.save(str(icons_dir / "icon.ico"), format="ICO", sizes=ico_sizes);
+    console.print("  ✔ Generated icon.ico (Windows)", style="success");
+
+    # ICNS (macOS) -- Pillow handles the internal size table
+    try {
+        img.save(str(icons_dir / "icon.icns"), format="ICNS");
+        console.print("  ✔ Generated icon.icns (macOS)", style="success");
+    } except Exception as e {
+        # Some Pillow builds lack ICNS write support; not fatal.
+        console.warning(f"  Could not generate icon.icns: {e}");
+    }
+
+    # Tauri standard PNG sizes for Linux and general use
+    for size in [32, 128, 256] {
+        resized = img.resize((size, size), Image.LANCZOS);
+        resized.save(str(icons_dir / f"{size}x{size}.png"));
+    }
+    # 128x128@2x is a 256px image with @2x naming convention
+    img.resize((256, 256), Image.LANCZOS).save(str(icons_dir / "128x128@2x.png"));
+    console.print("  ✔ Generated PNG sizes (32, 128, 256, 128@2x)", style="success");
+}
+
 
 """Generate main.rs.
 
@@ -689,11 +752,19 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
     // Try to find the sidecar in bundled resources
     let resource_dir = app.path().resource_dir()?;
 
-    // Possible sidecar names
+    // Possible sidecar names (onedir paths first, then onefile/wrapper fallbacks)
     let sidecar_names = if cfg!(windows) {{
-        vec!["binaries/jac-sidecar.exe", "binaries/jac-sidecar.bat"]
+        vec![
+            "binaries/jac-sidecar/jac-sidecar.exe",  // onedir mode
+            "binaries/jac-sidecar.exe",               // onefile fallback
+            "binaries/jac-sidecar.bat",               // wrapper fallback
+        ]
     }} else {{
-        vec!["binaries/jac-sidecar", "binaries/jac-sidecar.sh"]
+        vec![
+            "binaries/jac-sidecar/jac-sidecar",       // onedir mode
+            "binaries/jac-sidecar",                    // onefile fallback
+            "binaries/jac-sidecar.sh",                 // wrapper fallback
+        ]
     }};
 
     let mut sidecar_path = None;
@@ -786,12 +857,30 @@ fn find_and_start_sidecar(app: &tauri::AppHandle) -> Result<(), Box<dyn std::err
 
         // Compute writable data path for runtime data (database, etc.)
         // AppImage bundles are read-only, so we need a writable location
-        if let Some(home) = std::env::var_os("HOME") {{
-            let data_path = std::path::Path::new(&home)
-                .join(".local")
-                .join("share")
-                .join("jac-app");
-            cmd.arg("--data-path").arg(data_path);
+        #[cfg(windows)]
+        {{
+            // Windows: prefer LOCALAPPDATA, fall back to USERPROFILE\AppData\Local
+            if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {{
+                let data_path = std::path::Path::new(&local_app_data).join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }} else if let Some(user_profile) = std::env::var_os("USERPROFILE") {{
+                let data_path = std::path::Path::new(&user_profile)
+                    .join("AppData")
+                    .join("Local")
+                    .join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }}
+        }}
+        #[cfg(not(windows))]
+        {{
+            // Unix: HOME/.local/share/jac-app
+            if let Some(home) = std::env::var_os("HOME") {{
+                let data_path = std::path::Path::new(&home)
+                    .join(".local")
+                    .join("share")
+                    .join("jac-app");
+                cmd.arg("--data-path").arg(data_path);
+            }}
         }}
 
         // Remove AppImage-injected Python environment variables that break system Python
@@ -998,22 +1087,22 @@ jac_mcp = true     # MCP server integration
     console.print("  ✔ Added [desktop] section to jac.toml", style="success");
 }
 
-"""Check and install all required dependencies for desktop target."""
-def _check_and_install_dependencies {
+"""Check all required dependencies; print platform-specific install hints for any that are missing."""
+def _check_dependencies {
     import platform as platform_module;
     import sys;
 
     system = platform_module.system();
 
     # Check Rust toolchain
-    rust_installed = _check_and_install_rust();
+    rust_installed = _check_rust();
 
     # Check build tools
-    build_tools_installed = _check_and_install_build_tools(system);
+    build_tools_installed = _check_build_tools(system);
 
     # Check system dependencies (Linux only)
     if system == "Linux" {
-        _check_and_install_linux_dependencies();
+        _check_linux_dependencies();
     } elif system == "Darwin" {
         _check_macos_dependencies();
     } elif system == "Windows" {
@@ -1030,18 +1119,18 @@ def _check_and_install_dependencies {
     console.print("\n  Dependency check complete!", style="success");
     if not rust_installed {
         console.warning(
-            "  Rust is required but not installed. Please install it manually."
+            "  Rust is required but not installed. Follow the instructions above."
         );
     }
     if not build_tools_installed {
         console.warning(
-            "  Build tools are required but not installed. Please install them manually."
+            "  Build tools are required but not installed. Follow the instructions above."
         );
     }
 }
 
-"""Check if Rust toolchain is installed, and offer to install if missing."""
-def _check_and_install_rust -> bool {
+"""Check for the Rust toolchain; print install instructions if missing."""
+def _check_rust -> bool {
     try {
         result = subprocess.run(
             ["rustc", "--version"],
@@ -1056,109 +1145,28 @@ def _check_and_install_rust -> bool {
         }
     } except Exception as e { }
 
-    # Rust not found
     console.warning("  Rust toolchain not found");
     console.print(
         "  Rust is required for building desktop applications with Tauri.",
         style="muted"
     );
     console.print("  Install Rust: https://rustup.rs/", style="muted");
-
-    # Try to detect if we can install automatically
-    try {
-        # Check if curl is available
-        subprocess.run(
-            ["curl", "--version"], capture_output=True, check=True, timeout=2
-        );
-        console.print(
-            "\n  Would you like to install Rust automatically using rustup?",
-            style="info"
-        );
-        response = input("  Install Rust? [Y/n]: ").strip().lower();
-        if not response or response in ('y', 'yes') {
-            console.print("  Installing Rust...", style="muted");
-            console.print("  This may take a few minutes...", style="muted");
-            try {
-                # Run rustup installer directly via curl pipe
-                result = subprocess.run(
-                    [
-                        "sh",
-                        "-c",
-                        "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y"
-                    ],
-                    timeout=SUBPROCESS_TIMEOUT_BUILD,
-                    check=False
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Rust installed successfully!", style="success");
-                    console.print(
-                        "  Note: You may need to restart your terminal or run: source $HOME/.cargo/env",
-                        style="muted"
-                    );
-                    # Try to source cargo env and verify
-                    import os;
-                    cargo_bin = os.path.expanduser("~/.cargo/bin");
-                    if os.path.exists(cargo_bin) {
-                        # Add to PATH for current session
-                        current_path = os.environ.get("PATH", "");
-                        os.environ["PATH"] = f"{cargo_bin}:{current_path}";
-                        # Verify installation
-                        try {
-                            verify_result = subprocess.run(
-                                ["rustc", "--version"],
-                                capture_output=True,
-                                text=True,
-                                timeout=SUBPROCESS_TIMEOUT_SHORT
-                            );
-                            if verify_result.returncode == 0 {
-                                version = verify_result.stdout.strip();
-                                console.print(
-                                    f"  ✔ Verified: {version}", style="success"
-                                );
-                                return True;
-                            }
-                        } except Exception as e { }
-                        return True;
-                    } else {
-                        console.warning(
-                            "  Rust installation failed. Please install manually."
-                        );
-                    }
-                }
-            } except Exception as e {
-                error_str = str(e);
-                if "TimeoutExpired" in error_str or "timeout" in error_str.lower() {
-                    console.warning(
-                        "  Rust installation timed out. Please install manually."
-                    );
-                } else {
-                    console.warning(f"  Failed to install Rust automatically: {e}");
-                    console.print(
-                        "  Please install manually: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
-                        style="muted"
-                    );
-                }
-            }
-        } else {
-            console.print(
-                "  Skipping Rust installation. Please install manually.", style="muted"
-            );
-        }
-    } except Exception as e {
-        console.print(
-            "  curl not found. Cannot install Rust automatically.", style="muted"
-        );
-        console.print(
-            "  Please install manually: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
-            style="muted"
-        );
-    }
-
+    console.print(
+        "    Unix/macOS: curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh",
+        style="muted"
+    );
+    console.print(
+        "    Windows:    winget install Rustlang.Rustup  (or download from https://rustup.rs/)",
+        style="muted"
+    );
+    console.print(
+        "  Re-run `jac setup desktop` after the toolchain is on PATH.", style="muted"
+    );
     return False;
 }
 
-"""Check and install build tools based on OS."""
-def _check_and_install_build_tools(system: str) -> bool {
+"""Check for platform build tools; print install command if missing."""
+def _check_build_tools(system: str) -> bool {
     if system == "Linux" {
         # Check for gcc/cc
         try {
@@ -1172,7 +1180,7 @@ def _check_and_install_build_tools(system: str) -> bool {
             return True;
         } except Exception as e {
             console.warning("  Build tools (gcc) not found");
-            _try_install_linux_build_tools();
+            _print_linux_build_tools_instructions();
             return False;
         }
     } elif system == "Darwin" {
@@ -1191,30 +1199,22 @@ def _check_and_install_build_tools(system: str) -> bool {
         } except Exception as e { }
         console.warning("  Xcode Command Line Tools not found");
         console.print("  Install with: xcode-select --install", style="muted");
-        console.print("\n  Would you like to open the installer?", style="info");
-        response = input("  Open installer? [Y/n]: ").strip().lower();
-        if not response or response in ('y', 'yes') {
-            try {
-                subprocess.run(["xcode-select", "--install"], check=False);
-                console.print(
-                    "  ✔ Installer opened. Please complete the installation.",
-                    style="success"
-                );
-            } except Exception as e {
-                console.warning(
-                    "  Failed to open installer. Please run: xcode-select --install"
-                );
-            }
-        }
+        console.print(
+            "  Complete the Apple installer dialog, then re-run `jac setup desktop`.",
+            style="muted"
+        );
         return False;
     } elif system == "Windows" {
-        # Check for Visual Studio Build Tools
-        console.warning("  Build tools check not implemented for Windows");
+        console.warning("  Windows build tools check not implemented");
         console.print(
-            "  Please install Visual Studio Build Tools manually:", style="muted"
+            "  Install Visual Studio Build Tools (C++ workload):", style="muted"
         );
         console.print(
-            "    https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022",
+            "    winget install Microsoft.VisualStudio.2022.BuildTools --override \"--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended\"",
+            style="muted"
+        );
+        console.print(
+            "    (Or download from https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)",
             style="muted"
         );
         return False;
@@ -1222,72 +1222,31 @@ def _check_and_install_build_tools(system: str) -> bool {
     return False;
 }
 
-"""Try to install Linux build tools."""
-def _try_install_linux_build_tools -> None {
-    # Detect Linux distribution
+"""Print the command that installs build tools on the detected Linux distro."""
+def _print_linux_build_tools_instructions {
     distro = _detect_linux_distro();
-
-    if not distro {
+    console.print("  Install build tools manually:", style="muted");
+    if distro in ("ubuntu", "debian") {
         console.print(
-            "  Could not detect Linux distribution. Please install build tools manually.",
+            "    sudo apt-get update && sudo apt-get install -y build-essential",
             style="muted"
         );
-        return;
+    } elif distro == "fedora" {
+        console.print("    sudo dnf install -y gcc gcc-c++", style="muted");
+    } elif distro == "arch" {
+        console.print("    sudo pacman -S --noconfirm base-devel", style="muted");
+    } else {
+        console.print(
+            "    Ubuntu/Debian: sudo apt-get install -y build-essential", style="muted"
+        );
+        console.print(
+            "    Fedora:        sudo dnf install -y gcc gcc-c++", style="muted"
+        );
+        console.print(
+            "    Arch:          sudo pacman -S --noconfirm base-devel", style="muted"
+        );
     }
-
-    console.print(f"  Detected: {distro}", style="muted");
-    console.print(
-        "\n  Would you like to install build tools automatically?", style="info"
-    );
-    response = input("  Install build tools? [Y/n]: ").strip().lower();
-    if not response or response in ('y', 'yes') {
-        try {
-            if distro in ("ubuntu", "debian") {
-                console.print("  Installing build-essential...", style="muted");
-                result = subprocess.run(
-                    ["sudo", "apt-get", "update"],
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_MEDIUM
-                );
-                if result.returncode == 0 {
-                    result = subprocess.run(
-                        ["sudo", "apt-get", "install", "-y", "build-essential"],
-                        check=False,
-                        timeout=SUBPROCESS_TIMEOUT_LONG
-                    );
-                    if result.returncode == 0 {
-                        console.print("  ✔ Build tools installed", style="success");
-                        return;
-                    }
-                }
-            } elif distro == "fedora" {
-                console.print("  Installing gcc gcc-c++...", style="muted");
-                result = subprocess.run(
-                    ["sudo", "dnf", "install", "-y", "gcc", "gcc-c++"],
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_LONG
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Build tools installed", style="success");
-                    return;
-                }
-            } elif distro == "arch" {
-                console.print("  Installing base-devel...", style="muted");
-                result = subprocess.run(
-                    ["sudo", "pacman", "-S", "--noconfirm", "base-devel"],
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_LONG
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Build tools installed", style="success");
-                    return;
-                }
-            }
-            console.warning("  Failed to install build tools automatically");
-        } except Exception as e {
-            console.warning(f"  Error installing build tools: {e}");
-        }
-    }
+    console.print("  Re-run `jac setup desktop` after installation.", style="muted");
 }
 
 """Detect Linux distribution."""
@@ -1314,8 +1273,8 @@ def _detect_linux_distro -> str | None {
     }
 }
 
-"""Check and install Linux system dependencies."""
-def _check_and_install_linux_dependencies -> None {
+"""Check pkg-config + webkit2gtk; print distro install command if missing."""
+def _check_linux_dependencies -> None {
     # Check pkg-config
     pkg_config_ok = False;
     try {
@@ -1348,111 +1307,15 @@ def _check_and_install_linux_dependencies -> None {
     }
 
     if pkg_config_ok and webkit_ok {
-        return;  # All dependencies satisfied
-
+        return;
     }
 
-    # Missing dependencies
     console.warning("  Some Linux system dependencies are missing");
     distro = _detect_linux_distro();
-
     if distro {
         console.print(f"  Detected: {distro}", style="muted");
-        console.print(
-            "\n  Would you like to install missing dependencies automatically?",
-            style="info"
-        );
-        response = input("  Install dependencies? [Y/n]: ").strip().lower();
-        if not response or response in ('y', 'yes') {
-            _try_install_linux_system_deps(distro);
-        } else {
-            _print_manual_install_instructions(distro);
-        }
-    } else {
-        _print_manual_install_instructions(None);
     }
-}
-
-"""Try to install Linux system dependencies."""
-def _try_install_linux_system_deps(distro: str) -> None {
-    try {
-        if distro in ("ubuntu", "debian") {
-            deps = [
-                "libwebkit2gtk-4.1-dev",
-                "build-essential",
-                "curl",
-                "wget",
-                "libssl-dev",
-                "libgtk-3-dev",
-                "libayatana-appindicator3-dev",
-                "librsvg2-dev"
-            ];
-            console.print("  Installing dependencies...", style="muted");
-            result = subprocess.run(
-                ["sudo", "apt-get", "update"],
-                check=False,
-                timeout=SUBPROCESS_TIMEOUT_MEDIUM
-            );
-            if result.returncode == 0 {
-                result = subprocess.run(
-                    ["sudo", "apt-get", "install", "-y"] + deps,
-                    check=False,
-                    timeout=SUBPROCESS_TIMEOUT_BUILD
-                );
-                if result.returncode == 0 {
-                    console.print("  ✔ Dependencies installed", style="success");
-                    return;
-                }
-            }
-        } elif distro == "fedora" {
-            deps = [
-                "webkit2gtk3-devel.x86_64",
-                "openssl-devel",
-                "curl",
-                "wget",
-                "libappindicator-gtk3",
-                "librsvg2-devel"
-            ];
-            console.print("  Installing dependencies...", style="muted");
-            result = subprocess.run(
-                ["sudo", "dnf", "install", "-y"] + deps,
-                check=False,
-                timeout=SUBPROCESS_TIMEOUT_BUILD
-            );
-            if result.returncode == 0 {
-                console.print("  ✔ Dependencies installed", style="success");
-                return;
-            }
-        } elif distro == "arch" {
-            deps = [
-                "webkit2gtk",
-                "base-devel",
-                "curl",
-                "wget",
-                "openssl",
-                "appmenu-gtk-module",
-                "gtk3",
-                "libappindicator-gtk3",
-                "librsvg",
-                "libvips"
-            ];
-            console.print("  Installing dependencies...", style="muted");
-            result = subprocess.run(
-                ["sudo", "pacman", "-S", "--noconfirm"] + deps,
-                check=False,
-                timeout=SUBPROCESS_TIMEOUT_BUILD
-            );
-            if result.returncode == 0 {
-                console.print("  ✔ Dependencies installed", style="success");
-                return;
-            }
-        }
-        console.warning("  Failed to install dependencies automatically");
-        _print_manual_install_instructions(distro);
-    } except Exception as e {
-        console.warning(f"  Error installing dependencies: {e}");
-        _print_manual_install_instructions(distro);
-    }
+    _print_manual_install_instructions(distro);
 }
 
 """Print manual installation instructions."""
@@ -1487,12 +1350,13 @@ def _print_manual_install_instructions(distro: str | None) {
             style="muted"
         );
     }
+    console.print("  Re-run `jac setup desktop` after installation.", style="muted");
 }
 
 """Check macOS dependencies."""
 def _check_macos_dependencies {
     # macOS dependencies are typically handled by Xcode Command Line Tools
-    # which is checked in _check_and_install_build_tools
+    # which is checked in _check_build_tools
     console.print(
         "  ✔ macOS dependencies (handled by Xcode Command Line Tools)", style="success"
     );
@@ -1940,7 +1804,14 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
 
     }
 
-    # Find sidecar wrapper script (must exist and be executable)
+    # Onedir output ships the sidecar as a directory (binaries/jac-sidecar/
+    # containing the exe plus DLLs and data). When present, we bundle the
+    # whole folder via a glob so every file is packaged.
+    onedir_folder = binaries_dir / "jac-sidecar";
+    has_onedir = onedir_folder.exists() and onedir_folder.is_dir();
+
+    # Also look for onefile / wrapper scripts sitting directly in binaries_dir
+    # (fallback modes when onedir bundling is disabled or unavailable).
     sidecar_files = [];
     for pattern in [
         "jac-sidecar.sh",
@@ -1956,7 +1827,7 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
         }
     }
 
-    if not sidecar_files {
+    if not sidecar_files and not has_onedir {
         # Remove sidecar from resources if it was previously added but no longer exists
         if "bundle" in config and "resources" in config["bundle"] {
             resources = config["bundle"]["resources"];
@@ -1981,7 +1852,19 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
         config["bundle"]["resources"] = [];
     }
 
-    # Add sidecar binary path (relative to tauri_dir)
+    # Add onedir folder glob (captures exe + DLLs + runtime data files)
+    if has_onedir {
+        onedir_resource = "binaries/jac-sidecar/**/*";
+        if onedir_resource not in config["bundle"]["resources"] {
+            config["bundle"]["resources"].append(onedir_resource);
+            console.print(
+                f"  ✔ Added sidecar folder to config: {onedir_resource}",
+                style="success"
+            );
+        }
+    }
+
+    # Add sidecar binary path (relative to tauri_dir) for fallback modes
     for sidecar_file in sidecar_files {
         rel_path = sidecar_file.relative_to(tauri_dir);
         rel_str = str(rel_path.as_posix());
@@ -2074,7 +1957,8 @@ def _populate_icon_array(tauri_dir: Path, config: dict) {
         icon_files = [];
         if icons_dir.exists() {
             for icon_file in icons_dir.iterdir() {
-                if icon_file.is_file() and icon_file.suffix.lower() == ".png" {
+                if icon_file.is_file()
+                and icon_file.suffix.lower() in (".png", ".ico", ".icns") {
                     # Path relative to tauri.conf.json (which is in tauri_dir)
                     # So icons/icon.png is the correct relative path
                     icon_rel_path = icon_file.relative_to(tauri_dir);
@@ -2559,12 +2443,35 @@ def _bundle_sidecar_pyinstaller(
             '''#!/usr/bin/env python3
 # Entry point for PyInstaller-bundled sidecar
 # Plugin registration for frozen apps is handled in sidecar/main.py
+import os
+import sys
+
+# Force UTF-8 mode on Windows to avoid charmap codec errors when the
+# console code page is not cp65001. Complemented by rthook_utf8.py.
+os.environ["PYTHONUTF8"] = "1"
+
+# Windows multiprocessing freeze support - MUST be called before any other
+# imports that may start child processes. Required for PyInstaller apps that
+# use multiprocessing on Windows (spawn start method re-executes the frozen
+# binary and needs this guard to avoid re-entering main()).
+if sys.platform == "win32":
+    import multiprocessing
+    multiprocessing.freeze_support()
 
 from jac_client.plugin.src.targets.desktop.sidecar.main import main
 if __name__ == "__main__":
     main()
 '''
         );
+    }
+
+    # Create runtime hook to force UTF-8 mode (fixes charmap codec errors on
+    # Windows where the default console code page is not UTF-8). PyInstaller
+    # runs runtime hooks before user code, ensuring PYTHONUTF8 takes effect
+    # before any stdlib module is imported.
+    runtime_hook = tauri_dir / "rthook_utf8.py";
+    with open(runtime_hook, "w") as f {
+        f.write("import os; os.environ['PYTHONUTF8'] = '1'\n");
     }
 
     # Auto-install Python dependencies from jac.toml before bundling
@@ -2652,7 +2559,6 @@ if __name__ == "__main__":
                 sys.executable,
                 "-m",
                 "PyInstaller",
-                "--clean",
                 "--noconfirm",
                 "--distpath",
                 str(dist_dir),
@@ -2671,32 +2577,29 @@ if __name__ == "__main__":
             return None;
         }
 
-        # Find the bundled binary
-        bundled_binary = dist_dir / binary_name;
-        if not bundled_binary.exists() {
-            # Check if it's in a subdirectory (onedir mode)
-            bundled_dir = dist_dir / "jac-sidecar";
-            if bundled_dir.exists() {
-                bundled_binary = bundled_dir / binary_name;
+        # Find the bundled binary. With onedir mode the output is
+        # dist/jac-sidecar/<binary>; with onefile fallback it is dist/<binary>.
+        bundled_dir = dist_dir / "jac-sidecar";
+        bundled_binary = bundled_dir / binary_name;
+
+        if bundled_binary.exists() {
+            # Onedir mode - copy the entire jac-sidecar folder to binaries/
+            # so DLLs and runtime data ship alongside the exe.
+            output_dir = binaries_dir / "jac-sidecar";
+            if output_dir.exists() {
+                shutil.rmtree(output_dir);
             }
-        }
-
-        if not bundled_binary.exists() {
-            console.warning(f"Bundled binary not found at {bundled_binary}");
-            return None;
-        }
-
-        # Copy to binaries directory
-        output_path = binaries_dir / binary_name;
-        if bundled_binary.is_file() {
-            shutil.copy2(bundled_binary, output_path);
+            shutil.copytree(bundled_dir, output_dir);
+            output_path = output_dir / binary_name;
         } else {
-            # Copy entire directory for onedir mode
-            if output_path.exists() {
-                shutil.rmtree(output_path);
+            # Fallback: onefile mode (dist/<binary>)
+            bundled_binary = dist_dir / binary_name;
+            if not bundled_binary.exists() {
+                console.warning(f"Bundled binary not found at {bundled_binary}");
+                return None;
             }
-            shutil.copytree(bundled_binary.parent, binaries_dir / "jac-sidecar");
-            output_path = binaries_dir / "jac-sidecar" / binary_name;
+            output_path = binaries_dir / binary_name;
+            shutil.copy2(bundled_binary, output_path);
         }
 
         # Cleanup build artifacts
@@ -2758,6 +2661,10 @@ hiddenimports = [
     'sqlite3', 'hashlib', 'secrets', 'http.server', 'json',
     'asyncio', 'inspect', 'typing', 'pathlib',
     'pdb', 'bdb', 'cmd', 'code', 'codeop', 'readline',
+    # Windows multiprocessing support (required for frozen apps; spawn start
+    # method re-executes the frozen binary and needs these modules bundled)
+    'multiprocessing', 'multiprocessing.pool', 'multiprocessing.process',
+    'multiprocessing.spawn', 'multiprocessing.popen_spawn_win32',
     # PyInstaller runtime deps - use importlib.metadata instead of pkg_resources
     'appdirs', 'setuptools',
     'packaging', 'packaging.version', 'packaging.specifiers', 'packaging.requirements',
@@ -2942,6 +2849,26 @@ try:
             except Exception:
                 pass
     print(f"Added {{len([d for d in python_deps.values() if isinstance(d, str)])}} Python dependencies from jac.toml")
+
+    # Read [desktop.bundle] extra_data glob patterns from jac.toml and bundle
+    # every matching file into the sidecar. Paths are glob patterns rooted at
+    # project_dir; matches are placed at the same relative path inside the
+    # frozen bundle so `Path(__file__).parent / "some/file"` still resolves
+    # at runtime.
+    desktop_cfg = toml_data.get('desktop', {{}})
+    bundle_cfg = desktop_cfg.get('bundle', {{}}) if isinstance(desktop_cfg, dict) else {{}}
+    extra_data_patterns = bundle_cfg.get('extra_data', []) if isinstance(bundle_cfg, dict) else []
+    if extra_data_patterns:
+        extra_count = 0
+        for pattern in extra_data_patterns:
+            if isinstance(pattern, str):
+                for match in project_dir.glob(pattern):
+                    if match.is_file():
+                        rel = match.relative_to(project_dir)
+                        datas.append((str(match), str(rel.parent) or '.'))
+                        extra_count += 1
+        if extra_count:
+            print(f"Added {{extra_count}} extra data file(s) from [desktop.bundle] extra_data")
 except Exception as e:
     print(f"Warning: Could not read Python dependencies from jac.toml: {{e}}")
 
@@ -2956,19 +2883,22 @@ a = Analysis(
     hiddenimports=list(set(hiddenimports)),  # deduplicate
     hookspath=[],
     hooksconfig={{}},
-    runtime_hooks=[],
+    runtime_hooks=[str(Path(r'{entry_script}').parent / 'rthook_utf8.py')],
     excludes=['tkinter', 'matplotlib', 'numpy', 'pandas', 'scipy', 'pkg_resources'],
     noarchive=False,
 )
 
 pyz = PYZ(a.pure)
 
+# Use onedir mode (EXE + COLLECT) instead of onefile. On Windows + Python 3.13
+# onefile builds hang on startup due to temp-directory extraction issues;
+# onedir ships DLLs alongside the exe and skips extraction entirely. On other
+# platforms onedir is also faster to start, so we use it uniformly.
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='{binary_name.replace(
         ".exe", ""
     )}',
@@ -2976,14 +2906,22 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='jac-sidecar',
 )
 ''';
 }
@@ -3223,6 +3161,7 @@ def _update_tauri_config_for_dev(tauri_dir: Path) {
 
 """Run tauri dev command."""
 def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
+    import sys;
     # Check if cargo is available
     try {
         subprocess.run(
@@ -3242,25 +3181,30 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
         );
     }
 
-    # Check if build tools (gcc/cc) are available
-    try {
-        subprocess.run(
-            ["cc", "--version"],
-            capture_output=True,
-            check=True,
-            timeout=SUBPROCESS_TIMEOUT_SHORT
-        );
-    } except (
-        subprocess.CalledProcessError,
-        FileNotFoundError,
-        subprocess.TimeoutExpired
-    ) {
-        raise RuntimeError(
-            "Build tools not found. Install build-essential:\n"
-            "  Ubuntu/Debian: sudo apt-get install build-essential\n"
-            "  Fedora: sudo dnf install gcc gcc-c++\n"
-            "  Arch: sudo pacman -S base-devel"
-        );
+    # Check if build tools (gcc/cc) are available.
+    # Skipped on Windows: MSVC (from VS Build Tools) handles native compilation
+    # there, and `cc` is not a standard command on Windows so this check would
+    # raise even on correctly configured machines.
+    if sys.platform != "win32" {
+        try {
+            subprocess.run(
+                ["cc", "--version"],
+                capture_output=True,
+                check=True,
+                timeout=SUBPROCESS_TIMEOUT_SHORT
+            );
+        } except (
+            subprocess.CalledProcessError,
+            FileNotFoundError,
+            subprocess.TimeoutExpired
+        ) {
+            raise RuntimeError(
+                "Build tools not found. Install build-essential:\n"
+                "  Ubuntu/Debian: sudo apt-get install build-essential\n"
+                "  Fedora: sudo dnf install gcc gcc-c++\n"
+                "  Arch: sudo pacman -S base-devel"
+            );
+        }
     }
 
     # Check if tauri CLI is available via cargo

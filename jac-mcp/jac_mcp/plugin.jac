@@ -35,6 +35,14 @@ glob registry = get_registry();
             short=""
         ),
         Arg.create(
+            "mode",
+            typ=str,
+            default="",
+            help="Tool/prompt exposure mode: lite, standard, or full (default: full)",
+            choices=["lite", "standard", "full", ""],
+            short=""
+        ),
+        Arg.create(
             "inspect",
             typ=bool,
             default=False,
@@ -46,6 +54,7 @@ glob registry = get_registry();
     examples=[
         ("jac mcp", "Start MCP server with stdio transport (default)"),
         ("jac mcp --transport sse --port 3001", "Start with SSE transport"),
+        ("jac mcp --mode lite", "Start with lite mode for smaller models"),
         ("jac mcp --inspect", "List available resources, tools, and prompts"),
 
     ],
@@ -79,6 +88,7 @@ def _handle_mcp_cmd(ctx: object) -> None {
     transport = ctx.get_arg("transport", "stdio");
     port = ctx.get_arg("port", 3001);
     host = ctx.get_arg("host", "127.0.0.1");
+    mode: str = str(ctx.get_arg("mode", ""));
     inspect_mode = ctx.get_arg("inspect", False);
 
     # Load [plugins.mcp] from jac.toml as fallback defaults
@@ -95,6 +105,12 @@ def _handle_mcp_cmd(ctx: object) -> None {
         else mcp_cfg.get("transport", transport);
     port = port if port != 3001 else mcp_cfg.get("port", port);
     host = host if host != "127.0.0.1" else mcp_cfg.get("host", host);
+
+    # CLI --mode overrides jac.toml by writing into the in-memory plugin config.
+    if mode {
+        import from jac_mcp.mode { set_mcp_mode }
+        set_mcp_mode(mode);
+    }
 
     if inspect_mode {
         _print_inspect();

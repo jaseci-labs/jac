@@ -163,8 +163,8 @@ obj InteropBinding {
         source_context: InteropContext,
         callers: set[InteropContext] = field(default_factory=`set),
         ret_type: str = 'int',
-        param_types: list = [],
-        param_names: list = [],
+        param_types: list[str] = [],
+        param_names: list[str] = [],
         ast_node: Any = None,
         route: list[InteropContext] = [],
         source_module: (str | None) = None;

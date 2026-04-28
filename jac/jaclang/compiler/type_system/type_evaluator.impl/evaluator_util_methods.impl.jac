@@ -180,11 +180,33 @@ Get member type and specialize it with class type_args. (Pyright: getTypeOfMembe
 
 This is the proper way to get a member's type from a specialized generic class.
 Instead of getting raw type then manually specializing, this does it in one place.
+
+For `__new__`-style methods (cls-first param without the ClassMethod flag) and
+staticmethods, `Self` binding is deferred to the call site so it can be solved
+from the receiver argument — `object.__new__(self.__class__)` must resolve
+`Self -> type(self.__class__)`, not the lookup-time class.
 """
 impl TypeEvaluator.get_type_of_member(
     member: Any, class_type: types.ClassType
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
+    if isinstance(raw_type, types.FunctionType) {
+        params = raw_type.parameters or [];
+        is_static_cls = (
+            len(params) >= 1
+            and params[0].is_cls
+            and not (raw_type.function_flags & types.FunctionTypeFlags.ClassMethod)
+        );
+        is_static = bool(
+            raw_type.function_flags & types.FunctionTypeFlags.StaticMethod
+        );
+        if is_static_cls or is_static {
+            # class_type=None keeps the is_self shortcut inert so Self stays
+            # symbolic for the call-site binder.
+            solution = type_utils.build_type_var_solution(class_type);
+            return type_utils.apply_solved_type_vars(raw_type, solution);
+        }
+    }
     return self.specialize_member_type(raw_type, class_type);
 }
 
@@ -391,6 +413,45 @@ impl TypeEvaluator._get_enclosing_function(nd: uni.UniNode) -> uni.Ability | Non
         }
     }
     return None;
+}
+
+
+"""Return the correct scope for resolving a name reference.
+
+By default this is the nearest enclosing UniScopeNode. Python semantics
+require base class expressions in `class Foo(Base)` to be resolved in
+the *enclosing* scope, not the class's own scope — otherwise an inner
+member named `Base` would shadow the outer class. PEP 695 type
+parameters declared on the class (`class Foo[T](Base[T])`) remain
+visible inside the base list, so names that match a declared type param
+keep resolving against the class scope.
+"""
+impl TypeEvaluator._resolution_scope_for(expr: uni.UniNode) -> uni.UniScopeNode | None {
+    scope = expr.find_parent_of_type(uni.UniScopeNode);
+    if scope is None {
+        return None;
+    }
+    if isinstance(scope, uni.Archetype) and scope.base_classes {
+        cur: uni.UniNode | None = expr;
+        while cur is not None and cur.parent is not scope {
+            cur = cur.parent;
+        }
+        if cur is not None {
+            for base in scope.base_classes {
+                if base is cur {
+                    if isinstance(expr, uni.Name) and scope.type_params {
+                        for tp in scope.type_params {
+                            if tp.name.value == expr.value {
+                                return scope;
+                            }
+                        }
+                    }
+                    return scope.parent_scope or scope;
+                }
+            }
+        }
+    }
+    return scope;
 }
 
 """Check if the expression is Name that is 'self' and in the method context."""
@@ -1056,7 +1117,7 @@ impl TypeEvaluator._get_special_form_type(
 
         case "Self":
             # Pyright: createSelfType (line 21227-21228) - returns TypeVarType for Self
-            return types.TypeVarType(name="Self", is_self=True);
+            return type_utils.synthesize_self_type_var();
 
         # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
         # Requires _create_literal_type() method to parse type args into literal ClassTypes.
@@ -1093,7 +1154,7 @@ impl TypeEvaluator.create_self_type(
     }
     # Check if it's a _SpecialForm
     if symbol_type.shared == self.prefetch.callable_class.shared {
-        return types.TypeVarType(name="Self", is_self=True);
+        return type_utils.synthesize_self_type_var();
     }
     return None;
 }

@@ -42,8 +42,16 @@ def:pub navigate(path: str) -> None;
 async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
 def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
 async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> Any;
-async def:pub jacSignup(username: str, password: str) -> dict;
-async def:pub jacLogin(username: str, password: str) -> bool;
+def:pub __normalizeIdentity(x: Any) -> dict;
+def:pub __normalizeCredential(x: Any) -> dict;
+async def:pub jacSignup(
+    identities_or_username: (str | list), credential_or_password: (str | dict)
+) -> dict;
+
+async def:pub jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool;
+
 def:pub jacLogout -> None;
 def:pub jacIsLoggedIn -> bool;
 def:pub __getApiBaseUrl -> str;
