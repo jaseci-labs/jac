@@ -64,6 +64,22 @@ if [ ! -f "${DOCKERFILE_TEMPLATE}" ]; then
     exit 1
 fi
 
+# Detect "is this project inside the jac repo with local source?"
+# When yes (CI + local-dev path), use Dockerfile.microservice.ci which
+# pip installs jaclang + jac-scale from /build/jac and /build/jac-scale
+# (the actual code under test). When no (typical end-user case), use
+# Dockerfile.microservice which installs from PyPI.
+#
+# PyPI versions are ~165 commits behind the repo, so end-user images
+# don't have the K-track code. CI MUST use the local-source variant
+# or `jac scale gateway` and other K9 features won't exist in the pod.
+USE_LOCAL_SOURCE=0
+if [ -f "${REPO_ROOT}/jac/jaclang/__init__.py" ] \
+   && [ -f "${REPO_ROOT}/jac-scale/jac_scale/__init__.py" ]; then
+    USE_LOCAL_SOURCE=1
+fi
+DOCKERFILE_CI_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice.ci"
+
 cleanup() {
     echo "=== cleanup ==="
     if [ -n "${PORT_FORWARD_PID:-}" ]; then
@@ -72,23 +88,49 @@ cleanup() {
     kubectl delete namespace "${NAMESPACE}" \
         --ignore-not-found --timeout=120s || true
     # Remove the Dockerfile we copied in (don't pollute the user's tree).
-    rm -f "${PROJECT_DIR}/Dockerfile" "${PROJECT_DIR}/.dockerignore" 2>/dev/null || true
+    if [ "${USE_LOCAL_SOURCE}" != "1" ]; then
+        rm -f "${PROJECT_DIR}/Dockerfile" "${PROJECT_DIR}/.dockerignore" 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT
 
-echo "=== copy Dockerfile + .dockerignore into ${PROJECT_DIR} ==="
-cp "${DOCKERFILE_TEMPLATE}" "${PROJECT_DIR}/Dockerfile"
-cp "${DOCKERIGNORE_TEMPLATE}" "${PROJECT_DIR}/.dockerignore"
+if [ "${USE_LOCAL_SOURCE}" = "1" ]; then
+    # Local-source build: build context is repo root; PROJECT_DIR is
+    # passed as a build arg so the Dockerfile knows which directory
+    # to COPY into /app. No need to copy the Dockerfile around.
+    echo "=== using local-source CI Dockerfile (${DOCKERFILE_CI_TEMPLATE}) ==="
+    # Compute project path RELATIVE to repo root for the build arg.
+    # Both PROJECT_DIR and REPO_ROOT are absolute by the time we get
+    # here (the script realpath'd PROJECT_DIR up top).
+    PROJECT_REL="${PROJECT_DIR#${REPO_ROOT}/}"
+    if [ "${PROJECT_REL}" = "${PROJECT_DIR}" ]; then
+        echo "FAIL: PROJECT_DIR (${PROJECT_DIR}) is not under REPO_ROOT (${REPO_ROOT}) but USE_LOCAL_SOURCE=1" >&2
+        exit 1
+    fi
+    BUILD_CWD="${REPO_ROOT}"
+    BUILD_FILE="${DOCKERFILE_CI_TEMPLATE}"
+    BUILD_ARGS="--build-arg PROJECT_PATH=${PROJECT_REL}"
+else
+    # End-user path: copy the user-facing Dockerfile templates into
+    # the project dir, build with PROJECT_DIR as cwd.
+    echo "=== copy Dockerfile + .dockerignore into ${PROJECT_DIR} ==="
+    cp "${DOCKERFILE_TEMPLATE}" "${PROJECT_DIR}/Dockerfile"
+    cp "${DOCKERIGNORE_TEMPLATE}" "${PROJECT_DIR}/.dockerignore"
+    BUILD_CWD="${PROJECT_DIR}"
+    BUILD_FILE="${PROJECT_DIR}/Dockerfile"
+    BUILD_ARGS=""
+fi
 
 if [ "${USE_MINIKUBE}" = "1" ]; then
     echo "=== build image inside minikube's docker daemon ==="
     eval "$(minikube docker-env)"
-    docker build -t "${IMAGE_TAG}" "${PROJECT_DIR}"
-    # No push needed - the image is in minikube's daemon already.
+    # shellcheck disable=SC2086 # BUILD_ARGS is intentionally word-split
+    docker build -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${IMAGE_TAG}" "${BUILD_CWD}"
 elif [ -n "${REGISTRY}" ]; then
     echo "=== build + push to ${REGISTRY} ==="
     FULL_IMAGE="${REGISTRY}/${IMAGE_TAG}"
-    docker build -t "${FULL_IMAGE}" "${PROJECT_DIR}"
+    # shellcheck disable=SC2086
+    docker build -f "${BUILD_FILE}" ${BUILD_ARGS} -t "${FULL_IMAGE}" "${BUILD_CWD}"
     docker push "${FULL_IMAGE}"
     IMAGE_TAG="${FULL_IMAGE}"
 else

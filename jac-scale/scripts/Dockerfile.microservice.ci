@@ -1,0 +1,49 @@
+# CI-only Dockerfile for the K-track real-app e2e.
+#
+# Differs from Dockerfile.microservice (the end-user-facing template
+# that installs jaclang + jac-scale from PyPI) by installing from
+# LOCAL source: the repo's `jac/` and `jac-scale/` directories. The
+# K-track code is not on PyPI yet (and PyPI is ~165 commits behind);
+# CI must validate against the actual code in the PR, not against
+# stale published packages.
+#
+# Build context: the repo root (NOT the project dir). The e2e script
+# (k8s_microservice_real_e2e.sh) detects this Dockerfile and switches
+# build cwd to the repo root automatically.
+#
+# Layout expected:
+#   <repo-root>/
+#     jac/                                        # jaclang source
+#     jac-scale/                                  # jac-scale source
+#     jac-scale/scripts/Dockerfile.microservice.ci  # this file
+#     <project-dir>/                              # the app to deploy
+
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN pip install --no-cache-dir --upgrade pip
+
+# Install jaclang + jac-scale from local source (the actual code under
+# test, including K1-K10). `-e` (editable) keeps the install pointing
+# at /build/jac so `jac --version` reports the right SHA-derived version.
+WORKDIR /build
+COPY jac /build/jac
+COPY jac-scale /build/jac-scale
+RUN pip install --no-cache-dir -e /build/jac \
+    && pip install --no-cache-dir -e "/build/jac-scale[deploy]"
+
+# The project dir to deploy. Build arg lets the e2e script point at
+# any project under the repo (default: the K8s e2e fixture).
+ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
+WORKDIR /app
+COPY ${PROJECT_PATH} /app
+
+# Pre-compile .jac files for faster cold start. Best-effort; the
+# runtime compile path handles anything jac2py can't.
+RUN find . -name "*.jac" -not -path "*/.jac/*" -not -path "*/__jac_gen__/*" \
+        -exec jac tool jac2py {} + 2>/dev/null || true
+
+EXPOSE 8000
