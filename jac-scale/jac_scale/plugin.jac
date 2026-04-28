@@ -48,6 +48,14 @@ def _scale_pre_hook(context: HookContext) -> None {
     if scale {
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
+        # K1 dispatch: when microservice mode is enabled in jac.toml AND
+        # the user accepts the default target ('kubernetes'), swap to the
+        # microservice variant. Explicit --target=kubernetes still does
+        # monolith deploy for back-compat; --target=kubernetes-microservice
+        # also works as an explicit opt-in.
+        if (target == "kubernetes" and ms_config.get("enabled", False)) {
+            target = "kubernetes-microservice";
+        }
         if not os.path.exists(filename) {
             raise FileNotFoundError(f"File not found: '{filename}'");
         }
