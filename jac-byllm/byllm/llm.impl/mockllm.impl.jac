@@ -18,6 +18,14 @@ token-usage metadata - useful for testing threshold-based compaction:
         (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
         (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {})
     ]
+
+The second element must be a dict whose keys are a subset of known usage fields
+("prompt_tokens", "completion_tokens", "total_tokens"). This prevents false
+positives when a by llm() function legitimately returns a tuple type - e.g.
+("hello", 42) is NOT treated as a usage tuple because 42 is not a dict, and
+("hello", {"custom": 1}) is NOT treated as one because "custom" is not a
+known usage key.
+
 Non-tuple entries behave exactly as before.
 """
 impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
@@ -26,11 +34,30 @@ impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     mt_run.add_message(message);
     output = self.config["outputs"].pop(0);  # type: ignore
     # Unpack (payload, usage) tuple when tests need to inject usage metadata.
+    # Both conditions must hold to avoid colliding with real tuple return types:
+    #   1. first element is a MockToolCall or list[MockToolCall] (never a real LLM output type)
+    #   2. second element is a dict with only known usage keys (or empty)
+    _usage_keys = ["prompt_tokens", "completion_tokens", "total_tokens"];
     usage: dict[str, object] = {};
     if isinstance(output, tuple) and len(output) == 2 {
-        (output, usage) = output;
+        first = output[0];
+        second = output[1];
+        first_is_tool = (
+            isinstance(first, MockToolCall)
+            or (
+                isinstance(first, list)
+                and len(first) > 0
+                and isinstance(first[0], MockToolCall)
+            )
+        );
+        second_is_usage = isinstance(second, dict)
+        and all(k in _usage_keys for k in second.keys());
+        if first_is_tool and second_is_usage {
+            output = first;
+            usage = second;
+        }
     }
-    # Support batch tool calls: list[MockToolCall] → multiple ToolCalls in one response.
+    # Support batch tool calls: list[MockToolCall] -> multiple ToolCalls in one response.
     if isinstance(output, list)
     and len(output) > 0
     and isinstance(output[0], MockToolCall) {
