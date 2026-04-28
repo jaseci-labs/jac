@@ -140,6 +140,9 @@ obj Serializer {
     ) -> (object | None);
 
     static def _compute_hash(anchor: object) -> int;
+    static def serialize_fields(
+        anchor: object, field_names: set[str]
+    ) -> dict[str, object];
 }
 
 # Auto-register user archetypes via __init_subclass__ hook.

@@ -1994,10 +1994,27 @@ class CodeGen:
         self.indent += 1
         prev_in_class = self._in_class
         self._in_class = False  # nested functions are not methods
-        self._emit_body(node.body)
+        # Module-level impl stitching: a top-level forward-decl `def foo(...);`
+        # paired with `impl foo(...) { body }` in the same module or an
+        # .impl.jac file. The full compiler uses DeclImplMatchPass for this;
+        # jac0 (bootstrap) approximates by splicing the impl's body into the
+        # stub's emitted function. Class-method impls remain stitched in
+        # `_emit_class` where they have access to the surrounding class body.
+        body = node.body
+        if not prev_in_class and self._is_stub_body(body):
+            for impl in self.impl_registry.get(node.name, []):
+                if "." not in impl.target:
+                    body = impl.body
+                    break
+        self._emit_body(body)
         self._in_class = prev_in_class
         self.indent -= 1
         self._line()
+
+    @staticmethod
+    def _is_stub_body(body: list) -> bool:
+        """A forward-decl stub is a body of a single PassStmt (from `def f(...);`)."""
+        return len(body) == 1 and isinstance(body[0], PassStmt)
 
     def _format_params(self, params: list[Param]) -> str:
         parts: list[str] = []

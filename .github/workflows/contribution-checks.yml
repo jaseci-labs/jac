@@ -1,0 +1,100 @@
+name: Contribution Checks
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**/*.md'
+      - 'docs/scripts/validate_docs_code.jac'
+      - '.github/workflows/contribution-checks.yml'
+  workflow_dispatch:
+
+jobs:
+  contribution-checks:
+    name: Contribution Checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: true
+
+      - name: Block AI co-author attribution
+        if: github.event_name == 'pull_request'
+        run: |
+          if git log origin/${{ github.base_ref }}..HEAD --format='%b' \
+            | grep -iP 'co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'; then
+            echo "::error::AI co-author attribution found in commit messages. Please remove Co-Authored-By lines referencing AI tools."
+            exit 1
+          fi
+
+      - name: Block Python files
+        if: |
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-no-python-check')
+        run: |
+          if git diff --name-only --diff-filter=A origin/${{ github.base_ref }}...HEAD \
+            | grep -P '\.py$'; then
+            echo "::error::New Python (.py) files detected in this PR. This codebase does not allow adding Python files."
+            echo "To skip this check, add the 'skip-no-python-check' label to your PR."
+            exit 1
+          fi
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-jac-${{ hashFiles('jac/pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-jac-
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e jac
+          pip install -e docs
+
+      - name: Validate Jac code block syntax
+        run: jac run docs/scripts/validate_docs_code.jac
+
+      - name: Build documentation and check links
+        working-directory: docs
+        run: mkdocs build --strict 2>&1 | tee build.log || true
+
+      - name: Report link warnings
+        working-directory: docs
+        run: |
+          if grep -i "warning" build.log | grep -i "link"; then
+            echo "## ⚠️ Documentation Link Warnings" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            grep -i "warning" build.log | grep -i "link" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## ✅ All Checks Passed" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "- Jac code block syntax: ✓" >> $GITHUB_STEP_SUMMARY
+            echo "- Internal links: ✓" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Check Release Notes Updated
+        if: |
+          github.event_name == 'pull_request' &&
+          !contains(github.event.pull_request.labels.*.name, 'skip-release-notes-check')
+        env:
+          CI: "true"
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: bash scripts/check-release-notes.sh

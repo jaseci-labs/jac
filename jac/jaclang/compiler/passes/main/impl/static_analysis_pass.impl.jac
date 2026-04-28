@@ -112,6 +112,10 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
         }
+        # Skip recovery placeholders synthesized from non-identifier tokens.
+        if not name_nd.value.isidentifier() {
+            continue;
+        }
         # Skip attribute access names (right side of x.attr)
         parent = name_nd.parent;
         if isinstance(parent, uni.AtomTrailer) and parent.is_attr {
@@ -152,7 +156,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
     }
 
     for container in containers {
-        body = getattr(container, 'body', None);
+        body = container?.body;
         if not body or not isinstance(body, Sequence) {
             continue;
         }

@@ -25,13 +25,13 @@ repos:
     - id: markdownlint-cli2
       args: [--fix]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.8
+    rev: v0.15.11
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
+    rev: v1.20.1
     hooks:
       - id: mypy
         args:
@@ -72,10 +72,11 @@ repos:
 
       - id: validate-fragments
         name: Validate release note fragment filenames
-        entry: python scripts/validate_fragments.py
+        entry: env PYTHONPATH=jac python3 -m jaclang run scripts/validate_fragments.jac
         language: python
         files: ^docs/docs/community/release_notes/unreleased/.*\.md$
         exclude: README\.md
+        require_serial: true
 
       - id: ban-em-dashes
         name: Ban em-dashes (—)

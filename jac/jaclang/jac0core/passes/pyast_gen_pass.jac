@@ -28,6 +28,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext, EdgeDir }
 import from jaclang.jac0core.constant { Constants as Con }
 import from jaclang.jac0core.constant { Tokens as Tok }
+import from jaclang.jac0core.codeinfo { BoundaryTypeInfo, InteropBinding }
 import from jaclang.jac0core.passes.ast_gen { BaseAstGenPass }
 import from jaclang.jac0core.passes.ast_gen.jsx_processor { PyJsxProcessor }
 import from jaclang.jac0core.diagnostics {
@@ -147,12 +148,12 @@ ctypes.
         local_name: str,
         func_name: str,
         module_name: str,
-        binding: object,
-        boundary_types: dict
+        binding: InteropBinding,
+        boundary_types: dict[str, BoundaryTypeInfo]
     ) -> str;
 
     """Build a Python source string for a boundary type stub class."""
-    def _gen_py_boundary_stub_class(class_name: str, info: object) -> str;
+    def _gen_py_boundary_stub_class(class_name: str, info: BoundaryTypeInfo) -> str;
 
     """Return the object from jaclib as ast node based on the import config."""
     def jaclib_obj(obj_name: str) -> ast3.Name;

@@ -1,3 +1,5 @@
+walker AgentVisitor {}
+
 node MyNode {
     has foo: str = "";
 }

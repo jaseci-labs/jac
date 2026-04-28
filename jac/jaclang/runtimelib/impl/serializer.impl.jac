@@ -571,6 +571,12 @@ impl Serializer._deserialize_anchor(data: dict[str, object]) -> (Anchor | None) 
                 }
                 anchor.edges = edges;
             }
+            # Snapshot initial edge IDs for merge-based conflict resolution
+            setattr(
+                anchor,
+                '_initial_edge_ids',
+                frozenset(UUID(eid) for eid in (edge_ids or []))
+            );
             # Topology index lives only on root anchors
             anchor.topology_index_data = None;
             if isinstance(anchor.__dict__.get('archetype'), Root) {
@@ -684,12 +690,35 @@ impl Serializer._deserialize_archetype(
                 f"{type_name}: {sorted(dropped)}"
             );
         }
+
+        arch.__dict__['__jac_initialized__'] = True;
         setattr(arch, '__jac__', anchor);
         return arch;
     } except Exception as e {
         logger.error(f"Failed to deserialize archetype {type_name}: {e}");
         return None;
     }
+}
+
+"""Serialize only specified archetype fields of an anchor."""
+impl Serializer.serialize_fields(
+    anchor: object, field_names: set[str]
+) -> dict[str, object] {
+    if not hasattr(anchor, 'is_populated') or not anchor.is_populated() {
+        return {};
+    }
+    arch = anchor.archetype;
+    if arch is None {
+        return {};
+    }
+    known = set(Serializer._get_field_types(type(arch)).keys());
+    _seen: tuple[set, set] = (set(), set());
+    result: dict[str, object] = {};
+    for name in field_names & known {
+        val = getattr(arch, name, None);
+        result[name] = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+    }
+    return result;
 }
 
 """Compute a hash of the anchor's serialized state for dirty checking."""

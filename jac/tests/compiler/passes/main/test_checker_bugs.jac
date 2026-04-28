@@ -22,6 +22,9 @@ Bug index:
   #TVAR-2 - No transitive TypeVar propagation through base_classes in build_type_var_solution
   #TVAR-3 - Union return types with TypeVars (e.g., V | None) resolve to Unknown
   #TVAR-5 - Module-level TypeVars shadowed by class type parameters
+  #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
+  #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
+  #SUPER-1 - super() call returns Unknown instead of parent instance
 """
 
 import os;
@@ -476,4 +479,108 @@ test "bug_tvar5_module_typevar_shadowed_by_class_param" {
     ];
     assert 29 in error_lines , f"Expected error on line 29, got {error_lines}.";
     assert 23 not in error_lines , f"Line 23 should NOT error, got {error_lines}.";
+}
+
+# =========================================================================
+# Bug #IMPL-1: `has` var reassigned in impl body shadows the parent type
+#
+# When a reactive def-component (e.g. `def:pub app -> None { has todos: ... }`)
+# has its method body split into a separate `.impl.jac` file, assignments to
+# the has var like `todos = todos + [x]` inside the impl created an untyped
+# local "shadow" symbol in SymTabBuildPass. The impl module's parent scope
+# is not yet connected at that pass, so the lookup for the enclosing HasVar
+# fails and falls through to the local-var branch.
+#
+# Effect: in the impl body, every reference to the has var is typed as
+# Unknown, and any operation on it (e.g. `todos + [{...}]`) breaks overload
+# resolution for `__add__`, producing a cascade of spurious E1055 errors
+# that don't appear when the same body is written inline.
+#
+# Fix: After DeclImplMatchPass connects an impl body to its declaration,
+# walk the impl body for Assignment targets whose resolved symbol is a
+# local shadow of a HasVar in the now-reachable parent ability scope, and
+# re-point those Name nodes at the parent HasVar. Only apply this for
+# has vars owned by an Ability (reactive component state); archetype
+# methods keep normal Python scoping (bare-name assignments stay local).
+# =========================================================================
+test "bug_impl1_has_var_shadow_in_impl_body" {
+    fixture_dir = os.path.join(
+        JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
+    );
+    program = JacProgram();
+    program.compile(
+        os.path.join(fixture_dir, "impl_has_var_reassign.cl.jac"), type_check=True
+    );
+
+    # Expected after fix: 0 errors. The impl body should type-check cleanly:
+    #   - `tasks + [task]` resolves via list[dict].__add__
+    #   - `x: list[dict] = tasks` is a sound assignment
+    assert len(program.errors_had) == 0 , (
+        "Bug #IMPL-1: has var `tasks` in impl body should resolve to the "
+        "parent HasVar (type list[dict]), not a local shadow (type Unknown). "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #BASE-1: Base class name resolved in class's own scope
+#
+# For `class Child(Parent) { def Parent -> int {...} }` the name `Parent`
+# in the base-classes list was looked up starting from Child's own symbol
+# table. The inner ability `Parent` was found first, so Child's MRO
+# collapsed to [Child] and inherited members became invisible —
+# producing spurious E1030 errors on valid inherited attribute access.
+#
+# Real-world manifestation: `datetime.datetime.fromisoformat(...)` reported
+# "Type datetime has no attribute fromisoformat" because CPython's
+# `class datetime(date)` stub has a method `def date(self) -> _Date: ...`
+# that shadowed the outer `date` class.
+#
+# Fix: Introduced `_resolution_scope_for` helper in the type evaluator.
+# When a Name reference sits inside an Archetype's `base_classes` list,
+# resolution uses the Archetype's parent_scope (Python semantics). PEP 695
+# type parameters declared on the class remain visible inside the base
+# list (names matching `Archetype.type_params` keep class scope).
+# =========================================================================
+test "bug_base1_base_class_resolved_in_enclosing_scope" {
+    program = compile_and_check("checker_bug_base_class_scope.jac");
+
+    # Expected after fix: 0 errors. Before fix: 4 errors (E1030 on
+    # `self.greet()` and `c.greet()`, plus cascading E1002/E1001).
+    assert len(program.errors_had) == 0 , (
+        "Bug #BASE-1: base class name must resolve in enclosing scope, not "
+        "the class's own scope. Inner member shadowing the base identifier "
+        "broke MRO and hid inherited attributes. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #SUPER-1: super() call returns Unknown
+#
+# `_get_type_of_super` returned `parent_class_type.clone_as_instance()` for
+# the bare `super` Name, giving it the type of an already-instantiated
+# parent. When written as `super()`, the FuncCall handler then fell through
+# to the generic "call an instance" path and tried to resolve `__call__`
+# on the parent instance. With no match it returned Unknown, so
+# `super().method()` evaluated to `Unknown.method()` and produced
+# cascading E1002/E1001/W1051 diagnostics on the enclosing expression.
+#
+# Fix: short-circuit in `validate_call_args` when the call target is
+# `super` — the return type of `super()` is the same as bare `super`
+# (the parent instance), matching Python semantics where attribute
+# access through `super()` dispatches via the parent's MRO.
+# =========================================================================
+test "bug_super1_super_call_returns_parent_instance" {
+    program = compile_and_check("checker_bug_super_call_in_method.jac");
+
+    # Expected after fix: 0 errors. Before fix: 1 error (E1002 "Cannot
+    # return <Unknown>, expected dict") plus 6 W1051 warnings on every
+    # chained use of the Unknown result.
+    assert len(program.errors_had) == 0 , (
+        "Bug #SUPER-1: `super()` in a method must type-check as the "
+        "parent instance so that attribute access dispatches through the "
+        "parent's MRO. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
 }

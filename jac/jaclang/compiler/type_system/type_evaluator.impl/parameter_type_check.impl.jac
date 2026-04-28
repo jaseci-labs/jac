@@ -43,6 +43,13 @@ a diagnostic and sets argumentErrors to true.
 impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
     caller_type = self.get_type_of_expression(expr.target);
 
+    # `super()` in a method behaves like bare `super` — a proxy for the
+    # parent class. Attribute access (`super().method(...)`) dispatches
+    # through the parent's MRO; there is no __init__/__call__ to validate.
+    if self._is_expr_super(expr.target) {
+        return caller_type;
+    }
+
     # Special-form handling for enum.auto() -> int
     if isinstance(caller_type, types.ClassType)
     and caller_type.is_builtin("auto")
@@ -1196,7 +1203,7 @@ impl TypeEvaluator._collect_type_var_bindings(
             return p.param_type;
         }
         if p.is_self {
-            return types.TypeVarType(name="Self", is_self=True);
+            return type_utils.synthesize_self_type_var();
         }
         if (
             p.is_cls
@@ -1204,7 +1211,7 @@ impl TypeEvaluator._collect_type_var_bindings(
             and self.prefetch.type_class is not None
         ) {
             synth = self.prefetch.type_class.clone_as_instance();
-            synth.private.type_args = [types.TypeVarType(name="Self", is_self=True)];
+            synth.private.type_args = [type_utils.synthesize_self_type_var()];
             return synth;
         }
         return p.param_type;

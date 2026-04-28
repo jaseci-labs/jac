@@ -11,9 +11,12 @@ import from byllm.exceptions {
     OutputConversionError,
     UnknownToolError,
     FinishToolError,
-    ConfigurationError
+    ConfigurationError,
+    McpError
 }
+import from byllm.mcp { McpClient, McpTool }
 import from byllm.telemetry { register_agent_callback }
+import from byllm.parallel { dispatch_batch, mark_serialize }
 
 glob by = JacRuntime.by ,
      __all__ = [
@@ -26,6 +29,9 @@ glob by = JacRuntime.by ,
          'UnknownToolError',
          'FinishToolError',
          'ConfigurationError',
+         'McpError',
+         'McpClient',
+         'McpTool',
          'Image',
          'MockLLM',
          'MockToolCall',
@@ -35,5 +41,7 @@ glob by = JacRuntime.by ,
          'MTRuntime',
          'StreamEvent',
          'Video',
-         'register_agent_callback'
+         'register_agent_callback',
+         'dispatch_batch',
+         'mark_serialize'
      ];

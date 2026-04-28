@@ -365,7 +365,7 @@ impl TypeEvaluator._import_module_from_path(path: str) -> uni.Module {
                         cache_path.parent.mkdir(parents=True, exist_ok=True);
                         writer = JirWriter();
                         sections: (dict[int, bytes] | None) = None;
-                        bc = getattr(mod.gen, 'py_bytecode', None);
+                        bc = mod.gen?.py_bytecode;
                         if bc is not None {
                             sections = {SEC_BYTECODE: bc};
                         }

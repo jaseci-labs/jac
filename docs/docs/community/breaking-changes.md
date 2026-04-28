@@ -7,6 +7,126 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### jac-scale 0.2.15
+
+#### 1. Identity-Based Authentication System
+
+The flat `username` / `password` user model has been replaced with a flexible **identity + credential** architecture. A user can now register multiple identities (e.g. `username`, `email`) and authenticate with any of them. SSO accounts are stored as `type: sso` identities inside the user document instead of a separate `sso_accounts` collection.
+
+**Impact:** The `/user/register` and `/user/login` request payloads have changed shape. JWT tokens now carry a `user_id` (UUID) claim instead of `username`. Any client, test, or integration that constructs these requests, inspects JWT claims, or reads the `sso_accounts` collection must be updated.
+
+##### Register / Login Payloads
+
+**Before:**
+
+```http
+POST /user/register
+Content-Type: application/json
+
+{
+  "username": "alice",
+  "password": "secret"
+}
+```
+
+```http
+POST /user/login
+Content-Type: application/json
+
+{
+  "username": "alice",
+  "password": "secret"
+}
+```
+
+**After:**
+
+```http
+POST /user/register
+Content-Type: application/json
+
+{
+  "identities": [
+    { "type": "username", "value": "alice" },
+    { "type": "email",    "value": "alice@example.com" }
+  ],
+  "credential": { "type": "password", "password": "secret" }
+}
+```
+
+```http
+POST /user/login
+Content-Type: application/json
+
+{
+  "identity":   { "type": "username", "value": "alice" },
+  "credential": { "type": "password", "password": "secret" }
+}
+```
+
+- At least one identity is required at registration; additional identities can be added later.
+- Login accepts any identity the user has registered (`username` **or** `email`); the server resolves it to the same account.
+- `identity.value` and `credential.password` enforce `min_length=1`; empty strings are rejected with `VALIDATION_ERROR`.
+
+##### JWT `user_id` Claim
+
+JWT tokens previously encoded `username` as the subject. They now encode `user_id` (a UUID that is stable across identity changes).
+
+**Before:**
+
+```json
+{ "username": "alice", "exp": 1734567890 }
+```
+
+**After:**
+
+```json
+{ "user_id": "8f2d…-…-…-…", "exp": 1734567890 }
+```
+
+**Migration:**
+
+- Any middleware or downstream service that reads `username` from the decoded JWT must read `user_id` instead and resolve it to a user record via the user manager if the username is still required.
+- Existing tokens issued before the upgrade are no longer valid; users must log in again to receive a new token.
+
+##### Password Hashing Switched to bcrypt
+
+Stored password hashes are now produced with **bcrypt** (previously raw `hashlib`). Legacy users are **progressively rehashed** on their next successful login, so no manual migration is required.
+
+##### SSO Accounts Unified Into Identities
+
+SSO linkages previously lived in a dedicated `sso_accounts` collection keyed by `username`. They are now stored as identities on the user document, keyed by `user_id`:
+
+```json
+{
+  "user_id": "8f2d…",
+  "identities": [
+    { "type": "username", "value": "alice" },
+    { "type": "sso", "provider": "google", "external_id": "1098…" }
+  ]
+}
+```
+
+**Migration:** A built-in legacy user migration runs at startup to convert pre-existing flat `username`/`password` records into the identity-based shape. Case-colliding legacy accounts are kept for the first insertion and marked disabled for the rest; review disabled accounts after the upgrade.
+
+##### Update Password Request Shape
+
+`PUT /user/password` now requires a typed `UpdatePasswordRequest` body with both fields non-empty:
+
+**Before:**
+
+```json
+{ "old_password": "…", "new_password": "…" }
+```
+
+**After:**
+
+```json
+{ "current_password": "…", "new_password": "…" }
+```
+
+---
+
 ### jac-scale 0.2.14
 
 #### 1. Heavy Dependencies Moved to Optional Install Groups

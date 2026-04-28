@@ -16,6 +16,7 @@ import from byllm.types {
     Text,
     Tool
 }
+import from byllm.mcp { McpTool }
 
 """Intermediate representation for LLM function calls.
 
@@ -43,7 +44,7 @@ obj MTRuntime {
     has messages: list[MessageType],
         resp_type: type | None,
         stream: bool,
-        tools: list[Tool],
+        tools: list[Tool | McpTool],
         call_params: dict[(str, object)],
         mtir: MTIR | None = None;
 
@@ -52,7 +53,7 @@ obj MTRuntime {
     def add_message(message: MessageType) -> None;
     def get_msg_list -> list[dict[(str, object)] | LiteLLMMessage];
     def parse_response(response: str) -> object;
-    def get_tool(tool_name: str) -> Tool | None;
+    def get_tool(tool_name: str) -> Tool | McpTool | None;
     def get_tool_list -> list[dict];
     def get_output_schema -> dict | None;
 }

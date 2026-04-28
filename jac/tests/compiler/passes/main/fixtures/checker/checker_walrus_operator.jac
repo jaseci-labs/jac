@@ -21,6 +21,6 @@ with entry {
         m: MyNode = n;  # OK: n is MyNode
         p: AnotherNode = n;  # Error: cannot assign MyNode to AnotherNode
     }
-    root ++> (a := MyNode());  # OK: a is MyNode
+    root() ++> (a := MyNode());  # OK: a is MyNode
     a = AnotherNode();  # Error: cannot assign AnotherNode to MyNode
 }
