@@ -814,12 +814,8 @@ impl Parser.parse_expression -> Expr {
         return self.parse_lambda_expr();
     }
     expr = self.parse_concurrent_expr();
-    # If an ERROR token follows, it's an unsupported operator (e.g. `=>`).
-    # The lexer already emitted the diagnostic; consume the token and the
-    # right-hand side so callers see a clean token stream.
-    # Block body `=> { stmts; }`: drain by brace depth to avoid parse_brace_expr
-    # choking on statements (+=, ;, etc.) and leaking tokens back to the caller.
-    # Expression body `=> expr`: discard via parse_concurrent_expr as normal.
+    # `=>` recovery: lexer emitted E0025; drain the RHS — a brace-balanced
+    # block or a single expression — so parsing continues cleanly.
     if self.check(TokenKind.ERROR) {
         self.advance();
         if self.check(TokenKind.LBRACE) {
@@ -2057,8 +2053,7 @@ impl Parser.parse_special_ref -> Expr {
 }
 
 impl Parser.parse_atom -> Expr {
-    # Silently consume ERROR tokens — the lexer already emitted the diagnostic.
-    # Without this guard, ERROR tokens fall through to E0004 and double-report.
+    # Lexer already diagnosed the ERROR token; consume to skip duplicate E0004.
     if self.check(TokenKind.ERROR) {
         return self.make_name(self.advance());
     }

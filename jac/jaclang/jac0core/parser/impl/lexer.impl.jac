@@ -1490,10 +1490,8 @@ impl Lexer.scan_operator -> Token {
             );
         }
     }
-    # JavaScript arrow function syntax: `=>` is not valid in Jac.
-    # Detected here (before the single-char switch consumes `=`) so both
-    # characters are consumed as one unit, preventing `>` from reaching
-    # the parser and causing JSX tag context cascade errors.
+    # Detect `=>` atomically before the single-char switch — keeps `>` from
+    # leaking into JSX tag context and cascading into "Missing }" errors.
     if self.match_string("=>") {
         self.error(
             "JavaScript arrow function syntax ('=>') is not supported in Jac",

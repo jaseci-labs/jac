@@ -260,12 +260,8 @@ def _parse_location_info(error_output: str, error_lower: str) -> tuple[int, int]
     return (line_num, col_num);
 }
 
-"""Extract error detail from error output.
-
-Handles two formats:
-  - Structured: "error[E0025]: message ..." — extracts after ']: '
-  - Legacy:     "path, line X, col Y: message" — extracts after last ', col Y: '
-"""
+"""Extract message text. Supports `error[CODE]: msg` and legacy
+`path, line X, col Y: msg` formats."""
 def _extract_error_detail(error_output: str) -> str {
     # Structured format: severity[CODE]: message
     bracket_colon = error_output.find("]: ");

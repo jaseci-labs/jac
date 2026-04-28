@@ -112,8 +112,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
         }
-        # Skip synthetic Name nodes created from non-identifier tokens (e.g. `=>`
-        # emitted by the lexer for unsupported JS arrow function syntax).
+        # Skip recovery placeholders synthesized from non-identifier tokens.
         if not name_nd.value.isidentifier() {
             continue;
         }
