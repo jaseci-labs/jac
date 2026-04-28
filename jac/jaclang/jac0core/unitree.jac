@@ -1291,6 +1291,14 @@ obj JsxExpression(JsxChild) {
     def postinit -> None;
 }
 
+"""JsxComment: a `{#* ... *#}` brace pair in a JSX body. Owns the
+CommentToken from the slot."""
+obj JsxComment(JsxChild) {
+    has comment: CommentToken;
+
+    def postinit -> None;
+}
+
 """MatchStmt node type for Jac Ast."""
 obj MatchStmt(CodeBlockStmt) {
     has target: Expr,

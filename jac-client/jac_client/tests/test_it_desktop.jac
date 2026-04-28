@@ -157,6 +157,47 @@ test "desktop target files exist" {
 }
 
 # =============================================================================
+# Test: PyInstaller spec excludes litellm bundle bloat
+# Regression guard for the Windows MAX_PATH bundling failure caused by
+# litellm shipping benchmark JSONs at deeply-nested paths that exceed 260
+# characters once nested under the runner checkout root + Tauri's binaries
+# staging dir. Without these excludes, NSIS and WiX both fail to bundle.
+# =============================================================================
+test "pyinstaller spec excludes litellm bloat for windows max_path" {
+    impl_path = (
+        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl"
+        / "desktop_target.impl.jac"
+    );
+    assert impl_path.exists() , f"impl file not found at {impl_path}";
+
+    content = impl_path.read_text();
+
+    # The exclude list itself must be declared
+    assert "EXCLUDE_DATA_PATTERNS = [" in content , (
+        "EXCLUDE_DATA_PATTERNS list must be declared in the generated "
+        "PyInstaller spec template"
+    );
+
+    # The critical pattern -- this is the file path that pushed the bundle
+    # past Windows MAX_PATH and broke shipping byllm desktop apps
+    assert "'guardrail_benchmarks'" in content , (
+        "'guardrail_benchmarks' must be in EXCLUDE_DATA_PATTERNS -- without "
+        "it, Windows MSI/NSIS bundling fails on litellm benchmark JSON paths "
+        "exceeding MAX_PATH (260 chars)"
+    );
+
+    # The filter must actually be applied to both datas and binaries before
+    # Analysis runs. Just declaring the list isn't enough.
+    assert "_should_exclude" in content , "_should_exclude helper must exist";
+    assert "if not _should_exclude(d)" in content , (
+        "exclude filter must be applied via list comprehension to drop "
+        "matched (src, dest) tuples before Analysis()"
+    );
+
+    print("[DEBUG] litellm exclude regression guard verified");
+}
+
+# =============================================================================
 # Test: Desktop Setup Command (requires CLI)
 # =============================================================================
 test "desktop setup creates directory structure" {
