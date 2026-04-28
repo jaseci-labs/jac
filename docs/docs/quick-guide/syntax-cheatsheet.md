@@ -68,7 +68,7 @@ with entry {
     nothing: None = None;
 
     # Jac has the same built-in types as Python:
-    # int, float, str, bool, list, tuple, set, dict, bytes
+    # int, float, str, bool, list, tuple, set, dict, bytes, any
 
     # Union types
     maybe: str | None = None;
@@ -1369,7 +1369,7 @@ def:pub TodoApp() -> JsxElement {
 # ============================================================
 # Keywords Reference
 # ============================================================
-# Types:    str, int, float, bool, list, tuple, set, dict, bytes, type
+# Types:    str, int, float, bool, list, tuple, set, any, dict, bytes, type
 # Decl:     obj, class, node, edge, walker, enum, has, can, def, impl,
 #           glob, test, type
 # Modifiers: pub, priv, protect, static, override, abs, async

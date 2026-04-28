@@ -281,6 +281,7 @@ Jac is statically typed -- all variables, fields, and function signatures requir
 | `tuple` | Immutable sequence | `(1, 2, 3)` |
 | `set` | Unique values | `{1, 2, 3}` |
 | `dict` | Key-value mapping | `{"a": 1}` |
+| `any` | Any type | -- |
 | `type` | Type object | -- |
 | `None` | Null value | `None` |
 
