@@ -125,6 +125,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Cannot assign to '{name}' -- it is a built-in reference, not a variable",
          help="Use a different variable name, or use backtick escaping (e.g. `super) to create a local variable with the same name."
      ),
+     E0025 = _err(
+         "E0025",
+         Category.SYNTAX,
+         "JavaScript arrow function syntax ('=>') is not supported in Jac",
+         help="Use Jac lambda syntax instead:\n    lambda e: Type { ... }\n    lambda -> None { ... }"
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(

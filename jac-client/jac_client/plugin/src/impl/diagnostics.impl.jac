@@ -199,6 +199,7 @@ impl MissingDependencyDetector.detect(
 # Marker strings for parsing error output
 glob LINE_MARKER = ", line ",
      COL_MARKER = ", col ",
+     ARROW_LOCATION_MARKER = " --> ",
      NO_BYTECODE_MARKER = "no bytecode found for",
      FAILED_TO_COMPILE_MARKER = "failed to compile";
 
@@ -233,13 +234,24 @@ def _parse_location_info(error_output: str, error_lower: str) -> tuple[int, int]
     line_num = 0;
     col_num = 0;
 
-    if LINE_MARKER in error_lower {
+    # Structured format: "  --> path:line:col"
+    if ARROW_LOCATION_MARKER in error_output {
+        idx = error_output.find(ARROW_LOCATION_MARKER);
+        rest = error_output[idx + len(ARROW_LOCATION_MARKER):].split("\n")[0].strip();
+        parts = rest.split(":");
+        if len(parts) >= 2 {
+            line_num = _extract_leading_number(parts[-2]);
+            col_num = _extract_leading_number(parts[-1]);
+        }
+    }
+
+    # Legacy format: "path, line X, col Y: message"
+    if line_num == 0 and LINE_MARKER in error_lower {
         idx = error_lower.find(LINE_MARKER);
         rest = error_output[idx + len(LINE_MARKER):];
         line_num = _extract_leading_number(rest);
     }
-
-    if COL_MARKER in error_lower {
+    if col_num == 0 and COL_MARKER in error_lower {
         idx = error_lower.find(COL_MARKER);
         rest = error_output[idx + len(COL_MARKER):];
         col_num = _extract_leading_number(rest);
@@ -248,20 +260,28 @@ def _parse_location_info(error_output: str, error_lower: str) -> tuple[int, int]
     return (line_num, col_num);
 }
 
-"""Extract error detail from the last colon in error output."""
+"""Extract message text. Supports `error[CODE]: msg` and legacy
+`path, line X, col Y: msg` formats."""
 def _extract_error_detail(error_output: str) -> str {
-    if ": " not in error_output {
+    # Structured format: severity[CODE]: message
+    bracket_colon = error_output.find("]: ");
+    if bracket_colon > 0 {
+        detail = error_output[bracket_colon + 3:].strip();
+        if "\n" in detail {
+            detail = detail.split("\n")[0].strip();
+        }
+        return detail;
+    }
+    # Legacy format: rfind last ': ' before any newline (location pattern)
+    first_line = error_output.split("\n")[0] if "\n" in error_output else error_output;
+    if ": " not in first_line {
         return "";
     }
-    last_colon = error_output.rfind(": ");
+    last_colon = first_line.rfind(": ");
     if last_colon <= 0 {
         return "";
     }
-    detail = error_output[last_colon + 2:].strip();
-    if "\n" in detail {
-        detail = detail.split("\n")[0].strip();
-    }
-    return detail;
+    return first_line[last_colon + 2:].strip();
 }
 
 impl CompilationErrorDetector.detect(
