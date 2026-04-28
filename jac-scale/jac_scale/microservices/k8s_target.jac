@@ -1,24 +1,38 @@
 """Kubernetes deployment target for microservice mode.
 
-K1 scope (done): scaffold KubernetesMicroserviceTarget(KubernetesTarget),
-wire into `jac start <file> --scale`, build image + emit pod-spec stubs.
+K1 (done): scaffold + image build + pod-spec stubs + factory dispatch.
+K2 (done): full Deployment + ClusterIP Service manifests per service.
+K3 (done): apply / destroy lifecycle via the kubernetes Python client.
+K4 (done): runtime DNS adapter (KubernetesDeployer + get_sv_registry).
 
-K2 scope (done): turn pod-spec stubs into full Deployment + ClusterIP
-Service manifests per service. `generate_manifests` returns a
-structured bundle with `deployments`, `services`, and the original
-`pod_specs`.
+K5 scope (this file): rolling-deploy correctness. Without these wires,
+every deploy drops requests; with them, rolling updates and pod evictions
+are graceful end-to-end.
 
-K3 scope (this file): apply the K2 manifest bundle via the kubernetes
-Python client. Order matters - Services first so DNS resolution works
-the moment the first pod becomes ready, then Deployments. Both ops
-are idempotent (read -> patch on exists, create on 404). `destroy` uses
-a label selector (`managed=jac-scale,jac-scale.role in (gateway,microservice)`)
-so it cleans up renamed services we no longer have manifests for.
+  1. Deployment.spec.strategy = RollingUpdate{maxSurge:1, maxUnavailable:0}
+     - never go below the current replica count during a rollout.
+  2. Container.readinessProbe + livenessProbe on /healthz - readiness
+     gates whether kube-proxy includes the pod in the Service endpoints
+     (so newly-booted pods don't get traffic until ready), liveness
+     restarts the pod if it hangs.
+  3. PodSpec.terminationGracePeriodSeconds = drain_timeout_seconds + 5
+     - K8s sends SIGTERM, our drain middleware (P13) flips the flag,
+     existing requests finish, uvicorn exits. The +5s cushion gives
+     uvicorn time to actually exit AFTER drain returns; without it
+     SIGKILL can arrive while the loop is still draining.
+  4. Container.lifecycle.preStop = sleep 5 - bridges the gap between
+     SIGTERM arriving at the pod and other nodes' kube-proxy tables
+     removing the pod from rotation. Without preStop sleep, the pod
+     stops accepting traffic BEFORE remote kube-proxy stops sending
+     it traffic - instant 503s for clients on existing connections.
 
-K3 still does NOT do rolling-deploy correctness (RollingUpdate strategy,
-readinessProbe, terminationGracePeriodSeconds, preStop hook). That's K5.
-K4 wires the runtime DNS adapter (KubernetesDeployer + get_sv_registry).
-K6 adds HPA + PodDisruptionBudget per service.
+K5 v1 uses /healthz for both readinessProbe and livenessProbe. The
+endpoint returns the full registry summary today, which means liveness
+will trip if a downstream dependency is degraded. A future task should
+split into /healthz/ready (gates traffic) and /healthz/live (gates
+restart) and point the probes at their respective endpoints.
+
+K6 adds HorizontalPodAutoscaler + PodDisruptionBudget per service.
 """
 
 import logging;
@@ -343,6 +357,54 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
+    """K5: read drain_timeout_seconds from config (defaults to 10s).
+
+    Used to size `terminationGracePeriodSeconds` on the pod spec so K8s
+    waits at least as long as our drain middleware needs to flush
+    in-flight requests, plus a 5s cushion for uvicorn to exit AFTER
+    drain returns.
+    """
+    def _drain_timeout -> int {
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            ms_cfg = get_scale_config().get_microservices_config();
+            return int(ms_cfg.get("drain_timeout_seconds", 10));
+        } except Exception {
+            return 10;
+        }
+    }
+
+    """K5: standard probe pointing at /healthz on the container port.
+
+    Used for both readinessProbe AND livenessProbe in K5 v1. Future:
+    split /healthz into /healthz/ready (gates traffic) and /healthz/live
+    (gates restart) so liveness doesn't trip on dependency degradation.
+    """
+    def _build_probe -> dict[str, Any] {
+        return {
+            "httpGet": {
+                "path": "/healthz",
+                "port": self.k8s_config.container_port
+            },
+            "initialDelaySeconds": 5,
+            "periodSeconds": 5,
+            "timeoutSeconds": 3,
+            "failureThreshold": 3
+        };
+    }
+
+    """K5: preStop hook that sleeps before SIGTERM-induced shutdown.
+
+    Bridges the kube-proxy endpoint-propagation gap. Kubelet sends
+    SIGTERM and updates the Endpoints object simultaneously, but
+    other nodes' kube-proxy tables don't reflect the removal for
+    a few seconds; without this sleep, the pod stops accepting work
+    BEFORE remote kube-proxy stops sending work, producing 503s.
+    """
+    def _build_prestop_hook -> dict[str, Any] {
+        return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
+    }
+
     """Build the image once and emit per-service pod-spec stubs.
 
     Returns a dict keyed by service name (plus `GATEWAY_NAME` for the
@@ -418,6 +480,17 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             },
             "spec": {
                 "replicas": 1,
+                # K5: surge a new pod before terminating an old one,
+                # never go below the current replica count during
+                # rollout. With drain + preStop on the pod side, this
+                # gives no-downtime rolling updates.
+                "strategy": {
+                    "type": "RollingUpdate",
+                    "rollingUpdate": {
+                        "maxSurge": 1,
+                        "maxUnavailable": 0
+                    }
+                },
                 "selector": {"matchLabels": {"app": k8s_name}},
                 "template": {
                     "metadata": {"labels": labels},
@@ -459,28 +532,42 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Per-service pod-spec stub. K2 will surround with Deployment metadata."""
+    """Per-service pod-spec stub. K2 wraps in Deployment metadata; K5
+    adds readiness/liveness probes, preStop hook, and grace period."""
     def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
+        drain_t: int = self._drain_timeout();
         return {
             "containers": [{
                 "name": svc_name,
                 "image": image,
                 "env": [{"name": "JAC_SV_NAME", "value": svc_name}],
-                "ports": [{"containerPort": self.k8s_config.container_port}]
-            }]
+                "ports": [{"containerPort": self.k8s_config.container_port}],
+                "readinessProbe": self._build_probe(),
+                "livenessProbe": self._build_probe(),
+                "lifecycle": {"preStop": self._build_prestop_hook()}
+            }],
+            # +5s cushion lets uvicorn finish exiting AFTER our drain
+            # middleware completes; without it, SIGKILL can arrive
+            # mid-drain.
+            "terminationGracePeriodSeconds": drain_t + 5
         };
     }
 
     """Gateway pod-spec stub. Same image as services; the entrypoint
     selects gateway-mode based on JAC_SV_NAME = GATEWAY_NAME."""
     def _build_gateway_pod_spec(image: str) -> dict[str, Any] {
+        drain_t: int = self._drain_timeout();
         return {
             "containers": [{
                 "name": "gateway",
                 "image": image,
                 "env": [{"name": "JAC_SV_NAME", "value": GATEWAY_NAME}],
-                "ports": [{"containerPort": self.k8s_config.container_port}]
-            }]
+                "ports": [{"containerPort": self.k8s_config.container_port}],
+                "readinessProbe": self._build_probe(),
+                "livenessProbe": self._build_probe(),
+                "lifecycle": {"preStop": self._build_prestop_hook()}
+            }],
+            "terminationGracePeriodSeconds": drain_t + 5
         };
     }
 }

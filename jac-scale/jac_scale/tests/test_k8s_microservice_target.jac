@@ -924,3 +924,141 @@ test "get_sv_registry hookimpl falls back gracefully when config read fails" {
         setattr(cfg_mod, "get_scale_config", original_cfg);
     }
 }
+
+
+# =============================================================================
+# K5 - rolling-deploy correctness (RollingUpdate + probes + grace + preStop)
+# =============================================================================
+
+test "Deployment carries RollingUpdate strategy with maxSurge=1 maxUnavailable=0" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    pod_spec = {"containers": [{"name": "orders", "image": "demo:latest"}]};
+    dep = target._build_deployment_manifest("orders", pod_spec);
+
+    strategy = dep["spec"]["strategy"];
+    assert strategy["type"] == "RollingUpdate";
+    # maxSurge=1 lets one new pod come up BEFORE an old one terminates;
+    # maxUnavailable=0 ensures we never go below current replicas during
+    # the rollout. Together: zero-downtime deploys assuming probes +
+    # preStop are configured (which K5 also does on the pod spec).
+    assert strategy["rollingUpdate"]["maxSurge"] == 1;
+    assert strategy["rollingUpdate"]["maxUnavailable"] == 0;
+}
+
+
+test "service pod-spec carries readinessProbe and livenessProbe on /healthz" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", container_port=8000)
+    );
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    container = spec["containers"][0];
+
+    # K5 v1: both probes hit /healthz; future split into
+    # /healthz/ready and /healthz/live is a separate task.
+    for probe_name in ["readinessProbe", "livenessProbe"] {
+        probe = container[probe_name];
+        assert probe["httpGet"]["path"] == "/healthz", (
+            f"{probe_name} should hit /healthz, got {probe['httpGet']}"
+        );
+        assert probe["httpGet"]["port"] == 8000;
+        assert probe["periodSeconds"] == 5;
+        assert probe["failureThreshold"] == 3;
+    }
+}
+
+
+test "service pod-spec carries lifecycle.preStop sleep" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    container = spec["containers"][0];
+
+    prestop = container["lifecycle"]["preStop"];
+    # The sleep bridges kube-proxy endpoint-propagation gap so the
+    # pod doesn't stop accepting work before remote nodes stop sending
+    # work. Without this, rolling deploy drops requests on every cycle.
+    assert "exec" in prestop;
+    cmd = prestop["exec"]["command"];
+    assert cmd[0] == "sh";
+    assert cmd[1] == "-c";
+    assert "sleep" in cmd[2];
+}
+
+
+test "pod-spec terminationGracePeriodSeconds = drain_timeout + 5 (default)" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+
+    # Default drain_timeout is 10s (memory + jfast_api default), so
+    # grace = 15s. The +5s cushion gives uvicorn time to actually
+    # exit AFTER drain returns; without it SIGKILL can land mid-drain.
+    assert spec["terminationGracePeriodSeconds"] == 15;
+}
+
+
+test "pod-spec terminationGracePeriodSeconds tracks drain_timeout config override" {
+    import jac_scale.config_loader as cfg_mod;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"drain_timeout_seconds": 60}  # 60s drain for slow services
+    ));
+
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        # 60 + 5 cushion = 65
+        assert spec["terminationGracePeriodSeconds"] == 65;
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+test "gateway pod-spec gets the same K5 wires (probes + grace + preStop)" {
+    # The gateway is a pod too - it also needs rolling-deploy correctness
+    # so deploys of the gateway itself don't drop user-facing requests.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", container_port=8000)
+    );
+    spec = target._build_gateway_pod_spec("demo:latest");
+    container = spec["containers"][0];
+
+    assert "readinessProbe" in container;
+    assert "livenessProbe" in container;
+    assert "lifecycle" in container;
+    assert container["lifecycle"]["preStop"]["exec"]["command"][0] == "sh";
+    assert spec["terminationGracePeriodSeconds"] == 15;  # default 10 + 5
+    # Gateway also keeps its JAC_SV_NAME=__gateway__ sentinel.
+    assert container["env"] == [{"name": "JAC_SV_NAME", "value": GATEWAY_NAME}];
+}
+
+
+test "_drain_timeout falls back to 10s default on config read failure" {
+    import jac_scale.config_loader as cfg_mod;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+
+    obj _ExplodingCfg {
+        def get_microservices_config -> dict[str, Any] {
+            raise RuntimeError("simulated config failure");
+        }
+    }
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _ExplodingCfg());
+
+    try {
+        # Should not raise; falls back to 10.
+        assert target._drain_timeout() == 10;
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
