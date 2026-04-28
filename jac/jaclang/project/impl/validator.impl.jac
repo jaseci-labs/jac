@@ -3,6 +3,7 @@
 import re;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
+import from jaclang.publish.metadata { normalize_constraint }
 
 # ===============================================================================
 # ValidationResult
@@ -17,66 +18,6 @@ impl ValidationResult.add_error(msg: str) -> None {
 
 impl ValidationResult.add_warning(msg: str) -> None {
     self.warnings.append(msg);
-}
-
-# ===============================================================================
-# Version constraint normalisation
-# ===============================================================================
-impl normalize_version_constraint(raw: str) -> str {
-    raw = raw.strip();
-
-    # Unconstrained
-    if not raw or raw in ("*", "latest") {
-        return "";
-    }
-
-    # npm caret: ^MAJOR[.MINOR[.PATCH]]
-    if raw.startswith("^") {
-        ver_str = raw[1:];
-        parts = ver_str.split(".");
-        try {
-            major = int(parts[0]) if parts else 0;
-            minor = int(parts[1]) if len(parts) > 1 else 0;
-            patch = int(parts[2]) if len(parts) > 2 else 0;
-        } except ValueError {
-            return raw;
-        }
-        # Pad to 3 components so the lower bound is unambiguous
-        padded = ".".join(parts + ["0"] * (3 - len(parts)));
-        if major > 0 {
-            return f">={padded},<{major + 1}.0.0";
-        } elif minor > 0 {
-            return f">={padded},<{major}.{minor + 1}.0";
-        } else {
-            return f">={padded},<{major}.{minor}.{patch + 1}";
-        }
-    }
-
-    # npm tilde: ~MAJOR.MINOR  (NOT Python ~= compatible-release)
-    if raw.startswith("~") and not raw.startswith("~=") {
-        ver_str = raw[1:];
-        parts = ver_str.split(".");
-        try {
-            major = int(parts[0]) if parts else 0;
-            minor = int(parts[1]) if len(parts) > 1 else 0;
-        } except ValueError {
-            return raw;
-        }
-        padded = ".".join(parts + ["0"] * (3 - len(parts)));
-        return f">={padded},<{major}.{minor + 1}.0";
-    }
-
-    # PEP 440 specifier operators → pass through unchanged
-    if raw[0] in (">", "<", "!", "~", "=") {
-        return raw;
-    }
-
-    # Bare version number → exact match
-    if re.match(r"^\d", raw) {
-        return f"=={raw}";
-    }
-
-    return raw;
 }
 
 # ===============================================================================
@@ -194,7 +135,7 @@ impl validate_package(
 
     # ── [dependencies] version constraints ──────────────────────────────────
     for (dep_name, raw_ver) in config.dependencies.items() {
-        normalised = normalize_version_constraint(raw_ver);
+        normalised = normalize_constraint(raw_ver);
         if normalised {
             spec_err = _validate_version_specifier(normalised);
             if spec_err {
@@ -208,7 +149,7 @@ impl validate_package(
 
     # ── [dev-dependencies] version constraints ───────────────────────────────
     for (dep_name, raw_ver) in config.dev_dependencies.items() {
-        normalised = normalize_version_constraint(raw_ver);
+        normalised = normalize_constraint(raw_ver);
         if normalised {
             spec_err = _validate_version_specifier(normalised);
             if spec_err {
@@ -223,7 +164,7 @@ impl validate_package(
     # ── [optional-dependencies] version constraints ──────────────────────────
     for (group, deps) in config.optional_dependencies.items() {
         for (dep_name, raw_ver) in deps.items() {
-            normalised = normalize_version_constraint(raw_ver);
+            normalised = normalize_constraint(raw_ver);
             if normalised {
                 spec_err = _validate_version_specifier(normalised);
                 if spec_err {

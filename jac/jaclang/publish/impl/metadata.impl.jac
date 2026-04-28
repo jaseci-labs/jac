@@ -14,7 +14,7 @@ impl normalize_package_name(name: str) -> str {
 # ===============================================================================
 # build_person_header
 # ===============================================================================
-impl build_person_header(persons: list[PersonConfig]) -> str {
+def build_person_header(persons: list[PersonConfig]) -> str {
     parts: list[str] = [];
     for p in persons {
         if p.name and p.email {
@@ -105,7 +105,7 @@ impl build_requires_dist(name: str, raw_ver: str, extra: str | None = None) -> s
 # ===============================================================================
 # readme_content_type
 # ===============================================================================
-impl readme_content_type(readme_filename: str) -> str {
+def readme_content_type(readme_filename: str) -> str {
     ext = Path(readme_filename).suffix.lower();
     if ext == ".md" {
         return "text/markdown";
@@ -204,33 +204,4 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
     }
 
     return "\n".join(lines);
-}
-
-# ===============================================================================
-# parse_metadata
-# ===============================================================================
-impl parse_metadata(text: str) -> dict[str, list[str]] {
-    result: dict[str, list[str]] = {};
-    lines = text.splitlines();
-    body_start: int | None = None;
-
-    for (i, line) in enumerate(lines) {
-        if line == "" {
-            body_start = i + 1;
-            break;
-        }
-        if ": " in line {
-            (key, _, value) = line.partition(": ");
-            if key not in result {
-                result[key] = [];
-            }
-            result[key].append(value);
-        }
-    }
-
-    if body_start is not None {
-        result["body"] = ["\n".join(lines[body_start:])];
-    }
-
-    return result;
 }

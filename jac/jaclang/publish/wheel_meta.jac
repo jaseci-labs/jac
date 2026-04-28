@@ -14,9 +14,6 @@ def generate_wheel_file(
 """Generate .dist-info/entry_points.txt content from a JacConfig; returns empty string when no [entrypoints]."""
 def generate_entry_points(config: JacConfig) -> str;
 
-"""Parse an entry_points.txt string back to dict[group → dict[name → ref]]."""
-def parse_entry_points(text: str) -> dict[str, dict[str, str]];
-
 """Build the canonical .whl filename (PEP 427); raises ValueError when config.package is None."""
 def wheel_filename(
     config: JacConfig,

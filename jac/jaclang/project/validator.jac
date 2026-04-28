@@ -17,9 +17,6 @@ obj ValidationResult {
     def add_warning(msg: str) -> None;
 }
 
-"""Convert a version constraint (^, ~, bare, PEP 440) to a pip-compatible specifier string."""
-def normalize_version_constraint(raw: str) -> str;
-
 """Validate the [package], dependencies, and entrypoints sections of a JacConfig; return a ValidationResult."""
 def validate_package(
     config: JacConfig, project_root: Path | None = None

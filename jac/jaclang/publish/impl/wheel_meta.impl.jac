@@ -3,6 +3,16 @@
 import from jaclang.project.config { JacConfig }
 import from jaclang.publish.metadata { normalize_package_name }
 
+glob _JAC_VERSION: str = "";
+
+
+import jaclang as _jac_mod;
+
+
+def _pkg_norm_name(config: JacConfig) -> str {
+    return normalize_package_name(config.package.name).replace("-", "_");
+}
+
 # ===============================================================================
 # generate_wheel_file
 # ===============================================================================
@@ -13,17 +23,8 @@ impl generate_wheel_file(
     abi_tag: str = "none",
     platform_tag: str = "any",
 ) -> str {
-    # Try to get the installed jaclang version for the generator tag
-    if not generator_version {
-        try {
-            import jaclang;
-            generator_version = getattr(jaclang, "__version__", "");
-        } except Exception {
-            generator_version = "";
-        }
-    }
-
-    generator_str = f"jac ({generator_version})" if generator_version else "jac";
+    ver = generator_version or _JAC_VERSION;
+    generator_str = f"jac ({ver})" if ver else "jac";
     purelib_str = "true" if pure_python else "false";
     tag_str = f"{python_tag}-{abi_tag}-{platform_tag}";
 
@@ -68,30 +69,6 @@ impl generate_entry_points(config: JacConfig) -> str {
 }
 
 # ===============================================================================
-# parse_entry_points
-# ===============================================================================
-impl parse_entry_points(text: str) -> dict[str, dict[str, str]] {
-    result: dict[str, dict[str, str]] = {};
-    current_group: str | None = None;
-
-    for line in text.splitlines() {
-        line = line.strip();
-        if not line or line.startswith("#") {
-            continue;
-        }
-        if line.startswith("[") and line.endswith("]") {
-            current_group = line[1:-1];
-            result[current_group] = {};
-        } elif "=" in line and current_group is not None {
-            (ep_name, _, ref) = line.partition("=");
-            result[current_group][ep_name.strip()] = ref.strip();
-        }
-    }
-
-    return result;
-}
-
-# ===============================================================================
 # wheel_filename
 # ===============================================================================
 impl wheel_filename(
@@ -105,10 +82,7 @@ impl wheel_filename(
             "Cannot build wheel filename: [package] section is missing in jac.toml"
         );
     }
-    # PEP 427: hyphens in the name become underscores in the filename
-    name = normalize_package_name(config.package.name).replace("-", "_");
-    version = config.package.version;
-    return f"{name}-{version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
+    return f"{_pkg_norm_name(config)}-{config.package.version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
 }
 
 # ===============================================================================
@@ -120,6 +94,5 @@ impl dist_info_dirname(config: JacConfig) -> str {
             "Cannot build dist-info name: [package] section is missing in jac.toml"
         );
     }
-    name = normalize_package_name(config.package.name).replace("-", "_");
-    return f"{name}-{config.package.version}.dist-info";
+    return f"{_pkg_norm_name(config)}-{config.package.version}.dist-info";
 }
