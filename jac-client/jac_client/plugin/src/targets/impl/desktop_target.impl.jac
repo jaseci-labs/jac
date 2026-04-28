@@ -2875,6 +2875,34 @@ except Exception as e:
 # Note: collect_all() already handles submodules, data files, and binaries
 # No need for separate collect_submodules() calls
 
+# Drop bundled test/benchmark data that bloats the sidecar and can push
+# nested paths past Windows MAX_PATH (260 chars). The litellm package
+# ships benchmark JSONs at e.g.
+#   litellm/proxy/guardrails/guardrail_hooks/<provider>/guardrail_benchmarks/results/<long-name>.json
+# which combined with the runner checkout root and Tauri's binaries staging
+# directory exceed MAX_PATH and break NSIS/WiX bundling on Windows.
+# Match against the dest path; substring check, case-insensitive, slash-normalized.
+EXCLUDE_DATA_PATTERNS = [
+    'guardrail_benchmarks',          # litellm benchmark JSONs (causes Windows bundle failure)
+    'litellm/tests',                 # tests, runtime-irrelevant
+    'litellm/proxy/tests',
+    'litellm/proxy/example_config_yaml',
+]
+
+def _should_exclude(dest):
+    if not dest:
+        return False
+    # chr(92) is backslash; avoids brittle escape-counting through the jac
+    # template string into the generated spec.
+    norm = dest.replace(chr(92), '/').lower()
+    return any(pat in norm for pat in EXCLUDE_DATA_PATTERNS)
+
+_pre_d = len(datas)
+datas = [(s, d) for s, d in datas if not _should_exclude(d)]
+_pre_b = len(binaries)
+binaries = [(s, d) for s, d in binaries if not _should_exclude(d)]
+print(f"\\n[Excluded {{_pre_d - len(datas)}} data files, {{_pre_b - len(binaries)}} binaries from sidecar (MAX_PATH/bloat protection)]")
+
 a = Analysis(
     [r'{entry_script}'],
     pathex=[str(project_dir)],

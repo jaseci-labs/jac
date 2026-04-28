@@ -249,6 +249,43 @@ cl def render_example() {
 }
 ```
 
+#### JSX Body Comments
+
+Inside JSX content, `#` is literal text, not a comment marker. To write a comment inside a JSX body, wrap a block comment in braces: `{#* ... *#}`.
+
+In a `.cl.jac` file:
+
+```jac
+"""Status list component."""
+
+def:pub StatusList(items: list, selected: str = "") -> JsxElement {
+    return
+        <ul>
+            {#* each item renders as a status badge *#}
+            {[<li key={item.id}>{item.label}</li> for item in items]}
+            {#* selection shown only when active *#}
+            {<p>Selected: {selected}</p> if selected else ""}
+        </ul>;
+}
+```
+
+In a `.jac` file, use the `to cl:` section header:
+
+```jac
+to cl:
+def StatusList(items: list, selected: str = "") -> JsxElement {
+    return
+        <ul>
+            {#* each item renders as a status badge *#}
+            {[<li key={item.id}>{item.label}</li> for item in items]}
+        </ul>;
+}
+```
+
+The parser silently drops comment-only braces: `{#* ... *#}` produces no child node and nothing is rendered to the DOM. The formatter preserves them in place across `jac format` round-trips.
+
+A bare `#` inside JSX content produces literal hash text in the DOM, not a comment.
+
 #### JSX Transpilation
 
 JSX elements compile to function calls:

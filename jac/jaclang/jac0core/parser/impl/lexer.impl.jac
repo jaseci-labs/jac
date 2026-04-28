@@ -249,6 +249,66 @@ impl Lexer.skip_block_comment -> bool {
     return False;
 }
 
+"""Pure peek: does the upcoming input match `{ \\s* #* ... *# \\s* }`?
+Returns True/False without mutating lexer state.  Caller must be in
+JSX_CONTENT mode and on `{`."""
+impl Lexer.is_at_jsx_block_comment -> bool {
+    if self.current() != "{" {
+        return False;
+    }
+    src = self.source;
+    n = self._source_len;
+    i = self.pos + 1;
+    while i < n and self.is_whitespace(src[i]) {
+        i += 1;
+    }
+    if (i + 1) >= n or src[i] != "#" or src[i + 1] != "*" {
+        return False;
+    }
+    i += 2;
+    while (i + 1) < n {
+        if src[i] == "*" and src[i + 1] == "#" {
+            i += 2;
+            while i < n and self.is_whitespace(src[i]) {
+                i += 1;
+            }
+            return i < n and src[i] == "}";
+        }
+        i += 1;
+    }
+    return False;
+}
+
+"""Consume `{ \\s* #* ... *# \\s* }` and emit a JSX_BLOCK_COMMENT token.
+Caller must verify `is_at_jsx_block_comment()` first; this scan
+trusts the pattern matches and walks through it unconditionally."""
+impl Lexer.scan_jsx_block_comment(
+    start_line: int, start_col: int, start_pos: int
+) -> Token {
+    self.advance();  # {
+    while not self.at_end() and self.is_whitespace(self.current()) {
+        self.advance();
+    }
+    self.advance();  # #
+    self.advance();  # *
+    while not self.at_end() and not (self.current() == "*" and self.peek() == "#") {
+        self.advance();
+    }
+    self.advance();  # *
+    self.advance();  # #
+    while not self.at_end() and self.is_whitespace(self.current()) {
+        self.advance();
+    }
+    self.advance();  # }
+    return self.make_token(
+        TokenKind.JSX_BLOCK_COMMENT,
+        self.source[start_pos:self.pos],
+        start_line,
+        start_col,
+        start_pos
+    );
+}
+
 impl Lexer.skip_whitespace_and_comments{
     while not self.at_end() {
         ch = self.current();
@@ -950,6 +1010,11 @@ impl Lexer.scan_jsx_content -> Token {
     }
     # Opening brace for expression: {expr}
     if ch == "{" {
+        # JSX block-comment fast path: fuse `{ #* ... *# }` into one
+        # JSX_BLOCK_COMMENT token if the upcoming input matches.
+        if self.is_at_jsx_block_comment() {
+            return self.scan_jsx_block_comment(start_line, start_col, start_pos);
+        }
         self.advance();
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
@@ -1424,6 +1489,20 @@ impl Lexer.scan_operator -> Token {
                 TokenKind.D_RBRACE, "}}", start_line, start_col, start_pos
             );
         }
+    }
+    # Detect `=>` atomically before the single-char switch — keeps `>` from
+    # leaking into JSX tag context and cascading into "Missing }" errors.
+    if self.match_string("=>") {
+        self.error(
+            "JavaScript arrow function syntax ('=>') is not supported in Jac",
+            start_line,
+            start_col,
+            start_pos,
+            code_str="E0025"
+        );
+        return self.make_token(
+            TokenKind.ERROR, "=>", start_line, start_col, start_pos
+        );
     }
     # Single-character operators and delimiters
     self.advance();

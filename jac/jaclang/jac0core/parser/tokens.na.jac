@@ -217,6 +217,7 @@ enum TokenKind {
     JSX_FRAG_OPEN = "<>",
     JSX_FRAG_CLOSE = "</>",
     JSX_NAME = "JSX_NAME",
+    JSX_BLOCK_COMMENT = "JSX_BLOCK_COMMENT",
     COMMENT = "COMMENT",
     WS = "WS",
     NEWLINE = "NEWLINE",
