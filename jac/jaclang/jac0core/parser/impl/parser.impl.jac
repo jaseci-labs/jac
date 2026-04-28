@@ -126,7 +126,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
 
 import from jaclang.jac0core.constant { Tokens as Tok, SymbolAccess, SymbolType }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
@@ -814,6 +814,32 @@ impl Parser.parse_expression -> Expr {
         return self.parse_lambda_expr();
     }
     expr = self.parse_concurrent_expr();
+    # `=>` recovery: lexer emitted E0025; drain the RHS — a brace-balanced
+    # block or a single expression — so parsing continues cleanly.
+    if self.check(TokenKind.ERROR) {
+        self.advance();
+        if self.check(TokenKind.LBRACE) {
+            depth = 0;
+            while not self.at_end() {
+                if self.check(TokenKind.LBRACE) {
+                    depth += 1;
+                } elif self.check(TokenKind.RBRACE) {
+                    if depth > 0 {
+                        depth -= 1;
+                        if depth == 0 {
+                            self.advance();
+                            break;
+                        }
+                    } else {
+                        break;
+                    }
+                }
+                self.advance();
+            }
+        } else {
+            self.parse_concurrent_expr();
+        }
+    }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
         condition = self.parse_expression();
@@ -2027,6 +2053,10 @@ impl Parser.parse_special_ref -> Expr {
 }
 
 impl Parser.parse_atom -> Expr {
+    # Lexer already diagnosed the ERROR token; consume to skip duplicate E0004.
+    if self.check(TokenKind.ERROR) {
+        return self.make_name(self.advance());
+    }
     # Literals: INT, HEX, BIN, OCT, FLOAT, BOOL, NULL, ELLIPSIS
     if self.check_any(
         TokenKind.INT,
@@ -3348,7 +3378,35 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
-    # Expression: {expr}
+    # JSX block-comment slot: lexer emits one JSX_BLOCK_COMMENT token
+    # spanning `{ #* ... *# }`.  Slice out the inner `#* ... *#` for the
+    # CommentToken; the slot token itself is the kid — its real source
+    # positions are needed for source maps and doc-IR anchoring, so do
+    # not synthesize LBRACE/RBRACE here (normalize_pass leaves it alone
+    # for the same reason).
+    if self.check(TokenKind.JSX_BLOCK_COMMENT) {
+        jsx_cmt = self.advance();
+        slot_text = jsx_cmt.value;
+        cmt_s = slot_text.find("#*");
+        cmt_e = slot_text.rfind("*#") + 2;
+        ct = CommentToken(
+            orig_src=self.get_source(),
+            name="COMMENT",
+            value=slot_text[cmt_s:cmt_e],
+            line=jsx_cmt.loc.line,
+            end_line=jsx_cmt.loc.end_line,
+            col_start=jsx_cmt.loc.col_start + cmt_s,
+            col_end=jsx_cmt.loc.col_start + cmt_e,
+            pos_start=jsx_cmt.loc.pos_start + cmt_s,
+            pos_end=jsx_cmt.loc.pos_start + cmt_e,
+            kid=[],
+            is_inline=False
+        );
+        return JsxComment(comment=ct, kid=[self.make_uni_token(jsx_cmt)]);
+    }
+    # Expression: {expr}.  Bare `{}` / `{   }` is rejected by
+    # parse_expression (RBRACE is not a valid expression start) — same
+    # as TSX, deliberately.
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
         lbrace_uni = self.make_uni_token(lbrace);

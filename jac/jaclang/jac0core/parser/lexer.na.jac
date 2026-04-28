@@ -90,6 +90,11 @@ obj Lexer {
     def scan_jsx_tag_token -> Token;
     def scan_jsx_content -> Token;
     def scan_jsx_expr_token -> Token;
+    def is_at_jsx_block_comment -> bool;
+    def scan_jsx_block_comment(
+        start_line: int, start_col: int, start_pos: int
+    ) -> Token;
+
     def scan_regular_token -> Token;
     def scan_pynline -> Token;
     def scan_operator -> Token;

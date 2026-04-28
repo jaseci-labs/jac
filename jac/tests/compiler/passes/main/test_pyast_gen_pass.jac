@@ -418,3 +418,45 @@ test "ClassVar import stays runtime-visible (dataclass can find it)" {
         sys.modules.pop(mod.__name__, None);
     }
 }
+
+"""Regression: JSX-body comments must compile to nothing — `_jaclib.jsx`
+children list must not contain `None` slots.  Reading `c.gen.py_ast[0]`
+on a JsxComment would IndexError on the default `[]`."""
+test "jsx comment filtered from python runtime children" {
+    code = """def app -> JsxElement {
+    return <section>{#* drop me *#}<span>kept</span>{#* and me *#}</section>;
+}
+""";
+    prog = JacProgram();
+    code_gen = prog.compile(file_path="test_jsx_comment.jac", use_str=code);
+    assert not prog.errors_had , (
+        f"Compile errors: {[str(e) for e in prog.errors_had]}"
+    );
+    assert code_gen.gen.py_ast , "py_ast not generated";
+    py_src = ast3.unparse(code_gen.gen.py_ast[0]);
+
+    # Compiled code must reference the JSX runtime call site.
+    assert "jsx" in py_src , "JSX runtime call missing in:\n" + py_src;
+
+    # The children list passed to the runtime must not contain `None`
+    # for the comment slots.  The two JsxComment children must be
+    # filtered out, leaving only the <span> child.
+    assert "None" not in py_src , (
+        "JsxComment leaked into Python runtime as `None`.  Check "
+        "`PyJsxProcessor.element`'s `isinstance(c, uni.JsxComment)` "
+        "filter:\n" + py_src
+    );
+    assert "kept" in py_src , ("Real JSX child <span>kept</span> was lost:\n" + py_src);
+
+    # End-to-end runtime sanity: compile + exec the module.  This is the
+    # real signal — if a JsxComment ever reached `c.gen.py_ast[0]` the
+    # AST build itself would IndexError before we got here.
+    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    mod = types.ModuleType("jsx_comment_runtime_fixture_under_test");
+    sys.modules[mod.__name__] = mod;
+    try {
+        exec(compiled, mod.__dict__);
+    } finally {
+        sys.modules.pop(mod.__name__, None);
+    }
+}
