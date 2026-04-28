@@ -99,7 +99,6 @@ Selected automatically by `_scale_pre_hook` when
 under the type name `"kubernetes-microservice"`.
 """
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
-
     """Generate K8s manifests AND apply them to the cluster (K3 scope).
 
     deploy() now: build image -> generate manifests -> apply via the
@@ -125,8 +124,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             bundle = self.generate_manifests(app_config);
         } except Exception as e {
             return DeploymentResult(
-                success=False,
-                message=f"manifest generation failed: {e}"
+                success=False, message=f"manifest generation failed: {e}"
             );
         }
 
@@ -134,9 +132,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             self.apply_manifests(bundle);
         } except Exception as e {
             return DeploymentResult(
-                success=False,
-                message=f"manifest apply failed: {e}",
-                details=bundle
+                success=False, message=f"manifest apply failed: {e}", details=bundle
             );
         }
 
@@ -158,7 +154,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     target machinery. Splitting out as a helper so apply_manifests +
     destroy can both call it without duplicating the try/except.
     """
-    def _load_kube_config -> None {
+    def _load_kube_config {
         try {
             k8s_cluster_config.load_kube_config();
         } except ConfigException {
@@ -177,7 +173,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     a transient "no targets" warning. Each apply is idempotent (read ->
     patch on exists; create on 404).
     """
-    def apply_manifests(bundle: dict[str, Any]) -> None {
+    def apply_manifests(bundle: dict[str, Any]) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
@@ -246,9 +242,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # transient "no backend" event.
         ingress_manifest: Any = bundle.get("ingress");
         if ingress_manifest {
-            self._apply_or_replace_ingress(
-                networking_v1, namespace, ingress_manifest
-            );
+            self._apply_or_replace_ingress(networking_v1, namespace, ingress_manifest);
             if self.logger {
                 self.logger.info(
                     "Applied Ingress for gateway",
@@ -261,7 +255,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Idempotent Service apply - read first, patch on hit, create on 404."""
     def _apply_or_replace_service(
         core_v1: Any, namespace: str, manifest: dict[str, Any]
-    ) -> None {
+    ) {
         name: str = manifest["metadata"]["name"];
         try {
             core_v1.read_namespaced_service(name=name, namespace=namespace);
@@ -270,9 +264,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         } except ApiException as e {
             if e.status == 404 {
-                core_v1.create_namespaced_service(
-                    namespace=namespace, body=manifest
-                );
+                core_v1.create_namespaced_service(namespace=namespace, body=manifest);
             } else {
                 raise;
             }
@@ -288,7 +280,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """
     def _apply_or_replace_deployment(
         apps_v1: Any, namespace: str, manifest: dict[str, Any]
-    ) -> None {
+    ) {
         name: str = manifest["metadata"]["name"];
         try {
             apps_v1.read_namespaced_deployment(name=name, namespace=namespace);
@@ -309,7 +301,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Idempotent HPA apply - mirrors _apply_or_replace_deployment shape."""
     def _apply_or_replace_hpa(
         autoscaling_v2: Any, namespace: str, manifest: dict[str, Any]
-    ) -> None {
+    ) {
         name: str = manifest["metadata"]["name"];
         try {
             autoscaling_v2.read_namespaced_horizontal_pod_autoscaler(
@@ -332,7 +324,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Idempotent PDB apply - mirrors _apply_or_replace_deployment shape."""
     def _apply_or_replace_pdb(
         policy_v1: Any, namespace: str, manifest: dict[str, Any]
-    ) -> None {
+    ) {
         name: str = manifest["metadata"]["name"];
         try {
             policy_v1.read_namespaced_pod_disruption_budget(
@@ -355,12 +347,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """K10: Idempotent Ingress apply - mirrors the deployment shape."""
     def _apply_or_replace_ingress(
         networking_v1: Any, namespace: str, manifest: dict[str, Any]
-    ) -> None {
+    ) {
         name: str = manifest["metadata"]["name"];
         try {
-            networking_v1.read_namespaced_ingress(
-                name=name, namespace=namespace
-            );
+            networking_v1.read_namespaced_ingress(name=name, namespace=namespace);
             networking_v1.patch_namespaced_ingress(
                 name=name, namespace=namespace, body=manifest
             );
@@ -388,7 +378,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     microservice mode (we always tear down the whole label-selected
     set, not individual components).
     """
-    def destroy(app_name: str, component: str = "") -> None {
+    def destroy(app_name: str, component: str = "") {
         if self.logger {
             self.logger.info(
                 f"Destroying microservice topology in namespace "
@@ -413,9 +403,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # the role-less label selector since they only carry the basic
         # `managed=jac-scale` label (PDBs select pods by app=<name>, not
         # role; the role label is only on Deployments + their templates).
-        selector: str = (
-            "managed=jac-scale,jac-scale.role in (microservice,gateway)"
-        );
+        selector: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)";
         ms_selector: str = "managed=jac-scale";
 
         # Deployments first - delete_collection_namespaced_deployment
@@ -467,10 +455,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         # Services - no batched delete_collection helper for v1.Service,
-        # so list-then-delete by name. Idempotent: ignore 404s.
+        # so list-then-delete by name. Use the role-LESS selector since
+        # Service manifests only carry `app=<name>` + `managed=jac-scale`,
+        # not the `jac-scale.role` label that's only on Deployments and
+        # their pod templates. (Found by CI: the strict selector left
+        # Services orphaned because they don't match it.)
         try {
             services = core_v1.list_namespaced_service(
-                namespace=namespace, label_selector=selector
+                namespace=namespace, label_selector=ms_selector
             );
             for svc in services.items {
                 try {
@@ -507,9 +499,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         hpas: dict[str, dict[str, Any]] = {};
         pdbs: dict[str, dict[str, Any]] = {};
         for (svc_name, pod_spec) in pod_specs.items() {
-            deployments[svc_name] = self._build_deployment_manifest(
-                svc_name, pod_spec
-            );
+            deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
             # K7: HPA / PDB builders return None when the user opts out
             # via [...services.NAME.{hpa,pdb}].enabled = false. Skip
@@ -587,9 +577,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     follow. List shape matches the K8s container.env schema.
     """
     def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, str]] {
-        env: list[dict[str, str]] = [
-            {"name": "JAC_SV_NAME", "value": svc_name}
-        ];
+        env: list[dict[str, str]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
         extra: dict[str, Any] = svc_cfg.get("env", {});
         for (k, v) in extra.items() {
             if k == "JAC_SV_NAME" {
@@ -663,10 +651,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """
     def _build_probe -> dict[str, Any] {
         return {
-            "httpGet": {
-                "path": "/healthz",
-                "port": self.k8s_config.container_port
-            },
+            "httpGet": {"path": "/healthz", "port": self.k8s_config.container_port},
             "initialDelaySeconds": 5,
             "periodSeconds": 5,
             "timeoutSeconds": 3,
@@ -697,9 +682,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     `KubernetesTarget`, so `app_config.build = False` short-circuits to
     the configured python_image fallback (handy for tests).
     """
-    def generate_service_pod_specs(
-        app_config: AppConfig
-    ) -> dict[str, dict[str, Any]] {
+    def generate_service_pod_specs(app_config: AppConfig) -> dict[str, dict[str, Any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
         image: str = self._handle_image_registry(app_name, app_config);
 
@@ -770,16 +753,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 # gives no-downtime rolling updates.
                 "strategy": {
                     "type": "RollingUpdate",
-                    "rollingUpdate": {
-                        "maxSurge": 1,
-                        "maxUnavailable": 0
-                    }
+                    "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}
                 },
                 "selector": {"matchLabels": {"app": k8s_name}},
-                "template": {
-                    "metadata": {"labels": labels},
-                    "spec": pod_spec
-                }
+                "template": {"metadata": {"labels": labels}, "spec": pod_spec}
             }
         };
     }
@@ -805,13 +782,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "spec": {
                 "type": "ClusterIP",
                 "selector": {"app": k8s_name},
-                "ports": [
-                    {
-                        "protocol": "TCP",
-                        "port": port,
-                        "targetPort": port
-                    }
-                ]
+                "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
             }
         };
     }
@@ -854,10 +825,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                         "type": "Resource",
                         "resource": {
                             "name": "cpu",
-                            "target": {
-                                "type": "Utilization",
-                                "averageUtilization": cpu
-                            }
+                            "target": {"type": "Utilization", "averageUtilization": cpu}
                         }
                     }
                 ]

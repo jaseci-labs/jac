@@ -258,9 +258,9 @@ def start_gateway_only(ms_config: dict[str, Any]) -> None {
     gateway_host = ms_config.get("gateway_host", "0.0.0.0");
 
     client_config = ms_config.get("client", {});
-    client_dist: str = str(dict(client_config).get(
-        "dist_dir", ".jac/client/dist"
-    )) if client_config else ".jac/client/dist";
+    client_dist: str = str(dict(client_config).get("dist_dir", ".jac/client/dist"))
+        if client_config
+        else ".jac/client/dist";
 
     static_mounts: list[dict[str, str]] = [];
     if client_config {
@@ -274,10 +274,9 @@ def start_gateway_only(ms_config: dict[str, Any]) -> None {
             url_prefix = str(ed.get("url_prefix", "")).strip();
             local_path = str(ed.get("local_path", "")).strip();
             if url_prefix and local_path {
-                static_mounts.append({
-                    "url_prefix": url_prefix,
-                    "local_path": local_path,
-                });
+                static_mounts.append(
+                    {"url_prefix": url_prefix, "local_path": local_path,}
+                );
             }
         }
     }

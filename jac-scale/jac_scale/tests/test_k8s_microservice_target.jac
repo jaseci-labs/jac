@@ -718,8 +718,8 @@ test "destroy uses jac-scale label selector" {
 
     try {
         target.destroy("demo");
-        # Selector matches managed=jac-scale + role in (microservice, gateway)
-        # so renamed services are still cleaned up.
+        # Deployments use the strict role-bearing selector (their pod
+        # templates carry jac-scale.role).
         kwargs = mock_apps_v1.delete_collection_namespaced_deployment.call_args.kwargs;
         assert kwargs["namespace"] == "prod";
         sel: str = kwargs["label_selector"];
@@ -728,9 +728,12 @@ test "destroy uses jac-scale label selector" {
         assert "microservice" in sel;
         assert "gateway" in sel;
 
-        # Services list+delete uses the same selector.
+        # Services use the role-LESS selector since their manifests only
+        # carry `app=<name>` + `managed=jac-scale` (no jac-scale.role
+        # label - that's only on Deployments). CI caught this when the
+        # strict selector left Services orphaned after destroy.
         list_kwargs = mock_core_v1.list_namespaced_service.call_args.kwargs;
-        assert list_kwargs["label_selector"] == sel;
+        assert list_kwargs["label_selector"] == "managed=jac-scale";
     } finally {
         k8s_restore();
     }

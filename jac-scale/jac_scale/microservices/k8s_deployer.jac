@@ -21,10 +21,7 @@ calls - they're stubbed to no-op in K4 because:
 import logging;
 import from typing { Any }
 import from jac_scale.microservices.deployer { ServiceDeployer }
-import from jac_scale.microservices.service_registry {
-    ServiceRegistry,
-    ServiceEntry
-}
+import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
 import from jac_scale.microservices.k8s_target { k8s_safe_name }
 
 glob logger = logging.getLogger(__name__);
@@ -64,8 +61,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     def url_for(service_entry: ServiceEntry) -> str {
         name = k8s_safe_name(service_entry.name);
         return (
-            f"http://{name}-service.{self.namespace}"
-            f".svc.cluster.local:{self.port}"
+            f"http://{name}-service.{self.namespace}" f".svc.cluster.local:{self.port}"
         );
     }
 

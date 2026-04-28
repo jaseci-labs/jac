@@ -646,16 +646,12 @@ class JacCmd {
                 # service spawning (K8s manages service pods); just runs
                 # the MicroserviceGateway, which uses get_sv_registry to
                 # resolve services via DNS in cluster.
-                import from jac_scale.microservices.orchestrator {
-                    start_gateway_only
-                }
+                import from jac_scale.microservices.orchestrator { start_gateway_only }
                 start_gateway_only(ms_config);
                 return 0;
             } else {
                 console.print(f"[bold red]Unknown action:[/bold red] '{action}'");
-                console.print(
-                    "Actions: status, stop, restart, logs, destroy, gateway"
-                );
+                console.print("Actions: status, stop, restart, logs, destroy, gateway");
                 return 1;
             }
 
