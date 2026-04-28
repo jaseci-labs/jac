@@ -16,7 +16,7 @@ import from subprocess { PIPE, STDOUT, Popen, run }
 import from urllib.error { HTTPError, URLError }
 import from urllib.request { Request, urlopen }
 
-import from .test_helpers {
+import from test_helpers {
     get_env_with_npm,
     get_free_port,
     get_jac_command,
@@ -245,7 +245,9 @@ test "all in one app endpoints" {
 
                 # "/" - server up
                 try {
-                    print("[DEBUG] Sending GET request to root endpoint / (with retry)");
+                    print(
+                        "[DEBUG] Sending GET request to root endpoint / (with retry)"
+                    );
                     root_bytes = _wait_for_endpoint(
                         f"http://127.0.0.1:{server_port}",
                         timeout=120.0,
@@ -363,8 +365,7 @@ test "all in one app endpoints" {
                         "Worker JS should not be empty"
                     );
                     assert (
-                        "postMessage" in worker_js_body
-                        or "onmessage" in worker_js_body
+                        "postMessage" in worker_js_body or "onmessage" in worker_js_body
                     ) , "Worker JS should contain a message handler";
                 } except (
                     URLError,
@@ -443,12 +444,9 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/register endpoint");
                     register_payload = {
-                        "identities": [
-                            {"type": "username", "value": test_username}
-                        ],
-                        "credential": {
-                            "type": "password", "password": test_password
-                        },
+                        "identities": [{"type": "username", "value": test_username}],
+                        "credential": {"type": "password", "password": test_password},
+
                     };
                     req_register = Request(
                         f"http://127.0.0.1:{server_port}/user/register",
@@ -467,7 +465,9 @@ test "all in one app endpoints" {
                         );
                         assert resp_register.status == 201;
                         register_response = json.loads(register_body);
-                        register_data = register_response.get("data", register_response);
+                        register_data = register_response.get(
+                            "data", register_response
+                        );
                         assert "username" in register_data;
                         assert "token" in register_data;
                         assert "root_id" in register_data;
@@ -489,12 +489,9 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/login endpoint");
                     login_payload = {
-                        "identity": {
-                            "type": "username", "value": test_username
-                        },
-                        "credential": {
-                            "type": "password", "password": test_password
-                        },
+                        "identity": {"type": "username", "value": test_username},
+                        "credential": {"type": "password", "password": test_password},
+
                     };
                     req_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",
@@ -530,12 +527,12 @@ test "all in one app endpoints" {
                         "[DEBUG] Sending POST request to /user/login with invalid credentials"
                     );
                     invalid_login_payload = {
-                        "identity": {
-                            "type": "username", "value": "nonexistent_user"
-                        },
+                        "identity": {"type": "username", "value": "nonexistent_user"},
                         "credential": {
-                            "type": "password", "password": "wrong_password"
+                            "type": "password",
+                            "password": "wrong_password"
                         },
+
                     };
                     req_invalid_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",
@@ -593,7 +590,9 @@ test "all in one app endpoints" {
                         "__jac_init__ script tag should be present in served HTML"
                     );
                     init_data = json.loads(init_match.group(1));
-                    print(f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}");
+                    print(
+                        f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}"
+                    );
 
                     # 1. Verify endpointEffects is present
                     assert "endpointEffects" in init_data , (
@@ -923,7 +922,9 @@ test "default client app renders" {
                             ) , "JS bundle should contain React createElement or jsx";
                             print(
                                 f"[DEBUG] JS bundle fetched successfully "
-                                f"({len(js_body)} bytes), contains expected runtime code"
+                                f"({len(
+                                    js_body
+                                )} bytes), contains expected runtime code"
                             );
                         }
                     } else {
@@ -2093,5 +2094,99 @@ jac-client-node = "1.0.7"
         assert "jac-client-node" not in deps2 , "legacy meta-package should be removed after migration";
         assert "react" in deps2 , "react should be present after migration";
         assert "react-dom" in deps2 , "react-dom should be present after migration";
+    }
+}
+
+"""Start the all-in-one jac server with a custom assets directory in dev mode."""
+def _start_dev_server_with_assets -> tuple {
+    app_name = "dev-proxy-test-app";
+    jac_cmd = get_jac_command();
+    env = get_env_with_npm();
+
+    temp_dir = tempfile.mkdtemp();
+    original_cwd = os.getcwd();
+    os.chdir(temp_dir);
+
+    # Create project using default template
+    create_result = run(
+        [*jac_cmd, "create", app_name], capture_output=True, text=True, env=env,
+    );
+    if create_result.returncode != 0 {
+        pytest.fail(f"jac create failed: {create_result.stderr}");
+    }
+
+    project_path = os.path.join(temp_dir, app_name);
+
+    # Create an assets directory and a dummy asset
+    assets_dir = os.path.join(project_path, "assets");
+    os.makedirs(assets_dir, exist_ok=True);
+    dummy_asset_path = os.path.join(assets_dir, "dummy_test_asset.css");
+    with open(dummy_asset_path, "w") as f {
+        f.write('/* asset proxy works */');
+    }
+
+    dev_port = get_free_port();
+    api_port = get_free_port();
+
+    # Start dev server
+    server = Popen(
+        [*jac_cmd, "start", "--dev", "-p", str(dev_port), "-a", str(api_port)],
+        cwd=project_path,
+        env=env,
+    );
+
+    wait_for_port("localhost", dev_port, timeout=120.0);
+    wait_for_port("localhost", api_port, timeout=120.0);
+    time.sleep(5);
+
+    return (server, dev_port, api_port, temp_dir, original_cwd);
+}
+
+test "dev mode properly proxies static assets" {
+    (server, dev_port, api_port, temp_dir, original_cwd) = _start_dev_server_with_assets();
+    try {
+        dev_url = f"http://localhost:{dev_port}/assets/dummy_test_asset.css";
+
+        # Test if Vite dev server correctly proxies the request to the backend
+        # Using native urllib.request.urlopen to fetch the file
+        response = urlopen(dev_url, timeout=10);
+        assert response.getcode() == 200;
+
+        content = response.read().decode("utf-8");
+        assert 'asset proxy works' in content;
+    } finally {
+        server.terminate();
+        try {
+            server.wait(timeout=15);
+        } except Exception {
+            server.kill();
+            server.wait(timeout=5);
+        }
+        os.chdir(original_cwd);
+        shutil.rmtree(temp_dir, ignore_errors=True);
+    }
+}
+
+test "dev mode proxy returns 404 for missing assets" {
+    (server, dev_port, api_port, temp_dir, original_cwd) = _start_dev_server_with_assets();
+    try {
+        dev_url = f"http://localhost:{dev_port}/assets/does_not_exist.css";
+
+        try {
+            urlopen(dev_url, timeout=10);
+            pytest.fail("Expected 404 error but got 200 OK");
+        } except HTTPError as e {
+            assert e.code == 404;
+        }
+    } finally {
+        server.terminate();
+        try {
+            server.wait(timeout=15);
+        } except Exception {
+            server.kill();
+            server.wait(timeout=5);
+        }
+        os.chdir(original_cwd);
+        shutil.rmtree(temp_dir, ignore_errors=True);
     }
 }
