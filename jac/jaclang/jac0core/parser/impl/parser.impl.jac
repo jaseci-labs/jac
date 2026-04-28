@@ -3349,53 +3349,29 @@ impl Parser.parse_jsx_child -> Expr {
         return JsxText(value=text_node, kid=[text_node]);
     }
     # JSX block-comment slot: lexer emits one JSX_BLOCK_COMMENT token
-    # spanning `{ #* ... *# }`.  Slice the inner comment, synthesize
-    # LBRACE/RBRACE UniTokens to keep `kid = [lbrace, rbrace]` shape.
+    # spanning `{ #* ... *# }`.  Slice out the inner `#* ... *#` for the
+    # CommentToken; the slot token itself is the kid (normalize_pass
+    # rewrites kid to canonical LBRACE/RBRACE before any downstream pass
+    # reads it, so synthesizing brace tokens here is wasted work).
     if self.check(TokenKind.JSX_BLOCK_COMMENT) {
         jsx_cmt = self.advance();
         slot_text = jsx_cmt.value;
-        slot_pos_start = jsx_cmt.loc.pos_start;
-        slot_pos_end = jsx_cmt.loc.pos_end;
-        cmt_start_in_slot = slot_text.find("#*");
-        cmt_end_in_slot = slot_text.rfind("*#") + 2;
-        cmt_text = slot_text[cmt_start_in_slot:cmt_end_in_slot];
-        src = self.get_source();
+        cmt_s = slot_text.find("#*");
+        cmt_e = slot_text.rfind("*#") + 2;
         ct = CommentToken(
-            orig_src=src,
+            orig_src=self.get_source(),
             name="COMMENT",
-            value=cmt_text,
+            value=slot_text[cmt_s:cmt_e],
             line=jsx_cmt.loc.line,
             end_line=jsx_cmt.loc.end_line,
-            col_start=jsx_cmt.loc.col_start + cmt_start_in_slot,
-            col_end=jsx_cmt.loc.col_start + cmt_end_in_slot,
-            pos_start=slot_pos_start + cmt_start_in_slot,
-            pos_end=slot_pos_start + cmt_end_in_slot,
+            col_start=jsx_cmt.loc.col_start + cmt_s,
+            col_end=jsx_cmt.loc.col_start + cmt_e,
+            pos_start=jsx_cmt.loc.pos_start + cmt_s,
+            pos_end=jsx_cmt.loc.pos_start + cmt_e,
             kid=[],
             is_inline=False
         );
-        lbrace_uni = UniToken(
-            orig_src=src,
-            name=Tok.LBRACE.value,
-            value="{",
-            line=jsx_cmt.loc.line,
-            end_line=jsx_cmt.loc.line,
-            col_start=jsx_cmt.loc.col_start,
-            col_end=(jsx_cmt.loc.col_start + 1),
-            pos_start=slot_pos_start,
-            pos_end=(slot_pos_start + 1)
-        );
-        rbrace_uni = UniToken(
-            orig_src=src,
-            name=Tok.RBRACE.value,
-            value="}",
-            line=jsx_cmt.loc.end_line,
-            end_line=jsx_cmt.loc.end_line,
-            col_start=(jsx_cmt.loc.col_end - 1),
-            col_end=jsx_cmt.loc.col_end,
-            pos_start=(slot_pos_end - 1),
-            pos_end=slot_pos_end
-        );
-        return JsxComment(comment=ct, kid=[lbrace_uni, rbrace_uni]);
+        return JsxComment(comment=ct, kid=[self.make_uni_token(jsx_cmt)]);
     }
     # Expression: {expr}.  Bare `{}` / `{   }` is rejected by
     # parse_expression (RBRACE is not a valid expression start) — same
