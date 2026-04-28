@@ -1025,8 +1025,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
+        # Container name must follow DNS-1123 label rules (no underscores).
+        # Use the K8s-safe form so e.g. `orders_app` -> `orders-app`. The
+        # JAC_SV_NAME env still carries the raw name; only the K8s
+        # resource identifier is normalized.
         container: dict[str, Any] = {
-            "name": svc_name,
+            "name": k8s_safe_name(svc_name),
             "image": self._resolve_image(image, svc_cfg),
             "command": entry["command"],
             "args": entry["args"],

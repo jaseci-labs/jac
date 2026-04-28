@@ -1725,6 +1725,29 @@ test "gateway pod-spec carries the same dispatch wiring" {
 }
 
 
+test "container name is DNS-1123 normalized (regression guard for K8s 422)" {
+    # Real K8s API rejects underscores in container.name with 422
+    # Unprocessable Entity (RFC 1123 label rules). Found by CI when the
+    # smoke applied a pod-spec with `containers[0].name = "orders_app"`.
+    # The resource names (Deployment, Service) were already normalized
+    # via k8s_safe_name; this test ensures the container.name is too.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    spec = target._build_service_pod_spec("orders_app", "demo:latest");
+    container_name: str = spec["containers"][0]["name"];
+    assert container_name == "orders-app", (
+        f"container.name must be DNS-1123 (no underscores), got {container_name!r}"
+    );
+    # JAC_SV_NAME env preserves the raw name (entrypoint dispatch needs
+    # the original to find <name>.jac).
+    env_jac_name = next(
+        e for e in spec["containers"][0]["env"] if e["name"] == "JAC_SV_NAME"
+    );
+    assert env_jac_name["value"] == "orders_app";
+}
+
+
 test "_pod_entrypoint command/args are stable (regression guard)" {
     # If we ever change the entrypoint shape, the Dockerfile template
     # documentation might drift. Pin the structure so that's caught
