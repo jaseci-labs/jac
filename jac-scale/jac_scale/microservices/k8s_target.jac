@@ -47,6 +47,27 @@ user-defined service modules.
 glob GATEWAY_NAME: str = "__gateway__";
 
 
+"""Map a service name to a DNS-1123-valid K8s resource name.
+
+`GATEWAY_NAME` ("__gateway__") is mapped to "gateway" because K8s
+resource names must match the DNS-1123 regex
+`[a-z0-9]([-a-z0-9]*[a-z0-9])?` (no underscores, no leading hyphens).
+Other names are lowercased and have underscores replaced with hyphens;
+the caller is responsible for ensuring the result is short enough
+(<=63 chars) and otherwise compliant.
+
+Module-level helper (not on `KubernetesMicroserviceTarget`) so K4's
+`KubernetesDeployer.url_for` can reuse it without re-implementing.
+The method `KubernetesMicroserviceTarget._k8s_safe_name` delegates here.
+"""
+def k8s_safe_name(svc_name: str) -> str {
+    if svc_name == GATEWAY_NAME {
+        return "gateway";
+    }
+    return svc_name.lower().replace("_", "-");
+}
+
+
 """K8s target that fans a single image out to one pod per microservice.
 
 Inherits from `KubernetesTarget` to reuse:
@@ -359,20 +380,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return specs;
     }
 
-    """Map a service name to a DNS-1123-valid K8s resource name.
+    """Thin delegator to module-level `k8s_safe_name`.
 
-    `GATEWAY_NAME` ("__gateway__") is mapped to "gateway" because K8s
-    resource names must match the DNS-1123 regex
-    `[a-z0-9]([-a-z0-9]*[a-z0-9])?` (no underscores, no leading hyphens).
-    Other names are lowercased and have underscores replaced with
-    hyphens; the caller is responsible for ensuring the result is short
-    enough (<=63 chars) and otherwise compliant.
+    Kept as a method so existing tests calling `target._k8s_safe_name(...)`
+    keep working without churn. The K4 `KubernetesDeployer` uses the
+    module-level helper directly to avoid needing a target instance.
     """
     def _k8s_safe_name(svc_name: str) -> str {
-        if svc_name == GATEWAY_NAME {
-            return "gateway";
-        }
-        return svc_name.lower().replace("_", "-");
+        return k8s_safe_name(svc_name);
     }
 
     """Build a Deployment manifest wrapping the K1 pod-spec.

@@ -712,3 +712,215 @@ test "deploy surfaces apply failure as DeploymentResult success=False" {
         k8s_restore();
     }
 }
+
+
+# =============================================================================
+# K4 - runtime DNS adapter (KubernetesDeployer + get_sv_registry hookimpl)
+# =============================================================================
+
+import from jac_scale.microservices.deployer { ServiceDeployer }
+import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry, ServiceStatus }
+import from jac_scale.microservices.k8s_deployer { KubernetesDeployer, build_k8s_registry }
+
+
+test "KubernetesDeployer is a ServiceDeployer" {
+    reg = ServiceRegistry();
+    dep = KubernetesDeployer(registry=reg);
+    assert isinstance(dep, ServiceDeployer);
+    assert dep.target == "kubernetes";
+}
+
+
+test "KubernetesDeployer.url_for returns DNS-based URL" {
+    reg = ServiceRegistry();
+    reg.register(ServiceEntry(
+        name="orders", file="orders.jac", prefix="/api/orders"
+    ));
+    dep = KubernetesDeployer(registry=reg, namespace="prod", port=8080);
+
+    url = dep.url_for(reg.entries["orders"]);
+    assert url == "http://orders-service.prod.svc.cluster.local:8080";
+}
+
+
+test "KubernetesDeployer.url_for normalizes underscored names" {
+    reg = ServiceRegistry();
+    reg.register(ServiceEntry(
+        name="orders_app", file="orders_app.jac", prefix="/api/orders"
+    ));
+    dep = KubernetesDeployer(registry=reg, namespace="default", port=8000);
+
+    # "orders_app" -> "orders-app" (DNS-1123: no underscores allowed).
+    url = dep.url_for(reg.entries["orders_app"]);
+    assert url == "http://orders-app-service.default.svc.cluster.local:8000";
+}
+
+
+test "KubernetesDeployer.url_for maps GATEWAY_NAME sentinel to 'gateway'" {
+    reg = ServiceRegistry();
+    reg.register(ServiceEntry(
+        name=GATEWAY_NAME, file="", prefix="/"
+    ));
+    dep = KubernetesDeployer(registry=reg, namespace="prod", port=8000);
+
+    url = dep.url_for(reg.entries[GATEWAY_NAME]);
+    # Sentinel "__gateway__" -> "gateway" since K8s rejects underscores
+    # in resource names.
+    assert url == "http://gateway-service.prod.svc.cluster.local:8000";
+}
+
+
+test "build_k8s_registry maps each route to a DNS URL" {
+    import os;
+    # Force POD_NAMESPACE so we don't depend on the secrets file fallback.
+    orig_ns = os.environ.get("POD_NAMESPACE");
+    os.environ["POD_NAMESPACE"] = "test-ns";
+    try {
+        registry = build_k8s_registry(
+            routes={"orders": "/api/orders", "cart": "/api/cart"},
+            port=9090
+        );
+        assert registry["orders"] == (
+            "http://orders-service.test-ns.svc.cluster.local:9090"
+        );
+        assert registry["cart"] == (
+            "http://cart-service.test-ns.svc.cluster.local:9090"
+        );
+    } finally {
+        if orig_ns is None {
+            del os.environ["POD_NAMESPACE"];
+        } else {
+            os.environ["POD_NAMESPACE"] = orig_ns;
+        }
+    }
+}
+
+
+test "build_k8s_registry falls back to 'default' namespace when env unset" {
+    import os;
+    orig_ns = os.environ.get("POD_NAMESPACE");
+    if orig_ns is not None {
+        del os.environ["POD_NAMESPACE"];
+    }
+    try {
+        # No POD_NAMESPACE env, no service-account file (we're not
+        # in a pod), so the inner try-except returns "default".
+        registry = build_k8s_registry(routes={"orders": "/api/orders"});
+        # Default port is 8000, default namespace is "default".
+        assert registry["orders"] == (
+            "http://orders-service.default.svc.cluster.local:8000"
+        );
+    } finally {
+        if orig_ns is not None {
+            os.environ["POD_NAMESPACE"] = orig_ns;
+        }
+    }
+}
+
+
+test "get_sv_registry hookimpl returns DNS map when KUBERNETES_SERVICE_HOST set" {
+    import os;
+    import jac_scale.config_loader as cfg_mod;
+    import from jac_scale.plugin { JacScalePlugin }
+
+    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
+    orig_ns = os.environ.get("POD_NAMESPACE");
+    original_cfg = getattr(cfg_mod, "get_scale_config");
+
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";  # any value triggers detection
+    os.environ["POD_NAMESPACE"] = "prod";
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={
+            "routes": {"orders": "/api/orders", "cart": "/api/cart"},
+            "gateway_port": 8000
+        }
+    ));
+
+    try {
+        registry = JacScalePlugin.get_sv_registry();
+        assert registry["orders"] == (
+            "http://orders-service.prod.svc.cluster.local:8000"
+        );
+        assert registry["cart"] == (
+            "http://cart-service.prod.svc.cluster.local:8000"
+        );
+    } finally {
+        if orig_k8s_host is None {
+            del os.environ["KUBERNETES_SERVICE_HOST"];
+        } else {
+            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
+        }
+        if orig_ns is None {
+            del os.environ["POD_NAMESPACE"];
+        } else {
+            os.environ["POD_NAMESPACE"] = orig_ns;
+        }
+        setattr(cfg_mod, "get_scale_config", original_cfg);
+    }
+}
+
+
+test "get_sv_registry hookimpl falls back to local sv_client when not in K8s" {
+    import os;
+    import from jac_scale.plugin { JacScalePlugin }
+    import from jaclang.runtimelib { sv_client }
+
+    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
+    if orig_k8s_host is not None {
+        del os.environ["KUBERNETES_SERVICE_HOST"];
+    }
+
+    # Seed the local sv_client._registry with a sentinel entry; the
+    # hookimpl in non-K8s mode should return a dict copy of that.
+    sv_client.register("test_local_module", "http://127.0.0.1:54321");
+
+    try {
+        registry = JacScalePlugin.get_sv_registry();
+        assert registry.get("test_local_module") == "http://127.0.0.1:54321";
+        # Returned dict must be a COPY (not a live reference) so caller
+        # mutations don't pollute sv_client._registry.
+        registry["mutate_me"] = "http://changed";
+        assert "mutate_me" not in sv_client._registry;
+    } finally {
+        sv_client.unregister("test_local_module");
+        if orig_k8s_host is not None {
+            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
+        }
+    }
+}
+
+
+test "get_sv_registry hookimpl falls back gracefully when config read fails" {
+    # Defensive: even if config is malformed inside a pod, the gateway
+    # shouldn't crash on first request - fall back to local registry.
+    import os;
+    import jac_scale.config_loader as cfg_mod;
+    import from jac_scale.plugin { JacScalePlugin }
+
+    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
+    original_cfg = getattr(cfg_mod, "get_scale_config");
+
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
+
+    obj _ExplodingCfg {
+        def get_microservices_config -> dict[str, Any] {
+            raise RuntimeError("malformed jac.toml inside pod");
+        }
+    }
+    setattr(cfg_mod, "get_scale_config", lambda: _ExplodingCfg());
+
+    try {
+        # Should NOT raise.
+        registry = JacScalePlugin.get_sv_registry();
+        # Type is a dict; whatever fallback content is fine (default
+        # impl returns a copy of sv_client._registry).
+        assert isinstance(registry, dict);
+    } finally {
+        if orig_k8s_host is None {
+            del os.environ["KUBERNETES_SERVICE_HOST"];
+        } else {
+            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
+        }
+        setattr(cfg_mod, "get_scale_config", original_cfg);
+    }
+}

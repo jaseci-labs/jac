@@ -781,6 +781,53 @@ class JacScalePlugin {
         atexit.register(_cleanup);
     }
 
+    """K4: override core's get_sv_registry to return DNS-based URLs in K8s.
+
+    Detects K8s-in-cluster via the `KUBERNETES_SERVICE_HOST` env var
+    (set in every pod by K8s automatically). When set, builds a DNS map
+    `{module_name: http://{name}-service.{namespace}.svc.cluster.local:{port}}`
+    from the configured routes table. When NOT set, falls back to core's
+    default behavior (`dict(sv_client._registry)`), which has localhost
+    URLs from local-mode subprocess spawning.
+
+    This is the single swap point that makes the gateway work unchanged
+    in both local and K8s modes - `gateway.resolve_target_url` calls
+    `JacRuntime.get_sv_registry()`, plugin precedence picks this impl,
+    DNS resolution does the rest.
+    """
+    @hookimpl
+    static def get_sv_registry -> dict[str, str] {
+        import os;
+        import from jaclang.runtimelib { sv_client }
+
+        if "KUBERNETES_SERVICE_HOST" not in os.environ {
+            # Local mode (or any non-K8s runtime): use the default.
+            return dict(sv_client._registry);
+        }
+
+        # K8s mode: build DNS map from configured routes. Read namespace
+        # from the downward-API env or the in-cluster secret file
+        # (handled inside build_k8s_registry); read port from the
+        # microservices config.
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            import from jac_scale.microservices.k8s_deployer { build_k8s_registry }
+            ms_cfg = get_scale_config().get_microservices_config();
+            routes: dict[str, str] = ms_cfg.get("routes", {});
+            port: int = int(ms_cfg.get("gateway_port", 8000));
+            return build_k8s_registry(routes, port);
+        } except Exception as e {
+            # Defensive: if config read fails inside a pod (shouldn't
+            # happen if jac.toml is in the image), fall back to the
+            # default rather than crashing the gateway on first request.
+            import logging;
+            logging.getLogger(__name__).warning(
+                f"K8s get_sv_registry fell back to local registry: {e}"
+            );
+            return dict(sv_client._registry);
+        }
+    }
+
     """Override core's sv_service_call with auth forwarding + retry + circuit breaker.
 
     Reads the auth token from _auth_ctx (set by the FastAPI middleware in
