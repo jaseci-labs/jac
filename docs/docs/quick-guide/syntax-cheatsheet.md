@@ -36,7 +36,8 @@ This page is a **lookup reference**, not a learning guide. For hands-on learning
 ```
 
 # Inside a JSX body, # is literal text so block comments must use braces:
-# {#* this is a JSX body comment *#}
+
+# {#*this is a JSX body comment*#}
 
 # Module-level docstring (no semicolon needed)
 
@@ -404,8 +405,8 @@ obj Example {
 }
 
 # NOTE: All instance fields MUST be declared with `has`.
-# Dynamic assignment (e.g., `obj.new_attr = val`) is an anti-pattern.
 
+# Dynamic assignment (e.g., `obj.new_attr = val`) is an anti-pattern.
 
 # ============================================================
 
