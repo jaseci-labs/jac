@@ -400,8 +400,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     has_dataclass_deco = (
         node_.decorators is not None
         and any(
-            isinstance(d, uni.Name) and d.value == 'dataclass'
-            for d in node_.decorators
+            isinstance(d, uni.Name) and d.value == 'dataclass' for d in node_.decorators
         )
     );
     is_data_class = node_.sym_category != SymbolType.TYPE or has_dataclass_deco;

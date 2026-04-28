@@ -62,7 +62,8 @@ impl TypeEvaluator._build_field_params(
         # inside `with entry` blocks as typed assignments instead of `has` vars.
         # Walk ModuleCode and WithStmt bodies to collect them.
         # Works for both Archetype (with ModuleCode) and Ability (with WithStmt).
-        if isinstance(cls.shared.symbol_table, (uni.Archetype, uni.Ability)) and not cls.shared.is_builtin_class {
+        if isinstance(cls.shared.symbol_table, (uni.Archetype, uni.Ability))
+        and not cls.shared.is_builtin_class {
             body_iter: list[uni.UniNode] = [];
             if isinstance(cls.shared.symbol_table, uni.Archetype) {
                 body_iter = cls.shared.symbol_table._get_impl_resolved_body();
