@@ -273,6 +273,22 @@ impl ClassType.lookup_member_symbol(
             }
             return all_syms[0];
         }
+        # For local dataclass (Ability-based), fields live in nested WithStmt scopes.
+        # lookup_all(deep=False) only checks the Ability's own scope (empty for local classes),
+        # so we must walk body children to find WithStmt scopes directly.
+        if isinstance(cls.shared.symbol_table, uni.Ability) {
+            body = cls.shared.symbol_table.body;
+            if body {
+                for nd in (body if isinstance(body, list) else []) {
+                    if isinstance(nd, uni.WithStmt) {
+                        sym = nd.lookup(member, deep=False);
+                        if sym {
+                            return sym;
+                        }
+                    }
+                }
+            }
+        }
     }
     # Fallback: check init/postinit parameters and body for self-assignments.
     # When a class/obj is imported from another module, its impl file's self.x

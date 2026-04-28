@@ -36,24 +36,97 @@ impl TypeEvaluator._build_field_params(
 ) -> dict[str, types.Parameter] {
     param_map: dict[str, types.Parameter] = {};
     for cls in class_type.shared.mro[::-1] {
-        for has_var in cls.shared.symbol_table.get_has_vars() {
-            if skip_deferred and has_var.defer {
-                continue;
+        # Get has_vars only for Archetype (Ability doesn't have this method)
+        if isinstance(cls.shared.symbol_table, uni.Archetype) {
+            for has_var in cls.shared.symbol_table.get_has_vars() {
+                if skip_deferred and has_var.defer {
+                    continue;
+                }
+                param_type: TypeBase | None = None;
+                if has_var.type_tag {
+                    var_type_expr = has_var.type_tag.tag;
+                    type_cls = self.get_type_of_expression(var_type_expr);
+                    param_type = self._convert_to_instance(type_cls);
+                }
+                param_map[has_var.name.value] = types.Parameter(
+                    name=has_var.name.value,
+                    category=types.ParameterCategory.Positional,
+                    param_type=param_type,
+                    default_value=has_var.value,
+                    is_self=False,
+                    param_kind=types.ParamKind.NORMAL,
+                );
             }
-            param_type: TypeBase | None = None;
-            if has_var.type_tag {
-                var_type_expr = has_var.type_tag.tag;
-                type_cls = self.get_type_of_expression(var_type_expr);
-                param_type = self._convert_to_instance(type_cls);
+        }
+        # For `@dataclass class` (Python-style class), fields may be declared
+        # inside `with entry` blocks as typed assignments instead of `has` vars.
+        # Walk ModuleCode and WithStmt bodies to collect them.
+        # Works for both Archetype (with ModuleCode) and Ability (with WithStmt).
+        if isinstance(cls.shared.symbol_table, (uni.Archetype, uni.Ability)) and not cls.shared.is_builtin_class {
+            body_iter: list[uni.UniNode] = [];
+            if isinstance(cls.shared.symbol_table, uni.Archetype) {
+                body_iter = cls.shared.symbol_table._get_impl_resolved_body();
+            } else {
+                # For Ability (local class), get body directly
+                body_iter = cls.shared.symbol_table.body or [];
             }
-            param_map[has_var.name.value] = types.Parameter(
-                name=has_var.name.value,
-                category=types.ParameterCategory.Positional,
-                param_type=param_type,
-                default_value=has_var.value,
-                is_self=False,
-                param_kind=types.ParamKind.NORMAL,
-            );
+            for nd in body_iter {
+                # Handle ModuleCode (for Archetype)
+                if isinstance(nd, uni.ModuleCode) {
+                    for stmt in nd.body or [] {
+                        if (
+                            not isinstance(stmt, uni.Assignment)
+                            or not stmt.type_tag
+                            or not stmt.target
+                            or not isinstance(stmt.target[0], uni.Name)
+                        ) {
+                            continue;
+                        }
+                        field_name = stmt.target[0].value;
+                        if field_name in param_map {
+                            continue;
+                        }
+                        var_type_expr = stmt.type_tag.tag;
+                        type_cls = self.get_type_of_expression(var_type_expr);
+                        param_type = self._convert_to_instance(type_cls);
+                        param_map[field_name] = types.Parameter(
+                            name=field_name,
+                            category=types.ParameterCategory.Positional,
+                            param_type=param_type,
+                            default_value=stmt.value,
+                            is_self=False,
+                            param_kind=types.ParamKind.NORMAL,
+                        );
+                    }
+                } elif isinstance(nd, uni.WithStmt) {
+                    # Handle WithStmt (for local Ability classes)
+                    for stmt in nd.body or [] {
+                        if (
+                            not isinstance(stmt, uni.Assignment)
+                            or not stmt.type_tag
+                            or not stmt.target
+                            or not isinstance(stmt.target[0], uni.Name)
+                        ) {
+                            continue;
+                        }
+                        field_name = stmt.target[0].value;
+                        if field_name in param_map {
+                            continue;
+                        }
+                        var_type_expr = stmt.type_tag.tag;
+                        type_cls = self.get_type_of_expression(var_type_expr);
+                        param_type = self._convert_to_instance(type_cls);
+                        param_map[field_name] = types.Parameter(
+                            name=field_name,
+                            category=types.ParameterCategory.Positional,
+                            param_type=param_type,
+                            default_value=stmt.value,
+                            is_self=False,
+                            param_kind=types.ParamKind.NORMAL,
+                        );
+                    }
+                }
+            }
         }
     }
     return param_map;

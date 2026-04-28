@@ -188,6 +188,49 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         ];
     }
     if not isinstance(node_.signature, uni.FuncSignature) {
+        # Check if this Ability is a dataclass (local class with @dataclass decorator)
+        has_dataclass_deco = (
+            node_.decorators is not None
+            and any(
+                isinstance(d, uni.Name) and d.value == 'dataclass'
+                for d in node_.decorators
+            )
+        );
+        
+        # If it's a @dataclass, treat it as a class, not a function
+        if has_dataclass_deco {
+            # Create a ClassType for this local dataclass
+            # Get any base classes (if specified, though unlikely for local classes)
+            base_classes: list[TypeBase] = [];
+            
+            # Add object as implicit base class
+            if self.prefetch and self.prefetch.object_class {
+                base_classes.append(self.prefetch.object_class);
+            }
+            
+            # Create the ClassType
+            cls_type = types.ClassType(
+                _shared=types.ClassType.ClassDetailsShared(
+                    class_name=node_.name_spec.sym_name,
+                    symbol_table=node_,
+                    type_params=func_type_params,
+                    base_classes=base_classes,
+                    is_builtin_class=False,
+                    is_from_stdlib_stub=False,
+                    is_data_class=True,
+                    is_namedtuple=False,
+                    is_enum_class=False,
+                ),
+                flags=types.TypeFlags.Instantiable,
+            );
+            # Compute the MRO for the class
+            type_utils.compute_mro_linearization(cls_type);
+            # Cache and return
+            node_.name_spec.type = cls_type;
+            return cls_type;
+        }
+        
+        # Otherwise, treat as a regular function (e.g., event handler)
         flags = types.FunctionTypeFlags.Null;
         if node_.is_static {
             flags = flags | types.FunctionTypeFlags.StaticMethod;
@@ -353,8 +396,15 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     }
     # NOTE: obj, walker, node, edge are dataclass with symbol type as such but
     # other classes are with symbol type TYPE.
-    # TODO: We need to handle @dataclass decorator as well.
-    is_data_class = node_.sym_category != SymbolType.TYPE;
+    # Python-style `class` with @dataclass decorator is also a dataclass.
+    has_dataclass_deco = (
+        node_.decorators is not None
+        and any(
+            isinstance(d, uni.Name) and d.value == 'dataclass'
+            for d in node_.decorators
+        )
+    );
+    is_data_class = node_.sym_category != SymbolType.TYPE or has_dataclass_deco;
     # Detect class-based enums: is_enum_class propagates from prefetched Enum.
     is_enum_class = any(
         isinstance(base, types.ClassType) and base.shared.is_enum_class
