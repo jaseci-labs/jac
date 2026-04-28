@@ -241,7 +241,7 @@ Emitted by the type checker and type evaluator.
 |------|---------|
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
-| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as any |
 
 ---
 
