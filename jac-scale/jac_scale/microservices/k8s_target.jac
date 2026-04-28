@@ -3,17 +3,21 @@
 K1 scope (done): scaffold KubernetesMicroserviceTarget(KubernetesTarget),
 wire into `jac start <file> --scale`, build image + emit pod-spec stubs.
 
-K2 scope (this file): turn pod-spec stubs into full Deployment +
-ClusterIP Service manifests per service. `generate_manifests` returns
-a structured bundle with `deployments`, `services`, and the original
-`pod_specs` (kept for inspection + back-compat with K1 tests).
+K2 scope (done): turn pod-spec stubs into full Deployment + ClusterIP
+Service manifests per service. `generate_manifests` returns a
+structured bundle with `deployments`, `services`, and the original
+`pod_specs`.
 
-K2 still does NOT call kubectl - that's K3's job. Returning the manifest
-dicts lets K3 just iterate them and apply, and lets us verify the
-manifest shape via unit tests without a live cluster.
+K3 scope (this file): apply the K2 manifest bundle via the kubernetes
+Python client. Order matters - Services first so DNS resolution works
+the moment the first pod becomes ready, then Deployments. Both ops
+are idempotent (read -> patch on exists, create on 404). `destroy` uses
+a label selector (`managed=jac-scale,jac-scale.role in (gateway,microservice)`)
+so it cleans up renamed services we no longer have manifests for.
 
+K3 still does NOT do rolling-deploy correctness (RollingUpdate strategy,
+readinessProbe, terminationGracePeriodSeconds, preStop hook). That's K5.
 K4 wires the runtime DNS adapter (KubernetesDeployer + get_sv_registry).
-K5 adds RollingUpdate + readiness + grace + preStop for no-downtime deploys.
 K6 adds HPA + PodDisruptionBudget per service.
 """
 
@@ -22,6 +26,15 @@ import from typing { Any }
 import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
+import from jac_scale._optdeps.kubernetes {
+    client,
+    config as k8s_cluster_config,
+    ApiException,
+    ConfigException
+}
+import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
+    ensure_namespace_exists
+}
 
 glob logger = logging.getLogger(__name__);
 
@@ -53,19 +66,23 @@ under the type name `"kubernetes-microservice"`.
 """
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
-    """Generate K8s manifests for the microservice topology (K2 scope).
+    """Generate K8s manifests AND apply them to the cluster (K3 scope).
 
-    Returns a `DeploymentResult` whose `details` carry the manifest
-    bundle: `deployments` + `services` keyed by service name, plus the
-    raw `pod_specs` from K1. K3 will iterate this bundle and call
-    `kubectl apply` in dependency order.
+    deploy() now: build image -> generate manifests -> apply via the
+    kubernetes Python client. Kube config is loaded from kubeconfig
+    when running outside the cluster (e.g. during `jac start --scale`
+    from a developer laptop) and from in-cluster service-account
+    config when running inside a pod (e.g. an admin sidecar).
+
+    The returned `DeploymentResult.details` keeps the manifest bundle
+    so callers can inspect what was applied.
     """
     def deploy(app_config: AppConfig) -> DeploymentResult {
         app_name = app_config.app_name or self.k8s_config.app_name;
         if self.logger {
             self.logger.info(
                 f"Deploying microservice app '{app_name}' to Kubernetes "
-                f"(K2 manifest gen; K3 will add kubectl apply)",
+                f"(K3 apply; K5 will add rolling-deploy correctness)",
                 {"namespace": self.k8s_config.namespace}
             );
         }
@@ -79,15 +96,204 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
+        try {
+            self.apply_manifests(bundle);
+        } except Exception as e {
+            return DeploymentResult(
+                success=False,
+                message=f"manifest apply failed: {e}",
+                details=bundle
+            );
+        }
+
         svc_count = len(bundle["pod_specs"]) - 1;
         return DeploymentResult(
             success=True,
             message=(
-                f"K2 manifests generated: {svc_count} service Deployment+Service "
-                f"pair(s) plus 1 gateway. K3 will apply via kubectl."
+                f"K3 applied: {svc_count} service Deployment+Service pair(s) "
+                f"plus 1 gateway in namespace '{self.k8s_config.namespace}'. "
+                "K5 will add rolling-deploy correctness."
             ),
             details=bundle
         );
+    }
+
+    """Load kubernetes config: kubeconfig first, fall back to in-cluster.
+
+    Same pattern as KubernetesTarget.destroy() and the rest of the K8s
+    target machinery. Splitting out as a helper so apply_manifests +
+    destroy can both call it without duplicating the try/except.
+    """
+    def _load_kube_config -> None {
+        try {
+            k8s_cluster_config.load_kube_config();
+        } except ConfigException {
+            k8s_cluster_config.load_incluster_config();
+        }
+    }
+
+    """Apply the K2 manifest bundle to the cluster.
+
+    Order: namespace exists -> Services -> Deployments. Services first
+    so DNS resolution works the moment a Deployment's first pod becomes
+    ready. Each apply is idempotent (read -> patch on exists; create on
+    404), so re-running deploy() is safe and produces a rolling update
+    on the Deployments.
+    """
+    def apply_manifests(bundle: dict[str, Any]) -> None {
+        self._load_kube_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        namespace: str = self.k8s_config.namespace;
+
+        ensure_namespace_exists(namespace);
+
+        # Services first - their endpoints registry is empty until the
+        # paired Deployment's first pod becomes ready, but DNS for the
+        # Service hostname needs to exist BEFORE pods boot so any
+        # cross-service `sv import` calls resolve at startup.
+        for (svc_name, svc_manifest) in bundle["services"].items() {
+            self._apply_or_replace_service(core_v1, namespace, svc_manifest);
+            if self.logger {
+                self.logger.info(
+                    f"Applied Service for '{svc_name}'",
+                    {"name": svc_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
+        # Deployments next - patching an existing Deployment kicks off
+        # a rolling update via K8s Deployment controller (default
+        # RollingUpdate strategy; K5 tightens this with explicit
+        # maxSurge / maxUnavailable / preStop).
+        for (svc_name, dep_manifest) in bundle["deployments"].items() {
+            self._apply_or_replace_deployment(apps_v1, namespace, dep_manifest);
+            if self.logger {
+                self.logger.info(
+                    f"Applied Deployment for '{svc_name}'",
+                    {"name": dep_manifest["metadata"]["name"]}
+                );
+            }
+        }
+    }
+
+    """Idempotent Service apply - read first, patch on hit, create on 404."""
+    def _apply_or_replace_service(
+        core_v1: Any, namespace: str, manifest: dict[str, Any]
+    ) -> None {
+        name: str = manifest["metadata"]["name"];
+        try {
+            core_v1.read_namespaced_service(name=name, namespace=namespace);
+            core_v1.patch_namespaced_service(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_service(
+                    namespace=namespace, body=manifest
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
+    """Idempotent Deployment apply - read first, patch on hit, create on 404.
+
+    A patch on an existing Deployment triggers the K8s Deployment
+    controller's rolling update. Default strategy (without K5's
+    explicit RollingUpdate { maxSurge, maxUnavailable } config) will
+    surge one new pod and tear down one old pod at a time.
+    """
+    def _apply_or_replace_deployment(
+        apps_v1: Any, namespace: str, manifest: dict[str, Any]
+    ) -> None {
+        name: str = manifest["metadata"]["name"];
+        try {
+            apps_v1.read_namespaced_deployment(name=name, namespace=namespace);
+            apps_v1.patch_namespaced_deployment(
+                name=name, namespace=namespace, body=manifest
+            );
+        } except ApiException as e {
+            if e.status == 404 {
+                apps_v1.create_namespaced_deployment(
+                    namespace=namespace, body=manifest
+                );
+            } else {
+                raise;
+            }
+        }
+    }
+
+    """Tear down all microservice Deployments + Services in the namespace.
+
+    Uses a label selector (`managed=jac-scale,jac-scale.role in
+    (microservice,gateway)`) instead of per-name deletion so it
+    handles drift recovery: services that were renamed in jac.toml
+    still get cleaned up because the label selector matches anything
+    we've ever deployed via this target.
+
+    `app_name` and `component` are accepted to satisfy the parent
+    `DeploymentTarget.destroy` signature; they're ignored in
+    microservice mode (we always tear down the whole label-selected
+    set, not individual components).
+    """
+    def destroy(app_name: str, component: str = "") -> None {
+        if self.logger {
+            self.logger.info(
+                f"Destroying microservice topology in namespace "
+                f"'{self.k8s_config.namespace}'",
+                {"app_name": app_name}
+            );
+        }
+
+        self._load_kube_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        namespace: str = self.k8s_config.namespace;
+
+        # Label selector matches anything this target has ever applied.
+        # `in (...)` syntax is K8s set-based selector grammar.
+        selector: str = (
+            "managed=jac-scale,jac-scale.role in (microservice,gateway)"
+        );
+
+        # Deployments first - delete_collection_namespaced_deployment
+        # is batched. Pods stop receiving traffic as the Deployment
+        # controller scales them down; K5 will add preStop hooks that
+        # bridge the kube-proxy propagation gap.
+        try {
+            apps_v1.delete_collection_namespaced_deployment(
+                namespace=namespace, label_selector=selector
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Services - no batched delete_collection helper for v1.Service,
+        # so list-then-delete by name. Idempotent: ignore 404s.
+        try {
+            services = core_v1.list_namespaced_service(
+                namespace=namespace, label_selector=selector
+            );
+            for svc in services.items {
+                try {
+                    core_v1.delete_namespaced_service(
+                        name=svc.metadata.name, namespace=namespace
+                    );
+                } except ApiException as e {
+                    if e.status != 404 {
+                        raise;
+                    }
+                }
+            }
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
     }
 
     """Lift K1 pod-specs into full Deployment + Service manifests.
