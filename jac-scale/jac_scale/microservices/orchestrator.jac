@@ -254,6 +254,19 @@ def start_gateway_only(ms_config: dict[str, Any]) -> None {
     # hookspec at request time, so the per-entry .url field is unused).
     registry = build_registry(ms_config);
 
+    # In K8s mode the gateway doesn't own service health - kube-proxy
+    # only routes to pods that pass their readinessProbe, and Endpoints
+    # objects update automatically as pods come and go. The gateway's
+    # internal `svc.status` would otherwise stay REGISTERED forever
+    # (no LocalDeployer to flip it HEALTHY), causing handle_proxy to
+    # 503 every request. Pre-mark HEALTHY so handle_proxy lets the
+    # forward through; transport failures from a not-yet-Ready service
+    # still surface naturally as 502/503 from the http_forward layer.
+    import from jac_scale.microservices.service_registry { ServiceStatus }
+    for (_name, _entry) in registry.entries.items() {
+        _entry.status = ServiceStatus.HEALTHY;
+    }
+
     gateway_port = int(ms_config.get("gateway_port", 8000));
     gateway_host = ms_config.get("gateway_host", "0.0.0.0");
 
