@@ -4044,9 +4044,9 @@ impl Parser.parse_statement{
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
     }
-    # Handle decorators for nested functions
+    # Handle decorators for nested definitions (functions or classes)
     if self.check(TokenKind.DECOR_OP) {
-        return self.parse_ability();
+        return self._dispatch_decorated();
     }
     # Handle `class def` / `class can` (classmethod) in code blocks
     if self.check(TokenKind.KW_CLASS)

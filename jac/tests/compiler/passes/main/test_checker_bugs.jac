@@ -25,6 +25,7 @@ Bug index:
   #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
+  #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
 """
 
 import os;
@@ -581,6 +582,29 @@ test "bug_super1_super_call_returns_parent_instance" {
         "Bug #SUPER-1: `super()` in a method must type-check as the "
         "parent instance so that attribute access dispatches through the "
         "parent's MRO. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #DLOC-1: Decorated class inside function body parsed as Ability
+#
+# When a class declaration with a decorator appears inside a function body,
+# the parser was routing DECOR_OP unconditionally to parse_ability(). This
+# caused the type checker to return NoneType for the constructor and fail
+# to resolve any attributes on instances.
+#
+# Fix: parse_statement now calls _dispatch_decorated() for DECOR_OP, which
+# peeks ahead past the decorator tokens to pick parse_archetype() or
+# parse_ability() correctly, the same way module-level declarations work.
+# =========================================================================
+test "bug_dloc1_decorated_class_in_function_body" {
+    program = compile_and_check("checker_bug_decorated_local_class.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #DLOC-1: a decorated class inside a function body must parse "
+        "as an Archetype so the type checker recognises its constructor and "
+        "fields. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
