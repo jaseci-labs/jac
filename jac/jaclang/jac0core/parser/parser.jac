@@ -30,6 +30,7 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0023,
+    E0025,
     E0030,
     E0031,
     E0032,
@@ -179,7 +180,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression }
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
@@ -280,6 +281,7 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_DISENGAGE: Tok.KW_DISENGAGE.value,
          TokenKind.KW_HERE: Tok.KW_HERE.value,
          TokenKind.KW_VISITOR: Tok.KW_VISITOR.value,
+         TokenKind.KW_ROOT: Tok.KW_ROOT.value,
          TokenKind.KW_ASYNC: Tok.KW_ASYNC.value,
          TokenKind.KW_AWAIT: Tok.KW_AWAIT.value,
          TokenKind.KW_FLOW: Tok.KW_FLOW.value,
@@ -454,6 +456,8 @@ obj Parser {
     def parse -> Module;
     def parse_module -> Module;
     def parse_expression -> Expr;
+    def _check_js_arrow_fault -> bool;
+    def _recover_js_arrow_fault(left: Expr) -> Expr;
     def parse_concurrent_expr -> Expr;
     def parse_walrus_assign -> Expr;
     def parse_by_expr -> Expr;
@@ -604,9 +608,7 @@ def parse(
     tokens = lexer.tokenize();
     parser = Parser(tokens=tokens, file_path=file_path, source_code=source, prog=prog);
     module = parser.parse();
-    # Promote lexer comments to source.comments.  JSX-body comments are
-    # emitted as JSX_BLOCK_COMMENT tokens and never reach lexer.comments,
-    # so this list contains only free-floating comments.
+    # Transfer captured comments from lexer to module source
     if module.source and lexer.comments {
         for cdata in lexer.comments {
             # cdata is (value, line, end_line, col_start, col_end, pos_start, pos_end, is_block)
