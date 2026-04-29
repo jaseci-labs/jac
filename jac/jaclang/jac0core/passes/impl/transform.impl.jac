@@ -83,6 +83,45 @@ impl Alert.pretty_print(*, colors: bool = False) -> str {
     return result;
 }
 
+"""Return the alert as a single line log as opposed to the pretty print."""
+impl RuntimeAlert.as_log(*, colors: bool = False) -> str {
+    import from jaclang.jac0core.helpers { ANSIColors }
+    import from jaclang.jac0core.diagnostics { Severity }
+    if self.code {
+        sev_label = self.code.severity.value;
+        code_str = self.code.code;
+        if colors {
+            color = ANSIColors.RED
+                if (self.code.severity == Severity.ERROR)
+                else ANSIColors.YELLOW;
+            header = f"{color}{sev_label}[{code_str}]{ANSIColors.END}: {self.msg}";
+        } else {
+            header = f"{sev_label}[{code_str}]: {self.msg}";
+        }
+        return f"{header}\n  --> {self.file_path}:{self.line_no}:1";
+    }
+    return f"{self.file_path}:{self.line_no}:1 {self.msg}";
+}
+
+"""Pretty prints the Alert to show the alert with source location."""
+impl RuntimeAlert.pretty_print(*, colors: bool = False) -> str {
+    result = self.as_log(colors=colors);
+    if self.help_text {
+        import from jaclang.jac0core.helpers { ANSIColors }
+        if colors {
+            result += f"\n{ANSIColors.CYAN}help{ANSIColors.END}: {self.help_text}";
+        } else {
+            result += f"\nhelp: {self.help_text}";
+        }
+    }
+    return result;
+}
+
+"""Return string representation of alert."""
+impl RuntimeAlert.__str__ -> str {
+    return self.as_log(colors=False);
+}
+
 """Initialize pass and run transformation."""
 impl BaseTransform.postinit -> None {
     self.logger = logging.getLogger(self.__class__.__name__);

@@ -280,7 +280,7 @@ impl JacEdge.detach(`edge: EdgeAnchor) -> None {
     JacRuntimeInterface.remove_edge(nd=`edge.target, `edge=`edge);
 }
 
-"""Jac's visit stmt feature."""
+"""Walker visits node."""
 impl JacWalker.`visit(
     `walker: WalkerArchetype,
     expr:
@@ -297,7 +297,6 @@ impl JacWalker.`visit(
         expr = JacRuntimeInterface.refs(expr);
     }
     if isinstance(`walker, WalkerArchetype) {
-        'Walker visits node.';
         wanch = `walker.__jac__;
         before_len = len(wanch.next);
         next = [];
@@ -323,11 +322,9 @@ impl JacWalker.`visit(
         was_added = len(wanch.next) > before_len;
         if (not was_added and not else_present) {
             import from jaclang.jac0core.archetype { Root }
-            import from jaclang.jac0core.helpers { ANSIColors }
             import from jaclang.jac0core.diagnostics { W2085 }
-            import inspect;
-            import sys;
 
+            hint_msg = None;
             current_node_anchor = wanch.path[-1] if wanch.path else None;
             if (
                 current_node_anchor and isinstance(current_node_anchor.archetype, Root)
@@ -340,54 +337,19 @@ impl JacWalker.`visit(
                         );
                     }
                 }
-
-                # Extract location info for the warning
-                frame = inspect.currentframe();
-                filename = "";
-                lineno = 0;
-                while frame {
-                    f_name = frame.f_code.co_filename;
-                    normalized: str = f_name.replace("\\", "/");
-                    is_internal = (
-                        ("/jaclang/runtimelib/" in normalized)
-                        or ("/jaclang/jac0core/" in normalized)
-                        or ("/jaclang/vendor/" in normalized)
-                        or ("/jaclang/plugin.py" in normalized)
-                        or normalized.endswith("/jaclang/meta_importer.py")
-                    );
-                    if not is_internal {
-                        filename = f_name;
-                        lineno = frame.f_lineno;
-                        break;
-                    }
-                    frame = frame.f_back;
-                }
-
-                # Format message and header — same format as Alert.as_log(colors=True)
-                msg = W2085.format_message(walker=walker.__class__.__name__);
-                header = f"{ANSIColors.YELLOW}warning[{W2085.code}]{ANSIColors.END}: {msg}";
-                if filename {
-                    sys.stderr.write(f"{header}\n  --> {filename}:{lineno}:1\n");
-                } else {
-                    sys.stderr.write(f"{header}\n");
-                }
-
-                # Append help on a new line if nodes exist — same as Alert.pretty_print help_text
-                if (connected_nodes) {
+                if connected_nodes {
                     hint_msg = "Nodes connected to root: " + ", ".join(
                         `set(connected_nodes)
                     );
-                    sys.stderr.write(
-                        f"{ANSIColors.CYAN}help{ANSIColors.END}: {hint_msg}\n"
-                    );
                 }
-                sys.stderr.flush();
             }
+            JacRuntime.emit_runtime_warning(
+                W2085, help_text=hint_msg, walker=walker.__class__.__name__
+            );
         }
         return was_added;
-    } else {
-        raise TypeError('Invalid walker object');
     }
+    raise TypeError('Invalid walker object');
 }
 
 """Execute all entry abilities for current location.
@@ -881,7 +843,7 @@ impl JacWalker.`disengage(`walker: WalkerArchetype) -> bool {
 }
 
 """Generate graph for visualizing nodes and edges."""
-impl JacBuiltin.printgraph(
+impl JacBuiltin.printgraph(  # jac:ignore[W3030]
     nd: NodeArchetype,
     depth: int,
     traverse: bool,
@@ -2390,9 +2352,8 @@ impl JacUtils.spawn_node(
         }
         node_instance = node_class(**attributes);
         return node_instance;
-    } else {
-        raise ValueError(f"Node {node_name} not found.");
     }
+    raise ValueError(f"Node {node_name} not found.");
 }
 
 """Spawn a walker instance of the given walker_name."""
@@ -2408,9 +2369,8 @@ impl JacUtils.spawn_walker(
         }
         walker_instance = walker_class(**attributes);
         return walker_instance;
-    } else {
-        raise ValueError(f"Walker {walker_name} not found.");
     }
+    raise ValueError(f"Walker {walker_name} not found.");
 }
 
 """Retrieve an archetype class from a module."""
@@ -2581,6 +2541,87 @@ impl JacRuntime.get_program(cls: Any) -> JacProgram {
         cls.program = JacProgram();
     }
     return cls.program;
+}
+
+"""Emit a runtime warning."""
+impl JacRuntime.emit_runtime_warning(
+    diag: DiagnosticInfo, help_text: (str | None) = None, **kwargs: object
+) -> bool {
+    prog = JacRuntime.get_program();
+    try {
+        import from jaclang.project.config { get_config }
+        config = get_config();
+        if config and config.check {
+            check = config.check;
+            if (diag.code in (check.suppress or [])) {
+                return False;
+            }
+            if (
+                check.suppress_categories
+                and (diag.category.value in check.suppress_categories)
+            ) {
+                return False;
+            }
+        }
+    } except Exception {
+        _ = 0;
+    }
+
+    import inspect;
+    import os;
+    import sys;
+    import from jaclang.jac0core.passes { RuntimeAlert }
+
+    filename = "";
+    lineno = 0;
+    frame = inspect.currentframe();
+    while frame {
+        f_name = frame.f_code.co_filename;
+        normalized: str = f_name.replace("\\", "/");
+        is_internal = (
+            ("/jaclang/runtimelib/" in normalized)
+            or ("/jaclang/jac0core/" in normalized)
+            or ("/jaclang/vendor/" in normalized)
+            or ("/jaclang/plugin.py" in normalized)
+            or normalized.endswith("/jaclang/meta_importer.py")
+        );
+        if not is_internal {
+            filename = f_name;
+            lineno = frame.f_lineno;
+            break;
+        }
+        frame = frame.f_back;
+    }
+
+    if not filename {
+        return False;
+    }
+
+    use_color = True;
+    if os.environ.get("NO_COLOR") {
+        use_color = False;
+    } elif (os.environ.get("TERM") == "dumb") {
+        use_color = False;
+    } else {
+        try {
+            use_color = sys.stderr.isatty();
+        } except Exception {
+            use_color = False;
+        }
+    }
+
+    alert = RuntimeAlert(
+        msg=diag.format_message(**kwargs),
+        file_path=filename,
+        line_no=lineno,
+        code=diag,
+        help_text=help_text
+    );
+
+    sys.stderr.write(alert.pretty_print(colors=use_color) + "\n");
+    sys.stderr.flush();
+    prog.warnings_had.append(alert);
+    return True;
 }
 
 """Set the base path for the machine.

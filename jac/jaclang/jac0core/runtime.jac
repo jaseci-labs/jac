@@ -29,6 +29,7 @@ import from typing {
     cast,
     get_type_hints
 }
+import from jaclang.jac0core.diagnostics { DiagnosticInfo }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype {
     GenericEdge,
@@ -217,7 +218,8 @@ class JacWalker {
                     EdgeArchetype
                 ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
             ),
-        insert_loc: int = -1
+        insert_loc: int = -1,
+        else_present: bool = False
     ) -> bool;
 
     """Execute all entry abilities for current location.
@@ -330,7 +332,7 @@ class JacClassReferences {
 """Jac Builtins."""
 class JacBuiltin {
     """Generate graph for visualizing nodes and edges."""
-    static def printgraph(
+    static def printgraph(  # jac:ignore[W3030]
         nd: NodeArchetype,
         depth: int,
         traverse: bool,
@@ -1017,6 +1019,10 @@ class JacRuntime(JacRuntimeInterface) {
     """Get or create the JacProgram instance."""
     @classmethod
     def get_program(cls: Any) -> JacProgram;
+
+    static def emit_runtime_warning(
+        diag: DiagnosticInfo, help_text: (str | None) = None, **kwargs: object
+    ) -> bool;
 
     """Set the base path for the machine.
 

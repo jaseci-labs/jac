@@ -7,7 +7,7 @@ impl JacProgram.init(
     self.py_raise_map: dict[(str, str)] = {};
     self.mtir_map: dict[(str, Info)] = {};
     self.errors_had: list[Alert] = [];
-    self.warnings_had: list[Alert] = [];
+    self.warnings_had: list[Alert | RuntimeAlert] = [];
     self.type_evaluator: (TypeEvaluator | None) = None;
     self._compiler: (JacCompiler | None) = None;
     self._compile_options: CompileOptions = CompileOptions();

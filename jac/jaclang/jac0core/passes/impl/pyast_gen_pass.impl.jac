@@ -1995,8 +1995,8 @@ impl PyastGenPass.exit_ctrl_stmt(nd: uni.CtrlStmt) -> None {
     }
 }
 
+"""Set the given ctx (Load, Del) to AST node(s)."""
 impl PyastGenPass.exit_delete_stmt(nd: uni.DeleteStmt) -> None {
-    """Set the given ctx (Load, Del) to AST node(s).""";
     def set_ctx(targets: (ast3.AST | list[ast3.AST]), ctx: type) -> list[ast3.AST] {
         if not isinstance(targets, `list) {
             targets = [targets];
@@ -2112,6 +2112,15 @@ impl PyastGenPass.exit_visit_stmt(nd: uni.VisitStmt) -> None {
                 ast3.keyword(
                     arg='insert_loc',
                     value=cast(ast3.expr, self.py_ast_val(nd.insert_loc))
+                )
+            )
+        );
+    }
+    if nd.else_body {
+        visit_call.keywords.append(
+            self.sync(
+                ast3.keyword(
+                    arg='else_present', value=self.sync(ast3.Constant(value=True))
                 )
             )
         );
@@ -2938,20 +2947,18 @@ impl PyastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
                 call_node.args[0] = tmp_ref;
             }
             body_expr = cast(ast3.expr, call_node);
+        } elif isinstance(self.py_ast_val(nd), ast3.Subscript) {
+            index_expr = self.py_ast_val(nd).slice;
+            body_expr = self.sync(
+                ast3.Call(
+                    func=self.jaclib_obj('safe_subscript'),
+                    args=[tmp_ref, index_expr],
+                    keywords=[]
+                )
+            );
         } else {
-            if isinstance(self.py_ast_val(nd), ast3.Subscript) {
-                index_expr = self.py_ast_val(nd).slice;
-                body_expr = self.sync(
-                    ast3.Call(
-                        func=self.jaclib_obj('safe_subscript'),
-                        args=[tmp_ref, index_expr],
-                        keywords=[]
-                    )
-                );
-            } else {
-                self.py_ast_val(nd).value = tmp_ref;
-                body_expr = cast(ast3.expr, self.py_ast_val(nd));
-            }
+            self.py_ast_val(nd).value = tmp_ref;
+            body_expr = cast(ast3.expr, self.py_ast_val(nd));
         }
         nd.gen.py_ast = [
             self.sync(

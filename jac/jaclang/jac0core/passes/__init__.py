@@ -21,13 +21,19 @@ from jaclang.jac0core.passes.pyast_gen_pass import PyastGenPass
 from jaclang.jac0core.passes.pybc_gen_pass import PyBytecodeGenPass
 from jaclang.jac0core.passes.semantic_analysis_pass import SemanticAnalysisPass
 from jaclang.jac0core.passes.sym_tab_build_pass import SymTabBuildPass
-from jaclang.jac0core.passes.transform import Alert, BaseTransform, Transform
+from jaclang.jac0core.passes.transform import (
+    Alert,
+    BaseTransform,
+    RuntimeAlert,
+    Transform,
+)
 from jaclang.jac0core.passes.uni_pass import UniPass
 
 __all__ = [
     "Alert",
     "ASTValidationPass",
     "BaseTransform",
+    "RuntimeAlert",
     "Transform",
     "UniPass",
     "SymTabBuildPass",

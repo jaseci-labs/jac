@@ -37,6 +37,24 @@ obj Alert {
     def pretty_print(*, colors: bool = False) -> str;
 }
 
+"""Runtime Alert interface."""
+obj RuntimeAlert {
+    has msg: str,
+        file_path: str,
+        line_no: int,
+        code: DiagnosticInfo | None = None,
+        help_text: str | None = None;
+
+    """Return the alert as a single line log as opposed to the pretty print."""
+    def as_log(*, colors: bool = False) -> str;
+
+    """Pretty prints the Alert to show the alert with source location."""
+    def pretty_print(*, colors: bool = False) -> str;
+
+    """Return string representation of alert."""
+    def __str__ -> str;
+}
+
 """Base abstract class for all transforms (no UniNode constraint).
 
     Use this base class for transforms that don't operate on AST nodes,
