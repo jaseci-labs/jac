@@ -1280,10 +1280,8 @@ test "W3039 converts map lambda to list comprehension" {
     formatted = prog.mod.main.gen.jac;
 
     assert ".map(" not in formatted;
-    assert "for item in items" in formatted;
-    assert "enumerate(hours)" in formatted;
-    assert "for (idx, hour) in enumerate(hours)" in formatted;
-    assert "[<li className=\"item\">{item.name}</li> for item in items]" in formatted;
+    assert "for hour in hours" in formatted;
+    assert "[<div className=\"text-xs text-center\">{hour}</div> for hour in hours]" in formatted;
 }
 
 test "W3039 filter-map chain converts to filtered comprehension" {

@@ -170,11 +170,11 @@ obj JacAutoLintPass(UniPass) {
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
-    # map-lambda-to-comprehension conversion (W3039)
+    # map-lambda-to-comprehension conversion (W3041)
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
     def _detect_map_lambda_jsx(
         nd: uni.FuncCall
-    ) -> (tuple[str, (str | None), uni.JsxElement, uni.Expr] | None);
+    ) -> (tuple[str, uni.JsxElement, uni.Expr] | None);
 
     def _extract_filter_cond(
         collection: uni.Expr
