@@ -126,7 +126,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression }
 
 import from jaclang.jac0core.constant { Tokens as Tok, SymbolAccess, SymbolType }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
@@ -143,6 +143,7 @@ import from jaclang.jac0core.diagnostics {
     E0013,
     E0021,
     E0022,
+    E0025,
     E0030,
     E0032,
     E0034,
@@ -377,6 +378,7 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_DISENGAGE,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR,
+        TokenKind.KW_ROOT,
         TokenKind.KW_ASYNC,
         TokenKind.KW_AWAIT,
         TokenKind.KW_FLOW,
@@ -814,31 +816,8 @@ impl Parser.parse_expression -> Expr {
         return self.parse_lambda_expr();
     }
     expr = self.parse_concurrent_expr();
-    # `=>` recovery: lexer emitted E0025; drain the RHS — a brace-balanced
-    # block or a single expression — so parsing continues cleanly.
-    if self.check(TokenKind.ERROR) {
-        self.advance();
-        if self.check(TokenKind.LBRACE) {
-            depth = 0;
-            while not self.at_end() {
-                if self.check(TokenKind.LBRACE) {
-                    depth += 1;
-                } elif self.check(TokenKind.RBRACE) {
-                    if depth > 0 {
-                        depth -= 1;
-                        if depth == 0 {
-                            self.advance();
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
-                }
-                self.advance();
-            }
-        } else {
-            self.parse_concurrent_expr();
-        }
+    if self._check_js_arrow_fault() {
+        expr = self._recover_js_arrow_fault(expr);
     }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
@@ -856,6 +835,47 @@ impl Parser.parse_expression -> Expr {
         );
     }
     return expr;
+}
+
+# Detect JavaScript arrow function shape ('=>') in expression position.
+# The lexer emits '=' and '>' as separate tokens; we only recognize the arrow
+# when they are byte-adjacent, so legitimate uses of '=' and '>' are unaffected.
+impl Parser._check_js_arrow_fault -> bool {
+    if not self.check(TokenKind.EQ) {
+        return False;
+    }
+    nxt = self.peek();
+    if nxt.kind != TokenKind.GT {
+        return False;
+    }
+    return self.current().loc.pos_end == nxt.loc.pos_start;
+}
+
+# Emit E0025 for the '=>' span and consume the body so the surrounding
+# parser does not cascade. The body is parsed via the normal expression /
+# block-body routines, so chained arrows, JSX, and nested blocks all
+# recover correctly without a bespoke brace counter.
+impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
+    eq_tok = self.advance();
+    gt_tok = self.advance();
+    self.emit_diag(E0025, loc=eq_tok.loc.span_to(gt_tok.loc));
+    if self.check(TokenKind.LBRACE) {
+        self.advance();
+        self.parse_code_block_stmts();
+        if self.check(TokenKind.RBRACE) {
+            self.advance();
+        }
+    } elif not self.check_any(
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.EOF
+    ) {
+        self.parse_expression();
+    }
+    return left;
 }
 
 impl Parser.parse_concurrent_expr -> Expr {
@@ -1547,6 +1567,7 @@ impl Parser._make_attr_from_keyword(name_tok: Any) {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     ];
@@ -1705,6 +1726,7 @@ impl Parser.parse_call_arg -> Expr | KWPair {
             TokenKind.KW_SELF,
             TokenKind.KW_PROPS,
             TokenKind.KW_SUPER,
+            TokenKind.KW_ROOT,
             TokenKind.KW_HERE,
             TokenKind.KW_VISITOR
         ] {
@@ -2022,12 +2044,13 @@ impl Parser.parse_builtin_type -> Expr {
     return None;
 }
 
-"""Parse special reference: self, super, here, visitor, props, init, postinit."""
+"""Parse special reference: self, super, here, root, visitor, props, init, postinit."""
 impl Parser.parse_special_ref -> Expr {
     if self.check_any(
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
         TokenKind.KW_HERE,
+        TokenKind.KW_ROOT,
         TokenKind.KW_VISITOR,
         TokenKind.KW_PROPS,
         TokenKind.KW_INIT,
@@ -2053,10 +2076,6 @@ impl Parser.parse_special_ref -> Expr {
 }
 
 impl Parser.parse_atom -> Expr {
-    # Lexer already diagnosed the ERROR token; consume to skip duplicate E0004.
-    if self.check(TokenKind.ERROR) {
-        return self.make_name(self.advance());
-    }
     # Literals: INT, HEX, BIN, OCT, FLOAT, BOOL, NULL, ELLIPSIS
     if self.check_any(
         TokenKind.INT,
@@ -2118,12 +2137,13 @@ impl Parser.parse_atom -> Expr {
     ) {
         return self.parse_builtin_type();
     }
-    # Special references: self, super, here, visitor, props, init, postinit
+    # Special references: self, super, here, root, visitor, props, init, postinit
     # Plus archetype keywords as type names: node, edge, walker, object, class, enum
     if self.check_any(
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
         TokenKind.KW_HERE,
+        TokenKind.KW_ROOT,
         TokenKind.KW_VISITOR,
         TokenKind.KW_PROPS,
         TokenKind.KW_INIT,
@@ -2279,6 +2299,7 @@ impl Parser._is_edge_ref_start -> bool {
         TokenKind.ARROW_L_P1,
         TokenKind.RETURN_HINT,
         TokenKind.NAME,
+        TokenKind.KW_ROOT,
         TokenKind.KW_SELF,
         TokenKind.KW_HERE,
         TokenKind.KW_SUPER,
@@ -2289,6 +2310,7 @@ impl Parser._is_edge_ref_start -> bool {
     # NAME/special ref followed by arrow → edge ref.
     if self.check_any(
         TokenKind.NAME,
+        TokenKind.KW_ROOT,
         TokenKind.KW_SELF,
         TokenKind.KW_HERE,
         TokenKind.KW_SUPER,
@@ -2618,10 +2640,11 @@ impl Parser.parse_edge_ref_chain -> Expr {
         self.advance();
         kid.append(self.make_uni_token(self.previous()));
     }
-    # Parse optional starting expression (e.g., self, here)
+    # Parse optional starting expression (e.g., root, self, here)
     if self.check_any(
         TokenKind.NAME,
         TokenKind.KWESC_NAME,
+        TokenKind.KW_ROOT,
         TokenKind.KW_SELF,
         TokenKind.KW_HERE,
         TokenKind.KW_SUPER,
@@ -2672,6 +2695,7 @@ impl Parser.parse_edge_ref_chain -> Expr {
             TokenKind.NAME,
             TokenKind.KWESC_NAME,
             TokenKind.KW_SELF,
+            TokenKind.KW_ROOT,
             TokenKind.KW_HERE,
             TokenKind.KW_SUPER
         ) {
@@ -3045,6 +3069,7 @@ impl Parser.parse_lambda_params(sig_kid: list) -> list {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     )
@@ -3098,6 +3123,7 @@ impl Parser.parse_lambda_param -> ParamVar | None {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     ) {
@@ -3378,35 +3404,7 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
-    # JSX block-comment slot: lexer emits one JSX_BLOCK_COMMENT token
-    # spanning `{ #* ... *# }`.  Slice out the inner `#* ... *#` for the
-    # CommentToken; the slot token itself is the kid — its real source
-    # positions are needed for source maps and doc-IR anchoring, so do
-    # not synthesize LBRACE/RBRACE here (normalize_pass leaves it alone
-    # for the same reason).
-    if self.check(TokenKind.JSX_BLOCK_COMMENT) {
-        jsx_cmt = self.advance();
-        slot_text = jsx_cmt.value;
-        cmt_s = slot_text.find("#*");
-        cmt_e = slot_text.rfind("*#") + 2;
-        ct = CommentToken(
-            orig_src=self.get_source(),
-            name="COMMENT",
-            value=slot_text[cmt_s:cmt_e],
-            line=jsx_cmt.loc.line,
-            end_line=jsx_cmt.loc.end_line,
-            col_start=jsx_cmt.loc.col_start + cmt_s,
-            col_end=jsx_cmt.loc.col_start + cmt_e,
-            pos_start=jsx_cmt.loc.pos_start + cmt_s,
-            pos_end=jsx_cmt.loc.pos_start + cmt_e,
-            kid=[],
-            is_inline=False
-        );
-        return JsxComment(comment=ct, kid=[self.make_uni_token(jsx_cmt)]);
-    }
-    # Expression: {expr}.  Bare `{}` / `{   }` is rejected by
-    # parse_expression (RBRACE is not a valid expression start) — same
-    # as TSX, deliberately.
+    # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
         lbrace_uni = self.make_uni_token(lbrace);
@@ -5705,6 +5703,7 @@ impl Parser.parse_has_var -> HasVar {
         TokenKind.KW_SELF,
         TokenKind.KW_PROPS,
         TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
         TokenKind.KW_HERE,
         TokenKind.KW_VISITOR
     ] {
@@ -6077,7 +6076,11 @@ impl Parser.parse_param_var -> ParamVar | None {
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);
     } elif self.check_any(
-        TokenKind.KW_PROPS, TokenKind.KW_SUPER, TokenKind.KW_HERE, TokenKind.KW_VISITOR
+        TokenKind.KW_PROPS,
+        TokenKind.KW_SUPER,
+        TokenKind.KW_ROOT,
+        TokenKind.KW_HERE,
+        TokenKind.KW_VISITOR
     ) {
         name_tok = self.advance();
         name = SpecialVarRef(var=self.make_special_name(name_tok), is_enum_stmt=False);

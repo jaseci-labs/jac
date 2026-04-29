@@ -272,11 +272,7 @@ impl PyJsxProcessor.element(
     if nd.children {
         children_arg = self.pass_ref.sync(
             ast3.List(
-                elts=[
-                    cast(ast3.expr, c.gen.py_ast[0])
-                    for c in nd.children
-                    if not isinstance(c, uni.JsxComment)
-                ],
+                elts=[cast(ast3.expr, c.gen.py_ast[0]) for c in nd.children],
                 ctx=ast3.Load()
             ),
             nd

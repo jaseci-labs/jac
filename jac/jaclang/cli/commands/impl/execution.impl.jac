@@ -232,7 +232,7 @@ impl enter(
     entrypoint: str,
     args: list = [],
     main: bool = True,
-    root: str = '',
+    `root: str = '',
     nd: str = ''
 ) -> int {
     _ensure_jac_runtime();
@@ -242,8 +242,8 @@ impl enter(
     _discover_config_from_file(filename);
     (base, mod, mach) = _proc_file(filename);
     # Set user root if provided (for permission boundary)
-    if root {
-        mach.set_user_root(root);
+    if `root {
+        mach.set_user_root(`root);
     }
     if filename.endswith('.jac') {
         ret_module = Jac.jac_import(
