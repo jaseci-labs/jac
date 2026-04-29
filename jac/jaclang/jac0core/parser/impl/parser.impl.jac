@@ -143,6 +143,7 @@ import from jaclang.jac0core.diagnostics {
     E0013,
     E0021,
     E0022,
+    E0025,
     E0030,
     E0032,
     E0034,
@@ -815,6 +816,9 @@ impl Parser.parse_expression -> Expr {
         return self.parse_lambda_expr();
     }
     expr = self.parse_concurrent_expr();
+    if self._check_js_arrow_fault() {
+        expr = self._recover_js_arrow_fault(expr);
+    }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
         condition = self.parse_expression();
@@ -831,6 +835,47 @@ impl Parser.parse_expression -> Expr {
         );
     }
     return expr;
+}
+
+# Detect JavaScript arrow function shape ('=>') in expression position.
+# The lexer emits '=' and '>' as separate tokens; we only recognize the arrow
+# when they are byte-adjacent, so legitimate uses of '=' and '>' are unaffected.
+impl Parser._check_js_arrow_fault -> bool {
+    if not self.check(TokenKind.EQ) {
+        return False;
+    }
+    nxt = self.peek();
+    if nxt.kind != TokenKind.GT {
+        return False;
+    }
+    return self.current().loc.pos_end == nxt.loc.pos_start;
+}
+
+# Emit E0025 for the '=>' span and consume the body so the surrounding
+# parser does not cascade. The body is parsed via the normal expression /
+# block-body routines, so chained arrows, JSX, and nested blocks all
+# recover correctly without a bespoke brace counter.
+impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
+    eq_tok = self.advance();
+    gt_tok = self.advance();
+    self.emit_diag(E0025, loc=eq_tok.loc.span_to(gt_tok.loc));
+    if self.check(TokenKind.LBRACE) {
+        self.advance();
+        self.parse_code_block_stmts();
+        if self.check(TokenKind.RBRACE) {
+            self.advance();
+        }
+    } elif not self.check_any(
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.EOF
+    ) {
+        self.parse_expression();
+    }
+    return left;
 }
 
 impl Parser.parse_concurrent_expr -> Expr {
