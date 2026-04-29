@@ -182,7 +182,7 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
         if item_name not in sv_to_sv_names {
             continue;
         }
-        binding : (InteropBinding|None) = None;
+        binding: (InteropBinding | None) = None;
         for b in manifest.server_exports_to_server {
             if b.name == item_name and b.source_module == module_name {
                 binding = b;
