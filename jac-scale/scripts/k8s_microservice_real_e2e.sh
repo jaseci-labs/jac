@@ -339,10 +339,10 @@ fi
 
 run_zero_downtime_assertion() {
     local label="$1"
-    local url="$2"             # full URL OR a path; if a path, prefixed with localhost:port
+    local url="$2"             # full URL
     local accept_re="$3"
     local deployment="$4"
-    local extra_curl="${5:-}"  # extra curl args, e.g. -H 'Host: jac-shop.local'
+    local host_header="${5:-}" # optional Host header value (no leading "Host: ")
 
     echo "=== rolling restart [${label}]: hammer ${url}, expect zero ${accept_re}-violations ==="
     local log
@@ -356,10 +356,25 @@ run_zero_downtime_assertion() {
         # gives a clear signal without trip-firing the test harness.
         # --max-time 5 keeps any single slow request from delaying the
         # next one by more than 5s.
+        #
+        # We pass extra args as separate `curl` invocations (not an
+        # interpolated string) because bash word-splits unquoted strings
+        # on whitespace AND keeps any literal quotes - so the seemingly-
+        # natural extra="-H 'Host: x'" gets parsed as -H, 'Host:, x'
+        # which curl treats as a malformed header and falls back to
+        # writing the response body on stdout. Two-branch is uglier
+        # than an array, but transparent when reading the log.
         while true; do
-            code=$(curl -s -o /dev/null -w "%{http_code}\n" \
-                --max-time 5 ${extra_curl} \
-                "${url}" 2>/dev/null || echo "000")
+            if [ -n "${host_header}" ]; then
+                code=$(curl -s -o /dev/null -w "%{http_code}\n" \
+                    --max-time 5 \
+                    -H "Host: ${host_header}" \
+                    "${url}" 2>/dev/null || echo "000")
+            else
+                code=$(curl -s -o /dev/null -w "%{http_code}\n" \
+                    --max-time 5 \
+                    "${url}" 2>/dev/null || echo "000")
+            fi
             echo "${code}" >>"${log}"
             sleep 0.1
         done
@@ -435,7 +450,7 @@ elif [ "${INGRESS_ENABLED}" = "1" ] && [ "${USE_MINIKUBE}" = "1" ] && [ -n "${MI
         "http://${MINIKUBE_IP}${FIRST_PREFIX}/walker/__missing__" \
         "200|404|405" \
         "${FIRST_SVC}-deployment" \
-        "-H 'Host: ${INGRESS_HOST:-localhost}'"
+        "${INGRESS_HOST:-localhost}"
 else
     # Fallback: port-forward. Higher false-positive rate on 000s here
     # (port-forward TCP socket is fragile under concurrent rollout),

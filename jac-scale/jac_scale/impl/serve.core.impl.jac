@@ -372,8 +372,7 @@ impl JacAPIServerCore.register_health_endpoint -> None {
     async def health_ready -> JSONResponse {
         if is_draining() {
             return JSONResponse(
-                status_code=503,
-                content={"status": "draining", "ready": False}
+                status_code=503, content={"status": "draining", "ready": False}
             );
         }
         return JSONResponse(status_code=200, content={"status": "ready"});

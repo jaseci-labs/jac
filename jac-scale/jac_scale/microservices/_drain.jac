@@ -120,7 +120,7 @@ kubelet restarts the pod and kills the whole graceful shutdown
 sequence), and readiness has its own handler that returns the
 structured {status: draining, ready: false} body kube-proxy reads.
 """
-glob _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live", "/healthz/ready"};
+glob _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live","/healthz/ready"};
 
 
 def build_drain_middleware(service_label: str = "service") -> Any {
@@ -132,7 +132,7 @@ def build_drain_middleware(service_label: str = "service") -> Any {
         # `getattr` instead of attribute access keeps the existing unit
         # tests (which pass a bare `object()` as the request) working;
         # in production the request is always a Starlette Request.
-        url = getattr(request, "url", None);
+        url = request?.url;
         path = getattr(url, "path", "") if url is not None else "";
         if path in _DRAIN_EXEMPT_PATHS {
             return await call_next(request);

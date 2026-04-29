@@ -161,11 +161,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     knows what to do instead of paging through stack traces.
     """
     def _load_kube_config {
+        kubeconfig_failed: bool = False;
         try {
             k8s_cluster_config.load_kube_config();
-            return;
         } except ConfigException {
-            pass;
+            kubeconfig_failed = True;
+        }
+        if not kubeconfig_failed {
+            return;
         }
         try {
             k8s_cluster_config.load_incluster_config();
@@ -697,7 +700,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _build_readiness_probe -> dict[str, Any] {
         return {
             "httpGet": {
-                "path": "/healthz/ready", "port": self.k8s_config.container_port
+                "path": "/healthz/ready",
+                "port": self.k8s_config.container_port
             },
             "initialDelaySeconds": 5,
             "periodSeconds": 5,
@@ -719,7 +723,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _build_liveness_probe -> dict[str, Any] {
         return {
             "httpGet": {
-                "path": "/healthz/live", "port": self.k8s_config.container_port
+                "path": "/healthz/live",
+                "port": self.k8s_config.container_port
             },
             "initialDelaySeconds": 15,
             "periodSeconds": 10,

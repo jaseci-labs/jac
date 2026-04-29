@@ -325,8 +325,7 @@ impl MicroserviceGateway.handle_health_ready -> Response {
     import from jac_scale.microservices._drain { is_draining }
     if is_draining() {
         return JSONResponse(
-            status_code=503,
-            content={"status": "draining", "ready": False}
+            status_code=503, content={"status": "draining", "ready": False}
         );
     }
     return JSONResponse(status_code=200, content={"status": "ready"});

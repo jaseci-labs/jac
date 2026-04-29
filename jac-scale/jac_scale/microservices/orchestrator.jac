@@ -247,7 +247,7 @@ http_forward layer when the connection refuses.
 Factored out of `start_gateway_only` so unit tests can verify the
 status flip without booting the gateway server.
 """
-def _mark_all_healthy_k8s(registry: ServiceRegistry) -> None {
+def _mark_all_healthy_k8s(registry: ServiceRegistry) {
     for (_name, _entry) in registry.entries.items() {
         _entry.status = ServiceStatus.HEALTHY;
     }
