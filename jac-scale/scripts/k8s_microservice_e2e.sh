@@ -169,8 +169,18 @@ echo "=== verify K5 rolling-deploy wires landed ==="
 READINESS_PATH=$(kubectl get deployment orders-app-deployment \
     -n "${NAMESPACE}" \
     -o jsonpath='{.spec.template.spec.containers[0].readinessProbe.httpGet.path}')
-if [ "${READINESS_PATH}" != "/healthz" ]; then
-    echo "FAIL: expected readinessProbe path /healthz, got '${READINESS_PATH}'"
+# K5 v2: split /healthz/ready (gates traffic via Endpoints) vs
+# /healthz/live (gates pod restart). v1 used /healthz for both.
+if [ "${READINESS_PATH}" != "/healthz/ready" ]; then
+    echo "FAIL: expected readinessProbe path /healthz/ready, got '${READINESS_PATH}'"
+    exit 1
+fi
+
+LIVENESS_PATH=$(kubectl get deployment orders-app-deployment \
+    -n "${NAMESPACE}" \
+    -o jsonpath='{.spec.template.spec.containers[0].livenessProbe.httpGet.path}')
+if [ "${LIVENESS_PATH}" != "/healthz/live" ]; then
+    echo "FAIL: expected livenessProbe path /healthz/live, got '${LIVENESS_PATH}'"
     exit 1
 fi
 
