@@ -783,6 +783,41 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         image: str = self._handle_image_registry(app_name, app_config);
 
+        # P0.6: fail loud on the python_image fallback in production
+        # (`jac start --scale`) so users don't get a confusing silent
+        # CrashLoopBackOff. The guard is opt-in via the `_K8S_GUARD_FALLBACK`
+        # env var so existing tests (which use build=False with the fallback
+        # to assert manifest shape, and call generate_service_pod_specs
+        # directly without going through `jac start`) keep working.
+        # `_scale_pre_hook` will set this env var before invoking deploy.
+        import os;
+        if os.environ.get("_JAC_SCALE_GUARD_FALLBACK_IMAGE") == "1" {
+            fallback_image = self.k8s_config.python_image;
+            if image == fallback_image or image.startswith("python:") {
+                raise RuntimeError(
+                    f"Microservice mode deploy fell back to '{image}', which "
+                    f"doesn't have jac/jac-scale installed - all pods would "
+                    f"CrashLoopBackOff with 'jac: command not found'.\n\n"
+                    f"Likely causes:\n"
+                    f"  - No Dockerfile in your project root and no "
+                    f"auto-build path configured.\n"
+                    f"  - You're running `jac start --scale` from a fixture "
+                    f"dir meant for the e2e script, not direct deploy.\n\n"
+                    f"Fix:\n"
+                    f"  - For testing K-track itself, use the bundled script:\n"
+                    f"      bash jac-scale/scripts/k8s_microservice_real_e2e.sh\n"
+                    f"  - For your own app, see the 'Pods deploy but "
+                    f"kubectl logs shows jac: command not found' section "
+                    f"in jac-scale/jac_scale/microservices/troubleshooting.md\n"
+                    f"  - Pre-set [plugins.scale.kubernetes].docker_image_name "
+                    f"in jac.toml if you've already built an image.\n"
+                    f"  - Once P0.5 + the next PyPI publish ship, `jac start "
+                    f"--scale` will auto-build for local clusters with no "
+                    f"Dockerfile required."
+                );
+            }
+        }
+
         specs: dict[str, dict[str, Any]] = {};
         for svc_name in routes.keys() {
             specs[svc_name] = self._build_service_pod_spec(svc_name, image);

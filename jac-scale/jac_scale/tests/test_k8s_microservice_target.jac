@@ -1994,6 +1994,90 @@ test "destroy also tears down Ingresses by label" {
 # P1.3: helpful error messages on common new-user K8s failures
 # =============================================================================
 
+test "P0.6: python_image fallback raises actionable error when guard env is set" {
+    # Regression: KubernetesTarget._handle_image_registry returns
+    # k8s_config.python_image (typically "python:3.12-slim") when build
+    # is False or the registry isn't configured. For microservice mode
+    # that fallback is always wrong - pod entrypoint invokes
+    # `jac scale gateway` / `jac start <svc>.jac`, neither of which
+    # exists in a vanilla python image. The guard is opt-in via env var
+    # `_JAC_SCALE_GUARD_FALLBACK_IMAGE=1` so existing build=False tests
+    # don't trip it; the production path (`_scale_pre_hook` in plugin.jac)
+    # sets the env var before invoking deploy.
+    import jac_scale.config_loader as cfg_mod;
+    import os;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", python_image="python:3.12-slim")
+    );
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"routes": {"orders_app": "/api/orders"}}
+    ));
+    prev_env = os.environ.get("_JAC_SCALE_GUARD_FALLBACK_IMAGE");
+    os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
+
+    try {
+        # build=False -> _handle_image_registry returns python_image fallback
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        raised = False;
+        msg = "";
+        try {
+            target.generate_service_pod_specs(ac);
+        } except RuntimeError as e {
+            raised = True;
+            msg = str(e);
+        }
+        assert raised, (
+            "fallback to python:3.12-slim must raise when guard env is set"
+        );
+        # Error must be actionable: name the symptom + the e2e script + docs.
+        assert "CrashLoopBackOff" in msg or "jac: command not found" in msg;
+        assert "k8s_microservice_real_e2e.sh" in msg;
+        assert "troubleshooting.md" in msg;
+    } finally {
+        if prev_env is None {
+            del os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"];
+        } else {
+            os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = prev_env;
+        }
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+test "P0.6: fallback image does NOT raise when guard env is unset (back-compat)" {
+    # Existing tests use build=False to assert manifest shape without
+    # actually building anything; they rely on the python_image fallback
+    # being silently accepted. The guard must be opt-in to keep that path
+    # working for tests + any caller that intentionally pre-builds the
+    # image elsewhere.
+    import jac_scale.config_loader as cfg_mod;
+    import os;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", python_image="python:3.12-slim")
+    );
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
+        data={"routes": {"orders_app": "/api/orders"}}
+    ));
+    # Make sure the env var is unset (it's the default).
+    prev_env = os.environ.pop("_JAC_SCALE_GUARD_FALLBACK_IMAGE", None);
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        # Should NOT raise - the fallback is allowed when guard is off.
+        specs = target.generate_service_pod_specs(ac);
+        assert GATEWAY_NAME in specs;
+        assert "orders_app" in specs;
+    } finally {
+        if prev_env is not None {
+            os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = prev_env;
+        }
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
 test "P1.3: empty routes produces actionable error, not silent gateway-only deploy" {
     # Without this guard, the user gets a deploy with just a gateway pod
     # routing to nothing. The error message must point at the exact

@@ -151,6 +151,73 @@ route to that service.
 
 ---
 
+## Pods deploy but `kubectl logs` shows `jac: command not found`
+
+**Symptom**
+
+```
+$ kubectl get pods -n default
+NAME                                       READY   STATUS              RESTARTS
+products-app-deployment-abc-123            0/1     CrashLoopBackOff    5
+$ kubectl logs <pod-name> -n default
+/bin/sh: 1: jac: not found
+$ kubectl describe pod <pod-name> | grep Image:
+    Image: python:3.12-slim
+```
+
+**What's wrong**
+
+Image is `python:3.12-slim` — the deploy fell back to the generic Python image because the `jac start --scale` flow couldn't find a way to build/load YOUR app's image. Generic Python doesn't have `jac` or `jac-scale` installed, hence "command not found."
+
+This happens when:
+1. No `Dockerfile` in the project root + no `image_registry` configured in jac.toml (auto-build doesn't know what to build/where to push).
+2. `app_config.build = False` — explicit opt-out.
+3. You ran `jac start --scale` from inside a fixture / test directory that wasn't designed for direct `jac start --scale` use (e.g. `jac-scale/jac_scale/tests/fixtures/k8s_e2e/` is for the e2e script, not direct deploy).
+
+P0.6 (in flight) makes this fail loud — `jac start --scale` will exit with a clear error pointing here instead of producing a silent CrashLoopBackOff. P0.5 (in flight) makes the auto-build path "just work" for local clusters so you don't hit this in the first place.
+
+**Fix — for the bundled fixture**
+
+If you're testing K-track itself (running from inside the jaseci repo), use the e2e script instead of direct `jac start --scale`:
+
+```bash
+cd /path/to/jaseci
+bash jac-scale/scripts/k8s_microservice_real_e2e.sh
+```
+
+That script handles image build + load correctly.
+
+**Fix — for your own app**
+
+Until P0.5 ships, the manual workflow is:
+
+```bash
+# 1. Add a Dockerfile.microservice next to your jac.toml
+#    (template: jac-scale/scripts/Dockerfile.microservice in the jaseci repo)
+
+# 2. Tell Docker to talk to minikube's daemon
+eval $(minikube docker-env)
+
+# 3. Build the image (replace TAG with whatever; "myapp:dev" is fine)
+docker build -t myapp:dev -f Dockerfile.microservice .
+
+# 4. Configure jac.toml to use it
+#    [plugins.scale.kubernetes]
+#    image_name = "myapp"
+#    image_tag = "dev"
+#    build = false  # tell K8s target the image is already built
+
+# 5. Now jac start --scale will reference the prebuilt image
+jac start main.jac --scale
+
+# 6. Restore your shell's docker context when done
+eval $(minikube docker-env -u)
+```
+
+Once P0.5 + PyPI publish ship, steps 1-4 go away — `jac start --scale` does it all.
+
+---
+
 ## Pod stuck in `ImagePullBackOff` / `ErrImagePull`
 
 **Symptom**

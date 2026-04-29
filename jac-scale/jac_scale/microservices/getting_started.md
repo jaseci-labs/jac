@@ -120,18 +120,45 @@ my_service = "/api/my"
 `my_service.jac` should be a sibling file with `def:pub` functions
 exposed via the [sv import](docs.md) machinery.
 
-### Build + deploy
+### Build + deploy (current workflow)
+
+Today, `jac start --scale` expects either a Dockerfile in your project or a pre-built image. Two paths:
+
+**Path A — easiest, the bundled e2e script** (recommended for now):
 
 ```bash
-# Point Docker at minikube's daemon so the image lands inside the cluster
-eval $(minikube docker-env)
-
-# Deploy
-jac start main.jac --scale
-
-# Restore your shell's docker context
-eval $(minikube docker-env -u)
+# From the repo root (gets the build right automatically)
+cd /path/to/jaseci
+bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/your/project
 ```
+
+This handles the image build + load into minikube, applies manifests, and tears down on exit. Same as what CI runs.
+
+**Path B — manual workflow** (if you want full control):
+
+1. Drop a `Dockerfile.microservice` into your project root (template at `jac-scale/scripts/Dockerfile.microservice` in the jaseci repo).
+2. Build inside minikube's docker context:
+
+   ```bash
+   eval $(minikube docker-env)
+   docker build -t myapp:dev -f Dockerfile.microservice .
+   ```
+
+3. Tell jac.toml to use the prebuilt image:
+
+   ```toml
+   [plugins.scale.kubernetes]
+   docker_image_name = "myapp:dev"
+   ```
+
+4. Deploy:
+
+   ```bash
+   jac start main.jac --scale
+   eval $(minikube docker-env -u)   # restore your shell
+   ```
+
+> **Coming soon — auto-build.** The K-track has an in-flight task to make `jac start --scale` detect the cluster type (minikube/k3d/kind/remote), auto-generate a Dockerfile from a baked-in template if your project doesn't have one, and auto-distribute the image to the right place. Once it lands (paired with the matching PyPI publish), the workflow becomes literally `jac start main.jac --scale` with zero Docker knowledge required. Until then, use Path A or Path B above.
 
 `jac start --scale` auto-selects `kubernetes-microservice` target when
 microservice mode is enabled in jac.toml. It builds the image, generates

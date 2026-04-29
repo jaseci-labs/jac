@@ -125,10 +125,40 @@ def _scale_pre_hook(context: HookContext) -> None {
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
-        # Deploy
-        result = deployment_target.deploy(app_config);
+        # P0.6: opt into the python_image-fallback guard. Off by default
+        # (so unit tests using build=False for manifest-shape assertions
+        # don't trip the guard); on for the production `jac start --scale`
+        # path so users get a clean error instead of a silent
+        # CrashLoopBackOff.
+        if target == "kubernetes-microservice" {
+            os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
+        }
+
+        # Deploy. P0.6: a failure here used to `raise` and let the
+        # jaclang hook runner log a warning and fall through to the
+        # normal `jac start` path, which then started a local-mode dev
+        # server (npm install, build client bundle) - giving the user
+        # the impression "scale didn't quite work but local mode picked
+        # it up", when actually the K8s deploy failed and the dev
+        # server they got is unrelated to what they asked for. We now
+        # cancel execution explicitly with a non-zero return code so
+        # the parent process exits cleanly with the actionable error.
+        try {
+            result = deployment_target.deploy(app_config);
+        } except Exception as e {
+            console.print(f"\n[red]Deployment failed:[/red] {e}");
+            context.set_data("cancel_execution", True);
+            context.set_data("cancel_return_code", 1);
+            return;
+        }
         if not result.success {
-            raise RuntimeError(result.message or "Deployment failed");
+            console.print(
+                f"\n[red]Deployment failed:[/red] "
+                f"{result.message or 'unknown error'}"
+            );
+            context.set_data("cancel_execution", True);
+            context.set_data("cancel_return_code", 1);
+            return;
         }
         if result.service_url {
             console.print(
