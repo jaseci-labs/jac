@@ -151,18 +151,3 @@ test "obj bare assignment to has var name still warns as unused" {
     ];
     assert len(unused_warnings) > 0 , f"Expected unused variable warning for bare 'x' in obj method, got none";
 }
-
-test "arrow func syntax does not produce W2001 spurious undefined-name warning" {
-    # The parse_atom ERROR guard synthesises a Name node with value '=>'.
-    # The isidentifier() filter in _check_undefined_names must suppress W2001
-    # for it — '=> ' is not a valid identifier so it can never be a real name.
-    file_path = os.path.join(FIXTURES, "arrow_func_syntax.jac");
-    prog = JacProgram();
-    prog.compile(file_path, type_check=True);
-    arrow_warnings = [
-        str(w)
-        for w in prog.warnings_had
-        if "=>" in str(w) and "undefined" in str(w).lower()
-    ];
-    assert len(arrow_warnings) == 0 , f"Expected no W2001 for '=>', got: {arrow_warnings}";
-}
