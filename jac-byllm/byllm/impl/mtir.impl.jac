@@ -277,7 +277,7 @@ impl MTRuntime.write_back_conversation -> None {
 
 # Test against finish_tool both at object level and dict level.
 def _is_finish_tool_call(tc: Any) -> bool {
-    if hasattr(tc, "function") and hasattr(tc.function, "name") {
+    if tc?.function and hasattr(tc.function, "name") {
         return tc.function.name == "finish_tool";
     }
     if isinstance(tc, dict) {
@@ -306,7 +306,7 @@ impl MTRuntime.get_history_for_persist -> list[MessageType] {
         if isinstance(msg, ToolCallResultMsg) and msg.name == "finish_tool" {
             continue;
         }
-        tool_calls = getattr(msg, "tool_calls", None);
+        tool_calls = msg?.tool_calls;
         if tool_calls is None and isinstance(msg, dict) {
             tool_calls = msg.get("tool_calls");
         }
