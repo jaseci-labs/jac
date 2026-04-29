@@ -643,17 +643,44 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return f"{image[:idx]}:{tag}";
     }
 
-    """K5: standard probe pointing at /healthz on the container port.
+    """K5 v2: readiness probe pointing at /healthz/ready.
 
-    Used for both readinessProbe AND livenessProbe in K5 v1. Future:
-    split /healthz into /healthz/ready (gates traffic) and /healthz/live
-    (gates restart) so liveness doesn't trip on dependency degradation.
+    Gates Endpoints membership (kube-proxy traffic). Tight cadence so
+    the pod is removed from rotation within ~10s of `is_draining()`
+    flipping true, which lets in-flight requests finish without new
+    arrivals. Tuning matches the local-mode drain_timeout_seconds
+    expectation: 5s period * 3 fails = ~15s before the pod is fully
+    out of Endpoints, well inside our default 60s graceful window.
     """
-    def _build_probe -> dict[str, Any] {
+    def _build_readiness_probe -> dict[str, Any] {
         return {
-            "httpGet": {"path": "/healthz", "port": self.k8s_config.container_port},
+            "httpGet": {
+                "path": "/healthz/ready", "port": self.k8s_config.container_port
+            },
             "initialDelaySeconds": 5,
             "periodSeconds": 5,
+            "timeoutSeconds": 3,
+            "failureThreshold": 3
+        };
+    }
+
+    """K5 v2: liveness probe pointing at /healthz/live.
+
+    Gates pod restart. Liveness is deliberately MORE lenient than
+    readiness because restarting a pod is expensive and can cascade
+    (a bad release where every replica trips liveness restarts the
+    whole service mid-flight). Liveness should only fail when the
+    process is genuinely hung - which is why /healthz/live checks
+    nothing other than dispatcher responsiveness. Longer initialDelay
+    + period give cold-start traffic a chance to settle.
+    """
+    def _build_liveness_probe -> dict[str, Any] {
+        return {
+            "httpGet": {
+                "path": "/healthz/live", "port": self.k8s_config.container_port
+            },
+            "initialDelaySeconds": 15,
+            "periodSeconds": 10,
             "timeoutSeconds": 3,
             "failureThreshold": 3
         };
@@ -1004,8 +1031,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "args": entry["args"],
             "env": self._build_env(svc_name, svc_cfg),
             "ports": [{"containerPort": self.k8s_config.container_port}],
-            "readinessProbe": self._build_probe(),
-            "livenessProbe": self._build_probe(),
+            "readinessProbe": self._build_readiness_probe(),
+            "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
         resources = self._build_resources(svc_cfg);
@@ -1037,8 +1064,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "args": entry["args"],
             "env": self._build_env(GATEWAY_NAME, svc_cfg),
             "ports": [{"containerPort": self.k8s_config.container_port}],
-            "readinessProbe": self._build_probe(),
-            "livenessProbe": self._build_probe(),
+            "readinessProbe": self._build_readiness_probe(),
+            "livenessProbe": self._build_liveness_probe(),
             "lifecycle": {"preStop": self._build_prestop_hook()}
         };
         resources = self._build_resources(svc_cfg);

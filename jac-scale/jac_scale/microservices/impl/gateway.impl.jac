@@ -298,6 +298,40 @@ impl MicroserviceGateway.handle_health -> Response {
     );
 }
 
+
+"""Liveness endpoint - 200 if the process is alive, ALWAYS.
+
+Liveness gates pod restart. We deliberately don't check anything that
+could fail other than the dispatcher itself responding. Checking
+dependencies here would let a transient DB blip cascade into a kubelet
+restart, which then blips more pods, which can spiral. K8s convention:
+liveness = "is the container hung", not "is it usable."
+"""
+impl MicroserviceGateway.handle_health_live -> Response {
+    return JSONResponse(status_code=200, content={"status": "alive"});
+}
+
+
+"""Readiness endpoint - 200 normally, 503 during drain.
+
+Readiness gates traffic. When SIGTERM hits, our drain middleware flips
+`is_draining()` true and the readiness probe starts failing; kube-proxy
+removes the pod from Endpoints within a probe period or two so new
+requests stop arriving while in-flight ones complete. Pair with the K5
+preStop sleep (bridges the kube-proxy-propagation gap) and
+terminationGracePeriodSeconds (gives drain time to flush).
+"""
+impl MicroserviceGateway.handle_health_ready -> Response {
+    import from jac_scale.microservices._drain { is_draining }
+    if is_draining() {
+        return JSONResponse(
+            status_code=503,
+            content={"status": "draining", "ready": False}
+        );
+    }
+    return JSONResponse(status_code=200, content={"status": "ready"});
+}
+
 """Built-in jac-scale routes (/user/*, /walker/*, /function/*, etc.).
 
 Each service only has its own walkers/functions, so we try every healthy
@@ -543,10 +577,21 @@ impl MicroserviceGateway.setup -> FastAPI {
         svc_label: str = "__unmatched__";
         try {
             resp: Response | None = None;
-            if path == "/health" or path == "/healthz" {
-                # /healthz is the K8s probe convention; alias to /health
-                # so the gateway pod's readiness never depends on whether
-                # a backend service has registered yet.
+            if path == "/healthz/live" {
+                # K8s livenessProbe target. Always 200 if dispatcher runs.
+                svc_label = "__health_live__";
+                resp = gw.handle_health_live();
+            } elif path == "/healthz/ready" {
+                # K8s readinessProbe target. 503 during drain so kube-proxy
+                # removes us from Endpoints before in-flight requests
+                # finish; pair with preStop + terminationGracePeriodSeconds.
+                svc_label = "__health_ready__";
+                resp = gw.handle_health_ready();
+            } elif path == "/health" or path == "/healthz" {
+                # Backward-compat aliases. /healthz used to be the
+                # combined probe target (K5 v1); now /healthz/live + /ready
+                # serve K8s and /healthz keeps the registry-summary view
+                # for humans / dashboards. /health is the legacy alias.
                 svc_label = "__health__";
                 resp = gw.handle_health();
             } elif path == "/metrics" {

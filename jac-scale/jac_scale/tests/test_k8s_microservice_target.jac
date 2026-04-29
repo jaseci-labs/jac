@@ -1033,24 +1033,47 @@ test "Deployment carries RollingUpdate strategy with maxSurge=1 maxUnavailable=0
 }
 
 
-test "service pod-spec carries readinessProbe and livenessProbe on /healthz" {
+test "service pod-spec readinessProbe hits /healthz/ready" {
+    # K5 v2: readiness gates Endpoints membership. /healthz/ready returns
+    # 503 during drain so kube-proxy stops routing to the pod within
+    # 1-2 probe periods (gives in-flight requests time to finish).
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(app_name="demo", container_port=8000)
     );
     spec = target._build_service_pod_spec("orders", "demo:latest");
     container = spec["containers"][0];
 
-    # K5 v1: both probes hit /healthz; future split into
-    # /healthz/ready and /healthz/live is a separate task.
-    for probe_name in ["readinessProbe", "livenessProbe"] {
-        probe = container[probe_name];
-        assert probe["httpGet"]["path"] == "/healthz", (
-            f"{probe_name} should hit /healthz, got {probe['httpGet']}"
-        );
-        assert probe["httpGet"]["port"] == 8000;
-        assert probe["periodSeconds"] == 5;
-        assert probe["failureThreshold"] == 3;
-    }
+    probe = container["readinessProbe"];
+    assert probe["httpGet"]["path"] == "/healthz/ready", (
+        f"readinessProbe should hit /healthz/ready, got {probe['httpGet']}"
+    );
+    assert probe["httpGet"]["port"] == 8000;
+    # Tight cadence (5s/3 = ~15s to fully drop from Endpoints).
+    assert probe["periodSeconds"] == 5;
+    assert probe["failureThreshold"] == 3;
+}
+
+
+test "service pod-spec livenessProbe hits /healthz/live (more lenient)" {
+    # K5 v2: liveness gates pod restart. Lenient (15s initial, 10s
+    # period) because restart is expensive and a too-strict liveness
+    # can cascade. /healthz/live deliberately checks nothing other
+    # than dispatcher responsiveness so transient dependency blips
+    # don't restart the pod.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", container_port=8000)
+    );
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    container = spec["containers"][0];
+
+    probe = container["livenessProbe"];
+    assert probe["httpGet"]["path"] == "/healthz/live", (
+        f"livenessProbe should hit /healthz/live, got {probe['httpGet']}"
+    );
+    assert probe["httpGet"]["port"] == 8000;
+    assert probe["initialDelaySeconds"] == 15;
+    assert probe["periodSeconds"] == 10;
+    assert probe["failureThreshold"] == 3;
 }
 
 

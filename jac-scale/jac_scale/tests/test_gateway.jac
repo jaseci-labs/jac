@@ -179,6 +179,75 @@ test "health endpoint returns service summary" {
     assert "orders" in data["services"];
 }
 
+test "/healthz/live returns 200 always (liveness, no drain check)" {
+    # P2.1: liveness gates pod restart. /healthz/live deliberately
+    # checks NOTHING other than dispatcher responsiveness - dependency
+    # blips must not cascade into kubelet restarts. Returns 200 even
+    # when drain is in progress (drain affects readiness, not liveness;
+    # a draining pod is still alive and shouldn't be restarted).
+    import from jac_scale.microservices._drain {
+        reset_drain, start_drain
+    }
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        # Normal state
+        resp = client.get("/healthz/live");
+        assert resp.status_code == 200;
+        assert resp.json()["status"] == "alive";
+
+        # During drain - liveness must STILL be 200, otherwise kubelet
+        # would restart the pod mid-drain (defeats the whole point).
+        start_drain(10.0);
+        resp2 = client.get("/healthz/live");
+        assert resp2.status_code == 200, (
+            "liveness must remain 200 during drain - drain affects "
+            "readiness only, not liveness"
+        );
+    } finally {
+        reset_drain();
+    }
+}
+
+
+test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
+    # P2.1: readiness gates Endpoints membership. When SIGTERM hits,
+    # is_draining() flips true, the readiness probe fails, kube-proxy
+    # removes the pod from rotation - new requests stop arriving while
+    # in-flight ones complete.
+    import from jac_scale.microservices._drain {
+        reset_drain, start_drain
+    }
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/healthz/ready");
+        assert resp.status_code == 200;
+        assert resp.json()["status"] == "ready";
+
+        start_drain(10.0);
+        resp2 = client.get("/healthz/ready");
+        assert resp2.status_code == 503, (
+            "readiness must 503 during drain so kube-proxy removes "
+            "the pod from Endpoints"
+        );
+        body = resp2.json();
+        assert body["ready"] is False;
+        assert body["status"] == "draining";
+    } finally {
+        reset_drain();
+    }
+}
+
+
 test "healthz returns 200 from gateway, not 404 from builtin passthrough" {
     # Regression: /healthz used to be in _BUILTIN_EXACT, which fans out to
     # backends. With an empty (or no-healthy) registry, that returned 404

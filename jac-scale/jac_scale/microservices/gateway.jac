@@ -52,8 +52,16 @@ obj MicroserviceGateway {
     def resolve_target_url(service_entry: ServiceEntry, path: str, query: str) -> str;
 
     # --- request handlers (each returns a Response or None to defer) ---
-    """Return the health summary response."""
+    """Return the health summary response (registry view, human-facing)."""
     def handle_health -> Response;
+
+    """Liveness response - always 200 if the dispatcher runs (for K8s
+       livenessProbe; dependency state is intentionally NOT checked here)."""
+    def handle_health_live -> Response;
+
+    """Readiness response - 200 normally, 503 when drain is in progress
+       (for K8s readinessProbe; gates Endpoints membership)."""
+    def handle_health_ready -> Response;
 
     """Forward built-in jac-scale routes (/user/*, /walker/*, /function/* etc)
        to any healthy service; returns None if path isn't a built-in."""

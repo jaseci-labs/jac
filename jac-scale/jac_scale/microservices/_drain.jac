@@ -112,11 +112,31 @@ def reset_drain {
 
 
 """Build the drain HTTP middleware. `service_label` goes into the 503
-envelope (e.g. "__gateway__", "cart_app")."""
+envelope (e.g. "__gateway__", "cart_app").
+
+K8s health probe paths (/healthz/live, /healthz/ready) bypass the
+drain short-circuit: liveness must return 200 even mid-drain (else
+kubelet restarts the pod and kills the whole graceful shutdown
+sequence), and readiness has its own handler that returns the
+structured {status: draining, ready: false} body kube-proxy reads.
+"""
+glob _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live", "/healthz/ready"};
+
+
 def build_drain_middleware(service_label: str = "service") -> Any {
     import from jac_scale.microservices._errors { service_unavailable }
 
     async def drain_middleware(request: Any, call_next: Any) -> Any {
+        # K8s probes are exempt from the drain short-circuit so kubelet
+        # gets a coherent picture of pod state during graceful shutdown.
+        # `getattr` instead of attribute access keeps the existing unit
+        # tests (which pass a bare `object()` as the request) working;
+        # in production the request is always a Starlette Request.
+        url = getattr(request, "url", None);
+        path = getattr(url, "path", "") if url is not None else "";
+        if path in _DRAIN_EXEMPT_PATHS {
+            return await call_next(request);
+        }
         if not _is_draining {
             incr_inflight();
             try {
