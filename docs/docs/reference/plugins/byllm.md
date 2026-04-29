@@ -564,7 +564,7 @@ def smart_answer(question: str) -> str by llm(
     tools=[search_db], stream=True, logging=True
 );
 
-# Multi-turn — bind a caller-owned list as conversation history
+# Multi-turn - bind a caller-owned list as conversation history
 glob history: list = [];
 def chat(message: str) -> str by llm(
     tools=[search_db],
