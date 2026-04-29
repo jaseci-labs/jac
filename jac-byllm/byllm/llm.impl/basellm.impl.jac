@@ -576,10 +576,9 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
         # dispatch_streaming yields tokens but doesn't append to messages;
         # persist the final answer so write_back_conversation includes it.
         if accumulated {
-            mt_run.add_message(Message(
-                role=MessageRole.ASSISTANT,
-                content=accumulated
-            ));
+            mt_run.add_message(
+                Message(role=MessageRole.ASSISTANT, content=accumulated)
+            );
         }
     }
 }

@@ -175,11 +175,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     user_msg = Message(
         role=MessageRole.USER,
         content=[
-            Text(
-                Tool.get_func_description(caller) + "\n\n" + "\n".join(
-                    inputs_detail
-                )
-            ),
+            Text(Tool.get_func_description(caller) + "\n\n" + "\n".join(inputs_detail)),
             *media_inputs,
 
         ],
