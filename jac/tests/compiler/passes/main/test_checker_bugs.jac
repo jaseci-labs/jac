@@ -586,18 +586,6 @@ test "bug_super1_super_call_returns_parent_instance" {
     );
 }
 
-# =========================================================================
-# Bug #DLOC-1: Decorated class inside function body parsed as Ability
-#
-# When a class declaration with a decorator appears inside a function body,
-# the parser was routing DECOR_OP unconditionally to parse_ability(). This
-# caused the type checker to return NoneType for the constructor and fail
-# to resolve any attributes on instances.
-#
-# Fix: parse_statement now calls _dispatch_decorated() for DECOR_OP, which
-# peeks ahead past the decorator tokens to pick parse_archetype() or
-# parse_ability() correctly, the same way module-level declarations work.
-# =========================================================================
 test "bug_dloc1_decorated_class_in_function_body" {
     program = compile_and_check("checker_bug_decorated_local_class.jac");
 

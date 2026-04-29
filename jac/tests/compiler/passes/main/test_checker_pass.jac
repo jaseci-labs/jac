@@ -890,9 +890,9 @@ test "root_type" {
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
     expected_error = """
-            root() ++> c;
-            x: str = root();  # <- error: cannot assign Root to str
-            ^^^^^^^^^^^^^^^^
+            root ++> c;
+            x: str = root;  # <- error
+            ^^^^^^^^^^^^^^
             """;
     assert_error_pretty_found(expected_error, program.errors_had[0].pretty_print());
 }
@@ -3882,9 +3882,9 @@ test "component_impl_scope_resolves_has_vars" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
-test "root_call_returns_root_type" {
-    # root() should be recognized as a builtin returning Root, so that
-    # root() spawn Walker() resolves the walker type and .reports is accessible.
+test "root_special_var_returns_root_type" {
+    # Bare `root` should resolve as a SpecialVarRef returning Root, so that
+    # `root spawn Walker()` resolves the walker type and `.reports` is accessible.
     path = os.path.join(CHECKER_FIXTURES, "checker_root_call_type.jac");
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
@@ -3897,7 +3897,7 @@ test "root_call_returns_root_type" {
         for w in program.warnings_had
         if w.code.code == "W1051"
     ];
-    assert len(w1051) == 0 , f"Expected no W1051 warnings for root() call, got {len(
+    assert len(w1051) == 0 , f"Expected no W1051 warnings for bare `root`, got {len(
         w1051
     )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
 }

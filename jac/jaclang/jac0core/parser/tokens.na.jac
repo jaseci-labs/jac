@@ -92,6 +92,7 @@ enum TokenKind {
     KW_DISENGAGE = "disengage",
     KW_HERE = "here",
     KW_VISITOR = "visitor",
+    KW_ROOT = "root",
     KW_ASYNC = "async",
     KW_AWAIT = "await",
     KW_FLOW = "flow",
@@ -217,7 +218,6 @@ enum TokenKind {
     JSX_FRAG_OPEN = "<>",
     JSX_FRAG_CLOSE = "</>",
     JSX_NAME = "JSX_NAME",
-    JSX_BLOCK_COMMENT = "JSX_BLOCK_COMMENT",
     COMMENT = "COMMENT",
     WS = "WS",
     NEWLINE = "NEWLINE",
@@ -327,6 +327,7 @@ glob KEYWORDS: dict[str, TokenKind] = {
          "disengage": TokenKind.KW_DISENGAGE,
          "here": TokenKind.KW_HERE,
          "visitor": TokenKind.KW_VISITOR,
+         "root": TokenKind.KW_ROOT,
          # Async keywords
          "async": TokenKind.KW_ASYNC,
          "await": TokenKind.KW_AWAIT,
