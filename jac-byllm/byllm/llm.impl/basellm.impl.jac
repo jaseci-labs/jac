@@ -83,6 +83,16 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     if mt_run.stream and len(mt_run.tools) == 0 {
         return self.dispatch_streaming(mt_run);
     }
+    # Non-streaming ReAct: write_back fires once on every exit path.
+    try {
+        return self._invoke_react_loop(mt_run);
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
     max_iters = (
         mt_run.call_params.get("max_react_iterations")
         or self.call_params.get("max_react_iterations")
@@ -502,7 +512,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         role=MessageRole.USER,
         content="Based on the tool calls and their results above, provide only your final answer.",
     );
-    mt_run.add_message(final_instruction);
+    mt_run.add_scaffolding_message(final_instruction);
     original_tools = mt_run.tools;
     finish_tool_obj = mt_run.get_tool("finish_tool");
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
@@ -511,7 +521,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         if final_resp.tool_calls {
             for tool_call in final_resp.tool_calls {
                 if tool_call.is_finish_call() {
-                    mt_run.add_message(tool_call());
+                    mt_run.add_scaffolding_message(tool_call());
                     return tool_call.get_output();
                 }
             }
@@ -538,7 +548,7 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
         content="Based on the tool calls and their results above, provide your final answer. "
         "Be comprehensive and synthesize all the information gathered.",
     );
-    mt_run.add_message(final_instruction);
+    mt_run.add_scaffolding_message(final_instruction);
     # Keep only finish_tool so Anthropic sees a valid tools= param
     # (conversation history may already contain tool_use blocks)
     original_tools = mt_run.tools;
@@ -549,15 +559,27 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
     # Save caller's original tool_choice (if any) so we can restore it after.
     original_tool_choice = mt_run.call_params.pop("tool_choice", None);
     mt_run.call_params["tool_choice"] = "none";
+    accumulated: str = "";
     try {
         # Make the actual streaming call - this is REAL streaming from the LLM!
-        yield from self.dispatch_streaming(mt_run);
+        for token in self.dispatch_streaming(mt_run) {
+            accumulated += token;
+            yield token;
+        }
     } finally {
         # Restore tools and original tool_choice
         mt_run.tools = original_tools;
         mt_run.call_params.pop("tool_choice", None);
         if original_tool_choice is not None {
             mt_run.call_params["tool_choice"] = original_tool_choice;
+        }
+        # dispatch_streaming yields tokens but doesn't append to messages;
+        # persist the final answer so write_back_conversation includes it.
+        if accumulated {
+            mt_run.add_message(Message(
+                role=MessageRole.ASSISTANT,
+                content=accumulated
+            ));
         }
     }
 }
@@ -581,7 +603,7 @@ impl BaseLLM._attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None {
         role=MessageRole.USER,
         content="You must use finish_tool to return your response. Call finish_tool now.",
     );
-    mt_run.add_message(recovery_msg);
+    mt_run.add_scaffolding_message(recovery_msg);
     original_tools = mt_run.tools;
     mt_run.tools = [finish_tool_obj];
     try {
@@ -894,4 +916,8 @@ impl BaseLLM._invoke_streaming(
         );
         self._usage_history = [];
     }
+    # If `by llm(conversation=<list>)` was set, mutate the caller's list
+    # in place with the persistable conversation. Runs once when the
+    # generator is fully consumed.
+    mt_run.write_back_conversation();
 }

@@ -163,6 +163,15 @@ test "logging stream react" {
     assert "REACT_LOGGING_PASS" in stdout_value;
 }
 
+test "conversation kwarg writes back history with tool calls preserved" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("conversation_param", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "CONV_PARAM_PASS" in stdout_value;
+}
+
 test "by expr" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

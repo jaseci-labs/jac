@@ -73,6 +73,7 @@ obj BaseLLM {
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
+    def _invoke_react_loop(mt_run: MTRuntime) -> object;
     def make_model_params(mt_run: MTRuntime) -> dict;
     def log_info(message: str) -> None;
     def format_prompt(params: dict) -> str;
