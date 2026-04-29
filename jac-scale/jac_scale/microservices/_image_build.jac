@@ -257,34 +257,52 @@ def run_docker_build(
         env.update(env_overrides);
     }
 
-    cmd: list[str] = ["docker", "build", "-t", image_tag, "-f", str(dockerfile_path)];
+    # --progress=plain forces docker to write step-by-step output to
+    # stderr instead of the fancy auto-rewriting "interactive" view,
+    # so users see real-time progress. Critical for first-time builds
+    # which can take 5-15 minutes (apt install + pip install + .jac
+    # precompile, all happening inside minikube's docker daemon).
+    cmd: list[str] = [
+        "docker", "build",
+        "--progress=plain",
+        "-t", image_tag,
+        "-f", str(dockerfile_path)
+    ];
     for (key, value) in build_args.items() {
         cmd.append("--build-arg");
         cmd.append(f"{key}={value}");
     }
     cmd.append(str(context_dir));
 
+    # Stream output instead of capturing. capture_output=True silenced
+    # the build for up to 30 minutes which left users staring at a
+    # blank terminal wondering if anything was happening. Now they see
+    # apt-get progress, pip download lines, layer hashes - i.e. signs
+    # of life. Trade-off: if the build fails, we don't have a captured
+    # buffer to surface; the failure output is on the user's terminal
+    # already. The exit code is still inspected.
+    timeout_s = 1800;  # 30 minutes - realistic first-time minikube build
     try {
-        result = subprocess.run(
-            cmd, env=env, capture_output=True, text=True, timeout=600
-        );
+        result = subprocess.run(cmd, env=env, timeout=timeout_s);
     } except subprocess.TimeoutExpired {
         raise RuntimeError(
-            f"docker build timed out after 600s. The build context "
-            f"({context_dir}) might be too large; check with "
-            f"`du -sh` and consider adding a .dockerignore."
+            f"docker build timed out after {timeout_s}s. The build context "
+            f"({context_dir}) is likely too large or the build is "
+            f"genuinely slow (e.g. first-time minikube build downloading "
+            f"apt + pip from scratch).\n"
+            f"  - Verify .dockerignore is present + comprehensive: "
+            f"ls {context_dir}/.dockerignore\n"
+            f"  - Try running docker build manually to see where it's "
+            f"stuck: docker build -f {dockerfile_path} "
+            f"--progress=plain {context_dir}"
         );
     }
 
     if result.returncode != 0 {
-        # Combine stdout + stderr for the failure trace; docker buildkit
-        # writes progress to stderr but real errors land in either stream.
-        combined = (result.stdout + "\n" + result.stderr).strip();
-        tail = "\n".join(combined.splitlines()[-30:]);
         raise RuntimeError(
-            f"docker build failed (exit {result.returncode}):\n"
-            f"  cmd: {' '.join(cmd)}\n"
-            f"  last 30 lines of output:\n{tail}"
+            f"docker build failed (exit {result.returncode}). See output "
+            f"above for the actual error.\n"
+            f"  cmd: {' '.join(cmd)}"
         );
     }
 }
