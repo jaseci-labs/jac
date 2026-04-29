@@ -303,6 +303,15 @@ def _is_node_modules(path: str) -> bool {
     return "node_modules" in path;
 }
 
+"""Trim a node_modules path to the package + relative file (e.g.
+'../node_modules/react-dom/cjs/foo.js' -> 'node_modules/react-dom/cjs/foo.js').
+Used to label frames the user can't fix but may still want to see, so a stack
+that's entirely inside React doesn't look like the source mapper failed."""
+def _short_node_modules(path: str) -> str {
+    idx = path.find("node_modules/");
+    return path[idx:] if idx >= 0 else path;
+}
+
 """Compute a cache signature from .map file modification times."""
 def _get_map_signature(base_path: str) -> str {
     client_dir = Path(base_path) / ".jac" / "client";
@@ -381,7 +390,8 @@ Supports two-layer resolution:
 obj SourceMapper {
     has _source_map: SourceMap | None = None,
         _per_file_maps: dict[str, SourceMap] = {},
-        _base_path: str = "";
+        _base_path: str = "",
+        _abs_base_path: str = "";
 
     """Create a SourceMapper from a project's .jac/client/ directory.
     Caches the result and invalidates when .map files change.
@@ -495,7 +505,12 @@ obj SourceMapper {
         return "\n".join(resolved_lines);
     }
 
-    """Resolve a single stack trace line."""
+    """Resolve a single stack trace line.
+
+    User-code frames are rewritten with the .jac path. node_modules frames
+    are kept but relabelled with a short package path so an all-React stack
+    doesn't look like the mapper silently failed.
+    """
     def _resolve_stack_line(line: str) -> str {
         if self._source_map is None {
             return line;
@@ -506,7 +521,11 @@ obj SourceMapper {
             js_line = int(m.group(3));
             js_col = int(m.group(4));
             loc = self.resolve(js_line, js_col);
-            if loc and not _is_node_modules(loc.file) {
+            if loc {
+                if _is_node_modules(loc.file) {
+                    short = _short_node_modules(loc.file);
+                    return f"    at {func_name} ({short}:{loc.line}:{loc.column})";
+                }
                 display_path = self._make_relative(loc.file);
                 return f"    at {func_name} ({display_path}:{loc.line}:{loc.column})";
             }
@@ -517,7 +536,11 @@ obj SourceMapper {
             js_line = int(m.group(2));
             js_col = int(m.group(3));
             loc = self.resolve(js_line, js_col);
-            if loc and not _is_node_modules(loc.file) {
+            if loc {
+                if _is_node_modules(loc.file) {
+                    short = _short_node_modules(loc.file);
+                    return f"    at {short}:{loc.line}:{loc.column}";
+                }
                 display_path = self._make_relative(loc.file);
                 return f"    at {display_path}:{loc.line}:{loc.column}";
             }
@@ -526,15 +549,75 @@ obj SourceMapper {
         return line;
     }
 
-    """Make a path relative to the project for cleaner display."""
+    """Make a path relative to the project for cleaner display.
+
+    Both sides are absolutized lexically (abspath, not resolve) so we don't
+    touch the filesystem or follow symlinks per stack line. The base path is
+    cached on first call since it is constant for the mapper's lifetime.
+    """
     def _make_relative(path: str) -> str {
         if not self._base_path {
             return path;
         }
+        if not self._abs_base_path {
+            self._abs_base_path = os.path.abspath(self._base_path);
+        }
         try {
-            return str(Path(path).relative_to(self._base_path));
+            return str(Path(os.path.abspath(path)).relative_to(self._abs_base_path));
         } except ValueError {
             return path;
         }
     }
+}
+
+# ---------------------------------------------------------------------------
+# Client error report helpers
+# ---------------------------------------------------------------------------
+"""Resolve `stack` and `componentStack` to .jac locations via SourceMapper,
+swallowing any mapper failure so error reporting can never raise. React's
+componentStack uses the same `at fn (url:line:col)` format as JS stacks,
+so the same mapper resolves both — and that is the chain that points at
+user components when the JS stack lives inside react-dom.
+"""
+def resolve_client_error_stacks(
+    base_path: (str | None), stack: str = "", component_stack: str = ""
+) -> tuple[str, str] {
+    if base_path and (stack or component_stack) {
+        try {
+            mapper = SourceMapper.from_bundle(base_path);
+            if stack {
+                stack = mapper.resolve_stack_trace(stack);
+            }
+            if component_stack {
+                component_stack = mapper.resolve_stack_trace(component_stack);
+            }
+        } except Exception { }
+    }
+    return (stack, component_stack);
+}
+
+"""Format a /cl/__error__ payload into the canonical log lines shared by every
+server impl that exposes the endpoint.
+"""
+def format_client_error_log(
+    message: str,
+    stack: str = "",
+    component_stack: str = "",
+    url: str = "",
+    source: str = ""
+) -> list[str] {
+    log_parts: list[str] = [f"[Client] {message}"];
+    if stack {
+        log_parts.append(f"  Stack: {stack}");
+    }
+    if component_stack {
+        log_parts.append(f"  Component stack: {component_stack}");
+    }
+    if url {
+        log_parts.append(f"  URL: {url}");
+    }
+    if source {
+        log_parts.append(f"  Source: {source}");
+    }
+    return log_parts;
 }
