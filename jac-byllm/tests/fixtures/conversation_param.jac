@@ -1,15 +1,5 @@
-"""Test the `conversation=<list>` kwarg write-back contract.
-
-Verifies that:
-  - The same list passed via `conversation=...` is mutated in place.
-  - The auto-injected SYSTEM scaffolding is NOT persisted into the list.
-  - finish_tool's tool-call assistant message and tool-result are NOT
-    persisted (they are byllm-internal scaffolding).
-  - Real tool results (with tool_call_id + name) ARE persisted.
-  - Across two turns, turn 2 sees the messages turn 1 wrote.
-  - A pre-seeded dict (e.g. loaded from disk in a prior session) round-trips
-    through `Message.from_dict` and survives intact in the write-back.
-"""
+"""Test the `conversation=<list>` kwarg: in-place write-back, scaffolding
+filtering, multi-turn growth, and pre-seeded dict round-trip."""
 import from byllm.lib { MockLLM, MockToolCall }
 
 
