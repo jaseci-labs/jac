@@ -550,6 +550,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2083 = _err(
          "E2083", Category.SEMANTIC, "'disengage' is only valid inside a walker ability"
      ),
+     W2085 = _warn(
+         "W2085", Category.RUNTIME, "Walker '{walker}' found no matching nodes."
+     ),
      # Def-impl match errors
      E2009 = _err(
          "E2009",

@@ -289,7 +289,8 @@ impl JacWalker.`visit(
                 EdgeArchetype
             ] | NodeArchetype | EdgeArchetype | ObjectSpatialPath
         ),
-    insert_loc: int = -1
+    insert_loc: int = -1,
+    else_present: bool = False
 ) -> bool {
     if isinstance(expr, ObjectSpatialPath) {
         expr.from_visit = True;
@@ -319,7 +320,71 @@ impl JacWalker.`visit(
             insert_loc += len(wanch.next) + 1;
         }
         wanch.next = wanch.next[:insert_loc] + next + wanch.next[insert_loc:];
-        return (len(wanch.next) > before_len);
+        was_added = len(wanch.next) > before_len;
+        if (not was_added and not else_present) {
+            import from jaclang.jac0core.archetype { Root }
+            import from jaclang.jac0core.helpers { ANSIColors }
+            import from jaclang.jac0core.diagnostics { W2085 }
+            import inspect;
+            import sys;
+
+            current_node_anchor = wanch.path[-1] if wanch.path else None;
+            if (
+                current_node_anchor and isinstance(current_node_anchor.archetype, Root)
+            ) {
+                connected_nodes = [];
+                for edge_anchor in current_node_anchor.edges {
+                    if (edge_anchor.target and edge_anchor.target.archetype) {
+                        connected_nodes.append(
+                            edge_anchor.target.archetype.__class__.__name__
+                        );
+                    }
+                }
+
+                # Extract location info for the warning
+                frame = inspect.currentframe();
+                filename = "";
+                lineno = 0;
+                while frame {
+                    f_name = frame.f_code.co_filename;
+                    normalized: str = f_name.replace("\\", "/");
+                    is_internal = (
+                        ("/jaclang/runtimelib/" in normalized)
+                        or ("/jaclang/jac0core/" in normalized)
+                        or ("/jaclang/vendor/" in normalized)
+                        or ("/jaclang/plugin.py" in normalized)
+                        or normalized.endswith("/jaclang/meta_importer.py")
+                    );
+                    if not is_internal {
+                        filename = f_name;
+                        lineno = frame.f_lineno;
+                        break;
+                    }
+                    frame = frame.f_back;
+                }
+
+                # Format message and header — same format as Alert.as_log(colors=True)
+                msg = W2085.format_message(walker=walker.__class__.__name__);
+                header = f"{ANSIColors.YELLOW}warning[{W2085.code}]{ANSIColors.END}: {msg}";
+                if filename {
+                    sys.stderr.write(f"{header}\n  --> {filename}:{lineno}:1\n");
+                } else {
+                    sys.stderr.write(f"{header}\n");
+                }
+
+                # Append help on a new line if nodes exist — same as Alert.pretty_print help_text
+                if (connected_nodes) {
+                    hint_msg = "Nodes connected to root: " + ", ".join(
+                        `set(connected_nodes)
+                    );
+                    sys.stderr.write(
+                        f"{ANSIColors.CYAN}help{ANSIColors.END}: {hint_msg}\n"
+                    );
+                }
+                sys.stderr.flush();
+            }
+        }
+        return was_added;
     } else {
         raise TypeError('Invalid walker object');
     }
