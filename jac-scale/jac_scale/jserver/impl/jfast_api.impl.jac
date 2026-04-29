@@ -111,6 +111,13 @@ impl JFastApiServer.run_server(
         },
 
     };
+    # P13: wrap handle_exit so SIGTERM flips the drain flag before
+    # uvicorn begins its own graceful shutdown.
+    import from jac_scale.microservices._drain { install_signal_drain }
+    import from jac_scale.config_loader { get_scale_config }
+    ms_cfg = get_scale_config().get_microservices_config();
+    drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
+
     current_port = port;
     for _ in range(max_retries) {
         try {
@@ -120,7 +127,16 @@ impl JFastApiServer.run_server(
                     style="warning"
                 );
             }
-            uvicorn.run(app, host=host, port=current_port, log_config=log_config);
+            config = uvicorn.Config(
+                app,
+                host=host,
+                port=current_port,
+                log_config=log_config,
+                timeout_graceful_shutdown=int(drain_timeout)
+            );
+            server = uvicorn.Server(config);
+            install_signal_drain(server, timeout_s=drain_timeout);
+            server.run();
             return;
         } except SystemExit as e {
             # uvicorn raises SystemExit when port is in use
@@ -1116,6 +1132,31 @@ impl JFastApiServer.init(
         ctx = JacRuntimeInterface.create_j_context(user_root=None);
         JacRuntime.set_request_context(ctx);
 
+        # Capture Authorization header for sv-to-sv auth propagation.
+        # The sv_service_call hookimpl in plugin.jac reads this ContextVar
+        # and forwards the header to the downstream service.
+        import from jac_scale.microservices._auth_ctx {
+            set_current_auth,
+            reset_current_auth
+        }
+        auth_token = set_current_auth(request.headers.get('Authorization'));
+
+        # Same pattern for distributed trace id. If the inbound request
+        # lacks X-Trace-Id (e.g. client-to-service direct call, or a
+        # test harness), mint one so every downstream hop has a shared
+        # correlator. Install the log filter so this service's logs
+        # get a [trace=xxxx] prefix matching the gateway's and every
+        # sibling service's.
+        import from jac_scale.microservices._trace_ctx {
+            set_current_trace,
+            reset_current_trace,
+            ensure_trace_id,
+            install_trace_log_filter
+        }
+        install_trace_log_filter();
+        trace_id = ensure_trace_id(request.headers.get('X-Trace-Id'));
+        trace_token = set_current_trace(trace_id);
+
         user_id = request.state?.user_root_id if request?.state else None;
 
         if user_id {
@@ -1138,12 +1179,28 @@ impl JFastApiServer.init(
                 raise;
             }
 
+            # Echo the trace id on the response so clients (and our
+            # e2e) can verify end-to-end propagation.
+            if trace_id {
+                response.headers["X-Trace-Id"] = trace_id;
+            }
+
             return response;
         } finally {
             try {
                 JacRuntime.clear_request_context();
             } except Exception as e {
                 logger.warning(f"Failed to clear request context: {e}", exc_info=True);
+            }
+            try {
+                reset_current_auth(auth_token);
+            } except Exception as e {
+                logger.warning(f"Failed to reset auth context: {e}", exc_info=True);
+            }
+            try {
+                reset_current_trace(trace_token);
+            } except Exception as e {
+                logger.warning(f"Failed to reset trace context: {e}", exc_info=True);
             }
         }
     }
@@ -1152,4 +1209,9 @@ impl JFastApiServer.init(
     # Register context first so JWT ends up at index 0 and runs before context.
     self.app.middleware('http')(request_context_middleware);
     self.app.middleware('http')(jwt_validation_middleware);
+
+    # P13: drain registered last -> outermost, so a 503 short-circuits
+    # before JWT/context setup runs during graceful shutdown.
+    import from jac_scale.microservices._drain { build_drain_middleware }
+    self.app.middleware('http')(build_drain_middleware("service"));
 }
