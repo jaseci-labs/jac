@@ -73,7 +73,6 @@ Emitted by the parser and lexer during source code parsing.
 | `E0021` | Expected `:<+` or `:+>` to close connect operator |
 | `E0022` | Expected ':' or '{' after lambda parameters |
 | `E0023` | Expected augmented assignment in for...to...by step |
-| `E0025` | JavaScript arrow function syntax (`=>`) is not supported in Jac |
 
 ### Statement-Level Errors
 

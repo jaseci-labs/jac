@@ -2095,11 +2095,6 @@ impl JsxExpression.postinit -> None {
 }
 
 
-impl JsxComment.postinit -> None {
-    JsxChild.postinit(self);
-}
-
-
 impl MatchStmt.postinit -> None {
     UniNode.postinit(self);
     CodeBlockStmt.postinit(self);
@@ -2278,6 +2273,8 @@ impl SpecialVarRef.py_resolve_name -> str {
         return 'props';
     } elif (self.orig.name == Tok.KW_SUPER) {
         return 'super';
+    } elif (self.orig.name == Tok.KW_ROOT) {
+        return Con.ROOT.value;
     } elif (self.orig.name == Tok.KW_HERE) {
         return Con.HERE.value;
     } elif (self.orig.name == Tok.KW_VISITOR) {

@@ -97,23 +97,8 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.value in dir(builtins) or name_nd.value in ("self", "super") {
             continue;
         }
-        # root is a Jac ambient builtin — warn if used bare (not as root() call)
-        if name_nd.value == "root" {
-            is_root_call = (
-                isinstance(name_nd.parent, uni.FuncCall)
-                and name_nd.parent.target is name_nd
-            );
-            if not is_root_call {
-                self.emit(W0062, node_override=name_nd);
-            }
-            continue;
-        }
         # Skip dunder names
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
-            continue;
-        }
-        # Skip recovery placeholders synthesized from non-identifier tokens.
-        if not name_nd.value.isidentifier() {
             continue;
         }
         # Skip attribute access names (right side of x.attr)
