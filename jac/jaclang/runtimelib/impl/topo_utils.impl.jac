@@ -24,9 +24,9 @@ impl _get_root_anchor(anchor: Any) -> Any {
     try {
         import from jaclang { JacRuntimeInterface as Jac }
         ctx = Jac.get_context();
-        root = ctx.mem.get(anchor.root);
-        if isinstance(root, NA) {
-            return root;
+        `root = ctx.mem.get(anchor.root);
+        if isinstance(`root, NA) {
+            return `root;
         }
     } except Exception {
         ;

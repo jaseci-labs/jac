@@ -8,6 +8,6 @@ walker FindTasks {
     can find_tasks with root entry {
         to_user = "alice";
         # W3040: both sides resolve to the same node field
-        tasks_bad = [root()-->][?:Task, to_user==to_user];
+        tasks_bad = [root-->][?:Task, to_user==to_user];
     }
 }

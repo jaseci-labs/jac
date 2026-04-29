@@ -28,6 +28,7 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
         'litellm': {'local_cost_map': True, 'drop_params': True, 'debug': False},
         'fallback': {'strategy': 'fallback', 'num_retries': 1, 'timeout': 60.0},
         'prompt_caching': {'enabled': True},
+        'parallel': {'enabled': False},
         'system_prompt': ''
     };
 }
@@ -103,6 +104,21 @@ impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
         _byllm_config_instance = JacByllmConfig(project_dir);
     }
     return _byllm_config_instance;
+}
+
+"""Get parallel tool-calling configuration from jac.toml."""
+impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    parallel_config = config.get('parallel', {});
+    # Also check env var BYLLM_PARALLEL_TOOL_CALLING as override
+    import os;
+    env_enabled = os.environ.get('BYLLM_PARALLEL_TOOL_CALLING', '').lower() in (
+        'true',
+        '1',
+        'yes'
+    );
+    toml_enabled = bool(parallel_config.get('enabled', False));
+    return {'enabled': env_enabled or toml_enabled};
 }
 
 """Get system prompt from jac.toml configuration."""

@@ -911,7 +911,7 @@ test "format tracks changed files" {
 test "format -s preserves bracketed Jac syntax through Rich console" {
     # Regression: `jac format -s` prints formatted source via `console.print`.
     # Under the jac-super (Rich-backed) console — which is what real users see
-    # when they run the `jac` CLI — bracketed Jac syntax like `[root()-->]` or
+    # when they run the `jac` CLI — bracketed Jac syntax like `[root-->]` or
     # `todos + [t]` looks like Rich markup and gets silently stripped unless
     # the call passes `markup=False, highlight=False`. This test must invoke
     # the `jac` binary via subprocess so that the jac-super plugin's console
@@ -926,7 +926,7 @@ test "format -s preserves bracketed Jac syntax through Rich console" {
             "    t: Todo = Todo(title=\"x\");\n"
             "    todos: list[Todo] = [];\n"
             "    todos = todos + [t];\n"
-            "    ancestors = [root()-->];\n"
+            "    ancestors = [root-->];\n"
             "}\n"
         );
         with open(src_path, "w") as f {
@@ -944,7 +944,7 @@ test "format -s preserves bracketed Jac syntax through Rich console" {
         # markup interpretation ever leaks back in, these get stripped
         # (producing `todos = todos + ;` and `ancestors = ;`) and this test
         # fails loudly.
-        assert "[root()-->]" in combined , (
+        assert "[root-->]" in combined , (
             f"edge-walk literal was stripped by Rich markup parser:\n{combined}"
         );
         assert "+ [t]" in combined , (

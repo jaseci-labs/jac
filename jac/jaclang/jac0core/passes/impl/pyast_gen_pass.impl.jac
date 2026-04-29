@@ -212,8 +212,8 @@ impl PyastGenPass._gen_py_sv_func_stub(
     local_name: str,
     func_name: str,
     module_name: str,
-    binding: object,
-    boundary_types: dict
+    binding: InteropBinding,
+    boundary_types: dict[str, BoundaryTypeInfo]
 ) -> str {
     params = ', '.join(binding.param_names) if binding.param_names else '';
     args_kvs: list[str] = [];
@@ -242,7 +242,9 @@ impl PyastGenPass._gen_py_sv_func_stub(
 }
 
 """Build a Python source string for a boundary type stub class."""
-impl PyastGenPass._gen_py_boundary_stub_class(class_name: str, info: object) -> str {
+impl PyastGenPass._gen_py_boundary_stub_class(
+    class_name: str, info: BoundaryTypeInfo
+) -> str {
     field_names: list[str] = [];
     for f in info.fields {
         field_names.append(f[0]);
@@ -372,8 +374,6 @@ impl PyastGenPass._function_expr_from_def(
     self._hoisted_funcs.append(func_def);
     return self.sync(ast3.Name(id=func_def.name, ctx=ast3.Load()), jac_node=jac_node);
 }
-
-impl PyastGenPass.get_weather(city: str) { }
 
 """Create a semstring decorator for the given semantic strings.
 
@@ -3028,6 +3028,17 @@ impl PyastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     if nd.genai_call {
         self.ice('Type(by llm()) call feature is temporarily disabled.');
     } else {
+        # Deprecated `root()` form: bare `root` already lowers to Jac.root() in
+        # exit_special_var_ref, so wrapping it in another call would produce
+        # `Jac.root()()` (a Root instance called as a function). Emit W0062
+        # and reuse the inner lowering directly.
+        if isinstance(nd.target, uni.SpecialVarRef)
+        and nd.target.name == Tok.KW_ROOT
+        and (nd.params is None or len(nd.params) == 0) {
+            self.emit(W0062, node_override=nd);
+            nd.gen.py_ast = nd.target.gen.py_ast;
+            return;
+        }
         # TODO: Primitive emitter dispatch hook.
         # When type information is available, primitive method calls
         # (e.g., mylist.append(x), s.upper()) and builtin function calls
@@ -3111,6 +3122,10 @@ impl PyastGenPass.exit_special_var_ref(nd: uni.SpecialVarRef) -> None {
                     keywords=[]
                 )
             )
+        ];
+    } elif (nd.name == Tok.KW_ROOT) {
+        nd.gen.py_ast = [
+            self.sync(ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[]))
         ];
     } else {
         nd.gen.py_ast = [
@@ -3503,32 +3518,6 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
         if resolved is not None {
             nd.gen.py_ast = [resolved];
             return;
-        }
-    }
-    if (name == "root" and nd.py_ctx_func == ast3.Load) {
-        # Detect whether this is the Jac ambient builtin root or a user-defined
-        # local/parameter. The type checker may resolve root from jac_builtins.pyi
-        # (setting nd.sym), so we check the declaration's source file.
-        is_jac_root = nd.sym is None
-        or (
-            nd.sym.decl is not None
-            and nd.sym.decl.loc.mod_path.endswith("jac_builtins.pyi")
-        );
-        if is_jac_root {
-            is_root_call = isinstance(nd.parent, uni.FuncCall)
-            and nd.parent.target is nd;
-            if not is_root_call {
-                # Bare `root` usage — emit deprecation, compile as root() call
-                self.emit(W0062, node_override=nd);
-                nd.gen.py_ast = [
-                    self.sync(
-                        ast3.Call(func=self.jaclib_obj('root'), args=[], keywords=[])
-                    )
-                ];
-                return;
-            }
-            # Explicit root() call — just resolve the name from jaclib
-            self.jaclib_imports.add('root');
         }
     }
     if (name in self._get_builtin_names()) {
