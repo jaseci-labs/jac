@@ -375,7 +375,10 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
             'entry': client_config.get('entry', ''),
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
             'base_route': client_config.get('base_route', '/')
-        }
+        },
+        # K10: Ingress block. Pass through opaquely so K8s target sees
+        # whatever the user wrote (host / ingress_class_name / annotations).
+        'ingress': dict(ms_config.get('ingress', {}))
     };
 }
 
