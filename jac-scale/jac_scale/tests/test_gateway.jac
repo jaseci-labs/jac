@@ -179,6 +179,27 @@ test "health endpoint returns service summary" {
     assert "orders" in data["services"];
 }
 
+test "healthz returns 200 from gateway, not 404 from builtin passthrough" {
+    # Regression: /healthz used to be in _BUILTIN_EXACT, which fans out to
+    # backends. With an empty (or no-healthy) registry, that returned 404
+    # to kubelet's readinessProbe and the gateway pod never went Ready.
+    # /healthz must be handled directly as an alias for /health so the
+    # gateway's own readiness never depends on backend state.
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/healthz");
+    assert resp.status_code == 200, (
+        f"/healthz must return 200 (gateway-local) even with empty registry, "
+        f"got {resp.status_code}"
+    );
+    data = resp.json();
+    assert data["status"] == "healthy";
+}
+
 test "unmatched path returns 404" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(

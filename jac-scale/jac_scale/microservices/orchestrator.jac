@@ -232,6 +232,28 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
 }
 
 
+"""K9: pre-mark every registry entry HEALTHY for K8s gateway mode.
+
+In local mode, `LocalDeployer.deploy_service` flips an entry from
+REGISTERED to HEALTHY after a successful spawn. K8s mode skips the
+deployer entirely (kube-proxy + Endpoints already gates routing on
+real readinessProbes), so without this step entries stay REGISTERED
+forever and `handle_proxy` short-circuits every `/api/<svc>/*`
+request with 503. Pre-marking is the K8s equivalent of
+"trust the platform's health signal" - transport failures from a
+not-yet-Ready service still surface naturally as 502/503 from the
+http_forward layer when the connection refuses.
+
+Factored out of `start_gateway_only` so unit tests can verify the
+status flip without booting the gateway server.
+"""
+def _mark_all_healthy_k8s(registry: ServiceRegistry) -> None {
+    for (_name, _entry) in registry.entries.items() {
+        _entry.status = ServiceStatus.HEALTHY;
+    }
+}
+
+
 """K9: start ONLY the gateway, no service spawning, no orchestrator.
 
 Used by the K8s gateway pod (where K8s manages the service pod
@@ -253,19 +275,7 @@ def start_gateway_only(ms_config: dict[str, Any]) -> None {
     # Path-prefix metadata only (URLs come from the get_sv_registry
     # hookspec at request time, so the per-entry .url field is unused).
     registry = build_registry(ms_config);
-
-    # In K8s mode the gateway doesn't own service health - kube-proxy
-    # only routes to pods that pass their readinessProbe, and Endpoints
-    # objects update automatically as pods come and go. The gateway's
-    # internal `svc.status` would otherwise stay REGISTERED forever
-    # (no LocalDeployer to flip it HEALTHY), causing handle_proxy to
-    # 503 every request. Pre-mark HEALTHY so handle_proxy lets the
-    # forward through; transport failures from a not-yet-Ready service
-    # still surface naturally as 502/503 from the http_forward layer.
-    import from jac_scale.microservices.service_registry { ServiceStatus }
-    for (_name, _entry) in registry.entries.items() {
-        _entry.status = ServiceStatus.HEALTHY;
-    }
+    _mark_all_healthy_k8s(registry);
 
     gateway_port = int(ms_config.get("gateway_port", 8000));
     gateway_host = ms_config.get("gateway_host", "0.0.0.0");
