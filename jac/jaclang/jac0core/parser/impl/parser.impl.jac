@@ -4068,13 +4068,27 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_REPORT) {
         return self.parse_report_stmt();
     }
-    # Handle nested function/ability definitions
+    if self.check(TokenKind.STRING)
+    and self.check_peek_any(
+        TokenKind.KW_DEF,
+        TokenKind.KW_CAN,
+        TokenKind.KW_OVERRIDE,
+        TokenKind.KW_STATIC,
+        TokenKind.KW_ASYNC,
+        TokenKind.DECOR_OP,
+        TokenKind.KW_OBJECT,
+        TokenKind.KW_NODE,
+        TokenKind.KW_EDGE,
+        TokenKind.KW_WALKER,
+        TokenKind.KW_CLASS
+    ) {
+        return self.parse_docstring_target();
+    }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
     }
-    # Handle decorators for nested functions
     if self.check(TokenKind.DECOR_OP) {
-        return self.parse_ability();
+        return self._dispatch_decorated();
     }
     # Handle `class def` / `class can` (classmethod) in code blocks
     if self.check(TokenKind.KW_CLASS)
