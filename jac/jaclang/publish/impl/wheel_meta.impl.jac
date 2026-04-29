@@ -49,14 +49,14 @@ impl generate_entry_points(config: JacConfig) -> str {
 
     sections: list[str] = [];
 
-    for (group, refs) in config.entrypoints.items() {
+    for (group, refs) in sorted(config.entrypoints.items()) {
         if not refs {
             continue;
         }
         # 'scripts' → 'console_scripts' (pip convention for CLI entry points)
         section_name = "console_scripts" if group == "scripts" else group;
         entry_lines: list[str] = [f"[{section_name}]"];
-        for (ep_name, ref) in refs.items() {
+        for (ep_name, ref) in sorted(refs.items()) {
             entry_lines.append(f"{ep_name} = {ref}");
         }
         sections.append("\n".join(entry_lines));

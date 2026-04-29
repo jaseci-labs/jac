@@ -50,7 +50,7 @@ def _collect_from_dir(
 
     for pattern in patterns {
         effective = _make_recursive(pattern);
-        for file_path in pkg_dir.glob(effective) {
+        for file_path in sorted(pkg_dir.glob(effective)) {
             if not file_path.is_file() {
                 continue;
             }

@@ -29,8 +29,7 @@ obj PersonConfig {
 """File inclusion rules from [package.include]."""
 obj PackageIncludeConfig {
     has packages: list[str] = [],
-        data: dict[str, list[str]] = {},
-        py_modules: list[str] = [];
+        data: dict[str, list[str]] = {};
 }
 
 """PyPI-publishable package metadata from [package] section."""

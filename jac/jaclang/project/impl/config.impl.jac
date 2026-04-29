@@ -914,9 +914,7 @@ impl _parse_toml_data(
         }
         inc_raw = pkg.get("include", {});
         pkg_include = PackageIncludeConfig(
-            packages=inc_raw.get("packages", []),
-            data=inc_raw.get("data", {}),
-            py_modules=inc_raw.get("py-modules", [])
+            packages=inc_raw.get("packages", []), data=inc_raw.get("data", {})
         );
         config.package = PackageConfig(
             name=pkg.get("name", ""),

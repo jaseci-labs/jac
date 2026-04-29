@@ -5,6 +5,7 @@ import json;
 import marshal;
 import sys;
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 import from jaclang.jac0core.bccache { discover_annex_files }
 import from jaclang.jac0core.compiler { patch_co_filenames_bytes }
 import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
@@ -19,6 +20,9 @@ impl precompile_package(pkg_dir: Path) -> int {
 
     jac_files: list[Path] = [];
     for jac_path in sorted(pkg_dir.rglob("*.jac")) {
+        if not jac_path.is_file() {
+            continue;
+        }
         rel = str(jac_path.relative_to(pkg_dir)).replace("\\", "/");
         # Mirrors find_jac_files() in scripts/precompile_bytecode.jac
         if (
@@ -84,8 +88,16 @@ impl precompile_package(pkg_dir: Path) -> int {
             entries[str(rel_path).replace("\\", "/")] = entry;
             compiled += 1;
         } except Exception as _e {
+            console.warning(f"  ✗ precompile failed: {rel_path}: {_e}");
             failed += 1;
         }
+    }
+
+    if failed {
+        raise RuntimeError(
+            f"precompile_package: {failed} file(s) failed to compile "
+            f"({compiled} succeeded). Aborting build."
+        );
     }
 
     manifest: dict[str, object] = {
