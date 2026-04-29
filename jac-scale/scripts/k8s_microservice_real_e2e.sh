@@ -318,38 +318,97 @@ else
     fi
 fi
 
-echo "=== rolling restart: hammer gateway, expect zero non-2xx ==="
-# Background curl loop hitting /health while we trigger a rollout. With
-# K5's RollingUpdate + readiness + grace + preStop, no request should
-# observe a 503 or connection error during the rolling update window.
-LOG=$(mktemp)
-(
-    while true; do
-        code=$(curl -s -o /dev/null -w "%{http_code}\n" \
-            "http://localhost:${GATEWAY_LOCAL_PORT}/health" || echo "000")
-        echo "${code}" >>"${LOG}"
-        sleep 0.05
-    done
-) &
-HAMMER_PID=$!
-trap 'kill ${HAMMER_PID} 2>/dev/null || true; cleanup' EXIT
+# P2.2: zero-downtime rolling-deploy verification, two phases.
+#   Phase 1 - gateway rollout: hammers /health (gateway's own endpoint).
+#       Catches the gateway-side K5 wires (RollingUpdate, readiness on
+#       /healthz/ready, terminationGracePeriodSeconds, preStop sleep).
+#   Phase 2 - service rollout: hammers /api/<svc>/walker/__missing__
+#       (gateway forwards to the rolling service). Catches the same K5
+#       wires on the service pod-spec PLUS the gateway-as-client path
+#       (handle_proxy + http_forward + retries). This is the more
+#       common rollout in practice (services change far more than the
+#       gateway), so verifying it directly is what makes the
+#       "zero-downtime" claim actually meaningful for users.
+#
+# In both phases, "non-2xx during the rollout window" is the failure.
+# 4xx counts too - a 404 or 405 would mean we hit an unrelated endpoint.
+# The /walker/__missing__ path returns 404 from a HEALTHY service (the
+# walker doesn't exist), so for the service-rollout phase we accept
+# 404/405 as "service is reachable" - the failure shape we care about
+# is 5xx (unreachable upstream) and connection errors.
 
-# Rollout-restart the gateway (the most user-impacting one).
-kubectl rollout restart deployment/gateway-deployment -n "${NAMESPACE}"
-kubectl rollout status deployment/gateway-deployment -n "${NAMESPACE}" --timeout=180s
+run_zero_downtime_assertion() {
+    local label="$1"
+    local target="$2"
+    local accept_re="$3"
+    local deployment="$4"
 
-# Stop the hammer + wait for any in-flight curls.
-kill "${HAMMER_PID}" 2>/dev/null || true
-wait "${HAMMER_PID}" 2>/dev/null || true
-sleep 1
+    echo "=== rolling restart [${label}]: hammer ${target}, expect zero ${accept_re}-violations ==="
+    local log
+    log=$(mktemp)
+    (
+        while true; do
+            code=$(curl -s -o /dev/null -w "%{http_code}\n" \
+                "http://localhost:${GATEWAY_LOCAL_PORT}${target}" || echo "000")
+            echo "${code}" >>"${log}"
+            sleep 0.05
+        done
+    ) &
+    local hammer_pid=$!
+    # Replace the existing trap so the hammer is killed even on script abort.
+    trap 'kill '"${hammer_pid}"' 2>/dev/null || true; cleanup' EXIT
 
-NON_2XX=$(awk '{ if ($1 < 200 || $1 >= 300) print }' "${LOG}" | wc -l | tr -d ' ')
-TOTAL=$(wc -l <"${LOG}" | tr -d ' ')
-echo "  rollout requests: ${TOTAL}, non-2xx: ${NON_2XX}"
-if [ "${NON_2XX}" -gt 0 ]; then
-    echo "FAIL: ${NON_2XX} non-2xx responses during rolling restart"
-    awk '{ if ($1 < 200 || $1 >= 300) print }' "${LOG}" | sort | uniq -c
-    exit 1
+    kubectl rollout restart "deployment/${deployment}" -n "${NAMESPACE}"
+    kubectl rollout status "deployment/${deployment}" -n "${NAMESPACE}" --timeout=180s
+
+    kill "${hammer_pid}" 2>/dev/null || true
+    wait "${hammer_pid}" 2>/dev/null || true
+    sleep 1
+
+    local total bad
+    total=$(wc -l <"${log}" | tr -d ' ')
+    bad=$(awk -v re="^(${accept_re})$" '$1 !~ re { print }' "${log}" | wc -l | tr -d ' ')
+    # Always print the response-code histogram; gives operators a
+    # visual on the rollout shape without needing to read raw curl logs.
+    echo "  ${label}: ${total} requests, ${bad} violations"
+    echo "  ${label} response-code histogram:"
+    sort "${log}" | uniq -c | awk '{ printf "    %5d  %s\n", $1, $2 }'
+    if [ "${bad}" -gt 0 ]; then
+        echo "FAIL [${label}]: ${bad} responses outside accept-set ${accept_re}"
+        awk -v re="^(${accept_re})$" '$1 !~ re { print }' "${log}" | sort | uniq -c
+        exit 1
+    fi
+}
+
+# Phase 1 - gateway rollout. /health on the gateway is direct-handled
+# (no upstream forward), so accept_re = 200 only. With K5 v2's wires,
+# zero requests should drop during the rollout window.
+run_zero_downtime_assertion "gateway" "/health" "200" "gateway-deployment"
+
+# Phase 2 - service rollout. Pick the first service from the ROUTES
+# table (any one suffices to exercise the service rolling-deploy +
+# gateway-as-client path). Service hits return 404 from the gateway-
+# proxied service when the walker doesn't exist (expected), so accept
+# 200/404/405. Failures are 5xx (unreachable) or 000 (connection error).
+FIRST_PREFIX=$(echo "${ROUTES}" | head -n1)
+FIRST_SVC=$(python -c "
+import tomllib
+with open('${PROJECT_DIR}/jac.toml', 'rb') as f:
+    cfg = tomllib.load(f)
+routes = cfg.get('plugins', {}).get('scale', {}).get('microservices', {}).get('routes', {})
+for name, prefix in routes.items():
+    if prefix == '${FIRST_PREFIX}':
+        print(name.replace('_', '-'))
+        break
+")
+if [ -n "${FIRST_PREFIX}" ] && [ -n "${FIRST_SVC}" ]; then
+    run_zero_downtime_assertion \
+        "service:${FIRST_SVC}" \
+        "${FIRST_PREFIX}/walker/__missing__" \
+        "200|404|405" \
+        "${FIRST_SVC}-deployment"
+else
+    echo "  (no services declared in jac.toml; skipping service-rollout phase)"
 fi
 
-echo "=== K8s microservice REAL e2e PASSED (zero requests dropped during rollout) ==="
+echo "=== K8s microservice REAL e2e PASSED (zero requests dropped during gateway + service rollouts) ==="
