@@ -236,30 +236,13 @@ test "each pod-spec carries JAC_SV_NAME and the same image" {
 }
 
 
-test "empty routes still produces a gateway pod-spec" {
-    # Edge case: a project with no `sv import` services configured (yet).
-    # Should still emit the gateway pod-spec on its own - the gateway is
-    # always part of the microservice topology, even with zero services.
-    import jac_scale.config_loader as cfg_mod;
-
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-
-    original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {}}
-    ));
-
-    try {
-        ac = AppConfig(code_folder=".", app_name="demo", build=False);
-        specs = target.generate_service_pod_specs(ac);
-
-        assert list(specs.keys()) == [GATEWAY_NAME];
-    } finally {
-        setattr(cfg_mod, "get_scale_config", original);
-    }
-}
+# NOTE: the old "empty routes still produces a gateway pod-spec" test
+# has been superseded by the P1.3 assertion at the end of this file
+# ("empty routes produces actionable error, not silent gateway-only
+# deploy"). Silently producing a gateway-only spec was the wrong
+# behavior - users running `jac start --scale` against a misconfigured
+# project should get a fail-fast error pointing at the exact jac.toml
+# section to fix, not a confusing "gateway routes to nothing" deploy.
 
 
 test "container port respects k8s_config.container_port override" {
@@ -2003,5 +1986,40 @@ test "destroy also tears down Ingresses by label" {
         assert kw["label_selector"] == "managed=jac-scale";
     } finally {
         restore();
+    }
+}
+
+
+# =============================================================================
+# P1.3: helpful error messages on common new-user K8s failures
+# =============================================================================
+
+test "P1.3: empty routes produces actionable error, not silent gateway-only deploy" {
+    # Without this guard, the user gets a deploy with just a gateway pod
+    # routing to nothing. The error message must point at the exact
+    # jac.toml section so they can fix it without paging through docs.
+    import jac_scale.config_loader as cfg_mod;
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo")
+    );
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(data={"routes": {}}));
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        raised = False;
+        msg = "";
+        try {
+            target.generate_service_pod_specs(ac);
+        } except ValueError as e {
+            raised = True;
+            msg = str(e);
+        }
+        assert raised, "empty routes must raise, not silently produce a gateway-only spec";
+        # Error must be actionable: name the config key + show an example.
+        assert "[plugins.scale.microservices.routes]" in msg;
+        assert "my_service" in msg or "/api/" in msg;
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
     }
 }

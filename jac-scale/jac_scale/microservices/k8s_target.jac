@@ -153,12 +153,36 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     Same pattern as KubernetesTarget.destroy() and the rest of the K8s
     target machinery. Splitting out as a helper so apply_manifests +
     destroy can both call it without duplicating the try/except.
+
+    P1.3: when BOTH paths fail (common for new users running locally
+    without minikube/kubectl set up), the kubernetes client raises a
+    ConfigException whose default message is unhelpful ("Service host/port
+    is not set"). Re-raise with actionable instructions so the user
+    knows what to do instead of paging through stack traces.
     """
     def _load_kube_config {
         try {
             k8s_cluster_config.load_kube_config();
+            return;
         } except ConfigException {
+            pass;
+        }
+        try {
             k8s_cluster_config.load_incluster_config();
+        } except ConfigException as e {
+            raise ConfigException(
+                "Could not load Kubernetes config from either kubeconfig "
+                "or in-cluster ServiceAccount.\n"
+                "If you're deploying from a laptop:\n"
+                "  - Start a local cluster:  minikube start\n"
+                "  - Verify kubectl works:   kubectl get nodes\n"
+                "  - For a remote cluster:   set KUBECONFIG or run "
+                "`aws eks update-kubeconfig` / `gcloud container clusters get-credentials`\n"
+                "If you're deploying from inside a pod, the pod needs a "
+                "ServiceAccount with cluster API access (the default "
+                "ServiceAccount usually does, but a restricted one may not).\n"
+                f"Original error from in-cluster load: {e}"
+            );
         }
     }
 
@@ -181,6 +205,24 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         policy_v1 = client.PolicyV1Api();
         networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
+
+        # P1.3: probe the API server early so an unreachable cluster
+        # surfaces a clean error here rather than mid-apply with a
+        # half-baked manifest set. `list_namespace` is the cheapest
+        # cluster-scoped read (every cluster has at least kube-system),
+        # and any failure here is universally bad for what follows.
+        try {
+            core_v1.list_namespace(_request_timeout=5);
+        } except Exception as e {
+            raise RuntimeError(
+                f"Kubernetes API server is unreachable.\n"
+                f"  - Verify cluster: kubectl cluster-info\n"
+                f"  - For minikube:   minikube status\n"
+                f"  - For EKS/GKE:    re-run your kubeconfig refresh "
+                f"(aws eks update-kubeconfig / gcloud container clusters get-credentials)\n"
+                f"Original error: {e}"
+            );
+        }
 
         ensure_namespace_exists(namespace);
 
@@ -711,11 +753,30 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """
     def generate_service_pod_specs(app_config: AppConfig) -> dict[str, dict[str, Any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
-        image: str = self._handle_image_registry(app_name, app_config);
 
         import from jac_scale.config_loader { get_scale_config }
         ms_cfg = get_scale_config().get_microservices_config();
         routes: dict[str, str] = ms_cfg.get("routes", {});
+
+        # P1.3: actionable error when the user runs `jac start --scale`
+        # against a project that has microservice mode enabled but no
+        # services declared. Without this check, generation succeeds with
+        # only a gateway pod and the user gets a confusing "what is this
+        # gateway routing to?" deploy.
+        if not routes {
+            raise ValueError(
+                "[plugins.scale.microservices.routes] is empty in jac.toml. "
+                "Microservice mode needs at least one declared service.\n"
+                "Add to your jac.toml:\n"
+                "  [plugins.scale.microservices.routes]\n"
+                "  my_service = \"/api/my\"\n"
+                "where 'my_service' is the name of a .jac file in the "
+                "project root and '/api/my' is the URL prefix the gateway "
+                "will route to it."
+            );
+        }
+
+        image: str = self._handle_image_registry(app_name, app_config);
 
         specs: dict[str, dict[str, Any]] = {};
         for svc_name in routes.keys() {
