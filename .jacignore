@@ -6,7 +6,8 @@ comment_injection_pass.impl.jac
 comment_injection_pass.jac
 compiler.jac
 config.impl.jac
-config.jac
+jac/jaclang/cli/commands/config.jac
+jac/jaclang/project/config.jac
 console.jac
 constant.jac
 # context.impl.jac / context.jac — jac-scale passes, jaclang runtimelib fails
@@ -94,8 +95,7 @@ tools.impl.jac
 # tools.jac — test fixture passes, others fail
 jac-mcp/jac_mcp/tools.jac
 jac/jaclang/cli/commands/tools.jac
-jac/tests/compiler/fixtures/pkg_import_lib_py/tools.jac
-transform.jac
+jac/jaclang/jac0core/passes/transform.jac
 transport.jac
 treeprinter.jac
 type_checker_pass.jac
@@ -106,7 +106,10 @@ type_utils.jac
 uni_pass.jac
 unitree.jac
 unparse_pass.jac
-utils.jac
+jac-mcp/examples/mcp-dashboard-studio/backend/utils.jac
+jac-scale/jac_scale/utils.jac
+jac/jaclang/langserve/utils.jac
+jac/jaclang/runtimelib/utils.jac
 vite_bundler.impl.jac
 vite_bundler.jac
 webhook.jac
@@ -131,7 +134,7 @@ jac-client/jac_client/plugin/cli.jac
 bunch_of_statements.jac
 chess.impl.jac
 compiler_bridge.impl.jac
-console.impl.jac
+jac/jaclang/cli/impl/console.impl.jac
 doc_ir_gen_pass.impl.jac
 index.jac
 level_genarator.jac
@@ -334,4 +337,3 @@ wikipedia_react.jac
 apple.jac
 google.jac
 github.jac
-prim_dict_extra.jac

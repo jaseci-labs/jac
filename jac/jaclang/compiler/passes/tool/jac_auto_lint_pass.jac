@@ -49,7 +49,8 @@ import from jaclang.jac0core.diagnostics {
     W3037,
     W3038,
     W3039,
-    W3040
+    W3040,
+    W3041,
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
@@ -133,6 +134,7 @@ obj JacAutoLintPass(UniPass) {
     def _check_identical_branches(nd: uni.IfStmt) -> None;
     def _check_too_many_params(nd: uni.FuncSignature) -> None;
     def _check_is_with_literal(nd: uni.CompareExpr) -> None;
+    def _check_filter_compare_tautology(nd: uni.CompareExpr) -> None;
     def _check_mutable_default(nd: uni.ParamVar) -> None;
     def _check_unnecessary_none_return(
         nd: (uni.Ability | uni.LambdaExpr),

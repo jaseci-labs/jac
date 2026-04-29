@@ -626,7 +626,7 @@ impl JacAutoLintPass.enter_name(nd: uni.Name) -> None {
 """Remove backtick escaping from SpecialVarRef's underlying name.
 
 SpecialVarRef wraps special keywords like init, postinit, self, super,
-here, visitor. The underlying Name should never have backtick escaping
+root, here, visitor. The underlying Name should never have backtick escaping
 since these are already recognized as special tokens in the grammar.
 """
 impl JacAutoLintPass.enter_special_var_ref(nd: uni.SpecialVarRef) -> None {
@@ -986,7 +986,7 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     self._check_no_print(nd);
-    # W3040: convert arr.map(lambda item -> any { return <jsx>; }) to comprehension
+    # W3041: convert arr.map(lambda item -> any { return <jsx>; }) to comprehension
     if self._convert_map_to_comprehension(nd) {
         return;
     }
@@ -1983,6 +1983,36 @@ impl JacAutoLintPass._check_is_with_literal(nd: uni.CompareExpr) -> None {
     }
 }
 
+"""W3040: Warn when a filter comparison has identical LHS and RHS names.
+
+In a filter expression like [?:Type, field == field], the LHS is resolved
+as a node field and the RHS — intended to reference an enclosing-scope
+variable — silently rebinds to the same node field, making the comparison
+a tautology (always true).
+"""
+impl JacAutoLintPass._check_filter_compare_tautology(nd: uni.CompareExpr) -> None {
+    import from jaclang.jac0core.diagnostics { W3040 }
+    if self._is_suppressed(W3040) {
+        return;
+    }
+    # Only applies inside a FilterCompr context
+    if not nd.find_parent_of_type(uni.FilterCompr) {
+        return;
+    }
+    left = nd.left;
+    for (i, right) in enumerate(nd.rights) {
+        if (
+            isinstance(left, uni.Name)
+            and isinstance(right, uni.Name)
+            and left.value == right.value
+        ) {
+            self.emit(W3040, node_override=nd, name=left.value);
+        }
+        # For chained comparisons, next left is the current right
+        left = right;
+    }
+}
+
 """W3036: Warn on mutable default argument (list, dict, set)."""
 impl JacAutoLintPass._check_mutable_default(nd: uni.ParamVar) -> None {
     if self._is_suppressed(W3036) {
@@ -2028,6 +2058,7 @@ impl JacAutoLintPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         return;
     }
     self._check_is_with_literal(nd);
+    self._check_filter_compare_tautology(nd);
 }
 
 """Visitor: check function signatures for too many params."""
@@ -2546,7 +2577,7 @@ impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
 }
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-# map-lambda-to-comprehension conversion (W3040)
+# map-lambda-to-comprehension conversion (W3041)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """Build a synthetic Name node anchored to ref_node's source location."""
 impl JacAutoLintPass._make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name {
@@ -2669,9 +2700,9 @@ impl JacAutoLintPass._extract_filter_cond(
     return (filter_stmts[0].expr, ft.target);
 }
 
-"""W3040: Replace arr.map(lambda -> JSX) with a list comprehension."""
+"""W3041: Replace arr.map(lambda -> JSX) with a list comprehension."""
 impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
-    if self.report_only or self._is_suppressed(W3040) {
+    if self.report_only or self._is_suppressed(W3041) {
         return False;
     }
 
@@ -2689,7 +2720,7 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         (filter_cond, collection) = filter_result;
     }
 
-    if not self.emit(W3040, node_override=nd, name=item_name) {
+    if not self.emit(W3041, node_override=nd, name=item_name) {
         return False;
     }
 
