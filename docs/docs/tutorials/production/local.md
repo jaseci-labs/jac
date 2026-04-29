@@ -100,10 +100,12 @@ Port 3000 is in use, using port 3001 instead
 
 ### Development Mode (HMR)
 
+> **Note:** `main.jac` is the default entry point. If your entry point is named `main.jac`, you can omit the filename. If it differs (e.g., `app.jac`), pass it explicitly: `jac start app.jac --dev`.
+
 Hot Module Replacement for development:
 
 ```bash
-jac start main.jac --dev
+jac start --dev
 ```
 
 Changes to your `.jac` files will automatically reload.
@@ -113,7 +115,7 @@ Changes to your `.jac` files will automatically reload.
 Skip client bundling and only serve the API:
 
 ```bash
-jac start main.jac --dev --no_client
+jac start --dev --no_client
 ```
 
 ---
