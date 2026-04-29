@@ -144,6 +144,7 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0026,
     E0030,
     E0032,
     E0034,
@@ -878,6 +879,47 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
     return left;
 }
 
+impl Parser._check_js_ternary_fault -> bool {
+    # COLON is intentionally excluded: `a ? : b` (empty then-branch) should still
+    # trigger E0026. The recovery skips the then-parse when it sees COLON directly.
+    return not self.check_any(
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.EOF
+    );
+}
+
+impl Parser._recover_js_ternary_fault(left: Expr, q_tok: Token) -> Expr {
+    self.emit_diag(E0026, loc=q_tok.loc);
+    if not self.check_any(
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.COLON,
+        TokenKind.EOF
+    ) {
+        self.parse_expression();
+    }
+    if self.match_tok(TokenKind.COLON) {
+        if not self.check_any(
+            TokenKind.SEMI,
+            TokenKind.RBRACE,
+            TokenKind.RPAREN,
+            TokenKind.RSQUARE,
+            TokenKind.COMMA,
+            TokenKind.EOF
+        ) {
+            self.parse_expression();
+        }
+    }
+    return left;
+}
+
 impl Parser.parse_concurrent_expr -> Expr {
     if self.check_any(TokenKind.KW_FLOW, TokenKind.KW_WAIT) {
         tok = self.advance();
@@ -1426,6 +1468,9 @@ impl Parser.parse_atomic_chain -> Expr {
                 dot_uni = self.make_uni_token(self.advance());
             }
             if not dot_uni and null_ok {
+                if self._check_js_ternary_fault() {
+                    return self._recover_js_ternary_fault(expr, first_consumed_tok);
+                }
                 dot_uni = null_ok_uni;
             }
             # Allow NAME, KWESC_NAME, or any keyword as attribute names after DOT
