@@ -291,7 +291,7 @@ def _tree_count(n: TreeNode) -> int {
 
 """Walker taking a recursive tree as a body parameter."""
 walker:pub CreateTreeWalker {
-    has root: TreeNode;
+    has `root: TreeNode;
 
     can create with Root entry {
         report {
@@ -309,13 +309,13 @@ walker:pub CreateTreeWalker {
 
 """Function taking a recursive tree as a body parameter."""
 @restspec(method=HTTPMethod.POST, path="/func/create_tree")
-def create_tree_func(root: TreeNode) -> dict {
+def create_tree_func(`root: TreeNode) -> dict {
     return {
         "message": "create_tree_func executed",
-        "root_name": root.name,
-        "root_type": type(root).__name__,
-        "child_type": type(root.children[0]).__name__ if root.children else None,
-        "depth": _tree_depth(root),
-        "node_count": _tree_count(root)
+        "root_name": `root.name,
+        "root_type": type(`root).__name__,
+        "child_type": type(`root.children[0]).__name__ if `root.children else None,
+        "depth": _tree_depth(`root),
+        "node_count": _tree_count(`root)
     };
 }

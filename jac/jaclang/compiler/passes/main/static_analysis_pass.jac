@@ -12,7 +12,6 @@ import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.diagnostics {
-    W0062,
     W2001,
     W2002,
     W2003,
