@@ -756,6 +756,48 @@ test "bracket filter on list" {
     assert not err , "Failed to parse list bracket filter";
 }
 
+test "decorated class in code block parses as archetype" {
+    (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
+    assert not err , "Parser reported errors for decorated declarations in code blocks";
+
+    def collect(nd: object, kind: str) -> list {
+        results: list = [];
+        if type(nd).__name__ == kind {
+            results.append(nd);
+        }
+        if hasattr(nd, "kid") {
+            for k in nd.kid {
+                if k is not None {
+                    results.extend(collect(k, kind));
+                }
+            }
+        }
+        return results;
+    }
+
+    archetypes = collect(mod, "Archetype");
+    abilities = collect(mod, "Ability");
+
+    archetype_names = [a.name.sym_name for a in archetypes];
+    ability_names = [
+        a.py_resolve_name()
+        for a in abilities
+        if a.name_ref is not None
+    ];
+
+    # decorated classes must parse as Archetype regardless of scope
+    for name in ["A_TopClass", "A_InEntryClass", "A_InEntryObj", "A_StackedDec",
+                 "A_InDefBodyClass", "A_InDefBodyObj", "A_Container", "A_InMethodClass"] {
+        assert name in archetype_names , f"{name} should be Archetype but was not found";
+    }
+
+    # decorated functions must still parse as Ability
+    for name in ["F_top_fn", "F_in_entry_fn", "F_stacked_fn",
+                 "F_outer", "F_in_def_body_fn", "F_method", "F_in_method_fn"] {
+        assert name in ability_names , f"{name} should be Ability but was not found";
+    }
+}
+
 with entry {
     parametrize(
         "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
