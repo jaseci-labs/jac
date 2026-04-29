@@ -98,8 +98,8 @@ def:pub get_product(product_id: str) -> dict {
     return {"error": "Product not found"};
 }
 
-async @restspec(protocol=APIProtocol.WEBSOCKET)
-walker:pub EchoMessage {
+@restspec(protocol=APIProtocol.WEBSOCKET)
+async walker : pub EchoMessage {
     has message: str;
 
     async can echo with Root entry {
