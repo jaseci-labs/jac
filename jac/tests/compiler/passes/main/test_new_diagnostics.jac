@@ -246,7 +246,9 @@ test "E0026: simple inline ternary" {
     (prog, _) = parse_with_prog('with entry { x = a ? "yes" : "no"; }');
     assert has_diagnostic_code(prog, "E0026");
     assert count_diagnostic_code(prog, "E0026") == 1;
-    assert len(prog.errors_had) == 1;  # recovery must suppress cascade errors
+    assert len(
+        prog.errors_had
+    ) == 1;  # without recovery draining both branches, leftover tokens produce E0001/E0005 cascade
 }
 
 test "E0026: ternary in jsx child slot" {

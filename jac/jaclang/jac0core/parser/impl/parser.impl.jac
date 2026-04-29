@@ -880,8 +880,11 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
 }
 
 impl Parser._check_js_ternary_fault -> bool {
-    # COLON is intentionally excluded: `a ? : b` (empty then-branch) should still
-    # trigger E0026. The recovery skips the then-parse when it sees COLON directly.
+    # COLON excluded: `a ? : b` (empty then-branch) must still fire E0026. Including
+    # COLON here would make the check return False, silently falling through to the
+    # LSP placeholder path and producing confusing cascade errors instead. The
+    # then-branch guard inside _recover_js_ternary_fault carries COLON to skip
+    # parsing a missing expression when `?` is followed directly by `:`.
     return not self.check_any(
         TokenKind.SEMI,
         TokenKind.RBRACE,
