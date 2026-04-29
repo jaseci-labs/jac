@@ -130,8 +130,11 @@ def _scale_pre_hook(context: HookContext) -> None {
         # don't trip the guard); on for the production `jac start --scale`
         # path so users get a clean error instead of a silent
         # CrashLoopBackOff.
+        # P0.5: opt into auto-build + auto-distribute. Tests that mock
+        # _handle_image_registry don't see this env var; production does.
         if target == "kubernetes-microservice" {
             os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
+            os.environ["_JAC_SCALE_AUTO_BUILD"] = "1";
         }
 
         # Deploy. P0.6: a failure here used to `raise` and let the

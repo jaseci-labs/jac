@@ -99,6 +99,90 @@ Selected automatically by `_scale_pre_hook` when
 under the type name `"kubernetes-microservice"`.
 """
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
+    """P0.5 auto-build override: front-load the image-build decision.
+
+    Activated only when `_JAC_SCALE_AUTO_BUILD=1` is set in env (the
+    `_scale_pre_hook` in plugin.jac sets this on the production
+    `jac start --scale` path; tests that exercise lower-level builders
+    don't, so they get the parent's existing behavior). When active:
+
+      1. If user pre-set `[plugins.scale.kubernetes].docker_image_name`,
+         trust they pre-built it - return that tag.
+      2. Otherwise, hand off to `auto_build_and_distribute` which detects
+         cluster type from kubeconfig + builds + loads the image into the
+         cluster (minikube/k3d/kind) or pushes to a configured registry
+         (remote). Returns the resolved image tag for the manifest builder.
+
+    When the env var is unset, falls through to KubernetesTarget's
+    behavior - which preserves the existing unit-test contracts that pass
+    `build=False` and assert manifest shape against the python_image
+    fallback.
+    """
+    def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
+        import os;
+        if os.environ.get("_JAC_SCALE_AUTO_BUILD") == "1" {
+            user_image = self.k8s_config.docker_image_name;
+            if user_image and user_image != f"{app_name}:latest" {
+                # User explicitly set a non-default image -> trust it
+                if self.logger {
+                    self.logger.info(
+                        f"Using pre-built image: {user_image}",
+                        {"source": "jac.toml docker_image_name"}
+                    );
+                }
+                return user_image;
+            }
+            # Auto-build path
+            return self._auto_build_image(app_name, app_config);
+        }
+        # Default: parent behavior (existing build_via_registry / fallback)
+        return KubernetesTarget._handle_image_registry(self, app_name, app_config);
+    }
+
+    """P0.5: orchestrate the auto-build for a microservice deploy.
+
+    Resolves the registry URL from raw config (avoids adding a new field
+    to KubernetesConfig - users put `image_registry` directly under
+    `[plugins.scale.kubernetes]` and we read it here). Hands off to the
+    auto-build pipeline which knows how to talk to minikube/k3d/kind/
+    remote registries.
+    """
+    def _auto_build_image(app_name: str, app_config: AppConfig) -> str {
+        import from pathlib { Path }
+        import from jac_scale.microservices._image_build { auto_build_and_distribute }
+
+        # Read image_registry directly from raw [plugins.scale.kubernetes]
+        # config; KubernetesConfig.from_dict drops unknown keys, so going
+        # via the typed view would lose this. Empty/missing -> None,
+        # which is fine for local clusters and signals "needs registry"
+        # for remote.
+        registry_url: str | None = None;
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            raw = get_scale_config().load();
+            k8s_raw = raw.get("kubernetes", {});
+            reg = str(k8s_raw.get("image_registry", "")).strip();
+            registry_url = reg;
+        } except Exception {
+            registry_url = None;
+        }
+
+        project_dir = Path(app_config.code_folder).resolve();
+        if self.logger {
+            self.logger.info(
+                f"Auto-building image for microservice deploy",
+                {"project_dir": str(project_dir), "app_name": app_name}
+            );
+        }
+        image_tag = auto_build_and_distribute(
+            app_name=app_name, project_dir=project_dir, registry_url=registry_url
+        );
+        if self.logger {
+            self.logger.info(f"Auto-built image: {image_tag}", {"app_name": app_name});
+        }
+        return image_tag;
+    }
+
     """Generate K8s manifests AND apply them to the cluster (K3 scope).
 
     deploy() now: build image -> generate manifests -> apply via the

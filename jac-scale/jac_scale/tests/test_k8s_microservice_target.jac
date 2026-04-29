@@ -72,7 +72,7 @@ def _install_k8s_mocks -> tuple[Any, Any, Any] {
     setattr(k8s_mod, "k8s_cluster_config", mock_cfg);
     setattr(k8s_mod, "ensure_namespace_exists", unittest.mock.MagicMock());
 
-    def restore -> None {
+    def restore {
         setattr(k8s_mod, "client", orig_client);
         setattr(k8s_mod, "k8s_cluster_config", orig_cfg);
         setattr(k8s_mod, "ensure_namespace_exists", orig_ens);
@@ -105,7 +105,7 @@ def _install_k8s_mocks_with_k6 -> tuple[Any, Any, Any, Any, Any] {
     setattr(k8s_mod, "k8s_cluster_config", mock_cfg);
     setattr(k8s_mod, "ensure_namespace_exists", unittest.mock.MagicMock());
 
-    def restore -> None {
+    def restore {
         setattr(k8s_mod, "client", orig_client);
         setattr(k8s_mod, "k8s_cluster_config", orig_cfg);
         setattr(k8s_mod, "ensure_namespace_exists", orig_ens);
@@ -138,15 +138,19 @@ def _install_k8s_mocks_with_k10 -> tuple[Any, Any, Any, Any, Any, Any] {
     setattr(k8s_mod, "k8s_cluster_config", mock_cfg);
     setattr(k8s_mod, "ensure_namespace_exists", unittest.mock.MagicMock());
 
-    def restore -> None {
+    def restore {
         setattr(k8s_mod, "client", orig_client);
         setattr(k8s_mod, "k8s_cluster_config", orig_cfg);
         setattr(k8s_mod, "ensure_namespace_exists", orig_ens);
     }
 
     return (
-        mock_apps_v1, mock_core_v1, mock_autoscaling_v2,
-        mock_policy_v1, mock_networking_v1, restore
+        mock_apps_v1,
+        mock_core_v1,
+        mock_autoscaling_v2,
+        mock_policy_v1,
+        mock_networking_v1,
+        restore
     );
 }
 
@@ -154,7 +158,6 @@ def _install_k8s_mocks_with_k10 -> tuple[Any, Any, Any, Any, Any, Any] {
 # =============================================================================
 # Pod-spec generation (the K1 core)
 # =============================================================================
-
 test "generate_service_pod_specs emits one entry per route + gateway" {
     import jac_scale.config_loader as cfg_mod;
 
@@ -163,15 +166,20 @@ test "generate_service_pod_specs emits one entry per route + gateway" {
     );
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={
-            "routes": {
-                "orders": "/api/orders",
-                "cart": "/api/cart",
-                "products": "/api/products"
-            }
-        }
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(
+                data={
+                    "routes": {
+                        "orders": "/api/orders",
+                        "cart": "/api/cart",
+                        "products": "/api/products"
+                    }
+                }
+            )
+    );
 
     try {
         # build=False -> _handle_image_registry returns
@@ -179,7 +187,7 @@ test "generate_service_pod_specs emits one entry per route + gateway" {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
         specs = target.generate_service_pod_specs(ac);
 
-        assert len(specs) == 4, (
+        assert len(specs) == 4 , (
             f"expected 3 services + 1 gateway = 4, got {len(specs)}: "
             f"{list(specs.keys())}"
         );
@@ -201,9 +209,11 @@ test "each pod-spec carries JAC_SV_NAME and the same image" {
     );
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders": "/api/orders"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -216,20 +226,16 @@ test "each pod-spec carries JAC_SV_NAME and the same image" {
         orders_spec = specs["orders"];
         orders_container = orders_spec["containers"][0];
         assert orders_container["image"] == expected_image;
-        assert orders_container["env"] == [
-            {"name": "JAC_SV_NAME", "value": "orders"}
-        ];
+        assert orders_container["env"] == [{"name": "JAC_SV_NAME", "value": "orders"}];
         assert orders_container["ports"][0]["containerPort"] == 8000;
 
         # Gateway pod-spec: same image, JAC_SV_NAME=GATEWAY_NAME sentinel
         gw_spec = specs[GATEWAY_NAME];
         gw_container = gw_spec["containers"][0];
-        assert gw_container["image"] == expected_image, (
+        assert gw_container["image"] == expected_image , (
             "gateway must share the same image as services (single-image strategy)"
         );
-        assert gw_container["env"] == [
-            {"name": "JAC_SV_NAME", "value": GATEWAY_NAME}
-        ];
+        assert gw_container["env"] == [{"name": "JAC_SV_NAME", "value": GATEWAY_NAME}];
     } finally {
         setattr(cfg_mod, "get_scale_config", original);
     }
@@ -243,8 +249,6 @@ test "each pod-spec carries JAC_SV_NAME and the same image" {
 # behavior - users running `jac start --scale` against a misconfigured
 # project should get a fail-fast error pointing at the exact jac.toml
 # section to fix, not a confusing "gateway routes to nothing" deploy.
-
-
 test "container port respects k8s_config.container_port override" {
     import jac_scale.config_loader as cfg_mod;
 
@@ -253,9 +257,11 @@ test "container port respects k8s_config.container_port override" {
     );
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders": "/api/orders"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -263,7 +269,9 @@ test "container port respects k8s_config.container_port override" {
 
         # Both service and gateway pick up the configured port.
         assert specs["orders"]["containers"][0]["ports"][0]["containerPort"] == 9090;
-        assert specs[GATEWAY_NAME]["containers"][0]["ports"][0]["containerPort"] == 9090;
+        assert specs[GATEWAY_NAME]["containers"][0]["ports"][0][
+            "containerPort"
+        ] == 9090;
     } finally {
         setattr(cfg_mod, "get_scale_config", original);
     }
@@ -273,11 +281,8 @@ test "container port respects k8s_config.container_port override" {
 # =============================================================================
 # Inheritance + factory dispatch (the K1 wiring)
 # =============================================================================
-
 test "KubernetesMicroserviceTarget is a KubernetesTarget" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     # Inherits K8s machinery: build/push, namespace, secrets, probes etc.
     assert isinstance(target, KubernetesTarget);
     assert isinstance(target, DeploymentTarget);
@@ -305,13 +310,10 @@ test "DeploymentTargetFactory still dispatches plain kubernetes (monolith)" {
 # =============================================================================
 # deploy() returns DeploymentResult with pod_specs in details
 # =============================================================================
-
 test "deploy returns success with pod_specs in details" {
     import jac_scale.config_loader as cfg_mod;
 
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     # Need to patch BOTH config (for routes discovery) AND the k8s
     # client (for apply_manifests). MagicMock's default-return (no
@@ -320,15 +322,18 @@ test "deploy returns success with pod_specs in details" {
     (mock_apps_v1, mock_core_v1, k8s_restore) = _install_k8s_mocks();
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders", "cart": "/api/cart"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(data={"routes": {"orders": "/api/orders", "cart": "/api/cart"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
         result = target.deploy(ac);
 
-        assert result.success, f"deploy failed: {result.message}";
+        assert result.success , f"deploy failed: {result.message}";
         assert "pod_specs" in result.details;
         specs: dict[str, Any] = result.details["pod_specs"];
         assert len(specs) == 3;  # 2 services + gateway
@@ -347,9 +352,7 @@ test "deploy returns failure DeploymentResult on generation error" {
     # bubbling an exception out to the CLI caller.
     import jac_scale.config_loader as cfg_mod;
 
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     obj _ExplodingCfg {
         def get_microservices_config -> dict[str, Any] {
@@ -358,7 +361,7 @@ test "deploy returns failure DeploymentResult on generation error" {
     }
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _ExplodingCfg());
+    setattr(cfg_mod, "get_scale_config", lambda : _ExplodingCfg());
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -374,11 +377,8 @@ test "deploy returns failure DeploymentResult on generation error" {
 # =============================================================================
 # K2 - manifest generation (Deployment + ClusterIP Service per service)
 # =============================================================================
-
 test "_k8s_safe_name maps GATEWAY_NAME to a DNS-1123 string" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     # Sentinel underscored name -> DNS-1123 valid resource name.
     assert target._k8s_safe_name(GATEWAY_NAME) == "gateway";
     # Underscores in user names get hyphenated (K8s rejects underscores).
@@ -392,17 +392,17 @@ test "_k8s_safe_name maps GATEWAY_NAME to a DNS-1123 string" {
 
 test "_build_deployment_manifest wraps pod-spec in Deployment template" {
     target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(
-            app_name="demo", namespace="prod", container_port=8000
-        )
+        config=KubernetesConfig(app_name="demo", namespace="prod", container_port=8000)
     );
     pod_spec = {
-        "containers": [{
-            "name": "orders",
-            "image": "demo:latest",
-            "env": [{"name": "JAC_SV_NAME", "value": "orders"}],
-            "ports": [{"containerPort": 8000}]
-        }]
+        "containers": [
+            {
+                "name": "orders",
+                "image": "demo:latest",
+                "env": [{"name": "JAC_SV_NAME", "value": "orders"}],
+                "ports": [{"containerPort": 8000}]
+            }
+        ]
     };
     dep = target._build_deployment_manifest("orders", pod_spec);
 
@@ -438,9 +438,7 @@ test "_build_deployment_manifest tags gateway with role=gateway" {
 
 test "_build_service_manifest emits ClusterIP with matching selector" {
     target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(
-            app_name="demo", namespace="prod", container_port=9090
-        )
+        config=KubernetesConfig(app_name="demo", namespace="prod", container_port=9090)
     );
     svc = target._build_service_manifest("cart");
 
@@ -467,9 +465,12 @@ test "generate_manifests produces deployments + services per pod-spec" {
     );
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders", "cart": "/api/cart"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(data={"routes": {"orders": "/api/orders", "cart": "/api/cart"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -479,12 +480,12 @@ test "generate_manifests produces deployments + services per pod-spec" {
         # Use a superset assertion so additions in later K-tasks don't
         # break this test.
         for required in ("deployments", "services", "pod_specs") {
-            assert required in bundle, f"missing required section: {required}";
+            assert required in bundle , f"missing required section: {required}";
         }
 
         # Each section has 1 entry per service + 1 for the gateway.
         for section in ("deployments", "services", "pod_specs") {
-            assert len(bundle[section]) == 3, (
+            assert len(bundle[section]) == 3 , (
                 f"section {section} expected 3 entries, got {len(bundle[section])}"
             );
             assert "orders" in bundle[section];
@@ -495,9 +496,11 @@ test "generate_manifests produces deployments + services per pod-spec" {
         # Selectors must match across paired Deployment + Service so
         # kube-proxy routes correctly.
         for svc_name in ["orders", "cart"] {
-            dep_selector = bundle["deployments"][svc_name]["spec"]["selector"]["matchLabels"];
+            dep_selector = bundle["deployments"][svc_name]["spec"]["selector"][
+                "matchLabels"
+            ];
             svc_selector = bundle["services"][svc_name]["spec"]["selector"];
-            assert dep_selector == svc_selector, (
+            assert dep_selector == svc_selector , (
                 f"selector mismatch for {svc_name}: deployment={dep_selector}, service={svc_selector}"
             );
         }
@@ -510,21 +513,21 @@ test "generate_manifests produces deployments + services per pod-spec" {
 test "deploy returns K3 applied bundle in details" {
     import jac_scale.config_loader as cfg_mod;
 
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     (_apps, _core, k8s_restore) = _install_k8s_mocks();
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders": "/api/orders"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
         result = target.deploy(ac);
 
-        assert result.success, f"deploy failed: {result.message}";
+        assert result.success , f"deploy failed: {result.message}";
         # K2 bundle preserved in details (K1's pod_specs is one section).
         details: dict[str, Any] = result.details;
         assert "deployments" in details;
@@ -541,7 +544,6 @@ test "deploy returns K3 applied bundle in details" {
 # =============================================================================
 # K3 - apply_manifests + destroy lifecycle
 # =============================================================================
-
 test "apply_manifests creates Service then Deployment per entry" {
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(app_name="demo", namespace="prod")
@@ -555,8 +557,7 @@ test "apply_manifests creates Service then Deployment per entry" {
         },
         "deployments": {
             "orders": target._build_deployment_manifest(
-                "orders",
-                {"containers": [{"name": "orders", "image": "demo:latest"}]}
+                "orders", {"containers": [{"name": "orders", "image": "demo:latest"}]}
             ),
             GATEWAY_NAME: target._build_deployment_manifest(
                 GATEWAY_NAME,
@@ -612,8 +613,7 @@ test "apply_manifests creates new resources when read 404s" {
         "services": {"orders": target._build_service_manifest("orders")},
         "deployments": {
             "orders": target._build_deployment_manifest(
-                "orders",
-                {"containers": [{"name": "orders", "image": "demo:latest"}]}
+                "orders", {"containers": [{"name": "orders", "image": "demo:latest"}]}
             )
         },
         "pod_specs": {}
@@ -675,10 +675,10 @@ test "apply_manifests applies Services BEFORE Deployments" {
                 break;
             }
         }
-        assert first_dep > 0, f"no dep_patch call: {names}";
+        assert first_dep > 0 , f"no dep_patch call: {names}";
         for (i, n) in enumerate(names) {
             if "svc_patch" in n {
-                assert i < first_dep, (
+                assert i < first_dep , (
                     f"Service applied AFTER first Deployment: {names}"
                 );
             }
@@ -744,7 +744,7 @@ test "destroy iterates list_namespaced_service result and deletes each" {
             call.kwargs["name"]
             for call in mock_core_v1.delete_namespaced_service.call_args_list
         };
-        assert names == {"orders-service", "gateway-service"};
+        assert names == {"orders-service","gateway-service"};
     } finally {
         k8s_restore();
     }
@@ -754,9 +754,7 @@ test "destroy iterates list_namespaced_service result and deletes each" {
 test "deploy surfaces apply failure as DeploymentResult success=False" {
     import jac_scale.config_loader as cfg_mod;
 
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (mock_apps_v1, mock_core_v1, k8s_restore) = _install_k8s_mocks();
     # Force apply to fail at the Service step.
     mock_core_v1.read_namespaced_service.side_effect = RuntimeError(
@@ -764,9 +762,11 @@ test "deploy surfaces apply failure as DeploymentResult success=False" {
     );
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders": "/api/orders"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -785,10 +785,16 @@ test "deploy surfaces apply failure as DeploymentResult success=False" {
 # =============================================================================
 # K4 - runtime DNS adapter (KubernetesDeployer + get_sv_registry hookimpl)
 # =============================================================================
-
 import from jac_scale.microservices.deployer { ServiceDeployer }
-import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry, ServiceStatus }
-import from jac_scale.microservices.k8s_deployer { KubernetesDeployer, build_k8s_registry }
+import from jac_scale.microservices.service_registry {
+    ServiceRegistry,
+    ServiceEntry,
+    ServiceStatus
+}
+import from jac_scale.microservices.k8s_deployer {
+    KubernetesDeployer,
+    build_k8s_registry
+}
 
 
 test "KubernetesDeployer is a ServiceDeployer" {
@@ -801,9 +807,7 @@ test "KubernetesDeployer is a ServiceDeployer" {
 
 test "KubernetesDeployer.url_for returns DNS-based URL" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders"
-    ));
+    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
     dep = KubernetesDeployer(registry=reg, namespace="prod", port=8080);
 
     url = dep.url_for(reg.entries["orders"]);
@@ -813,9 +817,9 @@ test "KubernetesDeployer.url_for returns DNS-based URL" {
 
 test "KubernetesDeployer.url_for normalizes underscored names" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders_app", file="orders_app.jac", prefix="/api/orders"
-    ));
+    reg.register(
+        ServiceEntry(name="orders_app", file="orders_app.jac", prefix="/api/orders")
+    );
     dep = KubernetesDeployer(registry=reg, namespace="default", port=8000);
 
     # "orders_app" -> "orders-app" (DNS-1123: no underscores allowed).
@@ -826,9 +830,7 @@ test "KubernetesDeployer.url_for normalizes underscored names" {
 
 test "KubernetesDeployer.url_for maps GATEWAY_NAME sentinel to 'gateway'" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name=GATEWAY_NAME, file="", prefix="/"
-    ));
+    reg.register(ServiceEntry(name=GATEWAY_NAME, file="", prefix="/"));
     dep = KubernetesDeployer(registry=reg, namespace="prod", port=8000);
 
     url = dep.url_for(reg.entries[GATEWAY_NAME]);
@@ -845,8 +847,7 @@ test "build_k8s_registry maps each route to a DNS URL" {
     os.environ["POD_NAMESPACE"] = "test-ns";
     try {
         registry = build_k8s_registry(
-            routes={"orders": "/api/orders", "cart": "/api/cart"},
-            port=9090
+            routes={"orders": "/api/orders", "cart": "/api/cart"}, port=9090
         );
         assert registry["orders"] == (
             "http://orders-service.test-ns.svc.cluster.local:9090"
@@ -897,21 +898,24 @@ test "get_sv_registry hookimpl returns DNS map when KUBERNETES_SERVICE_HOST set"
 
     os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";  # any value triggers detection
     os.environ["POD_NAMESPACE"] = "prod";
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={
-            "routes": {"orders": "/api/orders", "cart": "/api/cart"},
-            "gateway_port": 8000
-        }
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(
+                data={
+                    "routes": {"orders": "/api/orders", "cart": "/api/cart"},
+                    "gateway_port": 8000
+                }
+            )
+    );
 
     try {
         registry = JacScalePlugin.get_sv_registry();
         assert registry["orders"] == (
             "http://orders-service.prod.svc.cluster.local:8000"
         );
-        assert registry["cart"] == (
-            "http://cart-service.prod.svc.cluster.local:8000"
-        );
+        assert registry["cart"] == ("http://cart-service.prod.svc.cluster.local:8000");
     } finally {
         if orig_k8s_host is None {
             del os.environ["KUBERNETES_SERVICE_HOST"];
@@ -975,7 +979,7 @@ test "get_sv_registry hookimpl falls back gracefully when config read fails" {
             raise RuntimeError("malformed jac.toml inside pod");
         }
     }
-    setattr(cfg_mod, "get_scale_config", lambda: _ExplodingCfg());
+    setattr(cfg_mod, "get_scale_config", lambda : _ExplodingCfg());
 
     try {
         # Should NOT raise.
@@ -997,7 +1001,6 @@ test "get_sv_registry hookimpl falls back gracefully when config read fails" {
 # =============================================================================
 # K5 - rolling-deploy correctness (RollingUpdate + probes + grace + preStop)
 # =============================================================================
-
 test "Deployment carries RollingUpdate strategy with maxSurge=1 maxUnavailable=0" {
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(app_name="demo", namespace="prod")
@@ -1027,7 +1030,7 @@ test "service pod-spec readinessProbe hits /healthz/ready" {
     container = spec["containers"][0];
 
     probe = container["readinessProbe"];
-    assert probe["httpGet"]["path"] == "/healthz/ready", (
+    assert probe["httpGet"]["path"] == "/healthz/ready" , (
         f"readinessProbe should hit /healthz/ready, got {probe['httpGet']}"
     );
     assert probe["httpGet"]["port"] == 8000;
@@ -1050,7 +1053,7 @@ test "service pod-spec livenessProbe hits /healthz/live (more lenient)" {
     container = spec["containers"][0];
 
     probe = container["livenessProbe"];
-    assert probe["httpGet"]["path"] == "/healthz/live", (
+    assert probe["httpGet"]["path"] == "/healthz/live" , (
         f"livenessProbe should hit /healthz/live, got {probe['httpGet']}"
     );
     assert probe["httpGet"]["port"] == 8000;
@@ -1061,9 +1064,7 @@ test "service pod-spec livenessProbe hits /healthz/live (more lenient)" {
 
 
 test "service pod-spec carries lifecycle.preStop sleep" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     spec = target._build_service_pod_spec("orders", "demo:latest");
     container = spec["containers"][0];
 
@@ -1080,9 +1081,7 @@ test "service pod-spec carries lifecycle.preStop sleep" {
 
 
 test "pod-spec terminationGracePeriodSeconds = drain_timeout + 5 (default)" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     spec = target._build_service_pod_spec("orders", "demo:latest");
 
     # Default drain_timeout is 10s (memory + jfast_api default), so
@@ -1094,14 +1093,14 @@ test "pod-spec terminationGracePeriodSeconds = drain_timeout + 5 (default)" {
 
 test "pod-spec terminationGracePeriodSeconds tracks drain_timeout config override" {
     import jac_scale.config_loader as cfg_mod;
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"drain_timeout_seconds": 60}  # 60s drain for slow services
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"drain_timeout_seconds": 60})
+    );
 
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
@@ -1134,9 +1133,7 @@ test "gateway pod-spec gets the same K5 wires (probes + grace + preStop)" {
 
 test "_drain_timeout falls back to 10s default on config read failure" {
     import jac_scale.config_loader as cfg_mod;
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     obj _ExplodingCfg {
         def get_microservices_config -> dict[str, Any] {
@@ -1144,7 +1141,7 @@ test "_drain_timeout falls back to 10s default on config read failure" {
         }
     }
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _ExplodingCfg());
+    setattr(cfg_mod, "get_scale_config", lambda : _ExplodingCfg());
 
     try {
         # Should not raise; falls back to 10.
@@ -1158,7 +1155,6 @@ test "_drain_timeout falls back to 10s default on config read failure" {
 # =============================================================================
 # K6 - HPA + PodDisruptionBudget per service
 # =============================================================================
-
 test "_build_hpa_manifest targets the Deployment with conservative defaults" {
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(app_name="demo", namespace="prod")
@@ -1222,9 +1218,11 @@ test "generate_manifests includes hpas + pdbs sections" {
     );
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders": "/api/orders"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -1257,8 +1255,7 @@ test "apply_manifests applies HPAs and PDBs after Deployments" {
         "services": {"orders": target._build_service_manifest("orders")},
         "deployments": {
             "orders": target._build_deployment_manifest(
-                "orders",
-                {"containers": [{"name": "orders", "image": "demo:latest"}]}
+                "orders", {"containers": [{"name": "orders", "image": "demo:latest"}]}
             )
         },
         "hpas": {"orders": target._build_hpa_manifest("orders")},
@@ -1325,9 +1322,7 @@ test "destroy also tears down HPAs and PDBs by label" {
     (apps_v1, core_v1, autoscaling_v2, policy_v1, restore) = (
         _install_k8s_mocks_with_k6()
     );
-    core_v1.list_namespaced_service.return_value = (
-        unittest.mock.MagicMock(items=[])
-    );
+    core_v1.list_namespaced_service.return_value = unittest.mock.MagicMock(items=[]);
 
     try {
         target.destroy("demo");
@@ -1350,19 +1345,22 @@ test "destroy also tears down HPAs and PDBs by label" {
 # =============================================================================
 # K7 - per-service config layering
 # =============================================================================
-
 """Helper: stub get_scale_config to return a fixed services config.
 
 Tests use this to inject `[plugins.scale.microservices.services.NAME]`
 overrides without needing a jac.toml fixture.
 """
-def _with_services_config(services: dict[str, Any], routes: dict[str, str] = {}) -> tuple[Any, Any] {
+def _with_services_config(
+    services: dict[str, Any], routes: dict[str, str] = {}
+) -> tuple[Any, Any] {
     import jac_scale.config_loader as cfg_mod;
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": routes, "services": services}
-    ));
-    def restore -> None {
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": routes, "services": services})
+    );
+    def restore {
         setattr(cfg_mod, "get_scale_config", original);
     }
     return (cfg_mod, restore);
@@ -1376,8 +1374,7 @@ test "Deployment.spec.replicas honors per-service config" {
     (_cfg, restore) = _with_services_config({"orders": {"replicas": 5}});
     try {
         dep = target._build_deployment_manifest(
-            "orders",
-            {"containers": [{"name": "orders", "image": "demo:latest"}]}
+            "orders", {"containers": [{"name": "orders", "image": "demo:latest"}]}
         );
         assert dep["spec"]["replicas"] == 5;
     } finally {
@@ -1387,17 +1384,14 @@ test "Deployment.spec.replicas honors per-service config" {
 
 
 test "container env merges JAC_SV_NAME with per-service env (sentinel always first)" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-    (_cfg, restore) = _with_services_config({
-        "orders": {
-            "env": {
-                "LOG_LEVEL": "DEBUG",
-                "JAC_SV_NAME": "evil_override_attempt"  # must be ignored
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {
+            "orders": {
+                "env": {"LOG_LEVEL": "DEBUG", "JAC_SV_NAME": "evil_override_attempt"}
             }
         }
-    });
+    );
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
         env: list[dict[str, str]] = spec["containers"][0]["env"];
@@ -1405,11 +1399,19 @@ test "container env merges JAC_SV_NAME with per-service env (sentinel always fir
         # JAC_SV_NAME must be FIRST and uncorrupted.
         assert env[0] == {"name": "JAC_SV_NAME", "value": "orders"};
         # Other env keys appended after.
-        log_level_entries = [e for e in env if e["name"] == "LOG_LEVEL"];
+        log_level_entries = [
+            e
+            for e in env
+            if e["name"] == "LOG_LEVEL"
+        ];
         assert len(log_level_entries) == 1;
         assert log_level_entries[0]["value"] == "DEBUG";
         # Attempted shadow of JAC_SV_NAME was dropped.
-        assert sum(1 for e in env if e["name"] == "JAC_SV_NAME") == 1;
+        assert sum(
+            1
+            for e in env
+            if e["name"] == "JAC_SV_NAME"
+        ) == 1;
     } finally {
         restore();
     }
@@ -1417,17 +1419,17 @@ test "container env merges JAC_SV_NAME with per-service env (sentinel always fir
 
 
 test "container resources reflect cpu/memory request and limit overrides" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-    (_cfg, restore) = _with_services_config({
-        "llm_app": {
-            "cpu_request": "500m",
-            "cpu_limit": "2000m",
-            "memory_request": "1Gi",
-            "memory_limit": "4Gi"
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {
+            "llm_app": {
+                "cpu_request": "500m",
+                "cpu_limit": "2000m",
+                "memory_request": "1Gi",
+                "memory_limit": "4Gi"
+            }
         }
-    });
+    );
     try {
         spec = target._build_service_pod_spec("llm_app", "demo:latest");
         resources = spec["containers"][0]["resources"];
@@ -1442,9 +1444,7 @@ test "container resources reflect cpu/memory request and limit overrides" {
 test "container has no resources field when no overrides set" {
     # We don't want to emit an empty `resources: {}` since it serializes
     # noisy in K8s manifests; if no overrides, just omit the field.
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (_cfg, restore) = _with_services_config({});
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
@@ -1456,18 +1456,14 @@ test "container has no resources field when no overrides set" {
 
 
 test "container resources can be partial (only requests, no limits)" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {"orders": {"cpu_request": "100m", "memory_request": "64Mi"}}
     );
-    (_cfg, restore) = _with_services_config({
-        "orders": {"cpu_request": "100m", "memory_request": "64Mi"}
-    });
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
         resources = spec["containers"][0]["resources"];
-        assert resources == {
-            "requests": {"cpu": "100m", "memory": "64Mi"}
-        };
+        assert resources == {"requests": {"cpu": "100m", "memory": "64Mi"}};
         # No limits key emitted.
         assert "limits" not in resources;
     } finally {
@@ -1477,12 +1473,8 @@ test "container resources can be partial (only requests, no limits)" {
 
 
 test "image_tag override replaces tag in repo/name:tag" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-    (_cfg, restore) = _with_services_config({
-        "orders": {"image_tag": "v2.0-canary"}
-    });
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config({"orders": {"image_tag": "v2.0-canary"}});
     try {
         spec = target._build_service_pod_spec("orders", "myorg/demo:latest");
         assert spec["containers"][0]["image"] == "myorg/demo:v2.0-canary";
@@ -1497,17 +1489,11 @@ test "image_tag override preserves registry hostname with port" {
     # (myregistry.io:5000/name:tag); we must split on the LAST colon
     # AND verify the part after has no slash, otherwise we'd mistake
     # the registry port for a tag.
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-    (_cfg, restore) = _with_services_config({
-        "orders": {"image_tag": "canary"}
-    });
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config({"orders": {"image_tag": "canary"}});
     try {
         # No tag in input, just registry+port+name.
-        spec1 = target._build_service_pod_spec(
-            "orders", "myregistry.io:5000/demo"
-        );
+        spec1 = target._build_service_pod_spec("orders", "myregistry.io:5000/demo");
         assert spec1["containers"][0]["image"] == "myregistry.io:5000/demo:canary";
 
         # Already has a tag.
@@ -1522,18 +1508,18 @@ test "image_tag override preserves registry hostname with port" {
 
 
 test "HPA bounds reflect per-service hpa overrides" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {"llm_app": {"hpa": {"min": 3, "max": 20, "cpu_target": 60}}}
     );
-    (_cfg, restore) = _with_services_config({
-        "llm_app": {"hpa": {"min": 3, "max": 20, "cpu_target": 60}}
-    });
     try {
         hpa = target._build_hpa_manifest("llm_app");
         assert hpa is not None;
         assert hpa["spec"]["minReplicas"] == 3;
         assert hpa["spec"]["maxReplicas"] == 20;
-        assert hpa["spec"]["metrics"][0]["resource"]["target"]["averageUtilization"] == 60;
+        assert hpa["spec"]["metrics"][0]["resource"]["target"][
+            "averageUtilization"
+        ] == 60;
     } finally {
         restore();
     }
@@ -1541,12 +1527,10 @@ test "HPA bounds reflect per-service hpa overrides" {
 
 
 test "HPA returns None when hpa.enabled = false" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {"leader_only": {"hpa": {"enabled": False}}}
     );
-    (_cfg, restore) = _with_services_config({
-        "leader_only": {"hpa": {"enabled": False}}
-    });
     try {
         hpa = target._build_hpa_manifest("leader_only");
         assert hpa is None;
@@ -1557,12 +1541,10 @@ test "HPA returns None when hpa.enabled = false" {
 
 
 test "PDB max_unavailable reflects per-service override" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {"orders": {"pdb": {"max_unavailable": 3}}}
     );
-    (_cfg, restore) = _with_services_config({
-        "orders": {"pdb": {"max_unavailable": 3}}
-    });
     try {
         pdb = target._build_pdb_manifest("orders");
         assert pdb is not None;
@@ -1574,12 +1556,8 @@ test "PDB max_unavailable reflects per-service override" {
 
 
 test "PDB returns None when pdb.enabled = false" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-    (_cfg, restore) = _with_services_config({
-        "orders": {"pdb": {"enabled": False}}
-    });
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config({"orders": {"pdb": {"enabled": False}}});
     try {
         pdb = target._build_pdb_manifest("orders");
         assert pdb is None;
@@ -1591,22 +1569,22 @@ test "PDB returns None when pdb.enabled = false" {
 
 test "generate_manifests skips disabled HPAs and PDBs" {
     import jac_scale.config_loader as cfg_mod;
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={
-            "routes": {"orders": "/api/orders", "leader": "/api/leader"},
-            "services": {
-                "leader": {
-                    "hpa": {"enabled": False},
-                    "pdb": {"enabled": False}
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(
+                data={
+                    "routes": {"orders": "/api/orders", "leader": "/api/leader"},
+                    "services": {
+                        "leader": {"hpa": {"enabled": False}, "pdb": {"enabled": False}}
+                    }
                 }
-            }
-        }
-    ));
+            )
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -1631,21 +1609,20 @@ test "generate_manifests skips disabled HPAs and PDBs" {
 
 
 test "gateway honors per-service config under __gateway__ key" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-    (_cfg, restore) = _with_services_config({
-        GATEWAY_NAME: {
-            "replicas": 3,
-            "cpu_request": "200m",
-            "env": {"GATEWAY_DEBUG": "1"}
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {
+            GATEWAY_NAME: {
+                "replicas": 3,
+                "cpu_request": "200m",
+                "env": {"GATEWAY_DEBUG": "1"}
+            }
         }
-    });
+    );
     try {
         # Deployment replicas
         dep = target._build_deployment_manifest(
-            GATEWAY_NAME,
-            target._build_gateway_pod_spec("demo:latest")
+            GATEWAY_NAME, target._build_gateway_pod_spec("demo:latest")
         );
         assert dep["spec"]["replicas"] == 3;
 
@@ -1653,7 +1630,11 @@ test "gateway honors per-service config under __gateway__ key" {
         spec = target._build_gateway_pod_spec("demo:latest");
         container = spec["containers"][0];
         assert container["resources"]["requests"]["cpu"] == "200m";
-        gateway_debug = [e for e in container["env"] if e["name"] == "GATEWAY_DEBUG"];
+        gateway_debug = [
+            e
+            for e in container["env"]
+            if e["name"] == "GATEWAY_DEBUG"
+        ];
         assert len(gateway_debug) == 1;
     } finally {
         restore();
@@ -1662,9 +1643,7 @@ test "gateway honors per-service config under __gateway__ key" {
 
 
 test "_service_config returns {} on read failure (graceful)" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     import jac_scale.config_loader as cfg_mod;
 
     obj _ExplodingCfg {
@@ -1673,7 +1652,7 @@ test "_service_config returns {} on read failure (graceful)" {
         }
     }
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _ExplodingCfg());
+    setattr(cfg_mod, "get_scale_config", lambda : _ExplodingCfg());
 
     try {
         # No raise; empty dict so all manifest paths use defaults.
@@ -1687,11 +1666,8 @@ test "_service_config returns {} on read failure (graceful)" {
 # =============================================================================
 # K9 - pod entrypoint dispatch (command + args on container spec)
 # =============================================================================
-
 test "service pod-spec carries command + args that exec jac start" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     spec = target._build_service_pod_spec("orders", "demo:latest");
     container = spec["containers"][0];
 
@@ -1714,9 +1690,7 @@ test "service pod-spec carries command + args that exec jac start" {
 
 
 test "gateway pod-spec carries the same dispatch wiring" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     spec = target._build_gateway_pod_spec("demo:latest");
     container = spec["containers"][0];
 
@@ -1727,7 +1701,9 @@ test "gateway pod-spec carries the same dispatch wiring" {
     # Gateway env still sets JAC_SV_NAME to the sentinel; runtime
     # script reads it and takes the gateway branch.
     sv_name_entries = [
-        e for e in container["env"] if e["name"] == "JAC_SV_NAME"
+        e
+        for e in container["env"]
+        if e["name"] == "JAC_SV_NAME"
     ];
     assert len(sv_name_entries) == 1;
     assert sv_name_entries[0]["value"] == GATEWAY_NAME;
@@ -1740,18 +1716,18 @@ test "container name is DNS-1123 normalized (regression guard for K8s 422)" {
     # smoke applied a pod-spec with `containers[0].name = "orders_app"`.
     # The resource names (Deployment, Service) were already normalized
     # via k8s_safe_name; this test ensures the container.name is too.
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     spec = target._build_service_pod_spec("orders_app", "demo:latest");
     container_name: str = spec["containers"][0]["name"];
-    assert container_name == "orders-app", (
+    assert container_name == "orders-app" , (
         f"container.name must be DNS-1123 (no underscores), got {container_name!r}"
     );
     # JAC_SV_NAME env preserves the raw name (entrypoint dispatch needs
     # the original to find <name>.jac).
     env_jac_name = next(
-        e for e in spec["containers"][0]["env"] if e["name"] == "JAC_SV_NAME"
+        e
+        for e in spec["containers"][0]["env"]
+        if e["name"] == "JAC_SV_NAME"
     );
     assert env_jac_name["value"] == "orders_app";
 }
@@ -1761,9 +1737,7 @@ test "_pod_entrypoint command/args are stable (regression guard)" {
     # If we ever change the entrypoint shape, the Dockerfile template
     # documentation might drift. Pin the structure so that's caught
     # by the test suite.
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     entry = target._pod_entrypoint();
     assert entry["command"] == ["sh", "-c"];
     assert isinstance(entry["args"], list);
@@ -1774,11 +1748,8 @@ test "_pod_entrypoint command/args are stable (regression guard)" {
 # =============================================================================
 # K10 - optional Ingress manifest pointing at the gateway
 # =============================================================================
-
 test "_build_ingress_manifest returns None when not enabled" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     # Default: disabled.
     assert target._build_ingress_manifest({}) is None;
     # Explicit disable.
@@ -1788,9 +1759,7 @@ test "_build_ingress_manifest returns None when not enabled" {
 
 test "_build_ingress_manifest emits Ingress with sensible defaults" {
     target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(
-            app_name="demo", namespace="prod", container_port=8000
-        )
+        config=KubernetesConfig(app_name="demo", namespace="prod", container_port=8000)
     );
     ing = target._build_ingress_manifest({"enabled": True});
 
@@ -1824,11 +1793,9 @@ test "_build_ingress_manifest honors host + ingress_class_name" {
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(app_name="demo", namespace="prod")
     );
-    ing = target._build_ingress_manifest({
-        "enabled": True,
-        "host": "shop.example.com",
-        "ingress_class_name": "nginx"
-    });
+    ing = target._build_ingress_manifest(
+        {"enabled": True, "host": "shop.example.com", "ingress_class_name": "nginx"}
+    );
     assert ing is not None;
     assert ing["spec"]["rules"][0]["host"] == "shop.example.com";
     assert ing["spec"]["ingressClassName"] == "nginx";
@@ -1836,16 +1803,16 @@ test "_build_ingress_manifest honors host + ingress_class_name" {
 
 
 test "_build_ingress_manifest carries controller-specific annotations" {
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
-    ing = target._build_ingress_manifest({
-        "enabled": True,
-        "annotations": {
-            "nginx.ingress.kubernetes.io/proxy-body-size": "10m",
-            "alb.ingress.kubernetes.io/scheme": "internet-facing"
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    ing = target._build_ingress_manifest(
+        {
+            "enabled": True,
+            "annotations": {
+                "nginx.ingress.kubernetes.io/proxy-body-size": "10m",
+                "alb.ingress.kubernetes.io/scheme": "internet-facing"
+            }
         }
-    });
+    );
     assert ing is not None;
     annotations = ing["metadata"]["annotations"];
     assert annotations["nginx.ingress.kubernetes.io/proxy-body-size"] == "10m";
@@ -1855,21 +1822,24 @@ test "_build_ingress_manifest carries controller-specific annotations" {
 
 test "generate_manifests includes ingress when enabled" {
     import jac_scale.config_loader as cfg_mod;
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={
-            "routes": {"orders": "/api/orders"},
-            "ingress": {
-                "enabled": True,
-                "host": "demo.example.com",
-                "ingress_class_name": "nginx"
-            }
-        }
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(
+                data={
+                    "routes": {"orders": "/api/orders"},
+                    "ingress": {
+                        "enabled": True,
+                        "host": "demo.example.com",
+                        "ingress_class_name": "nginx"
+                    }
+                }
+            )
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -1885,14 +1855,14 @@ test "generate_manifests includes ingress when enabled" {
 
 test "generate_manifests OMITS ingress when not enabled" {
     import jac_scale.config_loader as cfg_mod;
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
 
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders": "/api/orders"}})
+    );
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -1913,9 +1883,9 @@ test "apply_manifests applies Ingress when present" {
         _install_k8s_mocks_with_k10()
     );
 
-    ingress = target._build_ingress_manifest({
-        "enabled": True, "host": "demo.example.com"
-    });
+    ingress = target._build_ingress_manifest(
+        {"enabled": True, "host": "demo.example.com"}
+    );
     bundle = {
         "services": {},
         "deployments": {},
@@ -1974,9 +1944,7 @@ test "destroy also tears down Ingresses by label" {
     (apps_v1, core_v1, autoscaling_v2, policy_v1, networking_v1, restore) = (
         _install_k8s_mocks_with_k10()
     );
-    core_v1.list_namespaced_service.return_value = (
-        unittest.mock.MagicMock(items=[])
-    );
+    core_v1.list_namespaced_service.return_value = unittest.mock.MagicMock(items=[]);
 
     try {
         target.destroy("demo");
@@ -1993,6 +1961,83 @@ test "destroy also tears down Ingresses by label" {
 # =============================================================================
 # P1.3: helpful error messages on common new-user K8s failures
 # =============================================================================
+test "P0.5: _handle_image_registry override uses auto-build when env var is set" {
+    # When _JAC_SCALE_AUTO_BUILD=1 is set (production path), the override
+    # should hand off to auto_build_and_distribute and return its image
+    # tag. When the env var is unset (test default), it should fall
+    # through to the parent's behavior.
+    import jac_scale.config_loader as cfg_mod;
+    import jac_scale.microservices.k8s_target as kt_mod;
+    import unittest.mock as mock;
+    import os;
+
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    original_cfg = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda : _StubMsCfg(data={"routes": {}}));
+    prev_env = os.environ.get("_JAC_SCALE_AUTO_BUILD");
+    os.environ["_JAC_SCALE_AUTO_BUILD"] = "1";
+
+    # Mock the auto-build pipeline so we don't shell out
+    auto_build_calls: dict = {};
+    def fake_auto_build(app_name: str, app_config: Any) -> str {
+        auto_build_calls["app_name"] = app_name;
+        return "myapp:auto-built-tag";
+    }
+
+    try {
+        with mock.patch.object(
+            target, "_auto_build_image", side_effect=fake_auto_build
+        ) {
+            ac = AppConfig(code_folder=".", app_name="demo", build=False);
+            image = target._handle_image_registry("demo", ac);
+        }
+        assert image == "myapp:auto-built-tag";
+        assert auto_build_calls["app_name"] == "demo";
+    } finally {
+        if prev_env is None {
+            del os.environ["_JAC_SCALE_AUTO_BUILD"];
+        } else {
+            os.environ["_JAC_SCALE_AUTO_BUILD"] = prev_env;
+        }
+        setattr(cfg_mod, "get_scale_config", original_cfg);
+    }
+}
+
+
+test "P0.5: _handle_image_registry honors pre-set docker_image_name (no rebuild)" {
+    # If the user explicitly set [plugins.scale.kubernetes].docker_image_name
+    # to something non-default, trust they pre-built it - don't waste time
+    # auto-building. Only the default `<app_name>:latest` triggers auto-
+    # build (since that's what KubernetesConfig.from_dict synthesizes
+    # when the user didn't set anything).
+    import jac_scale.config_loader as cfg_mod;
+    import os;
+
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo", docker_image_name="myregistry.io/myapp:v1.2.3"
+        )
+    );
+    original_cfg = getattr(cfg_mod, "get_scale_config");
+    setattr(cfg_mod, "get_scale_config", lambda : _StubMsCfg(data={"routes": {}}));
+    prev_env = os.environ.get("_JAC_SCALE_AUTO_BUILD");
+    os.environ["_JAC_SCALE_AUTO_BUILD"] = "1";
+
+    try {
+        ac = AppConfig(code_folder=".", app_name="demo", build=False);
+        image = target._handle_image_registry("demo", ac);
+        # Should return the user's pre-set image, no auto-build invocation
+        assert image == "myregistry.io/myapp:v1.2.3";
+    } finally {
+        if prev_env is None {
+            del os.environ["_JAC_SCALE_AUTO_BUILD"];
+        } else {
+            os.environ["_JAC_SCALE_AUTO_BUILD"] = prev_env;
+        }
+        setattr(cfg_mod, "get_scale_config", original_cfg);
+    }
+}
+
 
 test "P0.6: python_image fallback raises actionable error when guard env is set" {
     # Regression: KubernetesTarget._handle_image_registry returns
@@ -2010,9 +2055,11 @@ test "P0.6: python_image fallback raises actionable error when guard env is set"
         config=KubernetesConfig(app_name="demo", python_image="python:3.12-slim")
     );
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders_app": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders_app": "/api/orders"}})
+    );
     prev_env = os.environ.get("_JAC_SCALE_GUARD_FALLBACK_IMAGE");
     os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
 
@@ -2027,7 +2074,7 @@ test "P0.6: python_image fallback raises actionable error when guard env is set"
             raised = True;
             msg = str(e);
         }
-        assert raised, (
+        assert raised , (
             "fallback to python:3.12-slim must raise when guard env is set"
         );
         # Error must be actionable: name the symptom + the e2e script + docs.
@@ -2057,9 +2104,11 @@ test "P0.6: fallback image does NOT raise when guard env is unset (back-compat)"
         config=KubernetesConfig(app_name="demo", python_image="python:3.12-slim")
     );
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={"routes": {"orders_app": "/api/orders"}}
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(data={"routes": {"orders_app": "/api/orders"}})
+    );
     # Make sure the env var is unset (it's the default).
     prev_env = os.environ.pop("_JAC_SCALE_GUARD_FALLBACK_IMAGE", None);
 
@@ -2083,11 +2132,9 @@ test "P1.3: empty routes produces actionable error, not silent gateway-only depl
     # routing to nothing. The error message must point at the exact
     # jac.toml section so they can fix it without paging through docs.
     import jac_scale.config_loader as cfg_mod;
-    target = KubernetesMicroserviceTarget(
-        config=KubernetesConfig(app_name="demo")
-    );
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     original = getattr(cfg_mod, "get_scale_config");
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(data={"routes": {}}));
+    setattr(cfg_mod, "get_scale_config", lambda : _StubMsCfg(data={"routes": {}}));
 
     try {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
@@ -2099,7 +2146,7 @@ test "P1.3: empty routes produces actionable error, not silent gateway-only depl
             raised = True;
             msg = str(e);
         }
-        assert raised, "empty routes must raise, not silently produce a gateway-only spec";
+        assert raised , "empty routes must raise, not silently produce a gateway-only spec";
         # Error must be actionable: name the config key + show an example.
         assert "[plugins.scale.microservices.routes]" in msg;
         assert "my_service" in msg or "/api/" in msg;
