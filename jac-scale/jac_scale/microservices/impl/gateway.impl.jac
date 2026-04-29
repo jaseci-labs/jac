@@ -263,7 +263,7 @@ glob _BUILTIN_PREFIXES: tuple = (
          "/jobs/",
          "/graph/"
      ),
-     _BUILTIN_EXACT: set[str] = {"/user","/healthz","/graph"};
+     _BUILTIN_EXACT: set[str] = {"/user","/graph"};
 
 """Copy incoming request headers, dropping hop-by-hop headers.
 
@@ -543,7 +543,10 @@ impl MicroserviceGateway.setup -> FastAPI {
         svc_label: str = "__unmatched__";
         try {
             resp: Response | None = None;
-            if path == "/health" {
+            if path == "/health" or path == "/healthz" {
+                # /healthz is the K8s probe convention; alias to /health
+                # so the gateway pod's readiness never depends on whether
+                # a backend service has registered yet.
                 svc_label = "__health__";
                 resp = gw.handle_health();
             } elif path == "/metrics" {
