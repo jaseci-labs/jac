@@ -305,6 +305,7 @@ statement ::=
     | nonlocal_stmt
     | visit_stmt
     | report_stmt
+    | docstring_target
     | ability
     | archetype
     | impl_def
