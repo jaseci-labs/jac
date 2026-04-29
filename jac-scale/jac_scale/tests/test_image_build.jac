@@ -8,6 +8,7 @@ import from pathlib { Path }
 import from jac_scale.microservices._image_build {
     find_jaseci_repo_root,
     resolve_dockerfile,
+    ensure_dockerignore,
     auto_build_and_distribute
 }
 import from jac_scale.microservices._cluster_detect {
@@ -121,6 +122,43 @@ test "resolve_dockerfile prefers shipped Dockerfile.microservice over embedded" 
         assert df.resolve() == fake_shipped.resolve();
         assert ctx.resolve() == project.resolve();
         assert args == {};
+    }
+}
+
+
+# =============================================================================
+# ensure_dockerignore - prevents 2GB build contexts from timing out
+# =============================================================================
+
+test "ensure_dockerignore writes the embedded template when absent" {
+    with tempfile.TemporaryDirectory() as tmp {
+        ctx = Path(tmp);
+        wrote = ensure_dockerignore(ctx);
+        assert wrote;
+        ignore_file = ctx / ".dockerignore";
+        assert ignore_file.exists();
+        contents = ignore_file.read_text();
+        # Must exclude the things that bloat builds the most.
+        assert ".git" in contents;
+        assert "**/.jac" in contents;
+        assert "**/__pycache__" in contents;
+        assert "**/node_modules" in contents;
+    }
+}
+
+
+test "ensure_dockerignore never overwrites a user-provided .dockerignore" {
+    with tempfile.TemporaryDirectory() as tmp {
+        ctx = Path(tmp);
+        existing = ctx / ".dockerignore";
+        existing.write_text("# user's custom rules\nuser-only-marker\n");
+
+        wrote = ensure_dockerignore(ctx);
+        assert not wrote;
+        # Must NOT have been clobbered.
+        contents = existing.read_text();
+        assert "user-only-marker" in contents;
+        assert "**/.jac" not in contents;  # our embedded marker
     }
 }
 

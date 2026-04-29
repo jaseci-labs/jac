@@ -58,6 +58,37 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "EXPOSE 8000\n";
 
 
+# Embedded .dockerignore. Written next to a build context that doesn't
+# already have one. Without this, an unsuspecting docker build can pull
+# in .git, node_modules, and per-package .jac caches and time out
+# transferring the context. Mirrors the rules at the jaseci repo root.
+glob _EMBEDDED_DOCKERIGNORE: str = "# Auto-generated .dockerignore. "
+     "Override by committing your own .dockerignore.\n"
+     ".git\n"
+     ".gitignore\n"
+     ".github\n"
+     ".vscode\n"
+     ".idea\n"
+     ".DS_Store\n"
+     "**/__pycache__\n"
+     "**/*.pyc\n"
+     "**/*.egg-info\n"
+     "**/.pytest_cache\n"
+     "**/.mypy_cache\n"
+     "**/.ruff_cache\n"
+     "**/.venv\n"
+     "**/venv\n"
+     "**/dist\n"
+     "**/build\n"
+     "**/.jac\n"
+     "**/__jac_gen__\n"
+     "**/node_modules\n"
+     "**/.vite\n"
+     "**/.next\n"
+     ".env\n"
+     ".env.*\n";
+
+
 """Find the jaseci repo root by walking up from `start`.
 
 A repo root is identified by having both `jac/` and `jac-scale/` sibling
@@ -166,6 +197,33 @@ def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
 }
 
 
+"""Ensure a `.dockerignore` exists at the build-context root.
+
+Without one, docker build sends the entire context tree to the daemon
+before starting any layers. For a jaseci repo root that's 2GB+ of
+.git + .jac caches + node_modules and the build times out. If the
+context has no .dockerignore, write the embedded one. Never overwrite
+a user's existing .dockerignore.
+
+Returns True if we wrote one, False if the user already has one.
+"""
+def ensure_dockerignore(context_dir: Path) -> bool {
+    target = context_dir / ".dockerignore";
+    if target.exists() {
+        return False;
+    }
+    try {
+        target.write_text(_EMBEDDED_DOCKERIGNORE);
+    } except OSError {
+        # Read-only mount or similar - not fatal; build will be slower
+        # but won't fail. Caller's responsibility (or just live with
+        # the slow build).
+        return False;
+    }
+    return True;
+}
+
+
 """Run `docker build` with optional env override and build args.
 
 `env_overrides` lets the caller redirect Docker at a different daemon
@@ -180,6 +238,12 @@ def run_docker_build(
     build_args: dict[str, str],
     env_overrides: dict[str, str] | None = None
 ) {
+    # Guard against multi-GB build contexts (the most common cause of
+    # mysterious "docker build timed out after 600s" reports). Writes
+    # the embedded .dockerignore only if the context doesn't already
+    # have one - never clobbers a user-provided file.
+    ensure_dockerignore(context_dir);
+
     if shutil.which("docker") is None {
         raise RuntimeError(
             "docker CLI not found in PATH. Install Docker Desktop "
