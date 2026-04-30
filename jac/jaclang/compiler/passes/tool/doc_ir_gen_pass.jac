@@ -179,5 +179,4 @@ obj DocIRGenPass(UniPass) {
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def exit_jsx_text(nd: uni.JsxText) -> None;
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
-    def exit_jsx_comment(nd: uni.JsxComment) -> None;
 }

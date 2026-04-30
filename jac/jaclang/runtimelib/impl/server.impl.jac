@@ -299,21 +299,38 @@ Commit goes through the async Memory surface (`Jac.acommit`) so L3 writes
 do not block the event loop — this is what keeps post-walker persistence
 from serializing async walkers that would otherwise all pay the commit
 round-trip on the loop in series.
+
+Two streaming paths are honored — both are propagated to the caller as
+a raw (Async)Generator so jac-scale's serve.endpoints can wrap them in a
+StreamingResponse instead of materializing the events:
+
+  1. The function/walker explicitly returns an iterator. This is the
+     `def:pub stream_events(...) -> Iterator[dict]` shape used by
+     long-running RPCs (e.g. jac-coder turn streaming).
+  2. The walker pushes a generator into call_state.reports. This is
+     the older live-reports pattern; report_collector itself returns
+     the generator straight from the queue (see line 250).
+
+If both paths fire on the same call, the explicit return wins — that's
+the authoritative result for the caller; reports are auxiliary. Anything
+else falls into the normal serialize-and-envelope path.
 """
 impl ExecutionManager._finalize_call_response(
     call_state: CallState, result: Any
-) -> dict[str, JsonValue] {
+) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
     await Jac.acommit();
+    if isgenerator(result) or isinstance(result, AsyncGenerator) {
+        return result;
+    }
     if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
         return reports;
-    } else {
-        return {
-            'result': Serializer.serialize(result, api_mode=True),
-            'reports': Serializer.serialize(reports, api_mode=True)
-        };
     }
+    return {
+        'result': Serializer.serialize(result, api_mode=True),
+        'reports': Serializer.serialize(reports, api_mode=True)
+    };
 }
 
 """Dispatcher: pick sync/async variant based on function kind.

@@ -15,6 +15,7 @@ import from typing {
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Generator,
     Literal,
     TypeAlias,
     get_type_hints
@@ -117,32 +118,32 @@ obj ExecutionManager {
 
     async def execute_function(
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_sync(
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def execute_function_async(
         func: Callable[(..., Any)], args: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker_sync(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def spawn_walker_async(
         walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 
     async def report_collector(call_state: CallState) -> dict[str, JsonValue];
     async def _finalize_call_response(
         call_state: CallState, result: Any
-    ) -> dict[str, JsonValue];
+    ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 }
 
 """Introspects and caches module metadata."""
