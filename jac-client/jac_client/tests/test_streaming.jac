@@ -1,10 +1,10 @@
 """Tests for jacSpawnStream / jacCallFunctionStream / useJacStream.
 
 Three levels of coverage:
-  1. Server-side SSE emission — jac-scale wraps generator returns as
+  1. Server-side SSE emission: jac-scale wraps generator returns as
      text/event-stream with correct frame format. (Python, no browser)
-  2. Client bundle compilation — compiled JS contains the new symbols.
-  3. End-to-end browser — useJacStream drives a real streaming walker
+  2. Client bundle compilation: compiled JS contains the new symbols.
+  3. End-to-end browser: useJacStream drives a real streaming walker
      and streamed events appear in the DOM. (Playwright + Chromium)
 """
 
@@ -29,7 +29,7 @@ import from .test_helpers {
 }
 
 
-glob _STREAM_APP_JAC: str = """\"\"\"Streaming test app — server + client.\"\"\"
+glob _STREAM_APP_JAC: str = """\"\"\"Streaming test app: server + client.\"\"\"
 
 def _events(up_to: int) -> Any {
     for i in range(up_to) {
@@ -411,7 +411,7 @@ test "client bundle: jacSpawnStream and useJacStream compile into bundle" {
         assert result.returncode == 0 , (
             f"jac build failed.\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         );
-        # Check the pre-minification compiled file — Vite may tree-shake or mangle
+        # Check the pre-minification compiled file: Vite may tree-shake or mangle
         # string literals in the final dist bundle, but the intermediate
         # .jac/client/compiled/client_runtime.js is unminified and authoritative.
         compiled_dir = Path(tmpdir) / ".jac" / "client" / "compiled";
@@ -523,7 +523,7 @@ test "e2e: useJacStream streams events into DOM via browser" {
     }
 }
 
-test "e2e: token accumulation — joined text renders in DOM" {
+test "e2e: token accumulation: joined text renders in DOM" {
     (proc, port, base_url, tmpdir) = _start_server(_TOKEN_E2E_APP_JAC, "token-e2e");
     try {
         with sync_playwright() as pw {

@@ -1019,7 +1019,7 @@ impl JacForm(props: dict) -> JsxElement {
 }
 
 # ============================================================================
-# STREAMING — SSE consumer for generator-returning walkers and functions
+# STREAMING: SSE consumer for generator-returning walkers and functions
 # ============================================================================
 impl __doWalkerFetchStream(
     `walker: str, nodeId: str, fields: dict, onEvent: Any
@@ -1070,7 +1070,7 @@ impl __doWalkerFetchStream(
         }
         buffer = buffer + decoder.decode(chunk.value, {"stream": True});
         frames = buffer.split(_NLNL);
-        # Last element is an incomplete frame — keep it in the buffer
+        # Last element is an incomplete frame; keep it in the buffer
         buffer = frames.pop();
         for frame in frames {
             if not frame.trim() {
@@ -1225,7 +1225,7 @@ impl jacCallFunctionStream(
 
 """Hook for streaming walker state: events, isStreaming, error, start(), reset()."""
 impl useJacStream(`walker: str, nodeId: str = "", fields: dict = {}) -> dict {
-    # Capture params as locals — Jac default-params aren't preserved across closures.
+    # Capture params as locals; Jac default-params aren't preserved across closures.
     _walkerName = `walker;
     _nodeId = nodeId or "";
     _baseFields = fields or {};
