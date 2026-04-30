@@ -1645,8 +1645,12 @@ test "dev mode operations" {
             }
         }
 
-        expected = "Report 0Report 1Report 2";
-        assert content == expected , f"Expected '{expected}', got '{content}'";
+        for payload in ["Report 0", "Report 1", "Report 2"] {
+            assert f'data: "{payload}"' in content , (
+                f"Missing SSE-framed payload {payload!r} in: {content!r}"
+            );
+        }
+        assert "event: end" in content , f"Missing SSE terminator in: {content!r}";
 
         # Test: function stream response
         response = requests.post(
@@ -1670,8 +1674,12 @@ test "dev mode operations" {
             }
         }
 
-        expected = "Func 0Func 1";
-        assert content == expected , f"Expected '{expected}', got '{content}'";
+        for payload in ["Func 0", "Func 1"] {
+            assert f'data: "{payload}"' in content , (
+                f"Missing SSE-framed payload {payload!r} in: {content!r}"
+            );
+        }
+        assert "event: end" in content , f"Missing SSE terminator in: {content!r}";
     } finally {
         teardown_dev_mode_server(sp);
     }
