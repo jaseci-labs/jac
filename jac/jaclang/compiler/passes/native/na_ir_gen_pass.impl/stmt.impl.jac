@@ -51,7 +51,7 @@ impl NaIRGenPass._codegen_body(stmts: (list | tuple)) -> None {
                     }
                 }
             } except Exception {
-                pass;  # best-effort
+            # best-effort
             }
         }
     }
@@ -75,7 +75,14 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.CtrlStmt) {
         self._codegen_ctrl(nd);
     } elif isinstance(nd, uni.ExprStmt) {
-        self._codegen_expr(nd.expr);
+        _estmt_val = self._codegen_expr(nd.expr);
+        if (
+            _estmt_val is not None
+            and isinstance(_estmt_val.type, ir.PointerType)
+            and self._is_owned(_estmt_val)
+        ) {
+            self._emit_rc_release_simple(_estmt_val, op="discarded_call", loc="");
+        }
     } elif isinstance(nd, uni.TryStmt) {
         self._codegen_try(nd);
     } elif isinstance(nd, uni.RaiseStmt) {
@@ -187,12 +194,93 @@ impl NaIRGenPass._codegen_return(nd: uni.ReturnStmt) -> None {
         self._list_type_hint = None;
         self._dict_val_type_hint = None;
         if val is not None {
+            # _coerce_type propagates is_owned across any bitcast/inttoptr it
+            # emits, so checking val after coerce is safe — no need to capture
+            # ownership pre-coerce.
             val = self._coerce_type(val, func_ret_type);
+            # release all locals except the one being returned.
+            # * `return x`         → skip_var = "x", cleanup won't release x.
+            # * `return func(x,y)` → x,y were handed to the callee; null their
+            #   allocas before cleanup so they aren't double-released.
+            #
+            # NOTE: params are BORROWED refs — the caller owns them, not us.
+            # `return param` must NOT set skip_var; it falls through to the
+            # borrow-retain path below (retain before returning a borrowed ref).
+            skip_var: (str | None) = None;
+            if isinstance(nd.expr, uni.Name)
+            and nd.expr.sym_name not in self.param_vars {
+                skip_var = nd.expr.sym_name;
+            } elif isinstance(nd.expr, uni.TupleVal) {
+                # Null allocas for any pointer-typed local variables that were
+                # packed into the tuple so that _emit_scope_cleanup skips them.
+                # The tuple box now owns those references; scope cleanup must not
+                # double-release them.
+                tup_elems = nd.expr.values or [];
+                for tup_elem in tup_elems {
+                    elem_name: (str | None) = None;
+                    if isinstance(tup_elem, uni.Name) {
+                        elem_name = tup_elem.sym_name;
+                    }
+                    if (
+                        elem_name is not None
+                        and elem_name in self.local_vars
+                        and elem_name not in self.param_vars
+                    ) {
+                        tup_alloca = self.local_vars[elem_name];
+                        if (
+                            isinstance(tup_alloca.type, ir.PointerType)
+                            and isinstance(tup_alloca.type.pointee, ir.PointerType)
+                        ) {
+                            self.builder.store(
+                                ir.Constant(tup_alloca.type.pointee, None), tup_alloca
+                            );
+                        }
+                    }
+                }
+            }
+            # when returning an expression that is NOT a named local
+            # (skip_var is None) and NOT already owned (function-call / constructor
+            # result), the value is a borrowed reference — field load, container
+            # element read, param, etc.  We must retain it here so the caller
+            # receives an owned reference and can safely release it at scope exit.
+            #
+            # Invariant: every pointer returned by a function is OWNED.
+            #   - Named local return (skip_var set): already retained it on
+            #     store; scope cleanup nulls the alloca → rc unchanged → owned. ✓
+            #   - Function/constructor result (owned_id): rc=1 from alloc/callee → owned. ✓
+            #   - Borrowed (field load, list[i], param read, etc.): retain here → owned. ✓
+            if (
+                skip_var is None
+                and isinstance(val.type, ir.PointerType)
+                and not self._is_owned(val)
+            ) {
+                self._emit_rc_retain(
+                    val,
+                    op="return",
+                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
+                self._mark_owned(val);
+            }
+            self._emit_scope_cleanup(
+                skip_var=skip_var,
+                ret_val=val,
+                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                    if nd.loc
+                    else 0}"
+            );
             self.builder.ret(val);
             return;
         }
     }
     # Fallback: return appropriate default value based on return type
+    self._emit_scope_cleanup(
+        skip_var=None,
+        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+            if nd.loc
+            else 0}"
+    );
     if isinstance(func_ret_type, ir.VoidType) {
         self.builder.ret_void();
     } elif isinstance(func_ret_type, ir.PointerType) {
@@ -330,10 +418,20 @@ impl NaIRGenPass._codegen_while(nd: uni.WhileStmt) -> None {
     # Body block — push loop context for break/continue
     self.loop_stack.append((cond_bb, end_bb));
     self.builder.position_at_end(body_bb);
+    # Snapshot locals before body so we can release loop-body-declared
+    # locals at the back-edge (loop semantics: body-locals don't survive
+    # across iterations).  Without this, an early `return` in a later
+    # iteration that occurs before a body-declared local's source-order
+    # declaration would leak the previous iteration's value.
+    _while_saved_locals = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
+        _while_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+            if nd.loc
+            else 0}";
+        self._emit_loop_iter_cleanup(_while_saved_locals, loc=_while_loc);
         self.builder.branch(cond_bb);
     }
     self.loop_stack.pop();
@@ -439,6 +537,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             value = self.builder.call(
                                 helpers["new"], [], name="dict.new"
                             );
+                            # RC: fresh allocation — caller owns it; skip RETAIN on assign.
+                            self._mark_owned(value);
                         }
                         break;
                     }
@@ -460,6 +560,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             value = self.builder.call(
                                 helpers["new"], [], name="set.new"
                             );
+                            # RC: fresh allocation — caller owns it; skip RETAIN on assign.
+                            self._mark_owned(value);
                         }
                         break;
                     }
@@ -481,6 +583,8 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             value = self.builder.call(
                                 helpers["new"], [], name="set.new"
                             );
+                            # Mark as owned so assignment doesn't emit a spurious retain.
+                            self._mark_owned(value);
                         }
                         break;
                     }
@@ -595,9 +699,23 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                         );
                     } elif isinstance(current.type, ir.PointerType) {
                         # String concatenation for +=
-                        value = self._emit_binary_op(Tok.PLUS, current, coerced);
+                        # Save RHS before overwriting value; it may be a fresh
+                        # fstring / concat buffer that the caller owns (rc=1).
+                        _aug_str_rhs = coerced;
+                        value = self._emit_binary_op(Tok.PLUS, current, _aug_str_rhs);
                         if value is None {
                             value = current;
+                        } else {
+                            # Release the RHS temp if we own it (rc=1 fresh alloc).
+                            # The concat borrowed it but did not retain it.
+                            if self._is_owned(_aug_str_rhs) {
+                                _aug_rhs_loc = f"{os.path.basename(
+                                    self.ir_in.loc.mod_path
+                                )}:{nd.loc.first_line if nd.loc else 0}";
+                                self._emit_rc_release_typed(
+                                    _aug_str_rhs, op="str_rhs", loc=_aug_rhs_loc
+                                );
+                            }
                         }
                     } else {
                         value = self.builder.fadd(
@@ -830,17 +948,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                     # Keep the LHS set as the value (no change to pointer)
                                     value = lhs_set;
                                     is_inplace_set_op = True;
-                                    # Release the RHS set since we've consumed its elements
-                                    rhs_release = self.set_release_fns.get(
-                                        set_elem_name
+                                    # Release the RHS set via __rc_release_simple so the
+                                    # refcount is decremented and the dtor_ptr dispatched.
+                                    self._emit_rc_release_simple(
+                                        rhs_set,
+                                        op="op_assign",
+                                        loc=f"{os.path.basename(
+                                            self.ir_in.loc.mod_path
+                                        )}:{nd.loc.first_line if nd.loc else 0}"
                                     );
-                                    if rhs_release is not None {
-                                        rhs_cast2 = self.builder.bitcast(
-                                            rhs_set,
-                                            self.set_types[set_elem_name].as_pointer(),
-                                            name="rhs.release.cast"
+                                    # RC-|=: The RHS alloca (e.g. `piece_targets`) still
+                                    # holds the now-freed pointer.  Null it out so that
+                                    # scope_exit / the next overwrite doesn't double-free.
+                                    _rhs_var_ior = self._get_name(nd.value)
+                                        if nd.value is not None
+                                        else None;
+                                    if _rhs_var_ior is not None
+                                    and _rhs_var_ior in self.local_vars {
+                                        _rhs_alloca_ior = self.local_vars[_rhs_var_ior];
+                                        self.builder.store(
+                                            ir.Constant(
+                                                _rhs_alloca_ior.type.pointee, None
+                                            ),
+                                            _rhs_alloca_ior
                                         );
-                                        self.builder.call(rhs_release, [rhs_cast2]);
                                     }
                                 }
                             }
@@ -894,13 +1025,39 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             coerced = self._coerce_type(value, alloca.type.pointee);
-            # RC: release old value before storing new (pointer types only).
-            # Skip for in-place set operations (|= union) — the LHS set is
-            # modified in-place, so releasing it would be use-after-free.
+            # retain new value first (handles x=x safely), then release old.
+            # Skip for in-place set/dict ops (|=, &=, ^=) — the LHS collection is
+            # mutated in-place; releasing it here would be use-after-free.
+            # skip retain if value is already owned (freshly returned from a
+            # function call or constructor); rc=1 from callee, retaining would give rc=2.
+            # skip all RC when assigning int→str (inttoptr cast). Raw C
+            # pointers don't have the 16-byte RC header; retain/release would read
+            # garbage before the allocation and call garbage addresses as dtors.
+            _is_raw_int_ptr = getattr(coerced, 'opname', '') == 'inttoptr';
             if isinstance(alloca.type.pointee, ir.PointerType)
             and not is_inplace_set_op {
-                old_val = self.builder.load(alloca, name=f"{var_name}.old");
-                self._emit_rc_release_typed(old_val);
+                if _is_raw_int_ptr {
+                    # Raw pointer — mark exempt from scope cleanup
+                    self.param_vars.add(var_name);
+                } else {
+                    if not self._is_owned(value) {
+                        self._emit_rc_retain(
+                            coerced,
+                            op="assign",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
+                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                    self._emit_rc_release_typed(
+                        old_val,
+                        op="overwrite",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
+                }
             }
             self.builder.store(coerced, alloca);
         } elif var_name in self.global_vars {
@@ -920,9 +1077,19 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                             current, coerced, name=f"glob.{var_name}.fadd"
                         );
                     } elif isinstance(current.type, ir.PointerType) {
-                        value = self._emit_binary_op(Tok.PLUS, current, coerced);
+                        _aug_gstr_rhs = coerced;
+                        value = self._emit_binary_op(Tok.PLUS, current, _aug_gstr_rhs);
                         if value is None {
                             value = current;
+                        } else {
+                            if self._is_owned(_aug_gstr_rhs) {
+                                _aug_grhs_loc = f"{os.path.basename(
+                                    self.ir_in.loc.mod_path
+                                )}:{nd.loc.first_line if nd.loc else 0}";
+                                self._emit_rc_release_typed(
+                                    _aug_gstr_rhs, op="str_rhs", loc=_aug_grhs_loc
+                                );
+                            }
                         }
                     }
                 } elif aug_op_val == "-=" {
@@ -1042,6 +1209,30 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             coerced = self._coerce_type(value, global_var.type.pointee);
+            # retain new, release old for pointer-typed globals.
+            # skip retain if value is already owned (freshly returned from call).
+            # skip RC entirely for raw int→ptr casts (no RC header).
+            _is_raw_int_ptr_g = getattr(coerced, 'opname', '') == 'inttoptr';
+            if isinstance(global_var.type.pointee, ir.PointerType)
+            and not _is_raw_int_ptr_g {
+                if not self._is_owned(value) {
+                    self._emit_rc_retain(
+                        coerced,
+                        op="assign",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
+                }
+                old_glob = self.builder.load(global_var, name=f"glob.{var_name}.old");
+                self._emit_rc_release_typed(
+                    old_glob,
+                    op="overwrite",
+                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
+            }
             self.builder.store(coerced, global_var);
         } else {
             # New variable — allocate and store
@@ -1099,6 +1290,53 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             alloca = self._entry_alloca(var_type, var_name);
+            # RC loop-local init: for pointer-typed locals, null-initialize the alloca
+            # in the entry block (right after the alloca itself, which _entry_alloca
+            # prepends to instructions[0]).  On the first loop iteration old=null so
+            # __rc_release_simple is a safe no-op; on subsequent iterations old holds
+            # the previous allocation which is then properly freed.
+            if isinstance(var_type, ir.PointerType) {
+                _func_e = self.builder.function;
+                _ebb = _func_e.entry_basic_block;
+                _cur_bb = self.builder.block;
+                _entry_instrs = list(_ebb.instructions);
+                # alloca is at instructions[0]; null-store goes right after it.
+                if len(_entry_instrs) >= 2 {
+                    self.builder.position_before(_entry_instrs[1]);
+                } else {
+                    self.builder.position_at_end(_ebb);
+                }
+                self.builder.store(ir.Constant(var_type, None), alloca);
+                self.builder.position_at_end(_cur_bb);
+            }
+            # retain new, then release old (null on first pass → no-op).
+            # Mirrors the existing-variable path so loop-local pointer vars are freed
+            # on every iteration, not just when the enclosing scope exits.
+            # skip all RC for raw int→str (inttoptr) casts.
+            if isinstance(var_type, ir.PointerType) {
+                if getattr(value, 'opname', '') == 'inttoptr' {
+                    # Raw C pointer — no RC header; exempt from scope cleanup.
+                    self.param_vars.add(var_name);
+                } else {
+                    if not self._is_owned(value) {
+                        self._emit_rc_retain(
+                            value,
+                            op="assign",
+                            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                if nd.loc
+                                else 0}"
+                        );
+                    }
+                    old_val = self.builder.load(alloca, name=f"{var_name}.old");
+                    self._emit_rc_release_typed(
+                        old_val,
+                        op="overwrite",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
+                }
+            }
             self.builder.store(value, alloca);
             self.local_vars[var_name] = alloca;
         }
@@ -1213,6 +1451,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if loop_var_name is None {
         return;
     }
+    _for_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.last_line
+        if nd.loc
+        else 0}";
     # Detect range() calls
     start_val: (ir.Value | None) = None;
     stop_val: (ir.Value | None) = None;
@@ -1248,10 +1489,12 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
         self.builder.cbranch(cmp, body_bb, end_bb);
         self.loop_stack.append((incr_bb, end_bb));
         self.builder.position_at_end(body_bb);
+        _for_saved = set(self.local_vars.keys());
         if isinstance(nd.body, (list, tuple)) {
             self._codegen_body(nd.body);
         }
         if not self.builder.block.is_terminated {
+            self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
             self.builder.branch(incr_bb);
         }
         self.loop_stack.pop();
@@ -1329,10 +1572,12 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                             );
                             self.builder.store(key_val, key_alloca);
                             self.builder.store(val_val, val_alloca);
+                            _for_saved = set(self.local_vars.keys());
                             if isinstance(nd.body, (list, tuple)) {
                                 self._codegen_body(nd.body);
                             }
                             if not self.builder.block.is_terminated {
+                                self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
                                 self.builder.branch(incr_bb);
                             }
                             self.loop_stack.pop();
@@ -1394,6 +1639,13 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 self.builder.store(ir.Constant(i64, 0), idx_alloca);
                 # Allocate loop variable (key)
                 loop_alloca = self._entry_alloca(key_type, loop_var_name);
+                # Null-initialize so cleanup __rc_release_simple null-check is
+                # safe when the loop body never executes (empty dict) and so
+                # the old-value release inside the loop body is a no-op on the
+                # first iteration.
+                if isinstance(key_type, ir.PointerType) {
+                    self.builder.store(ir.Constant(key_type, None), loop_alloca);
+                }
                 self.local_vars[loop_var_name] = loop_alloca;
                 func = self.builder.function;
                 cond_bb = func.append_basic_block(name="ford.cond");
@@ -1413,11 +1665,35 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
                 key_val = self.builder.call(
                     helpers["get_key"], [collection_val, body_idx], name="ford.key"
                 );
+                # For pointer-typed keys: release the old value (null on first
+                # iteration → no-op) and retain the new key so that scope
+                # cleanup's __rc_release_simple call is balanced.
+                # Without this, the last key in the dict would be double-freed:
+                # once by the dict's own destructor and once by scope cleanup.
+                if isinstance(key_type, ir.PointerType) {
+                    old_key_val = self.builder.load(loop_alloca, name="ford.old");
+                    self._emit_rc_release_simple(
+                        old_key_val,
+                        op="ford_key",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
+                    self._emit_rc_retain(
+                        key_val,
+                        op="ford_key",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
+                }
                 self.builder.store(key_val, loop_alloca);
+                _for_saved = set(self.local_vars.keys());
                 if isinstance(nd.body, (list, tuple)) {
                     self._codegen_body(nd.body);
                 }
                 if not self.builder.block.is_terminated {
+                    self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
                     self.builder.branch(incr_bb);
                 }
                 self.loop_stack.pop();
@@ -1454,6 +1730,9 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             idx_alloca = self._entry_alloca(i64, "fors.idx");
             self.builder.store(ir.Constant(i64, 0), idx_alloca);
             loop_alloca = self._entry_alloca(i8p_s, loop_var_name);
+            # Zero-initialize so __rc_release_simple null-check is safe when
+            # the loop body never executes (e.g. iterating an empty string).
+            self.builder.store(ir.Constant(i8p_s, None), loop_alloca);
             self.local_vars[loop_var_name] = loop_alloca;
             func = self.builder.function;
             cond_bb = func.append_basic_block(name="fors.cond");
@@ -1472,10 +1751,12 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             if char_str is not None {
                 self.builder.store(char_str, loop_alloca);
             }
+            _for_saved = set(self.local_vars.keys());
             if isinstance(nd.body, (list, tuple)) {
                 self._codegen_body(nd.body);
             }
             if not self.builder.block.is_terminated {
+                self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
                 self.builder.branch(incr_bb);
             }
             self.loop_stack.pop();
@@ -1593,8 +1874,50 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
             }
         }
     }
-    # Allocate loop variable with resolved element type
-    loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
+    # Allocate loop variable with resolved element type.
+    # If this variable name was already used by a prior for-loop in the same
+    # function (e.g. two consecutive loops both named `m`), reuse the existing
+    # alloca instead of creating a new one.  A fresh alloca would be orphaned:
+    # scope_exit only sees local_vars["m"] → the new alloca, so the retained
+    # reference left in the old alloca would never be released.
+    _forl_existing = self.local_vars.get(loop_var_name);
+    _forl_reuse = (
+        _forl_existing is not None
+        and isinstance(_forl_existing.type, ir.PointerType)
+        and _forl_existing.type.pointee == actual_elem_type
+    );
+    if _forl_reuse {
+        loop_alloca = _forl_existing;
+    } else {
+        loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
+    }
+    if isinstance(actual_elem_type, ir.PointerType) {
+        null_const = ir.Constant(actual_elem_type, None);
+        if not _forl_reuse {
+            # Fresh alloca: null-initialize IN THE FUNCTION ENTRY BLOCK so the
+            # alloca is always null on the very first call (safe even when the
+            # loop is inside a conditional or nested inside an outer loop).
+            _forl_saved_block = self.builder.block;
+            self.builder.position_after(loop_alloca);
+            self.builder.store(null_const, loop_alloca);
+            self.builder.position_at_end(_forl_saved_block);
+        }
+        # At the loop-setup site: release whatever the alloca holds from the
+        # previous outer-loop iteration (or previous for-loop using this var),
+        # then reset to null.
+        # First iteration of first loop: releases null (no-op).
+        # Subsequent iterations or reused-variable second loop:
+        # releases the last element retained by the previous loop run.
+        _forl_pre_old = self.builder.load(loop_alloca, name="forl.pre.old");
+        self._emit_rc_release_simple(
+            _forl_pre_old,
+            op="forl_reset",
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
+                else 0}"
+        );
+        self.builder.store(null_const, loop_alloca);
+    }
     self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="forl.cond");
@@ -1618,11 +1941,33 @@ impl NaIRGenPass._codegen_for(nd: uni.InForStmt) -> None {
     if inner_type is not None {
         elem_val = self.builder.bitcast(elem_val, inner_type, name="forl.cast");
     }
+    # For pointer-typed loop variables: release the old value (null on first
+    # iteration → no-op) and retain the new element so that the scope
+    # cleanup's __rc_release_simple call is balanced.
+    if isinstance(actual_elem_type, ir.PointerType) {
+        old_loop_val = self.builder.load(loop_alloca, name="forl.old");
+        self._emit_rc_release_simple(
+            old_loop_val,
+            op="forl_elem",
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
+                else 0}"
+        );
+        self._emit_rc_retain(
+            elem_val,
+            op="forl_elem",
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
+                else 0}"
+        );
+    }
     self.builder.store(elem_val, loop_alloca);
+    _for_saved = set(self.local_vars.keys());
     if isinstance(nd.body, (list, tuple)) {
         self._codegen_body(nd.body);
     }
     if not self.builder.block.is_terminated {
+        self._emit_loop_iter_cleanup(_for_saved, loc=_for_loc);
         self.builder.branch(incr_bb);
     }
     self.loop_stack.pop();
