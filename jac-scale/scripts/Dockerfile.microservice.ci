@@ -41,9 +41,13 @@ ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
 WORKDIR /app
 COPY ${PROJECT_PATH} /app
 
-# Pre-compile .jac files for faster cold start. Best-effort; the
-# runtime compile path handles anything jac2py can't.
-RUN find . -name "*.jac" -not -path "*/.jac/*" -not -path "*/__jac_gen__/*" \
-        -exec jac tool jac2py {} + 2>/dev/null || true
+# Sanity-check the jac install. We used to pre-compile .jac files here
+# via `jac tool jac2py` but that subcommand was removed/renamed in
+# recent jac releases (now errors with "Ast tool jac2py not found")
+# and even before that, runtime jaclang compiles .jac on first import
+# via the meta importer - the pre-compile was best-effort, not
+# load-bearing. `jac --version` keeps a fast fail-loud check that the
+# CLI is on PATH without doing wasted work.
+RUN jac --version
 
 EXPOSE 8000

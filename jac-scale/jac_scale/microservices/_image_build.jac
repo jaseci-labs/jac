@@ -52,9 +52,10 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "RUN pip install --no-cache-dir \"jac-scale[deploy]>=0.2.15\"\n\n"
      "WORKDIR /app\n"
      "COPY . /app\n\n"
-     "# Best-effort .jac precompile; runtime path handles anything that fails.\n"
-     "RUN find . -name \"*.jac\" -not -path \"*/.jac/*\" -not -path \"*/__jac_gen__/*\" \\\n"
-     "        -exec jac tool jac2py {} + 2>/dev/null || true\n\n"
+     "# Sanity-check the jac install (used to pre-compile .jac via\n"
+     "# `jac tool jac2py` but that subcommand was removed in recent\n"
+     "# releases; runtime jaclang compiles on first import anyway).\n"
+     "RUN jac --version\n\n"
      "EXPOSE 8000\n",
      # Embedded .dockerignore. Written next to a build context that doesn't
      # already have one. Without this, an unsuspecting docker build can pull

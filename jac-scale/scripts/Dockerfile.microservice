@@ -42,13 +42,14 @@ WORKDIR /app
 # to exclude .jac/data/, .jac/logs/, node_modules/, .git/, etc.
 COPY . /app
 
-# Pre-compile .jac files for faster cold start. `jac tool jac2py` is
-# best-effort; if compilation fails for some files (e.g. they import
-# optional deps), we don't want to fail the build - the runtime
-# compile path will handle them. K9 v1 compiles all .jac files; K9b
-# could narrow this to just the entrypoints.
-RUN find . -name "*.jac" -not -path "*/.jac/*" -not -path "*/__jac_gen__/*" \
-        -exec jac tool jac2py {} + 2>/dev/null || true
+# Sanity-check the jac install. We used to pre-compile .jac files
+# here via `jac tool jac2py` but that subcommand was removed/renamed
+# in recent jac releases (now errors with "Ast tool jac2py not found")
+# and even before that, runtime jaclang compiles .jac on first import
+# via the meta importer - the pre-compile was best-effort, not
+# load-bearing. `jac --version` keeps a fast fail-loud check that the
+# CLI is on PATH without doing wasted work that hangs the build.
+RUN jac --version
 
 # The pod-spec sets command + args so we don't need an ENTRYPOINT.
 # Just expose the port jac-scale binds to (matches container_port in
