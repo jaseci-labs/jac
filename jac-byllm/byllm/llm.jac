@@ -77,6 +77,7 @@ obj BaseLLM {
     def _invoke_react_loop_streaming(
         mt_run: MTRuntime
     ) -> Generator[object, None, None];
+
     def make_model_params(mt_run: MTRuntime) -> dict;
     def log_info(message: str) -> None;
     def format_prompt(params: dict) -> str;
