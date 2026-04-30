@@ -315,7 +315,9 @@ test "deploy all in one" {
     assert "password" in mongodb_secret.data;
     assert base64.b64decode(mongodb_secret.data["username"]).decode() == "admin";
     assert base64.b64decode(mongodb_secret.data["password"]).decode() == "password";
-    print(f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials");
+    print(
+        f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials"
+    );
 
     # Validate MongoDB StatefulSet uses secretKeyRef (env value is None when secretKeyRef is used)
     mongo_user_value = next(
@@ -466,16 +468,23 @@ test "deploy all in one" {
     assert express_service.spec.type == "ClusterIP";
     print(f"mongo-express Service '{express_name}-service' (ClusterIP) exists");
 
-    # Validate Prometheus Deployment, Service, and ConfigMap
+    # Validate Prometheus StatefulSet, Service, and ConfigMap
     prometheus_name = f"{app_name}-prometheus";
-    prometheus_deploy = apps_v1.read_namespaced_deployment(
+    prometheus_sts = apps_v1.read_namespaced_stateful_set(
         name=prometheus_name, namespace=namespace
     );
-    assert prometheus_deploy.metadata.name == prometheus_name;
-    assert prometheus_deploy.spec.replicas == 1;
-    prometheus_container = prometheus_deploy.spec.template.spec.containers[0];
+    assert prometheus_sts.metadata.name == prometheus_name;
+    assert prometheus_sts.spec.replicas == 1;
+    prometheus_container = prometheus_sts.spec.template.spec.containers[0];
     assert prometheus_container.image == "prom/prometheus:latest";
-    print(f"Prometheus Deployment '{prometheus_name}' exists");
+    assert prometheus_sts.spec.volume_claim_templates is not None;
+    assert len(prometheus_sts.spec.volume_claim_templates) == 1;
+    pvc_tpl = prometheus_sts.spec.volume_claim_templates[0];
+    assert pvc_tpl.metadata.name == "prometheus-data";
+    assert "ReadWriteOnce" in pvc_tpl.spec.access_modes;
+    print(
+        f"Prometheus StatefulSet '{prometheus_name}' exists with persistent volume claim"
+    );
 
     prometheus_service = core_v1.read_namespaced_service(
         name=f"{prometheus_name}-service", namespace=namespace
@@ -597,7 +606,9 @@ test "deploy all in one" {
     print(f"kube-state-metrics ClusterRoleBinding '{cluster_role_name}' exists");
 
     # Validate node-exporter DaemonSet and Service
-    ne_daemonset = apps_v1.read_namespaced_daemon_set(name=ne_name, namespace=namespace);
+    ne_daemonset = apps_v1.read_namespaced_daemon_set(
+        name=ne_name, namespace=namespace
+    );
     assert ne_daemonset.metadata.name == ne_name;
     print(f"node-exporter DaemonSet '{ne_name}' exists");
 
@@ -883,7 +894,9 @@ test "deploy all in one" {
     assert ri_ingress.metadata.name == redis_ingress_name;
     ri_paths = [p.path for rule in ri_ingress.spec.rules for p in rule.http.paths];
     assert any(p.startswith("/cache-dashboard") for p in ri_paths) , f"Redis Insight ingress must route '/cache-dashboard'; got: {ri_paths}";
-    print(f"Redis Insight Ingress '{redis_ingress_name}' exists with route: {ri_paths}");
+    print(
+        f"Redis Insight Ingress '{redis_ingress_name}' exists with route: {ri_paths}"
+    );
 
     # Send POST request to create a todo (with retry for 503)
     url = f"http://localhost:{ingress_node_port}/walker/create_todo";
@@ -1208,7 +1221,9 @@ test "deploy all in one" {
 
     # Verify database cleanup (first destroyed by full destroy)
     try {
-        apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
+        apps_v1.read_namespaced_stateful_set(
+            f"{app_name}-mongodb", namespace=namespace
+        );
         raise AssertionError("MongoDB StatefulSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
@@ -1306,11 +1321,27 @@ test "deploy all in one" {
     # Verify monitoring stack cleanup
     prometheus_name = f"{app_name}-prometheus";
     try {
-        apps_v1.read_namespaced_deployment(prometheus_name, namespace=namespace);
-        raise AssertionError("Prometheus Deployment should have been deleted");
+        apps_v1.read_namespaced_stateful_set(prometheus_name, namespace=namespace);
+        raise AssertionError("Prometheus StatefulSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
+
+    # PVC is not cascade-deleted with the StatefulSet — must be explicitly removed
+    pvc_deleted = False;
+    for _ in range(30) {
+        try {
+            core_v1.read_namespaced_persistent_volume_claim(
+                name=f"prometheus-data-{prometheus_name}-0", namespace=namespace
+            );
+            time.sleep(2);
+        } except ApiException as e {
+            assert e.status == 404 , f"Expected 404, got {e.status}";
+            pvc_deleted = True;
+            break;
+        }
+    }
+    assert pvc_deleted , "prometheus-data PVC should have been deleted within 60s of destroy";
 
     try {
         core_v1.read_namespaced_service(
@@ -1429,7 +1460,9 @@ test "deploy all in one" {
     }
 
     try {
-        core_v1.read_namespaced_secret(name=redis_auth_secret_name, namespace=namespace);
+        core_v1.read_namespaced_secret(
+            name=redis_auth_secret_name, namespace=namespace
+        );
         raise AssertionError("Redis Insight auth Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
@@ -1504,7 +1537,9 @@ test "deploy all in one" {
     }
 
     try {
-        core_v1.read_namespaced_secret(name='letsencrypt-prod-key', namespace=namespace);
+        core_v1.read_namespaced_secret(
+            name='letsencrypt-prod-key', namespace=namespace
+        );
         raise AssertionError("ACME private key Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404 for letsencrypt-prod-key Secret, got {e.status}";
@@ -1985,7 +2020,9 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing (first deploy) so create path is taken
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
+        status=404
+    );
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
@@ -2029,7 +2066,9 @@ test "redis ingress rule must not set host before TLS is enabled" {
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing for both main and Redis ingresses
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
+        status=404
+    );
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
