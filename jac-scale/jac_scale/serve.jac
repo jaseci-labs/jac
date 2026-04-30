@@ -47,7 +47,8 @@ import from jac_scale.utils { extract_bearer_token }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
-    UpdatePasswordRequest
+    UpdatePasswordRequest,
+    validate_profile
 }
 
 # Load configuration from jac.toml with env var overrides
@@ -78,6 +79,8 @@ obj JacAPIServerAuth {
     def register_refresh_token_endpoint -> None;
     # Update password
     def register_update_password_endpoint -> None;
+    # Current user
+    def register_me_endpoint -> None;
     # SSO
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];

@@ -18,7 +18,9 @@ impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool 
 
 """Create a new user with identities and a credential."""
 impl IdentityStorage.create_user(
-    identities: list[dict[str, Any]], credential: dict[str, Any]
+    identities: list[dict[str, Any]],
+    credential: dict[str, Any],
+    profile: dict[str, Any] | None = None
 ) -> dict[str, Any] {
     import from jaclang.jac0core.constructs { Root }
     import from jaclang { JacRuntime as Jac }
@@ -91,6 +93,7 @@ impl IdentityStorage.create_user(
         'credentials': credentials,
         'root_id': root_id,
         'role': 'user',
+        'profile': profile or {},
         'created_at': now,
         'updated_at': now
     };
