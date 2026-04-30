@@ -227,7 +227,7 @@ obj MonitoringDeployer {
                         'metadata': {'name': 'prometheus-data'},
                         'spec': {
                             'accessModes': ['ReadWriteOnce'],
-                            'resources': {'requests': {'storage': '8Gi'}}
+                            'resources': {'requests': {'storage': '2Gi'}}
                         }
                     }
                 ]
