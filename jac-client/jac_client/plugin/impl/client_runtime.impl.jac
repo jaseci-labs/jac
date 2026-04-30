@@ -1021,8 +1021,9 @@ impl JacForm(props: dict) -> JsxElement {
 # ============================================================================
 # STREAMING — SSE consumer for generator-returning walkers and functions
 # ============================================================================
-
-impl __doWalkerFetchStream(`walker: str, nodeId: str, fields: dict, onEvent: Any) -> None {
+impl __doWalkerFetchStream(
+    `walker: str, nodeId: str, fields: dict, onEvent: Any
+) -> None {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     url = f"{base_url}/walker/{`walker}";
@@ -1060,7 +1061,7 @@ impl __doWalkerFetchStream(`walker: str, nodeId: str, fields: dict, onEvent: Any
     reader = response.body.getReader();
     decoder = Reflect.construct(TextDecoder, []);
     buffer = "";
-    _NL = String.fromCharCode(10);    # "\n" compiles to literal \n in Jac client code
+    _NL = String.fromCharCode(10);  # "\n" compiles to literal \n in Jac client code
     _NLNL = String.fromCharCode(10) + String.fromCharCode(10);
     while True {
         chunk = await reader.read();
@@ -1095,7 +1096,9 @@ impl __doWalkerFetchStream(`walker: str, nodeId: str, fields: dict, onEvent: Any
                 msg = "";
                 try {
                     err_payload = JSON.parse(data_text);
-                    msg = err_payload["message"] if err_payload["message"] else data_text;
+                    msg = err_payload["message"]
+                        if err_payload["message"]
+                        else data_text;
                 } except Exception {
                     msg = data_text;
                 }
@@ -1105,7 +1108,9 @@ impl __doWalkerFetchStream(`walker: str, nodeId: str, fields: dict, onEvent: Any
             try {
                 evt = JSON.parse(data_text);
             } except Exception {
-                console.warn(f"[jac-client] jacSpawnStream: dropped malformed frame:", data_text);
+                console.warn(
+                    f"[jac-client] jacSpawnStream: dropped malformed frame:", data_text
+                );
                 continue;
             }
             if evt and onEvent {
@@ -1181,7 +1186,9 @@ impl __doFuncFetchStream(function_name: str, args: dict, onEvent: Any) -> None {
                 msg = "";
                 try {
                     err_payload = JSON.parse(data_text);
-                    msg = err_payload["message"] if err_payload["message"] else data_text;
+                    msg = err_payload["message"]
+                        if err_payload["message"]
+                        else data_text;
                 } except Exception {
                     msg = data_text;
                 }
@@ -1191,7 +1198,10 @@ impl __doFuncFetchStream(function_name: str, args: dict, onEvent: Any) -> None {
             try {
                 evt = JSON.parse(data_text);
             } except Exception {
-                console.warn(f"[jac-client] jacCallFunctionStream: dropped malformed frame:", data_text);
+                console.warn(
+                    f"[jac-client] jacCallFunctionStream: dropped malformed frame:",
+                    data_text
+                );
                 continue;
             }
             if evt and onEvent {
@@ -1201,11 +1211,15 @@ impl __doFuncFetchStream(function_name: str, args: dict, onEvent: Any) -> None {
     }
 }
 
-impl jacSpawnStream(`walker: str, nodeId: str = "", fields: dict = {}, onEvent: Any = None) -> None {
+impl jacSpawnStream(
+    `walker: str, nodeId: str = "", fields: dict = {}, onEvent: Any = None
+) -> None {
     await __doWalkerFetchStream(`walker, nodeId, fields, onEvent);
 }
 
-impl jacCallFunctionStream(function_name: str, args: dict = {}, onEvent: Any = None) -> None {
+impl jacCallFunctionStream(
+    function_name: str, args: dict = {}, onEvent: Any = None
+) -> None {
     await __doFuncFetchStream(function_name, args, onEvent);
 }
 
@@ -1226,7 +1240,7 @@ impl useJacStream(`walker: str, nodeId: str = "", fields: dict = {}) -> dict {
     curError = _errState[0];
     setError = _errState[1];
 
-    def start(extra_fields: dict = {}) -> None {
+    def start(extra_fields: dict = {}) {
         setEvFn = setEvents;
         setStFn = setIsStreaming;
         setErrFn = setError;
@@ -1235,16 +1249,16 @@ impl useJacStream(`walker: str, nodeId: str = "", fields: dict = {}) -> dict {
         setStFn.call(None, True);
         merged = Object.assign({}, _baseFields, extra_fields or {});
 
-        def onEvent(evt: Any) -> None {
+        def onEvent(evt: Any) {
             setEvFn2 = setEvents;
             setEvFn2.call(None, lambda prev: Any -> Any { return prev.concat([evt]); });
         }
 
         evtHandler = onEvent;
         __doWalkerFetchStream(_walkerName, _nodeId, merged, evtHandler).then(
-            lambda -> None { setStFn.call(None, False); }
+            lambda { setStFn.call(None, False);}
         ).catch(
-            lambda err: Any -> None {
+            lambda err: Any {
                 setStFn.call(None, False);
                 msg = err.message if err and err.message else String(err);
                 setErrFn.call(None, msg);
@@ -1252,7 +1266,7 @@ impl useJacStream(`walker: str, nodeId: str = "", fields: dict = {}) -> dict {
         );
     }
 
-    def reset() -> None {
+    def reset {
         setEvResFn = setEvents;
         setStResFn = setIsStreaming;
         setErrResFn = setError;
