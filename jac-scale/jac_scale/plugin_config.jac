@@ -190,6 +190,139 @@ class JacScalePluginConfig {
                         }
                     }
                 },
+                "microservices": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Microservice mode - run declared Jac files as independent service processes behind an API gateway",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable microservice mode (off by default). Use `jac setup microservice` to configure."
+                        },
+                        "gateway_port": {
+                            "type": "int",
+                            "default": 8000,
+                            "description": "Gateway port (external-facing)"
+                        },
+                        "gateway_host": {
+                            "type": "string",
+                            "default": "0.0.0.0",
+                            "description": "Gateway host"
+                        },
+                        "drain_timeout_seconds": {
+                            "type": "float",
+                            "default": 10.0,
+                            "description": "Graceful shutdown window (seconds). On SIGTERM, gateway + services flip a drain flag (503s on new requests) and wait up to this many seconds for in-flight requests to finish before uvicorn force-closes. Mirrors K8s `terminationGracePeriodSeconds`."
+                        },
+                        "http_forward_timeout": {
+                            "type": "float",
+                            "default": 30.0,
+                            "description": "Gateway-to-service forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from `services.NAME.rpc_timeout`, which controls inter-service `sv import` calls. Override per-service with `[plugins.scale.microservices.services.NAME].http_forward_timeout`."
+                        },
+                        "routes": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Module-name -> gateway-prefix map. Services are discovered via `sv import`; this only controls client-facing URL routing."
+                        },
+                        "services": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Per-service overrides keyed by module name. Each subkey is a dict with optional `rpc_timeout` (float seconds; default 10s; controls inter-service `sv import` httpx calls) and/or `http_forward_timeout` (float seconds; default 30s; controls gateway-to-service aiohttp forwarding). Use for LLM/long-running services that need minutes, not seconds. Example: [plugins.scale.microservices.services.llm_app] rpc_timeout = 120.0, http_forward_timeout = 300.0"
+                        },
+                        "rate_limit": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Gateway rate limiting (token bucket). Disabled unless `enabled = true`.",
+                            "nested": {
+                                "enabled": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Master switch."
+                                },
+                                "per_ip_rpm": {
+                                    "type": "int",
+                                    "default": 60,
+                                    "description": "Requests per minute per client IP. 0 disables per-IP limit."
+                                },
+                                "per_user_rpm": {
+                                    "type": "int",
+                                    "default": 0,
+                                    "description": "Additional requests per minute per authenticated user (keyed by Authorization header hash). 0 disables per-user limit."
+                                },
+                                "burst_multiplier": {
+                                    "type": "float",
+                                    "default": 2.0,
+                                    "description": "Bucket capacity = rpm * burst_multiplier / 60 (allows short bursts above the steady rate)."
+                                },
+                                "exempt_paths": {
+                                    "type": "list",
+                                    "default": ["/health", "/healthz", "/metrics"],
+                                    "description": "Paths that bypass rate limiting entirely (monitoring + probes)."
+                                }
+                            }
+                        },
+                        "cors": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "CORS middleware on the gateway. Open by default (any origin). Set `allow_origins = []` to disable, or provide a concrete list to restrict.",
+                            "nested": {
+                                "allow_origins": {
+                                    "type": "list",
+                                    "default": ["*"],
+                                    "description": "Origins that may access the gateway. Default [\"*\"] allows any. Empty list disables CORS."
+                                },
+                                "allow_methods": {
+                                    "type": "list",
+                                    "default": ["*"],
+                                    "description": "HTTP methods allowed on cross-origin requests."
+                                },
+                                "allow_headers": {
+                                    "type": "list",
+                                    "default": ["*"],
+                                    "description": "Request headers allowed on cross-origin requests."
+                                },
+                                "allow_credentials": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Allow cookies / Authorization on cross-origin requests. Incompatible with allow_origins = [\"*\"] per spec."
+                                },
+                                "expose_headers": {
+                                    "type": "list",
+                                    "default": [],
+                                    "description": "Response headers the browser is allowed to read across origins."
+                                },
+                                "max_age": {
+                                    "type": "int",
+                                    "default": 600,
+                                    "description": "How long (seconds) the browser may cache a preflight response."
+                                }
+                            }
+                        },
+                        "client": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Client UI build settings (optional)",
+                            "nested": {
+                                "entry": {
+                                    "type": "string",
+                                    "default": "",
+                                    "description": "jac-client entry point (e.g., client/main.jac)"
+                                },
+                                "dist_dir": {
+                                    "type": "string",
+                                    "default": ".jac/client/dist",
+                                    "description": "Build output directory for static assets"
+                                },
+                                "base_route": {
+                                    "type": "string",
+                                    "default": "/",
+                                    "description": "SPA base route"
+                                }
+                            }
+                        }
+                    }
+                },
                 "monitoring": {
                     "type": "dict",
                     "default": {},
