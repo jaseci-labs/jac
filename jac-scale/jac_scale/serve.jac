@@ -4,7 +4,7 @@ import mimetypes;
 import from collections.abc { Callable }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
-import from pydantic { BaseModel, Field }
+import from pydantic { BaseModel, Field, ValidationError }
 import from typing { Any }
 import jwt;
 import json;
@@ -47,9 +47,9 @@ import from jac_scale.utils { extract_bearer_token }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
-    UpdatePasswordRequest
+    UpdatePasswordRequest,
+    validate_profile
 }
-import from pydantic { ValidationError }
 
 # Load configuration from jac.toml with env var overrides
 glob _jwt_config = get_scale_config().get_jwt_config(),
@@ -79,6 +79,8 @@ obj JacAPIServerAuth {
     def register_refresh_token_endpoint -> None;
     # Update password
     def register_update_password_endpoint -> None;
+    # Current user
+    def register_me_endpoint -> None;
     # SSO
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];

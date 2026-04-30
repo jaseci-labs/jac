@@ -585,6 +585,37 @@ class JacAPIServer {
         """
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
 
+    """Execute an sv-to-sv RPC call.
+
+        Called by sv_client.call() to perform the actual HTTP request to a
+        resolved provider URL. Plugins (e.g. jac-scale) can override this to
+        inject auth, retries, tracing, or a circuit breaker. The default
+        implementation does a plain httpx.post with no extra behavior.
+
+        Args:
+          module_name: the provider module being called.
+          func_name:   the exported function on that module.
+          args:        kwargs dict passed through as the JSON body.
+
+        Returns the unwrapped result from the TransportResponse envelope.
+        Raises RuntimeError on transport or application-level failure.
+        """
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any;
+
+    """Return the current sv-service registry as a {module_name: base_url} dict.
+
+        Public accessor for the sv-service URL table. Callers (e.g. a
+        microservice gateway) should use this instead of reaching into
+        `sv_client._registry` directly. Plugins can override to source URLs
+        from a different authority - jac-scale's KubernetesDeployer will
+        return K8s Service DNS names instead of localhost loopbacks, with
+        no change required at the call site.
+
+        The returned dict is a snapshot; callers must not mutate it and
+        should call again for fresh data.
+        """
+    static def get_sv_registry -> dict[str, str];
+
     """Create the API server instance.
 
     If the specified port is in use, tries subsequent ports up to max_retries times.

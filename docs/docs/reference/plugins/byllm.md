@@ -306,6 +306,9 @@ strategy = "fallback"             # Default ModelPool routing strategy
 num_retries = 1                   # Retries per deployment
 timeout = 60.0                    # Per-request timeout in seconds
 
+[plugins.byllm.parallel]
+enabled = false                   # Parallel tool execution (concurrent dispatch)
+
 [plugins.byllm.prompt_caching]
 enabled = true                    # Anthropic prompt caching (auto for Claude models)
 ```
@@ -334,6 +337,12 @@ enabled = true                    # Anthropic prompt caching (auto for Claude mo
 | `local_cost_map` | bool | `true` | Use local cost map instead of fetching from remote |
 | `drop_params` | bool | `true` | Silently drop parameters unsupported by the chosen provider |
 | `debug` | bool | `false` | Enable verbose LiteLLM logging (HTTP requests, retries, headers). When `false`, LiteLLM's internal loggers are silenced. Exceptions are always logged via byLLM's own logger regardless of this setting |
+
+**`[plugins.byllm.parallel]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Enable parallel tool execution. When the LLM emits multiple tool calls in one response, run them concurrently via a shared thread pool. Can also be enabled via `BYLLM_PARALLEL_TOOL_CALLING=true` env var or per-call `parallelize=True`. See [Parallel Tool Calling](#parallel-tool-calling) for details |
 
 **`[plugins.byllm.prompt_caching]` options:**
 
@@ -521,6 +530,8 @@ Parameters passed to `by llm()` at call time:
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 | `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
+| `conversation` | list | Caller-owned list bound as conversation history. byLLM reads it as prior context, runs the ReAct loop, and writes the persistable turn (user, assistant `tool_calls`, tool results, final answer) back into the same list. Input may be `Message` instances or dicts; byLLM always writes back as plain dicts so the list is JSON-serialisable. Use this for multi-turn `by llm()` calls without managing the message list manually |
+| `parallelize` | bool | Enable parallel tool execution for this call. Overrides global `[plugins.byllm.parallel]` config. Default: inherits global setting |
 | `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
 
 !!! warning "Deprecated: `method` parameter"
@@ -552,7 +563,27 @@ def generate_essay(topic: str) -> str by llm(stream=True);
 def smart_answer(question: str) -> str by llm(
     tools=[search_db], stream=True, logging=True
 );
+
+# Multi-turn - bind a caller-owned list as conversation history
+glob history: list = [];
+def chat(message: str) -> str by llm(
+    tools=[search_db],
+    conversation=history
+);
 ```
+
+#### What's in the conversation list
+
+After each call byLLM appends the turn to your list **in place** as plain dicts. Iterate it like any list of message dicts:
+
+```python
+{"role": "user",      "content": "How is Paris?"}
+{"role": "assistant", "content": "Let me check.", "tool_calls": [...]}
+{"role": "tool",      "content": "sunny in Paris", "tool_call_id": "...", "name": "get_weather"}
+{"role": "assistant", "content": "It's sunny in Paris."}
+```
+
+The auto-generated SYSTEM prompt and `finish_tool` calls are excluded from the list - byLLM regenerates them each turn. The list is safe to JSON-serialise and replay across sessions.
 
 ---
 
@@ -714,6 +745,122 @@ def agent_task(question: str) -> str by llm(
 | `ABORT_WITH_SUMMARY` | Stop and ask LLM for a final summary |
 
 The callback fires **between iterations**, not between individual tool calls. If the LLM batches multiple tool calls in one iteration, all execute before the callback fires. No callback = old behavior.
+
+---
+
+## Parallel Tool Calling
+
+When the LLM emits multiple tool calls in a single response, byLLM can run them concurrently via a shared thread pool instead of one at a time. This reduces wall-clock time when tools involve I/O (API calls, file reads, database queries).
+
+```
+Sequential (default):     tool_A (1s) → tool_B (1s) → tool_C (1s) = 3s
+Parallel (enabled):       tool_A (1s) ┐
+                          tool_B (1s) ├→ all complete in ~1s
+                          tool_C (1s) ┘
+```
+
+The LLM decides which tools to batch - byLLM runs whatever the LLM emits together in a single response concurrently. Tools emitted in separate responses always run sequentially.
+
+### Enabling Parallel Mode
+
+Three levels of control, from broadest to most specific:
+
+=== "Project-wide (jac.toml)"
+    ```toml
+    [plugins.byllm.parallel]
+    enabled = true
+    ```
+    All `by llm()` calls in the project use parallel dispatch.
+
+=== "Environment Variable"
+    ```bash
+    export BYLLM_PARALLEL_TOOL_CALLING=true
+    ```
+    Overrides `jac.toml`. Useful for CI or per-run toggling.
+
+=== "Per-call (inline)"
+    ```jac
+    def my_agent(query: str) -> str by llm(
+        tools=[search, fetch, analyze],
+        parallelize=True
+    );
+    ```
+    Overrides both global config and env var for this specific call.
+
+Default is sequential -- parallel must be explicitly enabled.
+
+### Marking Tools as Sequential
+
+Some tools have side effects (writing files, mutating state) and must not run concurrently. Use `mark_serialize()` to flag them.
+
+When parallel mode is active, `dispatch_batch` checks each batch:
+
+- If **any** tool in the batch has `serialize=True` → the entire batch runs sequentially
+- If **all** tools are parallel-safe → the batch runs concurrently
+
+!!! note
+    `mark_serialize` applies to the function globally. All `by llm()` calls that include the marked tool will respect the constraint.
+
+### Intelligent Scheduling
+
+When parallel is active, byLLM automatically helps the LLM make smart batching decisions:
+
+- **Tool annotations** -- each tool's description gets a `[PARALLEL-SAFE]` or `[SEQUENTIAL]` tag
+- **Scheduling hints** -- rules injected into the system prompt guiding the LLM to batch when all arguments are known upfront and sequence when one tool depends on another's output
+
+### Example
+
+```jac
+import from byllm.lib { Model, mark_serialize }
+
+glob llm = Model(model_name="gpt-5.2");
+
+def get_weather(city: str) -> str {
+    import time;
+    time.sleep(1.0);
+    return f"{city}: 22°C, sunny";
+}
+
+sem get_weather = "Get current weather for a city.";
+
+def save_log(message: str) -> str {
+    return f"Logged: {message}";
+}
+
+sem save_log = "Save a message to the activity log. Has side effects.";
+
+def weather_agent(question: str) -> str by llm(
+    tools=[get_weather, save_log],
+    parallelize=True
+);
+
+with entry {
+    mark_serialize(save_log);
+
+    # LLM emits 3 get_weather calls in parallel (~1s instead of ~3s)
+    # save_log is serialized -- any batch containing it runs sequentially.
+    # Intelligent LLMs won't mix [PARALLEL-SAFE] and [SEQUENTIAL] tools in the same batch
+    result = weather_agent(
+        "What's the weather in Tokyo, Paris, and New York?"
+    );
+    print(result);
+}
+```
+
+### Configuration
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `BYLLM_TOOL_WORKERS` | `min(32, cpu_count * 5)` | Max threads in the shared pool (env var) |
+| `parallel_hint` | `True` | Pass `parallel_hint=False` in `by llm()` to disable scheduling hints while keeping parallel execution |
+
+### Verifying Parallel Execution
+
+```bash
+BYLLM_LOG_LEVEL=INFO jac run my_agent.jac
+```
+
+Look for `byllm.parallel` log lines: `dispatch=parallel` confirms concurrent execution, `wall_ms` shows wall-clock time (e.g. ~1000ms for 3 tools that each take 1s proves they ran in parallel)
 
 ---
 

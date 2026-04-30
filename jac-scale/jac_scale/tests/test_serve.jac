@@ -518,6 +518,80 @@ test "user registration and login" {
     }
 }
 
+test "email identity register and login" {
+    client = make_client();
+    try {
+        suffix = uuid.uuid4().hex[:8];
+        cred = {"type": "password", "password": "pw"};
+
+        # Username-only identity
+        uname = f"u_{suffix}";
+        r = client.post("/user/register", json={
+            "identities": [{"type": "username", "value": uname}],
+            "credential": cred
+        });
+        assert r.status_code == 201;
+        r = client.post("/user/login", json={
+            "identity": {"type": "username", "value": uname},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+        assert "token" in extract_data(r.json());
+
+        # Email-only identity
+        email = f"e_{suffix}@example.com";
+        r = client.post("/user/register", json={
+            "identities": [{"type": "email", "value": email}],
+            "credential": cred
+        });
+        assert r.status_code == 201;
+        r = client.post("/user/login", json={
+            "identity": {"type": "email", "value": email},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+        assert "token" in extract_data(r.json());
+
+        # Both username + email: login works via either identity
+        both_u = f"both_{suffix}";
+        both_e = f"both_{suffix}@example.com";
+        r = client.post("/user/register", json={
+            "identities": [
+                {"type": "username", "value": both_u},
+                {"type": "email", "value": both_e}
+            ],
+            "credential": cred
+        });
+        assert r.status_code == 201;
+        r = client.post("/user/login", json={
+            "identity": {"type": "username", "value": both_u},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+        r = client.post("/user/login", json={
+            "identity": {"type": "email", "value": both_e},
+            "credential": cred
+        });
+        assert r.status_code == 200;
+
+        # Invalid email strings are rejected by validation
+        for bad in ["notanemail", "bad@", "@bad.com", "a b@x.com", ""] {
+            r = client.post("/user/register", json={
+                "identities": [{"type": "email", "value": bad}],
+                "credential": cred
+            });
+            assert r.status_code in (400, 422) , f"bad email '{bad}' accepted on register";
+            r = client.post("/user/login", json={
+                "identity": {"type": "email", "value": bad},
+                "credential": cred
+            });
+            assert r.status_code in (400, 422) , f"bad email '{bad}' accepted on login";
+        }
+    } finally {
+        client.close();
+    }
+}
+
 test "token refresh functionality" {
     client = make_client();
     try {
@@ -1571,8 +1645,12 @@ test "dev mode operations" {
             }
         }
 
-        expected = "Report 0Report 1Report 2";
-        assert content == expected , f"Expected '{expected}', got '{content}'";
+        for payload in ["Report 0", "Report 1", "Report 2"] {
+            assert f'data: "{payload}"' in content , (
+                f"Missing SSE-framed payload {payload!r} in: {content!r}"
+            );
+        }
+        assert "event: end" in content , f"Missing SSE terminator in: {content!r}";
 
         # Test: function stream response
         response = requests.post(
@@ -1596,8 +1674,12 @@ test "dev mode operations" {
             }
         }
 
-        expected = "Func 0Func 1";
-        assert content == expected , f"Expected '{expected}', got '{content}'";
+        for payload in ["Func 0", "Func 1"] {
+            assert f'data: "{payload}"' in content , (
+                f"Missing SSE-framed payload {payload!r} in: {content!r}"
+            );
+        }
+        assert "event: end" in content , f"Missing SSE terminator in: {content!r}";
     } finally {
         teardown_dev_mode_server(sp);
     }
@@ -2033,12 +2115,21 @@ test "jwt middleware: per-user isolation and token rejection" {
         r = client.post("/walker/CreateTask", json={"title": "x"});
         assert r.status_code == 401 , f"no token on auth endpoint: expected 401, got {r.status_code}";
 
+        # Bad tokens on public (pub) endpoints must be ignored — the request
+        # should succeed as guest rather than returning 401.
         for (hdrs, label) in bad_token_cases {
             r = client.post("/walker/PublicInfo", json={}, headers=hdrs);
-            assert r.status_code == 401 , f"{label} on public endpoint: expected 401, got {r.status_code}";
+            assert r.status_code == 200 , f"{label} on pub walker: expected 200 (guest), got {r.status_code}";
         }
         # No token on a public endpoint must still work (anonymous access).
-        assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "public endpoint broken for anonymous requests";
+        assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "pub walker broken for anonymous requests";
+
+        # Same check for pub functions — bad tokens must be ignored.
+        for (hdrs, label) in bad_token_cases {
+            r = client.post("/function/public_status", json={}, headers=hdrs);
+            assert r.status_code == 200 , f"{label} on pub function: expected 200 (guest), got {r.status_code}";
+        }
+        assert client.post("/function/public_status", json={}).status_code == 200 , "pub function broken for anonymous requests";
     } finally {
         client.close();
     }

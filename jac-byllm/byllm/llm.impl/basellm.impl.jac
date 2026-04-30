@@ -1,3 +1,18 @@
+"""Determine if a given by-llm call should use parallel tool execution."""
+
+def _should_parallelize(mt_run: MTRuntime) -> bool {
+    per_call = mt_run.call_params.get("parallelize");
+    if per_call is True {
+        return True;
+    }
+    if per_call is False {
+        return False;
+    }
+    # Not specified → follow global config (read fresh so runtime changes are picked up)
+    return get_byllm_config().get_parallel_config().get("enabled", False);
+}
+
+
 """Check if the model is eligible for Anthropic prompt caching."""
 def _is_prompt_caching_eligible(model_name: str) -> bool {
     pc_config = _byllm_config.get_prompt_caching_config();
@@ -68,6 +83,37 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     if mt_run.stream and len(mt_run.tools) == 0 {
         return self.dispatch_streaming(mt_run);
     }
+    # Streaming ReAct: defer write_back until the inner generator exhausts,
+    # otherwise the streamed assistant message is missed.
+    if mt_run.stream {
+        return self._invoke_react_loop_streaming(mt_run);
+    }
+    try {
+        return self._invoke_react_loop(mt_run);
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+impl BaseLLM._invoke_react_loop_streaming(
+    mt_run: MTRuntime
+) -> Generator[object, None, None] {
+    import types as _types_mod;
+    try {
+        result = self._invoke_react_loop(mt_run);
+        if isinstance(result, _types_mod.GeneratorType) {
+            yield from result;
+        } elif result is not None {
+            yield result;
+        }
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
     max_iters = (
         mt_run.call_params.get("max_react_iterations")
         or self.call_params.get("max_react_iterations")
@@ -134,21 +180,49 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 else getattr(usage, "total_tokens", 0)
         );
         if resp.tool_calls {
-            for tool_call in resp.tool_calls {
-                if tool_call.is_finish_call() {
-                    # If streaming is enabled, make a new streaming call
-                    mt_run.add_message(tool_call());
-                    # to generate the final answer based on all context
-                    if mt_run.stream {
-                        return self._stream_final_answer(mt_run);
-                    }
-                    return tool_call.get_output();
-                } else {
-                    result_msg = tool_call();
-                    last_tool = tool_call.tool.get_name();
-                    last_result = str(result_msg.content)[:500];
-                    mt_run.add_message(result_msg);
+            # Split at first finish_tool — anything after it is discarded.
+            # This normalizes history regardless of parallel/sequential mode:
+            # both modes see the same tool calls and produce the same mt_run.messages.
+            non_finish_calls: list = [];
+            finish_tc = None;
+            for tc in resp.tool_calls {
+                if tc.is_finish_call() {
+                    finish_tc = tc;
+                    break;
                 }
+                non_finish_calls.append(tc);
+            }
+
+            # Always route through dispatch_batch — one code path for both modes.
+            # Parallel: full batch (concurrent). Sequential: one-at-a-time (inline, no pool overhead).
+            if non_finish_calls {
+                batches = (
+                    [non_finish_calls]
+                        if _should_parallelize(mt_run)
+                        else [[tc] for tc in non_finish_calls]
+                );
+                for batch in batches {
+                    raw_results: list = list(dispatch_batch(batch));
+                    ordered: dict = {};
+                    for r in raw_results {
+                        idx = _index_by_identity(batch, r[0]);
+                        ordered[idx] = r;
+                    }
+                    for i in range(len(batch)) {
+                        (btc, result_msg, _ms) = ordered[i];
+                        last_tool = btc.tool.get_name();
+                        last_result = str(result_msg.content)[:500];
+                        mt_run.add_message(result_msg);
+                    }
+                }
+            }
+
+            if finish_tc {
+                mt_run.add_message(finish_tc());
+                if mt_run.stream {
+                    return self._stream_final_answer(mt_run);
+                }
+                return finish_tc.get_output();
             }
         } else {
             # LLM returned plain text without calling any tool.
@@ -199,6 +273,77 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
 
     messages = mt_run.get_msg_list();
     tools = mt_run.get_tool_list() or None;
+
+    # Intelligent parallel scheduling: when parallel is active for this call,
+    # annotate tool descriptions and inject scheduling rules into the system prompt
+    # so the LLM can intelligently decide which tools to batch vs sequence.
+    if _should_parallelize(mt_run)
+    and tools
+    and mt_run.call_params.get("parallel_hint", True)
+    and messages
+    and len(messages) > 0 {
+        # --- Annotate each tool's description with scheduling metadata ---
+        # The description field is the primary channel LLMs read when deciding
+        # tool calls.  Placing the constraint here is more reliable than a
+        # system-prompt list the LLM must cross-reference.
+        annotated: list = [];
+        serial_names: list = [];
+        for (i, schema) in enumerate(tools) {
+            tool_obj = mt_run.tools[i] if i < len(mt_run.tools) else None;
+            is_serial = tool_obj.serialize if tool_obj else False;
+            is_finish = tool_obj.is_finish_tool() if tool_obj else False;
+            if is_finish {
+                annotated.append(schema);
+            } else {
+                fn = schema.get("function", {});
+                desc = fn.get("description", "");
+                if is_serial {
+                    serial_names.append(fn.get("name", "unknown"));
+                    tag = " [SEQUENTIAL: has side-effects — must be called alone, never batch with other tools]";
+                } else {
+                    tag = " [PARALLEL-SAFE: can be batched with other independent tools in one response]";
+                }
+                annotated.append(
+                    {** schema, "function": {** fn, "description": desc + tag}}
+                );
+            }
+        }
+        tools = annotated;
+
+        # --- Inject intelligent scheduling hint into system prompt ---
+        first_msg = messages[0];
+        if isinstance(first_msg, dict) and first_msg.get("role") == "system" {
+            content = first_msg.get("content", "");
+            if isinstance(content, str) and _PARALLEL_TOOL_HINT not in content {
+                hint = _PARALLEL_TOOL_HINT;
+
+                # Semantic rules for implicit dependency detection
+                hint += (
+                    "\n\n**Intelligent tool scheduling rules:**"
+                    "\nBATCH in one response (parallel) when:"
+                    "\n - You already know ALL required arguments for every tool"
+                    "\n - No tool in the group needs another tool's output as input"
+                    "\n - No two tools in the group modify the same resource"
+                    "\nSEPARATE into different responses (sequential) when:"
+                    "\n - A tool's argument depends on another tool's return value"
+                    "\n - Two tools write to the same file or shared state"
+                    "\n - A tool is labeled [SEQUENTIAL] in its description"
+                    "\n\nKEY TEST: For each tool ask — 'Can I fill in ALL of this tool's arguments RIGHT NOW"
+                    " without waiting for any other tool's result?' YES for all → batch. NO for any → separate it."
+                );
+
+                # Explicit serialize list (if any)
+                if serial_names {
+                    hint += (
+                        f"\n\nTools that must ALWAYS run alone (never batch): {serial_names}"
+                    );
+                }
+
+                messages = list(messages);
+                messages[0] = {** first_msg, "content": content + hint};
+            }
+        }
+    }
 
     if _is_prompt_caching_eligible(self.model_name) {
         _apply_prompt_caching(messages, tools);
@@ -388,7 +533,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         role=MessageRole.USER,
         content="Based on the tool calls and their results above, provide only your final answer.",
     );
-    mt_run.add_message(final_instruction);
+    mt_run.add_scaffolding_message(final_instruction);
     original_tools = mt_run.tools;
     finish_tool_obj = mt_run.get_tool("finish_tool");
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
@@ -397,7 +542,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         if final_resp.tool_calls {
             for tool_call in final_resp.tool_calls {
                 if tool_call.is_finish_call() {
-                    mt_run.add_message(tool_call());
+                    mt_run.add_scaffolding_message(tool_call());
                     return tool_call.get_output();
                 }
             }
@@ -407,6 +552,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         mt_run.tools = original_tools;
     }
 }
+
 
 """Stream the final answer after ReAct tool calls complete.
 
@@ -423,7 +569,7 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
         content="Based on the tool calls and their results above, provide your final answer. "
         "Be comprehensive and synthesize all the information gathered.",
     );
-    mt_run.add_message(final_instruction);
+    mt_run.add_scaffolding_message(final_instruction);
     # Keep only finish_tool so Anthropic sees a valid tools= param
     # (conversation history may already contain tool_use blocks)
     original_tools = mt_run.tools;
@@ -434,15 +580,26 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
     # Save caller's original tool_choice (if any) so we can restore it after.
     original_tool_choice = mt_run.call_params.pop("tool_choice", None);
     mt_run.call_params["tool_choice"] = "none";
+    accumulated: str = "";
     try {
         # Make the actual streaming call - this is REAL streaming from the LLM!
-        yield from self.dispatch_streaming(mt_run);
+        for token in self.dispatch_streaming(mt_run) {
+            accumulated += token;
+            yield token;
+        }
     } finally {
         # Restore tools and original tool_choice
         mt_run.tools = original_tools;
         mt_run.call_params.pop("tool_choice", None);
         if original_tool_choice is not None {
             mt_run.call_params["tool_choice"] = original_tool_choice;
+        }
+        # dispatch_streaming yields tokens but doesn't append to messages;
+        # persist the final answer so write_back_conversation includes it.
+        if accumulated {
+            mt_run.add_message(
+                Message(role=MessageRole.ASSISTANT, content=accumulated)
+            );
         }
     }
 }
@@ -466,7 +623,7 @@ impl BaseLLM._attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None {
         role=MessageRole.USER,
         content="You must use finish_tool to return your response. Call finish_tool now.",
     );
-    mt_run.add_message(recovery_msg);
+    mt_run.add_scaffolding_message(recovery_msg);
     original_tools = mt_run.tools;
     mt_run.tools = [finish_tool_obj];
     try {
@@ -601,6 +758,8 @@ impl BaseLLM._invoke_streaming(
                 break;
             }
 
+            import time as _time;
+            _llm_t0 = _time.time();
             try {
                 resp = self.dispatch_no_streaming(mt_run);
             } except OutputConversionError {
@@ -614,6 +773,7 @@ impl BaseLLM._invoke_streaming(
                 );
                 break;
             }
+            _llm_ms = int((_time.time() - _llm_t0) * 1000);
             self._usage_history.append(resp.usage);
 
             usage = resp.usage or {};
@@ -621,6 +781,12 @@ impl BaseLLM._invoke_streaming(
                 usage.get("total_tokens", 0)
                     if isinstance(usage, dict)
                     else getattr(usage, "total_tokens", 0)
+            );
+
+            # Metrics: emit LLM call duration for this iteration
+            yield StreamEvent(
+                event_type="llm_timing",
+                data={"duration_ms": _llm_ms, "iteration": iter_count}
             );
 
             # Yield thought if the LLM produced reasoning text
@@ -632,58 +798,97 @@ impl BaseLLM._invoke_streaming(
             }
 
             if resp.tool_calls {
-                for tool_call in resp.tool_calls {
-                    if tool_call.is_finish_call() {
-                        mt_run.add_message(tool_call());
-                        yield StreamEvent(
-                            event_type="steps_done", data={"iterations": iter_count}
-                        );
-                        for token in self._stream_final_answer(mt_run) {
-                            if token {
-                                yield StreamEvent(
-                                    event_type="chunk", data={"content": token}
-                                );
-                            }
-                        }
+                # Split at first finish_tool — normalizes history for both modes.
+                non_finish_calls: list = [];
+                finish_tc = None;
+                for tc in resp.tool_calls {
+                    if tc.is_finish_call() {
+                        finish_tc = tc;
                         break;
-                    } else {
-                        # Yield tool_call event before execution
-                        yield StreamEvent(
-                            event_type="tool_call",
-                            data={
-                                "tool": tool_call.tool.get_name(),
-                                "args": tool_call.args,
-                                "call_id": tool_call.call_id,
-                                "iteration": iter_count
-                            }
-                        );
-                        # Execute the tool
-                        result_msg = tool_call();
-                        last_tool = tool_call.tool.get_name();
-                        # Truncate result for the event stream (full result stays in mt_run messages).
-                        # Configurable via call_params["max_tool_result_length"], default 500.
-                        max_result_len = int(
-                            mt_run.call_params.get("max_tool_result_length")
-                            or self.call_params.get("max_tool_result_length")
-                            or _call_params_config.get("max_tool_result_length")
-                            or 500
-                        );
-                        truncated_result = result_msg.content[:max_result_len];
-                        last_result = truncated_result;
-                        yield StreamEvent(
-                            event_type="tool_result",
-                            data={
-                                "tool": tool_call.tool.get_name(),
-                                "result": truncated_result,
-                                "call_id": tool_call.call_id,
-                                "iteration": iter_count
-                            }
-                        );
-                        mt_run.add_message(result_msg);
+                    }
+                    non_finish_calls.append(tc);
+                }
+
+                if non_finish_calls {
+                    max_result_len = int(
+                        mt_run.call_params.get("max_tool_result_length")
+                        or self.call_params.get("max_tool_result_length")
+                        or _call_params_config.get("max_tool_result_length")
+                        or 500
+                    );
+
+                    # Parallel: full batch. Sequential: one-at-a-time via dispatch_batch.
+                    batches = (
+                        [non_finish_calls]
+                            if _should_parallelize(mt_run)
+                            else [[tc] for tc in non_finish_calls]
+                    );
+
+                    for batch in batches {
+                        # Announce tool calls before execution
+                        for btc in batch {
+                            yield StreamEvent(
+                                event_type="tool_call",
+                                data={
+                                    "tool": btc.tool.get_name(),
+                                    "args": btc.args,
+                                    "call_id": btc.call_id,
+                                    "iteration": iter_count
+                                }
+                            );
+                        }
+
+                        # Execute via dispatch_batch, emit results as they complete
+                        raw_results: list = [];
+                        for (btc, result_msg, tool_ms) in dispatch_batch(batch) {
+                            truncated_result = result_msg.content[:max_result_len];
+                            last_tool = btc.tool.get_name();
+                            last_result = truncated_result;
+                            yield StreamEvent(
+                                event_type="tool_result",
+                                data={
+                                    "tool": btc.tool.get_name(),
+                                    "result": truncated_result,
+                                    "call_id": btc.call_id,
+                                    "iteration": iter_count
+                                }
+                            );
+                            yield StreamEvent(
+                                event_type="tool_timing",
+                                data={
+                                    "tool": btc.tool.get_name(),
+                                    "duration_ms": tool_ms,
+                                    "call_id": btc.call_id,
+                                    "iteration": iter_count
+                                }
+                            );
+                            raw_results.append((btc, result_msg, tool_ms));
+                        }
+
+                        # Add messages in input order for deterministic history
+                        ordered: dict = {};
+                        for r in raw_results {
+                            idx = _index_by_identity(batch, r[0]);
+                            ordered[idx] = r;
+                        }
+                        for i in range(len(batch)) {
+                            mt_run.add_message(ordered[i][1]);
+                        }
                     }
                 }
-                # If we broke out of the for loop due to finish_tool, break the while loop too
-                if tool_call.is_finish_call() {
+
+                if finish_tc {
+                    mt_run.add_message(finish_tc());
+                    yield StreamEvent(
+                        event_type="steps_done", data={"iterations": iter_count}
+                    );
+                    for token in self._stream_final_answer(mt_run) {
+                        if token {
+                            yield StreamEvent(
+                                event_type="chunk", data={"content": token}
+                            );
+                        }
+                    }
                     break;
                 }
             } else {
@@ -731,4 +936,8 @@ impl BaseLLM._invoke_streaming(
         );
         self._usage_history = [];
     }
+    # If `by llm(conversation=<list>)` was set, mutate the caller's list
+    # in place with the persistable conversation. Runs once when the
+    # generator is fully consumed.
+    mt_run.write_back_conversation();
 }

@@ -37,12 +37,14 @@ import from byllm.types {
 }
 import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }
+import from byllm.parallel { dispatch_batch, _index_by_identity, _PARALLEL_TOOL_HINT }
 
 # Load configuration purely from jac.toml
 glob _byllm_config = get_byllm_config(),
      _litellm_config = _byllm_config.get_litellm_config(),
      _model_config = _byllm_config.get_model_config(),
      _call_params_config = _byllm_config.get_call_params_config(),
+     _parallel_config = _byllm_config.get_parallel_config(),
      _CACHE_CONTROL_EPHEMERAL: dict = {"type": "ephemeral"};
 
 # Configure LiteLLM based on jac.toml settings
@@ -71,6 +73,11 @@ obj BaseLLM {
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
+    def _invoke_react_loop(mt_run: MTRuntime) -> object;
+    def _invoke_react_loop_streaming(
+        mt_run: MTRuntime
+    ) -> Generator[object, None, None];
+
     def make_model_params(mt_run: MTRuntime) -> dict;
     def log_info(message: str) -> None;
     def format_prompt(params: dict) -> str;

@@ -29,6 +29,38 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
     if func_name == "print" {
         return self._emit_print(nd);
     }
+    # Handle RC debug toggle builtins (zero-argument functions)
+    if func_name == "__rc_debug_enable" {
+        if self.rc_alloc_fn is None {
+            self._emit_rc_helpers();
+        }
+        en_fn = self.llvm_module.get_global("__rc_debug_enable");
+        self.builder.call(en_fn, []);
+        return None;
+    }
+    if func_name == "__rc_debug_disable" {
+        if self.rc_alloc_fn is None {
+            self._emit_rc_helpers();
+        }
+        dis_fn = self.llvm_module.get_global("__rc_debug_disable");
+        self.builder.call(dis_fn, []);
+        return None;
+    }
+    # GC on/off switch builtins
+    if func_name == "__rc_gc_disable" {
+        if self.rc_alloc_fn is None {
+            self._emit_rc_helpers();
+        }
+        self.builder.call(self.rc_gc_disable_fn, []);
+        return None;
+    }
+    if func_name == "__rc_gc_enable" {
+        if self.rc_alloc_fn is None {
+            self._emit_rc_helpers();
+        }
+        self.builder.call(self.rc_gc_enable_fn, []);
+        return None;
+    }
     # Handle len() builtin for lists, dicts, sets, and strings
     if func_name == "len" {
         params_l = nd.params or [];
@@ -40,63 +72,85 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
+                _len_result: (ir.Value | None) = None;
                 # Check for dict type first
                 if arg_name is not None and arg_name in self.var_dict_type {
                     dict_key = self.var_dict_type[arg_name];
                     helpers = self.dict_helpers.get(dict_key);
                     if helpers is not None {
-                        return self.builder.call(
+                        _len_result = self.builder.call(
                             helpers["len"], [arg_val], name="dict.len"
                         );
                     }
                 }
                 # Check for dict type by inferring from value
-                for (dict_key, helpers) in self.dict_helpers.items() {
-                    dict_type = self.dict_types.get(dict_key);
-                    if dict_type is not None
-                    and arg_val.type == dict_type.as_pointer() {
-                        return self.builder.call(
-                            helpers["len"], [arg_val], name="dict.len"
-                        );
+                if _len_result is None {
+                    for (dict_key, helpers) in self.dict_helpers.items() {
+                        dict_type = self.dict_types.get(dict_key);
+                        if dict_type is not None
+                        and arg_val.type == dict_type.as_pointer() {
+                            _len_result = self.builder.call(
+                                helpers["len"], [arg_val], name="dict.len"
+                            );
+                            break;
+                        }
                     }
                 }
                 # Check for set type
-                if arg_name is not None and arg_name in self.var_set_elem_type {
+                if _len_result is None
+                and arg_name is not None
+                and arg_name in self.var_set_elem_type {
                     set_key = self.var_set_elem_type[arg_name];
                     helpers = self.set_helpers.get(set_key);
                     if helpers is not None {
-                        return self.builder.call(
+                        _len_result = self.builder.call(
                             helpers["len"], [arg_val], name="set.len"
                         );
                     }
                 }
                 # Check for set type by inferring from value
-                for (set_key, helpers) in self.set_helpers.items() {
-                    set_type = self.set_types.get(set_key);
-                    if set_type is not None and arg_val.type == set_type.as_pointer() {
-                        return self.builder.call(
-                            helpers["len"], [arg_val], name="set.len"
-                        );
+                if _len_result is None {
+                    for (set_key, helpers) in self.set_helpers.items() {
+                        set_type = self.set_types.get(set_key);
+                        if set_type is not None
+                        and arg_val.type == set_type.as_pointer() {
+                            _len_result = self.builder.call(
+                                helpers["len"], [arg_val], name="set.len"
+                            );
+                            break;
+                        }
                     }
                 }
                 # Check for list type
-                if elem_type_name is None {
-                    elem_type_name = self._infer_list_elem_type(arg_val);
-                }
-                if elem_type_name is not None {
-                    helpers = self.list_helpers.get(elem_type_name);
-                    if helpers is not None {
-                        return self.builder.call(
-                            helpers["len"], [arg_val], name="list.len"
-                        );
+                if _len_result is None {
+                    if elem_type_name is None {
+                        elem_type_name = self._infer_list_elem_type(arg_val);
+                    }
+                    if elem_type_name is not None {
+                        helpers = self.list_helpers.get(elem_type_name);
+                        if helpers is not None {
+                            _len_result = self.builder.call(
+                                helpers["len"], [arg_val], name="list.len"
+                            );
+                        }
                     }
                 }
                 # String len: call strlen
-                if arg_val.type == ir.IntType(8).as_pointer() {
+                if _len_result is None and arg_val.type == ir.IntType(8).as_pointer() {
                     strlen_fn = self._get_or_declare_extern(
                         "strlen", ir.IntType(64), [ir.IntType(8).as_pointer()]
                     );
-                    return self.builder.call(strlen_fn, [arg_val], name="str.len");
+                    _len_result = self.builder.call(
+                        strlen_fn, [arg_val], name="str.len"
+                    );
+                }
+                if _len_result is not None {
+                    # len() borrows the arg; release if caller owns it (e.g. inline fstring)
+                    if isinstance(arg_val.type, ir.PointerType)
+                    and self._is_owned(arg_val) {
+                        self._emit_rc_release_simple(arg_val, op="len_arg", loc="");
+                    }
+                    return _len_result;
                 }
             }
         }
@@ -251,6 +305,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         }
         if arg_vals {
             result = self._dispatch_builtin(func_name, arg_vals);
+            # dispatch borrows each arg; release any owned temporaries (e.g. fstrings)
+            for _barg in arg_vals {
+                if isinstance(_barg.type, ir.PointerType) and self._is_owned(_barg) {
+                    self._emit_rc_release_simple(_barg, op="builtin_arg", loc="");
+                }
+            }
             if result is not None {
                 return result;
             }
@@ -286,6 +346,11 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
             arg_val = self._codegen_expr(params_l[0]);
             if arg_val is not None {
                 result = self._dispatch_builtin(func_name, [arg_val]);
+                # dispatch borrows the arg; release if caller owns it (e.g. fstring)
+                if isinstance(arg_val.type, ir.PointerType)
+                and self._is_owned(arg_val) {
+                    self._emit_rc_release_simple(arg_val, op="builtin1_arg", loc="");
+                }
                 if result is not None {
                     return result;
                 }
@@ -300,6 +365,7 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         if params_l {
             prompt_val = self._codegen_expr(params_l[0]);
             if prompt_val is not None {
+                _prompt_orig = prompt_val;
                 printf = self._get_printf();
                 fmt = self._get_fmt_string("%s");
                 fmt_ptr = self.builder.bitcast(fmt, i8p, name="fmt.ptr");
@@ -311,6 +377,13 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     );
                 }
                 self.builder.call(printf, [fmt_ptr, prompt_val]);
+                # printf borrows the prompt; release if we own it (e.g. fstring result)
+                if isinstance(_prompt_orig.type, ir.PointerType)
+                and self._is_owned(_prompt_orig) {
+                    self._emit_rc_release_simple(
+                        _prompt_orig, op="input_prompt", loc=""
+                    );
+                }
             }
         }
         # Allocate buffer, call fgets
@@ -507,9 +580,17 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         _icoerced.append(_cval);
                     }
                 }
-                return self.builder.call(
+                _icall_result = self.builder.call(
                     _loaded, _icoerced, name=f"icall.{func_name}"
                 );
+                # indirect call borrows all args; release owned temporaries
+                for _icarg in _iargs {
+                    if isinstance(_icarg.type, ir.PointerType)
+                    and self._is_owned(_icarg) {
+                        self._emit_rc_release_simple(_icarg, op="icall_arg", loc="");
+                    }
+                }
+                return _icall_result;
             }
         }
         return None;
@@ -580,6 +661,12 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
                 }
             }
         }
+    }
+    # every pointer returned by a user function is owned (either via RETAIN
+    # inside the callee for borrowed refs, or via skip_var donation for named locals).
+    # Mark the call result owned so the caller's assign handler skips an extra RETAIN.
+    if isinstance(result.type, ir.PointerType) {
+        self._mark_owned(result);
     }
     return result;
 }

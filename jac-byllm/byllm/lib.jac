@@ -2,7 +2,18 @@
 import from byllm.llm { MockLLM, Model, ModelPool }
 import from byllm.mtir { MTIR, MTRuntime }
 import from byllm.plugin { JacRuntime }
-import from byllm.types { Image, MockToolCall, StreamEvent, Video }
+import from byllm.types {
+    Image,
+    IterationAction,
+    IterationContext,
+    Message,
+    MessageRole,
+    MockToolCall,
+    StreamEvent,
+    Tool,
+    ToolCallResultMsg,
+    Video
+}
 import from byllm.exceptions {
     ByLLMError,
     AuthenticationError,
@@ -16,6 +27,7 @@ import from byllm.exceptions {
 }
 import from byllm.mcp { McpClient, McpTool }
 import from byllm.telemetry { register_agent_callback }
+import from byllm.parallel { dispatch_batch, mark_serialize }
 
 glob by = JacRuntime.by ,
      __all__ = [
@@ -32,6 +44,10 @@ glob by = JacRuntime.by ,
          'McpClient',
          'McpTool',
          'Image',
+         'IterationAction',
+         'IterationContext',
+         'Message',
+         'MessageRole',
          'MockLLM',
          'MockToolCall',
          'Model',
@@ -39,6 +55,10 @@ glob by = JacRuntime.by ,
          'MTIR',
          'MTRuntime',
          'StreamEvent',
+         'Tool',
+         'ToolCallResultMsg',
          'Video',
-         'register_agent_callback'
+         'register_agent_callback',
+         'dispatch_batch',
+         'mark_serialize'
      ];

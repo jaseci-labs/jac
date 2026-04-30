@@ -44,6 +44,7 @@ obj Message {
         content: str | list[Media];
 
     def to_dict -> dict[str, object];
+    static def from_dict(d: dict) -> Message | LiteLLMMessage | dict;
 }
 
 """Result of a tool call in LLM interactions."""
@@ -65,7 +66,9 @@ obj Tool {
     has func: Callable,
         description: str = "",
         params_desc: dict[(str, str)] = None,
-        info: Info = None;
+        info: Info = None,
+        serialize: bool = False,
+        timeout_sec: float | None = None;
 
     def postinit -> None;
     def __call__(*args: list, **kwargs: dict) -> object;

@@ -123,7 +123,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0024",
          Category.SYNTAX,
          "Cannot assign to '{name}' -- it is a built-in reference, not a variable",
-         help="Use a different variable name, or use backtick escaping (e.g. `super) to create a local variable with the same name."
+         help="Use a different variable name, or use backtick escaping (e.g. `root) to create a local variable with the same name."
+     ),
+     E0025 = _err(
+         "E0025",
+         Category.SYNTAX,
+         "JavaScript arrow function syntax ('=>') is not supported in Jac",
+         help="Use Jac lambda syntax instead: 'lambda e: ChangeEvent { ... }' or 'lambda x: int : x + 1'."
      ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
@@ -211,8 +217,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W0062 = _warn(
          "W0062",
          Category.SYNTAX,
-         "Bare 'root' is deprecated. Use 'root()' instead.",
-         "'root' is now a builtin function — call it explicitly as 'root()'"
+         "'root()' is deprecated. Use bare 'root' instead.",
+         "'root' is a reserved keyword that resolves to the graph anchor — drop the parentheses."
      ),
      W0063 = _warn(
          "W0063",
@@ -713,6 +719,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.LINT,
          "getattr(obj, 'attr', None) should use null-safe access [getattr-to-null-ok]"
      ),
+     W3040 = _warn(
+         "W3040",
+         Category.LINT,
+         "Filter comparison '{name} == {name}' is always true — "
+         "both sides resolve to the same node field [filter-compare-tautology]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -738,7 +750,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "usestate-to-has": "W3038",
          "mutable-default": "W3036",
          "unnecessary-none-return": "W3037",
-         "getattr-to-null-ok": "W3039"
+         "getattr-to-null-ok": "W3039",
+         "filter-compare-tautology": "W3040"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)
