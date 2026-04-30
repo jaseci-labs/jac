@@ -694,6 +694,64 @@ def:pub LiveData() -> JsxElement {
 }
 ```
 
+### Streaming with Server-Sent Events
+
+Walkers and `def:pub` functions that return a Python generator are automatically served as `text/event-stream`. The client consumes them with `useJacStream`, `jacSpawnStream`, or `jacCallFunctionStream` (auto-imported in `cl{}` / `to cl:` code).
+
+**Server (yield from a walker):**
+
+```jac
+walker:pub chat {
+    has prompt: str = "";
+    can run with Root entry {
+        report (yield {"token": w} for w in tokenize(self.prompt));
+    }
+}
+```
+
+**Client (`useJacStream` hook):**
+
+```jac
+to cl:
+
+def:pub Chat() -> JsxElement {
+    stream = useJacStream("chat");
+    text = [e.token for e in stream.events].join("");
+
+    return <div>
+        <button onClick={lambda { stream.start({"prompt": "hi"}); }}>Send</button>
+        <p>{text}</p>
+        {stream.isStreaming and <p>...</p>}
+    </div>;
+}
+```
+
+`useJacStream(walker, nodeId="", fields={})` returns:
+
+| Field | Type | Description |
+|----|----|----|
+| `events` | list | Raw array of yielded dicts; component re-renders as it grows. |
+| `isStreaming` | bool | True between `start()` and the server's `event: end`. |
+| `error` | str \| None | Set on `event: error` or connection drop. |
+| `start(extra_fields)` | fn | Begin a new stream; merges `extra_fields` into walker fields. |
+| `reset()` | fn | Clear `events` / `error` / `isStreaming`. |
+
+**Callback API (non-React contexts):**
+
+```jac
+await jacSpawnStream(
+    "chat", nodeId="", fields={"prompt": "hi"},
+    onEvent=lambda(evt: dict) -> None { print(evt.token); }
+);
+
+await jacCallFunctionStream(
+    "log_tail", args={"lines": 100},
+    onEvent=lambda(evt: dict) -> None { console.log(evt.line); }
+);
+```
+
+Both forms auto-stop on `event: end` and throw on `event: error`. Yield any dict shape from the server; the client treats `events` as raw, so apps can render token-by-token text (`{"token": "..."}`), structured agent traces (`{"type": "tool_call", "detail": "..."}`), or any custom payload without server-side protocol changes. See the [Real-Time Updates tutorial](../../tutorials/fullstack/backend.md#streaming-pattern-sse) for full examples.
+
 ---
 
 ## Routing
