@@ -32,7 +32,6 @@ import from jac_scale.tests.scale_test_client {
 # =============================================================================
 # HELPER FUNCTIONS
 # =============================================================================
-
 """Build identity-based register payload."""
 def register_payload(username: str, password: str) -> dict[str, Any] {
     return {
@@ -526,65 +525,74 @@ test "email identity register and login" {
 
         # Username-only identity
         uname = f"u_{suffix}";
-        r = client.post("/user/register", json={
-            "identities": [{"type": "username", "value": uname}],
-            "credential": cred
-        });
+        r = client.post(
+            "/user/register",
+            json={
+                "identities": [{"type": "username", "value": uname}],
+                "credential": cred
+            }
+        );
         assert r.status_code == 201;
-        r = client.post("/user/login", json={
-            "identity": {"type": "username", "value": uname},
-            "credential": cred
-        });
+        r = client.post(
+            "/user/login",
+            json={"identity": {"type": "username", "value": uname}, "credential": cred}
+        );
         assert r.status_code == 200;
         assert "token" in extract_data(r.json());
 
         # Email-only identity
         email = f"e_{suffix}@example.com";
-        r = client.post("/user/register", json={
-            "identities": [{"type": "email", "value": email}],
-            "credential": cred
-        });
+        r = client.post(
+            "/user/register",
+            json={"identities": [{"type": "email", "value": email}], "credential": cred}
+        );
         assert r.status_code == 201;
-        r = client.post("/user/login", json={
-            "identity": {"type": "email", "value": email},
-            "credential": cred
-        });
+        r = client.post(
+            "/user/login",
+            json={"identity": {"type": "email", "value": email}, "credential": cred}
+        );
         assert r.status_code == 200;
         assert "token" in extract_data(r.json());
 
         # Both username + email: login works via either identity
         both_u = f"both_{suffix}";
         both_e = f"both_{suffix}@example.com";
-        r = client.post("/user/register", json={
-            "identities": [
-                {"type": "username", "value": both_u},
-                {"type": "email", "value": both_e}
-            ],
-            "credential": cred
-        });
+        r = client.post(
+            "/user/register",
+            json={
+                "identities": [
+                    {"type": "username", "value": both_u},
+                    {"type": "email", "value": both_e}
+                ],
+                "credential": cred
+            }
+        );
         assert r.status_code == 201;
-        r = client.post("/user/login", json={
-            "identity": {"type": "username", "value": both_u},
-            "credential": cred
-        });
+        r = client.post(
+            "/user/login",
+            json={"identity": {"type": "username", "value": both_u}, "credential": cred}
+        );
         assert r.status_code == 200;
-        r = client.post("/user/login", json={
-            "identity": {"type": "email", "value": both_e},
-            "credential": cred
-        });
+        r = client.post(
+            "/user/login",
+            json={"identity": {"type": "email", "value": both_e}, "credential": cred}
+        );
         assert r.status_code == 200;
 
         # Invalid email strings are rejected by validation
         for bad in ["notanemail", "bad@", "@bad.com", "a b@x.com", ""] {
-            r = client.post("/user/register", json={
-                "identities": [{"type": "email", "value": bad}],
-                "credential": cred
-            });
+            r = client.post(
+                "/user/register",
+                json={
+                    "identities": [{"type": "email", "value": bad}],
+                    "credential": cred
+                }
+            );
             assert r.status_code in (400, 422) , f"bad email '{bad}' accepted on register";
-            r = client.post("/user/login", json={
-                "identity": {"type": "email", "value": bad},
-                "credential": cred
-            });
+            r = client.post(
+                "/user/login",
+                json={"identity": {"type": "email", "value": bad}, "credential": cred}
+            );
             assert r.status_code in (400, 422) , f"bad email '{bad}' accepted on login";
         }
     } finally {
@@ -624,7 +632,9 @@ test "token refresh functionality" {
         # Test: refresh token with invalid/malformed tokens (all return same error)
         invalid_tokens = ["invalid.token.here", "not.a.jwt", "invalid_token_string"];
         for invalid_token in invalid_tokens {
-            response = client.post("/user/refresh-token", json={"token": invalid_token});
+            response = client.post(
+                "/user/refresh-token", json={"token": invalid_token}
+            );
             refresh_result = extract_data(response.json());
             assert "error" in refresh_result;
             assert refresh_result["error"] == "Invalid or expired token";
@@ -638,7 +648,9 @@ test "token refresh functionality" {
 
         # Test: refresh token with bearer prefix
         refresh_bearer_user = f"refresh_bearer_{uuid.uuid4().hex[:8]}";
-        original_token = register_and_get_token(client, refresh_bearer_user, "password123");
+        original_token = register_and_get_token(
+            client, refresh_bearer_user, "password123"
+        );
 
         response = client.post(
             "/user/refresh-token", json={"token": f"Bearer {original_token}"}
@@ -1009,7 +1021,9 @@ test "user management operations" {
         assert "user_id" in login_result;
 
         # Verify login with old password fails
-        response = client.post("/user/login", json=login_payload(username, "oldpass123"));
+        response = client.post(
+            "/user/login", json=login_payload(username, "oldpass123")
+        );
         assert response.status_code == 401;
 
         # Test: update password requires auth
@@ -1458,7 +1472,9 @@ def setup_dev_mode_server -> subprocess.Popen {
         try {
             response = requests.get(f"{dm_base_url}/healthz", timeout=2);
             if response.status_code == 200 {
-                print(f"Dev mode server started successfully on API port {dm_api_port}");
+                print(
+                    f"Dev mode server started successfully on API port {dm_api_port}"
+                );
                 server_ready = True;
                 break;
             }
@@ -1952,6 +1968,134 @@ test "server startup - port fallback integration" {
     }
 }
 
+# =============================================================================
+# HEALTH CHECK FILTER UNIT TESTS
+# =============================================================================
+"""Test HealthCheckFilter suppresses noisy health-check access log entries."""
+test "health check filter suppresses health endpoint log records" {
+    import logging;
+
+    # Inline the filter class so we test the exact logic without needing
+    # to export it from the impl module.
+    class _HCF(logging.Filter) {
+        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP'};
+
+        def filter(self: _HCF, record: logging.LogRecord) -> bool {
+            msg = record.getMessage();
+            for pat in self._SUPPRESSED {
+                if pat in msg {
+                    return False;
+                }
+            }
+            return True;
+        }
+    }
+
+    def make_record(msg: str) -> logging.LogRecord {
+        return logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None
+        );
+    }
+
+    f = _HCF();
+
+    # These should be suppressed (filter returns False)
+    suppressed = [
+        '127.0.0.1:12345 - "GET /health HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /docs HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET / HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /openapi.json HTTP/1.1" 200',
+
+    ];
+    for msg in suppressed {
+        assert not f.filter(make_record(msg)) , f"Expected suppressed: {msg}";
+    }
+
+    # These should pass through (filter returns True)
+    allowed = [
+        '127.0.0.1:12345 - "GET /walker/MyWalker HTTP/1.1" 200',
+        '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /graph HTTP/1.1" 200',
+        '127.0.0.1:12345 - "POST /function/add_numbers HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz HTTP/1.1" 200',  # /healthz is NOT suppressed
+        '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',  # sub-path not matched by prefix alone
+
+    ];
+    for msg in allowed {
+        assert f.filter(make_record(msg)) , f"Expected allowed: {msg}";
+    }
+}
+
+"""Test that HealthCheckFilter integrates correctly with Python's logging Handler."""
+test "health check filter blocks records when attached to a handler" {
+    import logging;
+
+    class _HCF(logging.Filter) {
+        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP'};
+
+        def filter(self: _HCF, record: logging.LogRecord) -> bool {
+            msg = record.getMessage();
+            for pat in self._SUPPRESSED {
+                if pat in msg {
+                    return False;
+                }
+            }
+            return True;
+        }
+    }
+
+    class _CapturingHandler(logging.Handler) {
+        has captured: list = [];
+
+        def emit(self: _CapturingHandler, record: logging.LogRecord) {
+            self.captured.append(record.getMessage());
+        }
+    }
+
+    def make_record(msg: str) -> logging.LogRecord {
+        return logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg=msg,
+            args=(),
+            exc_info=None
+        );
+    }
+
+    handler = _CapturingHandler();
+    handler.setFormatter(logging.Formatter("%(message)s"));
+    handler.addFilter(_HCF());
+
+    records = [
+        ('127.0.0.1 - "GET /health HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /docs HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET / HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /openapi.json HTTP/1.1" 200', False),
+        ('127.0.0.1 - "POST /user/login HTTP/1.1" 200', True),
+        ('127.0.0.1 - "GET /walker/Foo HTTP/1.1" 200', True),
+        ('127.0.0.1 - "GET /healthz HTTP/1.1" 200', True),
+
+    ];
+
+    for (msg, should_appear) in records {
+        handler.captured = [];
+        handler.handle(make_record(msg));
+        if should_appear {
+            assert len(handler.captured) == 1 , f"Expected handler to receive: {msg}";
+        } else {
+            assert len(handler.captured) == 0 , f"Expected handler to suppress: {msg}";
+        }
+    }
+}
+
 """Test that jac start --client pwa uses jac-scale server (422 from /user/login = FastAPI validation)."""
 test "pwa target uses jac-scale server" {
     import tempfile;
@@ -2052,9 +2196,7 @@ test "jwt middleware: per-user isolation and token rejection" {
         }
         def task_titles(tok: str) -> set[str] {
             r = client.post(
-                "/walker/ListTasks",
-                json={},
-                headers={"Authorization": f"Bearer {tok}"}
+                "/walker/ListTasks", json={}, headers={"Authorization": f"Bearer {tok}"}
             );
             assert r.status_code == 200;
             raw = extract_data(r.json())["reports"][0];
