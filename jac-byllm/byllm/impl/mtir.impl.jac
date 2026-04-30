@@ -145,15 +145,13 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     } except Exception { }
 
     # Conversational mode: `by llm(conversation=<list>)` splices the
-    # caller's prior conversation between SYSTEM and USER. Entries can be
-    # Message instances or dicts (from a previous turn's persisted form).
+    # caller's prior conversation between SYSTEM and USER. Entries on input
+    # may be Messages or dicts; write-back always emits dicts.
     conv_arg = call_params.get("conversation");
     conv_msgs: list[MessageType] = [];
-    conv_was_dicts: bool = False;
     conv_list_ref: object = None;
     if isinstance(conv_arg, list) {
         conv_list_ref = conv_arg;
-        conv_was_dicts = (not conv_arg) or isinstance(conv_arg[0], dict);
         for item in conv_arg {
             m: Any = item;
             if isinstance(m, Message) {
@@ -209,7 +207,6 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
     if conv_list_ref is not None {
         mt_run._scaffolding_ids.append(id(sys_msg));
         mt_run._conversation_list = conv_list_ref;
-        mt_run._conversation_was_dicts = conv_was_dicts;
     }
 
     return mt_run;
@@ -254,21 +251,17 @@ impl MTRuntime.write_back_conversation -> None {
     }
     out: list = [];
     for msg in self.get_history_for_persist() {
-        if self._conversation_was_dicts {
-            m: Any = msg;
-            if hasattr(m, "to_dict") {
-                out.append(m.to_dict());
-            } elif isinstance(m, dict) {
-                out.append(dict(m));
-            } elif hasattr(m, "model_dump") {
-                try {
-                    out.append(m.model_dump());
-                } except Exception {
-                    out.append({"raw": str(m)});
-                }
+        m: Any = msg;
+        if hasattr(m, "to_dict") {
+            out.append(m.to_dict());
+        } elif isinstance(m, dict) {
+            out.append(dict(m));
+        } elif hasattr(m, "model_dump") {
+            try {
+                out.append(m.model_dump());
+            } except Exception {
+                out.append({"raw": str(m)});
             }
-        } else {
-            out.append(msg);
         }
     }
     self._conversation_list[:] = out;

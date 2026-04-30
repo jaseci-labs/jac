@@ -52,8 +52,7 @@ obj MTRuntime {
         _scaffolding_ids: list[int] = [],
         # Caller's list bound via `by llm(conversation=<list>)`, written
         # back in place after the ReAct loop. None when not conversational.
-        _conversation_list: object = None,
-        _conversation_was_dicts: bool = False;
+        _conversation_list: object = None;
 
     static def factory(mtir: MTIR) -> MTRuntime;
     def dispatch_params -> dict[str, object];

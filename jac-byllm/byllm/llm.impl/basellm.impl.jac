@@ -83,9 +83,30 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     if mt_run.stream and len(mt_run.tools) == 0 {
         return self.dispatch_streaming(mt_run);
     }
-    # Non-streaming ReAct: write_back fires once on every exit path.
+    # Streaming ReAct: defer write_back until the inner generator exhausts,
+    # otherwise the streamed assistant message is missed.
+    if mt_run.stream {
+        return self._invoke_react_loop_streaming(mt_run);
+    }
     try {
         return self._invoke_react_loop(mt_run);
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+impl BaseLLM._invoke_react_loop_streaming(
+    mt_run: MTRuntime
+) -> Generator[object, None, None] {
+    import types as _types_mod;
+    try {
+        result = self._invoke_react_loop(mt_run);
+        if isinstance(result, _types_mod.GeneratorType) {
+            yield from result;
+        } elif result is not None {
+            yield result;
+        }
     } finally {
         mt_run.write_back_conversation();
     }
