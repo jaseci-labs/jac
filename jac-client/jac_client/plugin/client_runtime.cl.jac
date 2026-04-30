@@ -42,6 +42,15 @@ def:pub navigate(path: str) -> None;
 async def:pub __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
 def:pub jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
 async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> Any;
+
+# ============================================================================
+# STREAMING API - SSE consumer for generator-returning walkers and functions
+# ============================================================================
+async def:pub __doWalkerFetchStream(`walker: str, nodeId: str, fields: dict, onEvent: Any) -> None;
+async def:pub __doFuncFetchStream(function_name: str, args: dict, onEvent: Any) -> None;
+async def:pub jacSpawnStream(`walker: str, nodeId: str = "", fields: dict = {}, onEvent: Any = None) -> None;
+async def:pub jacCallFunctionStream(function_name: str, args: dict = {}, onEvent: Any = None) -> None;
+def:pub useJacStream(`walker: str, nodeId: str = "", fields: dict = {}) -> dict;
 def:pub __normalizeIdentity(x: Any) -> dict;
 def:pub __normalizeCredential(x: Any) -> dict;
 async def:pub jacSignup(

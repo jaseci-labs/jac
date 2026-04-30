@@ -1019,6 +1019,258 @@ impl JacForm(props: dict) -> JsxElement {
 }
 
 # ============================================================================
+# STREAMING — SSE consumer for generator-returning walkers and functions
+# ============================================================================
+
+impl __doWalkerFetchStream(`walker: str, nodeId: str, fields: dict, onEvent: Any) -> None {
+    token = __getLocalStorage("jac_token");
+    base_url = __getApiBaseUrl();
+    url = f"{base_url}/walker/{`walker}";
+    if nodeId and nodeId != "" {
+        url = f"{base_url}/walker/{`walker}/{nodeId}";
+    }
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
+    response = await fetch(
+        url, {"method": "POST", "headers": headers, "body": JSON.stringify(fields)}
+    );
+    if not response.ok {
+        if response.status == 401 {
+            __removeLocalStorage("jac_token");
+            window.location.reload();
+            return;
+        }
+        error_text = await response.text();
+        walker_label = `walker if not nodeId else f"{`walker}/{nodeId}";
+        raise Exception(f"Walker {walker_label} stream failed: {error_text}");
+    }
+    # If the server returned plain JSON (walker didn't yield), call onEvent once
+    # with the full payload so the caller gets something useful.
+    ct = response.headers.get("content-type") or "";
+    if not ct.includes("text/event-stream") {
+        payload = await response.json();
+        data = payload["data"] if payload["data"] else {};
+        if onEvent {
+            onEvent(data);
+        }
+        return;
+    }
+    reader = response.body.getReader();
+    decoder = Reflect.construct(TextDecoder, []);
+    buffer = "";
+    _NL = String.fromCharCode(10);    # "\n" compiles to literal \n in Jac client code
+    _NLNL = String.fromCharCode(10) + String.fromCharCode(10);
+    while True {
+        chunk = await reader.read();
+        if chunk.done {
+            break;
+        }
+        buffer = buffer + decoder.decode(chunk.value, {"stream": True});
+        frames = buffer.split(_NLNL);
+        # Last element is an incomplete frame — keep it in the buffer
+        buffer = frames.pop();
+        for frame in frames {
+            if not frame.trim() {
+                continue;
+            }
+            event_name = "message";
+            data_lines = [];
+            for line in frame.split(_NL) {
+                if line.startsWith("event:") {
+                    event_name = line.slice(6).trim();
+                } elif line.startsWith("data:") {
+                    data_lines.push(line.slice(5).trim());
+                }
+            }
+            if event_name == "end" {
+                return;
+            }
+            data_text = data_lines.join(_NL);
+            if not data_text {
+                continue;
+            }
+            if event_name == "error" {
+                msg = "";
+                try {
+                    err_payload = JSON.parse(data_text);
+                    msg = err_payload["message"] if err_payload["message"] else data_text;
+                } except Exception {
+                    msg = data_text;
+                }
+                raise Exception(f"Walker {`walker} stream error: {msg}");
+            }
+            evt = None;
+            try {
+                evt = JSON.parse(data_text);
+            } except Exception {
+                console.warn(f"[jac-client] jacSpawnStream: dropped malformed frame:", data_text);
+                continue;
+            }
+            if evt and onEvent {
+                onEvent(evt);
+            }
+        }
+    }
+}
+
+impl __doFuncFetchStream(function_name: str, args: dict, onEvent: Any) -> None {
+    token = __getLocalStorage("jac_token");
+    base_url = __getApiBaseUrl();
+    headers = {"Content-Type": "application/json", "Accept": "text/event-stream"};
+    if token {
+        headers["Authorization"] = f"Bearer {token}";
+    }
+    response = await fetch(
+        f"{base_url}/function/{function_name}",
+        {"method": "POST", "headers": headers, "body": JSON.stringify(args)}
+    );
+    if not response.ok {
+        error_text = await response.text();
+        raise Exception(f"Function {function_name} stream failed: {error_text}");
+    }
+    ct = response.headers.get("content-type") or "";
+    if not ct.includes("text/event-stream") {
+        payload = await response.json();
+        result = None;
+        try {
+            if payload["data"] and payload["data"]["result"] {
+                result = payload["data"]["result"];
+            }
+        } except Exception { }
+        if onEvent and result != None {
+            onEvent(result);
+        }
+        return;
+    }
+    reader = response.body.getReader();
+    decoder = Reflect.construct(TextDecoder, []);
+    buffer = "";
+    _NL = String.fromCharCode(10);
+    _NLNL = String.fromCharCode(10) + String.fromCharCode(10);
+    while True {
+        chunk = await reader.read();
+        if chunk.done {
+            break;
+        }
+        buffer = buffer + decoder.decode(chunk.value, {"stream": True});
+        frames = buffer.split(_NLNL);
+        buffer = frames.pop();
+        for frame in frames {
+            if not frame.trim() {
+                continue;
+            }
+            event_name = "message";
+            data_lines = [];
+            for line in frame.split(_NL) {
+                if line.startsWith("event:") {
+                    event_name = line.slice(6).trim();
+                } elif line.startsWith("data:") {
+                    data_lines.push(line.slice(5).trim());
+                }
+            }
+            if event_name == "end" {
+                return;
+            }
+            data_text = data_lines.join(_NL);
+            if not data_text {
+                continue;
+            }
+            if event_name == "error" {
+                msg = "";
+                try {
+                    err_payload = JSON.parse(data_text);
+                    msg = err_payload["message"] if err_payload["message"] else data_text;
+                } except Exception {
+                    msg = data_text;
+                }
+                raise Exception(f"Function {function_name} stream error: {msg}");
+            }
+            evt = None;
+            try {
+                evt = JSON.parse(data_text);
+            } except Exception {
+                console.warn(f"[jac-client] jacCallFunctionStream: dropped malformed frame:", data_text);
+                continue;
+            }
+            if evt and onEvent {
+                onEvent(evt);
+            }
+        }
+    }
+}
+
+impl jacSpawnStream(`walker: str, nodeId: str = "", fields: dict = {}, onEvent: Any = None) -> None {
+    await __doWalkerFetchStream(`walker, nodeId, fields, onEvent);
+}
+
+impl jacCallFunctionStream(function_name: str, args: dict = {}, onEvent: Any = None) -> None {
+    await __doFuncFetchStream(function_name, args, onEvent);
+}
+
+"""Hook for streaming walker state: events, isStreaming, error, start(), reset()."""
+impl useJacStream(`walker: str, nodeId: str = "", fields: dict = {}) -> dict {
+    # Capture params as locals — Jac default-params aren't preserved across closures.
+    _walkerName = `walker;
+    _nodeId = nodeId or "";
+    _baseFields = fields or {};
+
+    _eState = reactUseState([]);
+    _sState = reactUseState(False);
+    _errState = reactUseState(None);
+    curEvents = _eState[0];
+    setEvents = _eState[1];
+    curIsStreaming = _sState[0];
+    setIsStreaming = _sState[1];
+    curError = _errState[0];
+    setError = _errState[1];
+
+    def start(extra_fields: dict = {}) -> None {
+        setEvFn = setEvents;
+        setStFn = setIsStreaming;
+        setErrFn = setError;
+        setEvFn.call(None, []);
+        setErrFn.call(None, None);
+        setStFn.call(None, True);
+        merged = Object.assign({}, _baseFields, extra_fields or {});
+
+        def onEvent(evt: Any) -> None {
+            setEvFn2 = setEvents;
+            setEvFn2.call(None, lambda prev: Any -> Any { return prev.concat([evt]); });
+        }
+
+        evtHandler = onEvent;
+        __doWalkerFetchStream(_walkerName, _nodeId, merged, evtHandler).then(
+            lambda -> None { setStFn.call(None, False); }
+        ).catch(
+            lambda err: Any -> None {
+                setStFn.call(None, False);
+                msg = err.message if err and err.message else String(err);
+                setErrFn.call(None, msg);
+            }
+        );
+    }
+
+    def reset() -> None {
+        setEvResFn = setEvents;
+        setStResFn = setIsStreaming;
+        setErrResFn = setError;
+        setEvResFn.call(None, []);
+        setErrResFn.call(None, None);
+        setStResFn.call(None, False);
+    }
+
+    return {
+        "events": curEvents,
+        "isStreaming": curIsStreaming,
+        "error": curError,
+        "start": start,
+        "reset": reset
+    };
+}
+
+# ============================================================================
 # Client Error Reporting
 # ============================================================================
 """Report a client-side error to the server via POST /cl/__error__.

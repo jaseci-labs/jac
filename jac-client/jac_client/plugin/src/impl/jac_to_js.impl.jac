@@ -5,7 +5,7 @@ impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
     if "function __jacJsx(" in js_code {
         return js_code;
     }
-    jac_jsx_import = 'import {__jacJsx, __jacSpawn} from "@jac/runtime";';
+    jac_jsx_import = 'import {__jacJsx, __jacSpawn, jacSpawnStream, jacCallFunctionStream, useJacStream} from "@jac/runtime";';
     return f"{jac_jsx_import}\n{js_code}";
 }
 
