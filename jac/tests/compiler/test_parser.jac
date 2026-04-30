@@ -760,20 +760,18 @@ test "decorated class in code block parses as archetype" {
     (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
     assert not err , "Parser reported errors for decorated declarations in code blocks";
 
-    def collect(nd: object, kind: str) -> list {
+    def collect(nd: uni.UniNode) -> list {
         results: list = [];
-        if type(nd).__name__ == kind {
+        if isinstance(nd, uni.Archetype) {
             results.append(nd);
         }
-        for k in (nd?.kid or []) {
-            if k is not None {
-                results.extend(collect(k, kind));
-            }
+        for k in (nd.kid) {
+            results.extend(collect(k));
         }
         return results;
     }
 
-    archetype_names = [a.name.sym_name for a in collect(mod, "Archetype")];
+    archetype_names = [a.name.sym_name for a in collect(mod)];
 
     for name in [
         "A_TopClass",
