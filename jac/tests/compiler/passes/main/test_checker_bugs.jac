@@ -26,6 +26,7 @@ Bug index:
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
   #DSTR-1  - Docstring before declaration inside function body triggers W0060 instead of attaching
+  #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
 """
 
 import os;
@@ -592,6 +593,13 @@ test "bug_dstr1_docstring_before_local_declaration" {
     assert len(program.errors_had) == 0 , (
         "Bug #DSTR-1: a docstring before a declaration inside a function body "
         "must attach to the declaration without producing W0060 or parse errors. "
+test "bug_dloc1_decorated_class_in_function_body" {
+    program = compile_and_check("checker_bug_decorated_local_class.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #DLOC-1: a decorated class inside a function body must parse "
+        "as an Archetype so the type checker recognises its constructor and "
+        "fields. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
