@@ -78,9 +78,16 @@ impl NaIRGenPass._codegen_list_compr(nd: uni.ListCompr) -> (ir.Value | None) {
         return None;
     }
     # Create new empty list
-    list_val = self.builder.call(helpers["new"], [], name="compr.list");
+    _lcompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    list_val = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_lcompr_loc, name="compr.list"
+    );
     # Generate nested loops for each InnerCompr
     self._codegen_compr_loops(nd.compr, 0, list_val, nd.out_expr, elem_type_name);
+    # Mark as owned so callers can correctly emit releases.
+    self._mark_owned(list_val);
     return list_val;
 }
 
@@ -104,13 +111,36 @@ impl NaIRGenPass._codegen_compr_loops(
             helpers = self.list_helpers.get(elem_type_name);
             if helpers is not None {
                 # Bitcast pointer types to i8* for ptr lists
+                _compr_append_orig = val;
                 val = self._box_value_tuple(val);
+                _compr_boxed_val = val;  # Save post-box, pre-bitcast for check
                 if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                     i8p = ir.IntType(8).as_pointer();
                     val = self.builder.bitcast(val, i8p, name="compr.cast");
                 }
                 val = self._coerce_type(val, helpers["elem_type"]);
-                self.builder.call(helpers["append"], [list_val, val]);
+                _compr_loc_raw = getattr(_compr_append_orig, 'jac_loc', out_expr?.loc);
+                _compr_loc: str = "";
+                if isinstance(_compr_loc_raw, str) {
+                    _compr_loc = _compr_loc_raw;
+                } elif _compr_loc_raw is not None {
+                    _compr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{_compr_loc_raw.first_line}";
+                }
+                if not _compr_loc {
+                    _compr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+                }
+                self._rc_call_with_ctx(
+                    helpers["append"], [list_val, val], op="compr_elem", loc=_compr_loc
+                );
+                # release owned ref after append retained it.
+                # Use _compr_boxed_val (post-box, pre-bitcast) since _box_value_tuple
+                # marks the new heap ptr as is_owned — the pre-box struct value isn't.
+                if isinstance(_compr_boxed_val.type, ir.PointerType)
+                and self._is_owned(_compr_boxed_val) {
+                    self._emit_rc_release_simple(
+                        _compr_boxed_val, op="compr_elem", loc=_compr_loc
+                    );
+                }
             }
         }
         return;
@@ -175,6 +205,13 @@ impl NaIRGenPass._codegen_compr_loops(
     }
     # Allocate loop variable
     loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
+    # Null-init in entry block so scope_exit is safe when the loop never runs.
+    if isinstance(actual_elem_type, ir.PointerType) {
+        _compr_saved_block = self.builder.block;
+        self.builder.position_after(loop_alloca);
+        self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
+        self.builder.position_at_end(_compr_saved_block);
+    }
     self.local_vars[loop_var_name] = loop_alloca;
     # Track type info for loop variable
     if inner_type is not None {
@@ -205,6 +242,13 @@ impl NaIRGenPass._codegen_compr_loops(
     # Bitcast ptr elements to correct inner type
     if inner_type is not None {
         elem_val = self.builder.bitcast(elem_val, inner_type, name="compr.cast");
+    }
+    # RC: release the old loop-var value (null on first iter → no-op) and retain
+    # the new one so scope_exit's rc_release is balanced.
+    if isinstance(actual_elem_type, ir.PointerType) {
+        _compr_old = self.builder.load(loop_alloca, name="compr.old");
+        self._emit_rc_release_simple(_compr_old, op="compr_elem", loc="");
+        self._emit_rc_retain(elem_val, op="compr_elem", loc="");
     }
     self.builder.store(elem_val, loop_alloca);
     # Check conditionals
@@ -250,6 +294,12 @@ impl NaIRGenPass._codegen_compr_loops(
     self.builder.branch(cond_bb);
     # Continue after loop
     self.builder.position_at_end(end_bb);
+    # if collection was a temporary (e.g. list literal), release it now
+    # that the loop has finished iterating over it.
+    if isinstance(coll_val.type, ir.PointerType) and self._is_owned(coll_val) {
+        _coll_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:0";
+        self._emit_rc_release_simple(coll_val, op="compr_coll", loc=_coll_loc);
+    }
 }
 
 """Generate code for a dict comprehension {k: v for x in iterable if cond}."""
@@ -321,9 +371,16 @@ impl NaIRGenPass._codegen_dict_compr(nd: uni.DictCompr) -> (ir.Value | None) {
         return None;
     }
     # Create new empty dict
-    dict_val = self.builder.call(helpers["new"], [], name="dcompr.dict");
+    _dcompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    dict_val = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_dcompr_loc, name="dcompr.dict"
+    );
     # Generate nested loops for each InnerCompr
     self._codegen_dict_compr_loops(nd.compr, 0, dict_val, key_expr, val_expr, dict_key);
+    # Mark as owned so callers can correctly emit releases.
+    self._mark_owned(dict_val);
     return dict_val;
 }
 
@@ -343,14 +400,28 @@ impl NaIRGenPass._codegen_dict_compr_loops(
         if key_val is not None and value_val is not None {
             helpers = self.dict_helpers.get(dict_key);
             if helpers is not None {
-                # Coerce to match helper's expected types
+                # Coerce to match helper's expected types.
+                # Save post-box values for ownership checks.
                 expected_key_type = helpers["key_type"];
                 expected_val_type = helpers["val_type"];
                 key_val = self._box_value_tuple(key_val);
+                _boxed_key = key_val;
                 key_val = self._coerce_type(key_val, expected_key_type);
                 value_val = self._box_value_tuple(value_val);
+                _boxed_val_compr = value_val;
                 value_val = self._coerce_type(value_val, expected_val_type);
                 self.builder.call(helpers["set"], [dict_val, key_val, value_val]);
+                # helpers["set"] retained key and value; release caller's owned refs.
+                if isinstance(_boxed_key.type, ir.PointerType)
+                and self._is_owned(_boxed_key) {
+                    self._emit_rc_release_simple(_boxed_key, op="dcompr_key", loc="");
+                }
+                if isinstance(_boxed_val_compr.type, ir.PointerType)
+                and self._is_owned(_boxed_val_compr) {
+                    self._emit_rc_release_simple(
+                        _boxed_val_compr, op="dcompr_val", loc=""
+                    );
+                }
             }
         }
         return;
@@ -393,6 +464,13 @@ impl NaIRGenPass._codegen_dict_compr_loops(
     self.builder.store(ir.Constant(i64, 0), idx_alloca);
     actual_elem_type = coll_helpers["elem_type"];
     loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
+    # Null-init in entry block so scope_exit is safe when the loop never runs.
+    if isinstance(actual_elem_type, ir.PointerType) {
+        _dcompr_saved_block = self.builder.block;
+        self.builder.position_after(loop_alloca);
+        self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
+        self.builder.position_at_end(_dcompr_saved_block);
+    }
     self.local_vars[loop_var_name] = loop_alloca;
     func = self.builder.function;
     cond_bb = func.append_basic_block(name="dcompr.cond");
@@ -409,6 +487,12 @@ impl NaIRGenPass._codegen_dict_compr_loops(
     elem_val = self.builder.call(
         coll_helpers["get"], [coll_val, body_idx], name="dcompr.elem"
     );
+    # RC: release old loop-var value (null on first iter → no-op) and retain new.
+    if isinstance(actual_elem_type, ir.PointerType) {
+        _dcompr_old = self.builder.load(loop_alloca, name="dcompr.old");
+        self._emit_rc_release_simple(_dcompr_old, op="dcompr_elem", loc="");
+        self._emit_rc_retain(elem_val, op="dcompr_elem", loc="");
+    }
     self.builder.store(elem_val, loop_alloca);
     if conditionals {
         filter_bb = func.append_basic_block(name="dcompr.filter");
@@ -609,9 +693,16 @@ impl NaIRGenPass._codegen_set_compr(nd: uni.SetCompr) -> (ir.Value | None) {
         return None;
     }
     # Create new empty set
-    set_val = self.builder.call(helpers["new"], [], name="scompr.set");
+    _scompr_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    set_val = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_scompr_loc, name="scompr.set"
+    );
     # Generate nested loops
     self._codegen_set_compr_loops(nd.compr, 0, set_val, out_expr, elem_type_name);
+    # Mark as owned so callers can correctly emit releases.
+    self._mark_owned(set_val);
     return set_val;
 }
 
@@ -629,7 +720,10 @@ impl NaIRGenPass._codegen_set_compr_loops(
         if val is not None {
             helpers = self.set_helpers.get(elem_type_name);
             if helpers is not None {
-                # Coerce value to set's element type (e.g., tuple* → i8* for tuple sets)
+                # Box struct values to heap pointers before coercing to the set's
+                # element type.  Save post-box value for the ownership check.
+                val = self._box_value_tuple(val);
+                _scompr_boxed = val;
                 expected_type = helpers["elem_type"];
                 if val.type != expected_type {
                     if isinstance(val.type, ir.PointerType)
@@ -642,6 +736,16 @@ impl NaIRGenPass._codegen_set_compr_loops(
                     }
                 }
                 self.builder.call(helpers["add"], [set_val, val]);
+                # helpers["add"] retained the element; release the caller's
+                # owned ref (from boxing) so the set holds the only reference.
+                # Use _scompr_boxed (post-box, pre-bitcast) since _box_value_tuple
+                # marks the new heap ptr as is_owned.
+                if isinstance(_scompr_boxed.type, ir.PointerType)
+                and self._is_owned(_scompr_boxed) {
+                    self._emit_rc_release_simple(
+                        _scompr_boxed, op="scompr_elem", loc=""
+                    );
+                }
             }
         }
         return;
@@ -704,6 +808,13 @@ impl NaIRGenPass._codegen_set_compr_loops(
         }
     }
     loop_alloca = self._entry_alloca(actual_elem_type, loop_var_name);
+    # Null-init in entry block so scope_exit is safe when the loop never runs.
+    if isinstance(actual_elem_type, ir.PointerType) {
+        _scompr_saved_block = self.builder.block;
+        self.builder.position_after(loop_alloca);
+        self.builder.store(ir.Constant(actual_elem_type, None), loop_alloca);
+        self.builder.position_at_end(_scompr_saved_block);
+    }
     self.local_vars[loop_var_name] = loop_alloca;
     # Track struct type for the loop variable so field accesses work
     if coll_elem_type_name == "ptr" and actual_elem_type != coll_helpers["elem_type"] {
@@ -738,6 +849,12 @@ impl NaIRGenPass._codegen_set_compr_loops(
                 elem, actual_elem_type, name="scompr.elem.cast"
             );
         }
+    }
+    # RC: release old loop-var value (null on first iter → no-op) and retain new.
+    if isinstance(actual_elem_type, ir.PointerType) {
+        _scompr_old = self.builder.load(loop_alloca, name="scompr.old");
+        self._emit_rc_release_simple(_scompr_old, op="scompr_elem", loc="");
+        self._emit_rc_retain(elem, op="scompr_elem", loc="");
     }
     self.builder.store(elem, loop_alloca);
     if conditionals {

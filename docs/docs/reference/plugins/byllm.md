@@ -530,6 +530,7 @@ Parameters passed to `by llm()` at call time:
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 | `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
+| `conversation` | list | Caller-owned list bound as conversation history. byLLM reads it as prior context, runs the ReAct loop, and writes the persistable turn (user, assistant `tool_calls`, tool results, final answer) back into the same list. Input may be `Message` instances or dicts; byLLM always writes back as plain dicts so the list is JSON-serialisable. Use this for multi-turn `by llm()` calls without managing the message list manually |
 | `parallelize` | bool | Enable parallel tool execution for this call. Overrides global `[plugins.byllm.parallel]` config. Default: inherits global setting |
 | `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
 
@@ -562,7 +563,27 @@ def generate_essay(topic: str) -> str by llm(stream=True);
 def smart_answer(question: str) -> str by llm(
     tools=[search_db], stream=True, logging=True
 );
+
+# Multi-turn - bind a caller-owned list as conversation history
+glob history: list = [];
+def chat(message: str) -> str by llm(
+    tools=[search_db],
+    conversation=history
+);
 ```
+
+#### What's in the conversation list
+
+After each call byLLM appends the turn to your list **in place** as plain dicts. Iterate it like any list of message dicts:
+
+```python
+{"role": "user",      "content": "How is Paris?"}
+{"role": "assistant", "content": "Let me check.", "tool_calls": [...]}
+{"role": "tool",      "content": "sunny in Paris", "tool_call_id": "...", "name": "get_weather"}
+{"role": "assistant", "content": "It's sunny in Paris."}
+```
+
+The auto-generated SYSTEM prompt and `finish_tool` calls are excluded from the list - byLLM regenerates them each turn. The list is safe to JSON-serialise and replay across sessions.
 
 ---
 

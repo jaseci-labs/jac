@@ -6,7 +6,7 @@ lists.impl.jac, dicts.impl.jac, and sets.impl.jac.
 
 """Create a container 'new' function that allocates an empty RC-managed container."""
 impl NaIRGenPass._emit_container_new_fn(
-    fn_name: str, container_ptr_type: ir.Type, data_types: list
+    fn_name: str, container_ptr_type: ir.Type, data_types: list, dtor_fn: object = None
 ) -> ir.Function {
     new_fnty = ir.FunctionType(container_ptr_type, []);
     new_fn = ir.Function(self.llvm_module, new_fnty, name=fn_name);
@@ -14,7 +14,32 @@ impl NaIRGenPass._emit_container_new_fn(
     bb = new_fn.append_basic_block("entry");
     b = ir.IRBuilder(bb);
     result = self._emit_rc_alloc_container(b, container_ptr_type, data_types);
-    b.ret(result[0]);
+    container_ptr = result[0];
+    # Set a meaningful type tag (e.g. "list_Move") so debug output shows the container type
+    # instead of the default "raw". Derived from the dtor function name.
+    if dtor_fn is not None and self.rc_set_type_fn is not None {
+        _dtor_name = dtor_fn?.name or str(dtor_fn);
+        _type_name = _dtor_name[len("__rc_release_"):]
+            if _dtor_name.startswith("__rc_release_")
+            else "container";
+        _cont_raw_i8 = b.bitcast(
+            container_ptr, ir.IntType(8).as_pointer(), name="new.i8"
+        );
+        self._emit_set_type_tag(b, _cont_raw_i8, _type_name);
+    }
+    # RC: store the typed destructor function pointer at container_ptr - 8
+    # so __rc_release_simple can dispatch to it when refcount hits zero.
+    if dtor_fn is not None {
+        _i8p_n = ir.IntType(8).as_pointer();
+        _i64_n = ir.IntType(64);
+        _i64p_n = _i64_n.as_pointer();
+        _raw_n = b.bitcast(container_ptr, _i8p_n, name="new_raw");
+        _dtor_slot_n = b.gep(_raw_n, [ir.Constant(_i64_n, -8)], name="dtor_slot");
+        _dtor_slot_i64_n = b.bitcast(_dtor_slot_n, _i64p_n, name="dtor_slot_i64");
+        _dtor_i64_n = b.ptrtoint(dtor_fn, _i64_n, name="dtor_i64");
+        b.store(_dtor_i64_n, _dtor_slot_i64_n);
+    }
+    b.ret(container_ptr);
     return new_fn;
 }
 
@@ -49,10 +74,25 @@ impl NaIRGenPass._emit_container_release_fn(
 ) -> ir.Function {
     i32 = ir.IntType(32);
     i8_ptr = ir.IntType(8).as_pointer();
+    i64 = ir.IntType(64);
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     release_fnty = ir.FunctionType(ir.VoidType(), [container_ptr_type]);
-    release_fn = ir.Function(self.llvm_module, release_fnty, name=fn_name);
-    release_fn.linkage = "private";
+    # Get-or-create: the function may have been forward-declared by _emit_list/dict/set_helpers
+    # so that _emit_container_new_fn could reference its address. In that case, fill in the body
+    # of the existing declaration instead of creating a duplicate.
+    try {
+        _existing_fn = self.llvm_module.get_global(fn_name);
+        if isinstance(_existing_fn, ir.Function) and not _existing_fn.blocks {
+            release_fn = _existing_fn;
+            release_fn.linkage = "private";
+        } else {
+            release_fn = ir.Function(self.llvm_module, release_fnty, name=fn_name);
+            release_fn.linkage = "private";
+        }
+    } except KeyError {
+        release_fn = ir.Function(self.llvm_module, release_fnty, name=fn_name);
+        release_fn.linkage = "private";
+    }
     release_fn.args[0].name = "container";
     (b, done_bb) = self._emit_rc_destructor_preamble(release_fn, container_ptr_type);
     for (field_idx, elem_type) in data_fields {
@@ -69,6 +109,40 @@ impl NaIRGenPass._emit_container_release_fn(
         data_f = b.load(data_p, name=f"data{field_idx}.f");
         b.call(free_fn, [b.bitcast(data_f, i8_ptr, name=f"data{field_idx}.cast")]);
     }
+    # Remove from live-objects list, then log and free the container struct.
+    if self.rc_alloc_fn is None {
+        self._emit_rc_helpers();
+    }
+    _i8pc = ir.IntType(8).as_pointer();
+    _i64c = ir.IntType(64);
+    _i64_ptr_c = _i64c.as_pointer();
+    _cont_i8 = b.bitcast(release_fn.args[0], _i8pc, name="cont.i8");
+    _cont_raw = b.gep(_cont_i8, [ir.Constant(_i64c, -32)], name="cont.raw");
+    # Read alloc_id (ptr-32) and type_tag (ptr-24) for the log message
+    _cl_aid_ptr = b.bitcast(_cont_raw, _i64_ptr_c, name="cl.aid.ptr");
+    _cl_aid_raw = b.load(_cl_aid_ptr, name="cl.aid.raw");
+    _cl_aid = b.and_(
+        _cl_aid_raw, ir.Constant(_i64c, 4294967295), name="cl.aid"
+    );  # strip magic
+    _cl_tag_raw = b.gep(_cont_i8, [ir.Constant(_i64c, -24)], name="cl.tag.raw");
+    _cl_tag_pp = b.bitcast(_cl_tag_raw, _i8pc.as_pointer(), name="cl.tag.pp");
+    _cl_tag = b.load(_cl_tag_pp, name="cl.tag");
+    log_free_cont_bb = release_fn.append_basic_block("log_free_cont");
+    actual_free_cont_bb = release_fn.append_basic_block("actual_free_cont");
+    self._emit_live_list_remove(
+        b, _cont_i8, _i8pc, _i64_ptr_c, log_free_cont_bb, log_free_cont_bb
+    );
+    self._emit_struct_free_log(
+        release_fn,
+        log_free_cont_bb,
+        actual_free_cont_bb,
+        _cont_i8,
+        _cont_raw,
+        _cl_aid,
+        _cl_tag
+    );
+    b = ir.IRBuilder(actual_free_cont_bb);
+    b.call(free_fn, [_cont_raw]);
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();
@@ -300,10 +374,15 @@ impl NaIRGenPass._emit_grow_array(
     return new_data;
 }
 
-"""Emit the standard RC destructor preamble: null-check, decrement, branch-if-zero.
+"""Emit the standard RC destructor preamble: null-check, then proceed.
+
+With the dtor_ptr RC design, typed destructors are ONLY called by
+__rc_release_simple when refcount has already reached zero. The destructor
+does NOT need to decrement the refcount; it only needs to guard against
+a null pointer and then proceed with child cleanup + freeing self.
 
 Creates the basic block structure:
-    entry -> dec -> (free_bb if zero, done_bb if nonzero)
+    entry -> (free_bb if non-null, done_bb if null)
 
 Returns:
     (free_bb_builder, done_bb) — caller should emit cleanup in free_bb,
@@ -313,27 +392,15 @@ impl NaIRGenPass._emit_rc_destructor_preamble(
     release_fn: ir.Function, ptr_type: ir.Type
 ) -> tuple {
     i8_ptr = ir.IntType(8).as_pointer();
-    i64 = ir.IntType(64);
     entry_bb = release_fn.append_basic_block("entry");
-    dec_bb = release_fn.append_basic_block("dec");
     free_bb = release_fn.append_basic_block("do_free");
     done_bb = release_fn.append_basic_block("done");
     b = ir.IRBuilder(entry_bb);
-    # Null check
+    # Null check — skip if pointer is null (defensive)
     is_null = b.icmp_unsigned(
         "==", release_fn.args[0], ir.Constant(ptr_type, None), name="is.null"
     );
-    b.cbranch(is_null, done_bb, dec_bb);
-    # Decrement refcount
-    b = ir.IRBuilder(dec_bb);
-    raw_ptr = b.bitcast(release_fn.args[0], i8_ptr, name="raw.cast");
-    rc_raw = b.gep(raw_ptr, [ir.Constant(i64, -8)], name="rc.raw");
-    rc_ptr_r = b.bitcast(rc_raw, ir.IntType(64).as_pointer(), name="rc.ptr");
-    old_rc = b.load(rc_ptr_r, name="old.rc");
-    new_rc = b.sub(old_rc, ir.Constant(i64, 1), name="new.rc");
-    b.store(new_rc, rc_ptr_r);
-    is_zero = b.icmp_unsigned("==", new_rc, ir.Constant(i64, 0), name="is.zero");
-    b.cbranch(is_zero, free_bb, done_bb);
+    b.cbranch(is_null, done_bb, free_bb);
     # Return builder positioned at free_bb and the done_bb for later use
     free_builder = ir.IRBuilder(free_bb);
     return (free_builder, done_bb);
