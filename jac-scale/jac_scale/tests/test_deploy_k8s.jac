@@ -253,7 +253,20 @@ test "deploy all in one" {
     assert result.success is True;
     assert len(details) == 13;
 
-    full_status = deployment_target.get_full_status(app_name);
+    # Poll until all components are running. Prometheus (StatefulSet) takes longer
+    # than the app itself because its PVC must be provisioned before the pod starts.
+    full_status = None;
+    for _ in range(60) {
+        full_status = deployment_target.get_full_status(app_name);
+        if full_status
+        and all(
+            c.get("status") == "running" and c.get("ready") == c.get("total")
+            for c in full_status.get("components", [])
+        ) {
+            break;
+        }
+        time.sleep(5);
+    }
     assert full_status is not None;
     assert full_status["app_name"] == app_name;
     assert full_status["namespace"] == namespace;
@@ -269,7 +282,9 @@ test "deploy all in one" {
         assert "status" in component;
         assert "ready" in component;
         assert "total" in component;
-        assert component["status"] == "running";
+        assert component["status"] == "running" , f"Component '{component[
+            'name'
+        ]}' not running: {component}";
         assert component["ready"] == component["total"];
     }
     assert "urls" in full_status;
