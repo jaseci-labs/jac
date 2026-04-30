@@ -71,12 +71,9 @@ def _litellm_ctx_window(model_name: str) -> int {
 }
 
 
-"""Make a lightweight copy of a model for the compaction summarisation call.
-
-Resets call_params to {"compaction_enabled": False} so the copy cannot trigger
-another compaction and does not inherit any per-call settings from the active
-ReAct invocation. Works for both Model and ModelPool - copy.copy shares the
-already-built _router for pools so there is zero rebuild cost.
+"""Shallow copy of model for compaction - resets call_params and _usage_history
+so the summarisation call cannot recurse or inflate the outer loop's token totals.
+Works for both Model and ModelPool (shares the already-built _router at zero cost).
 """
 def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
     import copy;
@@ -89,17 +86,15 @@ def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
 }
 
 
-"""Default compaction logic: summarise old tool-call rounds into one message.
+"""Summarise old ReAct tool-call rounds into one compact message.
 
-Keeps messages[0] (system) and messages[1] (initial user task) verbatim.
-Walks from the end of the list, preserving the most-recent `keep_recent`
-assistant+tool-result blocks. Everything in between is sent to the LLM
-for summarisation and replaced with a single USER message.
+Always keeps messages[0] (system) and messages[1] (user task) verbatim. Preserves
+the last `keep_recent` complete assistant+tool_result rounds verbatim as immediate
+context. Everything between index 2 and the kept tail is replaced with a single
+summary user message tagged [Compacted context summary].
 
-`model` is the BaseLLM instance to use for the summarisation call - either
-a copy of the active model (default) or a user-specified compaction model.
-It must already have compaction_enabled=False in its call_params to prevent
-recursion.
+Assistant messages are serialised with their tool_calls (name+args) since content
+is None when a tool is called - without this the summary LLM loses the action.
 """
 def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
     # Need at least: system + user + 1 assistant + something to compact
@@ -124,7 +119,10 @@ def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
     if not compact_slice {
         return messages;
     }
-    # Serialise the slice for the summarisation call
+    # Serialise the slice for the summarisation call.
+    # Assistant messages have content=None when they only contain tool_calls,
+    # so we serialise the tool names+args explicitly - otherwise the summary
+    # LLM would see "[assistant] " with no content and lose the action context.
     lines: list = [];
     for msg in compact_slice {
         if isinstance(msg, dict) {
@@ -135,6 +133,29 @@ def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
                     p.get("text", "") if isinstance(p, dict) else str(p)
                     for p in content
                 );
+            }
+            if str(role) == "assistant" and not content {
+                tool_calls = msg.get("tool_calls") or [];
+                if tool_calls {
+                    descs: list = [];
+                    for tc in tool_calls {
+                        fn = tc.get("function", {})
+                            if isinstance(tc, dict)
+                            else (tc?.function or {});
+                        name = (
+                            fn.get("name", "?") if isinstance(fn, dict) else fn?.name
+                        )
+                        or "?";
+                        args = (
+                            fn.get("arguments", "")
+                                if isinstance(fn, dict)
+                                else fn?.arguments
+                        )
+                        or "";
+                        descs.append(f"{name}({args})");
+                    }
+                    content = "called: " + "; ".join(descs);
+                }
             }
             lines.append(f"[{role}] {content}");
         } else {
@@ -148,11 +169,6 @@ def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
         "may be needed to complete the ongoing task. Output plain text only.\n\n" + history_text
     );
     try {
-        # Single no-tools invocation through the full byLLM stack -
-        # inherits telemetry, prompt caching, and proxy config from the model.
-        # compaction_enabled=False (already set on model.call_params) prevents recursion.
-        # Two messages (system + user) are required so make_model_params / format_prompt
-        # can safely index messages[0] and messages[1].
         comp_mt_run = MTRuntime(
             messages=[
                 Message(
@@ -200,14 +216,8 @@ impl BaseLLM._get_ctx_window(call_params: dict) -> int {
 }
 
 
-"""Resolve compaction parameters for the current invocation.
-
-Reads from call_params (highest priority), self.call_params, and jac.toml
-in that order. Returns a plain dict so both invoke() and _invoke_streaming()
-can unpack the same values without duplicating the resolution logic.
-
-Keys: enabled (bool), threshold (float), keep_recent (int), model (str|None),
-      ctx_window (int).
+"""Resolve compaction config for one invocation (call_params > self.call_params > jac.toml).
+Returns dict with keys: enabled, threshold, keep_recent, model, ctx_window.
 """
 impl BaseLLM._resolve_compaction_params(mt_run: MTRuntime) -> dict {
     comp_cfg = get_byllm_config().get_compaction_config();
@@ -278,9 +288,7 @@ impl BaseLLM._compact_messages(
         }
     } else {
         if comp_model {
-            # User specified a different model name for compaction -
-            # create a fresh Model inheriting api_key and config (proxy, base_url)
-            # from self so routing still works.
+            # Named model - inherit api_key and config so proxy routing still works.
             model_for_compaction = Model(
                 model_name=comp_model,
                 api_key=self.api_key,
@@ -288,14 +296,10 @@ impl BaseLLM._compact_messages(
                 call_params={"compaction_enabled": False}
             );
         } else {
-            # Default: shallow-copy the active model (works for Model and ModelPool).
-            # The copy shares the already-built _router for pools at zero cost.
             model_for_compaction = _copy_for_compaction(self);
         }
         compacted = _default_compact(msg_dicts, keep_recent, model_for_compaction);
     }
-    # Write the compacted list back - replace Message objects with plain dicts
-    # (get_msg_list already serialised them; dicts are accepted by get_msg_list)
     mt_run.messages = compacted;
     removed = original_len - len(compacted);
     logger.info(

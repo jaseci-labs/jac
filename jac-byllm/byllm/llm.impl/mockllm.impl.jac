@@ -9,24 +9,11 @@ impl MockLLM.postinit -> None {
 
 """Dispatch the mock LLM call without streaming.
 
-Pops the next output from the configured 'outputs' list and returns it.
-Supports both regular outputs and MockToolCall objects.
-
-Each entry in 'outputs' may optionally be a (payload, usage) tuple to inject
-token-usage metadata - useful for testing threshold-based compaction:
-    outputs=[
-        (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
-        (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {})
-    ]
-
-The second element must be a dict whose keys are a subset of known usage fields
-("prompt_tokens", "completion_tokens", "total_tokens"). This prevents false
-positives when a by llm() function legitimately returns a tuple type - e.g.
-("hello", 42) is NOT treated as a usage tuple because 42 is not a dict, and
-("hello", {"custom": 1}) is NOT treated as one because "custom" is not a
-known usage key.
-
-Non-tuple entries behave exactly as before.
+Pops the next output from the configured 'outputs' list. Each entry may be a
+plain MockToolCall/string or a (MockToolCall, usage_dict) tuple to inject
+token-usage metadata for compaction threshold tests. The tuple form is only
+recognised when the first element is a MockToolCall and the second is a dict
+with only known usage keys - this avoids colliding with real tuple return types.
 """
 impl MockLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     params = self.make_model_params(mt_run);
