@@ -224,6 +224,7 @@ test "deploy all in one" {
     target_config["ingress_node_port"] = 30080;
     target_config["redis_dashboard"] = True;
     target_config["mongodb_dashboard"] = True;
+    target_config["loki_enabled"] = True;
 
     (repo_url, branch, commit) = _get_git_config();
     assert repo_url , "repo_url must be a non-empty string";
@@ -315,7 +316,9 @@ test "deploy all in one" {
     assert "password" in mongodb_secret.data;
     assert base64.b64decode(mongodb_secret.data["username"]).decode() == "admin";
     assert base64.b64decode(mongodb_secret.data["password"]).decode() == "password";
-    print(f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials");
+    print(
+        f"MongoDB Secret '{app_name}-mongodb-secret' exists with correct credentials"
+    );
 
     # Validate MongoDB StatefulSet uses secretKeyRef (env value is None when secretKeyRef is used)
     mongo_user_value = next(
@@ -548,8 +551,12 @@ test "deploy all in one" {
         name=f"{grafana_name}-datasources", namespace=namespace
     );
     assert "datasource.yaml" in grafana_ds.data;
-    assert "prometheus" in grafana_ds.data["datasource.yaml"];
-    print("Grafana datasource ConfigMap exists with Prometheus datasource");
+    ds_yaml = grafana_ds.data["datasource.yaml"];
+    assert "prometheus" in ds_yaml.lower();
+    assert "loki" in ds_yaml.lower();
+    assert "uid: loki" in ds_yaml;
+    assert "type: loki" in ds_yaml;
+    print("Grafana datasource ConfigMap exists with Prometheus and Loki datasources");
 
     grafana_dashboard = core_v1.read_namespaced_config_map(
         name=f"{grafana_name}-dashboard", namespace=namespace
@@ -558,8 +565,10 @@ test "deploy all in one" {
     assert "Jac Scale - App Metrics" in grafana_dashboard.data["jac-scale.json"];
     assert "k8s-metrics.json" in grafana_dashboard.data;
     assert "Kubernetes Cluster Metrics" in grafana_dashboard.data["k8s-metrics.json"];
+    assert "pod-logs.json" in grafana_dashboard.data;
+    assert "Pod Logs" in grafana_dashboard.data["pod-logs.json"];
     print(
-        "Grafana dashboard ConfigMap exists with Jac Scale + Kubernetes Cluster Metrics dashboards"
+        "Grafana dashboard ConfigMap exists with Jac Scale + K8s Metrics + Pod Logs dashboards"
     );
 
     grafana_provider = core_v1.read_namespaced_config_map(
@@ -567,6 +576,86 @@ test "deploy all in one" {
     );
     assert "provider.yaml" in grafana_provider.data;
     print("Grafana dashboard provider ConfigMap exists");
+
+    # Validate Loki Deployment, Service, ConfigMap, and ServiceAccount
+    loki_name = f"{app_name}-loki";
+    loki_deploy = apps_v1.read_namespaced_deployment(
+        name=loki_name, namespace=namespace
+    );
+    assert loki_deploy.metadata.name == loki_name;
+    assert loki_deploy.spec.replicas == 1;
+    loki_container = loki_deploy.spec.template.spec.containers[0];
+    assert loki_container.image == "grafana/loki:3.4.2";
+    loki_sc = loki_container.security_context;
+    assert loki_sc.run_as_non_root is True;
+    assert loki_sc.read_only_root_filesystem is True;
+    assert loki_sc.allow_privilege_escalation is False;
+    assert loki_sc.capabilities.drop == ["ALL"];
+    print(f"Loki Deployment '{loki_name}' exists with hardened security context");
+
+    loki_service = core_v1.read_namespaced_service(
+        name=f"{loki_name}-service", namespace=namespace
+    );
+    assert loki_service.spec.type == "ClusterIP";
+    assert loki_service.spec.ports[0].port == 3100;
+    print(f"Loki Service '{loki_name}-service' (ClusterIP:3100) exists");
+
+    loki_config = core_v1.read_namespaced_config_map(
+        name=f"{loki_name}-config", namespace=namespace
+    );
+    assert "loki.yaml" in loki_config.data;
+    assert "http_listen_port: 3100" in loki_config.data["loki.yaml"];
+    assert "store: tsdb" in loki_config.data["loki.yaml"];
+    print(f"Loki ConfigMap '{loki_name}-config' exists with correct config");
+
+    loki_sa = core_v1.read_namespaced_service_account(
+        name=f"{loki_name}-sa", namespace=namespace
+    );
+    assert loki_sa.metadata.name == f"{loki_name}-sa";
+    assert loki_sa.automount_service_account_token is False;
+    print(f"Loki ServiceAccount '{loki_name}-sa' exists with token automount disabled");
+
+    # Validate Promtail DaemonSet, ConfigMap, ServiceAccount, ClusterRole, ClusterRoleBinding
+    promtail_name = f"{app_name}-promtail";
+    promtail_cr_name = f"{namespace}-{promtail_name}";
+
+    promtail_ds = apps_v1.read_namespaced_daemon_set(
+        name=promtail_name, namespace=namespace
+    );
+    assert promtail_ds.metadata.name == promtail_name;
+    promtail_container = promtail_ds.spec.template.spec.containers[0];
+    assert promtail_container.image == "grafana/promtail:3.4.2";
+    tolerations = promtail_ds.spec.template.spec.tolerations;
+    assert any(
+        t.operator == "Exists" and t.effect == "NoSchedule" for t in tolerations
+    ) , "Promtail must tolerate NoSchedule to run on all nodes";
+    print(f"Promtail DaemonSet '{promtail_name}' exists with NoSchedule toleration");
+
+    promtail_config = core_v1.read_namespaced_config_map(
+        name=f"{promtail_name}-config", namespace=namespace
+    );
+    assert "promtail.yaml" in promtail_config.data;
+    promtail_yaml = promtail_config.data["promtail.yaml"];
+    assert "/loki/api/v1/push" in promtail_yaml;
+    assert f"{loki_name}-service" in promtail_yaml;
+    assert "kubernetes_sd_configs" in promtail_yaml;
+    print(
+        f"Promtail ConfigMap '{promtail_name}-config' exists pointing to Loki with K8s SD"
+    );
+
+    promtail_sa = core_v1.read_namespaced_service_account(
+        name=f"{promtail_name}-sa", namespace=namespace
+    );
+    assert promtail_sa.metadata.name == f"{promtail_name}-sa";
+    print(f"Promtail ServiceAccount '{promtail_name}-sa' exists");
+
+    promtail_cr = rbac_v1.read_cluster_role(name=promtail_cr_name);
+    assert promtail_cr.metadata.name == promtail_cr_name;
+    print(f"Promtail ClusterRole '{promtail_cr_name}' exists");
+
+    promtail_crb = rbac_v1.read_cluster_role_binding(name=promtail_cr_name);
+    assert promtail_crb.metadata.name == promtail_cr_name;
+    print(f"Promtail ClusterRoleBinding '{promtail_cr_name}' exists");
 
     # Validate kube-state-metrics Deployment, Service, ServiceAccount, ClusterRole,ClusterRoleBinding
     ksm_deploy = apps_v1.read_namespaced_deployment(name=ksm_name, namespace=namespace);
@@ -597,7 +686,9 @@ test "deploy all in one" {
     print(f"kube-state-metrics ClusterRoleBinding '{cluster_role_name}' exists");
 
     # Validate node-exporter DaemonSet and Service
-    ne_daemonset = apps_v1.read_namespaced_daemon_set(name=ne_name, namespace=namespace);
+    ne_daemonset = apps_v1.read_namespaced_daemon_set(
+        name=ne_name, namespace=namespace
+    );
     assert ne_daemonset.metadata.name == ne_name;
     print(f"node-exporter DaemonSet '{ne_name}' exists");
 
@@ -883,7 +974,9 @@ test "deploy all in one" {
     assert ri_ingress.metadata.name == redis_ingress_name;
     ri_paths = [p.path for rule in ri_ingress.spec.rules for p in rule.http.paths];
     assert any(p.startswith("/cache-dashboard") for p in ri_paths) , f"Redis Insight ingress must route '/cache-dashboard'; got: {ri_paths}";
-    print(f"Redis Insight Ingress '{redis_ingress_name}' exists with route: {ri_paths}");
+    print(
+        f"Redis Insight Ingress '{redis_ingress_name}' exists with route: {ri_paths}"
+    );
 
     # Send POST request to create a todo (with retry for 503)
     url = f"http://localhost:{ingress_node_port}/walker/create_todo";
@@ -1208,7 +1301,9 @@ test "deploy all in one" {
 
     # Verify database cleanup (first destroyed by full destroy)
     try {
-        apps_v1.read_namespaced_stateful_set(f"{app_name}-mongodb", namespace=namespace);
+        apps_v1.read_namespaced_stateful_set(
+            f"{app_name}-mongodb", namespace=namespace
+        );
         raise AssertionError("MongoDB StatefulSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
@@ -1381,6 +1476,83 @@ test "deploy all in one" {
         }
     }
 
+    # Verify Loki resources are gone
+    loki_name = f"{app_name}-loki";
+    promtail_name = f"{app_name}-promtail";
+    promtail_cr_name = f"{namespace}-{promtail_name}";
+
+    try {
+        apps_v1.read_namespaced_deployment(loki_name, namespace=namespace);
+        raise AssertionError("Loki Deployment should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service(f"{loki_name}-service", namespace=namespace);
+        raise AssertionError("Loki Service should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(f"{loki_name}-config", namespace=namespace);
+        raise AssertionError("Loki ConfigMap should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{loki_name}-sa", namespace=namespace
+        );
+        raise AssertionError("Loki ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    # Verify Promtail resources are gone
+    try {
+        apps_v1.read_namespaced_daemon_set(promtail_name, namespace=namespace);
+        raise AssertionError("Promtail DaemonSet should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_config_map(
+            f"{promtail_name}-config", namespace=namespace
+        );
+        raise AssertionError("Promtail ConfigMap should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        core_v1.read_namespaced_service_account(
+            name=f"{promtail_name}-sa", namespace=namespace
+        );
+        raise AssertionError("Promtail ServiceAccount should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role(name=promtail_cr_name);
+        raise AssertionError("Promtail ClusterRole should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    try {
+        rbac_v1.read_cluster_role_binding(name=promtail_cr_name);
+        raise AssertionError("Promtail ClusterRoleBinding should have been deleted");
+    } except ApiException as e {
+        assert e.status == 404 , f"Expected 404, got {e.status}";
+    }
+
+    print("Loki and Promtail cleanup verified");
+
     # Verify MongoDB ServiceAccount is gone
     try {
         core_v1.read_namespaced_service_account(
@@ -1429,7 +1601,9 @@ test "deploy all in one" {
     }
 
     try {
-        core_v1.read_namespaced_secret(name=redis_auth_secret_name, namespace=namespace);
+        core_v1.read_namespaced_secret(
+            name=redis_auth_secret_name, namespace=namespace
+        );
         raise AssertionError("Redis Insight auth Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
@@ -1504,7 +1678,9 @@ test "deploy all in one" {
     }
 
     try {
-        core_v1.read_namespaced_secret(name='letsencrypt-prod-key', namespace=namespace);
+        core_v1.read_namespaced_secret(
+            name='letsencrypt-prod-key', namespace=namespace
+        );
         raise AssertionError("ACME private key Secret should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404 for letsencrypt-prod-key Secret, got {e.status}";
@@ -1985,7 +2161,9 @@ test "deploy with domain set stores domain in annotation not ingress host rule" 
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing (first deploy) so create path is taken
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
+        status=404
+    );
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
@@ -2029,7 +2207,9 @@ test "redis ingress rule must not set host before TLS is enabled" {
 
     mock_networking_v1 = unittest.mock.MagicMock();
     # Simulate ingress not yet existing for both main and Redis ingresses
-    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(status=404);
+    mock_networking_v1.replace_namespaced_ingress.side_effect = ApiException(
+        status=404
+    );
 
     mock_core_v1 = unittest.mock.MagicMock();
     # Simulate basic-auth secret not yet existing (replace returns 404, so create path is taken)
