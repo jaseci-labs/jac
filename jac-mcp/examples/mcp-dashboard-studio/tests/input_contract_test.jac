@@ -14,7 +14,17 @@ import from main {
     get_ast,
     explain_error,
     get_example,
-    search_docs
+    search_docs,
+    jac_to_js,
+    jac_to_py,
+    run_jac,
+    lint_jac,
+    graph_visualize,
+    get_command,
+    execute_command,
+    get_resource,
+    list_commands,
+    understand_jac_and_jaseci
 }
 import from backend.utils { extract_first_error }
 
@@ -84,6 +94,66 @@ def _check_search_docs(query: str) {
     assert r["tool"] == "search_docs" , f"Expected tool=search_docs, got {r['tool']}";
 }
 
+def _check_jac_to_js(code: str) {
+    w = root spawn jac_to_js(code=code);
+    r = w.reports[0];
+    assert not r["ok"] , f"jac_to_js: expected ok=false for {repr(code)}";
+    assert r["tool"] == "jac_to_js" , f"Expected tool=jac_to_js, got {r['tool']}";
+}
+
+def _check_jac_to_py(code: str) {
+    w = root spawn jac_to_py(code=code);
+    r = w.reports[0];
+    assert not r["ok"] , f"jac_to_py: expected ok=false for {repr(code)}";
+    assert r["tool"] == "jac_to_py" , f"Expected tool=jac_to_py, got {r['tool']}";
+}
+
+def _check_run_jac(code: str) {
+    w = root spawn run_jac(code=code);
+    r = w.reports[0];
+    assert not r["ok"] , f"run_jac: expected ok=false for {repr(code)}";
+    assert r["tool"] == "run_jac" , f"Expected tool=run_jac, got {r['tool']}";
+}
+
+def _check_lint_jac(code: str) {
+    w = root spawn lint_jac(code=code);
+    r = w.reports[0];
+    assert not r["ok"] , f"lint_jac: expected ok=false for {repr(code)}";
+    assert r["tool"] == "lint_jac" , f"Expected tool=lint_jac, got {r['tool']}";
+}
+
+def _check_graph_visualize(code: str) {
+    w = root spawn graph_visualize(code=code);
+    r = w.reports[0];
+    assert not r["ok"] , f"graph_visualize: expected ok=false for {repr(code)}";
+    assert r["tool"] == "graph_visualize" , f"Expected tool=graph_visualize, got {r[
+        'tool'
+    ]}";
+}
+
+def _check_get_command(name: str) {
+    w = root spawn get_command(name=name);
+    r = w.reports[0];
+    assert not r["ok"] , f"get_command: expected ok=false for {repr(name)}";
+    assert r["tool"] == "get_command" , f"Expected tool=get_command, got {r['tool']}";
+}
+
+def _check_execute_command(command: str) {
+    w = root spawn execute_command(command=command);
+    r = w.reports[0];
+    assert not r["ok"] , f"execute_command: expected ok=false for {repr(command)}";
+    assert r["tool"] == "execute_command" , f"Expected tool=execute_command, got {r[
+        'tool'
+    ]}";
+}
+
+def _check_get_resource(uri: str) {
+    w = root spawn get_resource(uri=uri);
+    r = w.reports[0];
+    assert not r["ok"] , f"get_resource: expected ok=false for {repr(uri)}";
+    assert r["tool"] == "get_resource" , f"Expected tool=get_resource, got {r['tool']}";
+}
+
 # Response envelope shape fixture
 # Every walker response must carry these four keys — parametrize ensures each
 # key is individually verified so a missing key produces a focused failure.
@@ -102,6 +172,16 @@ def _check_explain_error_envelope(key: str) {
 def _check_search_docs_envelope(key: str) {
     w = root spawn search_docs(query="");
     assert key in w.reports[0] , f"search_docs response missing required key: '{key}'";
+}
+
+def _check_list_commands_envelope(key: str) {
+    w = root spawn list_commands();
+    assert key in w.reports[0] , f"list_commands response missing required key: '{key}'";
+}
+
+def _check_understand_jac_and_jaseci_envelope(key: str) {
+    w = root spawn understand_jac_and_jaseci();
+    assert key in w.reports[0] , f"understand_jac_and_jaseci response missing required key: '{key}'";
 }
 
 # extract_first_error fixture table
@@ -136,23 +216,37 @@ def _check_extract_first_error(pair: tuple) {
 
 # Registration
 
-# Code-walker blank input fixture: 6 variants × 5 walkers = 30 tests
+# Code-walker blank input fixture: 6 variants × 10 walkers = 60 tests
 with entry {
     parametrize("validate_jac_blank", BLANK_CODE, _check_validate_jac);
     parametrize("check_syntax_blank", BLANK_CODE, _check_check_syntax);
     parametrize("format_jac_blank", BLANK_CODE, _check_format_jac);
     parametrize("py_to_jac_blank", BLANK_CODE, _check_py_to_jac);
     parametrize("get_ast_blank", BLANK_CODE, _check_get_ast);
+    parametrize("jac_to_js_blank", BLANK_CODE, _check_jac_to_js);
+    parametrize("jac_to_py_blank", BLANK_CODE, _check_jac_to_py);
+    parametrize("run_jac_blank", BLANK_CODE, _check_run_jac);
+    parametrize("lint_jac_blank", BLANK_CODE, _check_lint_jac);
+    parametrize("graph_visualize_blank", BLANK_CODE, _check_graph_visualize);
 
     # Non-code blank input fixtures
     parametrize("explain_error_blank", BLANK_MESSAGE, _check_explain_error);
     parametrize("get_example_blank", BLANK_NAME, _check_get_example);
     parametrize("search_docs_blank", BLANK_QUERY, _check_search_docs);
+    parametrize("get_command_blank", BLANK_NAME, _check_get_command);
+    parametrize("execute_command_blank", BLANK_NAME, _check_execute_command);
+    parametrize("get_resource_blank", BLANK_NAME, _check_get_resource);
 
-    # Response envelope shape: 4 keys × 3 walkers = 12 tests
+    # Response envelope shape: 4 keys × 5 walkers = 20 tests
     parametrize("validate_jac_envelope", ENVELOPE_KEYS, _check_validate_jac_envelope);
     parametrize("explain_error_envelope", ENVELOPE_KEYS, _check_explain_error_envelope);
     parametrize("search_docs_envelope", ENVELOPE_KEYS, _check_search_docs_envelope);
+    parametrize("list_commands_envelope", ENVELOPE_KEYS, _check_list_commands_envelope);
+    parametrize(
+        "understand_jac_and_jaseci_envelope",
+        ENVELOPE_KEYS,
+        _check_understand_jac_and_jaseci_envelope
+    );
 
     # extract_first_error: 8 fixture rows
     parametrize("extract_first_error", ERROR_FIXTURES, _check_extract_first_error);

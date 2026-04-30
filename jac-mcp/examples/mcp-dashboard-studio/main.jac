@@ -10,7 +10,17 @@ import from backend.service {
     explain_error_service,
     list_examples_service,
     get_example_service,
-    search_docs_service
+    search_docs_service,
+    jac_to_js_service,
+    jac_to_py_service,
+    run_jac_service,
+    lint_jac_service,
+    graph_visualize_service,
+    list_commands_service,
+    get_command_service,
+    execute_command_service,
+    understand_jac_and_jaseci_service,
+    get_resource_service
 }
 
 import from backend.utils {
@@ -163,12 +173,152 @@ walker:pub search_docs {
     }
 }
 
+walker:pub jac_to_js {
+    has code: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.code.strip() {
+            report empty_code_response("jac_to_js");
+            disengage;
+        }
+        report jac_to_js_service(self.code);
+    }
+}
+
+walker:pub jac_to_py {
+    has code: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.code.strip() {
+            report empty_code_response("jac_to_py");
+            disengage;
+        }
+        report jac_to_py_service(self.code);
+    }
+}
+
+walker:pub run_jac {
+    has code: str,
+        entrypoint: str = "",
+        timeout: int = 30,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.code.strip() {
+            report empty_code_response("run_jac");
+            disengage;
+        }
+        report run_jac_service(self.code, self.entrypoint, self.timeout);
+    }
+}
+
+walker:pub lint_jac {
+    has code: str,
+        auto_fix: bool = False,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.code.strip() {
+            report empty_code_response("lint_jac");
+            disengage;
+        }
+        report lint_jac_service(self.code, self.auto_fix);
+    }
+}
+
+walker:pub graph_visualize {
+    has code: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.code.strip() {
+            report empty_code_response("graph_visualize");
+            disengage;
+        }
+        report graph_visualize_service(self.code);
+    }
+}
+
+walker:pub list_commands {
+    has output: dict = {};
+
+    can run with Root entry {
+        report list_commands_service();
+    }
+}
+
+walker:pub get_command {
+    has name: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.name.strip() {
+            report {
+                "ok": False,
+                "tool": "get_command",
+                "data": {},
+                "error": {"message": "Command name cannot be empty."}
+            };
+            disengage;
+        }
+        report get_command_service(self.name);
+    }
+}
+
+walker:pub execute_command {
+    has command: str,
+        args: list[str] = [],
+        timeout: int = 30,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.command.strip() {
+            report {
+                "ok": False,
+                "tool": "execute_command",
+                "data": {},
+                "error": {"message": "Command cannot be empty."}
+            };
+            disengage;
+        }
+        report execute_command_service(self.command, self.args, self.timeout);
+    }
+}
+
+walker:pub understand_jac_and_jaseci {
+    has output: dict = {};
+
+    can run with Root entry {
+        report understand_jac_and_jaseci_service();
+    }
+}
+
+walker:pub get_resource {
+    has uri: str,
+        output: dict = {};
+
+    can run with Root entry {
+        if not self.uri.strip() {
+            report {
+                "ok": False,
+                "tool": "get_resource",
+                "data": {},
+                "error": {"message": "URI is required"}
+            };
+            disengage;
+        }
+        report get_resource_service(self.uri);
+    }
+}
+
 # Frontend entry
 cl {
-    import from ".frontend.Dashboard" { DashboardPage }
+    import from ".frontend.AppRoot" { AppRoot }
 
     def:pub app -> JsxElement {
         return
-            <DashboardPage/>;
+            <AppRoot/>;
     }
 }

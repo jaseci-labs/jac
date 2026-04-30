@@ -185,3 +185,49 @@ def:pub get_example_service(name: str) -> dict {
 def:pub search_docs_service(query: str) -> dict {
     return call_mcp_tool("search_docs", {"query": query});
 }
+
+def:pub jac_to_js_service(code: str) -> dict {
+    return call_mcp_tool("jac_to_js", {"code": code});
+}
+
+def:pub jac_to_py_service(code: str) -> dict {
+    return call_mcp_tool("jac_to_py", {"code": code});
+}
+
+def:pub run_jac_service(code: str, entrypoint: str = "", timeout: int = 30) -> dict {
+    args: dict = {"code": code, "timeout": timeout};
+    if entrypoint {
+        args["entrypoint"] = entrypoint;
+    }
+    return call_mcp_tool("run_jac", args);
+}
+
+def:pub lint_jac_service(code: str, auto_fix: bool = False) -> dict {
+    return call_mcp_tool("lint_jac", {"code": code, "auto_fix": auto_fix});
+}
+
+def:pub graph_visualize_service(code: str) -> dict {
+    return call_mcp_tool("graph_visualize", {"code": code});
+}
+
+def:pub list_commands_service -> dict {
+    return call_mcp_tool("list_commands", {});
+}
+
+def:pub get_command_service(name: str) -> dict {
+    return call_mcp_tool("get_command", {"name": name});
+}
+
+def:pub execute_command_service(command: str, args: list[str], timeout: int) -> dict {
+    return call_mcp_tool(
+        "execute_command", {"command": command, "args": args, "timeout": timeout}
+    );
+}
+
+def:pub understand_jac_and_jaseci_service -> dict {
+    return call_mcp_tool("understand_jac_and_jaseci", {});
+}
+
+def:pub get_resource_service(uri: str) -> dict {
+    return call_mcp_tool("get_resource", {"uri": uri});
+}

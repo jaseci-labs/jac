@@ -303,27 +303,27 @@ wheels = [
 
 [[package]]
 name = "jac-client"
-version = "0.3.9"
+version = "0.3.11"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jaclang" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8d/83/0975b44c89cd5dc93a416b77adb30f72a81bb91f7f5f69ecb5bfdfd59f3d/jac_client-0.3.9.tar.gz", hash = "sha256:0ad2fb0b7d56327c5245a63481c9247b21acadeca6110192cda39692d19a9436", size = 724651, upload-time = "2026-03-27T13:16:42.393Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2a/49/b5de04747c92038a07a2e4ccbe8d8ca0232cf49066230d3d2bec47a639d7/jac_client-0.3.11.tar.gz", hash = "sha256:0c52223a7072fc770bcd258906bbcedeb0a17089d49706779620b5fd58c7d92f", size = 741861, upload-time = "2026-04-02T17:01:52.053Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e2/68/40b095f444b25d73b0dab768ed4bf02488e635be9c6f04a1d7cfd38c7834/jac_client-0.3.9-py3-none-any.whl", hash = "sha256:cac6236aa058860ae6536257e707ee7d96df6b0a0ae612698153b9e727b1b479", size = 913541, upload-time = "2026-03-27T13:16:39.923Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/e7/24cecc5e763813406b6fe689d5e47b7e08399093b790bc28609e8ad3f9eb/jac_client-0.3.11-py3-none-any.whl", hash = "sha256:e2808a6c295ed8561bb740ece512d0bfad10efa7def86bf4b2821d565da84a4b", size = 930587, upload-time = "2026-04-02T17:01:50.735Z" },
 ]
 
 [[package]]
 name = "jac-mcp"
-version = "0.1.8"
+version = "0.1.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jaclang" },
     { name = "mcp" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/94/0f/d4f66b77ae44f104d8dbd01098b7dccb667b162a8e1d0d8389a8efdbd5be/jac_mcp-0.1.8.tar.gz", hash = "sha256:c98d812c1ff00da0c83c4af797b8d5873e4576f6251c105db08cf2904eb4d6c1", size = 490140, upload-time = "2026-03-27T13:16:43.548Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/04/81/348fd5ae0e10a64c79832b422c87d3bd6097bd72baba8b0cfea4219da58f/jac_mcp-0.1.10.tar.gz", hash = "sha256:c15b442d36215963090669928e3ae625f24eb32072a0b3f76471ccc6ca6e36f6", size = 513917, upload-time = "2026-04-03T14:38:05.244Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/83/70/17eddc53468d4f65e2090916e7e6c783a4283dc5b5b1f9055b4e2cbd2a77/jac_mcp-0.1.8-py3-none-any.whl", hash = "sha256:f44fed8b9718027e8e133b855d11a81241682879909c5c00cdc2157c605e3b69", size = 541534, upload-time = "2026-03-27T13:16:40.836Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/72/2f61ea260d12c407be106aa6c401f0d1ee893b88afd9150de8f40c586a6b/jac_mcp-0.1.10-py3-none-any.whl", hash = "sha256:9ccebc1b2b24a4b8ea97bd435f8aa8e33fbcb745908532eba6b2a1e8a0125ee8", size = 568094, upload-time = "2026-04-03T14:38:04.159Z" },
 ]
 
 [[package]]
@@ -340,23 +340,23 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "jac-client", specifier = ">=0.3.9" },
-    { name = "jac-mcp", specifier = "==0.1.8" },
-    { name = "jaclang", specifier = ">=0.13.2" },
+    { name = "jac-client", specifier = ">=0.3.11" },
+    { name = "jac-mcp", specifier = "==0.1.10" },
+    { name = "jaclang", specifier = ">=0.13.5" },
     { name = "requests", specifier = ">=2.33.0" },
     { name = "watchdog", specifier = ">=6.0.0" },
 ]
 
 [[package]]
 name = "jaclang"
-version = "0.13.2"
+version = "0.13.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "llvmlite" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2b/73/6fe8604263b7591253dea7bdc1b6db706f85079ef029844e3d82e919ff42/jaclang-0.13.2.tar.gz", hash = "sha256:2b40da7d357dc592c2b2da24c825376d9b74c3d6ea8ab2cda9662d8e7feef045", size = 8616637, upload-time = "2026-03-27T13:16:11.862Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ac/35/b0f2e2c24a30ae2e6ca2db422864990045548f13b499234554b6e5197efa/jaclang-0.13.5.tar.gz", hash = "sha256:2be40062a414a34e44fd2b868dc0e3981997be7ab6b33719d2c0a7059bc1c3e1", size = 8662839, upload-time = "2026-04-03T14:37:41.686Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0a/9f/81081f79687e0972cd615f513db849cda877a9f39d1a19c9eba8eb161a07/jaclang-0.13.2-py3-none-any.whl", hash = "sha256:44fdca4d00d952ebdd4a578e8566a51ac8a69635038af27ea820c257269d25c2", size = 10918566, upload-time = "2026-03-27T13:16:09.487Z" },
+    { url = "https://files.pythonhosted.org/packages/3c/c4/9f94e1dc0d09d47f8967f4016e0917ab05a544406c1301e8722ff7a165e3/jaclang-0.13.5-py3-none-any.whl", hash = "sha256:c6731e588cbeee955ceed3821e439f235b69b9f26d868a3c6f13ca7805f9af88", size = 10966612, upload-time = "2026-04-03T14:37:39.016Z" },
 ]
 
 [[package]]
