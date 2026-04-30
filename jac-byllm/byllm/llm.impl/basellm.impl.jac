@@ -168,27 +168,18 @@ def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
         "Preserve key findings, decisions, and intermediate results that "
         "may be needed to complete the ongoing task. Output plain text only.\n\n" + history_text
     );
-    try {
-        comp_mt_run = MTRuntime(
-            messages=[
-                Message(
-                    role=MessageRole.SYSTEM, content="You are a concise summariser."
-                ),
-                Message(role=MessageRole.USER, content=summary_prompt)
-            ],
-            tools=[],
-            resp_type=str,
-            stream=False,
-            call_params={"compaction_enabled": False},
-            mtir=None
-        );
-        summary = str(model.invoke(comp_mt_run));
-    } except Exception as e {
-        logger.warning(
-            f"byLLM compaction: summarisation call failed - {e}. Skipping compaction."
-        );
-        return messages;
-    }
+    comp_mt_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content="You are a concise summariser."),
+            Message(role=MessageRole.USER, content=summary_prompt)
+        ],
+        tools=[],
+        resp_type=str,
+        stream=False,
+        call_params={"compaction_enabled": False},
+        mtir=None
+    );
+    summary = str(model.invoke(comp_mt_run));
     summary_msg = {
         "role": "user",
         "content": f"[Compacted context summary]\n{summary}"
@@ -300,8 +291,16 @@ impl BaseLLM._compact_messages(
         }
         compacted = _default_compact(msg_dicts, keep_recent, model_for_compaction);
     }
-    mt_run.messages = compacted;
     removed = original_len - len(compacted);
+    if removed == 0 and original_len >= 4 {
+        # _default_compact returned unchanged (compact_slice was non-empty but
+        # summarisation produced nothing new) or hook returned same length.
+        raise CompactionNotEffectiveError(
+            "Compaction produced no reduction in message history - "
+            "check on_compaction hook or compaction model."
+        );
+    }
+    mt_run.messages = compacted;
     logger.info(
         f"byLLM compaction: reduced message list from {original_len} to {len(
             compacted
