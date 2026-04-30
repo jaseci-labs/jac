@@ -63,7 +63,9 @@ obj IdentityStorage {
     def get_user_by_sso(platform: str, external_id: str) -> dict[str, Any] | None;
     # Concrete public methods (shared business logic in base impl)
     def create_user(
-        identities: list[dict[str, Any]], credential: dict[str, Any]
+        identities: list[dict[str, Any]],
+        credential: dict[str, Any],
+        profile: dict[str, Any] | None = None
     ) -> dict[str, Any];
 
     def user_exists_by_id(user_id: str) -> bool;
