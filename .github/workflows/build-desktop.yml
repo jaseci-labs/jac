@@ -1,0 +1,220 @@
+name: Build desktop apps (linux)
+
+# Builds Linux .deb + .rpm installers for desktop apps and uploads them
+# as workflow artifacts you can download from the run summary.
+#
+# Matrix runs two builds in parallel:
+#   - protomcp:   ProtoMcp (fetched from MusabMahmoodh/jaseci@audit/protomcp).
+#                 Full plugin set: jac_scale, byllm, jac_mcp.
+#   - all-in-one: jac-client/jac_client/examples/all-in-one.
+#                 Baseline plugins: jac_scale, byllm.
+#
+# Triggered on push touching jaclang / jac-client / jac-scale / this
+# workflow, or via manual workflow_dispatch.
+
+on:
+  push:
+    paths:
+      - .github/workflows/build-desktop.yml
+      - jac/**
+      - jac-client/**
+      - jac-scale/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: protomcp
+            example_dir: ProtoMcp
+            with_mcp: true
+          - target: all-in-one
+            example_dir: jac-client/jac_client/examples/all-in-one
+            with_mcp: false
+
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ProtoMcp lives on a fork branch; fetch just that subtree.
+      - name: Checkout ProtoMcp source
+        if: matrix.target == 'protomcp'
+        uses: actions/checkout@v4
+        with:
+          repository: MusabMahmoodh/jaseci
+          ref: audit/protomcp
+          path: protomcp-src
+          sparse-checkout: ProtoMcp
+
+      - name: Stage ProtoMcp at repo root
+        if: matrix.target == 'protomcp'
+        run: |
+          mv protomcp-src/ProtoMcp ./ProtoMcp
+          rm -rf protomcp-src
+
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev \
+            patchelf libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-reg-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: cargo-reg-${{ matrix.target }}-
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      # jaclang / jac-client / jac-scale editable from this checkout so
+      # any in-branch fixes are exercised. byllm + (when needed) jac-mcp
+      # and jasketch-mcp-server come from PyPI.
+      - name: Install Jac packages
+        shell: bash
+        run: |
+          pip install --upgrade pip
+          pip install -e ./jac
+          pip install -e ./jac-client
+          pip install -e ./jac-scale
+          pip install byllm
+          if [ "${{ matrix.with_mcp }}" = "true" ]; then
+            pip install jac-mcp jasketch-mcp-server
+          fi
+          pip install pyinstaller Pillow
+
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Tauri CLI
+        shell: bash
+        run: |
+          if command -v cargo-tauri &>/dev/null; then
+            echo "cargo-tauri already installed"
+          elif command -v cargo-binstall &>/dev/null || \
+               (curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash); then
+            cargo binstall tauri-cli --no-confirm --no-discover-github-token || \
+              cargo install tauri-cli --locked
+          else
+            cargo install tauri-cli --locked
+          fi
+
+      - name: Setup desktop target
+        working-directory: ${{ matrix.example_dir }}
+        shell: bash
+        run: |
+          rm -rf src-tauri
+          jac setup desktop
+
+      # Pin [desktop.plugins] explicitly so the build is reproducible
+      # regardless of what the example's jac.toml ships with.
+      - name: Configure desktop plugins
+        working-directory: ${{ matrix.example_dir }}
+        env:
+          MCP: ${{ matrix.with_mcp }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          p = Path('jac.toml')
+          text = p.read_text() if p.exists() else ''
+          text = re.sub(r'\[desktop\.plugins\][^\[]*', '', text).rstrip()
+          mcp = os.environ.get('MCP', 'false').lower() == 'true'
+          block = (
+              '\n\n[desktop.plugins]\n'
+              'jac_scale = true\n'
+              'byllm = true\n'
+              'jac_coder = false\n'
+              f'jac_mcp = {"true" if mcp else "false"}\n'
+              'jac_client = true\n'
+          )
+          p.write_text(text + block)
+          PY
+
+      # AppImage staging trips on long bundle paths in CI runners; deb +
+      # rpm cover Linux distribution adequately for downloadable artifacts.
+      - name: Force deb+rpm bundles only
+        working-directory: ${{ matrix.example_dir }}
+        run: |
+          python3 - <<'PY'
+          import json
+          conf = 'src-tauri/tauri.conf.json'
+          with open(conf) as f: c = json.load(f)
+          c['bundle']['targets'] = ['deb', 'rpm']
+          with open(conf, 'w') as f: json.dump(c, f, indent=2)
+          PY
+
+      - name: Build desktop app
+        working-directory: ${{ matrix.example_dir }}
+        env:
+          JAC_BUILD: "1"
+          NO_STRIP: "true"
+        run: jac build --client desktop --platform linux
+        timeout-minutes: 30
+
+      - name: List installers
+        working-directory: ${{ matrix.example_dir }}
+        shell: bash
+        run: |
+          ls -lh src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb \
+                 src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm \
+                 2>&1 || true
+
+      - name: Upload deb installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-linux-deb
+          path: ${{ matrix.example_dir }}/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload rpm installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}-linux-rpm
+          path: ${{ matrix.example_dir }}/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Job summary
+        if: always()
+        working-directory: ${{ matrix.example_dir }}
+        shell: bash
+        run: |
+          {
+            echo "## \`${{ matrix.target }}\` — linux"
+            echo ""
+            deb=$(ls src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/deb/*.deb 2>/dev/null | head -1)
+            rpm=$(ls src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/rpm/*.rpm 2>/dev/null | head -1)
+            if [ -n "$deb" ]; then
+              echo "- deb: \`$(basename "$deb")\` ($(du -h "$deb" | cut -f1))"
+            fi
+            if [ -n "$rpm" ]; then
+              echo "- rpm: \`$(basename "$rpm")\` ($(du -h "$rpm" | cut -f1))"
+            fi
+            echo ""
+            echo "Download via the **Artifacts** section of the run summary."
+          } >> "$GITHUB_STEP_SUMMARY"
