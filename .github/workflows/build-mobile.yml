@@ -1,0 +1,186 @@
+name: Build Mobile Apps
+
+on:
+  # Manual trigger with options
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: 'Platform to build'
+        required: true
+        type: choice
+        options:
+          - all
+          - ios
+          - android
+        default: 'all'
+      profile:
+        description: 'Build profile'
+        required: true
+        type: choice
+        options:
+          - development
+          - preview
+          - production
+        default: 'preview'
+      app_path:
+        description: 'Path to the app to build'
+        required: false
+        default: 'jac-client/jac_client/examples/all-in-one'
+
+jobs:
+  build-mobile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Dynamically set platform based on input
+        platform: ${{ fromJSON(github.event.inputs.platform == 'all' && '["ios", "android"]' || format('["{0}"]', github.event.inputs.platform)) }}
+
+    name: Build ${{ matrix.platform }} (${{ github.event.inputs.profile }})
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          submodules: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.12
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Yarn
+        run: npm install -g yarn
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Verify EAS CLI installation
+        run: eas --version
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e jac
+          pip install -e jac-client
+
+      - name: Verify jac installation
+        run: jac --version
+
+      - name: Check if mobile directory exists
+        id: check_mobile
+        working-directory: ${{ github.event.inputs.app_path }}
+        run: |
+          if [ -d "mobile" ]; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Mobile directory exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Mobile directory does not exist, will run setup"
+          fi
+
+      - name: Setup mobile project (if needed)
+        if: steps.check_mobile.outputs.exists == 'false'
+        working-directory: ${{ github.event.inputs.app_path }}
+        run: |
+          echo "Running jac setup mobile..."
+          jac setup mobile
+
+      - name: Install mobile dependencies
+        working-directory: ${{ github.event.inputs.app_path }}/mobile
+        run: |
+          echo "Installing dependencies with yarn..."
+          yarn install
+
+      - name: Authenticate with Expo
+        working-directory: ${{ github.event.inputs.app_path }}/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          echo "Authenticating with Expo..."
+          eas whoami || echo "Not logged in, using EXPO_TOKEN from secrets"
+
+      - name: Build mobile app for ${{ matrix.platform }}
+        working-directory: ${{ github.event.inputs.app_path }}/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          echo "Starting EAS build for ${{ matrix.platform }} with profile ${{ github.event.inputs.profile }}..."
+          eas build \
+            --platform ${{ matrix.platform }} \
+            --profile ${{ github.event.inputs.profile }} \
+            --non-interactive \
+            --wait
+
+      - name: Get build information
+        id: build_info
+        working-directory: ${{ github.event.inputs.app_path }}/mobile
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          # Get the latest build ID
+          BUILD_ID=$(eas build:list --platform ${{ matrix.platform }} --limit 1 --json | jq -r '.[0].id')
+          echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+
+          # Get the build artifact URL
+          ARTIFACT_URL=$(eas build:list --platform ${{ matrix.platform }} --limit 1 --json | jq -r '.[0].artifacts.buildUrl')
+          echo "artifact_url=$ARTIFACT_URL" >> $GITHUB_OUTPUT
+
+          # Get build status
+          BUILD_STATUS=$(eas build:list --platform ${{ matrix.platform }} --limit 1 --json | jq -r '.[0].status')
+          echo "build_status=$BUILD_STATUS" >> $GITHUB_OUTPUT
+
+          echo "Build ID: $BUILD_ID"
+          echo "Build Status: $BUILD_STATUS"
+          echo "Artifact URL: $ARTIFACT_URL"
+
+      - name: Download build artifact
+        if: steps.build_info.outputs.build_status == 'finished'
+        working-directory: ${{ github.event.inputs.app_path }}/mobile
+        run: |
+          # Download the build artifact
+          ARTIFACT_URL="${{ steps.build_info.outputs.artifact_url }}"
+
+          if [ "${{ matrix.platform }}" = "android" ]; then
+            if [ "${{ github.event.inputs.profile }}" = "production" ]; then
+              EXT="aab"
+            else
+              EXT="apk"
+            fi
+            curl -L -o "app-${{ matrix.platform }}-${{ github.event.inputs.profile }}.$EXT" "$ARTIFACT_URL"
+          else
+            curl -L -o "app-${{ matrix.platform }}-${{ github.event.inputs.profile }}.tar.gz" "$ARTIFACT_URL"
+          fi
+
+      - name: Upload artifact to GitHub
+        if: steps.build_info.outputs.build_status == 'finished'
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-app-${{ matrix.platform }}-${{ github.event.inputs.profile }}-${{ github.run_number }}
+          path: |
+            ${{ github.event.inputs.app_path }}/mobile/app-${{ matrix.platform }}-${{ github.event.inputs.profile }}.*
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Build Summary
+        if: always()
+        run: |
+          echo "## Mobile Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Property | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Platform | ${{ matrix.platform }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Profile | ${{ github.event.inputs.profile }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build ID | ${{ steps.build_info.outputs.build_id }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Status | ${{ steps.build_info.outputs.build_status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | [Download](${{ steps.build_info.outputs.artifact_url }}) |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### View on Expo" >> $GITHUB_STEP_SUMMARY
+          echo "Build ID: \`${{ steps.build_info.outputs.build_id }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Run \`eas build:view ${{ steps.build_info.outputs.build_id }}\` for details" >> $GITHUB_STEP_SUMMARY
