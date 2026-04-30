@@ -890,9 +890,9 @@ test "root_type" {
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
     expected_error = """
-            root() ++> c;
-            x: str = root();  # <- error: cannot assign Root to str
-            ^^^^^^^^^^^^^^^^
+            root ++> c;
+            x: str = root;  # <- error
+            ^^^^^^^^^^^^^^
             """;
     assert_error_pretty_found(expected_error, program.errors_had[0].pretty_print());
 }
@@ -1066,6 +1066,23 @@ test "any_type_works_with_any_type" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0;
+}
+
+test "jac any keyword works as annotation" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_jac_any_keyword_annotation.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1;
+    assert_error_pretty_found(
+        """
+        builtin_any_bad: str = `any([0]);  # Error: Python any() returns bool.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
+    );
 }
 
 test "dict_pop" {
@@ -2858,6 +2875,30 @@ test "self_typevar_attr_access_via_enclosing_class" {
     }
 }
 
+"""Self-typed return values resolve via the receiver class for chained and
+indirected access (issue #5688)."""
+test "self_class_member_access_5688" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_self_class_member_access.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    user_errors = [
+        err
+        for err in program.errors_had
+        if "vendor" not in err.loc.mod_path and "typeshed" not in err.loc.mod_path
+    ];
+    assert len(user_errors) == 0 , f"Expected 0 user errors, got {len(
+        user_errors
+    )}:\n" + "\n".join(e.pretty_print() for e in user_errors);
+    for err in program.errors_had {
+        if "checker_self_class_member_access" in err.loc.mod_path {
+            assert "type \"Self\"" not in err.pretty_print() , f"Error should not refer to opaque Self type, got:\n{err.pretty_print()}";
+        }
+    }
+}
+
 # ============================================================================
 # Narrowing gap exposure tests
 #
@@ -3841,9 +3882,9 @@ test "component_impl_scope_resolves_has_vars" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
-test "root_call_returns_root_type" {
-    # root() should be recognized as a builtin returning Root, so that
-    # root() spawn Walker() resolves the walker type and .reports is accessible.
+test "root_special_var_returns_root_type" {
+    # Bare `root` should resolve as a SpecialVarRef returning Root, so that
+    # `root spawn Walker()` resolves the walker type and `.reports` is accessible.
     path = os.path.join(CHECKER_FIXTURES, "checker_root_call_type.jac");
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
@@ -3856,7 +3897,7 @@ test "root_call_returns_root_type" {
         for w in program.warnings_had
         if w.code.code == "W1051"
     ];
-    assert len(w1051) == 0 , f"Expected no W1051 warnings for root() call, got {len(
+    assert len(w1051) == 0 , f"Expected no W1051 warnings for bare `root`, got {len(
         w1051
     )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
 }

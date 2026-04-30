@@ -2,6 +2,12 @@
 impl TypeEvaluator._get_type_of_expression_core(
     expr: uni.Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
+    if isinstance(expr, uni.BuiltinType) and expr.value == "any" {
+        if self.prefetch and self.prefetch.any_class is not None {
+            return self.prefetch.any_class;
+        }
+        return types.AnyType();
+    }
     match expr {
         case uni.CfgExpr():
             return self._get_type_of_expression_core(expr.expr, expected_type);
@@ -630,15 +636,15 @@ impl TypeEvaluator._get_type_of_expression_core(
                     if member := self._lookup_class_member(
                         lookup_type, expr.right.value
                     ) {
-                        value = self._set_symbol_to_expr(expr.right, member.symbol);
-                        # Handle direct enum member access (e.g., Color.RED)
+                        # Direct enum member access (e.g. Color.RED) returns
+                        # EnumMemberType, bypassing bound-member specialization.
                         if lookup_type.is_enum_class() {
                             member_name = expr.right.value;
-                            # Return EnumMemberType for recognized enum members
                             if (
                                 lookup_type.shared.enum_members
                                 and member_name in lookup_type.shared.enum_members
                             ) {
+                                self._set_symbol_to_expr(expr.right, member.symbol);
                                 member_info = lookup_type.shared.enum_members[
                                     member_name
                                 ];
@@ -648,10 +654,33 @@ impl TypeEvaluator._get_type_of_expression_core(
                                     flags=types.TypeFlags.Instance
                                 );
                             }
-                            # For non-enum-member access (e.g., static methods),
-                            # fall through to return the actual member type
+                            # Non-member access (e.g. classmethods on the enum)
+                            # falls through to bound-member specialization.
                         }
-                        return value;
+                        # Bind `Self` and class TypeVars for the receiver — without
+                        # this, `Self` leaks through chained calls like
+                        # `datetime.now(tz).isoformat()`.
+                        overloaded_ty: types.OverloadedType | None = None;
+                        member_ty = self.get_type_of_member(member, lookup_type);
+                        if isinstance(member_ty, types.FunctionType) {
+                            overloaded_fns: list[types.FunctionType] = [member_ty];
+                            for overload in member.overloads {
+                                overload_ty = self.specialize_member_type(
+                                    self.get_type_of_symbol(overload), lookup_type
+                                );
+                                if isinstance(overload_ty, types.FunctionType) {
+                                    overloaded_fns.append(overload_ty);
+                                }
+                            }
+                            if len(overloaded_fns) > 1 {
+                                overloaded_ty = types.OverloadedType(
+                                    overloads=overloaded_fns
+                                );
+                            }
+                        }
+                        member.symbol.add_use(expr.right);
+                        expr.right.type = overloaded_ty or member_ty;
+                        return expr.right.type;
                     }
                     # Optional chaining (?.): attribute not found is not an error —
                     # the ?. operator returns None when the attribute doesn't exist.
@@ -1751,6 +1780,9 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.Name() | uni.SpecialVarRef():
             if isinstance(expr, uni.SpecialVarRef) {
+                if expr.name == Tok.KW_ROOT {
+                    return self._get_type_of_root(expr);
+                }
                 # Handle "here" and "visitor" special name ref.
                 if expr.name in (Tok.KW_HERE, Tok.KW_VISITOR) {
                     if (method := self._get_enclosing_method(expr)) {
@@ -1799,31 +1831,6 @@ impl TypeEvaluator._get_type_of_expression_core(
             # Handle 'super' keyword - resolve to first parent class in MRO.
             if self._is_expr_super(expr) {
                 return self._get_type_of_super(expr);
-            }
-
-            # Handle bare `root` — the deprecated form (not in a FuncCall).
-            # Codegen rewrites bare root to root(), so the type checker must
-            # resolve it as Root instance to avoid false E1096 errors on
-            # connections like `root ++> x`. Only applies when `root` would
-            # resolve from jac_builtins.pyi (not a user-defined local).
-            if isinstance(expr, uni.Name)
-            and expr.value == "root"
-            and not (
-                isinstance(expr.parent, uni.FuncCall) and expr.parent.target is expr
-            )
-            and self.prefetch
-            and self.prefetch.root_class {
-                scope_ = expr.find_parent_of_type(uni.UniScopeNode);
-                local_sym = type_utils.lookup_symtab(scope_, "root", None)
-                    if scope_
-                    else None;
-                if local_sym is None
-                or (
-                    local_sym.decl is not None
-                    and local_sym.decl.loc.mod_path.endswith("jac_builtins.pyi")
-                ) {
-                    return self._convert_to_instance(self.prefetch.root_class);
-                }
             }
 
             if scope := self._resolution_scope_for(expr) {
@@ -2821,8 +2828,13 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
 
         # Case 4: LiteralString -> any type that str is assignable to
         # LiteralString is a subtype of str, so if str is assignable to dest, so is LiteralString.
+        # Guard: skip delegation when dest is also LiteralString to avoid infinite recursion
+        # (LiteralString → str → assign_type(str, LiteralString) → LiteralString delegation → ∞).
         if self.prefetch.literal_string_class and self.prefetch.str_class {
-            if src_type.shared == self.prefetch.literal_string_class.shared {
+            if (
+                src_type.shared == self.prefetch.literal_string_class.shared
+                and dest_type.shared != self.prefetch.literal_string_class.shared
+            ) {
                 # Delegate to str for assignability check
                 str_instance = self._convert_to_instance(self.prefetch.str_class);
                 if self.assign_type(str_instance, dest_type) {
@@ -3448,6 +3460,11 @@ impl TypeEvaluator._get_type_from_flow_node(
     for pred in flow_node.bb_in {
         if pred is flow_node {
             has_unnarrowed_pred = True;
+            continue;
+        }
+        # Wrapper CfgExpr around a nested BoolExpr has no real inflow
+        # (real flow is patched to inner operands); skip to avoid widening.
+        if isinstance(pred, uni.CfgExpr) and not pred.bb_in {
             continue;
         }
         if is_loop_header {

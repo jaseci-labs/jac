@@ -65,7 +65,9 @@ obj Tool {
     has func: Callable,
         description: str = "",
         params_desc: dict[(str, str)] = None,
-        info: Info = None;
+        info: Info = None,
+        serialize: bool = False,
+        timeout_sec: float | None = None;
 
     def postinit -> None;
     def __call__(*args: list, **kwargs: dict) -> object;

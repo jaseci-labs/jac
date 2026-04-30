@@ -135,6 +135,7 @@ special_ref ::=
     "self"
     | "super"
     | "here"
+    | "root"
     | "visitor"
     | "props"
     | "init"
@@ -177,12 +178,14 @@ fstring ::= ("{{" | "}}" | "{" expression CONV? (":" ("{" expression CONV? "}")*
 list_or_compr ::= "]" | expression (comprehension_clauses "]" | ("," expression)* "]")
 
 edge_ref_chain ::=
-    "async"? ("edge" | "node")?
-    ((NAME | KWESC_NAME | "self" | "here" | "super" | "visitor" | "[") atomic_chain)? (
+    "async"? ("edge" | "node")? (
+        (NAME | KWESC_NAME | "root" | "self" | "here" | "super" | "visitor" | "[")
+        atomic_chain
+    )? (
         edge_op_ref (
             "[" filter_compr_bracket
             | "(" (filter_compr_inner | expression ")")
-            | (NAME | KWESC_NAME | "self" | "here" | "super") atomic_chain
+            | (NAME | KWESC_NAME | "self" | "root" | "here" | "super") atomic_chain
         )?
     )* "]"
 
@@ -221,7 +224,8 @@ lambda_expr ::=
 lambda_params ::= ("*" | "/" | lambda_param)*
 
 lambda_param ::=
-    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "super" | "here" | "visitor")
+    ("*" | "**")?
+    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 jsx_element ::=
@@ -459,7 +463,8 @@ func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 func_params ::= ("*" | "/" | param_var)*
 
 param_var ::=
-    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "super" | "here" | "visitor")
+    ("*" | "**")?
+    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 enum ::=

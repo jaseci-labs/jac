@@ -59,6 +59,7 @@ impl Lexer.prev_is_value -> bool {
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
         TokenKind.KW_HERE,
+        TokenKind.KW_ROOT,
         TokenKind.F_DQ_END,
         TokenKind.F_SQ_END,
         TokenKind.F_TDQ_END,
