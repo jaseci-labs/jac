@@ -120,45 +120,73 @@ my_service = "/api/my"
 `my_service.jac` should be a sibling file with `def:pub` functions
 exposed via the [sv import](docs.md) machinery.
 
-### Build + deploy (current workflow)
-
-Today, `jac start --scale` expects either a Dockerfile in your project or a pre-built image. Two paths:
-
-**Path A — easiest, the bundled e2e script** (recommended for now):
+### Deploy
 
 ```bash
-# From the repo root (gets the build right automatically)
-cd /path/to/jaseci
-bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/your/project
+jac start main.jac --scale
 ```
 
-This handles the image build + load into minikube, applies manifests, and tears down on exit. Same as what CI runs.
+That's it. No Dockerfile, no `eval $(minikube docker-env)`, no registry config required for local clusters. Behind the scenes `jac start --scale`:
 
-**Path B — manual workflow** (if you want full control):
+1. **Detects your cluster type** from kubeconfig (minikube / k3d / kind / remote)
+2. **Builds the frontend bundle** by running `jac build <client.entry>` on the host (skipped if no client config)
+3. **Builds the container image** using the right Dockerfile for your situation:
+   - Your `Dockerfile.microservice` if you committed one (override)
+   - The repo's `Dockerfile.microservice.ci` if you're on a developer checkout (uses local source install)
+   - The shipped `Dockerfile.microservice` from the jac-scale package (PyPI installs)
+   - An embedded fallback template (last resort)
+4. **Loads the image into the cluster** via the right mechanism per cluster type:
+   - minikube: builds inside minikube's internal docker daemon
+   - k3d: docker build then `k3d image import`
+   - kind: docker build then `kind load docker-image`
+   - remote: tags as `<registry>/<image>:<tag>` and pushes (requires `[plugins.scale.kubernetes].image_registry`)
+5. **Provisions MongoDB + Redis** as StatefulSets in the cluster (defaults on; set `mongodb_enabled = false` / `redis_enabled = false` to opt out)
+6. **Injects `MONGODB_URI` and `REDIS_URL`** as `valueFrom: secretKeyRef` env into every service + gateway pod, so all services share one anchor store
+7. **Adds wait-for-DB init containers** to every pod so they don't crash-loop before the databases are reachable
+8. **Applies manifests** for all services + gateway (Deployments, ClusterIP Services, HPAs, PDBs, optional Ingress)
+9. **Sets `sessionAffinity: ClientIP`** on the gateway Service so WebSocket reconnects land on the same pod
 
-1. Drop a `Dockerfile.microservice` into your project root (template at `jac-scale/scripts/Dockerfile.microservice` in the jaseci repo).
-2. Build inside minikube's docker context:
+Result: a full FE+BE microservice topology with shared state, autoscaling, rolling deploys, sticky WS sessions, and an external URL via Ingress (if enabled).
 
-   ```bash
-   eval $(minikube docker-env)
-   docker build -t myapp:dev -f Dockerfile.microservice .
-   ```
+### Reach your app
 
-3. Tell jac.toml to use the prebuilt image:
+```bash
+# Wait for everything to be ready
+kubectl wait --for=condition=ready pod -l managed=jac-scale -n default --timeout=180s
 
-   ```toml
-   [plugins.scale.kubernetes]
-   docker_image_name = "myapp:dev"
-   ```
+# Port-forward to the gateway
+kubectl port-forward svc/gateway-service 8000:8000 -n default &
 
-4. Deploy:
+# Open in browser - your frontend renders here
+# (assuming you configured [plugins.scale.microservices.client].entry)
+open http://localhost:8000
 
-   ```bash
-   jac start main.jac --scale
-   eval $(minikube docker-env -u)   # restore your shell
-   ```
+# Or hit the API
+curl http://localhost:8000/health
+curl -X POST http://localhost:8000/api/your-service/function/your_function -d '{}'
+```
 
-> **Coming soon — auto-build.** The K-track has an in-flight task to make `jac start --scale` detect the cluster type (minikube/k3d/kind/remote), auto-generate a Dockerfile from a baked-in template if your project doesn't have one, and auto-distribute the image to the right place. Once it lands (paired with the matching PyPI publish), the workflow becomes literally `jac start main.jac --scale` with zero Docker knowledge required. Until then, use Path A or Path B above.
+For external access without port-forward, enable Ingress in jac.toml:
+
+```toml
+[plugins.scale.microservices.ingress]
+enabled = true
+host = "my-app.local"          # add to /etc/hosts -> $(minikube ip)
+ingress_class_name = "nginx"
+```
+
+Then `curl http://my-app.local/` after `echo "$(minikube ip)  my-app.local" >> /etc/hosts`.
+
+### Watch what's running
+
+```bash
+minikube dashboard       # graphical view of pods/services/logs/events
+
+# Or via kubectl:
+kubectl get pods -n default
+kubectl logs -l managed=jac-scale -n default -f --max-log-requests=10
+kubectl logs -l app=gateway -n default -f
+```
 
 `jac start --scale` auto-selects `kubernetes-microservice` target when
 microservice mode is enabled in jac.toml. It builds the image, generates
