@@ -133,48 +133,25 @@ impl validate_package(
         }
     }
 
-    # ── [dependencies] version constraints ──────────────────────────────────
-    for (dep_name, raw_ver) in config.dependencies.items() {
-        normalised = normalize_constraint(raw_ver);
-        if normalised {
-            spec_err = _validate_version_specifier(normalised);
-            if spec_err {
-                result.add_error(
-                    f"[dependencies] {dep_name} = '{raw_ver}': "
-                    f"invalid version constraint ({spec_err})."
-                );
-            }
-        }
-    }
-
-    # ── [dev-dependencies] version constraints ───────────────────────────────
-    for (dep_name, raw_ver) in config.dev_dependencies.items() {
-        normalised = normalize_constraint(raw_ver);
-        if normalised {
-            spec_err = _validate_version_specifier(normalised);
-            if spec_err {
-                result.add_error(
-                    f"[dev-dependencies] {dep_name} = '{raw_ver}': "
-                    f"invalid version constraint ({spec_err})."
-                );
-            }
-        }
-    }
-
-    # ── [optional-dependencies] version constraints ──────────────────────────
-    for (group, deps) in config.optional_dependencies.items() {
+    # ── dependency version constraints ──────────────────────────────────────
+    def _check_deps(deps: dict, section: str) {
         for (dep_name, raw_ver) in deps.items() {
             normalised = normalize_constraint(raw_ver);
             if normalised {
                 spec_err = _validate_version_specifier(normalised);
                 if spec_err {
                     result.add_error(
-                        f"[optional-dependencies.{group}] {dep_name} = '{raw_ver}': "
+                        f"[{section}] {dep_name} = '{raw_ver}': "
                         f"invalid version constraint ({spec_err})."
                     );
                 }
             }
         }
+    }
+    _check_deps(config.dependencies, "dependencies");
+    _check_deps(config.dev_dependencies, "dev-dependencies");
+    for (group, deps) in config.optional_dependencies.items() {
+        _check_deps(deps, f"optional-dependencies.{group}");
     }
 
     # ── [entrypoints] reference format ───────────────────────────────────────

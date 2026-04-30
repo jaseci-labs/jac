@@ -98,11 +98,8 @@ impl WheelBuilder.build -> bytes {
     ep_str = generate_entry_points(self.config);
     ep_bytes: bytes | None = ep_str.encode("utf-8") if ep_str else None;
 
-    # Bundle jac.toml so 'jac install' can extract it (Step 12)
-    jac_toml_path = root / "jac.toml";
-    jac_toml_bytes: bytes | None = (
-        jac_toml_path.read_bytes() if jac_toml_path.is_file() else None
-    );
+    pkg_name = self.config.package.name.replace("-", "_");
+    top_level_bytes = (pkg_name + "\n").encode("utf-8");
 
     # ── 2. Collect package source files ──────────────────────────────────────
     source_files = collect_source_files(self.config, project_root=root);
@@ -117,15 +114,12 @@ impl WheelBuilder.build -> bytes {
 
     entries.append(record_entry_from_bytes(f"{dist_info}/METADATA", metadata_bytes));
     entries.append(record_entry_from_bytes(f"{dist_info}/WHEEL", wheel_bytes));
-
+    entries.append(
+        record_entry_from_bytes(f"{dist_info}/top_level.txt", top_level_bytes)
+    );
     if ep_bytes is not None {
         entries.append(
             record_entry_from_bytes(f"{dist_info}/entry_points.txt", ep_bytes)
-        );
-    }
-    if jac_toml_bytes is not None {
-        entries.append(
-            record_entry_from_bytes(f"{dist_info}/jac.toml", jac_toml_bytes)
         );
     }
 
@@ -140,20 +134,15 @@ impl WheelBuilder.build -> bytes {
             zi = zipfile.ZipInfo(arc_path, date_time=_WHEEL_TIMESTAMP);
             zf.writestr(zi, data);
         }
-        # Source files first
         for sf in source_files {
             _add(sf.wheel_path, read_source_file(sf));
         }
-        # dist-info files
         _add(f"{dist_info}/METADATA", metadata_bytes);
         _add(f"{dist_info}/WHEEL", wheel_bytes);
+        _add(f"{dist_info}/top_level.txt", top_level_bytes);
         if ep_bytes is not None {
             _add(f"{dist_info}/entry_points.txt", ep_bytes);
         }
-        if jac_toml_bytes is not None {
-            _add(f"{dist_info}/jac.toml", jac_toml_bytes);
-        }
-        # RECORD is always the last entry in a wheel
         _add(record_path, record_bytes);
     }
 

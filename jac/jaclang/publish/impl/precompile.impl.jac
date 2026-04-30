@@ -10,6 +10,26 @@ import from jaclang.jac0core.bccache { discover_annex_files }
 import from jaclang.jac0core.compiler { patch_co_filenames_bytes }
 import from jaclang.jac0core.jir { write_precompiled_jir, FLAG_PRECOMPILED }
 
+def _skip_jac_file(rel: str, name: str) -> bool {
+    if (
+        ".test." in rel
+        or ".impl." in name
+        or "/test/" in rel
+        or "/tests/" in rel
+        or rel.startswith("test/")
+        or rel.startswith("tests/")
+        or rel.startswith(".")
+    ) {
+        return True;
+    }
+    for part in rel.split("/") {
+        if part in SKIP_FRAGMENTS {
+            return True;
+        }
+    }
+    return False;
+}
+
 impl precompile_package(pkg_dir: Path) -> int {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
@@ -24,27 +44,7 @@ impl precompile_package(pkg_dir: Path) -> int {
             continue;
         }
         rel = str(jac_path.relative_to(pkg_dir)).replace("\\", "/");
-        # Mirrors find_jac_files() in scripts/precompile_bytecode.jac
-        if (
-            ".test." in rel
-            or "/test/" in rel
-            or "/tests/" in rel
-            or rel.startswith("test/")
-            or rel.startswith("tests/")
-            or rel.startswith(".")
-            or ".impl." in jac_path.name
-        ) {
-            continue;
-        }
-        # Skip any file whose path contains an excluded directory component
-        in_excluded_dir: bool = False;
-        for part in rel.split("/") {
-            if part in SKIP_FRAGMENTS {
-                in_excluded_dir = True;
-                break;
-            }
-        }
-        if not in_excluded_dir {
+        if not _skip_jac_file(rel, jac_path.name) {
             jac_files.append(jac_path);
         }
     }
