@@ -454,6 +454,134 @@ test "_build_service_manifest emits ClusterIP with matching selector" {
     assert port["port"] == 9090;
     assert port["targetPort"] == 9090;
     assert port["protocol"] == "TCP";
+    # P0.9: regular service pods stay round-robin (stateless wrt
+    # connections; each request through the gateway is independent).
+    # Only the gateway gets sticky sessions - see the next test.
+    assert "sessionAffinity" not in svc["spec"];
+}
+
+
+test "P0.8: _provision_databases is no-op without _JAC_SCALE_AUTO_BUILD env" {
+    # Same opt-in pattern as P0.5/P0.6. Tests calling deploy() directly
+    # don't set the env var, so DB provisioning skips the real K8s API
+    # calls (which would need a live cluster + actually create
+    # StatefulSets). env_list + init_containers are reset to empty.
+    import os;
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    # Pre-populate so we can assert reset.
+    target.env_list = [{"name": "PREEXISTING", "value": "leftover"}];
+    target._microservice_init_containers = [{"name": "leftover-init"}];
+    prev_env = os.environ.get("_JAC_SCALE_AUTO_BUILD");
+    os.environ.pop("_JAC_SCALE_AUTO_BUILD", None);
+
+    try {
+        target._provision_databases("demo");
+        # Reset happened (so re-running deploy doesn't double-append),
+        # but no K8s API calls were made (we'd have hung if so).
+        assert target.env_list == [];
+        assert target._microservice_init_containers == [];
+    } finally {
+        if prev_env is not None {
+            os.environ["_JAC_SCALE_AUTO_BUILD"] = prev_env;
+        }
+    }
+}
+
+
+test "P0.8: pod-spec has no init_containers when _provision_databases didn't run" {
+    # Tests asserting manifest shape don't run _provision_databases,
+    # so pod-specs must NOT carry initContainers (K8s would 422 on an
+    # empty list otherwise; ours uses getattr with default []).
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    # initContainers field is OPTIONAL on a PodSpec - omit when empty
+    # rather than emit `initContainers: []` which K8s 422s.
+    assert "initContainers" not in spec;
+}
+
+
+test "P0.8: pod-spec includes init_containers when populated" {
+    # Simulates the post-_provision_databases state: the wait-for-Mongo
+    # init container is set on the target, and pod-specs must include
+    # it so service pods don't crash-loop before Mongo is reachable.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    target._microservice_init_containers = [
+        {
+            "name": "wait-mongo",
+            "image": "busybox:1.36",
+            "command": ["sh", "-c", "until nc -z mongo 27017; do sleep 2; done"]
+        }
+    ];
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    assert "initContainers" in spec;
+    assert len(spec["initContainers"]) == 1;
+    assert spec["initContainers"][0]["name"] == "wait-mongo";
+}
+
+
+test "P0.8: _build_env merges database env between JAC_SV_NAME and user env" {
+    # Order matters:
+    #   1. JAC_SV_NAME (sentinel - never overrideable)
+    #   2. Database env (MONGODB_URI / REDIS_URL via secretKeyRef)
+    #   3. User env from [...services.NAME.env]
+    # User-set MONGODB_URI in service env would shadow our auto-injected
+    # one (last write wins in K8s container.env), letting power users
+    # point at a custom Mongo if they want.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    target.env_list = [
+        {
+            "name": "MONGODB_URI",
+            "valueFrom": {
+                "secretKeyRef": {
+                    "name": "demo-mongodb-secret",
+                    "key": "connection-string"
+                }
+            }
+        },
+        {
+            "name": "REDIS_URL",
+            "valueFrom": {
+                "secretKeyRef": {
+                    "name": "demo-redis-secret",
+                    "key": "connection-string"
+                }
+            }
+        }
+    ];
+    env = target._build_env("orders", {"env": {"MY_OWN_KEY": "value123"}});
+
+    # JAC_SV_NAME first, never overridden
+    assert env[0]["name"] == "JAC_SV_NAME";
+    assert env[0]["value"] == "orders";
+
+    # Database env follows
+    names = [e["name"] for e in env];
+    assert "MONGODB_URI" in names;
+    assert "REDIS_URL" in names;
+    # User env still present
+    assert "MY_OWN_KEY" in names;
+
+    # MongoDB env uses secretKeyRef (not a plaintext value), confirming
+    # we got the parent's secret-based shape (not a string we built).
+    mongo_idx = names.index("MONGODB_URI");
+    assert "valueFrom" in env[mongo_idx];
+    assert env[mongo_idx]["valueFrom"]["secretKeyRef"]["key"] == "connection-string";
+}
+
+
+test "P0.9: gateway Service has ClientIP sticky sessions for WebSocket" {
+    # Without sessionAffinity, kube-proxy round-robins TCP connections
+    # across gateway replicas. WebSocket reconnects then land on a
+    # different pod that doesn't have the existing session state -
+    # session loss + auth re-prompt + lost subscriptions. ClientIP-based
+    # stickiness is the standard Service-layer fix.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    gw_svc = target._build_service_manifest(GATEWAY_NAME);
+    assert gw_svc["spec"]["sessionAffinity"] == "ClientIP";
+    timeout = gw_svc["spec"]["sessionAffinityConfig"]["clientIP"]["timeoutSeconds"];
+    # 3h is generous enough for long-lived WS sessions; far below K8s
+    # max (10800s == 3h, which is the practical upper bound anyway).
+    assert timeout == 10800;
 }
 
 

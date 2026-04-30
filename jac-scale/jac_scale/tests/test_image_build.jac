@@ -9,6 +9,7 @@ import from jac_scale.microservices._image_build {
     find_jaseci_repo_root,
     resolve_dockerfile,
     ensure_dockerignore,
+    build_client_bundle,
     auto_build_and_distribute
 }
 import from jac_scale.microservices._cluster_detect {
@@ -129,7 +130,6 @@ test "resolve_dockerfile prefers shipped Dockerfile.microservice over embedded" 
 # =============================================================================
 # ensure_dockerignore - prevents 2GB build contexts from timing out
 # =============================================================================
-
 test "ensure_dockerignore writes the embedded template when absent" {
     with tempfile.TemporaryDirectory() as tmp {
         ctx = Path(tmp);
@@ -140,9 +140,110 @@ test "ensure_dockerignore writes the embedded template when absent" {
         contents = ignore_file.read_text();
         # Must exclude the things that bloat builds the most.
         assert ".git" in contents;
-        assert "**/.jac" in contents;
+        assert "**/.jac/cache" in contents;
         assert "**/__pycache__" in contents;
         assert "**/node_modules" in contents;
+    }
+}
+
+
+test "embedded dockerignore preserves .jac/client/dist for FE serving" {
+    # Regression: P0.7 builds the FE into .jac/client/dist BEFORE the
+    # docker build. If the dockerignore had a blanket `**/.jac` rule
+    # (the original P0.5 shape), the FE bundle would silently be
+    # filtered out of the build context and the gateway pod would have
+    # nothing to serve at /. The embedded template must exclude
+    # specific .jac subdirs only - not .jac/client/.
+    with tempfile.TemporaryDirectory() as tmp {
+        ctx = Path(tmp);
+        ensure_dockerignore(ctx);
+        contents = (ctx / ".dockerignore").read_text();
+        # Specific subdirs excluded
+        assert "**/.jac/cache" in contents;
+        assert "**/.jac/data" in contents;
+        # Blanket exclusion absent (would block the FE bundle)
+        assert "**/.jac\n" not in contents;
+        # And the bare path "**/.jac" as a standalone rule (without trailing
+        # subdir) must not appear; specific subdirs are fine.
+        for line in contents.splitlines() {
+            stripped = line.strip();
+            assert stripped != "**/.jac" , (
+                "blanket **/.jac rule would exclude .jac/client/dist"
+            );
+            assert stripped != ".jac" , "same blanket rule under different shape";
+        }
+    }
+}
+
+
+test "P0.7: build_client_bundle no-ops when client_entry is empty" {
+    # Apps without a frontend (LLM-only / API-only) shouldn't trigger
+    # any subprocess work just because the auto-build runs.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        # subprocess.run shouldn't be called at all - if it were called
+        # we'd see the mock recording. Use a fresh patch and assert
+        # call_count == 0.
+        with mock.patch("subprocess.run") as mock_run {
+            build_client_bundle(project, "");
+            assert mock_run.call_count == 0;
+        }
+    }
+}
+
+
+test "P0.7: build_client_bundle invokes `jac build <entry>` from project_dir" {
+    # The orchestrator runs `jac build` for the local-mode FE bundle;
+    # the K-track auto-build needs to do the same on the host BEFORE
+    # docker build, so .jac/client/dist/ exists when the project gets
+    # COPY'd into the image. We mock shutil.which so the test isn't
+    # sensitive to whether the jac binary is on the test runner's PATH.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        fake_result = mock.MagicMock(returncode=0, stdout="", stderr="");
+        with mock.patch("shutil.which", return_value="/usr/local/bin/jac") {
+            with mock.patch("subprocess.run", return_value=fake_result) as mock_run {
+                build_client_bundle(project, "main.jac");
+                assert mock_run.call_count == 1;
+                (args, kwargs) = mock_run.call_args;
+                cmd = args[0];
+                assert cmd == ["jac", "build", "main.jac"];
+                # cwd must be project_dir so jac sees the right jac.toml
+                assert kwargs["cwd"] == str(project);
+            }
+        }
+    }
+}
+
+
+test "P0.7: build_client_bundle raises actionable error on non-zero exit" {
+    # User edits a frontend .jac file that has a syntax error - we
+    # surface it as a RuntimeError naming the entry + last 20 lines
+    # of jac build output so they don't have to hunt through hundreds
+    # of vite warnings.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        fake_result = mock.MagicMock(
+            returncode=1,
+            stdout="building dist/...\n",
+            stderr="error: unexpected token at line 42\n"
+        );
+        with mock.patch("shutil.which", return_value="/usr/local/bin/jac") {
+            with mock.patch("subprocess.run", return_value=fake_result) {
+                raised = False;
+                msg = "";
+                try {
+                    build_client_bundle(project, "broken.jac");
+                } except RuntimeError as e {
+                    raised = True;
+                    msg = str(e);
+                }
+                assert raised;
+                assert "broken.jac" in msg;
+                assert "exit 1" in msg;
+                assert "unexpected token" in msg;
+            }
+        }
     }
 }
 
@@ -152,7 +253,6 @@ test "ensure_dockerignore never overwrites a user-provided .dockerignore" {
         ctx = Path(tmp);
         existing = ctx / ".dockerignore";
         existing.write_text("# user's custom rules\nuser-only-marker\n");
-
         wrote = ensure_dockerignore(ctx);
         assert not wrote;
         # Must NOT have been clobbered.

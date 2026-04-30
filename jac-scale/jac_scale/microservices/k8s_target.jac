@@ -99,6 +99,12 @@ Selected automatically by `_scale_pre_hook` when
 under the type name `"kubernetes-microservice"`.
 """
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
+    # P0.8: populated by _provision_databases (during deploy()) with
+    # the wait-for-Mongo / wait-for-Redis init containers. Service +
+    # gateway pod-specs read this via getattr() and attach as
+    # initContainers so pods don't crash-loop until the DBs are reachable.
+    has _microservice_init_containers: list[dict[str, Any]] = [];
+
     """P0.5 auto-build override: front-load the image-build decision.
 
     Activated only when `_JAC_SCALE_AUTO_BUILD=1` is set in env (the
@@ -204,6 +210,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             );
         }
 
+        # P0.8: provision MongoDB + Redis BEFORE generate_manifests so
+        # the env_list (with MONGODB_URI/REDIS_URL secretKeyRef entries)
+        # and init_containers populate every microservice pod-spec.
+        # Skipped silently in tests (no kube config / not on a real cluster);
+        # the provisioning helper is idempotent for re-deploys.
+        try {
+            self._provision_databases(app_name);
+        } except Exception as e {
+            return DeploymentResult(
+                success=False, message=f"database provisioning failed: {e}"
+            );
+        }
+
         try {
             bundle = self.generate_manifests(app_config);
         } except Exception as e {
@@ -230,6 +249,85 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             ),
             details=bundle
         );
+    }
+
+    """P0.8: provision MongoDB + Redis (when enabled in jac.toml) and
+    populate `self.env_list` + `self._microservice_init_containers` so
+    every microservice pod gets the connection-string envs and waits
+    for the DBs to be reachable before starting.
+
+    Reuses the parent `KubernetesTarget._deploy_databases` machinery
+    that monolith mode already uses - same StatefulSet + ServiceAccount
+    + Secret per database, same `valueFrom: secretKeyRef` env injection
+    pattern. Idempotent across re-deploys (parent does read-then-create).
+
+    Off when `[plugins.scale.kubernetes].mongodb_enabled = false` AND
+    `redis_enabled = false`. The defaults are both true (we ship a
+    sensible "stateful microservices work out of the box" UX), but
+    users running stateless / external-DB setups can opt out.
+    """
+    def _provision_databases(app_name: str) -> None {
+        import os;
+
+        # Reset before each deploy so re-running doesn't accumulate
+        # duplicate env entries (the parent's _deploy_databases appends).
+        self.env_list = [];
+        self._microservice_init_containers = [];
+
+        # Same env-var gate as P0.5/P0.6: only fires on the production
+        # `jac start --scale` path (where _scale_pre_hook sets the env).
+        # Unit tests that exercise deploy() directly don't set the env
+        # so they skip cluster-touching work entirely.
+        if os.environ.get("_JAC_SCALE_AUTO_BUILD") != "1" {
+            return;
+        }
+
+        mongo_on = self.k8s_config.mongodb_enabled;
+        redis_on = self.k8s_config.redis_enabled;
+        if not (mongo_on or redis_on) {
+            if self.logger {
+                self.logger.info(
+                    "Database provisioning skipped (mongodb_enabled=false, "
+                    "redis_enabled=false)",
+                    {"app_name": app_name}
+                );
+            }
+            return;
+        }
+
+        self._load_kube_config();
+        apps_v1 = client.AppsV1Api();
+        core_v1 = client.CoreV1Api();
+        namespace: str = self.k8s_config.namespace;
+        ensure_namespace_exists(namespace);
+
+        # Apply DB StatefulSets + Services + Secrets + ServiceAccounts.
+        # `cluster_env` is unused by _deploy_databases for our case
+        # (it's a monolith-only knob); pass empty string.
+        if self.logger {
+            self.logger.info(
+                f"Provisioning databases for '{app_name}': "
+                f"mongodb={mongo_on}, redis={redis_on}",
+                {"namespace": namespace}
+            );
+        }
+        self._deploy_databases(app_name, namespace, apps_v1, core_v1, "");
+
+        # Collect wait-for-DB init containers; service pods reuse them
+        # to block startup until Mongo/Redis Endpoints are reachable.
+        # Without this, pods crash-loop with connection-refused on
+        # every restart until the DB happens to win the race.
+        self._microservice_init_containers = self._get_database_init_containers(
+            app_name
+        );
+
+        if self.logger {
+            self.logger.info(
+                f"Database env injected ({len(self.env_list)} vars), "
+                f"init containers ({len(self._microservice_init_containers)})",
+                {"app_name": app_name}
+            );
+        }
     }
 
     """Load kubernetes config: kubeconfig first, fall back to in-cluster.
@@ -701,12 +799,27 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
     """K7: extra env vars merged with the auto-set JAC_SV_NAME.
 
-    JAC_SV_NAME ALWAYS comes first and is never overrideable (it's
-    what the entrypoint uses to pick the service). User-defined keys
-    follow. List shape matches the K8s container.env schema.
+    Order:
+      1. JAC_SV_NAME - sentinel that picks the service at pod startup.
+         Always first, never overrideable.
+      2. Database env (MONGODB_URI, REDIS_URL) - added by P0.8's
+         `_provision_databases` during apply_manifests, stored on
+         self.env_list. These use `valueFrom: secretKeyRef` so the
+         connection string lives in a K8s Secret, not as plaintext.
+      3. User-defined env from [...services.NAME.env] - last so users
+         can override database env names if they have a custom Mongo.
     """
-    def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, str]] {
-        env: list[dict[str, str]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
+    def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, Any]] {
+        env: list[dict[str, Any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
+
+        # P0.8: database env injected by _provision_databases (Mongo +
+        # Redis URIs from K8s Secrets). Empty if databases disabled
+        # or _provision_databases hasn't run yet (e.g. unit tests).
+        db_env: list = getattr(self, "env_list", []) or [];
+        for entry in db_env {
+            env.append(entry);
+        }
+
         extra: dict[str, Any] = svc_cfg.get("env", {});
         for (k, v) in extra.items() {
             if k == "JAC_SV_NAME" {
@@ -983,6 +1096,26 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _build_service_manifest(svc_name: str) -> dict[str, Any] {
         k8s_name = self._k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
+        spec: dict[str, Any] = {
+            "type": "ClusterIP",
+            "selector": {"app": k8s_name},
+            "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
+        };
+        # P0.9: gateway-only sticky sessions for WebSocket traffic.
+        # Without sessionAffinity, kube-proxy round-robins TCP
+        # connections across gateway replicas, which breaks WS reconnects
+        # (the new connection lands on a different pod that doesn't have
+        # session state). ClientIP-based stickiness is the standard fix
+        # and the only one that works at the Service layer; for true
+        # cookie-based stickiness users need an Ingress controller that
+        # supports it (annotation-driven, controller-specific).
+        # Service pods stay round-robin since their handlers are
+        # stateless wrt connections (each request is independent through
+        # the gateway).
+        if svc_name == GATEWAY_NAME {
+            spec["sessionAffinity"] = "ClientIP";
+            spec["sessionAffinityConfig"] = {"clientIP": {"timeoutSeconds": 10800}};
+        }
         return {
             "apiVersion": "v1",
             "kind": "Service",
@@ -991,11 +1124,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 "namespace": self.k8s_config.namespace,
                 "labels": {"app": k8s_name, "managed": "jac-scale"}
             },
-            "spec": {
-                "type": "ClusterIP",
-                "selector": {"app": k8s_name},
-                "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
-            }
+            "spec": spec
         };
     }
 
@@ -1224,13 +1353,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if resources {
             container["resources"] = resources;
         }
-        return {
+        spec: dict[str, Any] = {
             "containers": [container],
             # +5s cushion lets uvicorn finish exiting AFTER our drain
             # middleware completes; without it, SIGKILL can arrive
             # mid-drain.
             "terminationGracePeriodSeconds": drain_t + 5
         };
+        # P0.8: wait-for-Mongo / wait-for-Redis init containers so
+        # service pods don't crash-loop on startup before the database
+        # StatefulSet is reachable. Only attached when the parent's DB
+        # provisioning ran (apply_manifests stage).
+        init_containers = getattr(self, "_microservice_init_containers", []) or [];
+        if init_containers {
+            spec["initContainers"] = list(init_containers);
+        }
+        return spec;
     }
 
     """Gateway pod-spec. Same image as services; entrypoint selects
@@ -1257,9 +1395,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if resources {
             container["resources"] = resources;
         }
-        return {
+        spec: dict[str, Any] = {
             "containers": [container],
             "terminationGracePeriodSeconds": drain_t + 5
         };
+        init_containers = getattr(self, "_microservice_init_containers", []) or [];
+        if init_containers {
+            spec["initContainers"] = list(init_containers);
+        }
+        return spec;
     }
 }

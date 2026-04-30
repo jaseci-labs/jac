@@ -55,14 +55,12 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "# Best-effort .jac precompile; runtime path handles anything that fails.\n"
      "RUN find . -name \"*.jac\" -not -path \"*/.jac/*\" -not -path \"*/__jac_gen__/*\" \\\n"
      "        -exec jac tool jac2py {} + 2>/dev/null || true\n\n"
-     "EXPOSE 8000\n";
-
-
-# Embedded .dockerignore. Written next to a build context that doesn't
-# already have one. Without this, an unsuspecting docker build can pull
-# in .git, node_modules, and per-package .jac caches and time out
-# transferring the context. Mirrors the rules at the jaseci repo root.
-glob _EMBEDDED_DOCKERIGNORE: str = "# Auto-generated .dockerignore. "
+     "EXPOSE 8000\n",
+     # Embedded .dockerignore. Written next to a build context that doesn't
+     # already have one. Without this, an unsuspecting docker build can pull
+     # in .git, node_modules, and per-package .jac caches and time out
+     # transferring the context. Mirrors the rules at the jaseci repo root.
+     _EMBEDDED_DOCKERIGNORE: str = "# Auto-generated .dockerignore. "
      "Override by committing your own .dockerignore.\n"
      ".git\n"
      ".gitignore\n"
@@ -80,7 +78,13 @@ glob _EMBEDDED_DOCKERIGNORE: str = "# Auto-generated .dockerignore. "
      "**/venv\n"
      "**/dist\n"
      "**/build\n"
-     "**/.jac\n"
+     "# Jac runtime artifacts: exclude caches + per-pod state but KEEP\n"
+     "# .jac/client/dist (built before docker build, served by gateway).\n"
+     "**/.jac/cache\n"
+     "**/.jac/data\n"
+     "**/.jac/logs\n"
+     "**/.jac/run\n"
+     "**/.jac/__pycache__\n"
      "**/__jac_gen__\n"
      "**/node_modules\n"
      "**/.vite\n"
@@ -124,13 +128,19 @@ function so unit tests can mock it without touching the import system.
 def find_shipped_dockerfile -> Path | None {
     try {
         import jac_scale;
-        pkg_dir = Path(jac_scale.__file__).parent;
+        f = jac_scale.__file__;
+        if f is None {
+            return None;
+        }
+        pkg_dir = Path(f).parent;
         shipped = pkg_dir.parent / "scripts" / "Dockerfile.microservice";
         if shipped.is_file() {
             return shipped;
         }
-    } except Exception {
-        pass;
+    } except Exception as _ {
+        # Best-effort lookup; failure here just means we fall through
+        # to the embedded template.
+        ;
     }
     return None;
 }
@@ -263,10 +273,13 @@ def run_docker_build(
     # which can take 5-15 minutes (apt install + pip install + .jac
     # precompile, all happening inside minikube's docker daemon).
     cmd: list[str] = [
-        "docker", "build",
+        "docker",
+        "build",
         "--progress=plain",
-        "-t", image_tag,
-        "-f", str(dockerfile_path)
+        "-t",
+        image_tag,
+        "-f",
+        str(dockerfile_path)
     ];
     for (key, value) in build_args.items() {
         cmd.append("--build-arg");
@@ -365,6 +378,79 @@ def run_docker_push(image_tag: str) {
 }
 
 
+"""P0.7: build the frontend bundle on the host BEFORE docker build.
+
+Mirrors what `start_microservice_mode` does in local mode (orchestrator.jac):
+runs `jac build <entry>` which produces `.jac/client/dist/`. The auto-build
+docker step then COPYs the project (with the dist tree included thanks to
+the dockerignore tweak that allows .jac/client/dist through). Result:
+the gateway pod serves the FE at `/` after deploy, matching local-mode UX.
+
+Building on the host (not inside the docker image) keeps the runtime
+image slim - no need to ship bun/node into a python container.
+
+`client_entry` is the path from jac.toml [...microservices.client].entry.
+`project_dir` is where to run `jac build` from. Returns silently on
+success; raises RuntimeError on actual build failure (timeout / non-zero
+exit / jac CLI missing). Skipping the FE build is fine if no client entry
+is configured - gateway just won't have anything to serve at `/`.
+"""
+def build_client_bundle(project_dir: Path, client_entry: str) -> None {
+    if not client_entry {
+        return;
+    }
+    if shutil.which("jac") is None {
+        # Surprising in a context where _scale_pre_hook is running (jac
+        # is HOW we got here), but possible if PATH was scrubbed. Warn
+        # via exception so the auto-build path can decide whether to
+        # continue without a FE.
+        raise RuntimeError(
+            "jac CLI not found in PATH but [plugins.scale.microservices."
+            "client].entry is set. Either install jac or remove the client "
+            "entry from jac.toml."
+        );
+    }
+    cmd: list[str] = ["jac", "build", client_entry];
+    try {
+        result = subprocess.run(
+            cmd, cwd=str(project_dir), capture_output=True, text=True, timeout=300
+        );
+    } except subprocess.TimeoutExpired {
+        raise RuntimeError(
+            f"jac build {client_entry} timed out after 300s. The client "
+            f"build is usually <30s; if it's hanging, check for a vite "
+            f"watcher or infinite frontend hot-reload loop."
+        );
+    }
+    if result.returncode != 0 {
+        tail = "\n".join((result.stdout + "\n" + result.stderr).splitlines()[-20:]);
+        raise RuntimeError(
+            f"jac build {client_entry} failed (exit {result.returncode}):\n"
+            f"  cwd: {project_dir}\n"
+            f"  last 20 lines:\n{tail}"
+        );
+    }
+}
+
+
+"""Resolve `[plugins.scale.microservices.client].entry` from jac.toml.
+
+Returns the entry string ("main.jac" etc) or empty if no client config.
+Reads via the typed config helper since the loader's already exposing
+the client section as a dict.
+"""
+def _read_client_entry -> str {
+    try {
+        import from jac_scale.config_loader { get_scale_config }
+        ms = get_scale_config().get_microservices_config();
+        client = ms.get("client", {});
+        return str(client.get("entry", "")).strip();
+    } except Exception {
+        return "";
+    }
+}
+
+
 """Top-level entry: build the user's app image and load it into the cluster.
 
 `app_name` becomes the image-name component (e.g. "myapp" -> "myapp:dev").
@@ -389,6 +475,15 @@ def auto_build_and_distribute(
             "gcloud container clusters get-credentials\n"
             "Then verify with: kubectl cluster-info"
         );
+    }
+
+    # P0.7: build the frontend bundle BEFORE docker build so the gateway
+    # pod's image contains .jac/client/dist/ for static serving at /.
+    # Skipped silently if no client.entry in jac.toml (LLM-only / API-only
+    # apps don't have a frontend).
+    client_entry = _read_client_entry();
+    if client_entry {
+        build_client_bundle(project_dir, client_entry);
     }
 
     (dockerfile, context_dir, build_args) = resolve_dockerfile(project_dir);
