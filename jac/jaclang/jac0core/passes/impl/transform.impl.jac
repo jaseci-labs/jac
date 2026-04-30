@@ -17,7 +17,7 @@ impl Alert.__repr__ -> str {
     return self.as_log();
 }
 
-"""Return the alert as a single line log as opposed to the pretty print."""
+"""Return the warning only"""
 impl Alert.as_log(*, colors: bool = False) -> str {
     import from jaclang.jac0core.helpers { ANSIColors }
     import from jaclang.jac0core.diagnostics { Severity }
@@ -49,7 +49,7 @@ impl Alert.as_log(*, colors: bool = False) -> str {
     return f"{file_path}:{line}:{column} {msg}";
 }
 
-"""Pretty prints the Alert to show the alert with source location."""
+"""Pretty prints the warning with hint message"""
 impl Alert.pretty_print(*, colors: bool = False) -> str {
     import from jaclang.jac0core.helpers {
         pretty_print_source_location,
