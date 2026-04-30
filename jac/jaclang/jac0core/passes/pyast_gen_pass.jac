@@ -23,7 +23,7 @@ import copy;
 import textwrap;
 import from collections.abc { Sequence }
 import from dataclasses { dataclass }
-import from typing { ClassVar, TypeVar, cast }
+import from typing { Any, ClassVar, TypeVar, cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext, EdgeDir }
 import from jaclang.jac0core.constant { Constants as Con }
