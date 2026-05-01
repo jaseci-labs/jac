@@ -128,8 +128,9 @@ impl JacAPIServerEndpoints.create_walker_callback(
             self.get_walkers()[walker_name], kwargs, (username or Con.GUEST.value)
         );
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+            import from jac_scale.microservices._sse { sse_frame_stream }
             return StreamingResponse(
-                result,
+                sse_frame_stream(result),
                 media_type='text/event-stream',
                 headers={
                     'Cache-Control': 'no-cache',
@@ -255,10 +256,14 @@ impl JacAPIServerEndpoints.create_function_callback(
         result = await self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or Con.GUEST.value)
         );
-        # Handle streaming responses (generators/async generators)
+        # Handle streaming responses (generators/async generators).
+        # Wrap in sse_frame_stream so each yield becomes a properly
+        # framed `data: {json}\n\n` chunk (raw StreamingResponse would
+        # emit dict reprs, which is invalid SSE).
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
+            import from jac_scale.microservices._sse { sse_frame_stream }
             return StreamingResponse(
-                result,
+                sse_frame_stream(result),
                 media_type='text/event-stream',
                 headers={
                     'Cache-Control': 'no-cache',

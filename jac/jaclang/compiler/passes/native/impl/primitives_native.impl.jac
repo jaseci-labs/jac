@@ -2719,9 +2719,20 @@ impl NativeListEmitter.emit_append(
     if helpers is None or not args {
         return None;
     }
-    val = p._box_value_tuple(args[0]);
-    val = p._coerce_type(val, helpers["elem_type"]);
-    get_builder(p).call(helpers["append"], [target, val]);
+    # Box value tuples to heap-allocated pointers for container storage.
+    # _coerce_type propagates the is_owned marker through any bitcast it
+    # emits, so checking `val` after coerce is correct.
+    _boxed_val = p._box_value_tuple(args[0]);
+    val = p._coerce_type(_boxed_val, helpers["elem_type"]);
+    # Set RC ctx AFTER boxing so _box_value_tuple's internal "box" ctx (which
+    # overwrites and then clears the ctx) does not hide the "append" attribution.
+    _append_loc = getattr(args[0], 'jac_loc', "");
+    p._rc_call_with_ctx(helpers["append"], [target, val], op="append", loc=_append_loc);
+    # if the boxed value was freshly allocated (owned), release the caller's
+    # ref now that helpers["append"] has retained it (rc: 1→2→1).
+    if isinstance(_boxed_val.type, ir.PointerType) and p._is_owned(_boxed_val) {
+        p._emit_rc_release_simple(_boxed_val, op="append", loc=_append_loc);
+    }
     return ir.Constant(ir.IntType(64), 0);
 }
 
@@ -2858,6 +2869,16 @@ impl NativeListEmitter.emit_remove(
     b.cbranch(eq, found_bb, find_bb);
     # Found: shift elements left from found_idx+1
     b.position_at_start(found_bb);
+    # release the element being removed
+    if isinstance(helpers["elem_type"], ir.PointerType) {
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _i8p_lr = ir.IntType(8).as_pointer();
+        _lr_elem = b.call(helpers["get"], [target, fi], name="rem_rel_elem");
+        _lr_cast = b.bitcast(_lr_elem, _i8p_lr, name="rem_rel_cast");
+        b.call(p.rc_release_simple_fn, [_lr_cast]);
+    }
     shift_start = b.add(fi, ir.Constant(i64, 1), name="rem.shstart");
     b.branch(shift_bb);
     b.position_at_start(shift_bb);
@@ -2866,9 +2887,23 @@ impl NativeListEmitter.emit_remove(
     shift_end = b.icmp_unsigned(">=", si, list_len, name="rem.shend");
     b.cbranch(shift_end, done_bb, shift_body);
     b.position_at_start(shift_body);
-    val = b.call(helpers["get"], [target, si], name="rem.val");
     prev = b.sub(si, ir.Constant(i64, 1), name="rem.prev");
-    b.call(helpers["set"], [target, prev, val]);
+    if isinstance(helpers["elem_type"], ir.PointerType) {
+        # Raw GEP+store for ptr lists: avoid spurious retain/release during shift.
+        # helpers["set"] (i.e. __list_set_ptr) retains the incoming element and
+        # releases the outgoing slot -- both are wrong when shifting for removal.
+        _sh_dpp = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sh_dpp"
+        );
+        _sh_da = b.load(_sh_dpp, name="sh_da");
+        _sh_src = b.gep(_sh_da, [si], name="sh_src");
+        _sh_val = b.load(_sh_src, name="sh_val");
+        _sh_dst = b.gep(_sh_da, [prev], name="sh_dst");
+        b.store(_sh_val, _sh_dst);
+    } else {
+        val = b.call(helpers["get"], [target, si], name="rem.val");
+        b.call(helpers["set"], [target, prev, val]);
+    }
     next_si = b.add(si, ir.Constant(i64, 1), name="rem.nextsi");
     si.add_incoming(next_si, shift_body);
     b.branch(shift_bb);
@@ -2915,9 +2950,50 @@ impl NativeListEmitter.emit_clear(
     b = get_builder(p);
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
+    helpers = p.list_helpers.get(ctx.type_key);
     len_ptr = b.gep(
         target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="clear.len.ptr"
     );
+    # release all pointer elements before zeroing length
+    if helpers is not None and isinstance(helpers["elem_type"], ir.PointerType) {
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _i8pc = ir.IntType(8).as_pointer();
+        _cur_len_c = b.load(len_ptr, name="clr_len");
+        _data_pp_c = b.gep(
+            target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="clr_data_pp"
+        );
+        _data_arr_c = b.load(_data_pp_c, name="clr_data");
+        _func_c = b.basic_block.function;
+        _clr_loop_bb = _func_c.append_basic_block("clr_loop");
+        _clr_body_bb = _func_c.append_basic_block("clr_body");
+        _clr_end_bb = _func_c.append_basic_block("clr_end");
+        _clr_i_a = p._entry_alloca(i64, "clr_i");
+        b.store(ir.Constant(i64, 0), _clr_i_a);
+        b.branch(_clr_loop_bb);
+        # loop header
+        p.builder.position_at_end(_clr_loop_bb);
+        b = p.builder;
+        _li_c = b.load(_clr_i_a, name="clr_li");
+        _clr_cmp = b.icmp_unsigned(">=", _li_c, _cur_len_c, name="clr_done");
+        b.cbranch(_clr_cmp, _clr_end_bb, _clr_body_bb);
+        # loop body
+        p.builder.position_at_end(_clr_body_bb);
+        b = p.builder;
+        _li2_c = b.load(_clr_i_a, name="clr_li2");
+        _ep_c = b.gep(_data_arr_c, [_li2_c], name="clr_ep");
+        _ev_c = b.load(_ep_c, name="clr_ev");
+        _evc_c = b.bitcast(_ev_c, _i8pc, name="clr_ev_cast");
+        b.call(p.rc_release_simple_fn, [_evc_c]);
+        _li3_c = b.load(_clr_i_a, name="clr_li3");
+        _ni_c = b.add(_li3_c, ir.Constant(i64, 1), name="clr_ni");
+        b.store(_ni_c, _clr_i_a);
+        b.branch(_clr_loop_bb);
+        # after loop
+        p.builder.position_at_end(_clr_end_bb);
+        b = p.builder;
+    }
     b.store(ir.Constant(i64, 0), len_ptr);
     return ir.Constant(i64, 0);
 }
@@ -3497,6 +3573,17 @@ impl NativeDictEmitter.emit_pop(
     shift_bb = func.append_basic_block(name="dpop.shift");
     shift_body_bb = func.append_basic_block(name="dpop.shift.body");
     shift_done = func.append_basic_block(name="dpop.shift.done");
+    # release the stored key (val is transferred to caller)
+    if isinstance(key_type, ir.PointerType) {
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _i8p_dp = ir.IntType(8).as_pointer();
+        _old_kp_dp = b.gep(keys_arr, [found_idx], name="dpop_old_kp");
+        _old_kv_dp = b.load(_old_kp_dp, name="dpop_old_kv");
+        _old_kc_dp = b.bitcast(_old_kv_dp, _i8p_dp, name="dpop_old_kc");
+        b.call(p.rc_release_simple_fn, [_old_kc_dp]);
+    }
     b.branch(shift_bb);
     b.position_at_start(shift_bb);
     ji = b.phi(i64, name="dpop.ji");
@@ -3561,6 +3648,7 @@ impl NativeDictEmitter.emit_remove(
     i8p = ir.IntType(8).as_pointer();
     key = args[0];
     key_type = helpers["key_type"];
+    val_type = helpers["val_type"];
     func = b.basic_block.function;
     found_bb = func.append_basic_block(name="drem.found");
     nokey_bb = func.append_basic_block(name="drem.nokey");
@@ -3622,6 +3710,26 @@ impl NativeDictEmitter.emit_remove(
     found_idx = b.phi(i64, name="drem.fidx");
     found_idx.add_incoming(si, search_body);
     found_idx.add_incoming(dict_len, search_bb);
+    # release key and val for the entry being removed
+    _i8p_dr = ir.IntType(8).as_pointer();
+    if isinstance(key_type, ir.PointerType) {
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _old_dr_kp = b.gep(keys_arr, [found_idx], name="drem_rel_kp");
+        _old_dr_kv = b.load(_old_dr_kp, name="drem_rel_kv");
+        _old_dr_kc = b.bitcast(_old_dr_kv, _i8p_dr, name="drem_rel_kc");
+        b.call(p.rc_release_simple_fn, [_old_dr_kc]);
+    }
+    if isinstance(val_type, ir.PointerType) {
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _old_dr_vp = b.gep(vals_arr, [found_idx], name="drem_rel_vp");
+        _old_dr_vv = b.load(_old_dr_vp, name="drem_rel_vv");
+        _old_dr_vc = b.bitcast(_old_dr_vv, _i8p_dr, name="drem_rel_vc");
+        b.call(p.rc_release_simple_fn, [_old_dr_vc]);
+    }
     b.branch(shift_bb);
     b.position_at_start(shift_bb);
     ji = b.phi(i64, name="drem.ji");
@@ -3864,6 +3972,16 @@ impl NativeSetEmitter.emit_add(
     }
     val = p._coerce_type(args[0], helpers["elem_type"]);
     get_builder(p).call(helpers["add"], [target, val]);
+    # if the original arg was owned (function-call result), consume the owned ref.
+    if isinstance(args[0].type, ir.PointerType) and p._is_owned(args[0]) {
+        _b_sa = get_builder(p);
+        _i8p_sa = ir.IntType(8).as_pointer();
+        _rc_sa = _b_sa.bitcast(args[0], _i8p_sa, name="sadd_own_rel_cast");
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _b_sa.call(p.rc_release_simple_fn, [_rc_sa]);
+    }
     return ir.Constant(ir.IntType(64), 0);
 }
 
@@ -3928,6 +4046,17 @@ impl NativeSetEmitter.emit_remove(
     b.branch(done_bb);
     # Found: shift remaining elements left
     b.position_at_start(found_bb);
+    # release element being removed
+    if isinstance(elem_type, ir.PointerType) {
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _i8p_sr = ir.IntType(8).as_pointer();
+        _srem_ep = b.gep(elems_arr, [idx], name="srem_rel_ep");
+        _srem_ev = b.load(_srem_ep, name="srem_rel_ev");
+        _srem_ec = b.bitcast(_srem_ev, _i8p_sr, name="srem_rel_cast");
+        b.call(p.rc_release_simple_fn, [_srem_ec]);
+    }
     new_len = b.sub(set_len, ir.Constant(i64, 1), name="srem.newlen");
     b.store(new_len, len_ptr);
     b.branch(shift_bb);
@@ -4003,6 +4132,17 @@ impl NativeSetEmitter.emit_discard(
     idx.add_incoming(next_idx, check_bb);
     # Found: shift remaining elements left
     b.position_at_start(found_bb);
+    # release element being discarded
+    if isinstance(elem_type, ir.PointerType) {
+        if p.rc_release_simple_fn is None {
+            p._emit_rc_helpers();
+        }
+        _i8p_disc = ir.IntType(8).as_pointer();
+        _disc_ep = b.gep(elems_arr, [idx], name="disc_rel_ep");
+        _disc_ev = b.load(_disc_ep, name="disc_rel_ev");
+        _disc_ec = b.bitcast(_disc_ev, _i8p_disc, name="disc_rel_cast");
+        b.call(p.rc_release_simple_fn, [_disc_ec]);
+    }
     new_len = b.sub(set_len, ir.Constant(i64, 1), name="disc.newlen");
     b.store(new_len, len_ptr);
     b.branch(shift_bb);
@@ -5479,346 +5619,6 @@ impl NativeBuiltinEmitter.emit_all(
 impl NativeBuiltinEmitter.emit_isinstance(
     self, ctx: NativeEmitCtx, args: list[ir.Value]
 ) -> (ir.Value | None) {
-    return None;
-}
-
-impl NativeBuiltinEmitter.emit_issubclass(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    return None;
-}
-
-impl NativeBuiltinEmitter.emit_type(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    return None;
-}
-
-impl NativeBuiltinEmitter.emit_id(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    arg_val = args[0];
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i64 = ir.IntType(64);
-    if isinstance(arg_val.type, ir.PointerType) {
-        return b.ptrtoint(arg_val, i64, name="id.ptr");
-    }
-    if isinstance(arg_val.type, ir.IntType) {
-        return p._coerce_type(arg_val, i64);
-    }
-    return None;
-}
-
-impl NativeBuiltinEmitter.emit_hash(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    arg_val = args[0];
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i64 = ir.IntType(64);
-    # int hash = identity
-    if isinstance(arg_val.type, ir.IntType) {
-        return p._coerce_type(arg_val, i64);
-    }
-    # string hash = djb2
-    i8p = ir.IntType(8).as_pointer();
-    if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
-        i8 = ir.IntType(8);
-        func = b.basic_block.function;
-        entry_bb = b.basic_block;
-        loop_bb = func.append_basic_block(name="hash.loop");
-        body_bb = func.append_basic_block(name="hash.body");
-        done_bb = func.append_basic_block(name="hash.done");
-        b.branch(loop_bb);
-        b.position_at_start(loop_bb);
-        h = b.phi(i64, name="hash.h");
-        h.add_incoming(ir.Constant(i64, 5381), entry_bb);
-        idx = b.phi(i64, name="hash.idx");
-        idx.add_incoming(ir.Constant(i64, 0), entry_bb);
-        cp = b.gep(arg_val, [idx], name="hash.cp");
-        ch = b.load(cp, name="hash.ch");
-        is_zero = b.icmp_unsigned("==", ch, ir.Constant(i8, 0), name="hash.end");
-        b.cbranch(is_zero, done_bb, body_bb);
-        b.position_at_start(body_bb);
-        ch_ext = b.zext(ch, i64, name="hash.chext");
-        h_shl5 = b.shl(h, ir.Constant(i64, 5), name="hash.shl5");
-        h_plus_h = b.add(h_shl5, h, name="hash.mul33");
-        h_next = b.add(h_plus_h, ch_ext, name="hash.next");
-        next_idx = b.add(idx, ir.Constant(i64, 1), name="hash.nextidx");
-        h.add_incoming(h_next, body_bb);
-        idx.add_incoming(next_idx, body_bb);
-        b.branch(loop_bb);
-        b.position_at_start(done_bb);
-        return h;
-    }
-    return None;
-}
-
-impl NativeBuiltinEmitter.emit_repr(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    arg_val = args[0];
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
-    i64 = ir.IntType(64);
-    rc_alloc_fn = p.rc_alloc_fn;
-    buf_ptr = b.call(rc_alloc_fn, [ir.Constant(i64, 64)], name="repr.buf");
-    snprintf = p._get_or_declare_extern(
-        "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
-    );
-    if isinstance(arg_val.type, ir.IntType) {
-        fmt = p._get_snprintf_fmt("%ld");
-        fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
-        coerced = p._coerce_type(arg_val, i64);
-        b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, coerced]);
-        return buf_ptr;
-    }
-    if isinstance(arg_val.type, ir.DoubleType) {
-        fmt = p._get_snprintf_fmt("%g");
-        fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
-        b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, arg_val]);
-        return buf_ptr;
-    }
-    if isinstance(arg_val.type, ir.PointerType) and arg_val.type == i8p {
-        fmt = p._get_snprintf_fmt("'%s'");
-        fmt_ptr = b.bitcast(fmt, i8p, name="repr.fmt.ptr");
-        b.call(snprintf, [buf_ptr, ir.Constant(i64, 64), fmt_ptr, arg_val]);
-        return buf_ptr;
-    }
-    return None;
-}
-
-impl NativeBuiltinEmitter.emit_chr(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    arg_val = args[0];
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
-    rc_alloc_fn = p.rc_alloc_fn;
-    str_ptr = b.call(rc_alloc_fn, [ir.Constant(ir.IntType(64), 2)], name="chr.buf");
-    byte_val = b.trunc(arg_val, ir.IntType(8), name="chr.byte");
-    b.store(byte_val, str_ptr);
-    idx1_ptr = b.gep(str_ptr, [ir.Constant(ir.IntType(64), 1)], name="chr.null.ptr");
-    b.store(ir.Constant(ir.IntType(8), 0), idx1_ptr);
-    return str_ptr;
-}
-
-impl NativeBuiltinEmitter.emit_ord(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    arg_val = args[0];
-    b = ctx.pass_ref.builder;
-    byte_val = b.load(arg_val, name="ord.byte");
-    return b.zext(byte_val, ir.IntType(64), name="ord.val");
-}
-
-impl NativeBuiltinEmitter.emit_hex(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
-    i64 = ir.IntType(64);
-    rc_alloc_fn = p.rc_alloc_fn;
-    snprintf = p._get_or_declare_extern(
-        "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
-    );
-    buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="hex.buf");
-    # Check if negative
-    arg_val = args[0];
-    zero = ir.Constant(i64, 0);
-    is_neg = b.icmp_signed("<", arg_val, zero, name="hex.neg");
-    abs_val = b.sub(zero, arg_val, name="hex.abs");
-    pos_val = b.select(is_neg, abs_val, arg_val, name="hex.pos");
-    fmt_pos = p._get_snprintf_fmt("0x%lx");
-    fmt_neg = p._get_snprintf_fmt("-0x%lx");
-    fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="hex.fmt.pos");
-    fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="hex.fmt.neg");
-    fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="hex.fmt");
-    b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="hex.snprintf");
-    return buf;
-}
-
-impl NativeBuiltinEmitter.emit_oct(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8p = ir.IntType(8).as_pointer();
-    i64 = ir.IntType(64);
-    rc_alloc_fn = p.rc_alloc_fn;
-    snprintf = p._get_or_declare_extern(
-        "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
-    );
-    buf = b.call(rc_alloc_fn, [ir.Constant(i64, 32)], name="oct.buf");
-    arg_val = args[0];
-    zero = ir.Constant(i64, 0);
-    is_neg = b.icmp_signed("<", arg_val, zero, name="oct.neg");
-    abs_val = b.sub(zero, arg_val, name="oct.abs");
-    pos_val = b.select(is_neg, abs_val, arg_val, name="oct.pos");
-    fmt_pos = p._get_snprintf_fmt("0o%lo");
-    fmt_neg = p._get_snprintf_fmt("-0o%lo");
-    fmt_pos_ptr = b.bitcast(fmt_pos, i8p, name="oct.fmt.pos");
-    fmt_neg_ptr = b.bitcast(fmt_neg, i8p, name="oct.fmt.neg");
-    fmt = b.select(is_neg, fmt_neg_ptr, fmt_pos_ptr, name="oct.fmt");
-    b.call(snprintf, [buf, ir.Constant(i64, 32), fmt, pos_val], name="oct.snprintf");
-    return buf;
-}
-
-impl NativeBuiltinEmitter.emit_bin(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if not args {
-        return None;
-    }
-    p = ctx.pass_ref;
-    b = get_builder(p);
-    i8 = ir.IntType(8);
-    i8p = i8.as_pointer();
-    i64 = ir.IntType(64);
-    rc_alloc_fn = p.rc_alloc_fn;
-    snprintf = p._get_or_declare_extern(
-        "snprintf", ir.IntType(32), [i8p, i64, i8p], var_arg=True
-    );
-    # Allocate buffer: "0b" + up to 64 digits + sign + null = 68
-    buf = b.call(rc_alloc_fn, [ir.Constant(i64, 68)], name="bin.buf");
-    arg_val = args[0];
-    zero = ir.Constant(i64, 0);
-    is_neg = b.icmp_signed("<", arg_val, zero, name="bin.neg");
-    abs_val = b.sub(zero, arg_val, name="bin.abs");
-    pos_val = b.select(is_neg, abs_val, arg_val, name="bin.pos");
-    is_zero = b.icmp_signed("==", arg_val, zero, name="bin.iszero");
-    func = b.basic_block.function;
-    entry_bb = b.basic_block;
-    zero_bb = func.append_basic_block(name="bin.zero");
-    prefix_bb = func.append_basic_block(name="bin.prefix");
-    loop_bb = func.append_basic_block(name="bin.loop");
-    body_bb = func.append_basic_block(name="bin.body");
-    reverse_bb = func.append_basic_block(name="bin.reverse");
-    done_bb = func.append_basic_block(name="bin.done");
-    b.cbranch(is_zero, zero_bb, prefix_bb);
-    # Zero case: "0b0"
-    b.position_at_start(zero_bb);
-    fmt_zero = p._get_snprintf_fmt("0b0");
-    fmt_zero_ptr = b.bitcast(fmt_zero, i8p, name="bin.fmt.zero");
-    b.call(snprintf, [buf, ir.Constant(i64, 68), fmt_zero_ptr], name="bin.zero.snp");
-    b.branch(done_bb);
-    # Write prefix: "-0b" or "0b"
-    b.position_at_start(prefix_bb);
-    neg_ch = ir.Constant(i8, 45);  # '-'
-    zero_ch = ir.Constant(i8, 48);  # '0'
-    b_ch = ir.Constant(i8, 98);  # 'b'
-    # Write sign if negative
-    start_off_val = b.select(
-        is_neg, ir.Constant(i64, 1), ir.Constant(i64, 0), name="bin.start"
-    );
-    neg_ptr = b.gep(buf, [ir.Constant(i64, 0)], name="bin.neg.ptr");
-    b.store(b.select(is_neg, neg_ch, zero_ch, name="bin.first.ch"), neg_ptr);
-    zero_ptr = b.gep(buf, [start_off_val], name="bin.zero.ptr");
-    b.store(zero_ch, zero_ptr);
-    b_off = b.add(start_off_val, ir.Constant(i64, 1), name="bin.b.off");
-    b_ptr = b.gep(buf, [b_off], name="bin.b.ptr");
-    b.store(b_ch, b_ptr);
-    digit_start = b.add(b_off, ir.Constant(i64, 1), name="bin.digit.start");
-    b.branch(loop_bb);
-    # Extract digits (reverse order)
-    b.position_at_start(loop_bb);
-    val = b.phi(i64, name="bin.val");
-    off = b.phi(i64, name="bin.off");
-    val.add_incoming(pos_val, prefix_bb);
-    off.add_incoming(digit_start, prefix_bb);
-    is_done = b.icmp_unsigned("==", val, ir.Constant(i64, 0), name="bin.done.chk");
-    b.cbranch(is_done, reverse_bb, body_bb);
-    b.position_at_start(body_bb);
-    bit = b.and_(val, ir.Constant(i64, 1), name="bin.bit");
-    digit = b.trunc(
-        b.add(bit, ir.Constant(i64, 48), name="bin.digit.val"), i8, name="bin.digit"
-    );
-    digit_ptr = b.gep(buf, [off], name="bin.digit.ptr");
-    b.store(digit, digit_ptr);
-    new_val = b.lshr(val, ir.Constant(i64, 1), name="bin.new.val");
-    new_off = b.add(off, ir.Constant(i64, 1), name="bin.new.off");
-    val.add_incoming(new_val, body_bb);
-    off.add_incoming(new_off, body_bb);
-    b.branch(loop_bb);
-    # Reverse the digit portion and null-terminate
-    b.position_at_start(reverse_bb);
-    null_ptr = b.gep(buf, [off], name="bin.null.ptr");
-    b.store(ir.Constant(i8, 0), null_ptr);
-    # Reverse digits between digit_start and off-1
-    rev_entry = b.basic_block;
-    rev_loop = func.append_basic_block(name="bin.rev.loop");
-    rev_body = func.append_basic_block(name="bin.rev.body");
-    rev_done = func.append_basic_block(name="bin.rev.done");
-    end_idx = b.sub(off, ir.Constant(i64, 1), name="bin.end.idx");
-    b.branch(rev_loop);
-    b.position_at_start(rev_loop);
-    lo = b.phi(i64, name="bin.rev.lo");
-    hi = b.phi(i64, name="bin.rev.hi");
-    lo.add_incoming(digit_start, rev_entry);
-    hi.add_incoming(end_idx, rev_entry);
-    need_swap = b.icmp_signed("<", lo, hi, name="bin.rev.need");
-    b.cbranch(need_swap, rev_body, rev_done);
-    b.position_at_start(rev_body);
-    lo_ptr = b.gep(buf, [lo], name="bin.rev.lo.ptr");
-    hi_ptr = b.gep(buf, [hi], name="bin.rev.hi.ptr");
-    lo_ch = b.load(lo_ptr, name="bin.rev.lo.ch");
-    hi_ch = b.load(hi_ptr, name="bin.rev.hi.ch");
-    b.store(hi_ch, lo_ptr);
-    b.store(lo_ch, hi_ptr);
-    next_lo = b.add(lo, ir.Constant(i64, 1), name="bin.rev.next.lo");
-    next_hi = b.sub(hi, ir.Constant(i64, 1), name="bin.rev.next.hi");
-    lo.add_incoming(next_lo, rev_body);
-    hi.add_incoming(next_hi, rev_body);
-    b.branch(rev_loop);
-    b.position_at_start(rev_done);
-    b.branch(done_bb);
-    b.position_at_start(done_bb);
-    return buf;
-}
-
-impl NativeBuiltinEmitter.emit_pow(
-    self, ctx: NativeEmitCtx, args: list[ir.Value]
-) -> (ir.Value | None) {
-    if len(args) < 2 {
-        return None;
-    }
-    p = ctx.pass_ref;
-    base = args[0];
-    exp = args[1];
-    if isinstance(base.type, ir.IntType) and isinstance(exp.type, ir.IntType) {
-        return p._codegen_int_pow(base, exp);
-    }
-    if isinstance(base.type, ir.DoubleType) and isinstance(exp.type, ir.DoubleType) {
-        pow_fn = p._get_or_declare_extern(
-            "pow", ir.DoubleType(), [ir.DoubleType(), ir.DoubleType()]
-        );
-        return get_builder(p).call(pow_fn, [base, exp], name="pow.result");
-    }
     return None;
 }
 

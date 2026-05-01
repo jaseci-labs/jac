@@ -279,6 +279,23 @@ Hyphens in module names become underscores in the env var name; dots stay as dot
 
 For the full Kubernetes deployment story (image building, ingress, autoscaling), see the [Kubernetes tutorial](kubernetes.md) -- it applies here unchanged, you just deploy each service separately and wire them with env vars.
 
+### Microservice Mode + Gateway
+
+For projects with more than a handful of services, `jac-scale` ships a microservice mode that puts a single API gateway in front of all of them. `jac setup microservice` writes the plumbing into `jac.toml` and `jac start` on the project root brings the whole stack up -- one public port, one unified `/docs`, one `/metrics` endpoint, one shared anchor store. The same source still runs as a monolith when microservice mode is disabled.
+
+The gateway exposes a standard error envelope (`{ok, error: {code, message, service?, trace_id}, meta}`) across every failure path (proxy, passthrough, aggregation). Drop-in observability: `X-Trace-Id` is minted if absent and threaded through every `sv` RPC hop. The following knobs all live under `[plugins.scale.microservices]` and are emitted as commented reference blocks by `jac setup microservice`:
+
+| Concern | Config | Default |
+|---------|--------|---------|
+| Graceful shutdown | `drain_timeout_seconds = 10` | 10s |
+| Per-service RPC timeout | `[...services.NAME] rpc_timeout = 120.0` | 10s |
+| CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
+| Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
+
+WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently -- no config. On `SIGTERM` (or `jac scale stop`), each service flips a drain flag (new requests get `503` with `Retry-After: 2`) and uvicorn waits up to `drain_timeout_seconds` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
+
+The gateway reference lives at [`jac-scale/jac_scale/microservices/docs.md`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/microservices/docs.md) in the jac-scale source tree.
+
 ---
 
 ## Common Pitfalls

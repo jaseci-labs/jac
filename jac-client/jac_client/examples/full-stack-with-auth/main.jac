@@ -261,7 +261,13 @@ cl {
             }
             result = await jacSignup(username, password);
             if result["success"] {
-                navigate("/todos");
+                # /user/register does not return a token, sign in to start a session
+                logged_in = await jacLogin(username, password);
+                if logged_in {
+                    navigate("/todos");
+                } else {
+                    error = "Account created but login failed";
+                }
             } else {
                 error = result["error"] if result["error"] else "Signup failed";
             }
