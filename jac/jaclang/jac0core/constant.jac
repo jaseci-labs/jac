@@ -88,6 +88,7 @@ class JacSemTokenModifier(IntFlag) {
 class Constants(StrEnum) {
     with entry {
         HERE = 'here';
+        ROOT = 'root';
         VISITOR = 'visitor';
         GUEST = '__guest__';
         JAC_CHECK = '_check';
@@ -315,6 +316,7 @@ class Tokens(StrEnum) {
         KW_PROPS = 'KW_PROPS';
         KW_INIT = 'KW_INIT';
         KW_SUPER = 'KW_SUPER';
+        KW_ROOT = 'KW_ROOT';
         KW_POST_INIT = 'KW_POST_INIT';
         KW_IMPL = 'KW_IMPL';
         KW_SEM = 'KW_SEM';
@@ -331,7 +333,6 @@ class Tokens(StrEnum) {
         JSX_FRAG_OPEN = 'JSX_FRAG_OPEN';
         JSX_FRAG_CLOSE = 'JSX_FRAG_CLOSE';
         JSX_NAME = 'JSX_NAME';
-        JSX_BLOCK_COMMENT = 'JSX_BLOCK_COMMENT';
         COMMENT = 'COMMENT';
         WS = 'WS';
         F_DQ_START = 'F_DQ_START';
@@ -493,6 +494,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_RAISE': 'raise',
          'KW_REPORT': 'report',
          'KW_RETURN': 'return',
+         'KW_ROOT': 'root',
          'KW_SELF': 'self',
          'KW_SEM': 'sem',
          'KW_SERVER': 'sv',

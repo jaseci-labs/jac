@@ -3,6 +3,20 @@ impl TypeEvaluator._get_type_of_expression_core(
     expr: uni.Expr, expected_type: TypeBase | None = None
 ) -> TypeBase {
     if isinstance(expr, uni.BuiltinType) and expr.value == "any" {
+        # Attach typing.Any symbol so LSP go-to-def jumps to typing.pyi.
+        # Look up directly in typing_module (skipping the user's scope chain)
+        # so we land on the class definition, not on a re-export import line.
+        if expr.sym is None and self.typing_module is not None {
+            if symbol := type_utils.lookup_symtab(
+                self.typing_module, "Any", self.typing_module
+            ) {
+                symbol.add_use(expr);
+                expr.sym = symbol;
+                if symbol.decl and symbol.decl.name_of {
+                    expr.name_of = symbol.decl.name_of;
+                }
+            }
+        }
         if self.prefetch and self.prefetch.any_class is not None {
             return self.prefetch.any_class;
         }
@@ -1780,6 +1794,9 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.Name() | uni.SpecialVarRef():
             if isinstance(expr, uni.SpecialVarRef) {
+                if expr.name == Tok.KW_ROOT {
+                    return self._get_type_of_root(expr);
+                }
                 # Handle "here" and "visitor" special name ref.
                 if expr.name in (Tok.KW_HERE, Tok.KW_VISITOR) {
                     if (method := self._get_enclosing_method(expr)) {
@@ -1828,31 +1845,6 @@ impl TypeEvaluator._get_type_of_expression_core(
             # Handle 'super' keyword - resolve to first parent class in MRO.
             if self._is_expr_super(expr) {
                 return self._get_type_of_super(expr);
-            }
-
-            # Handle bare `root` — the deprecated form (not in a FuncCall).
-            # Codegen rewrites bare root to root(), so the type checker must
-            # resolve it as Root instance to avoid false E1096 errors on
-            # connections like `root ++> x`. Only applies when `root` would
-            # resolve from jac_builtins.pyi (not a user-defined local).
-            if isinstance(expr, uni.Name)
-            and expr.value == "root"
-            and not (
-                isinstance(expr.parent, uni.FuncCall) and expr.parent.target is expr
-            )
-            and self.prefetch
-            and self.prefetch.root_class {
-                scope_ = expr.find_parent_of_type(uni.UniScopeNode);
-                local_sym = type_utils.lookup_symtab(scope_, "root", None)
-                    if scope_
-                    else None;
-                if local_sym is None
-                or (
-                    local_sym.decl is not None
-                    and local_sym.decl.loc.mod_path.endswith("jac_builtins.pyi")
-                ) {
-                    return self._convert_to_instance(self.prefetch.root_class);
-                }
             }
 
             if scope := self._resolution_scope_for(expr) {
@@ -3335,11 +3327,43 @@ impl TypeEvaluator.postinit -> None {
         self._JAC_BUILTINS_STUB_FILE_PATH
     );
     self.dom_types_module = self._load_stub_module(self._DOM_TYPES_STUB_FILE_PATH);
-    # Merge jac_builtins into builtins. Override imported symbols from builtins.pyi
-    # (e.g. Callable, Any, Protocol) with the jac_builtins.pyi versions so they
-    # pass the lookup_symtab import filter (builtins.pyi marks them as internal
-    # imports, but jac_builtins.pyi intentionally re-exports them for user code).
+    # Read jac_builtins.pyi's __all__ as the declarative public surface.
+    # Names not listed there (e.g. typing imports used only for this stub's
+    # own annotations) stay private; user code must import them explicitly.
+    def read_dunder_all(path: str) -> (set[str] | None) {
+        try {
+            py_tree = py_ast.parse(read_file_with_encoding(path));
+            for node in py_tree.body {
+                if (
+                    isinstance(node, py_ast.Assign)
+                    and len(node.targets) == 1
+                    and isinstance(node.targets[0], py_ast.Name)
+                    and node.targets[0].id == "__all__"
+                    and isinstance(node.value, (py_ast.List, py_ast.Tuple))
+                ) {
+                    result: set[str] = set();
+                    for elt in node.value.elts {
+                        if (
+                            isinstance(elt, py_ast.Constant)
+                            and isinstance(elt.value, str)
+                        ) {
+                            result.add(elt.value);
+                        }
+                    }
+                    return result;
+                }
+            }
+        } except Exception {
+            return None;
+        }
+        return None;
+    }
+    jac_allowed = read_dunder_all(self._JAC_BUILTINS_STUB_FILE_PATH);
+    # Merge jac_builtins into builtins, honoring __all__ as the public surface.
     for (name, sym) in self.jac_builtins_module.names_in_scope.items() {
+        if jac_allowed is not None and name not in jac_allowed {
+            continue;
+        }
         existing = self.builtins_module.names_in_scope.get(name);
         if existing is None or existing.imported {
             self.builtins_module.names_in_scope[name] = sym;

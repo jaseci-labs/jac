@@ -2,7 +2,7 @@
 
 impl app.fetchTodos -> None {
     todosLoading = True;
-    result = root() spawn ListTodos();
+    result = root spawn ListTodos();
     todos = result.reports[0] if result.reports else [];
     todosLoading = False;
 }
@@ -11,7 +11,7 @@ impl app.addTodo -> None {
     if not newTodoText.strip() {
         return;
     }
-    response = root() spawn AddTodo(title=newTodoText);
+    response = root spawn AddTodo(title=newTodoText);
     newTodo = response.reports[0];
     todos = todos + [
         {
@@ -24,7 +24,7 @@ impl app.addTodo -> None {
 }
 
 impl app.toggleTodo(todoId: str) -> None {
-    root() spawn ToggleTodo(todo_id=todoId);
+    root spawn ToggleTodo(todo_id=todoId);
     todos = [
         {"id": t["id"], "title": t["title"], "completed": not t["completed"]}
             if t["id"] == todoId
@@ -33,7 +33,7 @@ impl app.toggleTodo(todoId: str) -> None {
 }
 
 impl app.deleteTodo(todoId: str) -> None {
-    root() spawn DeleteTodo(todo_id=todoId);
+    root spawn DeleteTodo(todo_id=todoId);
     todos = [
         t
         for t in todos
@@ -71,12 +71,19 @@ impl app.handleSignup -> None {
     }
     loading = True;
     result = await jacSignup(username, password);
-    loading = False;
     if result["success"] {
-        isLoggedIn = True;
-        username = "";
-        password = "";
+        # /user/register does not return a token, sign in to start a session
+        logged_in = await jacLogin(username, password);
+        loading = False;
+        if logged_in {
+            isLoggedIn = True;
+            username = "";
+            password = "";
+        } else {
+            error = "Account created but login failed";
+        }
     } else {
+        loading = False;
         error = str(result["error"]) if result["error"] else "Signup failed";
     }
 }

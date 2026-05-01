@@ -13,14 +13,6 @@ impl DocIRGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     nd.gen.doc_ir = doc.Text(nd.get_normalized_text(), source_token=source_tok);
 }
 
-"""DocIR for `{#* ... *#}`: render `{ comment }` inline.  The
-CommentToken lives on the node, not in source.comments, so
-CommentInjectionPass never sees it.  `source_token=nd.comment` keeps
-source-map entries pointing at the actual comment text."""
-impl DocIRGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
-    nd.gen.doc_ir = doc.Text("{ " + nd.comment.value + " }", source_token=nd.comment);
-}
-
 """Generate DocIR for JSX normal attributes."""
 impl DocIRGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
     parts: list[doc.DocType] = [];
@@ -112,7 +104,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                 child_parts.append(self.hard_line());
             }
             self.trim_trailing_line(child_parts);
-            inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
+            inline_child_types = (uni.JsxText, uni.JsxExpression);
             all_inline_children = (
                 nd.children
                 and all(isinstance(child, inline_child_types) for child in nd.children)
@@ -187,7 +179,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         child_parts.append(self.hard_line());
     }
     self.trim_trailing_line(child_parts);
-    inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
+    inline_child_types = (uni.JsxText, uni.JsxExpression);
     all_inline_children = (
         nd.children
         and all(isinstance(child, inline_child_types) for child in nd.children)
@@ -236,7 +228,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         );
     }
     parts.append(closing_doc);
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    nd.gen.doc_ir = self.group(self.concat(parts), ast_node=nd);
 }
 
 """Generate DocIR for ellipsis."""
