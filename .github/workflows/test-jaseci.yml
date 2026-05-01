@@ -280,6 +280,8 @@ jobs:
           sudo snap install microk8s --classic
           sleep 20
           set -e
+          echo 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"' | sudo tee /etc/sudoers.d/snap-path
+          sudo chmod 440 /etc/sudoers.d/snap-path
 
       - name: Initialize MicroK8s
         run: |
