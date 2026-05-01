@@ -746,7 +746,7 @@ await jacSpawnStream(
 
 await jacCallFunctionStream(
     "log_tail", args={"lines": 100},
-    onEvent=lambda(evt: dict) -> None { console.log(evt.line); }
+    onEvent=lambda(evt: dict) -> None { print(evt.line); }
 );
 ```
 
