@@ -96,7 +96,10 @@ obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
     ) -> list[doc.DocType];
 
     def _fix_empty_region_spacing(parts: list[doc.DocType]) -> list[doc.DocType];
-    def _make_standalone_comment(comment: uni.CommentToken) -> doc.DocType;
+    def _make_standalone_comment(
+        comment: uni.CommentToken, in_jsx: bool = False
+    ) -> doc.DocType;
+
     def _make_inline_comment(
         comment: uni.CommentToken, add_line: bool = True, anchor_col_end: int = 0
     ) -> doc.DocType;
@@ -105,7 +108,8 @@ obj CommentInjectionPass(Transform[uni.Module, uni.Module]) {
         sink: list[doc.DocType],
         comments: Sequence[CommentInfo],
         *,
-        prev_item_line: (int | None)
+        prev_item_line: (int | None),
+        in_jsx: bool = False
     ) -> (int | None);
 
     def _starts_with_line(part: doc.DocType) -> bool;

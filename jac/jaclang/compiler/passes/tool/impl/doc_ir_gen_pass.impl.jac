@@ -226,6 +226,22 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                 ast_node=nd
             )
         );
+    } elif (nd.children is not None and not nd.is_self_closing) {
+        # Non-self-closing element with no children: generate an empty Indent
+        # (ast_node set) so comment_injection_pass can detect this element's
+        # body and inject block comments that were stripped from the AST.
+        parts.append(
+            self.group(
+                self.concat(
+                    [
+                        self.indent(self.concat([]), ast_node=nd),
+                        self.if_break(self.hard_line(), self.concat([]))
+                    ]
+                ),
+                break_contiguous=True,
+                ast_node=nd
+            )
+        );
     }
     parts.append(closing_doc);
     nd.gen.doc_ir = self.group(self.concat(parts), ast_node=nd);

@@ -747,10 +747,6 @@ impl Parser.parse_module -> Module {
     self.source = Source(self.source_code, self.file_path);
     doc: String | None = None;
     body: list = [];
-    terminals: list = [];
-    for tok in self.tokens {
-        terminals.append(self.make_uni_token(tok));
-    }
     if self.check(TokenKind.STRING) {
         tok = self.advance();
         doc = self.make_string(tok);
@@ -764,6 +760,15 @@ impl Parser.parse_module -> Module {
         # Guard: ensure forward progress to prevent infinite loops
         if self.pos == before and not self.at_end() {
             self.advance();
+        }
+    }
+    # Build terminals AFTER parsing so _jsx_comment_slot_positions is populated.
+    # Tokens at those positions are filtered out to prevent comment
+    # misclassification in comment_injection_pass.
+    terminals: list = [];
+    for tok in self.tokens {
+        if tok.loc.pos_start not in self._jsx_comment_slot_positions {
+            terminals.append(self.make_uni_token(tok));
         }
     }
     kid: list = [];
@@ -3404,9 +3409,37 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
-    # Expression: {expr}
+    # Expression: {expr}  — or {#* block comment *#} which the lexer consumed,
+    # leaving LBRACE immediately followed by RBRACE. Detect via raw source gap
+    # so bare {} remains a parse error.
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
+        if self.check(TokenKind.RBRACE) {
+            gap = self.source_code[lbrace.loc.pos_end:self.current().loc.pos_start];
+            stripped = gap.strip();
+            if stripped.startswith("#*") and stripped.endswith("*#") {
+                rbrace_tok = self.current();
+                self._jsx_comment_slot_positions.append(lbrace.loc.pos_start);
+                self._jsx_comment_slot_positions.append(rbrace_tok.loc.pos_start);
+                # Also filter the preceding whitespace JSX_TEXT token if it
+                # sits on the same line as the comment (would cause INLINE
+                # misclassification in comment_injection_pass).
+                if self.pos >= 2 {
+                    before_lbrace = self.tokens[self.pos - 2];
+                    if (
+                        before_lbrace.kind == TokenKind.JSX_TEXT
+                        and not before_lbrace.value.strip()
+                        and before_lbrace.loc.end_line >= lbrace.loc.line
+                    ) {
+                        self._jsx_comment_slot_positions.append(
+                            before_lbrace.loc.pos_start
+                        );
+                    }
+                }
+                self.advance();  # consume }
+                return self.parse_jsx_child();
+            }
+        }
         lbrace_uni = self.make_uni_token(lbrace);
         expr = self.parse_expression();
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
