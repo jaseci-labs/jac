@@ -92,7 +92,6 @@ with entry {
 # --- validate_resource_limits ---
 test "validate resource limits accepts valid pairs" {
     validate_resource_limits("250m", "500m", "256Mi", "512Mi");
-    assert 1 == 2, "INTENTIONAL FAILURE: proving tests actually run in CI";
 }
 
 test "validate resource limits rejects lower limits" {
