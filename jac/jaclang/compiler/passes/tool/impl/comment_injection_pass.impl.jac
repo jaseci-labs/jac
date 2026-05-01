@@ -584,6 +584,16 @@ impl CommentInjectionPass._handle_body_comments(
     if ((body_start is None) and isinstance(nd, uni.JsxElement)) {
         body_start = nd.get_body_start_line();
         body_end = nd.get_body_end_line();
+        # get_body_end_line() can return None when the closing-tag token name
+        # doesn't match Tok.JSX_CLOSE_START (token stores the literal string '</'
+        # rather than the canonical constant). Fall back to the closing JsxElement's
+        # own location so the empty-body comment-injection path still runs.
+        if (body_end is None and nd.kid) {
+            closing_kid = nd.kid[-1];
+            if (isinstance(closing_kid, uni.JsxElement) and closing_kid.loc) {
+                body_end = closing_kid.loc.first_line;
+            }
+        }
     }
     if ((body_start is None) and isinstance(nd, (uni.ArchHas, uni.GlobalVars))) {
         body_start = next(
@@ -724,7 +734,23 @@ impl CommentInjectionPass._handle_body_comments(
         } else {
             comments = [];
             if self._comments {
-                comments = self._comments.take_standalone_between(body_start, body_end);
+                # For single-line JSX elements, get_body_start_line() returns
+                # JSX_TAG_END.last_line + 1, which can exceed get_body_end_line()
+                # (JSX_CLOSE_START.first_line) when both tokens are on the same line.
+                # Swap to recover a valid [close_line, open_line+1) range so that
+                # block comments on the tag-end line are still captured.
+                adj_start = body_start;
+                adj_end = body_end;
+                if (
+                    isinstance(nd, uni.JsxElement)
+                    and adj_start is not None
+                    and adj_end is not None
+                    and adj_start > adj_end
+                ) {
+                    adj_start = adj_end;
+                    adj_end = body_start;
+                }
+                comments = self._comments.take_standalone_between(adj_start, adj_end);
             }
             if comments {
                 result.append(doc.Line(hard=True));
@@ -1159,7 +1185,12 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
             }
         }
         anchor_token_id: (int | None) = None;
-        if (left_token and (left_token.loc.last_line == comment.loc.first_line)) {
+        is_block_comment = comment.value.startswith("#*");
+        if (
+            not is_block_comment
+            and left_token
+            and (left_token.loc.last_line == comment.loc.first_line)
+        ) {
             anchor_token_id = hash(
                 (
                     left_token.loc.first_line,
