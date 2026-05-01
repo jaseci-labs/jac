@@ -301,7 +301,8 @@ impl CommentInjectionPass._emit_standalone_comments(
     sink: list[doc.DocType],
     comments: Sequence[CommentInfo],
     *,
-    prev_item_line: (int | None)
+    prev_item_line: (int | None),
+    in_jsx: bool = False
 ) -> (int | None) {
     last_line = prev_item_line;
     prev_comment_line: (int | None) = None;
@@ -324,7 +325,7 @@ impl CommentInjectionPass._emit_standalone_comments(
                 sink.append(doc.Line(hard=True));
             }
         }
-        sink.append(self._make_standalone_comment(info.token));
+        sink.append(self._make_standalone_comment(info.token, in_jsx=in_jsx));
         last_line = info.last_line;
         prev_comment_line = comment_line;
     }
@@ -344,9 +345,13 @@ impl CommentInjectionPass._make_inline_comment(
 
 """Create standalone comment DocIR."""
 impl CommentInjectionPass._make_standalone_comment(
-    comment: uni.CommentToken
+    comment: uni.CommentToken, in_jsx: bool = False
 ) -> doc.DocType {
-    return doc.Concat([doc.Text(comment.value), doc.Line(hard=True)]);
+    text = comment.value;
+    if (in_jsx and text.startswith("#*")) {
+        text = "{" + text + "}";
+    }
+    return doc.Concat([doc.Text(text), doc.Line(hard=True)]);
 }
 
 """
@@ -676,7 +681,10 @@ impl CommentInjectionPass._handle_body_comments(
                 }
                 if comments {
                     prev_item_line = self._emit_standalone_comments(
-                        parts_with_standalone, comments, prev_item_line=prev_item_line
+                        parts_with_standalone,
+                        comments,
+                        prev_item_line=prev_item_line,
+                        in_jsx=isinstance(nd, uni.JsxElement)
                     );
                 }
                 current_line = body_item.loc.last_line + 1;
@@ -704,7 +712,10 @@ impl CommentInjectionPass._handle_body_comments(
             }
             if comments {
                 self._emit_standalone_comments(
-                    result, comments, prev_item_line=last_body_line
+                    result,
+                    comments,
+                    prev_item_line=last_body_line,
+                    in_jsx=isinstance(nd, uni.JsxElement)
                 );
                 if (result and self._is_comment_with_line(result[-1])) {
                     result[-1] = self._strip_trailing_line_from_comment(result[-1]);
@@ -718,7 +729,10 @@ impl CommentInjectionPass._handle_body_comments(
             if comments {
                 result.append(doc.Line(hard=True));
                 self._emit_standalone_comments(
-                    result, comments, prev_item_line=(body_start - 1)
+                    result,
+                    comments,
+                    prev_item_line=(body_start - 1),
+                    in_jsx=isinstance(nd, uni.JsxElement)
                 );
                 if (result and self._is_comment_with_line(result[-1])) {
                     result[-1] = self._strip_trailing_line_from_comment(result[-1]);

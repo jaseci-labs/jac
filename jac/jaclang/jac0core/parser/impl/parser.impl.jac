@@ -747,7 +747,6 @@ impl Parser.parse_module -> Module {
     self.source = Source(self.source_code, self.file_path);
     doc: String | None = None;
     body: list = [];
-    terminals: list = [];
     if self.check(TokenKind.STRING) {
         tok = self.advance();
         doc = self.make_string(tok);
@@ -763,9 +762,10 @@ impl Parser.parse_module -> Module {
             self.advance();
         }
     }
-    # Build terminals after parsing so JSX comment slot LBRACE/RBRACE tokens
-    # can be filtered out (they have no corresponding AST node and would cause
-    # inline comment misclassification in the formatter).
+    # Build terminals AFTER parsing so _jsx_comment_slot_positions is populated.
+    # Tokens at those positions are filtered out to prevent comment
+    # misclassification in comment_injection_pass.
+    terminals: list = [];
     for tok in self.tokens {
         if tok.loc.pos_start not in self._jsx_comment_slot_positions {
             terminals.append(self.make_uni_token(tok));
@@ -3409,9 +3409,9 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
-    # Expression: {expr}  — or {#* block comment *#} which the lexer consumed
-    # as whitespace+comments, leaving LBRACE immediately followed by RBRACE.
-    # Detect the comment case via raw source so bare {} remains a parse error.
+    # Expression: {expr}  — or {#* block comment *#} which the lexer consumed,
+    # leaving LBRACE immediately followed by RBRACE. Detect via raw source gap
+    # so bare {} remains a parse error.
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
         if self.check(TokenKind.RBRACE) {
@@ -3421,10 +3421,9 @@ impl Parser.parse_jsx_child -> Expr {
                 rbrace_tok = self.current();
                 self._jsx_comment_slot_positions.append(lbrace.loc.pos_start);
                 self._jsx_comment_slot_positions.append(rbrace_tok.loc.pos_start);
-                # Also filter the whitespace JSX_TEXT immediately before LBRACE
-                # if it spans into LBRACE's line (last_line >= lbrace.first_line).
-                # Such tokens are not in DocIR and would cause INLINE
-                # misclassification of the block comment in the formatter.
+                # Also filter the preceding whitespace JSX_TEXT token if it
+                # sits on the same line as the comment (would cause INLINE
+                # misclassification in comment_injection_pass).
                 if self.pos >= 2 {
                     before_lbrace = self.tokens[self.pos - 2];
                     if (
