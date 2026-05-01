@@ -698,13 +698,44 @@ def:pub LiveData() -> JsxElement {
 
 Walkers and `def:pub` functions that return a Python generator are automatically served as `text/event-stream`. The client consumes them with `useJacStream`, `jacSpawnStream`, or `jacCallFunctionStream` (auto-imported in `cl{}` / `to cl:` code).
 
-**Server (yield from a walker):**
+**Server:** `report` a generator from any walker (or `def:pub`). Walker abilities cannot `yield` directly, so produce the generator in one of two ways:
+
+*Helper generator function (with explicit `yield`)* — best when the loop body has nontrivial logic:
+
+```jac
+def _stream_reply(prompt: str) -> Any {
+    for w in ["Hello", " ", "world", "!"] {
+        yield {"token": w};
+    }
+}
+
+walker:pub chat {
+    has prompt: str = "";
+    can run with Root entry {
+        report _stream_reply(self.prompt);
+    }
+}
+```
+
+*Inline generator expression* — single-walker form, useful when each frame is a simple mapping over an iterable:
 
 ```jac
 walker:pub chat {
     has prompt: str = "";
     can run with Root entry {
-        report (yield {"token": w} for w in tokenize(self.prompt));
+        report ({"token": w} for w in ["Hello", " ", "world", "!"]);
+    }
+}
+```
+
+Both forms are wrapped as `text/event-stream` by `jac-scale`.
+
+For `def:pub` functions called from the client, `yield` works directly (no helper needed) since plain functions follow generator-function semantics:
+
+```jac
+def:pub stream_logs(n: int = 100) -> Any {
+    for line in tail_log_file(n) {
+        yield {"line": line};
     }
 }
 ```
@@ -739,15 +770,19 @@ def:pub Chat() -> JsxElement {
 **Callback API (non-React contexts):**
 
 ```jac
-await jacSpawnStream(
-    "chat", nodeId="", fields={"prompt": "hi"},
-    onEvent=lambda(evt: dict) -> None { print(evt.token); }
-);
+async def stream_chat() -> None {
+    await jacSpawnStream(
+        "chat", nodeId="", fields={"prompt": "hi"},
+        onEvent=lambda(evt: dict) -> None { print(evt.token); }
+    );
+}
 
-await jacCallFunctionStream(
-    "log_tail", args={"lines": 100},
-    onEvent=lambda(evt: dict) -> None { print(evt.line); }
-);
+async def stream_logs() -> None {
+    await jacCallFunctionStream(
+        "log_tail", args={"lines": 100},
+        onEvent=lambda(evt: dict) -> None { print(evt.line); }
+    );
+}
 ```
 
 Both forms auto-stop on `event: end` and throw on `event: error`. Yield any dict shape from the server; the client treats `events` as raw, so apps can render token-by-token text (`{"token": "..."}`), structured agent traces (`{"type": "tool_call", "detail": "..."}`), or any custom payload without server-side protocol changes. See the [Real-Time Updates tutorial](../../tutorials/fullstack/backend.md#streaming-pattern-sse) for full examples.

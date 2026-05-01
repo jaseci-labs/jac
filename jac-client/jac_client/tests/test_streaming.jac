@@ -151,6 +151,15 @@ cl {
             </div>;
     }
 }
+""",
+     _GENEXP_APP_JAC: str = """\"\"\"Generator-expression streaming app (no helper function).\"\"\"
+
+walker:pub gen_words {
+    has prompt: str = "";
+    can run with Root entry {
+        report ({"token": w} for w in ["Hello", " ", "world", "!"]);
+    }
+}
 """;
 
 
@@ -378,6 +387,29 @@ test "def:pub function streaming: generator return served as SSE" {
             (_, data) = frames[i];
             assert data["fn_index"] == i , f"Frame {i}: {data}";
         }
+    } finally {
+        _stop_server(proc, tmpdir);
+    }
+}
+
+test "generator-expression walker: single-walker form streams as SSE" {
+    (proc, port, base_url, tmpdir) = _start_server(_GENEXP_APP_JAC, "genexp-test");
+    try {
+        with httpx.Client(timeout=30.0) as client {
+            with client.stream(
+                "POST",
+                f"{base_url}/walker/gen_words",
+                json={"prompt": "hi"},
+                headers={"Accept": "text/event-stream"}
+            ) as resp {
+                ct = resp.headers.get("content-type", "");
+                assert "text/event-stream" in ct , f"Expected SSE, got: {ct}";
+                frames = _read_sse_frames(resp);
+            }
+        }
+        assert len(frames) == 4 , f"Expected 4 frames, got {len(frames)}";
+        words = [data["token"] for (_, data) in frames];
+        assert words == ["Hello", " ", "world", "!"] , f"Unexpected tokens: {words}";
     } finally {
         _stop_server(proc, tmpdir);
     }
