@@ -252,7 +252,7 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Check out code
         uses: actions/checkout@v5
@@ -276,21 +276,20 @@ jobs:
 
       - name: Install MicroK8s
         run: |
-          set +e
           sudo snap install microk8s --classic
-          sleep 20
-          set -e
+          echo 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"' | sudo tee /etc/sudoers.d/snap-path
+          sudo chmod 440 /etc/sudoers.d/snap-path
+          sleep 30
 
       - name: Initialize MicroK8s
         run: |
-          sudo microk8s status --wait-ready
+          sudo microk8s status --wait-ready --timeout 300
           sudo microk8s enable dns storage
 
       - name: Configure kubectl
         run: |
           mkdir -p ~/.kube
           sudo microk8s config > ~/.kube/config
-
 
       - name: Run K8 tests
         run: |
