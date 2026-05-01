@@ -700,7 +700,7 @@ Walkers and `def:pub` functions that return a Python generator are automatically
 
 **Server:** `report` a generator from any walker (or `def:pub`). Walker abilities cannot `yield` directly, so produce the generator in one of two ways:
 
-*Helper generator function (with explicit `yield`)* — best when the loop body has nontrivial logic:
+*Helper generator function (with explicit `yield`)*, best when the loop body has nontrivial logic:
 
 ```jac
 def _stream_reply(prompt: str) -> Any {
@@ -717,7 +717,7 @@ walker:pub chat {
 }
 ```
 
-*Inline generator expression* — single-walker form, useful when each frame is a simple mapping over an iterable:
+*Inline generator expression*, single-walker form, useful when each frame is a simple mapping over an iterable:
 
 ```jac
 walker:pub chat {
