@@ -791,6 +791,35 @@ test "jsx line comment in braces still errors" {
     source = 'with entry { x = <div>{# not a block comment\n}</div>; }';
     (module, had_error) = rd_parse(source, "test.jac");
     assert had_error , "Line comment inside JSX braces must not be accepted";
+test "decorated class in code block parses as archetype" {
+    (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
+    assert not err , "Parser reported errors for decorated declarations in code blocks";
+
+    def collect(nd: uni.UniNode) -> list {
+        results: list = [];
+        if isinstance(nd, uni.Archetype) {
+            results.append(nd);
+        }
+        for k in (nd.kid) {
+            results.extend(collect(k));
+        }
+        return results;
+    }
+
+    archetype_names = [a.name.sym_name for a in collect(mod)];
+
+    for name in [
+        "A_TopClass",
+        "A_InEntryClass",
+        "A_InEntryObj",
+        "A_StackedDec",
+        "A_InDefBodyClass",
+        "A_InDefBodyObj",
+        "A_Container",
+        "A_InMethodClass"
+    ] {
+        assert name in archetype_names , f"{name} should be Archetype but was not found";
+    }
 }
 
 with entry {

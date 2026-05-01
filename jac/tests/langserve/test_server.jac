@@ -196,6 +196,33 @@ test "test_go_to_definition" {
     }
 }
 
+test "test_go_to_definition_any_keyword" {
+    setup_test();
+    try {
+        lsp = create_server();
+        f = uris.from_fs_path(fixture_path("any_goto_def_tests.jac"));
+        lsp.type_check_file(f);
+
+        # Backtick-escaped `` `any `` (function form) → typeshed builtins.pyi
+        bt_any = str(lsp.get_definition(f, lspt.Position(1, 13)));
+        assert "builtins.pyi" in bt_any , f"Unexpected: {bt_any}";
+
+        # Bare `any` keyword in type annotation → typeshed typing.pyi (Any)
+        bare_any = str(lsp.get_definition(f, lspt.Position(4, 8)));
+        assert "typing.pyi" in bare_any , f"Unexpected: {bare_any}";
+
+        # Bare `Any` without import → unresolved (not in jac_builtins.pyi __all__)
+        bare_Any = lsp.get_definition(f, lspt.Position(5, 8));
+        assert bare_Any is None , f"Expected None, got: {bare_Any}";
+
+        # Bare `final` without import → same — guards __all__ discipline.
+        bare_final = lsp.get_definition(f, lspt.Position(6, 8));
+        assert bare_final is None , f"Expected None, got: {bare_final}";
+    } finally {
+        teardown_test();
+    }
+}
+
 test "test_go_to_definition_method_manual_impl" {
     setup_test();
     try {

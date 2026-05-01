@@ -19,6 +19,7 @@ impl SqliteIdentityStorage.postinit -> None {
         Column('root_id', String),
         Column('role', String, default='user'),
         Column('requires_password_reset', Integer, default=0),
+        Column('profile', JSON, default=dict),
         Column('created_at', String),
         Column('updated_at', String)
     );
@@ -63,6 +64,7 @@ def _row_to_dict(row: Any) -> dict[str, Any] {
         'root_id': row.root_id or None,
         'role': row.role or 'user',
         'requires_password_reset': bool(row.requires_password_reset),
+        'profile': row.profile or {},
         'created_at': row.created_at,
         'updated_at': row.updated_at
     };
