@@ -394,13 +394,20 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
             resolve_client_error_stacks,
             format_client_error_log
         }
+        import from jaclang.project.config { get_config }
+
         if not _error_rate_limiter.should_log(message) {
             return JSONResponse(
                 status_code=200, content={"ok": True, "throttled": True}
             );
         }
+        cfg = get_config();
+        verbose = cfg.client_errors.verbose if cfg else False;
         (stack, component_stack) = resolve_client_error_stacks(
-            self.base_path, data.get('stack', ''), data.get('componentStack', '')
+            self.base_path,
+            data.get('stack', ''),
+            data.get('componentStack', ''),
+            verbose=verbose
         );
         log_parts = format_client_error_log(
             message,

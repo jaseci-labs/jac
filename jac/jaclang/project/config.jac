@@ -133,6 +133,19 @@ obj EnvironmentConfig {
     has default_profile: str = "";
 }
 
+"""Client error reporting settings from [client_errors] section.
+
+Tunes the behavior of the /cl/__error__ endpoint and the source-mapped
+stack traces it logs.
+"""
+obj ClientErrorsConfig {
+    # When False (default), source-mapped stack frames whose resolved file is
+    # a build artifact (a `.js` under `.jac/`) are dropped from the log; the
+    # frames are auto-generated and not user-actionable. Set True to keep
+    # them, e.g. when diagnosing a broken or stale per-file source map.
+    has verbose: bool = False;
+}
+
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
@@ -165,6 +178,7 @@ obj JacConfig {
         storage: StorageConfig = StorageConfig(),
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
+        client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},

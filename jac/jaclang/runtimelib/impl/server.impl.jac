@@ -1862,13 +1862,17 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                         resolve_client_error_stacks,
                         format_client_error_log
                     }
+                    import from jaclang.project.config { get_config }
                     if not _error_rate_limiter.should_log(message) {
                         Jac.send_json(self, 200, {'ok': True, 'throttled': True});
                     } else {
+                        cfg = get_config();
+                        verbose = cfg.client_errors.verbose if cfg else False;
                         (stack, component_stack) = resolve_client_error_stacks(
                             server.base_path,
                             data.get('stack', ''),
-                            data.get('componentStack', '')
+                            data.get('componentStack', ''),
+                            verbose=verbose
                         );
                         log_parts = format_client_error_log(
                             message,
