@@ -710,3 +710,41 @@ test "jsx body comment does not displace non-jsx block comment" {
         "Non-JSX comment was displaced after JSX comment:\n" + formatted
     );
 }
+
+test "jsx block comment as only child with attributes keeps braces" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <p\n'
+        '            role="alert"\n'
+        '            style={{"color": "red"}}\n'
+        '        >{#*This is a message*#}</p>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "{#*This is a message*#}" in formatted , (
+        "Block comment lost its {} braces inside attributed JSX element:\n" + formatted
+    );
+}
+
+test "jsx block comment only child multi-line element is idempotent" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            {#* only child *#}\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on first pass: {prog.errors_had}";
+    first = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=first, file_path="<test>.jac");
+    assert not prog2.errors_had , f"Formatter errored on second pass: {prog2.errors_had}";
+    second = prog2.mod.main.gen.jac;
+    assert first == second , (
+        "JSX only-child comment is not idempotent.\nFirst:\n" + first + "\nSecond:\n" + second
+    );
+}
