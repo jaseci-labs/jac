@@ -525,7 +525,7 @@ impl CommentInjectionPass._handle_body_comments(
     body: (Sequence[uni.UniNode] | None) = None;
     if nd?.body {
         body = nd.body;
-    } elif (isinstance(nd, uni.JsxElement) and nd.children) {
+    } elif (isinstance(nd, uni.JsxElement) and nd.children is not None) {
         body = nd.children;
     } elif (isinstance(nd, uni.ArchHas) and nd.vars) {
         body = nd.vars;
@@ -972,7 +972,7 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
             nd.ast_node
             and (
                 (ctx?.body is not None)
-                or (isinstance(ctx, uni.JsxElement) and ctx.children)
+                or (isinstance(ctx, uni.JsxElement) and ctx.children is not None)
                 or (isinstance(ctx, uni.ArchHas) and ctx.vars)
                 or (isinstance(ctx, uni.DictVal) and ctx.kv_pairs)
                 or (isinstance(ctx, uni.ListVal) and ctx.values)
