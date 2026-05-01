@@ -342,7 +342,7 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
 #     Patched dispatch raises on the first outer call, then defers to the
 #     real MockLLM popper. We use a custom on_compaction hook here (rather
 #     than the default compactor) because at the moment of the first dispatch
-#     mt_run has only [system, user] = 2 messages — too few for the default
+#     mt_run has only [system, user] = 2 messages, too few for the default
 #     compactor's slice to be non-empty. The hook lets us assert that the
 #     emergency path: (a) catches the exception, (b) calls compaction, (c)
 #     retries the dispatch.
