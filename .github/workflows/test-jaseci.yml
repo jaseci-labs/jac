@@ -274,23 +274,28 @@ jobs:
           pip install pytest-xdist
           pip install pytest-asyncio
 
-      - name: Install MicroK8s
+      - name: Install kind and kubectl
         run: |
-          set +e
-          sudo snap install microk8s --classic
-          sleep 20
-          set -e
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
 
-      - name: Initialize MicroK8s
+      - name: Create kind cluster
         run: |
-          sudo microk8s status --wait-ready
-          sudo microk8s enable dns storage
-
-      - name: Configure kubectl
-        run: |
-          mkdir -p ~/.kube
-          sudo microk8s config > ~/.kube/config
-
+          cat <<EOF | kind create cluster --name jaseci-test --config=-
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            - containerPort: 30080
+              hostPort: 30080
+              protocol: TCP
+          EOF
+          kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
       - name: Run K8 tests
         run: |
