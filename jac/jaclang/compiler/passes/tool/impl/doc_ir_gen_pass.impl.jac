@@ -1309,6 +1309,14 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     # jammed output like `}timer = setTimeout(...)`.
     body_stmts = list(nd.body) if isinstance(nd.body, Sequence) else [];
     has_multi_stmt_body = len(body_stmts) > 1;
+    # Single-stmt body: add space before `}` only when the statement ends with `;`
+    # not `}` (e.g. if/while blocks already close with `}`, no extra space needed).
+    single_body_ends_with_brace = (
+        len(body_stmts) == 1
+        and body_stmts[0].kid
+        and isinstance(body_stmts[0].kid[-1], uni.Token)
+        and body_stmts[0].kid[-1].name == Tok.RBRACE
+    );
     body_parts: list[doc.DocType] = [];
     in_body = False;
     for i in nd.kid {
@@ -1343,8 +1351,10 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             continue;
         }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            # Add space before closing brace of single-stmt code block lambda
-            parts.append(self.space());
+            # Add space before `}` only when body ends with `;` not `}`.
+            if not single_body_ends_with_brace {
+                parts.append(self.space());
+            }
             parts.append(i.gen.doc_ir);
         } elif isinstance(i, uni.Token) {
             parts.append(i.gen.doc_ir);
@@ -1979,15 +1989,13 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
             if (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
                 parts.append(i.gen.doc_ir);
             } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-                parts.append(self.if_break(self.hard_line(), doc.Text("")));
+                parts.append(self.line());
                 parts.append(i.gen.doc_ir);
             } elif (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
                 if not body_placed {
-                    parts.append(
-                        self.indent(
-                            self.concat([self.line(), i.gen.doc_ir]), ast_node=nd
-                        )
-                    );
+                    body_ir_parts: list[doc.DocType] = [self.line(), i.gen.doc_ir];
+                    self.trim_trailing_space(body_ir_parts);
+                    parts.append(self.indent(self.concat(body_ir_parts), ast_node=nd));
                     body_placed = True;
                 }
             } else {
@@ -2523,6 +2531,39 @@ impl DocIRGenPass.trim_trailing_line(parts: list[doc.DocType]) -> None {
                     continue;
                 }
             } elif isinstance(contents, doc.Line) {
+                parts.pop();
+                continue;
+            }
+        }
+        break;
+    }
+}
+
+"""Recursively trim trailing Text(" ") nodes from parts."""
+impl DocIRGenPass.trim_trailing_space(parts: list[doc.DocType]) -> None {
+    if not parts {
+        return;
+    }
+    while parts {
+        last = parts[-1];
+        if isinstance(last, doc.Text) and last.text == " " {
+            parts.pop();
+            continue;
+        } elif isinstance(last, doc.Concat) {
+            self.trim_trailing_space(last.parts);
+            if not last.parts {
+                parts.pop();
+                continue;
+            }
+        } elif isinstance(last, doc.Group) {
+            contents = last.contents;
+            if isinstance(contents, doc.Concat) {
+                self.trim_trailing_space(contents.parts);
+                if not contents.parts {
+                    parts.pop();
+                    continue;
+                }
+            } elif isinstance(contents, doc.Text) and contents.text == " " {
                 parts.pop();
                 continue;
             }
