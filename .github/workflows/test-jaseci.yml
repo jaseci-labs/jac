@@ -276,14 +276,14 @@ jobs:
 
       - name: Install MicroK8s
         run: |
+          set +e
           sudo snap install microk8s --classic
-          echo 'Defaults secure_path="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin"' | sudo tee /etc/sudoers.d/snap-path
-          sudo chmod 440 /etc/sudoers.d/snap-path
-          sleep 30
+          sleep 20
+          set -e
 
       - name: Initialize MicroK8s
         run: |
-          sudo microk8s status --wait-ready --timeout 300
+          sudo microk8s status --wait-ready
           sudo microk8s enable dns storage
 
       - name: Configure kubectl
