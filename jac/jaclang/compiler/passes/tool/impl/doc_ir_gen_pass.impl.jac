@@ -1343,7 +1343,8 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             continue;
         }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            # Don't add trailing space after closing brace of code block lambda
+            # Add space before closing brace of single-stmt code block lambda
+            parts.append(self.space());
             parts.append(i.gen.doc_ir);
         } elif isinstance(i, uni.Token) {
             parts.append(i.gen.doc_ir);
@@ -1959,6 +1960,7 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     # break onto their own lines, matching idiomatic Jac style.
     flat_capable = (
         isinstance(nd.parent, uni.LambdaExpr)
+        and not (isinstance(nd.parent.body, Sequence) and len(list(nd.parent.body)) > 1)
         and (nd.else_body is None)
         and (len(nd.body) == 1)
         and not self.has_gap(nd, nd.body[0])
@@ -1977,7 +1979,7 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
             if (isinstance(i, uni.Token) and (i.name == Tok.LBRACE)) {
                 parts.append(i.gen.doc_ir);
             } elif (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-                parts.append(self.line());
+                parts.append(self.if_break(self.hard_line(), doc.Text("")));
                 parts.append(i.gen.doc_ir);
             } elif (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
                 if not body_placed {
