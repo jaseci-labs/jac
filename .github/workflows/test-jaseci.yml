@@ -252,7 +252,7 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     steps:
       - name: Check out code
         uses: actions/checkout@v5
