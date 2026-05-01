@@ -17,9 +17,19 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     list_ptr_type = list_struct.as_pointer();
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
+    # --- Forward-declare __rc_release_list_T so new_fn can reference its address
+    #     as the dtor_fn_ptr stored in every list allocation header.
+    _rel_fn_name = f"__rc_release_list_{elem_type_name}";
+    _rel_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type]);
+    try {
+        _rel_fn_decl = self.llvm_module.get_global(_rel_fn_name);
+    } except KeyError {
+        _rel_fn_decl = ir.Function(self.llvm_module, _rel_fnty, name=_rel_fn_name);
+        _rel_fn_decl.linkage = "private";
+    }
     # --- __list_new_T: create an empty list with capacity 8 ---
     new_fn = self._emit_container_new_fn(
-        f"__list_new_{elem_type_name}", list_ptr_type, [elem_type]
+        f"__list_new_{elem_type_name}", list_ptr_type, [elem_type], dtor_fn=_rel_fn_decl
     );
     # --- __list_append_T: append an element, growing if needed ---
     append_fnty = ir.FunctionType(ir.VoidType(), [list_ptr_type, elem_type]);
@@ -55,6 +65,17 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     );
     cur_data = b.load(data_p_s, name="data");
     slot = b.gep(cur_data, [cur_len], name="slot");
+    # retain the element before storing so the list holds a reference.
+    # The destructor (_emit_rc_release_elem_loop) will release each element on free.
+    if isinstance(elem_type, ir.PointerType) {
+        if self.rc_retain_fn is None {
+            self._emit_rc_helpers();
+        }
+        v_cast = b.bitcast(
+            v_arg, ir.IntType(8).as_pointer(), name="append.retain.cast"
+        );
+        b.call(self.rc_retain_fn, [v_cast]);
+    }
     b.store(v_arg, slot);
     new_len = b.add(cur_len, ir.Constant(i64, 1), name="new.len");
     b.store(new_len, len_p2);
@@ -79,7 +100,21 @@ impl NaIRGenPass._emit_list_helpers(elem_type_name: str, elem_type: ir.Type) -> 
     );
     d2 = b.load(dp2, name="data");
     ep2 = b.gep(d2, [set_fn.args[1]], name="elem.ptr");
-    b.store(set_fn.args[2], ep2);
+    # retain-new, release-old for pointer element types
+    if isinstance(elem_type, ir.PointerType) {
+        if self.rc_retain_fn is None {
+            self._emit_rc_helpers();
+        }
+        _i8p_s = ir.IntType(8).as_pointer();
+        _new_c_s = b.bitcast(set_fn.args[2], _i8p_s, name="lset_retain_cast");
+        b.call(self.rc_retain_fn, [_new_c_s]);
+        _old_v_s = b.load(ep2, name="lset_old_val");
+        b.store(set_fn.args[2], ep2);
+        _old_c_s = b.bitcast(_old_v_s, _i8p_s, name="lset_old_cast");
+        b.call(self.rc_release_simple_fn, [_old_c_s]);
+    } else {
+        b.store(set_fn.args[2], ep2);
+    }
     b.ret_void();
     # --- __list_len_T: return len field ---
     len_fn = self._emit_container_len_fn(f"__list_len_{elem_type_name}", list_ptr_type);
@@ -130,7 +165,14 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         }
         helpers = self.list_helpers.get(elem_type_name);
         if helpers is not None {
-            return self.builder.call(helpers["new"], [], name="list.empty");
+            _empty_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                if nd.loc
+                else 0}";
+            _empty = self._rc_call_with_ctx(
+                helpers["new"], [], op="new", loc=_empty_loc, name="list.empty"
+            );
+            self._mark_owned(_empty);
+            return _empty;
         }
         return None;
     }
@@ -140,7 +182,12 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
         return None;
     }
     # Box value tuples to pointers for container storage
-    first_val = self._box_value_tuple(first_val);
+    first_val = self._box_value_tuple(
+        first_val,
+        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+            if nd.loc
+            else 0}"
+    );
     elem_type = first_val.type;
     elem_type_name = "i64";
     if isinstance(elem_type, ir.DoubleType) {
@@ -153,26 +200,56 @@ impl NaIRGenPass._codegen_list_val(nd: uni.ListVal) -> (ir.Value | None) {
     helpers = self.list_helpers[elem_type_name];
     i8p = ir.IntType(8).as_pointer();
     # Create new list
-    list_val = self.builder.call(helpers["new"], [], name="list.new");
+    _list_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    list_val = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_list_new_loc, name="list.new"
+    );
     # Append first element (bitcast pointers to i8* for ptr lists)
     append_val = first_val;
     if elem_type_name == "ptr" and isinstance(first_val.type, ir.PointerType) {
         append_val = self.builder.bitcast(first_val, i8p, name="elem.cast");
     }
-    self.builder.call(helpers["append"], [list_val, append_val]);
+    _linit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    self._rc_call_with_ctx(
+        helpers["append"], [list_val, append_val], op="list_init", loc=_linit_loc
+    );
+    # if the original element was owned (fresh alloc/fn-call result),
+    # __list_append_ptr retained it → release caller's owned ref.
+    if isinstance(first_val.type, ir.PointerType) and self._is_owned(first_val) {
+        self._emit_rc_release_simple(first_val, op="list_init", loc=_linit_loc);
+    }
     # Append remaining elements
     for i in range(1, len(nd.values)) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
-            val = self._box_value_tuple(val);
+            _orig_val = val;
+            val = self._box_value_tuple(val, loc=_linit_loc);
+            _boxed_val = val;  # Save post-box, pre-bitcast for check
             if elem_type_name == "ptr" and isinstance(val.type, ir.PointerType) {
                 val = self.builder.bitcast(val, i8p, name="elem.cast");
             } else {
                 val = self._coerce_type(val, elem_type);
             }
-            self.builder.call(helpers["append"], [list_val, val]);
+            self._rc_call_with_ctx(
+                helpers["append"], [list_val, val], op="list_init", loc=_linit_loc
+            );
+            # release owned ref after append retained it.
+            # Use _boxed_val (post-box, pre-bitcast) since _box_value_tuple marks
+            # the new heap ptr as is_owned — the pre-box struct value is never marked.
+            if isinstance(_boxed_val.type, ir.PointerType)
+            and self._is_owned(_boxed_val) {
+                self._emit_rc_release_simple(
+                    _boxed_val, op="list_init", loc=_linit_loc
+                );
+            }
         }
     }
+    # List literal is a fresh allocation — mark as owned so callers don't double-retain.
+    self._mark_owned(list_val);
     return list_val;
 }
 
@@ -222,7 +299,19 @@ impl NaIRGenPass._codegen_index_set(
         is_oob, "IndexError", "list assignment index out of range"
     );
     elem_type = helpers["elem_type"];
+    # Save jac_loc before coerce — coerce_type propagates is_owned across
+    # bitcasts but does not propagate the loc attribute.
+    _lset_ctx_loc = getattr(
+        value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
+    );
     value = self._coerce_type(value, elem_type);
-    self.builder.call(helpers["set"], [target_val, index_val, value]);
+    self._rc_call_with_ctx(
+        helpers["set"], [target_val, index_val, value], op="list_set", loc=_lset_ctx_loc
+    );
+    # if value was owned (function-call result), release our rc=1 ref.
+    # __list_set_T already retained the new element; release caller's ownership.
+    if isinstance(elem_type, ir.PointerType) and self._is_owned(value) {
+        self._emit_rc_release_simple(value, op="list_set", loc=_lset_ctx_loc);
+    }
 }
 # ─── Phase 5: Inheritance and Vtables ────────────────────────

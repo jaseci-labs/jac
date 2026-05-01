@@ -422,7 +422,7 @@ walker DataCollector {
 }
 ```
 
-If omitted, `reports` defaults to `list[Any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
+If omitted, `reports` defaults to `list[any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
 
 ### 5 The `disengage` Statement
 

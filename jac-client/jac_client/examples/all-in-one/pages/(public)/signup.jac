@@ -1,4 +1,4 @@
-cl import from "@jac/runtime" { Link, useNavigate, jacSignup }
+cl import from "@jac/runtime" { Link, useNavigate, jacSignup, jacLogin }
 
 cl {
     def:pub page -> JsxElement {
@@ -17,7 +17,13 @@ cl {
             }
             result = await jacSignup(username, password);
             if result["success"] {
-                navigate("/");
+                # /user/register does not return a token — sign in to start a session
+                logged_in = await jacLogin(username, password);
+                if logged_in {
+                    navigate("/");
+                } else {
+                    error = "Account created but login failed";
+                }
             } else {
                 error = result["error"] if result["error"] else "Signup failed";
             }

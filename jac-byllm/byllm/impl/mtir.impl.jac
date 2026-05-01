@@ -143,26 +143,43 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
             system_content = config_system_prompt;
         }
     } except Exception { }
+
+    # Conversational mode: `by llm(conversation=<list>)` splices the
+    # caller's prior conversation between SYSTEM and USER. Entries on input
+    # may be Messages or dicts; write-back always emits dicts.
+    conv_arg = call_params.get("conversation");
+    conv_msgs: list[MessageType] = [];
+    conv_list_ref: object = None;
+    if isinstance(conv_arg, list) {
+        conv_list_ref = conv_arg;
+        for item in conv_arg {
+            m: Any = item;
+            if isinstance(m, Message) {
+                conv_msgs.append(m);
+            } elif isinstance(m, dict) {
+                reconstructed: Any = Message.from_dict(m);
+                conv_msgs.append(reconstructed);
+            } else {
+                conv_msgs.append(m);
+            }
+        }
+    }
+
     # Prepare the messages for the LLM call.
-    messages: list[MessageType] = [
-        Message(
-            role=MessageRole.SYSTEM,
-            content=system_content + (INSTRUCTION_TOOL if tools else ""),
-        ),
-        Message(
-            role=MessageRole.USER,
-            content=[
-                Text(
-                    Tool.get_func_description(caller) + "\n\n" + "\n".join(
-                        inputs_detail
-                    )
-                ),
-                *media_inputs,
+    sys_msg = Message(
+        role=MessageRole.SYSTEM,
+        content=system_content + (INSTRUCTION_TOOL if tools else ""),
+    );
+    user_msg = Message(
+        role=MessageRole.USER,
+        content=[
+            Text(Tool.get_func_description(caller) + "\n\n" + "\n".join(inputs_detail)),
+            *media_inputs,
 
-            ],
-        ),
+        ],
+    );
+    messages: list[MessageType] = [sys_msg, *conv_msgs, user_msg];
 
-    ];
     # Prepare return type.
     return_type = get_type_hints(caller).get("return");
     is_streaming = bool(call_params.get("stream", False));
@@ -175,7 +192,7 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         finish_tool = Tool.make_finish_tool(return_type or str);
         tools.append(finish_tool);
     }
-    return MTRuntime(
+    mt_run = MTRuntime(
         messages=messages,
         tools=tools,
         resp_type=return_type,
@@ -183,6 +200,16 @@ impl MTRuntime.factory(mtir: MTIR) -> MTRuntime {
         call_params=call_params,
         mtir=mtir
     );
+
+    # In conversational mode, the auto-SYSTEM is regenerated from sem each
+    # turn — exclude it from persistence and bind the caller's list for
+    # write-back.
+    if conv_list_ref is not None {
+        mt_run._scaffolding_ids.append(id(sys_msg));
+        mt_run._conversation_list = conv_list_ref;
+    }
+
+    return mt_run;
 }
 
 """Build the parameter dict for the LLM API call."""
@@ -204,11 +231,84 @@ impl MTRuntime.add_message(message: MessageType) -> None {
     self.messages.append(message);
 }
 
+
+impl MTRuntime.add_scaffolding_message(message: MessageType) -> None {
+    self.messages.append(message);
+    self._scaffolding_ids.append(id(message));
+}
+
 """Return the messages in a format suitable for LLM API."""
 impl MTRuntime.get_msg_list -> list[dict[str, object] | LiteLLMMessage] {
     return [
         msg.to_dict() if isinstance(msg, Message) else msg for msg in self.messages
     ];
+}
+
+
+impl MTRuntime.write_back_conversation -> None {
+    if self._conversation_list is None {
+        return;
+    }
+    out: list = [];
+    for msg in self.get_history_for_persist() {
+        m: Any = msg;
+        if hasattr(m, "to_dict") {
+            out.append(m.to_dict());
+        } elif isinstance(m, dict) {
+            out.append(dict(m));
+        } elif hasattr(m, "model_dump") {
+            try {
+                out.append(m.model_dump());
+            } except Exception {
+                out.append({"raw": str(m)});
+            }
+        }
+    }
+    self._conversation_list[:] = out;
+}
+
+
+# Test against finish_tool both at object level and dict level.
+def _is_finish_tool_call(tc: Any) -> bool {
+    if tc?.function and hasattr(tc.function, "name") {
+        return tc.function.name == "finish_tool";
+    }
+    if isinstance(tc, dict) {
+        return (tc.get("function") or {}).get("name", "") == "finish_tool";
+    }
+    return False;
+}
+
+
+impl MTRuntime.get_history_for_persist -> list[MessageType] {
+    scaff_ids = set(self._scaffolding_ids);
+    out: list = [];
+    for msg in self.messages {
+        if id(msg) in scaff_ids {
+            continue;
+        }
+        # Skip non-Message artifacts (e.g. MockLLM raw strings).
+        if not (
+            isinstance(msg, Message)
+            or isinstance(msg, dict)
+            or hasattr(msg, "to_dict")
+            or hasattr(msg, "model_dump")
+        ) {
+            continue;
+        }
+        if isinstance(msg, ToolCallResultMsg) and msg.name == "finish_tool" {
+            continue;
+        }
+        tool_calls = msg?.tool_calls;
+        if tool_calls is None and isinstance(msg, dict) {
+            tool_calls = msg.get("tool_calls");
+        }
+        if tool_calls and all(_is_finish_tool_call(tc) for tc in tool_calls) {
+            continue;
+        }
+        out.append(msg);
+    }
+    return out;
 }
 
 """Parse the LLM response string into the expected return type."""

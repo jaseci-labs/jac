@@ -98,6 +98,11 @@ jobs:
     - name: Run all client tests (including E2E in parallel)
       run: pytest -x jac-client -n auto
 
+    - name: Re-run auth roundtrip e2e against jac-scale backend
+      run: |
+        pip install -e jac-scale
+        pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
+
   test-packages-and-docs:
     runs-on: ubuntu-latest
     steps:

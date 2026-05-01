@@ -1,10 +1,11 @@
 # Jac ambient builtins — single source of truth for the type checker.
 #
-# Every name declared here is visible in all Jac modules without import.
-# The TypeEvaluator merges these into builtins_module.names_in_scope,
-# so they sit in the scope chain above every user module.
+# Only names listed in __all__ become ambient (visible without import);
+# anything else stays private to this file. The TypeEvaluator merges these
+# into builtins_module.names_in_scope, so they sit in the scope chain above
+# every user module.
 #
-# Only USER-FACING names belong here. Internal codegen helpers (connect,
+# Only USER-FACING names belong in __all__. Internal codegen helpers (connect,
 # visit, refs, build_edge, etc.) are injected by PyastGenPass and should
 # NOT be declared here — they would conflict with the type checker's own
 # handling of the syntax they desugar from (++>, -->, visit [], etc.).
@@ -15,6 +16,63 @@
 
 from collections.abc import Callable
 from typing import Any, Protocol
+
+__all__ = [
+    # Module dunders
+    "__name__",
+    "__file__",
+    "__doc__",
+    "__package__",
+    "__spec__",
+    # Typing special forms
+    "Final",
+    # Archetype types and helpers
+    "Node",
+    "Edge",
+    "Walker",
+    "Obj",
+    "Root",
+    "GenericEdge",
+    "JsxElement",
+    "OPath",
+    "DSFunc",
+    "EdgeDir",
+    "LLMModel",
+    # Fixed-width numeric types
+    "i8",
+    "u8",
+    "i16",
+    "u16",
+    "i32",
+    "u32",
+    "i64",
+    "u64",
+    "f32",
+    "f64",
+    # User-facing builtin functions
+    "jid",
+    "jobj",
+    "grant",
+    "revoke",
+    "allroots",
+    "save",
+    "commit",
+    "store",
+    "archetype_alias",
+    "destroy",
+    "printgraph",
+    "restspec",
+    "schedule",
+    # Ambient values and constants
+    "llm",
+    "NoPerm",
+    "ReadPerm",
+    "ConnectPerm",
+    "WritePerm",
+    # Builtin enums
+    "ScheduleTrigger",
+    "APIProtocol",
+]
 
 # ── Module dunders ──────────────────────────────────────────────────
 # Injected by Python's import system; declared here for the Jac checker.

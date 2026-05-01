@@ -103,6 +103,17 @@ impl NaIRGenPass._codegen_with_recursive(
         alias_name = self._get_name(expr_item.alias);
         if alias_name is not None {
             alloca = self._entry_alloca(enter_result.type, alias_name);
+            # Null-initialize alloca so scope cleanup release is safe even on
+            # early-exit paths, and retain enter_result because the scope
+            # cleanup will call __rc_release_simple on this alloca (owning ref).
+            if isinstance(enter_result.type, ir.PointerType) {
+                self.builder.store(ir.Constant(enter_result.type, None), alloca);
+                self._emit_rc_retain(
+                    enter_result,
+                    op="ctx_enter",
+                    loc=getattr(enter_result, 'jac_loc', '')
+                );
+            }
             self.builder.store(enter_result, alloca);
             self.local_vars[alias_name] = alloca;
             # Track type info for the alias variable

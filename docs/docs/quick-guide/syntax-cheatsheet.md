@@ -68,6 +68,8 @@ with entry {
 
     # Jac has the same built-in types as Python:
     # int, float, str, bool, list, tuple, set, dict, bytes, any
+    # `any` vs `` `any ``: use `any` for the built-in type (placeholder for
+    # any type) and `` `any `` for the built-in Python function.
 
     # Union types
     maybe: str | None = None;
