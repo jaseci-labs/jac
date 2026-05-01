@@ -51,7 +51,7 @@ test "large graph under 1MB" {
 }
 
 test "unknown version returns empty index" {
-    decoded = TopologyIndex.decode(b"\x99\x00\x00\x00\x00\x00\x00\x00\x00");
+    decoded = TopologyIndex.decode(bytes.fromhex("99000000000000000000"));
     assert len(decoded) == 0;
 }
 
@@ -171,4 +171,76 @@ test "cross root ids" {
     cross = idx.get_cross_root_ids({n1,n2});
     assert cross[foreign] == {n2};
     assert n1 not in cross.get(foreign, set());
+}
+
+# ── MRO fan-out ──────────────────────────────────────────────────────
+test "subtype query returns instances of all descendants" {
+    idx = TopologyIndex();
+    r = uuid4();
+    post = uuid4();
+    article = uuid4();
+    idx.add_node(r, "Root", ["Root"]);
+    idx.add_node(post, "PostNode", ["PostNode", "BaseContent"]);
+    idx.add_node(article, "ArticleNode", ["ArticleNode", "BaseContent"]);
+    idx.add_edge(r, post, "Authored");
+    idx.add_edge(r, article, "Authored");
+    # Query by parent type — both subtypes match.
+    assert idx.resolve_chain({r}, [(None, "BaseContent", 2)]) == {post, article};
+    # Query by concrete subtype — only that subtype matches.
+    assert idx.resolve_chain({r}, [(None, "PostNode", 2)]) == {post};
+}
+
+test "MRO fan-out survives encode decode" {
+    idx = TopologyIndex();
+    r = uuid4();
+    post = uuid4();
+    idx.add_node(r, "Root", ["Root"]);
+    idx.add_node(post, "PostNode", ["PostNode", "BaseContent"]);
+    idx.add_edge(r, post, "Authored");
+    decoded = TopologyIndex.decode(idx.encode());
+    assert decoded.resolve_chain({r}, [(None, "BaseContent", 2)]) == {post};
+    assert decoded.resolve_chain({r}, [(None, "PostNode", 2)]) == {post};
+}
+
+# ── Bidirectional traversal ──────────────────────────────────────────
+test "incoming direction resolves" {
+    idx = TopologyIndex();
+    r = uuid4();
+    n = uuid4();
+    idx.add_node(r, "Root");
+    idx.add_node(n, "NodeA");
+    idx.add_edge(r, n, "EdgeX");
+    # direction=1 means IN; from `n`'s perspective, `r` is incoming.
+    assert idx.resolve_chain({n}, [("EdgeX", "Root", 1)]) == {r};
+}
+
+test "any direction unions in and out" {
+    idx = TopologyIndex();
+    a = uuid4();
+    b = uuid4();
+    c = uuid4();
+    idx.add_node(a, "A");
+    idx.add_node(b, "B");
+    idx.add_node(c, "C");
+    idx.add_edge(a, b, "E");
+    idx.add_edge(c, b, "E");
+    # From `b` with ANY direction: hits both `a` (incoming) and... only `a`/`c`.
+    assert idx.resolve_chain({b}, [("E", None, 3)]) == {a, c};
+}
+
+# ── Compact-encoding fidelity ────────────────────────────────────────
+test "encoded size beats naive bound" {
+    # Same shape as the 1MB test, but tighten the budget. Per-edge target is
+    # ~6 bytes plus a small node + type table overhead.
+    idx = TopologyIndex();
+    node_ids = [uuid4() for _ in range(1000)];
+    for (i, nid) in enumerate(node_ids) {
+        idx.add_node(nid, "T" + str(i % 5));
+    }
+    for i in range(5000) {
+        idx.add_edge(node_ids[i % 1000], node_ids[(i * 7 + 3) % 1000], "Edge");
+    }
+    # 1000 nodes × 34B = 34000; 5000 edges × 6B = 30000; type table tiny.
+    # Generous ceiling: 80KB.
+    assert len(idx.encode()) < 80000;
 }

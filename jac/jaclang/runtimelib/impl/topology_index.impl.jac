@@ -1,31 +1,101 @@
-"""TopologyIndex implementation."""
+"""TopologyIndex implementation.
 
-"""Return type_id for type_name, registering it if new."""
-impl TopologyIndex._ensure_type(type_name: str) -> int {
+The canonical `adj_list` is the source of truth for encode/decode and preserves
+multi-edge multiplicity. The `sam` is a derived index keyed by
+`(src_lid, col_key) -> (in_lids, out_lids)` where `col_key` is `"n:<type_id>"`
+or `"e:<edge_type_id>"`. Targets are fanned out under every ancestor type id so
+parent-type queries resolve in O(1).
+"""
+
+"""Build a SAM column key for a node-type id."""
+def _n_key(type_id: int) -> str {
+    return "n:" + str(type_id);
+}
+
+"""Build a SAM column key for an edge-type id."""
+def _e_key(edge_type_id: int) -> str {
+    return "e:" + str(edge_type_id);
+}
+
+"""Get or create the (in, out) lists for `(src_lid, col_key)` in the SAM."""
+def _get_col(
+    sam: dict[int, dict[str, tuple[list[int], list[int]]]],
+    src_lid: int,
+    col_key: str
+) -> tuple[list[int], list[int]] {
+    bucket = sam.get(src_lid);
+    if bucket is None {
+        bucket = {};
+        sam[src_lid] = bucket;
+    }
+    col = bucket.get(col_key);
+    if col is None {
+        col = ([], []);
+        bucket[col_key] = col;
+    }
+    return col;
+}
+
+"""Drop `lid` from a list if present."""
+def _list_drop(lst: list[int], lid: int) -> None {
+    try {
+        lst.remove(lid);
+    } except ValueError {
+        ;
+    }
+}
+
+"""Add `lid` to `lst` if not already present (preserves insertion order)."""
+def _list_add(lst: list[int], lid: int) -> None {
+    if lid not in lst {
+        lst.append(lid);
+    }
+}
+
+"""Return type_id for type_name, registering it (and its MRO chain) if new."""
+impl TopologyIndex._ensure_type(type_name: str, mro_chain: (list[str] | None) = None) -> int {
     tid = self.type_to_id.get(type_name);
     if tid is None {
         tid = len(self.type_table);
         self.type_table.append(type_name);
         self.type_to_id[type_name] = tid;
+        self.type_mro_ids.append([]);
+    }
+    # Lazily fill the MRO chain. The first element of `mro_chain` is the
+    # concrete type itself, so encoded chains always include `tid` at index 0.
+    if mro_chain and not self.type_mro_ids[tid] {
+        chain_ids: list[int] = [];
+        for anc in mro_chain {
+            chain_ids.append(self._ensure_type(anc));
+        }
+        self.type_mro_ids[tid] = chain_ids;
+    } elif not self.type_mro_ids[tid] {
+        self.type_mro_ids[tid] = [tid];
     }
     return tid;
 }
 
-"""Register a node. Returns its local_id."""
+"""Register a node. Returns its local_id. Idempotent on `node_id`."""
 impl TopologyIndex.add_node(
-    node_id: UUID, type_name: str, owner_root: (UUID | None) = None
+    node_id: UUID,
+    type_name: str,
+    mro_chain: (list[str] | None) = None,
+    owner_root: (UUID | None) = None
 ) -> int {
     if node_id in self.node_to_lid {
+        if mro_chain {
+            self._ensure_type(type_name, mro_chain);
+        }
         return self.node_to_lid[node_id];
     }
-    tid = self._ensure_type(type_name);
+    tid = self._ensure_type(type_name, mro_chain);
     lid = len(self.node_table);
     self.node_table.append((node_id, tid, owner_root or SELF_ROOT));
     self.node_to_lid[node_id] = lid;
     return lid;
 }
 
-"""Remove a node and all edges involving it."""
+"""Remove a node and every edge involving it."""
 impl TopologyIndex.remove_node(node_id: UUID) -> None {
     lid = self.node_to_lid.get(node_id);
     if lid is None {
@@ -36,9 +106,16 @@ impl TopologyIndex.remove_node(node_id: UUID) -> None {
         for (s, et, t) in self.adj_list
         if s != lid and t != lid
     ];
+    self.sam.pop(lid, None);
+    for (_, bucket) in self.sam.items() {
+        for (_, col) in bucket.items() {
+            _list_drop(col[0], lid);
+            _list_drop(col[1], lid);
+        }
+    }
 }
 
-"""Add an edge to the adjacency list."""
+"""Add an edge to `adj_list` and fan out into the SAM under MRO ancestors."""
 impl TopologyIndex.add_edge(
     source_id: UUID, target_id: UUID, edge_type_name: str
 ) -> None {
@@ -49,9 +126,29 @@ impl TopologyIndex.add_edge(
     }
     etid = self._ensure_type(edge_type_name);
     self.adj_list.append((src_lid, etid, tgt_lid));
+
+    (_, src_type_id, _) = self.node_table[src_lid];
+    (_, tgt_type_id, _) = self.node_table[tgt_lid];
+    src_ancestors = self.type_mro_ids[src_type_id] or [src_type_id];
+    tgt_ancestors = self.type_mro_ids[tgt_type_id] or [tgt_type_id];
+
+    for anc in tgt_ancestors {
+        out_col = _get_col(self.sam, src_lid, _n_key(anc));
+        _list_add(out_col[1], tgt_lid);
+    }
+    e_out = _get_col(self.sam, src_lid, _e_key(etid));
+    _list_add(e_out[1], tgt_lid);
+
+    for anc in src_ancestors {
+        in_col = _get_col(self.sam, tgt_lid, _n_key(anc));
+        _list_add(in_col[0], src_lid);
+    }
+    e_in = _get_col(self.sam, tgt_lid, _e_key(etid));
+    _list_add(e_in[0], src_lid);
 }
 
-"""Remove edge(s) between source and target, optionally filtered by type."""
+"""Remove a single edge between source and target. If `edge_type_name` is None,
+drops the first edge found between them."""
 impl TopologyIndex.remove_edge(
     source_id: UUID, target_id: UUID, edge_type_name: (str | None) = None
 ) -> None {
@@ -60,25 +157,104 @@ impl TopologyIndex.remove_edge(
     if src_lid is None or tgt_lid is None {
         return;
     }
-    etid = self.type_to_id.get(edge_type_name) if edge_type_name else None;
+    filter_etid = self.type_to_id.get(edge_type_name) if edge_type_name else None;
+
     new_adj: list[tuple[int, int, int]] = [];
-    removed = False;
+    removed_etid: int = 0;
+    removed_any = False;
     for entry in self.adj_list {
         (s, et, t) = entry;
-        if s == src_lid and t == tgt_lid {
-            if etid is None or et == etid {
-                if not removed {
-                    removed = True;
-                    continue;
-                }
+        if not removed_any and s == src_lid and t == tgt_lid {
+            if filter_etid is None or et == filter_etid {
+                removed_etid = et;
+                removed_any = True;
+                continue;
             }
         }
         new_adj.append(entry);
     }
+    if not removed_any {
+        return;
+    }
     self.adj_list = new_adj;
+
+    edge_type_still_connects = False;
+    any_edge_remains = False;
+    for (s, et, t) in self.adj_list {
+        if s == src_lid and t == tgt_lid {
+            any_edge_remains = True;
+            if et == removed_etid {
+                edge_type_still_connects = True;
+            }
+        }
+    }
+
+    src_bucket = self.sam.get(src_lid);
+    tgt_bucket = self.sam.get(tgt_lid);
+
+    if not edge_type_still_connects {
+        e_key = _e_key(removed_etid);
+        if src_bucket is not None {
+            e_col = src_bucket.get(e_key);
+            if e_col is not None {
+                _list_drop(e_col[1], tgt_lid);
+                if not e_col[0] and not e_col[1] {
+                    src_bucket.pop(e_key, None);
+                }
+            }
+        }
+        if tgt_bucket is not None {
+            e_col_rev = tgt_bucket.get(e_key);
+            if e_col_rev is not None {
+                _list_drop(e_col_rev[0], src_lid);
+                if not e_col_rev[0] and not e_col_rev[1] {
+                    tgt_bucket.pop(e_key, None);
+                }
+            }
+        }
+    }
+
+    if not any_edge_remains {
+        if src_bucket is not None {
+            empty: list[str] = [];
+            for (key, col) in src_bucket.items() {
+                if key.startswith("n:") {
+                    _list_drop(col[1], tgt_lid);
+                    if not col[0] and not col[1] {
+                        empty.append(key);
+                    }
+                }
+            }
+            for k in empty {
+                src_bucket.pop(k, None);
+            }
+        }
+        if tgt_bucket is not None {
+            empty_rev: list[str] = [];
+            for (key, col) in tgt_bucket.items() {
+                if key.startswith("n:") {
+                    _list_drop(col[0], src_lid);
+                    if not col[0] and not col[1] {
+                        empty_rev.append(key);
+                    }
+                }
+            }
+            for k in empty_rev {
+                tgt_bucket.pop(k, None);
+            }
+        }
+    }
+
+    if src_bucket is not None and not src_bucket {
+        self.sam.pop(src_lid, None);
+    }
+    if tgt_bucket is not None and not tgt_bucket {
+        self.sam.pop(tgt_lid, None);
+    }
 }
 
-"""Walk the adjacency list using type-only filters."""
+"""Walk the SAM using type filters. `chain` is a list of
+`(edge_type, node_type, direction)` where direction is 1=IN, 2=OUT, 3=ANY."""
 impl TopologyIndex.resolve_chain(
     origin_ids: set[UUID], chain: list[tuple[(str | None), (str | None), int]]
 ) -> set[UUID] {
@@ -102,18 +278,55 @@ impl TopologyIndex.resolve_chain(
             return set();
         }
         next_lids: set[int] = set();
-        for (src_lid, et, tgt_lid) in self.adj_list {
-            if etid is not None and et != etid {
+        col_keys: list[str] = [];
+        if etid is not None {
+            col_keys.append(_e_key(etid));
+        }
+        if ntid is not None {
+            col_keys.append(_n_key(ntid));
+        }
+        for src_lid in current_lids {
+            bucket = self.sam.get(src_lid);
+            if bucket is None {
                 continue;
             }
-            if direction in (2, 3) and src_lid in current_lids {
-                if ntid is None or self.node_table[tgt_lid][1] == ntid {
-                    next_lids.add(tgt_lid);
+            if not col_keys {
+                for (_, col) in bucket.items() {
+                    if direction in (2, 3) {
+                        for tgt in col[1] {
+                            next_lids.add(tgt);
+                        }
+                    }
+                    if direction in (1, 3) {
+                        for src in col[0] {
+                            next_lids.add(src);
+                        }
+                    }
+                }
+                continue;
+            }
+            candidates_out: (set[int] | None) = None;
+            candidates_in: (set[int] | None) = None;
+            for ck in col_keys {
+                col = bucket.get(ck);
+                if col is None {
+                    candidates_out = set();
+                    candidates_in = set();
+                    break;
+                }
+                co: set[int] = set(col[1]);
+                ci: set[int] = set(col[0]);
+                candidates_out = co if candidates_out is None else candidates_out & co;
+                candidates_in = ci if candidates_in is None else candidates_in & ci;
+            }
+            if direction in (2, 3) and candidates_out is not None {
+                for tgt in candidates_out {
+                    next_lids.add(tgt);
                 }
             }
-            if direction in (1, 3) and tgt_lid in current_lids {
-                if ntid is None or self.node_table[src_lid][1] == ntid {
-                    next_lids.add(src_lid);
+            if direction in (1, 3) and candidates_in is not None {
+                for src in candidates_in {
+                    next_lids.add(src);
                 }
             }
         }
@@ -125,7 +338,7 @@ impl TopologyIndex.resolve_chain(
     return {self.node_table[lid][0] for lid in current_lids};
 }
 
-"""For a set of node UUIDs, return mapping of foreign_root -> node_ids."""
+"""For a set of node UUIDs, return mapping of foreign_root_uuid -> {node_ids}."""
 impl TopologyIndex.get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUID]] {
     result: dict[UUID, set[UUID]] = {};
     for uid in node_ids {
@@ -141,16 +354,24 @@ impl TopologyIndex.get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUI
     return result;
 }
 
-"""Serialize to compact binary format."""
+"""Serialize to compact binary format (version 2)."""
 impl TopologyIndex.encode -> bytes {
     num_types = len(self.type_table);
     num_nodes = len(self.node_table);
     num_edges = len(self.adj_list);
     parts = [struct.pack("<BHHi", TOPO_VERSION, num_types, num_nodes, num_edges)];
-    for name in self.type_table {
+    for (i, name) in enumerate(self.type_table) {
         name_bytes = name.encode("utf-8");
         parts.append(struct.pack("<B", len(name_bytes)));
         parts.append(name_bytes);
+        chain = self.type_mro_ids[i] if i < len(self.type_mro_ids) else [i];
+        if not chain {
+            chain = [i];
+        }
+        parts.append(struct.pack("<B", len(chain)));
+        for anc_id in chain {
+            parts.append(struct.pack("<H", anc_id));
+        }
     }
     for (node_id, type_id, owner_root) in self.node_table {
         parts.append(node_id.bytes);
@@ -160,10 +381,14 @@ impl TopologyIndex.encode -> bytes {
     for (src, etid, tgt) in self.adj_list {
         parts.append(struct.pack("<HHH", src, etid, tgt));
     }
-    return b"".join(parts);
+    buf = bytearray();
+    for p in parts {
+        buf.extend(p);
+    }
+    return bytes(buf);
 }
 
-"""Deserialize from compact binary format."""
+"""Deserialize from compact binary format. Rebuilds the SAM by replaying edges."""
 impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     idx = TopologyIndex();
     if not data {
@@ -177,6 +402,7 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     if version != TOPO_VERSION {
         return idx;
     }
+    # Pass 1: type names + MRO chains.
     for _ in range(num_types) {
         (name_len, ) = struct.unpack_from("<B", data, offset);
         offset += 1;
@@ -184,7 +410,17 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         offset += name_len;
         idx.type_table.append(name);
         idx.type_to_id[name] = len(idx.type_table) - 1;
+        (mro_len, ) = struct.unpack_from("<B", data, offset);
+        offset += 1;
+        chain: list[int] = [];
+        for _ in range(mro_len) {
+            (anc, ) = struct.unpack_from("<H", data, offset);
+            offset += 2;
+            chain.append(anc);
+        }
+        idx.type_mro_ids.append(chain);
     }
+    # Pass 2: nodes.
     for i in range(num_nodes) {
         node_id = UUID(bytes=data[offset:offset + 16]);
         offset += 16;
@@ -195,20 +431,41 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         idx.node_table.append((node_id, type_id, owner_root));
         idx.node_to_lid[node_id] = i;
     }
+    # Pass 3: edges. Replay through the SAM-fanout helper (skipping the public
+    # add_edge so we don't re-resolve UUIDs back to lids).
     for _ in range(num_edges) {
-        (src, etid, tgt) = struct.unpack_from("<HHH", data, offset);
+        unpacked = struct.unpack_from("<HHH", data, offset);
+        src: int = int(unpacked[0]);
+        etid: int = int(unpacked[1]);
+        tgt: int = int(unpacked[2]);
         offset += 6;
         idx.adj_list.append((src, etid, tgt));
+        (_, src_t, _) = idx.node_table[src];
+        (_, tgt_t, _) = idx.node_table[tgt];
+        src_ancestors = idx.type_mro_ids[src_t] or [src_t];
+        tgt_ancestors = idx.type_mro_ids[tgt_t] or [tgt_t];
+        for anc in tgt_ancestors {
+            out_col = _get_col(idx.sam, src, _n_key(anc));
+            _list_add(out_col[1], tgt);
+        }
+        e_out = _get_col(idx.sam, src, _e_key(etid));
+        _list_add(e_out[1], tgt);
+        for anc in src_ancestors {
+            in_col = _get_col(idx.sam, tgt, _n_key(anc));
+            _list_add(in_col[0], src);
+        }
+        e_in = _get_col(idx.sam, tgt, _e_key(etid));
+        _list_add(e_in[0], src);
     }
     return idx;
 }
 
-"""Return number of edges in the index."""
+"""Number of edges in the canonical adj_list."""
 impl TopologyIndex.__len__ -> int {
     return len(self.adj_list);
 }
 
-"""String representation."""
+"""Compact debug repr."""
 impl TopologyIndex.__repr__ -> str {
     return (
         f"TopologyIndex(types={len(self.type_table)}, "

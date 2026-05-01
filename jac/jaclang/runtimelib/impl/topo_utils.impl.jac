@@ -39,6 +39,23 @@ impl _type_name(`obj: object) -> str {
     return `type(`obj).__name__;
 }
 
+"""Get the user-defined MRO chain for an archetype instance, stopping at the
+runtime base archetypes."""
+impl _get_type_mro(`obj: object) -> list[str] {
+    import from jaclang.jac0core.archetype {
+        NodeArchetype, EdgeArchetype, WalkerArchetype, Archetype
+    }
+    stop_classes = (NodeArchetype, EdgeArchetype, WalkerArchetype, Archetype, object);
+    chain: list[str] = [];
+    for cls in `type(`obj).__mro__ {
+        if cls in stop_classes {
+            break;
+        }
+        chain.append(cls.__name__);
+    }
+    return chain;
+}
+
 """Called after an edge is created between source and target."""
 impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
     if not _is_enabled() {
@@ -57,11 +74,16 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
         idx = TopologyIndex();
     }
     # Ensure root node itself is in the index
-    idx.add_node(root_anchor.id, _type_name(root_anchor.archetype));
+    idx.add_node(
+        root_anchor.id,
+        _type_name(root_anchor.archetype),
+        _get_type_mro(root_anchor.archetype)
+    );
     # Add source node
     idx.add_node(
         source.id,
         _type_name(source.archetype),
+        _get_type_mro(source.archetype),
         None if source.root == root_anchor.id else source.root
     );
     # Add target node
@@ -69,7 +91,12 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
     if target.root and target.root != root_anchor.id {
         target_owner = target.root;
     }
-    idx.add_node(target.id, _type_name(target.archetype), target_owner);
+    idx.add_node(
+        target.id,
+        _type_name(target.archetype),
+        _get_type_mro(target.archetype),
+        target_owner
+    );
     # Add edge
     idx.add_edge(source.id, target.id, _type_name(`edge.archetype));
     # If undirected, add reverse edge too
@@ -125,9 +152,17 @@ impl on_node_saved(node_anchor: Any) -> None {
         idx = TopologyIndex();
     }
     # Ensure root is in index
-    idx.add_node(root_anchor.id, _type_name(root_anchor.archetype));
+    idx.add_node(
+        root_anchor.id,
+        _type_name(root_anchor.archetype),
+        _get_type_mro(root_anchor.archetype)
+    );
     # Add/update node
-    idx.add_node(node_anchor.id, _type_name(node_anchor.archetype));
+    idx.add_node(
+        node_anchor.id,
+        _type_name(node_anchor.archetype),
+        _get_type_mro(node_anchor.archetype)
+    );
     root_anchor.set_topology_index(idx);
 }
 
