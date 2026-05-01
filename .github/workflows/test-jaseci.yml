@@ -274,20 +274,28 @@ jobs:
           pip install pytest-xdist
           pip install pytest-asyncio
 
+      - name: Install kind and kubectl
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.23.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+          curl -LO "https://dl.k8s.io/release/$(curl -Ls https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+          sudo mv kubectl /usr/local/bin/kubectl
+
       - name: Create kind cluster
-        uses: helm/kind-action@v1
-        with:
-          cluster_name: jaseci-test
-          wait: 120s
-          config: |
-            kind: Cluster
-            apiVersion: kind.x-k8s.io/v1alpha4
-            nodes:
-            - role: control-plane
-              extraPortMappings:
-              - containerPort: 30080
-                hostPort: 30080
-                protocol: TCP
+        run: |
+          cat <<EOF | kind create cluster --name jaseci-test --config=-
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            - containerPort: 30080
+              hostPort: 30080
+              protocol: TCP
+          EOF
+          kubectl wait --for=condition=Ready nodes --all --timeout=120s
 
       - name: Run K8 tests
         run: |
