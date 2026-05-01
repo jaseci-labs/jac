@@ -1086,18 +1086,14 @@ def:pub StylingExamples() -> JsxElement {
 > **Note:** The `cn()` utility is a local file you create in your project. You can write it entirely in Jac (no TypeScript needed):
 >
 > ```jac
->
->
 > # lib/utils.cl.jac
->
 > import from "clsx" { clsx }
 > import from "tailwind-merge" { twMerge }
 >
 > def:pub cn(inputs: any) -> str {
-> args = [].slice.call(arguments);
-> return twMerge(clsx(args));
+>     args = [].slice.call(arguments);
+>     return twMerge(clsx(args));
 > }
->
 > ```
 >
 > Requires `clsx` and `tailwind-merge` in `[dependencies.npm]`.

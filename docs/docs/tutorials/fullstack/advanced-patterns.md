@@ -49,7 +49,6 @@ def connectWebSocket(url: str) -> None {
 ### Sending Messages
 
 ```jac
-
 def sendMessage(action: str, data: any) -> None {
     if not _ws or _ws.readyState != 1 {
         console.warn("WebSocket not connected");
@@ -74,7 +73,6 @@ def sendMessage(action: str, data: any) -> None {
 For WebSocket protocols that use request IDs:
 
 ```jac
-
 glob _nextReqId: int = 1;
 glob _pendingCallbacks: any = {};
 
@@ -125,7 +123,6 @@ Jac does not have a `new` keyword. For browser built-in constructors, use `Refle
 
 <!-- jac-skip -->
 ```jac
-
 # WebSocket
 ws = Reflect.construct(WebSocket, [url]);
 
@@ -158,7 +155,6 @@ When passing callbacks that will be invoked later, use `.call(None, ...)` to avo
 
 <!-- jac-skip -->
 ```jac
-
 # Assign callback to local variable, then use .call()
 msgHandler = onMessage;
 ws.onmessage = lambda(e: any) {
@@ -209,7 +205,6 @@ output = lines.join(_NL);
 Use `glob` for state that persists across component renders and is shared across the module:
 
 ```jac
-
 # Module-level state (like JavaScript module variables)
 glob monacoInitialized: bool = False;
 glob cachedConfig: any = None;
@@ -233,7 +228,6 @@ Access browser globals through `globalThis` or directly:
 
 <!-- jac-skip -->
 ```jac
-
 # localStorage
 localStorage.getItem("auth_token");
 localStorage.setItem("auth_token", token);
@@ -289,7 +283,6 @@ def:pub ThemeListener() -> JsxElement {
 ### Async File Reading with Promises
 
 ```jac
-
 def readAllEntries(reader: any) -> any {
     return Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
         allEntries: list = [];

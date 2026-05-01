@@ -244,7 +244,6 @@ with entry {
 Always handle the possibility of empty reports:
 
 ```jac
-
 walker:priv MyWalker {
     can work with Root entry {
         report "data";

@@ -339,7 +339,6 @@ If you later add runtime usage like `MyClass()`, the compiler automatically prom
 Jac will support generic type parameters using Python-style syntax (coming soon):
 
 ```jac
-
 # Generic function (coming soon):
 # def first[T](items: list[T]) -> T {
 #     return items[0];

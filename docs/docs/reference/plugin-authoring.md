@@ -276,7 +276,6 @@ The full list and signatures live in [jac/jaclang/jac0core/runtime.jac:861-888](
 ```jac
 import from jaclang.cli.console { JacConsole }
 import from jaclang.jac0core.runtime { hookimpl }
-
 import datetime;
 
 """Console wrapper that prefixes every line with a timestamp."""
@@ -325,7 +324,6 @@ If your plugin reads configuration from the user's `jac.toml`, declare a config 
 
 ```jac
 import from jaclang.jac0core.runtime { hookimpl }
-
 
 """Plugin config for jac-myplugin."""
 class JacMypluginPluginConfig {
