@@ -806,10 +806,12 @@ impl TypeCheckPass.enter_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> N
         if compr.conditional {
             for cond in compr.conditional {
                 cond_info = self.evaluator.classify_condition(cond);
-                if (cond_info is not None
+                if (
+                    cond_info is not None
                     and cond_info.kind == NarrowingKind.ISINSTANCE
                     and cond_info.narrow_type is not None
-                    and cond_info.key not in self.evaluator._comprehension_narrowing) {
+                    and cond_info.key not in self.evaluator._comprehension_narrowing
+                ) {
                     self.evaluator._comprehension_narrowing[cond_info.key] = cond_info.narrow_type;
                     added_keys.append(cond_info.key);
                 }

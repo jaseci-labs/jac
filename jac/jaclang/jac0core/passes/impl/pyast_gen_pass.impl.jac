@@ -779,7 +779,7 @@ impl PyastGenPass.exit_global_vars(nd: uni.GlobalVars) -> None {
 }
 
 impl PyastGenPass.exit_test(nd: uni.Test) -> None {
-    test_name = nd.name.sym_name;
+    test_name = nd.name.sym_name if isinstance(nd.name, uni.Name) else nd.name.value;
     func = self.sync(
         ast3.FunctionDef(
             name=test_name,
