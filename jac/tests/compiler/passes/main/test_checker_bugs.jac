@@ -596,3 +596,14 @@ test "bug_dloc1_decorated_class_in_function_body" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+test "bug_5768_cast_union_instance" {
+    program = compile_and_check("checker_bug_cast_union_instance.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #5768-cast-union: cast() with a union target type must return "
+        "instance types so that attribute access on the result does not "
+        "produce false-positive E1099 errors. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
