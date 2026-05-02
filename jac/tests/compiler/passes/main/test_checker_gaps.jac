@@ -21,6 +21,7 @@ Gap index:
   #49 - TYPE_CHECKING forward-reference string annotations
   #50 - postinit body not validated against by-postinit field declarations
   #51 - @property on union types returns FunctionType instead of return type
+  #52 - Enum iteration variable resolves to Unknown (cascading E1032 / W1051)
 """
 
 import os;
@@ -291,13 +292,16 @@ test "gap 44 context manager exit not checked" {
 test "gap 45 enum iteration false positive" {
     program = compile_and_check("checker_gap_enum_iter.jac");
 
-    # PARTIALLY FIXED: Structural protocol matching for Iterable (__iter__) now
-    # recognizes enum classes as iterable via EnumMeta.
-    # Remaining 1: c.name in list comprehension — iteration var type resolves
-    # to Unknown in comprehension scope, causing false E1032 on .name access.
-    assert len(program.errors_had) == 1 , f"Gap #45: Enum iteration should produce 1 error, "
-    f"but got {len(program.errors_had)}: "
-    f"{[str(e) for e in program.errors_had]}.";
+    # FIXED: Structural protocol matching for Iterable (__iter__) recognizes
+    # enum classes as iterable via EnumMeta, and the iteration variable is
+    # materialized as an enum-instance type by visit_Name (see Gap #52), so
+    # `c.name` in a comprehension resolves correctly instead of falling
+    # through to UnknownType.
+    assert len(program.errors_had) == 0 , (
+        "Gap #45: Enum iteration should produce 0 errors, "
+        f"but got {len(program.errors_had)}: "
+        f"{[str(e) for e in program.errors_had]}."
+    );
 }
 
 # =========================================================================
@@ -535,4 +539,48 @@ test "gap 51 property on union type returns function type" {
     assert len(fixture_errors) == 0 , f"Gap #51: Property on union type not unwrapped. "
     f"Expected 0 errors but got {len(fixture_errors)}. "
     f"Errors: {[e.pretty_print()[:100] for e in fixture_errors]}";
+}
+
+# =========================================================================
+# Gap #52: Enum iteration variable resolves to Unknown
+#
+# When iterating over an enum class — both Jac native `enum Foo { ... }` and
+# class-based `class Foo(IntEnum) { with entry { ... } }` — the iteration
+# variable in `for x in Foo` (or in a comprehension) should be typed as a
+# Foo instance so that downstream attribute access (.name, .value) resolves
+# correctly. Python's EnumMeta provides __iter__ but the type evaluator does
+# not model metaclass methods. The iteration path in
+# type_evaluator.impl.jac::visit_Name (handling InForStmt / InnerCompr)
+# previously fell through to UnknownType, which then cascades into E1032
+# (cannot access attribute) on every `i.name` / `i.value` and a fan of
+# W1051 warnings on every dependent expression.
+#
+# Real-world failure: jac/jaclang/jac0core/impl/constant.impl.jac:9-15
+#   impl JacSemTokenType.as_str_list -> list {
+#       return [i.name.lower() for i in JacSemTokenType if i.name];
+#   }
+# produced 2 E1032 errors and 7 W1051 warnings before this fix.
+# =========================================================================
+test "gap 52 class enum iteration yields enum instance" {
+    program = compile_and_check("checker_gap_class_enum_iter.jac");
+    fixture_errors = [
+        e
+        for e in program.errors_had
+        if "checker_gap_class_enum_iter.jac" in (e.loc.mod_path or "")
+    ];
+    fixture_warnings = [
+        w
+        for w in program.warnings_had
+        if "checker_gap_class_enum_iter.jac" in (w.loc.mod_path or "")
+    ];
+    assert len(fixture_errors) == 0 , (
+        "Gap #52: Class-based enum iteration should yield enum-instance type, "
+        f"not Unknown. Expected 0 errors but got {len(fixture_errors)}. "
+        f"Errors: {[e.pretty_print()[:120] for e in fixture_errors]}"
+    );
+    assert len(fixture_warnings) == 0 , (
+        "Gap #52: Class-based enum iteration should not emit W1051. Got "
+        f"{len(fixture_warnings)} warnings: "
+        f"{[w.pretty_print()[:120] for w in fixture_warnings]}"
+    );
 }
