@@ -596,8 +596,10 @@ test "bug_5768_atomtrailer_base_narrowing" {
     program = compile_and_check("checker_bug_subscript_base_narrowing.jac");
 
     assert len(program.errors_had) == 0 , (
-        "Bug #5768: isinstance narrowing must apply to non-Name AtomTrailer targets. "
-        "`if isinstance(c.pet, Cat)` should narrow c.pet.meow access. "
+        "Bug #5768: isinstance narrowing must apply to subscript targets like path[0]. "
+        "`if isinstance(path[0], StringVal)` should narrow path[0].lit_value access. "
+        "Requires both the subscript key fix (PR2/fix-5768-subscript-narrowing-key) "
+        "and this non-Name AtomTrailer narrowing fix to be merged. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
