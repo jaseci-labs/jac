@@ -349,21 +349,10 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
     if editable {
         import sys;
         import site;
-        import json;
         import subprocess;
         import from pathlib { Path }
         import from jaclang.project.config { JacConfig }
-        import from jaclang.publish.metadata { generate_metadata }
-        import from jaclang.publish.wheel_meta {
-            generate_wheel_file,
-            generate_entry_points,
-            dist_info_dirname
-        }
-        import from jaclang.publish.record {
-            record_entry_from_bytes,
-            generate_record,
-            RecordEntry
-        }
+        import from jaclang.publish.builder { WheelBuilder }
 
         src_dir = Path(editable).resolve();
         toml_path = src_dir / "jac.toml";
@@ -381,14 +370,12 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
             return 1;
         }
 
-        pkg_name = editable_config.package.name.replace("-", "_");
         console.print(
             f"\n📦 Editable install: [cyan]{editable_config.package.name}[/cyan] "
             f"from [dim]{src_dir}[/dim]",
             style="bold"
         );
 
-        # Install runtime (+ optionally dev) deps via pip
         all_deps: dict[str, str] = dict(editable_config.dependencies);
         if dev {
             all_deps.update(editable_config.dev_dependencies);
@@ -414,46 +401,9 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
             }
         }
 
-        # Write __editable__.<name>-<version>.pth into site-packages
-        site_pkgs = site.getsitepackages()[0];
-        pth_filename = f"__editable__.{pkg_name}-{editable_config.package.version}.pth";
-        pth_content: bytes = (str(src_dir) + "\n").encode("utf-8");
-        (Path(site_pkgs) / pth_filename).write_bytes(pth_content);
+        site_pkgs = Path(site.getsitepackages()[0]);
+        WheelBuilder(config=editable_config).install_editable(src_dir, site_pkgs);
         console.print(f"  ✔ Linked {src_dir}", style="success");
-
-        # Write dist-info so importlib.metadata / pip can discover the package
-        di_name = dist_info_dirname(editable_config);
-        dist_info_dir = Path(site_pkgs) / di_name;
-        dist_info_dir.mkdir(exist_ok=True);
-
-        files: dict[str, bytes] = {};
-        files["METADATA"] = generate_metadata(editable_config, src_dir).encode("utf-8");
-        files["WHEEL"] = generate_wheel_file().encode("utf-8");
-        files["INSTALLER"] = "jac\n".encode("utf-8");
-        files["REQUESTED"] = "".encode("utf-8");
-        files["top_level.txt"] = (pkg_name + "\n").encode("utf-8");
-        files["direct_url.json"] = json.dumps(
-            {"url": src_dir.as_uri(), "dir_info": {"editable": True}}, indent=2,
-        ).encode(
-            "utf-8"
-        );
-        ep_content = generate_entry_points(editable_config);
-        if ep_content {
-            files["entry_points.txt"] = ep_content.encode("utf-8");
-        }
-
-        record_entries: list[RecordEntry] = [
-            record_entry_from_bytes(pth_filename, pth_content)
-        ];
-        for (fname, data) in files.items() {
-            (dist_info_dir / fname).write_bytes(data);
-            record_entries.append(record_entry_from_bytes(f"{di_name}/{fname}", data));
-        }
-        record_path = f"{di_name}/RECORD";
-        (dist_info_dir / "RECORD").write_text(
-            generate_record(record_entries, record_path), encoding="utf-8"
-        );
-
         console.print(f"  ✔ Editable install complete.", style="success");
         return 0;
     }

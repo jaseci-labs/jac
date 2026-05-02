@@ -24,25 +24,12 @@ import from jaclang.publish.sources {
     EXCLUDED_DIRS
 }
 
-# ===============================================================================
-# WheelBuilder.postinit
-# ===============================================================================
 impl WheelBuilder.postinit -> None {
     if self.project_root is None {
         self.project_root = self.config.project_root;
     }
 }
 
-# ==============================================================================
-# WheelBuilder.precompile_package
-# ==============================================================================
-impl WheelBuilder.precompile_package(pkg_dir: Path) -> None {
-    _do_precompile(pkg_dir);
-}
-
-# ===============================================================================
-# WheelBuilder.build
-# ===============================================================================
 impl WheelBuilder.build -> bytes {
     if self.config.package is None {
         raise ValueError(
@@ -57,7 +44,6 @@ impl WheelBuilder.build -> bytes {
 
     dist_info = dist_info_dirname(self.config);
 
-    # ── 0. Pre-compile .jac → .jir (optional) ───────────────────────────────
     if self.precompile {
         pkg_include = self.config.package.include;
         package_patterns = pkg_include.packages;
@@ -79,12 +65,11 @@ impl WheelBuilder.build -> bytes {
                 if not fnmatch.fnmatch(candidate.name, pkg_glob) {
                     continue;
                 }
-                self.precompile_package(candidate);
+                _do_precompile(candidate);
             }
         }
     }
 
-    # ── 1. Generate dist-info file content ───────────────────────────────────
     metadata_bytes = generate_metadata(self.config, project_root=root).encode("utf-8");
     wheel_bytes = generate_wheel_file(
         pure_python=self.pure_python,
@@ -94,24 +79,19 @@ impl WheelBuilder.build -> bytes {
     ).encode(
         "utf-8"
     );
-
     ep_str = generate_entry_points(self.config);
     ep_bytes: bytes | None = ep_str.encode("utf-8") if ep_str else None;
-
     pkg_name = self.config.package.name.replace("-", "_");
     top_level_bytes = (pkg_name + "\n").encode("utf-8");
 
-    # ── 2. Collect package source files ──────────────────────────────────────
     source_files = collect_source_files(self.config, project_root=root);
+    src_data: dict[str, bytes] = {
+        sf.wheel_path: read_source_file(sf) for sf in source_files
+    };
 
-    # ── 3. Build RecordEntry list (every file except RECORD itself) ──────────
-    entries: list[RecordEntry] = [];
-
-    for sf in source_files {
-        data = read_source_file(sf);
-        entries.append(record_entry_from_bytes(sf.wheel_path, data));
-    }
-
+    entries: list[RecordEntry] = [
+        record_entry_from_bytes(path, data) for (path, data) in src_data.items()
+    ];
     entries.append(record_entry_from_bytes(f"{dist_info}/METADATA", metadata_bytes));
     entries.append(record_entry_from_bytes(f"{dist_info}/WHEEL", wheel_bytes));
     entries.append(
@@ -123,19 +103,17 @@ impl WheelBuilder.build -> bytes {
         );
     }
 
-    # ── 4. Generate RECORD (must reference all files above) ──────────────────
     record_path = f"{dist_info}/RECORD";
     record_bytes = generate_record(entries, record_path).encode("utf-8");
 
-    # ── 5. Write zip archive in memory ───────────────────────────────────────
     buf = io.BytesIO();
     with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf {
         def _add(arc_path: str, data: bytes) {
             zi = zipfile.ZipInfo(arc_path, date_time=_WHEEL_TIMESTAMP);
             zf.writestr(zi, data);
         }
-        for sf in source_files {
-            _add(sf.wheel_path, read_source_file(sf));
+        for (path, data) in src_data.items() {
+            _add(path, data);
         }
         _add(f"{dist_info}/METADATA", metadata_bytes);
         _add(f"{dist_info}/WHEEL", wheel_bytes);
@@ -149,9 +127,6 @@ impl WheelBuilder.build -> bytes {
     return buf.getvalue();
 }
 
-# ===============================================================================
-# WheelBuilder.build_to
-# ===============================================================================
 impl WheelBuilder.build_to(output_dir: Path) -> Path {
     output_dir.mkdir(parents=True, exist_ok=True);
     fname = wheel_filename(
@@ -163,4 +138,56 @@ impl WheelBuilder.build_to(output_dir: Path) -> Path {
     dest = output_dir / fname;
     dest.write_bytes(self.build());
     return dest;
+}
+
+impl WheelBuilder.install_editable(src_dir: Path, site_pkgs: Path) -> Path {
+    import json;
+    if self.config.package is None {
+        raise ValueError(
+            "Cannot install editable: [package] section is missing in jac.toml."
+        );
+    }
+
+    pkg_name = self.config.package.name.replace("-", "_");
+    pth_filename = f"__editable__.{pkg_name}-{self.config.package.version}.pth";
+    pth_content: bytes = (str(src_dir) + "\n").encode("utf-8");
+    pth_path = site_pkgs / pth_filename;
+    pth_path.write_bytes(pth_content);
+
+    di_name = dist_info_dirname(self.config);
+    dist_info_dir = site_pkgs / di_name;
+    dist_info_dir.mkdir(exist_ok=True);
+
+    files: dict[str, bytes] = {
+        "METADATA": generate_metadata(self.config, src_dir).encode("utf-8"),
+        "WHEEL": generate_wheel_file().encode("utf-8"),
+        "INSTALLER": b"jac\n",
+        "REQUESTED": b"",
+        "top_level.txt": (pkg_name + "\n").encode("utf-8"),
+        "direct_url.json": json.dumps(
+            {"url": src_dir.as_uri(), "dir_info": {"editable": True}}, indent=2
+        ).encode(
+            "utf-8"
+        ),
+
+    };
+
+    ep_content = generate_entry_points(self.config);
+    if ep_content {
+        files["entry_points.txt"] = ep_content.encode("utf-8");
+    }
+
+    record_entries: list[RecordEntry] = [
+        record_entry_from_bytes(pth_filename, pth_content)
+    ];
+    for (fname, data) in files.items() {
+        (dist_info_dir / fname).write_bytes(data);
+        record_entries.append(record_entry_from_bytes(f"{di_name}/{fname}", data));
+    }
+    record_path = f"{di_name}/RECORD";
+    (dist_info_dir / "RECORD").write_text(
+        generate_record(record_entries, record_path), encoding="utf-8"
+    );
+
+    return pth_path;
 }

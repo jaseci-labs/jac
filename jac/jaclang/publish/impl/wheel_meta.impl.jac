@@ -3,19 +3,14 @@
 import from jaclang.project.config { JacConfig }
 import from jaclang.publish.metadata { normalize_package_name }
 
-glob _JAC_VERSION: str = "";
-
-
 import jaclang as _jac_mod;
+glob _JAC_VERSION: str = getattr(_jac_mod, "__version__", "");
 
 
 def _pkg_norm_name(config: JacConfig) -> str {
     return normalize_package_name(config.package.name).replace("-", "_");
 }
 
-# ===============================================================================
-# generate_wheel_file
-# ===============================================================================
 impl generate_wheel_file(
     generator_version: str = "",
     pure_python: bool = True,
@@ -39,9 +34,6 @@ impl generate_wheel_file(
     return "\n".join(lines);
 }
 
-# ===============================================================================
-# generate_entry_points
-# ===============================================================================
 impl generate_entry_points(config: JacConfig) -> str {
     if not config.entrypoints {
         return "";
@@ -68,9 +60,6 @@ impl generate_entry_points(config: JacConfig) -> str {
     return "";
 }
 
-# ===============================================================================
-# wheel_filename
-# ===============================================================================
 impl wheel_filename(
     config: JacConfig,
     python_tag: str = "py3",
@@ -85,9 +74,6 @@ impl wheel_filename(
     return f"{_pkg_norm_name(config)}-{config.package.version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
 }
 
-# ===============================================================================
-# dist_info_dirname
-# ===============================================================================
 impl dist_info_dirname(config: JacConfig) -> str {
     if config.package is None {
         raise ValueError(

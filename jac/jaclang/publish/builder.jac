@@ -18,12 +18,12 @@ obj WheelBuilder {
         precompile: bool = True;
 
     def postinit -> None;
-    """Pre-compile all .jac files in pkg_dir to .jir bytecode under _precompiled/."""
-    def precompile_package(pkg_dir: Path) -> None;
-
     """Build the wheel in memory and return its raw bytes; raises ValueError when config.package is None."""
     def build -> bytes;
 
     """Build the wheel and write it to output_dir/<name>.whl; returns the Path written."""
     def build_to(output_dir: Path) -> Path;
+
+    """Write dist-info for an editable install of src_dir into site_pkgs; returns the .pth path written."""
+    def install_editable(src_dir: Path, site_pkgs: Path) -> Path;
 }

@@ -4,16 +4,10 @@ import re;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig, PackageConfig, PersonConfig }
 
-# ===============================================================================
-# normalize_package_name
-# ===============================================================================
 impl normalize_package_name(name: str) -> str {
     return re.sub(r"[-_.]+", "-", name).lower();
 }
 
-# ===============================================================================
-# build_person_header
-# ===============================================================================
 def build_person_header(persons: list[PersonConfig]) -> str {
     parts: list[str] = [];
     for p in persons {
@@ -28,13 +22,9 @@ def build_person_header(persons: list[PersonConfig]) -> str {
     return ", ".join(parts);
 }
 
-# ===============================================================================
-# normalize_constraint
-# ===============================================================================
 impl normalize_constraint(raw: str) -> str {
     raw = raw.strip();
 
-    # Unconstrained
     if not raw or raw in ("*", "latest") {
         return "";
     }
@@ -74,12 +64,10 @@ impl normalize_constraint(raw: str) -> str {
         return f">={padded},<{major}.{minor + 1}.0";
     }
 
-    # PEP 440 specifier operators → pass through unchanged
     if raw and raw[0] in (">", "<", "!", "~", "=") {
         return raw;
     }
 
-    # Bare version number → exact match
     if re.match(r"^\d", raw) {
         return f"=={raw}";
     }
@@ -87,9 +75,6 @@ impl normalize_constraint(raw: str) -> str {
     return raw;
 }
 
-# ===============================================================================
-# build_requires_dist
-# ===============================================================================
 impl build_requires_dist(name: str, raw_ver: str, extra: str | None = None) -> str {
     spec = normalize_constraint(raw_ver);
     dep = normalize_package_name(name);
@@ -102,9 +87,6 @@ impl build_requires_dist(name: str, raw_ver: str, extra: str | None = None) -> s
     return dep;
 }
 
-# ===============================================================================
-# readme_content_type
-# ===============================================================================
 def readme_content_type(readme_filename: str) -> str {
     ext = Path(readme_filename).suffix.lower();
     if ext == ".md" {
@@ -116,9 +98,6 @@ def readme_content_type(readme_filename: str) -> str {
     }
 }
 
-# ===============================================================================
-# generate_metadata
-# ===============================================================================
 impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> str {
     if config.package is None {
         raise ValueError(
@@ -130,19 +109,15 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
     root = project_root or config.project_root;
     lines: list[str] = [];
 
-    # Append 'Header: value' only when value is non-empty
     def h(hdr: str, value: str) {
         if value {
             lines.append(f"{hdr}: {value}");
         }
     }
 
-    # ── Required headers ────────────────────────────────────────────────────
     h("Metadata-Version", METADATA_VERSION);
     h("Name", normalize_package_name(pkg.name));
     h("Version", pkg.version);
-
-    # ── Optional descriptive headers ────────────────────────────────────────
     h("Summary", pkg.description);
 
     author_val = build_person_header(pkg.authors);
@@ -155,7 +130,6 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
         h("Maintainer-email", maintainer_val);
     }
 
-    # License-Expression is the Metadata 2.4 field (PEP 639).
     if pkg.license {
         h("License-Expression", pkg.license);
     }
@@ -166,18 +140,14 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
 
     h("Requires-Python", pkg.requires_python);
 
-    # ── Project URLs ─────────────────────────────────────────────────────────
     for (label, url) in pkg.urls.items() {
         lines.append(f"Project-URL: {label.capitalize()}, {url}");
     }
 
-    # ── Runtime dependencies ─────────────────────────────────────────────────
     for (dep_name, raw_ver) in config.dependencies.items() {
         h("Requires-Dist", build_requires_dist(dep_name, raw_ver));
     }
 
-    # ── Optional dependency groups ────────────────────────────────────────────
-    # Emit all Provides-Extra headers first so parsers see them before markers.
     for group in config.optional_dependencies {
         h("Provides-Extra", group);
     }
@@ -187,7 +157,6 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
         }
     }
 
-    # ── README body ───────────────────────────────────────────────────────────
     readme_content: str | None = None;
     if pkg.readme and root {
         readme_path = root / pkg.readme;
@@ -197,7 +166,6 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
         }
     }
 
-    # Blank line separates header block from body (RFC 822).
     lines.append("");
     if readme_content {
         lines.append(readme_content);
