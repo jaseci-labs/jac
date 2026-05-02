@@ -5,6 +5,31 @@ impl Access.check(anchor: str) -> (AccessLevel | None) {
     return self.anchors.get(anchor);
 }
 
+"""Serialize PermissionDenied into a JSON-safe dict for the response envelope."""
+impl PermissionDenied.to_dict -> dict[(str, Any)] {
+    return {
+        "operation": self.operation,
+        "target_id": self.target_id,
+        "target_type": self.target_type,
+        "target_owner": self.target_owner,
+        "required": self.required.name,
+        "actual": self.actual.name,
+        "message": self.message()
+    };
+}
+
+"""Render PermissionDenied as a single-line user-facing message."""
+impl PermissionDenied.message -> str {
+    owner = self.target_owner or "<system>";
+    return (
+        f"Permission denied: {self.operation} on "
+        f"{self.target_type}[{self.target_id}] owned by root[{owner}]; "
+        f"required {self.required.name}, have {self.actual.name}. "
+        f"Hint: at the owner-side call `grant(node, level={self.required.name})`, "
+        f"or expose an ability on the target node and route writes through it."
+    );
+}
+
 """Filter edge."""
 impl ObjectSpatialDestination.edge_filter(arch: Archetype) -> bool {
     return (not self.edge or self.edge(arch));

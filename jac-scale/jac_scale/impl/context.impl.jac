@@ -6,10 +6,16 @@ not per-context parameters.
 
 impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     import from jac_scale.memory_hierarchy { ScaleTieredMemory }
-    import from jaclang.jac0core.constructs { Anchor, NodeAnchor, Root }
+    import from jaclang.jac0core.constructs {
+        Anchor,
+        NodeAnchor,
+        PermissionDenied,
+        Root
+    }
     # ScaleTieredMemory gets storage config from environment variables
     self.mem = ScaleTieredMemory();
     self.reports: list[Any] = [];
+    self.diagnostics: list[PermissionDenied] = [];
     self.custom: Any = MISSING;
     system_root_anchor: (Anchor | None) = self.mem.get(UUID(Con.SUPER_ROOT_UUID));
     if not isinstance(system_root_anchor, NodeAnchor) {
