@@ -144,8 +144,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             if isinstance(cast_target_type, types.UnionType) {
                 instance_members: list[types.TypeBase] = [
                     m.clone_as_instance()
-                    if isinstance(m, types.ClassType) and m.is_instantiable_class() else m
-                    for m in cast_target_type.types
+                        if isinstance(m, types.ClassType) and m.is_instantiable_class()
+                        else m for m in cast_target_type.types
                 ];
                 return types.UnionType(types=instance_members);
             }
