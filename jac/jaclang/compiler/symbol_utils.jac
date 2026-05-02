@@ -115,6 +115,25 @@ def get_expr_key(expr: uni.Expr) -> str | None {
             return f"{base}.{expr.right.value}";
         }
     }
+    if isinstance(expr, uni.AtomTrailer) and not expr.is_attr {
+        base = get_expr_key(expr.target);
+        if (
+            base
+            and isinstance(expr.right, uni.IndexSlice)
+            and not expr.right.is_range
+            and len(expr.right.slices) == 1
+        ) {
+            idx = expr.right.slices[0];
+            if (
+                idx.start is not None
+                and idx.stop is None
+                and idx.step is None
+                and isinstance(idx.start, uni.Int)
+            ) {
+                return f"{base}[{idx.start.lit_value}]";
+            }
+        }
+    }
     # Unwrap parentheses
     if isinstance(expr, uni.AtomUnit) and expr.value {
         return get_expr_key(expr.value);
@@ -133,7 +152,7 @@ def _extract_first_arg_key(arg: uni.Expr) -> str | None {
     if isinstance(arg, uni.Name) {
         return arg.value;
     }
-    if isinstance(arg, uni.AtomTrailer) and arg.is_attr {
+    if isinstance(arg, uni.AtomTrailer) {
         return get_expr_key(arg);
     }
     if (
@@ -158,7 +177,7 @@ def _extract_compare_left_key(left: uni.Expr) -> str | None {
     if isinstance(left, uni.Name) {
         return left.value;
     }
-    if isinstance(left, uni.AtomTrailer) and left.is_attr {
+    if isinstance(left, uni.AtomTrailer) {
         return get_expr_key(left);
     }
     if (
