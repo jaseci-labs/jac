@@ -219,19 +219,8 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
                 target.type = left_type;
             }
             # Warn on bare generic type annotations (e.g. x: list = [])
-            if (
-                nd.type_tag
-                and nd.type_tag.tag
-                and isinstance(left_type, types.ClassType)
-                and left_type.shared
-                and left_type.shared.type_params
-                and (not left_type.private or not left_type.private.type_args)
-            ) {
-                self.emit(
-                    W1036,
-                    node_override=nd.type_tag.tag,
-                    type=left_type.shared.class_name
-                );
+            if nd.type_tag and nd.type_tag.tag {
+                self._check_bare_generic(nd.type_tag.tag, left_type);
             }
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
@@ -256,20 +245,7 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             if nd.type_tag and nd.type_tag.tag {
                 declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
                 # Warn on bare generic type annotations (e.g. list instead of list[T])
-                if (
-                    isinstance(declared_type, types.ClassType)
-                    and declared_type.shared
-                    and declared_type.shared.type_params
-                    and (
-                        not declared_type.private or not declared_type.private.type_args
-                    )
-                ) {
-                    self.emit(
-                        W1036,
-                        node_override=nd.type_tag.tag,
-                        type=declared_type.shared.class_name
-                    );
-                }
+                self._check_bare_generic(nd.type_tag.tag, declared_type);
                 # Convert class type to instance for assignment checking.
                 # Type annotations like `x: int` resolve to the class `int`
                 # (instantiable), but the LHS of an assignment represents an
@@ -555,6 +531,17 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     if isinstance(nd.body, uni.ImplDef) {
         self.traverse(nd.body);
     }
+    # Warn on bare generic return type annotations (e.g. def f -> list).
+    # Runs regardless of body shape — abstract/overload/stub decls also benefit.
+    # Skip impl-side abilities to avoid double-firing (see exit_param_var).
+    if (
+        isinstance(nd.signature, uni.FuncSignature)
+        and nd.signature.return_type is not None
+        and nd.find_parent_of_type(uni.ImplDef) is None
+    ) {
+        ret_ann_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
+        self._check_bare_generic(nd.signature.return_type, ret_ann_type);
+    }
     # Check for missing return statements on non-None return type functions
     if (
         isinstance(nd.signature, uni.FuncSignature)
@@ -607,6 +594,39 @@ impl TypeCheckPass._body_always_returns(
     return self.evaluator._collect_return_types(body, []);
 }
 
+"""Emit W1036 for bare generic type annotations.
+
+A "bare generic" is a generic class (one declared with type_params) used
+without explicit type_args at the use site — e.g. `list` instead of
+`list[int]`, `dict` instead of `dict[str, int]`. PEP 484 says these
+default to `T[Any]`, which silently erases element types and weakens
+downstream inference.
+
+`ann_node` is the AST location to attach the warning to (typically the
+type-tag expression). Walks union branches so `list | None` warns on the
+bare `list`. Does not recurse into existing type_args — `dict[str, list]`
+warns only on the outer if outer is bare; nested bare generics are out of
+scope for now (locating the inner AST node would require parallel walking)."""
+impl TypeCheckPass._check_bare_generic(
+    self: TypeCheckPass, ann_node: uni.UniNode, ty: object
+) -> None {
+    import from jaclang.compiler.type_system { types }
+    if isinstance(ty, types.UnionType) and ty.types {
+        for branch in ty.types {
+            self._check_bare_generic(ann_node, branch);
+        }
+        return;
+    }
+    if (
+        isinstance(ty, types.ClassType)
+        and ty.shared
+        and ty.shared.type_params
+        and (not ty.private or not ty.private.type_args)
+    ) {
+        self.emit(W1036, node_override=ann_node, type=ty.shared.class_name);
+    }
+}
+
 """Exit a type alias node."""
 impl TypeCheckPass.exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None { }
 
@@ -656,7 +676,21 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
 """Set type on function/method parameters for hover info."""
 impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None {
     if (sym := nd.sym) {
-        nd.type = self.evaluator.get_type_of_symbol(sym);
+        declared_type = self.evaluator.get_type_of_symbol(sym);
+        nd.type = declared_type;
+        # Warn on bare generic parameter annotations (e.g. def f(x: list)).
+        # Skip when this param is inside an `impl` block — the decl-side
+        # ParamVar carries the same annotation and will emit the warning.
+        # Without this guard, top-level ImplDefs are visited twice (once by
+        # natural module traversal, once by the explicit traverse(nd.body)
+        # in exit_ability for the decl), producing duplicate warnings.
+        if (
+            nd.type_tag
+            and nd.type_tag.tag
+            and nd.find_parent_of_type(uni.ImplDef) is None
+        ) {
+            self._check_bare_generic(nd.type_tag.tag, declared_type);
+        }
     }
 }
 
@@ -687,19 +721,8 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
         declared_type = self.evaluator.get_type_of_symbol(sym);
         nd.type = declared_type;
         # Warn on bare generic type annotations (e.g. has items: list instead of list[T])
-        if (
-            nd.type_tag
-            and nd.type_tag.tag
-            and isinstance(declared_type, types.ClassType)
-            and declared_type.shared
-            and declared_type.shared.type_params
-            and (not declared_type.private or not declared_type.private.type_args)
-        ) {
-            self.emit(
-                W1036,
-                node_override=nd.type_tag.tag,
-                type=declared_type.shared.class_name
-            );
+        if nd.type_tag and nd.type_tag.tag {
+            self._check_bare_generic(nd.type_tag.tag, declared_type);
         }
         # If there's an initializer, check that its type is compatible
         # with the declared type (e.g., bad1: int = unknown_val;).
