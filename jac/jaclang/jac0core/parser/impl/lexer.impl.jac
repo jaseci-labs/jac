@@ -1189,6 +1189,17 @@ impl Lexer.scan_operator -> Token {
             TokenKind.ARROW_R_P2, ":->", start_line, start_col, start_pos
         );
     }
+    # `->:` MUST be matched before `->` (which lives in the 2-char block
+    # below). Without this, the right-arrow typed-edge opener `->:` would
+    # be split into RETURN_HINT (`->`) + COLON, breaking `[a->:Type:->]`.
+    # All other typed-edge tokens (`<-:`, `:->`, `:<-`, `+>:`, `:+>`,
+    # `<+:`, `:<+`) already lex as single tokens because they're in
+    # earlier blocks or have no shorter prefix to compete with.
+    if self.match_string("->:") {
+        return self.make_token(
+            TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
+        );
+    }
     if self.match_string("<+:") {
         return self.make_token(
             TokenKind.CARROW_L_P1, "<+:", start_line, start_col, start_pos
@@ -1374,11 +1385,7 @@ impl Lexer.scan_operator -> Token {
             TokenKind.MATMUL_EQ, "@=", start_line, start_col, start_pos
         );
     }
-    if self.match_string("->:") {
-        return self.make_token(
-            TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
-        );
-    }
+    # `->:` is matched in the 3-char block above so it wins over `->`.
     if self.match_string(":<-") {
         return self.make_token(
             TokenKind.ARROW_L_P2, ":<-", start_line, start_col, start_pos

@@ -976,7 +976,9 @@ test "compr set basic" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
     # set_compr_basic: {x * 2 for x in items} → new Set(items.map(x => (x * 2)))
-    assert "new Set(" in js_code , ("Set comprehension should wrap result in new Set()");
+    assert "new Set(" in js_code , (
+        "Set comprehension should wrap result in new Set()"
+    );
     assert "new Set(items.map(" in js_code , (
         "Set comprehension should be new Set(items.map(...))"
     );
@@ -1181,4 +1183,46 @@ test "private identifier generates hash prefix" {
         f"PrivateIdentifier should emit '#secret', got: {js_code}"
     );
     assert "class Foo" in js_code;
+}
+
+test "jsx preserves single-space whitespace between adjacent expression children" {
+    # BUG: The parser dropped any whitespace-only JSX_TEXT token, including
+    # an intentional single space between two `{expr}` children on the same
+    # line.  As a result `<div>{count} {("task" ...)} remaining</div>`
+    # emitted children `[count, (cond), " remaining"]` instead of
+    # `[count, " ", (cond), " remaining"]`, so the rendered DOM showed
+    # "3tasks remaining" instead of "3 tasks remaining" (and "1.5lb"
+    # instead of "1.5 lb" in the shopping-list code from the AI day
+    # planner tutorial).
+    #
+    # Whitespace that crosses a newline (indent between `}` and the next
+    # `{` on a new line) is structural and must still be dropped, matching
+    # Babel's JSX text normalization.
+    fixture = "jsx_adjacent_expressions_spaces.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # First span: same-line `{count} {("task" if ... else "tasks")} remaining`.
+    # Children must include a literal " " separator between count and the
+    # conditional, AND between the conditional and "remaining".
+    assert (
+        "[count, \" \", ((count === 1) ? \"task\" : \"tasks\"), \" remaining\"]" in js_code
+    ) , (
+        "Same-line `{a} {b}` must emit a `\" \"` child between adjacent "
+        f"expressions, got:\n{js_code}"
+    );
+
+    # Second span: `{amount} {unit}` — two adjacent expressions only.
+    assert "[amount, \" \", unit]" in js_code , (
+        f"Same-line adjacent `{{amount}} {{unit}}` must emit a `\" \"` "
+        f"separator child, got:\n{js_code}"
+    );
+
+    # Third span: newline-separated `{count}\n{unit}` — structural
+    # whitespace MUST be dropped, no `" "` child.
+    assert "__jacJsx(\"p\", {}, [count, unit])" in js_code , (
+        "Newline-separated `{a}\\n{b}` must NOT emit a whitespace child "
+        f"(structural whitespace is dropped per Babel rules), got:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
 }

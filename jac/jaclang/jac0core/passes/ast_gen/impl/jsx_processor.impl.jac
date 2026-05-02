@@ -90,6 +90,13 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
     }
     children_elements: list[Expression | SpreadElement | None] = [];
     for child in (nd.children or []) {
+        # Drop JsxText nodes whose normalized text is empty (structural
+        # whitespace such as the newline+indent between `}` and the next
+        # `{`). Same-line whitespace ` ` between adjacent expressions is
+        # NOT empty after normalization and is preserved as a child.
+        if isinstance(child, uni.JsxText) and not child.get_normalized_text() {
+            continue;
+        }
         child_expr = child.gen.es_ast;
         if (child_expr is None) {
             continue;
@@ -270,9 +277,17 @@ impl PyJsxProcessor.element(
         attrs_expr = self.pass_ref.sync(ast3.Dict(keys=keys, values=values), nd);
     }
     if nd.children {
+        # Drop JsxText nodes whose normalized text is empty (structural
+        # whitespace), matching the client-side codegen behavior so that
+        # server-rendered JSX produces the same children list.
+        kept_children = [
+            c
+            for c in nd.children
+            if not (isinstance(c, uni.JsxText) and not c.get_normalized_text())
+        ];
         children_arg = self.pass_ref.sync(
             ast3.List(
-                elts=[cast(ast3.expr, c.gen.py_ast[0]) for c in nd.children],
+                elts=[cast(ast3.expr, c.gen.py_ast[0]) for c in kept_children],
                 ctx=ast3.Load()
             ),
             nd
