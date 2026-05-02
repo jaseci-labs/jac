@@ -2184,6 +2184,24 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
                     return self.prefetch.any_class;
                 }
 
+                # Iterating over an enum class yields enum-instance values.
+                # Python's EnumMeta provides __iter__, but it lives on the
+                # metaclass — not in the enum class's own MRO — so the
+                # generic __iter__/__next__ resolution below would either
+                # fall through to UnknownType or, worse, find an inherited
+                # __iter__ on a parent type (e.g. str for StrEnum) and
+                # produce a misleading element type like LiteralString.
+                # Materializing an instance of the enum class lets the
+                # existing enum-instance attribute path (.name → str,
+                # .value → enum_value_type) resolve correctly.
+                if isinstance(collection_type, types.ClassType)
+                and collection_type.is_instantiable_class()
+                and collection_type.is_enum_class() {
+                    instance_type = collection_type.clone_as_instance();
+                    node_.type = instance_type;
+                    return instance_type;
+                }
+
                 # Special handling for NamedTuple iteration
                 # Iterating over a NamedTuple yields its field values
                 if isinstance(collection_type, types.ClassType)

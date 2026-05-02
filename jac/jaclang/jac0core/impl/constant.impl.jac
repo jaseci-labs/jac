@@ -6,7 +6,7 @@ impl Constants.__str__(self: Constants) -> str {
 }
 
 """Return the string list of token types."""
-impl JacSemTokenType.as_str_list -> list {
+impl JacSemTokenType.as_str_list -> list[str] {
     return [
         i.name.lower()
         for i in JacSemTokenType
@@ -15,7 +15,7 @@ impl JacSemTokenType.as_str_list -> list {
 }
 
 """Return the string list of token modifiers."""
-impl JacSemTokenModifier.as_str_list -> list {
+impl JacSemTokenModifier.as_str_list -> list[str] {
     return [
         i.name.lower()
         for i in JacSemTokenModifier
