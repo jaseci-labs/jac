@@ -596,3 +596,19 @@ test "bug_dloc1_decorated_class_in_function_body" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# =========================================================================
+# Bug: while-loop guard does not narrow the condition variable (issue #5768)
+#
+# _get_type_from_flow_node had no WhileStmt predecessor handler.
+# `while x` did not narrow x from T|None to T inside the loop body.
+# =========================================================================
+test "bug_5768_while_loop_narrowing" {
+    program = compile_and_check("checker_bug_while_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #5768: while-loop guard must narrow the condition variable. "
+        "`while cur` should narrow cur from Item|None to Item inside the body. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
