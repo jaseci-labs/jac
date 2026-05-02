@@ -348,11 +348,9 @@ This section consolidates everything three test cycles have surfaced about Jac i
 
 This is the single most important class of improvement, and the one where AI-assisted authoring suffers most. Models trust the compile pass; bugs that pass `jac check` propagate. Across three runs, this category cost the most aggregate time and produced the most subtle failures.
 
-**Specific instances surfaced across runs (some now resolved upstream):**
+**Open instances surfaced across runs:**
 
-- **Stale reactive closures** in `async can with entry`: assigning a `has` field then reading it in the same block reads the captured pre-update value (Run 1, ~25 min lost). Compiler has the symbol-table information to either lower differently or warn. Still open.
-- **JSX HTML entities not decoded** (Run 2): `&gt;` rendered literally in the DOM. Resolved as #5678.
-- **Filter-expression tautology on shadowed names** (Run 2): `[?:T, x == x]` always-true filter. Resolved as W3040 lint (#5679).
+- **Stale reactive closures** in `async can with entry`: assigning a `has` field then reading it in the same block reads the captured pre-update value (Run 1, ~25 min lost). Compiler has the symbol-table information to either lower differently or warn.
 - **Multiple `await`s in a single `try/except` short-circuiting** (Run 2): a state-mutating await silently caused subsequent dict access to no-op. Needs minimal-repro confirmation; likely codegen bug in async + try/except lowering.
 - **JSX component tags being lowercase** (Run 1): `<my_widget/>` rendered as a literal HTML element with no compile warning. Compiler sees the imported symbol in scope; could warn "did you mean `<MyWidget/>`?".
 - **Logout reactive-state leakage** (Run 3): `has` fields holding messages/errors persist across logout/login because the handler resets data fields but not status fields. This is more an ergonomic gap than a bug, but a `:reset` modifier on `has` (or a built-in reset helper) would be a one-line cure.
@@ -386,7 +384,6 @@ The end-to-end "I have a `.jac` file, I want to see it in a browser" path has to
 Several E-codes the agents hit have all the information needed for a "did you mean..." hint, but emit only the technical error:
 
 - **E1100** ("Type not assignable") on `lambda -> None` in JSX -> hint: "JSX intrinsic prop expects `Callable[[MouseEvent], None]`; use `lambda e: MouseEvent { ... }`."
-- **E1100** on bare `any` (now mostly cured by #5689 making `any` the type) -> historical hint could've prevented Run 1's 5-minute hunt.
 - **E0100** ("unterminated string literal") -> hint: "for multi-line strings, use triple-quoted `\"\"\"...\"\"\"`."
 - **E1031** on `datetime.datetime.now().strftime(...)` -> deeper fix is the typeshed-handling bug; short-term hint: "Python stdlib classmethods returning `Self` don't compose with attribute access in function bodies; intermediate-typed variable narrows the inference."
 - **E1096/E1097** ("connection operand must be a node") -> hint: "operand resolved to `None | T`; narrow with `is not None` before connecting."
@@ -434,7 +431,7 @@ A possible model: a `docs/recipes/` directory whose files mirror what proved loa
 
 ### 12.10 Skill-driven testing as upstream feedback
 
-Meta-observation worth surfacing: this evaluation methodology -- isolated subagent + skill-only knowledge + concrete benchmark + compile loop + screenshot validation -- is a useful upstream feedback channel for the language itself. Each test cycle surfaces a fresh layer of friction; many of those frictions are genuinely fixable upstream. If Jaseci-Labs adopted skill-driven testing as part of the language-development feedback loop (run the LinkedIn-lite benchmark on each major release), it would catch regressions and surface ergonomic gaps that lab-style testing misses. The `eval` harness this work created is reusable -- two A/B cycles produced 12 actionable upstream items already.
+Meta-observation worth surfacing: this evaluation methodology -- isolated subagent + skill-only knowledge + concrete benchmark + compile loop + screenshot validation -- is a useful upstream feedback channel for the language itself. Each test cycle surfaces a fresh layer of friction; many of those frictions are genuinely fixable upstream. If Jaseci-Labs adopted skill-driven testing as part of the language-development feedback loop (run the LinkedIn-lite benchmark on each major release), it would catch regressions and surface ergonomic gaps that lab-style testing misses. The `eval` harness this work created is reusable; the three cycles documented here produced both the resolved items in §8 and the strategic items in this section.
 
 ### Tier ranking for action
 
