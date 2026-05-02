@@ -244,6 +244,13 @@ obj TypeEvaluator {
         # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
         # that RHS operands see the narrowed type from LHS isinstance checks.
         _and_narrowing_overrides: dict[int, TypeBase] = {},
+        # Narrowing applied inside list/set/dict comprehension filters.
+        # Maps expression key → narrowed type; populated by enter_list_compr
+        # (top-down) before children are visited, cleaned up by exit_list_compr.
+        _comprehension_narrowing: dict[str, TypeBase] = {},
+        # Stack of key lists pushed by enter_list_compr so that nested
+        # comprehensions each clean up only the keys they added.
+        _comprehension_key_stack: list[list[str]] = [],
         # Stub modules - initialized in postinit
         typing_module: uni.Module by postinit,
         types_module: uni.Module by postinit,

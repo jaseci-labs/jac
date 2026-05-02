@@ -3409,6 +3409,9 @@ impl TypeEvaluator.get_narrowed_type(
     if sym_id in self._and_narrowing_overrides {
         return self._and_narrowing_overrides[sym_id];
     }
+    if symbol.sym_name in self._comprehension_narrowing {
+        return self._comprehension_narrowing[symbol.sym_name];
+    }
     if sym_id in self._flow_pending_symbols {
         return None;
     }
@@ -3444,6 +3447,9 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
     key = self.create_key_for_reference(expr);
     if key is None {
         return None;
+    }
+    if key in self._comprehension_narrowing {
+        return self._comprehension_narrowing[key];
     }
     if key in self._flow_pending_keys {
         return None;

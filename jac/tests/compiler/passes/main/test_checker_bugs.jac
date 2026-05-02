@@ -596,3 +596,15 @@ test "bug_dloc1_decorated_class_in_function_body" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+test "bug_5768_comprehension_filter_narrowing" {
+    program = compile_and_check("checker_bug_compr_filter_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #5768-compr-filter: isinstance() in a list comprehension filter "
+        "must narrow the output expression. "
+        "[x.sym_name for x in items if isinstance(x, NameAtom)] should not "
+        "produce E1099 on x.sym_name. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}

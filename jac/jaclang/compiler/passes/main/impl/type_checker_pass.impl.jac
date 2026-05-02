@@ -798,6 +798,39 @@ impl TypeCheckPass.exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> No
     }
 }
 
+"""Apply isinstance narrowing from comprehension filters BEFORE visiting body elements."""
+impl TypeCheckPass.enter_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> None {
+    import from jaclang.compiler.type_system.type_evaluator { NarrowingKind }
+    added_keys: list[str] = [];
+    for compr in nd.compr {
+        if compr.conditional {
+            for cond in compr.conditional {
+                cond_info = self.evaluator.classify_condition(cond);
+                if (cond_info is not None
+                    and cond_info.kind == NarrowingKind.ISINSTANCE
+                    and cond_info.narrow_type is not None
+                    and cond_info.key not in self.evaluator._comprehension_narrowing) {
+                    self.evaluator._comprehension_narrowing[cond_info.key] = cond_info.narrow_type;
+                    added_keys.append(cond_info.key);
+                }
+            }
+        }
+    }
+    self.evaluator._comprehension_key_stack.append(added_keys);
+}
+
+"""Remove comprehension narrowing entries added by enter_list_compr."""
+impl TypeCheckPass.exit_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> None {
+    if self.evaluator._comprehension_key_stack {
+        keys = self.evaluator._comprehension_key_stack.pop();
+        for key in keys {
+            if key in self.evaluator._comprehension_narrowing {
+                del self.evaluator._comprehension_narrowing[key];
+            }
+        }
+    }
+}
+
 """Bind alias types from context manager BEFORE visiting body."""
 impl TypeCheckPass.enter_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None {
     import from jaclang.compiler.type_system { types }
