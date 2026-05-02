@@ -3570,6 +3570,36 @@ test "bare_generic_iteration_yields_any" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
 
+test "bare_generic_in_signatures_emits_w1036" {
+    # Bare generics in function/method return types and parameter types should
+    # also produce W1036 — same as in `has` fields and assignments.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_signatures.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    bare_generic_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1036" in w.pretty_print()
+    ];
+    # Expected sites (8 total):
+    #   1. `-> list`              return type
+    #   2. `x: dict`               param type
+    #   3. `-> list | None`        union branch in return type
+    #   4. `x: list`, `y: dict`,   two params + return type on `both_bare`
+    #      `-> set`
+    #   5. `-> tuple`              decl method return type
+    #   6. `items: frozenset`      decl method param type
+    # Properly-parameterized signatures and impl-side annotations (deduped
+    # against the decl) should NOT warn.
+    assert len(bare_generic_warnings) == 8 , f"Expected 8 W1036 warnings (signatures), got {len(
+        bare_generic_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
+}
+
 """Test callable() type narrowing - validates narrowing unions by callability."""
 test "callable_narrowing" {
     program = JacProgram();
