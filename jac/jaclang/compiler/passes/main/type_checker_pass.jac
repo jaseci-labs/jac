@@ -73,4 +73,8 @@ class TypeCheckPass(UniPass) {
     def _body_always_returns(
         self: TypeCheckPass, body: list[uni.CodeBlockStmt]
     ) -> bool;
+
+    def _check_bare_generic(
+        self: TypeCheckPass, ann_node: uni.UniNode, ty: object
+    ) -> None;
 }

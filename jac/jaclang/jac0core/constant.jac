@@ -62,7 +62,7 @@ class JacSemTokenType(IntEnum) {
     }
 
     """Return the string list of token types."""
-    static def as_str_list -> list;
+    static def as_str_list -> list[str];
 }
 
 """LSP Token modifiers for Jac."""
@@ -81,7 +81,7 @@ class JacSemTokenModifier(IntFlag) {
     }
 
     """Return the string list of token modifiers."""
-    static def as_str_list -> list;
+    static def as_str_list -> list[str];
 }
 
 """Token constants for Jac."""
