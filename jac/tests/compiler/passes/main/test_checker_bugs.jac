@@ -596,3 +596,15 @@ test "bug_dloc1_decorated_class_in_function_body" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+test "bug_5768_double_call_narrowing" {
+    program = compile_and_check("checker_bug_double_call_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #5768-double-call: calling a function twice (once in a guard, "
+        "once in the body) must not produce false-positive type errors. "
+        "Store the result in a variable first so CFG narrowing applies to "
+        "all uses of that variable. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
