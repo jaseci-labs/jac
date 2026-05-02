@@ -51,7 +51,7 @@ graph TD
 ### 1. Prepare Your Application
 
 ```jac
-# app.jac
+# main.jac
 node Todo {
     has title: str;
     has done: bool = False;
@@ -83,7 +83,7 @@ walker:pub health {
 ### 2. Deploy to Kubernetes
 
 ```bash
-jac start app.jac --scale
+jac start main.jac --scale
 ```
 
 That's it. Your application is now running on Kubernetes.
@@ -102,7 +102,7 @@ That's it. Your application is now running on Kubernetes.
 Deploys without building a Docker image. Fastest for iteration.
 
 ```bash
-jac start app.jac --scale
+jac start main.jac --scale
 ```
 
 ### Production Mode
@@ -110,7 +110,7 @@ jac start app.jac --scale
 Builds a Docker image and pushes to DockerHub before deploying.
 
 ```bash
-jac start app.jac --scale --build
+jac start main.jac --scale --build
 ```
 
 **Requirements for production mode:**
@@ -181,7 +181,7 @@ Configure deployment via environment variables in `.env`:
 Use `jac status` to see the health of all deployment components at a glance:
 
 ```bash
-jac status app.jac
+jac status main.jac
 ```
 
 This displays a table showing each component's status (Running, Degraded, Pending, Restarting, or Not Deployed), pod readiness counts, and service URLs.
@@ -210,7 +210,7 @@ kubectl logs -l app=jaseci -f
 Remove all Kubernetes resources created by jac-scale:
 
 ```bash
-jac destroy app.jac
+jac destroy main.jac
 ```
 
 This removes:
@@ -274,7 +274,7 @@ alias kubectl='microk8s kubectl'
 
 ```bash
 # Check all component statuses at once
-jac status app.jac
+jac status main.jac
 
 # Or use kubectl for more detail
 kubectl get pods
@@ -308,7 +308,7 @@ kubectl logs -l app=redis
 
 ```bash
 # Quick overview of all components
-jac status app.jac
+jac status main.jac
 
 # Describe a pod for events
 kubectl describe pod <pod-name>
@@ -330,7 +330,7 @@ jac create todo --use client
 cd todo
 
 # Deploy to Kubernetes
-jac start app.jac --scale
+jac start main.jac --scale
 ```
 
 Access:
