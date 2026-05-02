@@ -232,7 +232,12 @@ test "export semantics for pub declarations" {
 
     # All :pub items in export, private items excluded
     pub_items = ["PUBLIC_API_URL", "PublicClass", "public_function", "PublicStatus"];
-    priv_items = ["PRIVATE_SECRET", "PrivateClass", "private_function", "PrivateStatus"];
+    priv_items = [
+        "PRIVATE_SECRET",
+        "PrivateClass",
+        "private_function",
+        "PrivateStatus"
+    ];
     assert all(item in last_line for item in pub_items) , (
         "All :pub items should be exported"
     );
@@ -449,7 +454,27 @@ test "jsx html entity decoding in text and attributes" {
     assert "&#62;" not in js_code , (
         "Raw decimal entity should NOT appear in emitted JS"
     );
-    assert "&#x3e;" not in js_code , (
-        "Raw hex entity should NOT appear in emitted JS"
+    assert "&#x3e;" not in js_code , ("Raw hex entity should NOT appear in emitted JS");
+}
+
+test "stale has read emits W3041" {
+    # Compile with type_check=True so the lint schedule (JacLintCheckPass)
+    # runs and W3041 surfaces in prog.warnings_had.
+    prog = JacProgram();
+    _ir = prog.compile(
+        file_path=fixture_path("stale_has_read.jac"), no_cgen=True, type_check=True
+    );
+    assert not prog.errors_had , (
+        "Compilation errors: " + str([str(e) for e in prog.errors_had])
+    );
+    w3041_hits = [
+        w
+        for w in prog.warnings_had
+        if w.code and w.code.code == "W3041"
+    ];
+    assert len(w3041_hits) >= 1 , (
+        "Expected W3041 diagnostic for stale `has` field read, got: " + str(
+            [(w.code.code if w.code else "?") for w in prog.warnings_had]
+        )
     );
 }
