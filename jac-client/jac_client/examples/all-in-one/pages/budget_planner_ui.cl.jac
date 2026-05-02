@@ -30,7 +30,7 @@ cl def:pub BudgetPlanner -> JsxElement {
     sorted = filtered.slice().sort(
         lambda a: dict , b: dict -> int { return Reflect.construct(
             Date, [b["date"]]
-        ).getTime() - Reflect.construct(Date, [a["date"]]).getTime();  }
+        ).getTime() - Reflect.construct(Date, [a["date"]]).getTime(); }
     );
 
     # Prepare chart data with colors

@@ -327,7 +327,7 @@ def:pub FeaturesTest -> JsxElement {
                 <Link to="/">
                     <TestButton
                         text="← Back Home"
-                        onClick={lambda {  }}
+                        onClick={lambda { }}
                         variant="secondary"
                     />
                 </Link>
