@@ -557,6 +557,12 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if narrowed := self.get_narrowed_type(expr.target.sym, expr) {
                     base_type = narrowed;
                 }
+            } elif not isinstance(expr.target, uni.Name) and base_type is not None {
+                if narrowed := self.get_narrowed_type_for_expr(
+                    expr.target, base_type, expr
+                ) {
+                    base_type = narrowed;
+                }
             }
 
             if expr.is_attr {  # <expr>.member

@@ -586,6 +586,22 @@ test "bug_super1_super_call_returns_parent_instance" {
     );
 }
 
+# =========================================================================
+# Bug: isinstance narrowing not applied to non-Name AtomTrailer targets (issue #5768)
+#
+# Narrowing was only applied when expr.target was a simple Name. For complex
+# targets like c.pet, the narrowed type was computed but thrown away.
+# =========================================================================
+test "bug_5768_atomtrailer_base_narrowing" {
+    program = compile_and_check("checker_bug_subscript_base_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #5768: isinstance narrowing must apply to non-Name AtomTrailer targets. "
+        "`if isinstance(c.pet, Cat)` should narrow c.pet.meow access. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
 test "bug_dloc1_decorated_class_in_function_body" {
     program = compile_and_check("checker_bug_decorated_local_class.jac");
 
