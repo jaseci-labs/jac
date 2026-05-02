@@ -327,10 +327,20 @@ impl ExecutionManager._finalize_call_response(
     if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
         return reports;
     }
-    return {
+    # Drain permission-denial diagnostics accumulated during the walker
+    # run *and* the commit that follows it. Surfaces silent cross-user
+    # write rejections (edge writes, field mutations, deletes) on the
+    # wire so callers stop debugging "200 OK but nothing changed".
+    envelope: dict[str, JsonValue] = {
         'result': Serializer.serialize(result, api_mode=True),
         'reports': Serializer.serialize(reports, api_mode=True)
     };
+    ctx = Jac.get_context();
+    if ctx.diagnostics {
+        envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
+        ctx.diagnostics.clear();
+    }
+    return envelope;
 }
 
 """Dispatcher: pick sync/async variant based on function kind.

@@ -52,6 +52,7 @@ impl JacAutoLintPass.exit_ability(ability_node: uni.Ability) -> None {
     self._check_unnecessary_none_return(
         ability_node, ability_node.body, ability_node.signature, name
     );
+    self._check_stale_has_read(ability_node);
 }
 
 """Remove @staticmethod decorator tokens and add static keyword to ability's kid list.
@@ -2006,6 +2007,147 @@ impl JacAutoLintPass._check_filter_compare_tautology(nd: uni.CompareExpr) -> Non
         }
         # For chained comparisons, next left is the current right
         left = right;
+    }
+}
+
+"""W3041: Warn when a reactive `has` field is read after assignment in the same `can with entry` body.
+
+The body lowers (in client codespace) to a useEffect callback whose closure
+captures `has` field values at render time. After an assignment to a reactive
+field within the body, the field's setter is queued for the next render — but
+reads of that field within the same effect run still resolve to the captured
+pre-update value. Branching on the just-assigned value silently does the wrong
+thing. This is the textbook React stale-closure bug; it has historically been
+the most expensive client-code failure mode for AI-generated Jac because it
+compiles cleanly and only manifests at runtime.
+
+Only entry abilities in client context are checked: `can with exit` runs at
+unmount with no re-render scheduling, and server-side `has` is a real mutable
+property where reads after writes return the new value.
+"""
+impl JacAutoLintPass._check_stale_has_read(ability_node: uni.Ability) -> None {
+    if self._is_suppressed(W3041) {
+        return;
+    }
+    sig = ability_node.signature;
+    if not isinstance(sig, uni.EventSignature) {
+        return;
+    }
+    if not sig.event or sig.event.name != Tok.KW_ENTRY {
+        return;
+    }
+    if not ability_node.in_client_context() {
+        return;
+    }
+    body = ability_node.body;
+    if body is None or not isinstance(body, list) {
+        return;
+    }
+    reactive = self._collect_reactive_has_names(ability_node);
+    if not reactive {
+        return;
+    }
+    writes: list[tuple[int, int, str]] = [];
+    reads: list[tuple[int, int, str, uni.Name]] = [];
+    for stmt in body {
+        self._walk_for_has_uses(stmt, reactive, writes, reads);
+    }
+    if not writes or not reads {
+        return;
+    }
+    flagged: set[tuple[int, int, str]] = set();
+    for read_entry in reads {
+        rline = read_entry[0];
+        rcol = read_entry[1];
+        rname = read_entry[2];
+        rnode = read_entry[3];
+        key = (rline, rcol, rname);
+        if key in flagged {
+            continue;
+        }
+        for write_entry in writes {
+            wline = write_entry[0];
+            wcol = write_entry[1];
+            wname = write_entry[2];
+            if wname == rname and ((wline, wcol) < (rline, rcol)) {
+                self.emit(W3041, node_override=rnode, name=rname);
+                flagged.add(key);
+                break;
+            }
+        }
+    }
+}
+
+"""Collect the set of `has` field names that are reactive in the enclosing client scope.
+
+Reactive fields are `has` declarations on the nearest enclosing client-context
+container — either a `def:pub` function (cl component) or an Archetype.
+"""
+impl JacAutoLintPass._collect_reactive_has_names(
+    ability_node: uni.Ability
+) -> set[str] {
+    names: set[str] = set();
+    container: (uni.UniNode | None) = ability_node.parent;
+    while container is not None {
+        if isinstance(container, (uni.Archetype, uni.Ability)) {
+            body = container.body;
+            if body is not None and isinstance(body, list) {
+                for stmt in body {
+                    if isinstance(stmt, uni.ArchHas) and stmt.in_client_context() {
+                        for hv in stmt.vars {
+                            names.add(hv.name.sym_name);
+                        }
+                    }
+                }
+            }
+            break;
+        }
+        container = container.parent;
+    }
+    return names;
+}
+
+"""Recursively collect (write, read) sites for reactive `has` fields.
+
+Skips nested deferred-execution scopes (lambdas, nested abilities, archetypes):
+their bodies execute in their own contexts and aren't subject to the same
+closure capture as the enclosing effect run.
+"""
+impl JacAutoLintPass._walk_for_has_uses(
+    nd: uni.UniNode,
+    reactive: set[str],
+    writes: list[tuple[int, int, str]],
+    reads: list[tuple[int, int, str, uni.Name]]
+) -> None {
+    import ast as ast3;
+    if isinstance(nd, (uni.LambdaExpr, uni.Ability, uni.Archetype)) {
+        return;
+    }
+    if isinstance(nd, uni.Assignment) {
+        if (
+            len(nd.target) == 1
+            and isinstance(nd.target[0], uni.Name)
+            and nd.target[0].sym_name in reactive
+        ) {
+            tgt = nd.target[0];
+            writes.append((tgt.loc.first_line, tgt.loc.col_start, tgt.sym_name));
+        }
+        if nd.value {
+            self._walk_for_has_uses(nd.value, reactive, writes, reads);
+        }
+        return;
+    }
+    if isinstance(nd, uni.Name) {
+        if nd.value in reactive and nd._py_ctx_func == ast3.Load {
+            parent = nd.parent;
+            if not (isinstance(parent, uni.AtomTrailer) and parent.is_attr) {
+                reads.append((nd.loc.first_line, nd.loc.col_start, nd.value, nd));
+            }
+        }
+        return;
+    }
+    for kid in nd.kid {
+        self._walk_for_has_uses(kid, reactive, writes, reads);
     }
 }
 
