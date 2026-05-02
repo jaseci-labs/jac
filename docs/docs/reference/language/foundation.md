@@ -233,6 +233,9 @@ obj Example {
 }
 ```
 
+!!! note "The `any` Special Case"
+    Because `any` is a built-in type in Jac, the backtick escape is used as a convention to refer to the Python/Jac built-in **`any()` function**. Always use `` `any `` when you want to call the function and `any` (without a backtick) when referring to the type.
+
 !!! danger
     Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
@@ -355,6 +358,10 @@ obj Container {
     has value: any;
 }
 ```
+
+!!! tip "Remember the backtick"
+    If you need to use the built-in function to check if any item is truthy, use `` `any ``:
+    ``if `any([True, False]) { ... }``
 
 ### 4 The `Self` Type
 

@@ -19,9 +19,20 @@ impl NaIRGenPass._emit_set_helpers(
     set_ptr_type = set_struct.as_pointer();
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
+    # --- Forward-declare __rc_release_set_T so new_fn can store its address as dtor_fn_ptr.
+    _rel_fn_name_s = f"__rc_release_set_{elem_type_name}";
+    _rel_fnty_s = ir.FunctionType(ir.VoidType(), [set_ptr_type]);
+    try {
+        _rel_fn_decl_s = self.llvm_module.get_global(_rel_fn_name_s);
+    } except KeyError {
+        _rel_fn_decl_s = ir.Function(
+            self.llvm_module, _rel_fnty_s, name=_rel_fn_name_s
+        );
+        _rel_fn_decl_s.linkage = "private";
+    }
     # --- __set_new: create an empty set with capacity 8 ---
     new_fn = self._emit_container_new_fn(
-        f"__set_new_{elem_type_name}", set_ptr_type, [elem_type]
+        f"__set_new_{elem_type_name}", set_ptr_type, [elem_type], dtor_fn=_rel_fn_decl_s
     );
     # --- __set_add: add element if not already present ---
     add_fnty = ir.FunctionType(ir.VoidType(), [set_ptr_type, elem_type]);
@@ -63,6 +74,16 @@ impl NaIRGenPass._emit_set_helpers(
     elems_arr_app = b.load(elems_p2, name="elems.app");
     cur_len_app = b.load(len_p2, name="len.app");
     elem_slot = b.gep(elems_arr_app, [cur_len_app], name="elem.slot");
+    # retain element before storing (symmetric with __list_append_T)
+    if isinstance(elem_type, ir.PointerType) {
+        if self.rc_retain_fn is None {
+            self._emit_rc_helpers();
+        }
+        _e_cast_sa = b.bitcast(
+            e_arg, ir.IntType(8).as_pointer(), name="sadd_retain_cast"
+        );
+        b.call(self.rc_retain_fn, [_e_cast_sa]);
+    }
     b.store(e_arg, elem_slot);
     new_len = b.add(cur_len_app, ir.Constant(i64, 1), name="new.len");
     b.store(new_len, len_p2);
@@ -139,17 +160,36 @@ impl NaIRGenPass._codegen_set_val(nd: uni.SetVal) -> (ir.Value | None) {
     self._emit_set_helpers(elem_type_name, elem_type, elem_size);
     helpers = self.set_helpers[elem_type_name];
     # Create new set
-    set_val = self.builder.call(helpers["new"], [], name="set.new");
+    _set_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    set_val = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_set_new_loc, name="set.new"
+    );
+    _sinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
     # Add first element
-    self.builder.call(helpers["add"], [set_val, first_val]);
+    self._rc_call_with_ctx(
+        helpers["add"], [set_val, first_val], op="set_init", loc=_sinit_loc
+    );
     # Add remaining elements
     for i in range(1, len(nd.values)) {
         val = self._codegen_expr(nd.values[i]);
         if val is not None {
+            _orig_sv = val;
             val = self._coerce_type(val, elem_type);
-            self.builder.call(helpers["add"], [set_val, val]);
+            self._rc_call_with_ctx(
+                helpers["add"], [set_val, val], op="set_init", loc=_sinit_loc
+            );
+            # release owned ref after add retained it
+            if isinstance(_orig_sv.type, ir.PointerType) and self._is_owned(_orig_sv) {
+                self._emit_rc_release_simple(_orig_sv, op="set_init", loc=_sinit_loc);
+            }
         }
     }
+    # Set literal is a fresh allocation — mark as owned.
+    self._mark_owned(set_val);
     return set_val;
 }
 

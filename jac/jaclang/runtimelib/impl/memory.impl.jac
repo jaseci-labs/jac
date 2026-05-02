@@ -837,7 +837,7 @@ impl SqliteMemory.sync -> None {
                         anchor.archetype
                     );
                     if (access_changed or archetype_changed)
-                    and Jac.check_write_access(anchor) {
+                    and Jac.check_write_access(anchor, op_hint="field_write") {
                         if access_changed {
                             stored_anchor.access = anchor.access;
                         }
@@ -866,7 +866,7 @@ impl SqliteMemory.sync -> None {
                         and not isinstance(anchor.archetype, Root)
                         and not anchor.edges
                     )
-                    and Jac.check_write_access(anchor) {
+                    and Jac.check_write_access(anchor, op_hint="field_write") {
                         new_row = _anchor_to_row(anchor);
                         conn.execute(
                             """
@@ -1299,9 +1299,11 @@ impl TieredMemory.put(anchor: Anchor) -> None {
     if self.l2 {
         self.l2.put(anchor);
     }
-    # Write-through to L3 with access control check
+    # Write-through to L3 with access control check.
+    # On denial, _check_access emits a `field_write` PermissionDenied
+    # diagnostic so the caller learns *why* their mutation didn't persist.
     if self.l3 and anchor.persistent {
-        if Jac.check_write_access(anchor) {
+        if Jac.check_write_access(anchor, op_hint="field_write") {
             self.l3.put(anchor);
         }
     }

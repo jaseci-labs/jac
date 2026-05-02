@@ -29,7 +29,14 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
         'fallback': {'strategy': 'fallback', 'num_retries': 1, 'timeout': 60.0},
         'prompt_caching': {'enabled': True},
         'parallel': {'enabled': False},
-        'system_prompt': ''
+        'system_prompt': '',
+        'compaction': {
+            'enabled': True,
+            'threshold_ratio': 0.80,
+            'keep_recent_iterations': 3,
+            'ctx_window': 0,
+            'compaction_model': ''
+        }
     };
 }
 
@@ -125,6 +132,19 @@ impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, Any] 
 impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
     config = self.load();
     return config.get('system_prompt', '');
+}
+
+"""Get compaction configuration from jac.toml."""
+impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    c = config.get('compaction', {});
+    return {
+        'enabled': bool(c.get('enabled', True)),
+        'threshold_ratio': float(c.get('threshold_ratio', 0.80)),
+        'keep_recent_iterations': int(c.get('keep_recent_iterations', 3)),
+        'ctx_window': int(c.get('ctx_window', 0)),
+        'compaction_model': str(c.get('compaction_model', ''))
+    };
 }
 
 """Reset the global config instance (useful for testing)."""

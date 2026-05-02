@@ -352,7 +352,9 @@ impl __normalizeCredential(x: Any) -> dict {
 }
 
 impl jacSignup(
-    identities_or_username: (str | list), credential_or_password: (str | dict)
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
 ) -> dict {
     base_url = __getApiBaseUrl();
     credential = __normalizeCredential(credential_or_password);
@@ -361,32 +363,27 @@ impl jacSignup(
             if Array.isArray(identities_or_username)
             else [__normalizeIdentity(identities_or_username)]
     );
-    primary_username = identities[0]["value"] if len(identities) > 0 else "";
+    body = {"identities": identities, "credential": credential};
+    if profile != None {
+        body["profile"] = profile;
+    }
     response = await fetch(
         f"{base_url}/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"identities": identities, "credential": credential})
+            "body": JSON.stringify(body)
         }
     );
     if response.ok {
-        data = JSON.parse(await response.text());
-        token = None;
-        if data["data"] and data["data"]["token"] {
-            token = data["data"]["token"];
-        }
-        if token {
-            # Clear cache on auth change
-            state = __getCacheState();
-            for key in Object.keys(state["cache"]) {
-                Reflect.deleteProperty(state["cache"], key);
+        user_id = None;
+        try {
+            data = JSON.parse(await response.text());
+            if data["data"] and data["data"]["user_id"] {
+                user_id = data["data"]["user_id"];
             }
-            state["order"].splice(0, state["order"].length);
-            __setLocalStorage("jac_token", token);
-            return {"success": True, "token": token, "username": primary_username};
-        }
-        return {"success": False, "error": "No token received"};
+        } except Exception { }
+        return {"success": True, "user_id": user_id};
     } else {
         error_text = await response.text();
         try {
