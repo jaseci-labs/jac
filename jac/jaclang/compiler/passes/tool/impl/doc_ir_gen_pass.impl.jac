@@ -1310,13 +1310,22 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     body_stmts = list(nd.body) if isinstance(nd.body, Sequence) else [];
     has_multi_stmt_body = len(body_stmts) > 1;
     # Single-stmt body: add space before `}` only when the statement ends with `;`
-    # not `}` (e.g. if/while blocks already close with `}`, no extra space needed).
-    single_body_ends_with_brace = (
-        len(body_stmts) == 1
-        and body_stmts[0].kid
-        and isinstance(body_stmts[0].kid[-1], uni.Token)
-        and body_stmts[0].kid[-1].name == Tok.RBRACE
-    );
+    # not `}` (e.g. if/while/try-except blocks already close with `}`, no extra
+    # space needed). Walk last-kid chain iteratively since nodes like TryStmt have
+    # a non-Token last kid (ExceptClause) that itself ends with RBRACE.
+    _sbrace = False;
+    if len(body_stmts) == 1 and body_stmts[0].kid {
+        _cur = body_stmts[0];
+        while _cur.kid {
+            _last = _cur.kid[-1];
+            if isinstance(_last, uni.Token) {
+                _sbrace = _last.name == Tok.RBRACE;
+                break;
+            }
+            _cur = _last;
+        }
+    }
+    single_body_ends_with_brace = _sbrace;
     body_parts: list[doc.DocType] = [];
     in_body = False;
     for i in nd.kid {
@@ -1352,7 +1361,10 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
         }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
             # Add space before `}` only when body ends with `;` not `}`.
+            # Trim any trailing space first (e.g. from exit_return_stmt's trailing
+            # space after `;`) to avoid double-space before `}`.
             if not single_body_ends_with_brace {
+                self.trim_trailing_space(parts);
                 parts.append(self.space());
             }
             parts.append(i.gen.doc_ir);

@@ -30,7 +30,7 @@ cl def:pub BudgetPlanner -> JsxElement {
     sorted = filtered.slice().sort(
         lambda a: dict , b: dict -> int { return Reflect.construct(
             Date, [b["date"]]
-        ).getTime() - Reflect.construct(Date, [a["date"]]).getTime(); }
+        ).getTime() - Reflect.construct(Date, [a["date"]]).getTime();  }
     );
 
     # Prepare chart data with colors
@@ -52,7 +52,7 @@ cl def:pub BudgetPlanner -> JsxElement {
                     <TransactionForm/>
                     <CategoryFilter
                         selectedCategory={filter}
-                        onSelect={lambda val: str { filter = val;}}
+                        onSelect={lambda val: str { filter = val; }}
                     />
                     <TransactionList
                         transactions={sorted}
