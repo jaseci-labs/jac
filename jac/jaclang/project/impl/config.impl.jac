@@ -108,13 +108,10 @@ impl JacConfig.discover(
 }
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
-    import tomllib;
     if not toml_path.exists() {
         raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
-    with open(toml_path, "rb") as f {
-        data = tomllib.load(f);
-    }
+    data = _read_toml_file(toml_path);
     config = _parse_toml_data(data, toml_path);
     config.config_files = [toml_path];
     config.apply_env_interpolation();
@@ -124,8 +121,7 @@ impl JacConfig.load(toml_path: Path) -> JacConfig {
 impl JacConfig.from_toml_str(
     toml_str: str, toml_path: Path | None = None
 ) -> JacConfig {
-    import tomllib;
-    data = tomllib.loads(toml_str);
+    data = _parse_toml_str(toml_str, toml_path);
     return _parse_toml_data(data, toml_path);
 }
 
@@ -302,13 +298,10 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
 }
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
-    import tomllib;
     if not toml_path.exists() {
         return;
     }
-    with open(toml_path, "rb") as f {
-        data = tomllib.load(f);
-    }
+    data = _read_toml_file(toml_path);
     data = _interpolate_recursive(data);
     section_map: dict = {
         "run": self.run,
@@ -494,9 +487,7 @@ impl JacConfig.save -> None {
     }
     # Load existing data or start fresh
     if self.toml_path.exists() {
-        with open(self.toml_path, "rb") as f {
-            doc = tomllib.load(f);
-        }
+        doc = _read_toml_file(self.toml_path);
     } else {
         doc = {};
     }
@@ -728,6 +719,33 @@ impl JacConfig.remove_dependency(
 # ===============================================================================
 # Helper Functions Implementation
 # ===============================================================================
+impl _read_toml_file(toml_path: Path) -> dict {
+    import tomllib;
+    try {
+        with open(toml_path, "rb") as f {
+            return tomllib.load(f);
+        }
+    } except tomllib.TOMLDecodeError as e {
+        raise ValueError(
+            f"Invalid TOML in {toml_path}: {e}.\n"
+            "Hint: check for duplicate keys or malformed sections."
+        );
+    }
+}
+
+impl _parse_toml_str(toml_str: str, toml_path: Path | None = None) -> dict {
+    import tomllib;
+    try {
+        return tomllib.loads(toml_str);
+    } except tomllib.TOMLDecodeError as e {
+        location = f" in {toml_path}" if toml_path is not None else "";
+        raise ValueError(
+            f"Invalid TOML{location}: {e}.\n"
+            "Hint: check for duplicate keys or malformed sections."
+        );
+    }
+}
+
 impl _parse_toml_data(
     data: dict[str, Any], toml_path: Path | None = None
 ) -> JacConfig {
