@@ -185,6 +185,34 @@ impl _extract_type_name_from_filter(filt: (Callable | None)) -> (str | None) {
     return None;
 }
 
+"""Detect whether a filter lambda contains attribute predicates.
+
+The topology index resolves type-only filters (`isinstance(i, T)`).
+Anything more complex -- attribute access (`i.priority`), comparison
+ops (`>=`, `==`, `in`, `is`) -- exceeds what the index can express,
+so the planner has to bail out and let the linear path evaluate the
+lambda directly.
+
+The codegen emits these filters as plain Python lambdas
+(see PyastGenPass.exit_filter_compr). Bytecode opcodes give us a
+cheap, robust signal: pure type checks compile to LOAD_GLOBAL +
+CALL_FUNCTION + RETURN, while predicates introduce LOAD_ATTR or a
+COMPARE_OP. Conservative on inspection failure (assume predicates
+present) so we never silently skip filtering.
+"""
+impl _filter_has_predicates(filt: (Callable | None)) -> bool {
+    if filt is None {
+        return False;
+    }
+    import dis;
+    try {
+        opcodes = {instr.opname for instr in dis.get_instructions(filt)};
+    } except (TypeError, AttributeError, ValueError) {
+        return True;
+    }
+    return bool(opcodes & {'LOAD_ATTR','COMPARE_OP','CONTAINS_OP','IS_OP'});
+}
+
 """Use the topology index to resolve which node UUIDs will survive
 the type-only filters in a path chain."""
 impl plan_query(path: Any) -> (set[UUID] | None) {
@@ -208,10 +236,25 @@ impl plan_query(path: Any) -> (set[UUID] | None) {
     if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
         return None;
     }
-    # Build the chain of (edge_type, node_type, direction)
+    # Build the chain of (edge_type, node_type, direction).
+    #
+    # The index can only resolve type-only filters. The runtime caller
+    # post-applies the FINAL destination's node filter on the planned
+    # set (see edges_to_nodes in runtime.impl), so node predicates on
+    # that last hop are safe -- their `nd` lambda gets re-evaluated.
+    # Anything else -- an edge predicate at any hop, or a node
+    # predicate on a non-final hop -- would be silently dropped if we
+    # planned it, so we bail and let the linear path handle it.
     chain: list[tuple[(str | None), (str | None), int]] = [];
     destinations = path.destinations[:-1] if path.edge_only else path.destinations;
-    for dest in destinations {
+    last_idx = len(destinations) - 1;
+    for (i, dest) in enumerate(destinations) {
+        if _filter_has_predicates(dest.`edge) {
+            return None;
+        }
+        if i != last_idx and _filter_has_predicates(dest.nd) {
+            return None;
+        }
         edge_type = _extract_type_name_from_filter(dest.`edge);
         node_type = _extract_type_name_from_filter(dest.nd);
         chain.append((edge_type, node_type, dest.direction.value));

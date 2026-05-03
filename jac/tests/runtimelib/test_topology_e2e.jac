@@ -25,6 +25,12 @@ node TypeB {
 edge EdgeX {}
 edge EdgeY {}
 
+# Edge carrying its own attribute, for tests that exercise typed-edge filter
+# clauses like `:weight>5:` (compares against edge state, not destination).
+edge Weighted {
+    has weight: int = 0;
+}
+
 test "index type-filtered query returns correct results" {
     tmpdir = mkdtemp();
     orig_base = JacRuntime.base_path_dir;
@@ -234,6 +240,100 @@ test "index built on root with null root field" {
         idx = r.__jac__.get_topology_index();
         assert len(idx) > 0 , "Index should have edges";
         assert len(idx.node_table) == 2 , "Index should have root + TypeA";
+
+        ctx.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "typed-edge filter compares against edge attributes apply at runtime" {
+    # BUG: the topology-index fast path (plan_query) extracts only
+    # type names from filter lambdas and feeds them to the index, which
+    # silently drops any predicate clause on the edge attributes
+    # themselves -- e.g. `[r->:Weighted:weight>=5:->]` returns ALL
+    # Weighted-connected nodes regardless of weight.
+    #
+    # Reproduces the docs example
+    # `[root()->:Scheduled:priority>=3:->]` from the AI day planner
+    # tutorial Part 2 ("Advanced: Custom Edges"). The parser fix in
+    # PR #5799 made the syntax legal; this test pins the runtime
+    # semantics so the fast path can't silently regress them.
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+        ctx = ExecutionContext();
+        JacRuntime.set_context(ctx);
+
+        r = root;
+        Jac.save(r);
+        # Three nodes connected via Weighted edges with weights 1, 5, 10.
+        # Predicate `weight>=5` should keep weights 5 and 10 (vals 20, 30).
+        r +>: Weighted(weight=1) :+> TypeA(val=10);
+        r +>: Weighted(weight=5) :+> TypeA(val=20);
+        r +>: Weighted(weight=10) :+> TypeA(val=30);
+        Jac.save(r);
+
+        heavy = sorted([n.val for n in [r->:Weighted:weight>=5:->]]);
+        assert heavy == [20, 30] , (
+            f"typed-edge predicate `:weight>=5:` must filter at runtime; "
+            f"got {heavy}, expected [20, 30]"
+        );
+
+        # Sanity: without the predicate, all three connect.
+        all_w = sorted([n.val for n in [r->:Weighted:->]]);
+        assert all_w == [10, 20, 30] , (
+            f"baseline (no predicate): expected [10, 20, 30], got {all_w}"
+        );
+
+        ctx.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+test "non-final node predicate in multi-hop chain applies at runtime" {
+    # Companion to the test above: even when the predicate is on a
+    # NODE (not an edge), the fast path's post-filter only runs on the
+    # FINAL destination. Predicates on intermediate hops were silently
+    # dropped for the same reason -- only type names were forwarded.
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+        ctx = ExecutionContext();
+        JacRuntime.set_context(ctx);
+
+        r = root;
+        Jac.save(r);
+        # Build r --EdgeX--> TypeA(val=v) --EdgeY--> TypeB(val=v*10)
+        # for v in {1, 5, 10}. A two-hop query
+        # `[r->:EdgeX:->[?:TypeA, val>=5]->:EdgeY:->[?:TypeB]]` should
+        # only follow the v>=5 chains, yielding TypeB vals [50, 100].
+        for v in [1, 5, 10] {
+            mid = r +>: EdgeX :+> TypeA(val=v);
+            mid[0] +>: EdgeY :+> TypeB(val=v * 10);
+        }
+        Jac.save(r);
+
+        leaves = sorted(
+            [n.val for n in [r->:EdgeX:->[?:TypeA, val>=5]->:EdgeY:->[?:TypeB]]]
+        );
+        assert leaves == [50, 100] , (
+            f"intermediate-hop predicate `val>=5` must filter; "
+            f"got {leaves}, expected [50, 100]"
+        );
 
         ctx.close();
     } finally {
