@@ -235,6 +235,14 @@ def discover_config_files(
 # Parse TOML data into JacConfig object
 def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
 
+# Read + parse a TOML file; raises ValueError with a user-friendly message
+# wrapping any tomllib.TOMLDecodeError so callers don't surface a raw traceback.
+def _read_toml_file(toml_path: Path) -> dict;
+
+# Parse a TOML string; same error-wrapping contract as _read_toml_file. The
+# optional toml_path is only used to enrich the error message.
+def _parse_toml_str(toml_str: str, toml_path: Path | None = None) -> dict;
+
 # Recursively apply environment variable interpolation
 def _interpolate_recursive(`obj: Any) -> Any;
 
