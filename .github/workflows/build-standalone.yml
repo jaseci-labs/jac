@@ -43,12 +43,16 @@ jobs:
 
       - name: Resolve jaclang version from jaseci dependency
         id: versions
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          INPUT_JASECI_VERSION: ${{ inputs.jaseci_version }}
         run: |
-          if [ "${{ github.event_name }}" = "release" ]; then
-            JASECI_VERSION="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "release" ]; then
+            JASECI_VERSION="$RELEASE_TAG"
             JASECI_VERSION="${JASECI_VERSION#v}"
           else
-            JASECI_VERSION="${{ inputs.jaseci_version }}"
+            JASECI_VERSION="$INPUT_JASECI_VERSION"
           fi
           echo "jaseci_version=$JASECI_VERSION" >> "$GITHUB_OUTPUT"
           echo "jaseci version: $JASECI_VERSION"
@@ -93,9 +97,11 @@ jobs:
         run: pip install pex
 
       - name: Build standalone binary
+        env:
+          VERSION: ${{ needs.resolve-versions.outputs.jaclang_version }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          VERSION="${{ needs.resolve-versions.outputs.jaclang_version }}"
-          ASSET="jac-${VERSION}-${{ matrix.platform }}"
+          ASSET="jac-${VERSION}-${PLATFORM}"
           echo "Building ${ASSET}..."
 
           pex \
@@ -108,39 +114,47 @@ jobs:
           echo "asset_name=${ASSET}" >> "$GITHUB_ENV"
 
       - name: Verify binary
+        env:
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
-          chmod +x "${{ env.asset_name }}"
+          chmod +x "$ASSET_NAME"
           echo "Running --version check..."
-          ./${{ env.asset_name }} --version || true
+          "./$ASSET_NAME" --version || true
 
       - name: Generate checksum
+        env:
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
           if command -v sha256sum &>/dev/null; then
-            sha256sum "${{ env.asset_name }}" > "${{ env.asset_name }}.sha256"
+            sha256sum "$ASSET_NAME" > "${ASSET_NAME}.sha256"
           else
-            shasum -a 256 "${{ env.asset_name }}" > "${{ env.asset_name }}.sha256"
+            shasum -a 256 "$ASSET_NAME" > "${ASSET_NAME}.sha256"
           fi
           echo "Checksum:"
-          cat "${{ env.asset_name }}.sha256"
+          cat "${ASSET_NAME}.sha256"
 
       - name: Upload to GitHub Release (release event)
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
-            "${{ env.asset_name }}" \
-            "${{ env.asset_name }}.sha256" \
+          gh release upload "$RELEASE_TAG" \
+            "$ASSET_NAME" \
+            "${ASSET_NAME}.sha256" \
             --clobber
 
       - name: Upload to GitHub Release (called from another workflow)
         if: inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
-          gh release upload "${{ inputs.release_tag }}" \
-            "${{ env.asset_name }}" \
-            "${{ env.asset_name }}.sha256" \
+          gh release upload "$RELEASE_TAG" \
+            "$ASSET_NAME" \
+            "${ASSET_NAME}.sha256" \
             --clobber
 
       - name: Upload as artifact (manual dispatch without release_tag)
@@ -179,9 +193,11 @@ jobs:
         run: pip install pex
 
       - name: Build standalone binary
+        env:
+          VERSION: ${{ needs.resolve-versions.outputs.jaseci_version }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
-          VERSION="${{ needs.resolve-versions.outputs.jaseci_version }}"
-          ASSET="jaseci-${VERSION}-${{ matrix.platform }}"
+          ASSET="jaseci-${VERSION}-${PLATFORM}"
           echo "Building ${ASSET}..."
 
           pex \
@@ -194,39 +210,47 @@ jobs:
           echo "asset_name=${ASSET}" >> "$GITHUB_ENV"
 
       - name: Verify binary
+        env:
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
-          chmod +x "${{ env.asset_name }}"
+          chmod +x "$ASSET_NAME"
           echo "Running --version check..."
-          ./${{ env.asset_name }} --version || true
+          "./$ASSET_NAME" --version || true
 
       - name: Generate checksum
+        env:
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
           if command -v sha256sum &>/dev/null; then
-            sha256sum "${{ env.asset_name }}" > "${{ env.asset_name }}.sha256"
+            sha256sum "$ASSET_NAME" > "${ASSET_NAME}.sha256"
           else
-            shasum -a 256 "${{ env.asset_name }}" > "${{ env.asset_name }}.sha256"
+            shasum -a 256 "$ASSET_NAME" > "${ASSET_NAME}.sha256"
           fi
           echo "Checksum:"
-          cat "${{ env.asset_name }}.sha256"
+          cat "${ASSET_NAME}.sha256"
 
       - name: Upload to GitHub Release (release event)
         if: github.event_name == 'release'
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
-          gh release upload "${{ github.event.release.tag_name }}" \
-            "${{ env.asset_name }}" \
-            "${{ env.asset_name }}.sha256" \
+          gh release upload "$RELEASE_TAG" \
+            "$ASSET_NAME" \
+            "${ASSET_NAME}.sha256" \
             --clobber
 
       - name: Upload to GitHub Release (called from another workflow)
         if: inputs.release_tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          ASSET_NAME: ${{ env.asset_name }}
         run: |
-          gh release upload "${{ inputs.release_tag }}" \
-            "${{ env.asset_name }}" \
-            "${{ env.asset_name }}.sha256" \
+          gh release upload "$RELEASE_TAG" \
+            "$ASSET_NAME" \
+            "${ASSET_NAME}.sha256" \
             --clobber
 
       - name: Upload as artifact (manual dispatch without release_tag)
@@ -244,17 +268,24 @@ jobs:
     if: always()
     steps:
       - name: Build summary
+        env:
+          JASECI_VERSION: ${{ needs.resolve-versions.outputs.jaseci_version }}
+          JACLANG_VERSION: ${{ needs.resolve-versions.outputs.jaclang_version }}
+          BUILD_JACLANG_RESULT: ${{ needs.build-jaclang.result }}
+          BUILD_JASECI_RESULT: ${{ needs.build-jaseci.result }}
         run: |
-          echo "## Standalone Binary Build Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**jaseci version:** ${{ needs.resolve-versions.outputs.jaseci_version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "**jaclang version:** ${{ needs.resolve-versions.outputs.jaclang_version }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Package | Platform | Status |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|---------|----------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jaclang (slim) | linux-x86_64 | ${{ needs.build-jaclang.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jaclang (slim) | macos-aarch64 | ${{ needs.build-jaclang.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jaseci (full) | linux-x86_64 | ${{ needs.build-jaseci.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| jaseci (full) | macos-aarch64 | ${{ needs.build-jaseci.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Note:** linux-aarch64 builds can be added when ARM runners are available." >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Standalone Binary Build Results"
+            echo ""
+            echo "**jaseci version:** $JASECI_VERSION"
+            echo "**jaclang version:** $JACLANG_VERSION"
+            echo ""
+            echo "| Package | Platform | Status |"
+            echo "|---------|----------|--------|"
+            echo "| jaclang (slim) | linux-x86_64 | $BUILD_JACLANG_RESULT |"
+            echo "| jaclang (slim) | macos-aarch64 | $BUILD_JACLANG_RESULT |"
+            echo "| jaseci (full) | linux-x86_64 | $BUILD_JASECI_RESULT |"
+            echo "| jaseci (full) | macos-aarch64 | $BUILD_JASECI_RESULT |"
+            echo ""
+            echo "**Note:** linux-aarch64 builds can be added when ARM runners are available."
+          } >> "$GITHUB_STEP_SUMMARY"
