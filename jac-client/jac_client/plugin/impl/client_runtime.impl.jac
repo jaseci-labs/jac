@@ -484,14 +484,8 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
-    # Report error to server for logging
-    try {
-        errMsg = error.error.message if error.error else str(error);
-        errStack = error.error.stack if error.error else "";
-        __jacReportError(errMsg, errStack, "", "ErrorBoundary");
-    } except Exception as e {
-        console.warn("[jac-client] ErrorFallback: failed to report error:", e);
-    }
+    # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
+    # which is the only place React exposes `info.componentStack`.
     return
         <div
             role="alert"
@@ -1025,7 +1019,11 @@ impl JacForm(props: dict) -> JsxElement {
 Fires asynchronously and silently ignores failures (to avoid error loops).
 """
 impl __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None {
     try {
         baseUrl = __getApiBaseUrl();
@@ -1040,6 +1038,7 @@ impl __jacReportError(
                         "stack": stack,
                         "url": url or window.location.href,
                         "source": source,
+                        "componentStack": componentStack,
                         "timestamp": Reflect.construct(Date, []).toISOString()
                     }
                 )
@@ -1048,6 +1047,22 @@ impl __jacReportError(
     } except Exception {
     # Intentionally silent - error reporting must never throw, as that
     # could cause infinite loops or mask the original error.
+    }
+}
+
+"""onError prop for JacClientErrorBoundary. The FallbackComponent React passes
+to ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
+therefore `info.componentStack`, the only thing that names user components when
+the JS stack lives inside react-dom) is exclusively delivered to onError.
+Wiring this here is the one place we can capture it."""
+impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+    try {
+        message = error.message if error else "Unknown error";
+        stack = error.stack if error else "";
+        componentStack = info.componentStack if info else "";
+        __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
+    } except Exception {
+    # Silent: error reporting from a React lifecycle must never throw.
     }
 }
 

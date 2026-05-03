@@ -756,6 +756,103 @@ test "bracket filter on list" {
     assert not err , "Failed to parse list bracket filter";
 }
 
+test "typed edge ref after start expr - no filter" {
+    # BUG: `[root()->:Type:->]` failed to parse because parse_list_or_compr
+    # only checked for ARROW_R/ARROW_L/ARROW_BI/ARROW_R_P1/ARROW_L_P1 after
+    # the first expression, missing the (RETURN_HINT, COLON, ...) form the
+    # lexer actually produces for `->:`. The bare-start form `[->:Type:->]`
+    # already parsed because that path went through parse_edge_ref_chain
+    # directly. (Reproduces the docs example in the Part 2 'Advanced:
+    # Custom Edges' section of the AI day planner tutorial.)
+    src = (
+        'edge Scheduled { has time: str; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(time="9:00am") :+> Task(title="Run");'
+        '    x = [root()->:Scheduled:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:->] (typed edge ref after "
+        "explicit start expression)"
+    );
+}
+
+test "typed edge ref after start expr - with filter condition" {
+    # Same root cause as the test above, plus continue_edge_ref_chain
+    # was using a stripped-down inline branch that did not accept the
+    # `:cond` filter clause that parse_edge_op_ref already supports.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(priority=3) :+> Task(title="A");'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:priority>=3:->] (typed edge "
+        "ref with a filter condition after an explicit start expression)"
+    );
+}
+
+test "typed edge ref bare start with filter still parses" {
+    # Sanity check: the bare-start form (no explicit start expression)
+    # was already parsing before the fix and must keep working — the
+    # parser routes it through parse_edge_ref_chain which uses the rich
+    # parse_edge_op_ref helper.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'walker W { can go with entry { '
+        '    visit [->:Scheduled:priority>=3:->]; '
+        '} }'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , ("Failed to parse bare-start [->:Scheduled:priority>=3:->]");
+}
+
+test "typed edge ref produces FilterCompr with compares" {
+    # Structural check: the AST produced for the fixed form must include
+    # a FilterCompr that actually carries the filter compare conditions
+    # (otherwise downstream traversal cannot evaluate the filter).
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err;
+
+    def find_filter_compr_with_compares(nd: object) -> object {
+        if isinstance(nd, uni.FilterCompr) and nd.compares {
+            return nd;
+        }
+        if hasattr(nd, "kid") {
+            for k in nd.kid {
+                if k is not None {
+                    result = find_filter_compr_with_compares(k);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    fc = find_filter_compr_with_compares(mod);
+    assert fc is not None , (
+        "Typed edge ref `[root()->:Scheduled:priority>=3:->]` must produce "
+        "a FilterCompr carrying the `priority>=3` condition; an EdgeOpRef "
+        "with an empty FilterCompr means the filter clause was silently "
+        "dropped."
+    );
+}
+
 test "decorated class in code block parses as archetype" {
     (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
     assert not err , "Parser reported errors for decorated declarations in code blocks";
