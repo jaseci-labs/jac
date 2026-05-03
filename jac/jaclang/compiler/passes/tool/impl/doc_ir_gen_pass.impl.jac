@@ -1343,7 +1343,14 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             continue;
         }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            # Don't add trailing space after closing brace of code block lambda
+            # Single-stmt and empty code-block lambdas need exactly one space
+            # before `}`. Body-stmt emitters are inconsistent (return stmts
+            # leave a trailing space, expr stmts don't), so normalize here:
+            # strip any trailing whitespace in `parts`, then add one space.
+            self.trim_trailing_whitespace(parts);
+            if parts {
+                parts.append(self.space());
+            }
             parts.append(i.gen.doc_ir);
         } elif isinstance(i, uni.Token) {
             parts.append(i.gen.doc_ir);
@@ -1957,8 +1964,13 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     # top-level, nested, multi-statement, or with an else — we fall back to
     # the original hard-line layout so statement-level `if` blocks always
     # break onto their own lines, matching idiomatic Jac style.
-    flat_capable = (
+    parent_lambda_single_stmt = (
         isinstance(nd.parent, uni.LambdaExpr)
+        and isinstance(nd.parent.body, Sequence)
+        and (len(nd.parent.body) == 1)
+    );
+    flat_capable = (
+        parent_lambda_single_stmt
         and (nd.else_body is None)
         and (len(nd.body) == 1)
         and not self.has_gap(nd, nd.body[0])
@@ -1981,10 +1993,15 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
                 parts.append(i.gen.doc_ir);
             } elif (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
                 if not body_placed {
+                    # Strip trailing whitespace from the body stmt's doc so
+                    # the `line()` before `}` doesn't compound with a stmt-
+                    # emitter's own trailing space (e.g., return stmts).
+                    body_doc = i.gen.doc_ir;
+                    body_wrapper: list[doc.DocType] = [body_doc];
+                    self.trim_trailing_whitespace(body_wrapper);
+                    body_doc = body_wrapper[0] if body_wrapper else doc.Text('');
                     parts.append(
-                        self.indent(
-                            self.concat([self.line(), i.gen.doc_ir]), ast_node=nd
-                        )
+                        self.indent(self.concat([self.line(), body_doc]), ast_node=nd)
                     );
                     body_placed = True;
                 }
@@ -2493,6 +2510,61 @@ impl DocIRGenPass.remove_all_spaces(doc_node: doc.DocType) -> doc.DocType {
         );
     } else {
         return doc_node;
+    }
+}
+
+"""Recursively trim trailing Line nodes AND trailing Text(' ') from parts.
+
+Used where a downstream emitter prepends its own whitespace (e.g., the
+flat-capable if-stmt's `line()` before `}`) and the body stmt may also
+end in a trailing space (return stmts do, expr stmts don't), so we need
+to normalize before adding the new whitespace to avoid double spaces.
+"""
+impl DocIRGenPass.trim_trailing_whitespace(parts: list[doc.DocType]) -> None {
+    while parts {
+        last = parts[-1];
+        if isinstance(last, doc.Line) {
+            parts.pop();
+            continue;
+        } elif isinstance(last, doc.Text) {
+            stripped = last.text.rstrip(' ');
+            if stripped == last.text {
+                return;
+            }
+            if not stripped {
+                parts.pop();
+                continue;
+            }
+            parts[-1] = doc.Text(stripped);
+            return;
+        } elif isinstance(last, doc.Concat) {
+            self.trim_trailing_whitespace(last.parts);
+            if not last.parts {
+                parts.pop();
+                continue;
+            }
+            return;
+        } elif isinstance(last, doc.Group) {
+            contents = last.contents;
+            if isinstance(contents, doc.Concat) {
+                self.trim_trailing_whitespace(contents.parts);
+                if not contents.parts {
+                    parts.pop();
+                    continue;
+                }
+            } elif isinstance(contents, doc.Line) {
+                parts.pop();
+                continue;
+            } elif isinstance(contents, doc.Text) {
+                stripped = contents.text.rstrip(' ');
+                if not stripped {
+                    parts.pop();
+                    continue;
+                }
+            }
+            return;
+        }
+        return;
     }
 }
 

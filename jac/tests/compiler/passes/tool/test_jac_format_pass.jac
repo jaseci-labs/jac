@@ -370,10 +370,13 @@ test "jsx and lambda inline compact forms stay flat" {
         "inline <p>hello ({text})</p> was split across lines:\n" + str(formatted)
     );
 
-    # A single-statement `if` inside a lambda body must stay flat.
-    lambda_form = 'lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}';
+    # A single-statement `if` inside a lambda body must stay flat. The
+    # lambda's closing `}` is preceded by a single space (symmetric with the
+    # leading `{ if`) — see #5779 follow-up which standardized inline lambda
+    # body spacing.
+    lambda_form = 'lambda e: KeyboardEvent { if e.key == "Enter" { add(); } }';
     assert lambda_form in formatted , (
-        "lambda-nested `if { stmt; }` was expanded to multiple lines:\n" + str(
+        "lambda-nested `if { stmt; }` was expanded or lost its trailing space:\n" + str(
             formatted
         )
     );
@@ -431,6 +434,64 @@ test "if statement outside lambda still breaks" {
     # Lambda `if` with else should NOT stay flat.
     assert ("lambda e: int { if e > 0 { x = 1; } else { x = 2; } }") not in formatted , (
         f"lambda `if`/`else` must fall back to hard-line layout:\n{formatted}"
+    );
+}
+
+"""Regression for #5779: jac format whitespace bugs in lambda/if inline blocks.
+
+Three behaviors that the #5523 fix didn't cover:
+  1. An `if` block sitting alongside other statements inside a multi-stmt
+     lambda body must expand to multi-line form (the flat-capable shortcut
+     is only valid when the if-stmt is the lambda's sole statement).
+  2. Inline single-stmt code-block lambdas must keep a space between the
+     last `;` and the closing `}` — `lambda { stmt; }`, never `lambda { stmt;}`.
+  3. The formatter must be idempotent on the corrected output.
+"""
+test "lambda + inline if whitespace (#5779)" {
+    source = (
+        'def main -> None {\n'
+        '    useEffect(\n'
+        '        lambda -> any {\n'
+        '            if not autoRefresh { return undefined; }\n'
+        '            interval = setInterval(lambda { loadMetrics(); }, 3000);\n'
+        '            return lambda { clearInterval(interval); };\n'
+        '        },\n'
+        '        [autoRefresh]\n'
+        '    );\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"formatter errors: {prog.errors_had}";
+    formatted: str = prog.mod.main.gen.jac or "";
+    assert formatted , "formatter produced empty output";
+
+    # Bug 1: if-block inside multi-stmt lambda body must expand.
+    assert "if not autoRefresh { return undefined;" not in formatted , (
+        f"#5779 bug 1: if-block inside multi-stmt lambda stayed inline:\n{formatted}"
+    );
+    assert "if not autoRefresh {\n" in formatted , (
+        f"#5779 bug 1: expected if-block expansion not produced:\n{formatted}"
+    );
+
+    # Bug 2: inline single-stmt lambda body keeps space before `}`.
+    assert "lambda { loadMetrics(); }" in formatted , (
+        f"#5779 bug 2: inline lambda lost space before `}}`:\n{formatted}"
+    );
+    assert "lambda { clearInterval(interval); }" in formatted , (
+        f"#5779 bug 2: inline lambda lost space before `}}`:\n{formatted}"
+    );
+    assert "loadMetrics();}" not in formatted , (
+        f"#5779 bug 2: `;}}` glued together:\n{formatted}"
+    );
+    assert "clearInterval(interval);}" not in formatted , (
+        f"#5779 bug 2: `;}}` glued together:\n{formatted}"
+    );
+
+    # Bug 3: formatter must be idempotent on the fixed output.
+    prog2 = JacProgram.jac_str_formatter(source_str=formatted, file_path="<test>.jac");
+    assert not prog2.errors_had;
+    assert formatted == prog2.mod.main.gen.jac , (
+        f"#5779 bug 3: formatter is not idempotent:\n--first--\n{formatted}" + f"\n--second--\n{prog2.mod.main.gen.jac}"
     );
 }
 
