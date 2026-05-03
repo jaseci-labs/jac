@@ -42,7 +42,7 @@ Keywords: node, edge, walker, visit, report, here, visitor, disengage, root, spa
 
   jac://docs/osp              [L] nodes, edges, walkers, CRUD patterns
   jac://docs/walker-responses  [S] walker response and reporting patterns
-  jac://examples/data_spatial  [S] canonical working OSP example
+  jac://examples/littleX       [S] canonical working OSP example
 
 ### [C] Data Persistence & Multi-User Auth
 
@@ -102,10 +102,9 @@ declaration/implementation separation (.jac + .impl.jac split).
 
   jac://guide/patterns         [M] idiomatic patterns with working code
   jac://examples/littleX       [S] full-stack social app (real-world OSP)
-  jac://examples/guess_game    [S] progressive: plain obj -> walker -> LLM
 
 Available example categories (use ONLY these names with get_example):
-  chess, data_spatial, guess_game, littleX, manual_code, medical, micro, plugins, rpg_game, shopping_cart
+  chess, littleX, manual_code, micro, plugins, rpg_game, shopping_cart
 
 ### [G] Code Organization & Project Structure
 
@@ -176,6 +175,6 @@ decorators, @property). Prefer `obj` for everything else.
   Compare Jac to Python/React             | jac://docs/jac-vs-traditional
   Deploy to production                    | jac://docs/jac-scale
   Write tests                             | jac://docs/testing
-  See a working example                   | jac://examples/data_spatial or jac://examples/littleX
+  See a working example                   | jac://examples/littleX
   Understand project file layout          | jac://docs/code-organization
   Discover available plugins              | jac://examples/plugins + list_templates tool

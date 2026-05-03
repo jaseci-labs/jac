@@ -102,14 +102,11 @@ impl ToolProvider.list_tools -> list[dict[str, Any]] {
                 "properties": {
                     "name": {
                         "type": "string",
-                        "description": "Example category name. Valid: chess, data_spatial, guess_game, littleX, manual_code, medical, micro, plugins, rpg_game, shopping_cart",
+                        "description": "Example category name. Valid: chess, littleX, manual_code, micro, plugins, rpg_game, shopping_cart",
                         "enum": [
                             "chess",
-                            "data_spatial",
-                            "guess_game",
                             "littleX",
                             "manual_code",
-                            "medical",
                             "micro",
                             "plugins",
                             "rpg_game",

@@ -9,7 +9,7 @@ equivalents:
    - Control flow statements (if/else, loops, try/except)
    - Data structures (lists, dictionaries, sets)
    - Special Jac features (walkers, abilities, archetypes)
-   - Data spatial operations (node/edge connections)
+   - Object spatial operations (node/edge connections)
 
 3. Managing imports and dependencies between modules
 4. Preserving source location information for error reporting
