@@ -254,6 +254,52 @@ def _mark_all_healthy_k8s(registry: ServiceRegistry) {
 }
 
 
+"""K9 follow-up: populate svc_entry.url from K4's DNS resolver.
+
+`handle_proxy` (path-prefix routing for `/api/<svc>/*`) uses
+`resolve_target_url` which calls `JacRuntime.get_sv_registry()` -
+that's K4's hookimpl returning the K8s DNS map at request time.
+Works in K8s.
+
+`handle_builtin_passthrough` (built-in routes like `/user/login`,
+`/walker/*`, `/function/*`) is path-agnostic: it fans out to every
+registered service looking for the first non-404 response. But it
+uses `svc_entry.url` DIRECTLY, not the K4 hookspec. In K8s mode
+`build_registry` constructs entries with `url=""`, so the check
+`if svc_entry.url` skips every service and the gateway returns
+"Not found on any service" for every built-in route.
+
+Fix: at gateway startup, call get_sv_registry() once and write the
+DNS URLs onto each entry's `.url` field. This keeps the existing
+passthrough loop intact while making it work in K8s. Falls back
+silently if the hookspec isn't ready yet (the entry stays empty
+and the existing skip-empty-url logic handles it).
+"""
+def _populate_k8s_urls(registry: ServiceRegistry) {
+    try {
+        import jaclang;
+        dns_map: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
+    } except Exception as e {
+        logger.warning(f"K8s URL population failed: {e}");
+        return;
+    }
+    for (svc_name, _entry) in registry.entries.items() {
+        url = dns_map.get(svc_name, "");
+        if url {
+            _entry.url = url;
+        }
+    }
+    logger.info(
+        f"K8s URLs populated: {sum(
+            1
+            for e in registry.entries.values()
+            if e.url
+        )}"
+        f"/{len(registry.entries)} services"
+    );
+}
+
+
 """K9: start ONLY the gateway, no service spawning, no orchestrator.
 
 Used by the K8s gateway pod (where K8s manages the service pod
@@ -272,10 +318,13 @@ def start_gateway_only(ms_config: dict[str, Any]) -> None {
         return;
     }
 
-    # Path-prefix metadata only (URLs come from the get_sv_registry
-    # hookspec at request time, so the per-entry .url field is unused).
     registry = build_registry(ms_config);
     _mark_all_healthy_k8s(registry);
+    # handle_proxy uses K4's get_sv_registry() at request time, but
+    # handle_builtin_passthrough (auth, walker, function fan-out)
+    # reads svc_entry.url directly and skips entries with empty url.
+    # Populate from the same DNS map so built-in routes work in K8s.
+    _populate_k8s_urls(registry);
 
     gateway_port = int(ms_config.get("gateway_port", 8000));
     gateway_host = ms_config.get("gateway_host", "0.0.0.0");
