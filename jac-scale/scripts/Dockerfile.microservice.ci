@@ -33,7 +33,7 @@ WORKDIR /build
 COPY jac /build/jac
 COPY jac-scale /build/jac-scale
 RUN pip install --no-cache-dir -e /build/jac \
-    && pip install --no-cache-dir -e "/build/jac-scale[deploy]"
+    && pip install --no-cache-dir -e "/build/jac-scale[deploy,data]"
 
 # The project dir to deploy. Build arg lets the e2e script point at
 # any project under the repo (default: the K8s e2e fixture).
