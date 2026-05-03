@@ -33,12 +33,10 @@ plugin_manager.register(JacRuntimeImpl)
 # Use "*" to disable all external plugins, "package:*" for all from a package,
 # or "package:plugin" for specific plugins
 _disabled_list = get_disabled_plugins()
-if _disabled_list:
-    # Use qualified blocking for fine-grained control
-    load_plugins_with_disabling(plugin_manager, _disabled_list)
-else:
-    # No disabling - load all plugins normally
-    plugin_manager.load_setuptools_entrypoints("jac")
+# Always go through load_plugins_with_disabling so plugin-load failures
+# are surfaced as warnings (instead of silently swallowed by pluggy's
+# load_setuptools_entrypoints). The disable list may be empty.
+load_plugins_with_disabling(plugin_manager, _disabled_list)
 
 # Schedule deferred native acceleration if autonative is enabled in jac.toml
 try:

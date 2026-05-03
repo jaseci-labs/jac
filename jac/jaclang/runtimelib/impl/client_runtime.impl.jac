@@ -935,7 +935,11 @@ impl useEffect(effectFn: Any, deps: list = []) -> None {
 Fires asynchronously and silently ignores failures (to avoid error loops).
 """
 impl __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None {
     try {
         fetch(
@@ -949,6 +953,7 @@ impl __jacReportError(
                         "stack": stack,
                         "url": url or window.location.href,
                         "source": source,
+                        "componentStack": componentStack,
                         "timestamp": Reflect.construct(Date, []).toISOString()
                     }
                 )
@@ -956,6 +961,22 @@ impl __jacReportError(
         );
     } except Exception {
     # Silently ignore - never let error reporting cause more errors
+    }
+}
+
+"""onError prop for ErrorBoundary. The FallbackComponent React passes to
+ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
+therefore `info.componentStack`, the only thing that names user components
+when the JS stack lives inside react-dom) is exclusively delivered to onError.
+Wiring this here is the one place we can capture it."""
+impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+    try {
+        message = error.message if error else "Unknown error";
+        stack = error.stack if error else "";
+        componentStack = info.componentStack if info else "";
+        __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
+    } except Exception {
+    # Silent: error reporting from a React lifecycle must never throw.
     }
 }
 
