@@ -830,26 +830,69 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return env;
     }
 
-    """K7: container resources (requests + limits).
+    """P0.8b: container resources with sane defaults so pods are
+    Burstable QoS, not BestEffort.
 
-    Returns the K8s `resources: {requests: {...}, limits: {...}}` dict
-    or {} if no overrides set. Empty resources field is omitted from
-    the container so we don't emit invalid manifests.
+    Without resource requests, K8s assigns BestEffort QoS class. Under
+    node memory pressure (especially during transient peaks like jac
+    runtime compile, which briefly hits 1-2GB per process), kubelet
+    evicts BestEffort pods FIRST - even if the node has spare capacity
+    overall. We saw this empirically on a 2 vCPU / 7.6GB EC2 box: all
+    3 service pods crash-looping for ~25min before stabilizing because
+    the eviction storm kept restarting them faster than they could
+    settle.
+
+    The fix: emit small but real default requests/limits unless the
+    user explicitly overrides via per-service config. Defaults are
+    intentionally tiny (won't constrain real workloads) but enough to
+    bump QoS to Burstable, which kubelet evicts AFTER BestEffort.
+
+    Defaults:
+      memory_request: 128Mi  (bumps QoS to Burstable)
+      memory_limit:   1Gi    (caps runaway services from taking node)
+      cpu_request:    50m    (~5% of one vCPU - tiny floor)
+      cpu_limit:      omitted (CPU limits are usually counterproductive
+                               vs. just letting cgroups fair-share;
+                               see "kubernetes cpu limits considered
+                               harmful" for the standard argument)
+
+    Per-service config in jac.toml still overrides. To get back to
+    BestEffort (e.g. dev clusters where you want predictable scheduling
+    without resource accounting), set every value to "" or "0":
+      [plugins.scale.microservices.services.NAME]
+      memory_request = ""
+      memory_limit = ""
+      cpu_request = ""
     """
     def _build_resources(svc_cfg: dict[str, Any]) -> dict[str, Any] {
+        # Defaults; user values override (None / empty string opts out).
+        memory_request_val = svc_cfg.get("memory_request");
+        if memory_request_val is None {
+            memory_request_val = "128Mi";
+        }
+        memory_limit_val = svc_cfg.get("memory_limit");
+        if memory_limit_val is None {
+            memory_limit_val = "1Gi";
+        }
+        cpu_request_val = svc_cfg.get("cpu_request");
+        if cpu_request_val is None {
+            cpu_request_val = "50m";
+        }
+        cpu_limit_val = svc_cfg.get("cpu_limit");  # default: omit
+
         requests: dict[str, str] = {};
         limits: dict[str, str] = {};
-        if svc_cfg.get("cpu_request") {
-            requests["cpu"] = str(svc_cfg["cpu_request"]);
+        if cpu_request_val {
+            requests["cpu"] = str(cpu_request_val);
         }
-        if svc_cfg.get("memory_request") {
-            requests["memory"] = str(svc_cfg["memory_request"]);
+        if memory_request_val {
+            requests["memory"] = str(memory_request_val);
         }
-        if svc_cfg.get("cpu_limit") {
-            limits["cpu"] = str(svc_cfg["cpu_limit"]);
+        if cpu_limit_val {
+            limits["cpu"] = str(cpu_limit_val);
         }
-        if svc_cfg.get("memory_limit") {
-            limits["memory"] = str(svc_cfg["memory_limit"]);
+        if memory_limit_val {
+            limits["memory"] = str(memory_limit_val);
         }
         out: dict[str, Any] = {};
         if requests {

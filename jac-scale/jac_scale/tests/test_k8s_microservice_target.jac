@@ -1569,13 +1569,47 @@ test "container resources reflect cpu/memory request and limit overrides" {
 }
 
 
-test "container has no resources field when no overrides set" {
-    # We don't want to emit an empty `resources: {}` since it serializes
-    # noisy in K8s manifests; if no overrides, just omit the field.
+test "P0.8b: container has DEFAULT resources when no overrides set (Burstable QoS)" {
+    # P0.8b: Without resource requests, K8s assigns BestEffort QoS class
+    # which is the FIRST to be evicted under memory pressure. We saw this
+    # bite hard on a 7.6GB EC2 box where transient compile peaks caused
+    # a ~25min eviction storm before pods stabilized. Sane defaults bump
+    # QoS to Burstable.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (_cfg, restore) = _with_services_config({});
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
+        resources = spec["containers"][0]["resources"];
+        # Defaults present
+        assert resources["requests"]["memory"] == "128Mi";
+        assert resources["requests"]["cpu"] == "50m";
+        assert resources["limits"]["memory"] == "1Gi";
+        # cpu_limit deliberately omitted (CPU limits often counterproductive
+        # vs cgroup fair-share)
+        assert "cpu" not in resources["limits"];
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.8b: empty-string user override opts back into BestEffort" {
+    # Escape hatch for users who explicitly want BestEffort QoS (e.g.
+    # dev clusters where you don't care about resource accounting).
+    # Set every field to empty string to opt out of every default.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_services_config(
+        {
+            "orders": {
+                "memory_request": "",
+                "memory_limit": "",
+                "cpu_request": ""
+            }
+        }
+    );
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        # Empty values mean no requests/limits emitted -> back to BestEffort
         assert "resources" not in spec["containers"][0];
     } finally {
         restore();
@@ -1583,7 +1617,9 @@ test "container has no resources field when no overrides set" {
 }
 
 
-test "container resources can be partial (only requests, no limits)" {
+test "container resources can be partial (user requests, no limits)" {
+    # Per-service config layers OVER defaults. User-specified values win;
+    # unset defaults still apply.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (_cfg, restore) = _with_services_config(
         {"orders": {"cpu_request": "100m", "memory_request": "64Mi"}}
@@ -1591,9 +1627,13 @@ test "container resources can be partial (only requests, no limits)" {
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
         resources = spec["containers"][0]["resources"];
-        assert resources == {"requests": {"cpu": "100m", "memory": "64Mi"}};
-        # No limits key emitted.
-        assert "limits" not in resources;
+        # User overrides
+        assert resources["requests"]["cpu"] == "100m";
+        assert resources["requests"]["memory"] == "64Mi";
+        # Default memory_limit still applies (user only set requests)
+        assert resources["limits"]["memory"] == "1Gi";
+        # cpu_limit still omitted (default behavior)
+        assert "cpu" not in resources.get("limits", {});
     } finally {
         restore();
     }
