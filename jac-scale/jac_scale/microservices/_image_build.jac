@@ -273,15 +273,29 @@ def run_docker_build(
     # so users see real-time progress. Critical for first-time builds
     # which can take 5-15 minutes (apt install + pip install + .jac
     # precompile, all happening inside minikube's docker daemon).
-    cmd: list[str] = [
-        "docker",
-        "build",
-        "--progress=plain",
-        "-t",
-        image_tag,
-        "-f",
-        str(dockerfile_path)
-    ];
+    # BUT: --progress=plain is a BuildKit-only flag. The legacy docker
+    # builder (e.g. Ubuntu's `docker.io` package without buildx
+    # installed) rejects it with "unknown flag: --progress" before any
+    # build runs. Probe for buildx; only add the flag if available.
+    buildkit_ok: bool = False;
+    try {
+        probe = subprocess.run(
+            ["docker", "buildx", "version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env=env
+        );
+        buildkit_ok = probe.returncode == 0;
+    } except Exception {
+        buildkit_ok = False;
+    }
+
+    cmd: list[str] = ["docker", "build"];
+    if buildkit_ok {
+        cmd.append("--progress=plain");
+    }
+    cmd.extend(["-t", image_tag, "-f", str(dockerfile_path)]);
     for (key, value) in build_args.items() {
         cmd.append("--build-arg");
         cmd.append(f"{key}={value}");
