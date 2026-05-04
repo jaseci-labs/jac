@@ -597,14 +597,6 @@ test "bug_dloc1_decorated_class_in_function_body" {
     );
 }
 
-test "bug_atomtrailer_base_narrowing" {
-    program = compile_and_check("checker_bug_subscript_base_narrowing.jac");
-
-    assert len(program.errors_had) == 0 , (
-        "`if isinstance(path[0], StringVal)` should narrow path[0].lit_value access. "
-         );
-}
-
 test "bug_while_loop_narrowing" {
     program = compile_and_check("checker_bug_while_narrowing.jac");
 
@@ -613,3 +605,13 @@ test "bug_while_loop_narrowing" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+test "bug_atomtrailer_base_narrowing" {
+    program = compile_and_check("checker_bug_subscript_base_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`if isinstance(path[0], StringVal)` should narrow path[0].lit_value access. "
+    );
+}
+
+
