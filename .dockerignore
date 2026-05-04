@@ -43,9 +43,18 @@
 **/.venv
 **/venv
 
-# Python build outputs
-**/dist
-**/build
+# Python build outputs.
+# Anchored to the build context root (`/dist`, `/build`) on purpose:
+# the unanchored `**/dist` glob also matches `.jac/client/dist`, which
+# silently drops the P0.7 frontend bundle from the image and leaves
+# the gateway serving an empty page at /. We only want to drop sdist /
+# wheel staging dirs at the repo root, not every nested `dist/`.
+/dist
+/build
+jac/dist
+jac/build
+jac-scale/dist
+jac-scale/build
 *.tar.gz
 *.whl
 
