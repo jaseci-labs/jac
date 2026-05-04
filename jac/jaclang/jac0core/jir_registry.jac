@@ -553,6 +553,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="access", kind=6),
                  FieldDesc(name="decorators", kind=5),
                  FieldDesc(name="name", kind=4),
+                 FieldDesc(name="value_type", kind=6),
                  FieldDesc(name="base_classes", kind=5)
              )
          ),
