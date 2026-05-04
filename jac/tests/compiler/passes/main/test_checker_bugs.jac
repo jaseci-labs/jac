@@ -586,24 +586,6 @@ test "bug_super1_super_call_returns_parent_instance" {
     );
 }
 
-# =========================================================================
-# Bug: isinstance narrowing not applied to non-Name AtomTrailer targets (issue #5768)
-#
-# Narrowing was only applied when expr.target was a simple Name. For complex
-# targets like c.pet, the narrowed type was computed but thrown away.
-# =========================================================================
-test "bug_5768_atomtrailer_base_narrowing" {
-    program = compile_and_check("checker_bug_subscript_base_narrowing.jac");
-
-    assert len(program.errors_had) == 0 , (
-        "Bug #5768: isinstance narrowing must apply to subscript targets like path[0]. "
-        "`if isinstance(path[0], StringVal)` should narrow path[0].lit_value access. "
-        "Requires both the subscript key fix (PR2/fix-5768-subscript-narrowing-key) "
-        "and this non-Name AtomTrailer narrowing fix to be merged. "
-        f"Got errors: {[str(e) for e in program.errors_had]}"
-    );
-}
-
 test "bug_dloc1_decorated_class_in_function_body" {
     program = compile_and_check("checker_bug_decorated_local_class.jac");
 
@@ -611,6 +593,18 @@ test "bug_dloc1_decorated_class_in_function_body" {
         "Bug #DLOC-1: a decorated class inside a function body must parse "
         "as an Archetype so the type checker recognises its constructor and "
         "fields. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug: isinstance narrowing not applied to non-Name AtomTrailer targets
+# =========================================================================
+test "bug_5768_atomtrailer_base_narrowing" {
+    program = compile_and_check("checker_bug_subscript_base_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`if isinstance(path[0], StringVal)` should narrow path[0].lit_value access. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
