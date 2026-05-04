@@ -617,3 +617,13 @@ test "bug_5768_subscript_key_narrowing" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+test "bug_5768_subscript_key_narrowing_negative" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
+
+    assert len(program.errors_had) >= 2 , (
+        "Variable index items[i] and range slice items[0:2] must NOT narrow. "
+        "Expected at least 2 E1099 errors but got "
+        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+    );
+}

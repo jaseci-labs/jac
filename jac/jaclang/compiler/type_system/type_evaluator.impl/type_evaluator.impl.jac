@@ -3814,22 +3814,11 @@ impl TypeEvaluator.create_key_for_reference(expr: uni.Expr) -> str | None {
     }
     if isinstance(expr, uni.AtomTrailer) and not expr.is_attr {
         # Build path like "x[0]" for constant integer subscripts
+        import from jaclang.compiler.symbol_utils { _int_subscript_suffix }
         base_key = self.create_key_for_reference(expr.target);
-        if (
-            base_key
-            and isinstance(expr.right, uni.IndexSlice)
-            and not expr.right.is_range
-            and len(expr.right.slices) == 1
-        ) {
-            idx = expr.right.slices[0];
-            if (
-                idx.start is not None
-                and idx.stop is None
-                and idx.step is None
-                and isinstance(idx.start, uni.Int)
-            ) {
-                return f"{base_key}[{idx.start.lit_value}]";
-            }
+        if base_key and isinstance(expr.right, uni.IndexSlice) {
+            suffix = _int_subscript_suffix(expr.right);
+            if suffix { return f"{base_key}{suffix}"; }
         }
     }
     # Walrus operator: (x := expr) - use the target name as narrowing key
