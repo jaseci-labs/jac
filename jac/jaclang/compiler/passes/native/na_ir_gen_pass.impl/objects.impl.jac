@@ -442,6 +442,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     block = func.append_basic_block(name="entry");
     saved_builder = self.builder;
     saved_locals = self.local_vars;
+    saved_param_vars = self.param_vars;
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
@@ -450,6 +451,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     saved_tuple_type = dict(self.var_tuple_type);
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_dict_type = {};
@@ -483,6 +485,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         alloca = self.builder.alloca(arg_val.type, name=param_name);
         self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
+        self.param_vars.add(param_name);
         # Track type info for struct pointer parameters
         if isinstance(arg_val.type, ir.PointerType) {
             for (sname, stype) in self.struct_types.items() {
@@ -527,6 +530,11 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {
+        _mth_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
+            if method.loc
+            else 0}";
+        # release all pointer-typed locals before implicit return.
+        self._emit_scope_cleanup(skip_var=None, loc=_mth_loc);
         ret_type = func.return_value.type;
         if isinstance(ret_type, ir.VoidType) {
             self.builder.ret_void();
@@ -542,6 +550,7 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     # Restore saved state
     self.builder = saved_builder;
     self.local_vars = saved_locals;
+    self.param_vars = saved_param_vars;
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
@@ -562,6 +571,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     block = func.append_basic_block(name="entry");
     saved_builder = self.builder;
     saved_locals = self.local_vars;
+    saved_param_vars = self.param_vars;
     saved_type_map = dict(self.type_var_map);
     saved_type_node = dict(self.var_type_node);
     saved_list_elem = dict(self.var_list_elem_type);
@@ -570,6 +580,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_tuple_type = dict(self.var_tuple_type);
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
+    self.param_vars = set();
     self.var_type_node = {};
     self.var_list_elem_type = {};
     self.var_dict_type = {};
@@ -602,6 +613,11 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     }
     # Ensure function has a terminator
     if not self.builder.block.is_terminated {
+        _nosig_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{method.loc.last_line
+            if method.loc
+            else 0}";
+        # release all pointer-typed locals before implicit return.
+        self._emit_scope_cleanup(skip_var=None, loc=_nosig_loc);
         self.builder.ret_void();
     }
     method.gen.llvm_ir = func;
@@ -610,6 +626,7 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     # Restore saved state
     self.builder = saved_builder;
     self.local_vars = saved_locals;
+    self.param_vars = saved_param_vars;
     self.type_var_map = saved_type_map;
     self.var_type_node = saved_type_node;
     self.var_list_elem_type = saved_list_elem;
@@ -633,8 +650,38 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     );
     size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="sizeof");
     # Allocate via rc_alloc (RC-managed)
-    raw_ptr = self.builder.call(self.rc_alloc_fn, [size], name="raw.ptr");
+    _inst_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    raw_ptr = self._rc_call_with_ctx(
+        self.rc_alloc_fn, [size], op="new", loc=_inst_loc, name="raw.ptr"
+    );
     obj_ptr = self.builder.bitcast(raw_ptr, struct_ptr_type, name="obj.ptr");
+    # Store the typed destructor function pointer at obj_ptr - 8
+    # so __rc_release_simple dispatches to it when refcount hits zero.
+    self._emit_struct_release_fn(type_name);
+    _dtor_fn_s = self.struct_release_fns.get(type_name);
+    if _dtor_fn_s is not None {
+        _i8p_s = ir.IntType(8).as_pointer();
+        _i64_s = ir.IntType(64);
+        _i64p_s = _i64_s.as_pointer();
+        _raw_s = self.builder.bitcast(obj_ptr, _i8p_s, name="obj_raw_s");
+        _dtor_slot_s = self.builder.gep(
+            _raw_s, [ir.Constant(_i64_s, -8)], name="obj_dtor_slot"
+        );
+        _dtor_slot_i64_s = self.builder.bitcast(
+            _dtor_slot_s, _i64p_s, name="obj_dtor_i64p"
+        );
+        _dtor_i64_s = self.builder.ptrtoint(_dtor_fn_s, _i64_s, name="obj_dtor_i64");
+        self.builder.store(_dtor_i64_s, _dtor_slot_i64_s);
+    }
+    # Set type tag in header (ptr-24) so RC debug log shows the type name.
+    if self.rc_set_type_fn is not None {
+        _obj_i8 = self.builder.bitcast(
+            obj_ptr, ir.IntType(8).as_pointer(), name="obj.i8.tag"
+        );
+        self._emit_set_type_tag(self.builder, _obj_i8, type_name);
+    }
     # Store vtable pointer if class has vtable
     if type_name in self.vtable_globals {
         vtable_global = self.vtable_globals[type_name];
@@ -702,10 +749,19 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
             }
             idx = field_indices[key_name];
             ftype = field_types[key_name];
+            # _coerce_type propagates is_owned across bitcasts so checking val
+            # post-coerce is sufficient.
             val = self._coerce_type(val, ftype);
-            # RC: retain pointer values stored into struct fields
-            if isinstance(ftype, ir.PointerType) {
-                self._emit_rc_retain(val);
+            # RC: retain pointer values stored into struct fields.
+            # skip if already owned (call result) — field takes over rc=1.
+            if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+                self._emit_rc_retain(
+                    val,
+                    op="ctor_field",
+                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
             }
             field_ptr = self.builder.gep(
                 obj_ptr,
@@ -719,7 +775,39 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
     # Initialize unset fields with defaults
     for (fname, default_expr) in field_defaults.items() {
         if fname not in set_fields {
+            # Set _list_type_hint from the field's IR type so that an empty list
+            # literal `[]` creates the correct List variant (List.ptr / List.i64 /
+            # List.f64) with the right dtor.  We extract the elem key directly from
+            # the IdentifiedStructType name (e.g. "List.ptr" → "ptr") so this works
+            # even before _emit_list_helpers has been called for that variant.
+            _saved_hint_d = self._list_type_hint;
+            ftype_probe_d = field_types.get(fname);
+            if ftype_probe_d is not None
+            and isinstance(ftype_probe_d, ir.PointerType) {
+                _inner_d = ftype_probe_d.pointee;
+                if _inner_d?.name and _inner_d.name.startswith("List.") {
+                    _ek_d = _inner_d.name[5:];
+                    if _ek_d not in self.list_helpers {
+                        if _ek_d == "ptr" {
+                            self._emit_list_helpers("ptr", ir.IntType(8).as_pointer());
+                        } elif _ek_d == "f64" {
+                            self._emit_list_helpers("f64", ir.DoubleType());
+                        } else {
+                            self._emit_list_helpers("i64", ir.IntType(64));
+                        }
+                    }
+                    self._list_type_hint = _ek_d;
+                } else {
+                    for (_ek_d2, _lt_d2) in self.list_types.items() {
+                        if ftype_probe_d == _lt_d2.as_pointer() {
+                            self._list_type_hint = _ek_d2;
+                            break;
+                        }
+                    }
+                }
+            }
             val = self._codegen_expr(default_expr);
+            self._list_type_hint = _saved_hint_d;
             # Empty dict/list default returns None — fall back to helpers["new"].
             if val is None {
                 ftype_probe = field_types.get(fname);
@@ -755,9 +843,16 @@ impl NaIRGenPass._codegen_instantiation(nd: uni.FuncCall) -> (ir.Value | None) {
                 idx = field_indices[fname];
                 ftype = field_types[fname];
                 val = self._coerce_type(val, ftype);
-                # RC: retain pointer defaults stored into struct fields
-                if isinstance(ftype, ir.PointerType) {
-                    self._emit_rc_retain(val);
+                # RC: retain pointer defaults stored into struct fields.
+                # skip if already owned (call result) — field takes over rc=1.
+                if isinstance(ftype, ir.PointerType) and not self._is_owned(val) {
+                    self._emit_rc_retain(
+                        val,
+                        op="ctor_field",
+                        loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                            if nd.loc
+                            else 0}"
+                    );
                 }
                 field_ptr = self.builder.gep(
                     obj_ptr,
@@ -919,9 +1014,20 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                     arg_vals.append(v);
                 }
             }
+            if method_name == "append" {
+                self._set_rc_ctx(
+                    "append",
+                    f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                        if nd.loc
+                        else 0}"
+                );
+            }
             result = self._dispatch_primitive_method(
                 "list", method_name, list_val, arg_vals, elem_type_name
             );
+            # Clear ctx after dispatch so the next allocation in this scope
+            # is not misattributed to this operation.
+            self._clear_rc_ctx();
             if result is not None {
                 return result;
             }
@@ -1170,10 +1276,37 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
                         if params {
                             val = self._codegen_expr(params[0]);
                             if val is not None {
-                                val = self._box_value_tuple(val);
+                                val = self._box_value_tuple(
+                                    val,
+                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                        if nd.loc
+                                        else 0}"
+                                );
                                 elem_type = helpers["elem_type"];
                                 val = self._coerce_type(val, elem_type);
-                                self.builder.call(helpers["append"], [obj_val, val]);
+                                # __list_append_ptr internally retains; ctx makes the
+                                # retain log show op="append" + the source line.
+                                self._rc_call_with_ctx(
+                                    helpers["append"],
+                                    [obj_val, val],
+                                    op="append",
+                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                        if nd.loc
+                                        else 0}"
+                                );
+                                # RC: __list_append_ptr retained the element.
+                                # Release the caller's ownership if the value was owned
+                                # (fresh alloc / call result) to keep refcount at 1.
+                                if isinstance(elem_type, ir.PointerType)
+                                and self._is_owned(val) {
+                                    self._emit_rc_release_simple(
+                                        val,
+                                        op="append",
+                                        loc=f"{os.path.basename(
+                                            self.ir_in.loc.mod_path
+                                        )}:{nd.loc.first_line if nd.loc else 0}"
+                                    );
+                                }
                             }
                         }
                         return ir.Constant(ir.IntType(64), 0);
@@ -1266,6 +1399,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
             if isinstance(func.return_value.type, ir.VoidType) {
                 return ir.Constant(ir.IntType(64), 0);
             }
+            # every pointer returned by a virtual method is owned.
+            if isinstance(result.type, ir.PointerType) {
+                self._mark_owned(result);
+            }
             return result;
         }
     }
@@ -1286,6 +1423,10 @@ impl NaIRGenPass._codegen_method_call(nd: uni.FuncCall) -> (ir.Value | None) {
     # Return void calls as None
     if isinstance(func.return_value.type, ir.VoidType) {
         return ir.Constant(ir.IntType(64), 0);
+    }
+    # every pointer returned by a method is owned. Skip RETAIN on assign.
+    if isinstance(result.type, ir.PointerType) {
+        self._mark_owned(result);
     }
     return result;
 }
@@ -1441,11 +1582,27 @@ impl NaIRGenPass._codegen_field_assign(
         [ir.Constant(ir.IntType(32), 0), ir.Constant(ir.IntType(32), idx)],
         name=f"field.{field_name}.ptr"
     );
-    # RC: retain new value and release old value for pointer fields
+    # RC: retain new value and release old value for pointer fields.
+    # skip retain if value is already owned (function call result) — the
+    # field takes over the existing rc=1 without an extra increment.
     if isinstance(ftype, ir.PointerType) {
-        self._emit_rc_retain(value);
+        if not self._is_owned(value) {
+            self._emit_rc_retain(
+                value,
+                op="field_set",
+                loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
+                    if target.loc
+                    else 0}"
+            );
+        }
         old_field_val = self.builder.load(field_ptr, name=f"field.{field_name}.old");
-        self._emit_rc_release_simple(old_field_val);
+        self._emit_rc_release_simple(
+            old_field_val,
+            op="field_set",
+            loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{target.loc.first_line
+                if target.loc
+                else 0}"
+        );
     }
     self.builder.store(value, field_ptr);
 }

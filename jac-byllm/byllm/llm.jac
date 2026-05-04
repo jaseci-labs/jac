@@ -22,7 +22,9 @@ import from byllm.exceptions {
     OutputConversionError,
     RateLimitError,
     ModelNotFoundError,
-    UnknownToolError
+    UnknownToolError,
+    ConfigurationError,
+    CompactionNotEffectiveError
 }
 import from byllm.types {
     CompletionResult,
@@ -69,10 +71,16 @@ obj BaseLLM {
         config: dict = {},
         api_key: str = "",
         call_params: dict[(str, object)] = {},
+        ctx_window: int = 0,
         _usage_history: list = [];
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
+    def _invoke_react_loop(mt_run: MTRuntime) -> object;
+    def _invoke_react_loop_streaming(
+        mt_run: MTRuntime
+    ) -> Generator[object, None, None];
+
     def make_model_params(mt_run: MTRuntime) -> dict;
     def log_info(message: str) -> None;
     def format_prompt(params: dict) -> str;
@@ -88,6 +96,11 @@ obj BaseLLM {
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
+    def _get_ctx_window(call_params: dict) -> int;
+    def _resolve_compaction_params(mt_run: MTRuntime) -> dict;
+    def _compact_messages(
+        mt_run: MTRuntime, keep_recent: int, comp_model: str | None
+    ) -> None;
 }
 
 """Mock LLM connector that simulates responses for testing.
@@ -119,6 +132,7 @@ obj ModelPool(BaseLLM) {
     def postinit -> None;
     override def model_call_no_stream(params: dict) -> dict;
     override def model_call_with_stream(params: dict) -> Generator[str, None, None];
+    override def _get_ctx_window(call_params: dict) -> int;
 }
 
 """Primary LLM connector that abstracts LiteLLM functionality

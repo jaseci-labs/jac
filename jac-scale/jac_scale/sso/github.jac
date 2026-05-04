@@ -6,7 +6,6 @@ This module implements the SSOProvider interface for GitHub OAuth authentication
 import from fastapi { Request, Response }
 import from fastapi_sso.sso.github { GithubSSO }
 import from jac_scale.sso.provider { SSOProvider, SSOUserInfo }
-import from jac_scale.enums { Platforms }
 
 """GitHub OAuth SSO Provider.
 
@@ -66,18 +65,11 @@ obj GithubSSOProvider(SSOProvider) {
             return SSOUserInfo(
                 email=user_info.email,
                 external_id=user_info.id,
-                platform=self.get_platform_name(),
-                display_name=user_info?.display_name
+                display_name=user_info?.display_name,
+                first_name=user_info?.first_name,
+                last_name=user_info?.last_name,
+                picture=user_info?.picture
             );
         }
-    }
-
-    """Get the platform identifier.
-
-    Returns:
-        str: 'github'
-    """
-    def get_platform_name -> str {
-        return Platforms.GITHUB.value;
     }
 }

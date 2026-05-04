@@ -44,6 +44,7 @@ obj Message {
         content: str | list[Media];
 
     def to_dict -> dict[str, object];
+    static def from_dict(d: dict) -> Message | LiteLLMMessage | dict;
 }
 
 """Result of a tool call in LLM interactions."""
