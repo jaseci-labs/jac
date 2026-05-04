@@ -56,7 +56,8 @@ walker:pub add_task {
 
 ### 2. Start the Server
 
-> **Note:** `main.jac` is the default entry point. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
+!!! note
+    `main.jac` is the default entry point. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
 
 ```bash
 jac start

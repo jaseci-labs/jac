@@ -82,7 +82,8 @@ walker:pub health {
 
 ### 2. Deploy to Kubernetes
 
-> **Note:** `main.jac` is the default entry point. Commands below omit the filename. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
+!!! note
+    `main.jac` is the default entry point. Commands below omit the filename. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
 
 ```bash
 jac start --scale
