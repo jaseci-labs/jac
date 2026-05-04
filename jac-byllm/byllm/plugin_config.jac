@@ -109,6 +109,38 @@ class JacByllmPluginConfig {
                     "type": "string",
                     "default": "",
                     "description": "Override the default system prompt for LLM interactions. Leave empty to use built-in default."
+                },
+                "compaction": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Auto-compaction of ReAct loop message history when approaching context window limits",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": True,
+                            "description": "Enable automatic message compaction when approaching the context window limit"
+                        },
+                        "threshold_ratio": {
+                            "type": "float",
+                            "default": 0.80,
+                            "description": "Fraction of the context window at which compaction triggers (e.g. 0.80 = 80%)"
+                        },
+                        "keep_recent_iterations": {
+                            "type": "int",
+                            "default": 3,
+                            "description": "Number of most-recent tool-call rounds to preserve verbatim; older rounds are summarised"
+                        },
+                        "ctx_window": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Global context window override in tokens (0 = auto-detect via LiteLLM). Useful for self-hosted or unknown models."
+                        },
+                        "compaction_model": {
+                            "type": "string",
+                            "default": "",
+                            "description": "Model to use for the summarisation call (empty = use the same model as the active ReAct loop)"
+                        }
+                    }
                 }
             }
         };

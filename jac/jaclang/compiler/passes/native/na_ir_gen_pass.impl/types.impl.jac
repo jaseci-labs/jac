@@ -521,8 +521,20 @@ impl NaIRGenPass._to_bool(val: ir.Value) -> ir.Value {
     return val;
 }
 
-"""Coerce a value to the target type if needed."""
+
 impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
+    _was_owned = self._is_owned(val);
+    _result = self._coerce_type_inner(val, target_type);
+    if _was_owned and _result is not val {
+        self._mark_owned(_result);
+    }
+    return _result;
+}
+
+"""Original coerce-type body — emits the actual cast/bitcast/inttoptr IR.
+Called only via _coerce_type so the ownership marker stays attached.
+"""
+impl NaIRGenPass._coerce_type_inner(val: ir.Value, target_type: ir.Type) -> ir.Value {
     if val.type == target_type {
         return val;
     }
@@ -616,9 +628,17 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
                 null_ptr, [ir.Constant(ir.IntType(32), 1)], name="clib.sizeof.gep"
             );
             size = self.builder.ptrtoint(size_gep, ir.IntType(64), name="clib.sizeof");
-            raw_ptr = self.builder.call(self.rc_alloc_fn, [size], name="clib.box.raw");
+            # Read jac_loc stamped by _codegen_tuple_val so attribution is precise.
+            _clib_loc = getattr(val, 'jac_loc', '');
+            raw_ptr = self._rc_call_with_ctx(
+                self.rc_alloc_fn, [size], op="box", loc=_clib_loc, name="clib.box.raw"
+            );
             typed_ptr = self.builder.bitcast(raw_ptr, target_type, name="clib.box.ptr");
             self.builder.store(val, typed_ptr);
+            # RC: fresh alloc is owned (RC=1) — mark so callers skip extra retain.
+            self._mark_owned(typed_ptr);
+            # Tag as "tuple" so RC debug log shows the type instead of "raw".
+            self._emit_set_type_tag(self.builder, raw_ptr, "tuple");
             return typed_ptr;
         }
         # ABI integer → struct pointer (e.g., i32 → %Color* for small C struct returns)
@@ -635,8 +655,8 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
                     size = self.builder.ptrtoint(
                         size_gep, ir.IntType(64), name="clib.sizeof"
                     );
-                    raw_ptr = self.builder.call(
-                        self.rc_alloc_fn, [size], name="clib.box.raw"
+                    raw_ptr = self._rc_call_with_ctx(
+                        self.rc_alloc_fn, [size], op="box", name="clib.box.raw"
                     );
                     int_ptr = self.builder.bitcast(
                         raw_ptr, val.type.as_pointer(), name="clib.abi.cast"
@@ -645,6 +665,10 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
                     typed_ptr = self.builder.bitcast(
                         raw_ptr, target_type, name="clib.box.ptr"
                     );
+                    # RC: fresh alloc is owned (RC=1) — mark so callers skip extra retain.
+                    self._mark_owned(typed_ptr);
+                    # Tag as the struct name so RC debug log shows the type.
+                    self._emit_set_type_tag(self.builder, raw_ptr, sname);
                     return typed_ptr;
                 }
             }
@@ -686,7 +710,10 @@ impl NaIRGenPass._coerce_type(val: ir.Value, target_type: ir.Type) -> ir.Value {
             # Pointer-to-pointer bitcast (e.g., {i64,i64}* → i8*)
             if isinstance(boxed.type, ir.PointerType)
             and isinstance(target_type, ir.PointerType) {
-                return self.builder.bitcast(boxed, target_type, name="tuple.box.cast");
+                _cast = self.builder.bitcast(boxed, target_type, name="tuple.box.cast");
+                # RC: bitcast of owned boxed tuple is still owned.
+                self._mark_owned(_cast);
+                return _cast;
             }
         }
     }
@@ -732,9 +759,19 @@ impl NaIRGenPass._emit_binary_op(
         buf_size = self.builder.add(
             total, ir.Constant(ir.IntType(64), 1), name="buf_size"
         );
-        buf = self.builder.call(self.rc_alloc_fn, [buf_size], name="concat.buf");
+        _concat_loc = getattr(left, 'jac_loc', getattr(right, 'jac_loc', ''));
+        buf = self._rc_call_with_ctx(
+            self.rc_alloc_fn,
+            [buf_size],
+            op="str_concat",
+            loc=_concat_loc,
+            name="concat.buf"
+        );
         self.builder.call(strcpy_fn, [buf, left]);
         self.builder.call(strcat_fn, [buf, right]);
+        # RC: caller owns this freshly-allocated concat result (rc=1 from malloc).
+        # Mark it so the assign handler skips the extra RETAIN (avoiding rc=2 leak).
+        self._mark_owned(buf);
         return buf;
     }
     # String repeat (i8* * i64 or i64 * i8*): allocate n*len buffer, loop-copy
@@ -838,7 +875,9 @@ impl NaIRGenPass._emit_binary_op(
                 lmul_elem = self.builder.call(
                     lmul_helpers["get"], [lmul_list, lmul_ei], name="lmul.elem"
                 );
-                self.builder.call(lmul_helpers["append"], [lmul_new, lmul_elem]);
+                self._rc_call_with_ctx(
+                    lmul_helpers["append"], [lmul_new, lmul_elem], op="list_mul"
+                );
                 lmul_ne = self.builder.add(
                     lmul_ei, ir.Constant(i64, 1), name="lmul.ne"
                 );
@@ -882,7 +921,9 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.cbranch(end1, mid_bb, body1_bb);
                 self.builder.position_at_start(body1_bb);
                 e1 = self.builder.call(helpers["get"], [left, i1], name="lcat.e1");
-                self.builder.call(helpers["append"], [new_list, e1]);
+                self._rc_call_with_ctx(
+                    helpers["append"], [new_list, e1], op="list_cat"
+                );
                 n1 = self.builder.add(i1, ir.Constant(i64, 1), name="lcat.n1");
                 i1.add_incoming(n1, body1_bb);
                 self.builder.branch(loop1_bb);
@@ -901,7 +942,9 @@ impl NaIRGenPass._emit_binary_op(
                 self.builder.cbranch(end2, done_bb, body2_bb);
                 self.builder.position_at_start(body2_bb);
                 e2 = self.builder.call(helpers["get"], [right, i2], name="lcat.e2");
-                self.builder.call(helpers["append"], [new_list, e2]);
+                self._rc_call_with_ctx(
+                    helpers["append"], [new_list, e2], op="list_cat"
+                );
                 n2 = self.builder.add(i2, ir.Constant(i64, 1), name="lcat.n2");
                 i2.add_incoming(n2, body2_bb);
                 self.builder.branch(loop2_bb);

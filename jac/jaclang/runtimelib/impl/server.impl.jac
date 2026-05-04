@@ -327,10 +327,20 @@ impl ExecutionManager._finalize_call_response(
     if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
         return reports;
     }
-    return {
+    # Drain permission-denial diagnostics accumulated during the walker
+    # run *and* the commit that follows it. Surfaces silent cross-user
+    # write rejections (edge writes, field mutations, deletes) on the
+    # wire so callers stop debugging "200 OK but nothing changed".
+    envelope: dict[str, JsonValue] = {
         'result': Serializer.serialize(result, api_mode=True),
         'reports': Serializer.serialize(reports, api_mode=True)
     };
+    ctx = Jac.get_context();
+    if ctx.diagnostics {
+        envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
+        ctx.diagnostics.clear();
+    }
+    return envelope;
 }
 
 """Dispatcher: pick sync/async variant based on function kind.
@@ -1875,32 +1885,29 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     # Rate limit and deduplicate
                     import from jaclang.runtimelib.source_mapping {
-                        SourceMapper,
-                        _error_rate_limiter
+                        _error_rate_limiter,
+                        resolve_client_error_stacks,
+                        format_client_error_log
                     }
+                    import from jaclang.project.config { get_config }
                     if not _error_rate_limiter.should_log(message) {
                         Jac.send_json(self, 200, {'ok': True, 'throttled': True});
                     } else {
-                        stack = data.get('stack', '');
-                        url = data.get('url', '');
-                        source = data.get('source', '');
-                        # Resolve stack trace to .jac files via source maps
-                        if stack and server.base_path {
-                            try {
-                                mapper = SourceMapper.from_bundle(server.base_path);
-                                stack = mapper.resolve_stack_trace(stack);
-                            } except Exception { }
-                        }
-                        log_parts = [f"[Client] {message}"];
-                        if stack {
-                            log_parts.append(f"  Stack: {stack}");
-                        }
-                        if url {
-                            log_parts.append(f"  URL: {url}");
-                        }
-                        if source {
-                            log_parts.append(f"  Source: {source}");
-                        }
+                        cfg = get_config();
+                        verbose = cfg.client_errors.verbose if cfg else False;
+                        (stack, component_stack) = resolve_client_error_stacks(
+                            server.base_path,
+                            data.get('stack', ''),
+                            data.get('componentStack', ''),
+                            verbose=verbose
+                        );
+                        log_parts = format_client_error_log(
+                            message,
+                            stack=stack,
+                            component_stack=component_stack,
+                            url=data.get('url', ''),
+                            source=data.get('source', '')
+                        );
                         import logging;
                         logging.getLogger("jaclang.client_errors").error(
                             '\n'.join(log_parts)

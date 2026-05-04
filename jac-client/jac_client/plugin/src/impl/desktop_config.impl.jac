@@ -47,6 +47,7 @@ impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
             'resizable': True,
             'fullscreen': False
         },
+        'client_only': False,
         'platforms': {'windows': True, 'macos': True, 'linux': True},
         'features': {
             'system_tray': False,
