@@ -10,7 +10,7 @@ the ESTree specification by:
    - Control flow statements (if/else, loops, try/catch)
    - Data structures (arrays, objects)
    - Special Jac features (walkers, abilities, archetypes) converted to JS classes
-   - Data spatial operations converted to appropriate JS patterns
+   - Object spatial operations converted to appropriate JS patterns
 
 3. Managing imports and module dependencies
 4. Preserving source location information

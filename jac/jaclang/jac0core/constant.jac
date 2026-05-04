@@ -35,34 +35,38 @@ enum SymbolType {
 }
 
 """LSP Token types for Jac."""
-class JacSemTokenType(IntEnum) {
+enum JacSemTokenType : int {
+    NAMESPACE = 0,
+    TYPE = 1,
+    CLASS = 2,
+    ENUM = 3,
+    INTERFACE = 4,
+    STRUCT = 5,
+    TYPE_PARAMETER = 6,
+    PARAMETER = 7,
+    VARIABLE = 8,
+    PROPERTY = 9,
+    ENUM_MEMBER = 10,
+    EVENT = 11,
+    FUNCTION = 12,
+    METHOD = 13,
+    MACRO = 14,
+    KEYWORD = 15,
+    MODIFIER = 16,
+    COMMENT = 17,
+    STRING = 18,
+    NUMBER = 19,
+    REGEXP = 20,
+    OPERATOR = 21,
     with entry {
-        NAMESPACE = 0;
-        TYPE = 1;
-        CLASS = 2;
-        ENUM = 3;
-        INTERFACE = 4;
-        STRUCT = 5;
-        TYPE_PARAMETER = 6;
-        PARAMETER = 7;
-        VARIABLE = 8;
-        PROPERTY = 9;
-        ENUM_MEMBER = 10;
-        EVENT = 11;
-        FUNCTION = 12;
-        METHOD = 13;
-        MACRO = 14;
-        KEYWORD = 15;
-        MODIFIER = 16;
-        COMMENT = 17;
-        STRING = 18;
-        NUMBER = 19;
-        REGEXP = 20;
-        OPERATOR = 21;
+        static def as_str_list -> list[str] {
+            return [
+                i.name.lower()
+                for i in JacSemTokenType
+                if i.name
+            ];
+        }
     }
-
-    """Return the string list of token types."""
-    static def as_str_list -> list[str];
 }
 
 """LSP Token modifiers for Jac."""

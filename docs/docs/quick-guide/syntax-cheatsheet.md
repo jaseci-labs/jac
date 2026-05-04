@@ -397,9 +397,16 @@ enum Color {
 # Auto-valued enum members
 enum Status { PENDING, ACTIVE, DONE }
 
+# Typed-base shorthand: members ARE instances of T
+# `: int` -> IntEnum, `: str` -> StrEnum, `: T` -> mixin (T, Enum)
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
 with entry {
-    print(Color.RED.value);      # "red"
-    print(Status.ACTIVE.value);  # 2
+    print(Color.RED.value);             # "red"
+    print(Status.ACTIVE.value);         # 2
+    print(HttpStatus.OK == 200);        # True (no .value needed)
+    print(isinstance(Tag.OPEN, str));   # True
 }
 
 

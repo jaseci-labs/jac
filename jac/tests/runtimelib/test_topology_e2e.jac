@@ -6,10 +6,6 @@ correct results. Uses real Jac edge/filter syntax so regressions in the
 compiler pipeline (exit_edge_ref_trailer, exit_filter_compr) are caught.
 """
 
-import os;
-import shutil;
-import from tempfile { mkdtemp }
-import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.project.config { JacConfig, set_config }
@@ -32,18 +28,13 @@ edge Weighted {
 }
 
 test "index type-filtered query returns correct results" {
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
 
         for i in range(10) {
             r +>: EdgeX :+> TypeA(val=i);
@@ -51,7 +42,6 @@ test "index type-filtered query returns correct results" {
         for i in range(90) {
             r +>: EdgeX :+> TypeB(val=i);
         }
-        Jac.save(r);
 
         # Type-filtered: only TypeA via EdgeX
         result = [r->:EdgeX:->[?:TypeA]];
@@ -61,35 +51,26 @@ test "index type-filtered query returns correct results" {
         # Unfiltered: all 100 nodes
         result_all = [r->:EdgeX:->];
         assert len(result_all) == 100 , f"Expected 100 total, got {len(result_all)}";
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }
 
 test "index results match non-indexed results in same context" {
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
         for i in range(20) {
             r +>: EdgeX :+> TypeA(val=i);
         }
         for i in range(80) {
             r +>: EdgeX :+> TypeB(val=i);
         }
-        Jac.save(r);
 
         # With index (default): type-filtered
         on_result = sorted([n.val for n in [r->:EdgeX:->[?:TypeA]]]);
@@ -101,65 +82,47 @@ test "index results match non-indexed results in same context" {
 
         assert off_result == on_result , f"Results differ: off={off_result} on={on_result}";
         assert len(off_result) == 20;
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }
 
 test "index returns empty for non-matching edge type" {
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
         for i in range(10) {
             r +>: EdgeX :+> TypeA(val=i);
         }
-        Jac.save(r);
 
         # EdgeY not in graph — should be empty
         result = [r->:EdgeY:->[?:TypeA]];
         assert len(result) == 0 , f"Expected 0, got {len(result)}";
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }
 
 test "post-hoc filter fused with edge-op produces same results" {
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
         for i in range(10) {
             r +>: EdgeX :+> TypeA(val=i);
         }
         for i in range(90) {
             r +>: EdgeX :+> TypeB(val=i);
         }
-        Jac.save(r);
 
         # Inline filter (already optimized)
         inline = sorted([n.val for n in [r->:EdgeX:->[?:TypeA]]]);
@@ -169,28 +132,20 @@ test "post-hoc filter fused with edge-op produces same results" {
 
         assert inline == posthoc , f"Inline vs post-hoc differ: {inline} vs {posthoc}";
         assert len(inline) == 10;
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }
 
 test "nested post-hoc filter as origin of outer edge-op" {
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
         # root -> TypeA via EdgeX, TypeA -> TypeB via EdgeY
         for i in range(5) {
             a = TypeA(val=i);
@@ -201,7 +156,6 @@ test "nested post-hoc filter as origin of outer edge-op" {
         for i in range(20) {
             r +>: EdgeX :+> TypeB(val=100 + i);
         }
-        Jac.save(r);
 
         # Inline multi-hop: get TypeB behind TypeA
         inline = sorted([n.val for n in [r->:EdgeX:->[?:TypeA]->:EdgeY:->[?:TypeB]]]);
@@ -212,40 +166,28 @@ test "nested post-hoc filter as origin of outer edge-op" {
 
         assert inline == nested , f"Inline vs nested differ: {inline} vs {nested}";
         assert inline == [0, 10, 20, 30, 40];
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }
 
 test "index built on root with null root field" {
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
         r +>: EdgeX :+> TypeA(val=42);
-        Jac.save(r);
 
         idx = r.__jac__.get_topology_index();
         assert len(idx) > 0 , "Index should have edges";
         assert len(idx.node_table) == 2 , "Index should have root + TypeA";
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }
 
@@ -261,24 +203,18 @@ test "typed-edge filter compares against edge attributes apply at runtime" {
     # tutorial Part 2 ("Advanced: Custom Edges"). The parser fix in
     # PR #5799 made the syntax legal; this test pins the runtime
     # semantics so the fast path can't silently regress them.
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
         # Three nodes connected via Weighted edges with weights 1, 5, 10.
         # Predicate `weight>=5` should keep weights 5 and 10 (vals 20, 30).
         r +>: Weighted(weight=1) :+> TypeA(val=10);
         r +>: Weighted(weight=5) :+> TypeA(val=20);
         r +>: Weighted(weight=10) :+> TypeA(val=30);
-        Jac.save(r);
 
         heavy = sorted([n.val for n in [r->:Weighted:weight>=5:->]]);
         assert heavy == [20, 30] , (
@@ -291,12 +227,9 @@ test "typed-edge filter compares against edge attributes apply at runtime" {
         assert all_w == [10, 20, 30] , (
             f"baseline (no predicate): expected [10, 20, 30], got {all_w}"
         );
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }
 
@@ -305,18 +238,13 @@ test "non-final node predicate in multi-hop chain applies at runtime" {
     # NODE (not an edge), the fast path's post-filter only runs on the
     # FINAL destination. Predicates on intermediate hops were silently
     # dropped for the same reason -- only type names were forwarded.
-    tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    ctx = ExecutionContext();
+    JacRuntime.set_context(ctx);
     try {
-        cfg = JacConfig();
-        cfg.run.topology_index = True;
-        set_config(cfg);
-        JacRuntime.set_base_path(tmpdir);
-        ctx = ExecutionContext();
-        JacRuntime.set_context(ctx);
-
         r = root;
-        Jac.save(r);
         # Build r --EdgeX--> TypeA(val=v) --EdgeY--> TypeB(val=v*10)
         # for v in {1, 5, 10}. A two-hop query
         # `[r->:EdgeX:->[?:TypeA, val>=5]->:EdgeY:->[?:TypeB]]` should
@@ -325,7 +253,6 @@ test "non-final node predicate in multi-hop chain applies at runtime" {
             mid = r +>: EdgeX :+> TypeA(val=v);
             mid[0] +>: EdgeY :+> TypeB(val=v * 10);
         }
-        Jac.save(r);
 
         leaves = sorted(
             [n.val for n in [r->:EdgeX:->[?:TypeA, val>=5]->:EdgeY:->[?:TypeB]]]
@@ -334,11 +261,8 @@ test "non-final node predicate in multi-hop chain applies at runtime" {
             f"intermediate-hop predicate `val>=5` must filter; "
             f"got {leaves}, expected [50, 100]"
         );
-
-        ctx.close();
     } finally {
-        JacRuntime.set_base_path(orig_base);
+        ctx.close();
         set_config(JacConfig());
-        shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }

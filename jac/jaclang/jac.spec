@@ -463,7 +463,7 @@ param_var ::=
 
 enum ::=
     ("@" atomic_chain)* "enum" access_tag (NAME | KWESC_NAME)
-    ("(" (atomic_chain ("," atomic_chain)*)? ")")?
+    (":" atomic_chain | ("(" (atomic_chain ("," atomic_chain)*)? ")")?)
     ("{" (enum_member ","? | PYNLINE | module_code)* "}" | ";")
 
 enum_member ::= (NAME | KWESC_NAME) ("=" expression)?
