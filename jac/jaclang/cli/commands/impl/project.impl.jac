@@ -1009,7 +1009,6 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
 impl publish(output: str = "dist") -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
-    import from jaclang.project.validator { validate_package }
     import from jaclang.publish.builder { WheelBuilder }
     import from jaclang.publish.wheel_meta { wheel_filename }
 
@@ -1028,24 +1027,12 @@ impl publish(output: str = "dist") -> int {
         return 1;
     }
 
-    # ── Validate ─────────────────────────────────────────────────────────────
     console.print(
         f"\n📦 Publishing [cyan]{config.package.name}[/cyan] "
         f"v{config.package.version}",
         style="bold"
     );
-    result = validate_package(config, project_root=config.project_root);
-    if result.errors {
-        for err in result.errors {
-            console.error(err);
-        }
-        return 1;
-    }
-    for w in result.warnings {
-        console.print(f"  ⚠  {w}", style="warning");
-    }
 
-    # ── Build — WheelBuilder.build() runs precompile + collect + zip ─────────
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
     console.print("\n  Pre-compiling .jac → .jir + building wheel...", style="muted");
