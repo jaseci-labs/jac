@@ -613,5 +613,3 @@ test "bug_atomtrailer_base_narrowing" {
         "`if isinstance(path[0], StringVal)` should narrow path[0].lit_value access. "
     );
 }
-
-
