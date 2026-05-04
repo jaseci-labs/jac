@@ -191,8 +191,11 @@ def _build_css_link(bundler: ViteBundler) -> str {
     if not css_file {
         return '';
     }
-    css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
-    return f'<link rel="stylesheet" href="{css_file.name}?hash={css_hash}"/>';
+    if css_file.exists() {
+        css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
+        return f'<link rel="stylesheet" href="/styles.css?hash={css_hash}"/>';
+    }
+    return '';
 }
 
 """Get app meta data from project config."""
@@ -250,7 +253,7 @@ def _generate_index_html(
   <body>
     <div id="root"></div>
     <script id="__jac_init__" type="application/json">{init_json}</script>
-    <script type="module" src="{bundle_filename}"></script>
+    <script type="module" src="/{bundle_filename}"></script>
   </body>
 </html>''';
     index_html = dist_dir / 'index.html';
