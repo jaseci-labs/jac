@@ -519,6 +519,17 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
                 return static_resp;
             }
         }
+    } else {
+        # P0.23: GET / is the SPA root. Always serve dist/index.html
+        # when it exists, regardless of Accept header (curl, monitoring
+        # probes, server-side fetches, and crawlers all need to land
+        # somewhere other than 404). Browsers reach the same response
+        # via the text/html Accept fallback below; this branch makes
+        # the behavior consistent across clients.
+        index_resp = self.serve_spa_fallback();
+        if index_resp {
+            return index_resp;
+        }
     }
 
     accept: str = request.headers.get("accept", "");

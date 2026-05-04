@@ -861,6 +861,62 @@ test "gateway returns 404 for missing static and no spa" {
     shutil.rmtree(tmp);
 }
 
+
+test "P0.23: gateway serves index.html for GET / regardless of Accept" {
+    # The previous behavior 404'd `GET /` for any client that didn't
+    # send Accept: text/html (curl, monitoring probes, server-side
+    # fetches, crawlers). Browsers worked because they include
+    # text/html in Accept by default. The SPA root has to be reachable
+    # for everything - it's the entry point.
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "index.html").write_text("<html><body>SPA App</body></html>");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+
+    # No Accept header (matches `curl http://gateway/` and most non-browser
+    # clients).
+    resp = client.get("/", headers={"Accept": ""});
+    assert resp.status_code == 200 , (
+        f"GET / should serve index.html even without text/html Accept, "
+        f"got {resp.status_code}"
+    );
+    assert "SPA App" in resp.text;
+
+    # Browser-style request still works (existing behavior).
+    resp_browser = client.get("/", headers={"Accept": "text/html"});
+    assert resp_browser.status_code == 200;
+    assert "SPA App" in resp_browser.text;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+
+test "P0.23: gateway returns 404 for GET / when no index.html exists" {
+    # Companion test - the new branch must not 200-on-empty for projects
+    # without a frontend (LLM-only / API-only apps). Those should still
+    # 404 the root request so callers can detect the absence.
+    tmp = tempfile.mkdtemp();
+    # NOTE: deliberately no index.html in tmp.
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/", headers={"Accept": ""});
+    assert resp.status_code == 404;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
 # =============================================================================
 # Admin UI serving
 # =============================================================================
