@@ -2,6 +2,7 @@
 
 import io;
 import fnmatch;
+import json;
 import zipfile;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
@@ -54,18 +55,16 @@ impl WheelBuilder.build -> bytes {
             package_patterns = [self.config.package.name.replace("-", "_")];
         }
 
+        candidates = [
+            c
+            for c in sorted(root.iterdir())
+            if c.is_dir() and c.name not in EXCLUDED_DIRS
+        ];
         for pkg_glob in package_patterns {
-            for candidate in sorted(root.iterdir()) {
-                if not candidate.is_dir() {
-                    continue;
+            for candidate in candidates {
+                if fnmatch.fnmatch(candidate.name, pkg_glob) {
+                    _do_precompile(candidate);
                 }
-                if candidate.name in EXCLUDED_DIRS {
-                    continue;
-                }
-                if not fnmatch.fnmatch(candidate.name, pkg_glob) {
-                    continue;
-                }
-                _do_precompile(candidate);
             }
         }
     }
@@ -79,8 +78,7 @@ impl WheelBuilder.build -> bytes {
     ).encode(
         "utf-8"
     );
-    ep_str = generate_entry_points(self.config);
-    ep_bytes: bytes | None = ep_str.encode("utf-8") if ep_str else None;
+    ep_bytes: bytes | None = generate_entry_points(self.config).encode("utf-8") or None;
     pkg_name = self.config.package.name.replace("-", "_");
     top_level_bytes = (pkg_name + "\n").encode("utf-8");
 
@@ -141,7 +139,6 @@ impl WheelBuilder.build_to(output_dir: Path) -> Path {
 }
 
 impl WheelBuilder.install_editable(src_dir: Path, site_pkgs: Path) -> Path {
-    import json;
     if self.config.package is None {
         raise ValueError(
             "Cannot install editable: [package] section is missing in jac.toml."

@@ -16,7 +16,8 @@ def _find_jac_files(pkg_dir: Path) -> list[Path] {
         if not jac_path.is_file() {
             continue;
         }
-        rel = str(jac_path.relative_to(pkg_dir)).replace("\\", "/");
+        parts = jac_path.relative_to(pkg_dir).parts;
+        rel = "/".join(parts);
         if (
             ".test." in rel
             or ".impl." in jac_path.name
@@ -24,8 +25,8 @@ def _find_jac_files(pkg_dir: Path) -> list[Path] {
             or "/tests/" in rel
             or rel.startswith("test/")
             or rel.startswith("tests/")
-            or rel.startswith(".")
-            or any(part in SKIP_FRAGMENTS for part in rel.split("/"))
+            or any(part.startswith(".") for part in parts)
+            or any(part in SKIP_FRAGMENTS for part in parts)
         ) {
             continue;
         }
@@ -54,9 +55,9 @@ def _compile_one(
     impl_files = discover_annex_files(str(jac_path));
     if impl_files {
         entry["impl_hashes"] = {
-            str(Path(f).relative_to(pkg_dir)).replace("\\", "/"): hashlib.sha256(
-                Path(f).read_bytes()
-            ).hexdigest() for f in impl_files
+            str(p.relative_to(pkg_dir)).replace("\\", "/"): hashlib.sha256(
+                p.read_bytes()
+            ).hexdigest() for f in impl_files for p in [Path(f)]
         };
     }
     return entry;
@@ -81,12 +82,14 @@ impl precompile_package(pkg_dir: Path) -> int {
         rel_key = str(jac_path.relative_to(pkg_dir)).replace("\\", "/");
         try {
             entry = _compile_one(compiler, program, jac_path, pkg_dir, out_dir);
-            if entry is not None {
+            if entry is None {
+                console.warning(f"  ⚠ skipped (no bytecode): {rel_key}");
+            } else {
                 entries[rel_key] = entry;
                 compiled += 1;
             }
-        } except Exception as _e {
-            console.warning(f"  ✗ precompile failed: {rel_key}: {_e}");
+        } except Exception as e {
+            console.warning(f"  ✗ precompile failed: {rel_key}: {e}");
             failed += 1;
         }
     }

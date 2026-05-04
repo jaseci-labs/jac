@@ -3,9 +3,8 @@
 import from jaclang.project.config { JacConfig }
 import from jaclang.publish.metadata { normalize_package_name }
 
-import jaclang as _jac_mod;
-glob _JAC_VERSION: str = getattr(_jac_mod, "__version__", "");
-
+import jaclang;
+glob _JAC_VERSION: str = getattr(jaclang, "__version__", "");
 
 def _pkg_norm_name(config: JacConfig) -> str {
     return normalize_package_name(config.package.name).replace("-", "_");
@@ -20,14 +19,12 @@ impl generate_wheel_file(
 ) -> str {
     ver = generator_version or _JAC_VERSION;
     generator_str = f"jac ({ver})" if ver else "jac";
-    purelib_str = "true" if pure_python else "false";
-    tag_str = f"{python_tag}-{abi_tag}-{platform_tag}";
 
     lines = [
         "Wheel-Version: 1.0",
         f"Generator: {generator_str}",
-        f"Root-Is-Purelib: {purelib_str}",
-        f"Tag: {tag_str}",
+        f"Root-Is-Purelib: {str(pure_python).lower()}",
+        f"Tag: {python_tag}-{abi_tag}-{platform_tag}",
         "",
 
     ];
@@ -54,10 +51,7 @@ impl generate_entry_points(config: JacConfig) -> str {
         sections.append("\n".join(entry_lines));
     }
 
-    if sections {
-        return "\n\n".join(sections) + "\n";
-    }
-    return "";
+    return ("\n\n".join(sections) + "\n") if sections else "";
 }
 
 impl wheel_filename(

@@ -3,9 +3,9 @@
 import from pathlib { Path }
 
 # Sentinel embedded in co_filename so installed wheels are path-portable.
-# NOTE: scripts/precompile_bytecode.jac defines its own copy of SENTINEL and
-# the excluded-directory list. If you change either constant here, update that
-# script too to prevent the two implementations from drifting.
+# NOTE: scripts/precompile_bytecode.jac duplicates SENTINEL and the excluded-directory
+# list — scripts/ is not an installed package so importing from here fails at runtime.
+# If you change either constant, update that script too.
 glob SENTINEL: str = "__PKG_ROOT__",
      SKIP_FRAGMENTS: list[str] = [
          "tests",

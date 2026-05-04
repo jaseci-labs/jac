@@ -4,9 +4,6 @@ import fnmatch;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
 
-# ===============================================================================
-# Internal helpers
-# ===============================================================================
 def _is_excluded(file_path: Path, pkg_root: Path) -> bool {
     # Check every path component for excluded directory names
     try {
@@ -70,11 +67,8 @@ def _collect_from_dir(
     return result;
 }
 
-# ===============================================================================
-# read_source_file
-# ===============================================================================
 impl read_source_file(sf: SourceFile) -> bytes {
-    if sf.content {
+    if sf.content is not None {
         return sf.content;
     }
     if sf.source_path is not None {
@@ -86,9 +80,6 @@ impl read_source_file(sf: SourceFile) -> bytes {
     );
 }
 
-# ===============================================================================
-# collect_source_files
-# ===============================================================================
 impl collect_source_files(
     config: JacConfig, project_root: Path | None = None,
 ) -> list[SourceFile] {
@@ -129,15 +120,14 @@ impl collect_source_files(
         package_patterns = [config.package.name.replace("-", "_")];
     }
 
+    candidates = sorted(
+        c
+        for c in root.iterdir()
+        if c.is_dir() and c.name not in EXCLUDED_DIRS
+    );
+
     for pkg_glob in package_patterns {
-        for candidate in sorted(root.iterdir()) {
-            if not candidate.is_dir() {
-                continue;
-            }
-            # Skip always-excluded top-level directories
-            if candidate.name in EXCLUDED_DIRS {
-                continue;
-            }
+        for candidate in candidates {
             if not fnmatch.fnmatch(candidate.name, pkg_glob) {
                 continue;
             }

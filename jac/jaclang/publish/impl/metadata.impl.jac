@@ -1,11 +1,23 @@
 """Implementation of the METADATA file generator."""
 
-import re;
 import from pathlib { Path }
-import from jaclang.project.config { JacConfig, PackageConfig, PersonConfig }
+import from jaclang.project.config { JacConfig, PersonConfig }
 
 impl normalize_package_name(name: str) -> str {
-    return re.sub(r"[-_.]+", "-", name).lower();
+    result: list[str] = [];
+    prev_sep: bool = False;
+    for ch in name {
+        if ch in "-_." {
+            if not prev_sep {
+                result.append("-");
+            }
+            prev_sep = True;
+        } else {
+            result.append(ch);
+            prev_sep = False;
+        }
+    }
+    return "".join(result).lower();
 }
 
 def build_person_header(persons: list[PersonConfig]) -> str {
@@ -34,7 +46,7 @@ impl normalize_constraint(raw: str) -> str {
         ver_str = raw[1:];
         parts = ver_str.split(".");
         try {
-            major = int(parts[0]) if parts else 0;
+            major = int(parts[0]);
             minor = int(parts[1]) if len(parts) > 1 else 0;
             patch = int(parts[2]) if len(parts) > 2 else 0;
         } except ValueError {
@@ -55,7 +67,7 @@ impl normalize_constraint(raw: str) -> str {
         ver_str = raw[1:];
         parts = ver_str.split(".");
         try {
-            major = int(parts[0]) if parts else 0;
+            major = int(parts[0]);
             minor = int(parts[1]) if len(parts) > 1 else 0;
         } except ValueError {
             return raw;
@@ -64,11 +76,11 @@ impl normalize_constraint(raw: str) -> str {
         return f">={padded},<{major}.{minor + 1}.0";
     }
 
-    if raw and raw[0] in (">", "<", "!", "~", "=") {
+    if raw[0] in (">", "<", "!", "~", "=") {
         return raw;
     }
 
-    if re.match(r"^\d", raw) {
+    if raw[0].isdigit() {
         return f"=={raw}";
     }
 
@@ -87,8 +99,7 @@ impl build_requires_dist(name: str, raw_ver: str, extra: str | None = None) -> s
     return dep;
 }
 
-def readme_content_type(readme_filename: str) -> str {
-    ext = Path(readme_filename).suffix.lower();
+def readme_content_type(ext: str) -> str {
     if ext == ".md" {
         return "text/markdown";
     } elif ext == ".rst" {
@@ -120,23 +131,10 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
     h("Version", pkg.version);
     h("Summary", pkg.description);
 
-    author_val = build_person_header(pkg.authors);
-    if author_val {
-        h("Author-email", author_val);
-    }
-
-    maintainer_val = build_person_header(pkg.maintainers);
-    if maintainer_val {
-        h("Maintainer-email", maintainer_val);
-    }
-
-    if pkg.license {
-        h("License-Expression", pkg.license);
-    }
-
-    if pkg.keywords {
-        h("Keywords", ",".join(pkg.keywords));
-    }
+    h("Author-email", build_person_header(pkg.authors));
+    h("Maintainer-email", build_person_header(pkg.maintainers));
+    h("License-Expression", pkg.license);
+    h("Keywords", ",".join(pkg.keywords));
 
     h("Requires-Python", pkg.requires_python);
 
@@ -148,27 +146,37 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
         h("Requires-Dist", build_requires_dist(dep_name, raw_ver));
     }
 
-    for group in config.optional_dependencies {
-        h("Provides-Extra", group);
-    }
     for (group, deps) in config.optional_dependencies.items() {
+        h("Provides-Extra", group);
         for (dep_name, raw_ver) in deps.items() {
             h("Requires-Dist", build_requires_dist(dep_name, raw_ver, extra=group));
         }
     }
 
-    readme_content: str | None = None;
+    if config.dev_dependencies {
+        h("Provides-Extra", "dev");
+        for (dep_name, raw_ver) in config.dev_dependencies.items() {
+            h("Requires-Dist", build_requires_dist(dep_name, raw_ver, extra="dev"));
+        }
+    }
+
     if pkg.readme and root {
         readme_path = root / pkg.readme;
         if readme_path.exists() {
-            h("Description-Content-Type", readme_content_type(pkg.readme));
-            readme_content = readme_path.read_text(encoding="utf-8");
+            h(
+                "Description-Content-Type",
+                readme_content_type(readme_path.suffix.lower())
+            );
         }
     }
 
     lines.append("");
-    if readme_content {
-        lines.append(readme_content);
+
+    if pkg.readme and root {
+        readme_path = root / pkg.readme;
+        if readme_path.exists() {
+            lines.append(readme_path.read_text(encoding="utf-8"));
+        }
     }
 
     return "\n".join(lines);
