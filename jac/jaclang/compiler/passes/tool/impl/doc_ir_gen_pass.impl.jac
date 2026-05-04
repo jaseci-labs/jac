@@ -1313,7 +1313,7 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     # not `}` (e.g. if/while/try-except blocks already close with `}`, no extra
     # space needed). Walk last-kid chain iteratively since nodes like TryStmt have
     # a non-Token last kid (ExceptClause) that itself ends with RBRACE.
-    _sbrace = False;
+    _sbrace = len(body_stmts) == 0;
     if len(body_stmts) == 1 and body_stmts[0].kid {
         _cur = body_stmts[0];
         while _cur.kid {
@@ -1360,11 +1360,7 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             continue;
         }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            # Add space before `}` only when body ends with `;` not `}`.
-            # Trim any trailing space first (e.g. from exit_return_stmt's trailing
-            # space after `;`) to avoid double-space before `}`.
             if not single_body_ends_with_brace {
-                self.trim_trailing_space(parts);
                 parts.append(self.space());
             }
             parts.append(i.gen.doc_ir);
@@ -1898,6 +1894,7 @@ impl DocIRGenPass.exit_return_stmt(nd: uni.ReturnStmt) -> None {
         }
         parts.append(self.space());
     }
+    parts.pop();
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
@@ -2005,9 +2002,11 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
                 parts.append(i.gen.doc_ir);
             } elif (isinstance(nd.body, Sequence) and self.is_within(i, nd.body)) {
                 if not body_placed {
-                    body_ir_parts: list[doc.DocType] = [self.line(), i.gen.doc_ir];
-                    self.trim_trailing_space(body_ir_parts);
-                    parts.append(self.indent(self.concat(body_ir_parts), ast_node=nd));
+                    parts.append(
+                        self.indent(
+                            self.concat([self.line(), i.gen.doc_ir]), ast_node=nd
+                        )
+                    );
                     body_placed = True;
                 }
             } else {
@@ -2543,39 +2542,6 @@ impl DocIRGenPass.trim_trailing_line(parts: list[doc.DocType]) -> None {
                     continue;
                 }
             } elif isinstance(contents, doc.Line) {
-                parts.pop();
-                continue;
-            }
-        }
-        break;
-    }
-}
-
-"""Recursively trim trailing Text(" ") nodes from parts."""
-impl DocIRGenPass.trim_trailing_space(parts: list[doc.DocType]) -> None {
-    if not parts {
-        return;
-    }
-    while parts {
-        last = parts[-1];
-        if isinstance(last, doc.Text) and last.text == " " {
-            parts.pop();
-            continue;
-        } elif isinstance(last, doc.Concat) {
-            self.trim_trailing_space(last.parts);
-            if not last.parts {
-                parts.pop();
-                continue;
-            }
-        } elif isinstance(last, doc.Group) {
-            contents = last.contents;
-            if isinstance(contents, doc.Concat) {
-                self.trim_trailing_space(contents.parts);
-                if not contents.parts {
-                    parts.pop();
-                    continue;
-                }
-            } elif isinstance(contents, doc.Text) and contents.text == " " {
                 parts.pop();
                 continue;
             }

@@ -362,9 +362,7 @@ impl usePwaInstall -> dict {
                 setShowBanner(False);
             };
             window.addEventListener("jac:pwa:installed", handler);
-            return lambda { window.removeEventListener(
-                "jac:pwa:installed", handler
-            ); };
+            return lambda { window.removeEventListener("jac:pwa:installed", handler); };
         },
         []
     );
