@@ -243,7 +243,7 @@ test "WheelBuilder.build produces a valid whl with required dist-info files" {
         root = Path(tmpdir);
         scaffold_pkg(root);
         cfg = pkg_config_with_include(root);
-        data = WheelBuilder(config=cfg, project_root=root, precompile=False).build();
+        data = WheelBuilder(config=cfg, project_root=root).build();
 
         with zipfile.ZipFile(io.BytesIO(data)) as zf {
             names = zf.namelist();
@@ -265,7 +265,7 @@ test "WheelBuilder.build is reproducible" {
         root = Path(tmpdir);
         scaffold_pkg(root);
         cfg = pkg_config_with_include(root);
-        builder = WheelBuilder(config=cfg, project_root=root, precompile=False);
+        builder = WheelBuilder(config=cfg, project_root=root);
         assert builder.build() == builder.build();
     } finally {
         shutil.rmtree(tmpdir, ignore_errors=True);
@@ -278,9 +278,7 @@ test "WheelBuilder.build_to writes file with correct name" {
         root = Path(tmpdir);
         scaffold_pkg(root, "testpkg");
         cfg = pkg_config_with_include(root, "testpkg", "2.0.0");
-        result = WheelBuilder(config=cfg, project_root=root, precompile=False).build_to(
-            root / "dist"
-        );
+        result = WheelBuilder(config=cfg, project_root=root).build_to(root / "dist");
         assert result.exists();
         assert result.name == wheel_filename(cfg);
     } finally {
@@ -297,11 +295,7 @@ test "WheelBuilder.install_editable writes pth and dist-info" {
         site = root / "site-packages";
         site.mkdir();
         cfg = pkg_config_with_include(root);
-        pth = WheelBuilder(
-            config=cfg, project_root=root, precompile=False
-        ).install_editable(
-            src, site
-        );
+        pth = WheelBuilder(config=cfg, project_root=root).install_editable(src, site);
         assert pth.exists() and pth.suffix == ".pth";
         assert str(src) in pth.read_text();
         di_dir = site / dist_info_dirname(cfg);
@@ -318,9 +312,7 @@ test "WheelBuilder.install_editable writes pth and dist-info" {
 test "WheelBuilder raises without package section or project root" {
     raised1 = False;
     try {
-        WheelBuilder(
-            config=JacConfig(), project_root=Path("/tmp"), precompile=False
-        ).build();
+        WheelBuilder(config=JacConfig(), project_root=Path("/tmp")).build();
     } except ValueError {
         raised1 = True;
     }
@@ -329,7 +321,7 @@ test "WheelBuilder raises without package section or project root" {
     cfg = JacConfig.from_toml_str("[package]\nname = \"p\"\nversion = \"1.0.0\"\n");
     raised2 = False;
     try {
-        WheelBuilder(config=cfg, project_root=None, precompile=False).build();
+        WheelBuilder(config=cfg, project_root=None).build();
     } except ValueError {
         raised2 = True;
     }

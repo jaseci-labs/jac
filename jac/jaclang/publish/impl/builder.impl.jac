@@ -1,12 +1,10 @@
 """Implementation of the WheelBuilder."""
 
 import io;
-import fnmatch;
 import json;
 import zipfile;
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }
-import from jaclang.publish.precompile { precompile_package as _do_precompile }
 import from jaclang.publish.metadata { generate_metadata }
 import from jaclang.publish.wheel_meta {
     generate_wheel_file,
@@ -19,11 +17,7 @@ import from jaclang.publish.record {
     generate_record,
     RecordEntry
 }
-import from jaclang.publish.sources {
-    collect_source_files,
-    read_source_file,
-    EXCLUDED_DIRS
-}
+import from jaclang.publish.sources { collect_source_files, read_source_file }
 
 impl WheelBuilder.postinit -> None {
     if self.project_root is None {
@@ -44,30 +38,6 @@ impl WheelBuilder.build -> bytes {
     }
 
     dist_info = dist_info_dirname(self.config);
-
-    if self.precompile {
-        pkg_include = self.config.package.include;
-        package_patterns = pkg_include.packages;
-
-        # When no explicit packages list is given, fall back to a directory
-        # whose name matches the package name (normalized: hyphens → underscores).
-        if not package_patterns and self.config.package.name {
-            package_patterns = [self.config.package.name.replace("-", "_")];
-        }
-
-        candidates = [
-            c
-            for c in sorted(root.iterdir())
-            if c.is_dir() and c.name not in EXCLUDED_DIRS
-        ];
-        for pkg_glob in package_patterns {
-            for candidate in candidates {
-                if fnmatch.fnmatch(candidate.name, pkg_glob) {
-                    _do_precompile(candidate);
-                }
-            }
-        }
-    }
 
     metadata_bytes = generate_metadata(self.config, project_root=root).encode("utf-8");
     wheel_bytes = generate_wheel_file(

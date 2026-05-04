@@ -14,8 +14,7 @@ obj WheelBuilder {
         pure_python: bool = True,
         python_tag: str = "py3",
         abi_tag: str = "none",
-        platform_tag: str = "any",
-        precompile: bool = True;
+        platform_tag: str = "any";
 
     def postinit -> None;
     """Build the wheel in memory and return its raw bytes; raises ValueError when config.package is None."""
