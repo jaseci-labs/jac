@@ -32,6 +32,7 @@ import from jaclang.jac0core.diagnostics {
     E0023,
     E0025,
     E0026,
+    E0029,
     E0030,
     E0031,
     E0032,
@@ -461,6 +462,8 @@ obj Parser {
     def _recover_js_arrow_fault(left: Expr) -> Expr;
     def _recover_missing_connect_rhs -> bool;
     def _recover_misplaced_disconnect -> None;
+    def _check_js_ternary_fault -> bool;
+    def _recover_js_ternary_fault(left: Expr, q_tok: Token) -> Expr;
     def parse_concurrent_expr -> Expr;
     def parse_walrus_assign -> Expr;
     def parse_by_expr -> Expr;

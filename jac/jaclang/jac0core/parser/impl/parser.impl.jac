@@ -145,6 +145,7 @@ import from jaclang.jac0core.diagnostics {
     E0022,
     E0025,
     E0026,
+    E0029,
     E0030,
     E0032,
     E0034,
@@ -820,6 +821,10 @@ impl Parser.parse_expression -> Expr {
     if self._check_js_arrow_fault() {
         expr = self._recover_js_arrow_fault(expr);
     }
+    while self._check_js_ternary_fault() {
+        q_tok = self.advance();
+        expr = self._recover_js_ternary_fault(expr, q_tok);
+    }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
         condition = self.parse_expression();
@@ -875,6 +880,69 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
         TokenKind.EOF
     ) {
         self.parse_expression();
+    }
+    return left;
+}
+
+# Detect JavaScript ternary operator shape ('? :') in expression position.
+# Returns True only when '?' is followed by something that cannot be a valid
+# null-safe member/index access target, so legitimate ?. and ?[ are unaffected.
+impl Parser._check_js_ternary_fault -> bool {
+    if not self.check(TokenKind.NULL_OK) {
+        return False;
+    }
+    nxt = self.peek();
+    # ?. ?.> ?.. are null-safe member access
+    if nxt.kind == TokenKind.DOT
+    or nxt.kind == TokenKind.DOT_FWD
+    or nxt.kind == TokenKind.DOT_BKWD {
+        return False;
+    }
+    # ?[ is null-safe index access (handled separately in parse_atomic_chain)
+    if nxt.kind == TokenKind.LSQUARE {
+        return False;
+    }
+    # ? before a statement terminator is not a ternary
+    if nxt.kind == TokenKind.SEMI
+    or nxt.kind == TokenKind.RBRACE
+    or nxt.kind == TokenKind.RPAREN
+    or nxt.kind == TokenKind.RSQUARE
+    or nxt.kind == TokenKind.COMMA
+    or nxt.kind == TokenKind.EOF {
+        return False;
+    }
+    return True;
+}
+
+# Emit E0029 for the '?' span and consume both branches so the surrounding
+# parser does not cascade. Chaining is handled by calling parse_expression()
+# for the else-branch, which re-enters this recovery for each '?'.
+impl Parser._recover_js_ternary_fault(left: Expr, q_tok: Token) -> Expr {
+    self.emit_diag(E0029, loc=q_tok.loc);
+    # Consume then-branch (empty if immediately at ':' or a statement terminator)
+    if not self.check_any(
+        TokenKind.COLON,
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.EOF
+    ) {
+        self.parse_concurrent_expr();
+    }
+    # Consume ':' and else-branch when present; parse_expression handles chaining
+    if self.match_tok(TokenKind.COLON) {
+        if not self.check_any(
+            TokenKind.SEMI,
+            TokenKind.RBRACE,
+            TokenKind.RPAREN,
+            TokenKind.RSQUARE,
+            TokenKind.COMMA,
+            TokenKind.EOF
+        ) {
+            self.parse_expression();
+        }
     }
     return left;
 }
@@ -1392,6 +1460,7 @@ impl Parser.parse_atomic_chain -> Expr {
         or (
             self.check(TokenKind.NULL_OK)
             and not self.check_peek(TokenKind.LSQUARE)
+            and not self._check_js_ternary_fault()
             and self.match_tok(TokenKind.NULL_OK)
         )
         or self.match_tok(TokenKind.DOT_FWD)
