@@ -10,7 +10,6 @@ import os;
 import shutil;
 import from tempfile { mkdtemp }
 import from uuid { UUID }
-import from jaclang { JacRuntimeInterface as Jac }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.jac0core.archetype { NodeAnchor }
 import from jaclang.runtimelib.context { ExecutionContext }
@@ -43,7 +42,6 @@ test "topology_index_data survives Serializer round-trip" {
         JacRuntime.set_context(ctx);
 
         r = root;
-        Jac.save(r);
 
         for i in range(5) {
             r +>: Knows :+> Person(name=f"person_{i}", age=20 + i);
@@ -51,7 +49,6 @@ test "topology_index_data survives Serializer round-trip" {
         for i in range(3) {
             r +>: LivesIn :+> City(name=f"city_{i}");
         }
-        Jac.save(r);
 
         # Verify index was built
         idx_before = r.__jac__.get_topology_index();
@@ -104,7 +101,6 @@ test "topology index resolve_chain works after Serializer round-trip" {
         JacRuntime.set_context(ctx);
 
         r = root;
-        Jac.save(r);
 
         for i in range(10) {
             r +>: Knows :+> Person(name=f"p{i}", age=i);
@@ -112,7 +108,6 @@ test "topology index resolve_chain works after Serializer round-trip" {
         for i in range(5) {
             r +>: LivesIn :+> City(name=f"c{i}");
         }
-        Jac.save(r);
 
         root_id = r.__jac__.id;
 
@@ -157,7 +152,6 @@ test "topology index survives sqlite persistence round-trip" {
         JacRuntime.set_context(ctx1);
 
         r = root;
-        Jac.save(r);
 
         for i in range(5) {
             r +>: Knows :+> Person(name=f"person_{i}", age=20 + i);
@@ -165,7 +159,6 @@ test "topology index survives sqlite persistence round-trip" {
         for i in range(3) {
             r +>: LivesIn :+> City(name=f"city_{i}");
         }
-        Jac.save(r);
 
         # Verify queries work before persistence
         persons_before = [r->:Knows:->[?:Person]];

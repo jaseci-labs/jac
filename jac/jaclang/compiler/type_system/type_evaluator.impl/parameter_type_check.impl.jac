@@ -50,6 +50,16 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
         return caller_type;
     }
 
+    # Deprecated `root()` form: bare `root` is the graph anchor; the call
+    # form would resolve to `Jac.root()()` in codegen. Emit W0062 and reuse
+    # the Root instance type already resolved for the target.
+    if isinstance(expr.target, uni.SpecialVarRef)
+    and expr.target.name == Tok.KW_ROOT
+    and (not expr.params or len(expr.params) == 0) {
+        self.emit_diag(W0062, expr);
+        return caller_type;
+    }
+
     # Special-form handling for enum.auto() -> int
     if isinstance(caller_type, types.ClassType)
     and caller_type.is_builtin("auto")

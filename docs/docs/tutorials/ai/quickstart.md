@@ -111,6 +111,9 @@ enum Priority { LOW, MEDIUM, HIGH }
 sem Priority.HIGH = "Urgent: requires immediate attention";
 ```
 
+!!! tip "Typed-base enums"
+    For LLM outputs that should slot directly into `int` or `str` APIs, declare them as `enum X: int { ... }` or `enum X: str { ... }`. Members are real `int`/`str` instances -- no `.value` lookup needed at the call site. See [Structured Outputs](structured-outputs.md#typed-base-enums) for details.
+
 !!! tip "Best practice"
     Always use `sem` to provide context for `by llm()` functions. Docstrings are intended for human documentation (and auto-generated API docs) but are **not** included in compiler-generated prompts. Only `sem` declarations affect LLM behavior.
 
