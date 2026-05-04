@@ -106,16 +106,9 @@ Returns keys like "x" or "obj.speed" for use in affected_symbols.
 Returns None for expressions that cannot be represented as a key.
 """
 def _int_subscript_suffix(right: uni.IndexSlice) -> str | None {
-    if (
-        not right.is_range
-        and len(right.slices) == 1
-    ) {
+    if (not right.is_range and len(right.slices) == 1) {
         idx = right.slices[0];
-        if (
-            idx.start is not None
-            and idx.stop is None
-            and idx.step is None
-        ) {
+        if (idx.start is not None and idx.stop is None and idx.step is None) {
             start = idx.start;
             # items[0] - positive integer literal
             if isinstance(start, uni.Int) {
@@ -131,7 +124,9 @@ def _int_subscript_suffix(right: uni.IndexSlice) -> str | None {
                 return f"[-{start.operand.lit_value}]";
             }
             # config["host"] - string literal index (MultiString wraps String in Jac AST)
-            if isinstance(start, uni.MultiString) and len(start.strings) == 1 and isinstance(start.strings[0], uni.String) {
+            if isinstance(start, uni.MultiString)
+            and len(start.strings) == 1
+            and isinstance(start.strings[0], uni.String) {
                 return f'[{start.strings[0].lit_value!r}]';
             }
         }
@@ -153,7 +148,9 @@ def get_expr_key(expr: uni.Expr) -> str | None {
         base = get_expr_key(expr.target);
         if base and isinstance(expr.right, uni.IndexSlice) {
             suffix = _int_subscript_suffix(expr.right);
-            if suffix { return f"{base}{suffix}"; }
+            if suffix {
+                return f"{base}{suffix}";
+            }
         }
     }
     # Unwrap parentheses
