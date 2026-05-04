@@ -60,12 +60,13 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            # Probe timings
-            'readiness_initial_delay': 10,
-            'readiness_period': 20,
-            'liveness_initial_delay': 10,
-            'liveness_period': 20,
-            'liveness_failure_threshold': 80
+            # Probe timings (P0.20: aligned with K-track drain semantics;
+            # see kubernetes_config.jac probe-default comment).
+            'readiness_initial_delay': 5,
+            'readiness_period': 5,
+            'liveness_initial_delay': 15,
+            'liveness_period': 10,
+            'liveness_failure_threshold': 3
         },
         'secrets': {},
         'server': {'port': 8000, 'host': '0.0.0.0', 'docs_enabled': True},

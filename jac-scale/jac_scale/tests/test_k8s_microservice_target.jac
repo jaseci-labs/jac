@@ -1640,6 +1640,179 @@ test "container resources can be partial (user requests, no limits)" {
 }
 
 
+# =============================================================================
+# P0.20: [plugins.scale.kubernetes] resource + probe values must reach the
+# microservice manifest (used to be silently dropped on the floor)
+# =============================================================================
+
+test "P0.20: resources fall back to KubernetesConfig before P0.8b floor" {
+    # Without this, jac.toml's [plugins.scale.kubernetes].memory_limit was
+    # silently ignored - every service got the 1Gi P0.8b floor regardless
+    # of what the user configured. Real apps (jacBuilder) OOMKilled at
+    # first import. Priority: per-service > kubernetes block > P0.8b floor.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo",
+            memory_request="2Gi",
+            memory_limit="4Gi",
+            cpu_request="500m",
+            cpu_limit="2000m"
+        )
+    );
+    (_cfg, restore) = _with_services_config({});  # no per-service overrides
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        resources = spec["containers"][0]["resources"];
+        # k8s_config values should land - NOT the P0.8b floor.
+        assert resources["requests"]["memory"] == "2Gi" , (
+            f"expected 2Gi from k8s_config, got {resources['requests']['memory']}"
+        );
+        assert resources["requests"]["cpu"] == "500m";
+        assert resources["limits"]["memory"] == "4Gi" , (
+            f"expected 4Gi from k8s_config, got {resources['limits']['memory']}"
+        );
+        assert resources["limits"]["cpu"] == "2000m";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.20: per-service overrides win over KubernetesConfig values" {
+    # Per-service config is the most-specific signal - must beat
+    # the project-wide kubernetes block.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo",
+            memory_request="2Gi",
+            memory_limit="4Gi"
+        )
+    );
+    (_cfg, restore) = _with_services_config(
+        {"hot_service": {"memory_request": "8Gi", "memory_limit": "16Gi"}}
+    );
+    try {
+        spec = target._build_service_pod_spec("hot_service", "demo:latest");
+        resources = spec["containers"][0]["resources"];
+        # Per-service wins
+        assert resources["requests"]["memory"] == "8Gi";
+        assert resources["limits"]["memory"] == "16Gi";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.20: P0.8b floor still applies when neither per-service nor cfg set" {
+    # Compatibility check: existing apps with no resource config at any
+    # level should still get the Burstable QoS floor (P0.8b behavior).
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    # KubernetesConfig defaults: memory_request/limit/cpu_request all None
+    (_cfg, restore) = _with_services_config({});
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        resources = spec["containers"][0]["resources"];
+        # P0.8b defaults
+        assert resources["requests"]["memory"] == "128Mi";
+        assert resources["requests"]["cpu"] == "50m";
+        assert resources["limits"]["memory"] == "1Gi";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.20: empty-string per-service override still trumps KubernetesConfig" {
+    # The `""` opt-out should win over a non-empty kubernetes block too -
+    # otherwise users who set memory_limit at the project level lose the
+    # ability to opt one service back into BestEffort.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", memory_request="2Gi", memory_limit="4Gi")
+    );
+    (_cfg, restore) = _with_services_config(
+        {
+            "raw_service": {
+                "memory_request": "", "memory_limit": "", "cpu_request": ""
+            }
+        }
+    );
+    try {
+        spec = target._build_service_pod_spec("raw_service", "demo:latest");
+        # Empty values mean no requests/limits emitted -> back to BestEffort
+        assert "resources" not in spec["containers"][0];
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.20: readiness probe uses KubernetesConfig values" {
+    # Real apps with slow first boot (jac compile + heavy imports) need
+    # to bump the probe windows. jac.toml's [plugins.scale.kubernetes].
+    # readiness_initial_delay was previously dropped on the floor.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo",
+            container_port=8000,
+            readiness_initial_delay=300,
+            readiness_period=20
+        )
+    );
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    probe = spec["containers"][0]["readinessProbe"];
+    assert probe["initialDelaySeconds"] == 300 , (
+        f"expected 300s from k8s_config, got {probe['initialDelaySeconds']}"
+    );
+    assert probe["periodSeconds"] == 20 , (
+        f"expected 20s from k8s_config, got {probe['periodSeconds']}"
+    );
+    # Path/port unchanged
+    assert probe["httpGet"]["path"] == "/healthz/ready";
+    assert probe["httpGet"]["port"] == 8000;
+}
+
+
+test "P0.20: liveness probe uses KubernetesConfig values" {
+    # Same story as readiness, plus failureThreshold for apps that
+    # legitimately stall (LLM streaming, long-running compiles).
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo",
+            container_port=8000,
+            liveness_initial_delay=600,
+            liveness_period=30,
+            liveness_failure_threshold=10
+        )
+    );
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    probe = spec["containers"][0]["livenessProbe"];
+    assert probe["initialDelaySeconds"] == 600 , (
+        f"expected 600s from k8s_config, got {probe['initialDelaySeconds']}"
+    );
+    assert probe["periodSeconds"] == 30;
+    assert probe["failureThreshold"] == 10;
+    assert probe["httpGet"]["path"] == "/healthz/live";
+}
+
+
+test "P0.20: gateway pod-spec also reads probes from KubernetesConfig" {
+    # The gateway gets the same probe wires as services (it's a pod
+    # too). Without honoring k8s_config, gateway boots would hit the
+    # same too-aggressive default probes.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="demo",
+            readiness_initial_delay=120,
+            liveness_initial_delay=240
+        )
+    );
+    spec = target._build_gateway_pod_spec("demo:latest");
+    container = spec["containers"][0];
+    assert container["readinessProbe"]["initialDelaySeconds"] == 120;
+    assert container["livenessProbe"]["initialDelaySeconds"] == 240;
+}
+
+
 test "image_tag override replaces tag in repo/name:tag" {
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (_cfg, restore) = _with_services_config({"orders": {"image_tag": "v2.0-canary"}});

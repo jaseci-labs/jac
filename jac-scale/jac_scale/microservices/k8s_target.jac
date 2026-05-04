@@ -865,20 +865,40 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
       cpu_request = ""
     """
     def _build_resources(svc_cfg: dict[str, Any]) -> dict[str, Any] {
-        # Defaults; user values override (None / empty string opts out).
+        # Priority chain (P0.20): per-service > [plugins.scale.kubernetes]
+        # > P0.8b floor. Previously the kubernetes-block values were
+        # silently dropped on the floor and every service got the 1Gi
+        # P0.8b floor regardless of user config - real apps (jacBuilder)
+        # OOMKilled at first import. Empty string ("") still means
+        # "opt out of any request/limit" (back to BestEffort).
+        cfg = self.k8s_config;
+
         memory_request_val = svc_cfg.get("memory_request");
+        if memory_request_val is None {
+            memory_request_val = cfg.memory_request;
+        }
         if memory_request_val is None {
             memory_request_val = "128Mi";
         }
         memory_limit_val = svc_cfg.get("memory_limit");
         if memory_limit_val is None {
+            memory_limit_val = cfg.memory_limit;
+        }
+        if memory_limit_val is None {
             memory_limit_val = "1Gi";
         }
         cpu_request_val = svc_cfg.get("cpu_request");
         if cpu_request_val is None {
+            cpu_request_val = cfg.cpu_request;
+        }
+        if cpu_request_val is None {
             cpu_request_val = "50m";
         }
-        cpu_limit_val = svc_cfg.get("cpu_limit");  # default: omit
+        cpu_limit_val = svc_cfg.get("cpu_limit");
+        if cpu_limit_val is None {
+            cpu_limit_val = cfg.cpu_limit;
+        }
+        # cpu_limit: still omitted by default if also unset on cfg.
 
         requests: dict[str, str] = {};
         limits: dict[str, str] = {};
@@ -938,13 +958,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     out of Endpoints, well inside our default 60s graceful window.
     """
     def _build_readiness_probe -> dict[str, Any] {
+        # P0.20: read cadences from KubernetesConfig so jac.toml's
+        # `[plugins.scale.kubernetes].readiness_initial_delay` /
+        # `readiness_period` actually take effect. Default values on
+        # KubernetesConfig (5/5) match the previous K-track hardcoded
+        # values, so no behavior change for users on default config.
+        cfg = self.k8s_config;
         return {
             "httpGet": {
                 "path": "/healthz/ready",
-                "port": self.k8s_config.container_port
+                "port": cfg.container_port
             },
-            "initialDelaySeconds": 5,
-            "periodSeconds": 5,
+            "initialDelaySeconds": cfg.readiness_initial_delay,
+            "periodSeconds": cfg.readiness_period,
             "timeoutSeconds": 3,
             "failureThreshold": 3
         };
@@ -961,15 +987,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     + period give cold-start traffic a chance to settle.
     """
     def _build_liveness_probe -> dict[str, Any] {
+        # P0.20: read cadences from KubernetesConfig so jac.toml's
+        # `[plugins.scale.kubernetes].liveness_initial_delay` /
+        # `liveness_period` / `liveness_failure_threshold` take effect.
+        # Real apps with slow first-boot (jacBuilder: jac compile +
+        # heavy imports take 60-90s) need to bump initial_delay; without
+        # this they'd be killed before reaching Ready.
+        cfg = self.k8s_config;
         return {
             "httpGet": {
                 "path": "/healthz/live",
-                "port": self.k8s_config.container_port
+                "port": cfg.container_port
             },
-            "initialDelaySeconds": 15,
-            "periodSeconds": 10,
+            "initialDelaySeconds": cfg.liveness_initial_delay,
+            "periodSeconds": cfg.liveness_period,
             "timeoutSeconds": 3,
-            "failureThreshold": 3
+            "failureThreshold": cfg.liveness_failure_threshold
         };
     }
 
