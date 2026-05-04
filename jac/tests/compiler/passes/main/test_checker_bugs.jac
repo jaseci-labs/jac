@@ -596,8 +596,8 @@ test "bug_dloc1_decorated_class_in_function_body" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
-        
-# =========================================================================       
+
+# =========================================================================
 # Bug: while-loop guard does not narrow the condition variable
 # =========================================================================
 test "bug_5768_while_loop_narrowing" {
