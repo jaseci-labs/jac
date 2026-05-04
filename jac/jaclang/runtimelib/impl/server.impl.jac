@@ -299,21 +299,48 @@ Commit goes through the async Memory surface (`Jac.acommit`) so L3 writes
 do not block the event loop — this is what keeps post-walker persistence
 from serializing async walkers that would otherwise all pay the commit
 round-trip on the loop in series.
+
+Two streaming paths are honored — both are propagated to the caller as
+a raw (Async)Generator so jac-scale's serve.endpoints can wrap them in a
+StreamingResponse instead of materializing the events:
+
+  1. The function/walker explicitly returns an iterator. This is the
+     `def:pub stream_events(...) -> Iterator[dict]` shape used by
+     long-running RPCs (e.g. jac-coder turn streaming).
+  2. The walker pushes a generator into call_state.reports. This is
+     the older live-reports pattern; report_collector itself returns
+     the generator straight from the queue (see line 250).
+
+If both paths fire on the same call, the explicit return wins — that's
+the authoritative result for the caller; reports are auxiliary. Anything
+else falls into the normal serialize-and-envelope path.
 """
 impl ExecutionManager._finalize_call_response(
     call_state: CallState, result: Any
-) -> dict[str, JsonValue] {
+) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
     await Jac.acommit();
+    if isgenerator(result) or isinstance(result, AsyncGenerator) {
+        return result;
+    }
     if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
         return reports;
-    } else {
-        return {
-            'result': Serializer.serialize(result, api_mode=True),
-            'reports': Serializer.serialize(reports, api_mode=True)
-        };
     }
+    # Drain permission-denial diagnostics accumulated during the walker
+    # run *and* the commit that follows it. Surfaces silent cross-user
+    # write rejections (edge writes, field mutations, deletes) on the
+    # wire so callers stop debugging "200 OK but nothing changed".
+    envelope: dict[str, JsonValue] = {
+        'result': Serializer.serialize(result, api_mode=True),
+        'reports': Serializer.serialize(reports, api_mode=True)
+    };
+    ctx = Jac.get_context();
+    if ctx.diagnostics {
+        envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
+        ctx.diagnostics.clear();
+    }
+    return envelope;
 }
 
 """Dispatcher: pick sync/async variant based on function kind.
@@ -1858,32 +1885,29 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     # Rate limit and deduplicate
                     import from jaclang.runtimelib.source_mapping {
-                        SourceMapper,
-                        _error_rate_limiter
+                        _error_rate_limiter,
+                        resolve_client_error_stacks,
+                        format_client_error_log
                     }
+                    import from jaclang.project.config { get_config }
                     if not _error_rate_limiter.should_log(message) {
                         Jac.send_json(self, 200, {'ok': True, 'throttled': True});
                     } else {
-                        stack = data.get('stack', '');
-                        url = data.get('url', '');
-                        source = data.get('source', '');
-                        # Resolve stack trace to .jac files via source maps
-                        if stack and server.base_path {
-                            try {
-                                mapper = SourceMapper.from_bundle(server.base_path);
-                                stack = mapper.resolve_stack_trace(stack);
-                            } except Exception { }
-                        }
-                        log_parts = [f"[Client] {message}"];
-                        if stack {
-                            log_parts.append(f"  Stack: {stack}");
-                        }
-                        if url {
-                            log_parts.append(f"  URL: {url}");
-                        }
-                        if source {
-                            log_parts.append(f"  Source: {source}");
-                        }
+                        cfg = get_config();
+                        verbose = cfg.client_errors.verbose if cfg else False;
+                        (stack, component_stack) = resolve_client_error_stacks(
+                            server.base_path,
+                            data.get('stack', ''),
+                            data.get('componentStack', ''),
+                            verbose=verbose
+                        );
+                        log_parts = format_client_error_log(
+                            message,
+                            stack=stack,
+                            component_stack=component_stack,
+                            url=data.get('url', ''),
+                            source=data.get('source', '')
+                        );
                         import logging;
                         logging.getLogger("jaclang.client_errors").error(
                             '\n'.join(log_parts)

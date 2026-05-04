@@ -323,8 +323,53 @@ role           "admin" | "system" | "user"
 identities     [{type, value_raw, value_normalized, verified, is_recovery}, ...]
 credentials    [{type, password_hash}, ...]
 root_id        hex ID of the user's Jac graph root node
+profile        {firstname?, lastname?, ..., sso?: {<platform>: {...}}}
 created_at     ISO 8601 timestamp
 updated_at     ISO 8601 timestamp
+```
+
+**Example (sanitized):**
+
+```json
+{
+  "user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "status": "active",
+  "role": "user",
+  "identities": [
+    {
+      "type": "email",
+      "value_raw": "user@example.com",
+      "value_normalized": "user@example.com",
+      "verified": false,
+      "is_recovery": true
+    },
+    {
+      "type": "sso",
+      "provider": "google",
+      "external_id": "<google-numeric-id>",
+      "verified": true,
+      "linked_at": "2025-01-15T10:30:00.000000+00:00"
+    }
+  ],
+  "credentials": [
+    {"type": "password", "password_hash": "<bcrypt-hash>"}
+  ],
+  "root_id": "<32-hex-chars>",
+  "profile": {
+    "firstname": "Alice",
+    "lastname": "Doe",
+    "sso": {
+      "google": {
+        "display_name": "Alice Doe",
+        "first_name": "Alice",
+        "last_name": "Doe",
+        "picture": "<google-cdn-picture-url>"
+      }
+    }
+  },
+  "created_at": "2025-01-15T10:30:00.000000+00:00",
+  "updated_at": "2025-01-15T10:30:00.000000+00:00"
+}
 ```
 
 **Identity types:**
@@ -377,7 +422,8 @@ curl -X POST http://localhost:8000/user/register \
       {"type": "username", "value": "myuser"},
       {"type": "email", "value": "user@example.com"}
     ],
-    "credential": {"type": "password", "password": "secret"}
+    "credential": {"type": "password", "password": "secret"},
+    "profile": {"firstname": "Alice", "lastname": "Doe"}
   }'
 ```
 
@@ -387,7 +433,7 @@ Returns on success (HTTP 201):
 {
   "ok": true,
   "data": {
-    "user_id": "550e8400-...",
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
     "message": "User registered successfully"
   }
 }
@@ -402,6 +448,19 @@ Registration does **not** return a token. Use `/user/login` after registration t
 - No duplicate identity types (e.g., two usernames)
 - Identity values must be unique across all users (checked after normalization)
 - Credential type must be `password` with a non-empty password
+
+**Optional `profile` field** -- attach arbitrary fields like `firstname`, `lastname`, `address`, `postcode`. Bounded for safety:
+
+| Limit | Value |
+|---|---|
+| Max keys | 20 |
+| Max key length | 64 |
+| Max value length | 1024 chars |
+| Max total size (JSON) | 8192 bytes |
+| Allowed value types | `str`, `int`, `float`, `bool` |
+| Key pattern | `^[a-zA-Z][a-zA-Z0-9_]{0,63}$` |
+
+The key pattern blocks MongoDB operator injection (`$where`), dot-path traversal, and JS prototype pollution (`__proto__`). Profile is stored under the `profile` sub-document, never spread into the user-doc root, so a profile key cannot collide with `role` / `user_id` / etc.
 
 ### User Login
 
@@ -576,9 +635,11 @@ jac-scale supports SSO with **Google**, **Apple**, and **GitHub**. SSO accounts 
 
 1. User is redirected to the provider's login page
 2. Provider calls back with an authorization code
-3. jac-scale exchanges the code for user info (email, external ID)
+3. jac-scale exchanges the code for user info (email, external ID, plus optional `display_name`, `first_name`, `last_name`, `picture`)
 4. If a user with that email exists, the SSO identity is linked and a JWT is returned
 5. If no user exists, a new account is created with a verified email identity, the SSO identity is linked, and a JWT is returned
+
+**Profile population.** The optional fields the provider returns (`display_name`, `first_name`, `last_name`, `picture`) are written to `profile.sso.<platform>` on the user record. They are refreshed from the latest provider data on every SSO login, so display names and avatar URLs stay current. Developer-set fields outside the `sso` namespace (e.g. `profile.firstname` set during `/user/register`) are never overwritten by the SSO refresh.
 
 **Configuration via `jac.toml`:**
 
@@ -655,6 +716,60 @@ The migration runs once during `UserManager` initialization and is idempotent. S
 !!! note
     The legacy SHA-256 migration code is marked as removable. Once all users have logged in at least once (triggering the bcrypt rehash), the migration path can be safely removed in a future release.
 
+### Get Current User
+
+Fetch the authenticated user's profile, identities, role, and metadata. Credentials are never returned.
+
+```bash
+curl http://localhost:8000/user/me \
+  -H "Authorization: Bearer <token>"
+```
+
+Returns (HTTP 200):
+
+```json
+{
+  "ok": true,
+  "data": {
+    "user_id": "550e8400-e29b-41d4-a716-446655440000",
+    "role": "user",
+    "status": "active",
+    "identities": [
+      {
+        "type": "email",
+        "value": "user@example.com",
+        "verified": false,
+        "is_recovery": true
+      },
+      {
+        "type": "sso",
+        "provider": "google",
+        "verified": true,
+        "is_recovery": false
+      }
+    ],
+    "profile": {
+      "firstname": "Alice",
+      "lastname": "Doe",
+      "sso": {
+        "google": {
+          "display_name": "Alice Doe",
+          "first_name": "Alice",
+          "last_name": "Doe",
+          "picture": "<google-cdn-picture-url>"
+        }
+      }
+    },
+    "created_at": "2025-01-15T10:30:00.000000+00:00",
+    "updated_at": "2025-01-15T10:30:00.000000+00:00"
+  }
+}
+```
+
+The response strips internal fields (`credentials`, `password_hash`, `value_normalized`, identity `external_id`, `root_id`). For SSO identities, the `provider` is exposed instead of the user-supplied `value`. Use `profile.sso.<platform>.picture` to render an avatar in your UI.
+
+Returns `401 UNAUTHORIZED` for a missing or expired token, `404 NOT_FOUND` if the user has been deleted but the token is still valid.
+
 ### Auth Endpoint Summary
 
 | Method | Path | Auth Required | Description |
@@ -662,6 +777,7 @@ The migration runs once during `UserManager` initialization and is idempotent. S
 | POST | `/user/register` | No | Create a new user |
 | POST | `/user/login` | No | Authenticate and get JWT |
 | POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
+| GET | `/user/me` | Yes (Bearer) | Get the authenticated user's profile |
 | PUT | `/user/password` | Yes (Bearer) | Update password |
 | GET | `/sso/{platform}/{operation}` | No | Initiate SSO flow |
 | GET/POST | `/sso/{platform}/callback` | No | SSO callback handler |

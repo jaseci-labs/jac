@@ -955,6 +955,16 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         i32 = ir.IntType(32);
         i64 = ir.IntType(64);
         del_idx = args[0];
+        # release element at del_idx before shifting
+        if isinstance(helpers["elem_type"], ir.PointerType) {
+            if p.rc_release_simple_fn is None {
+                p._emit_rc_helpers();
+            }
+            _i8p_da = ir.IntType(8).as_pointer();
+            _da_elem = b.call(helpers["get"], [target, del_idx], name="delat_rel_elem");
+            _da_cast = b.bitcast(_da_elem, _i8p_da, name="delat_rel_cast");
+            b.call(p.rc_release_simple_fn, [_da_cast]);
+        }
         len_ptr = b.gep(
             target, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="delat.len.ptr"
         );
@@ -973,9 +983,21 @@ class NativeListEmitter(ListEmitter[(ir.Value, NativeEmitCtx)]) {
         at_end = b.icmp_unsigned(">=", si, cur_len, name="delat.end");
         b.cbranch(at_end, done_bb, body_bb);
         b.position_at_start(body_bb);
-        val = b.call(helpers["get"], [target, si], name="delat.val");
         prev = b.sub(si, ir.Constant(i64, 1), name="delat.prev");
-        b.call(helpers["set"], [target, prev, val]);
+        if isinstance(helpers["elem_type"], ir.PointerType) {
+            # Raw GEP+store: avoid spurious retain/release from __list_set_ptr during shift.
+            _sh_dpp = b.gep(
+                target, [ir.Constant(i32, 0), ir.Constant(i32, 2)], name="sh_dpp"
+            );
+            _sh_da = b.load(_sh_dpp, name="sh_da");
+            _sh_src = b.gep(_sh_da, [si], name="sh_src");
+            _sh_val = b.load(_sh_src, name="sh_val");
+            _sh_dst = b.gep(_sh_da, [prev], name="sh_dst");
+            b.store(_sh_val, _sh_dst);
+        } else {
+            val = b.call(helpers["get"], [target, si], name="delat.val");
+            b.call(helpers["set"], [target, prev, val]);
+        }
         next_si = b.add(si, ir.Constant(i64, 1), name="delat.next");
         si.add_incoming(next_si, body_bb);
         b.branch(loop_bb);

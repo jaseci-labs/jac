@@ -311,6 +311,13 @@ enabled = false                   # Parallel tool execution (concurrent dispatch
 
 [plugins.byllm.prompt_caching]
 enabled = true                    # Anthropic prompt caching (auto for Claude models)
+
+[plugins.byllm.compaction]
+enabled                = true     # Auto-compact long ReAct loops before hitting the context limit
+threshold_ratio        = 0.80     # Compact when prompt_tokens / ctx_window >= 80 %
+keep_recent_iterations = 3        # Preserve the last N tool-call rounds verbatim
+ctx_window             = 0        # 0 = auto-detect via LiteLLM; set >0 for self-hosted models
+compaction_model       = ""       # Empty = copy of the active model; set to use a cheaper one
 ```
 
 **`[plugins.byllm.model]` options:**
@@ -349,6 +356,16 @@ enabled = true                    # Anthropic prompt caching (auto for Claude mo
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `true` | Automatically add Anthropic `cache_control` markers to the system prompt and tool schemas. Caches the static prefix across ReAct iterations for up to 90% input token savings. Only applies to Claude models; no effect on other providers |
+
+**`[plugins.byllm.compaction]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable automatic message compaction when the ReAct loop approaches the context window limit |
+| `threshold_ratio` | float | `0.80` | Fraction of `ctx_window` at which compaction triggers (e.g. `0.80` = compact when 80 % full) |
+| `keep_recent_iterations` | int | `3` | Number of most-recent tool-call rounds to keep verbatim; earlier rounds are replaced with a summary |
+| `ctx_window` | int | `0` | Global context window override in tokens. `0` = auto-detect via LiteLLM model registry. Set explicitly for self-hosted or unknown models |
+| `compaction_model` | str | `""` | Model used for the summarisation call. Empty string = copy of the currently active model, inheriting its `api_key` and `base_url`. Set to a cheaper model (e.g. `"ollama/llama3.2:1b"`) to reduce compaction cost |
 
 **Minimal setup** -- just set your API key and go:
 
@@ -489,6 +506,19 @@ sem Personality.AMBIVERT = "Comfortable in both social and solitary settings";
 def classify_personality(bio: str) -> Personality by llm();
 ```
 
+#### Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are `T` instances. This lets a `by llm()` return type flow directly into APIs that expect `int` or `str` without calling `.value`:
+
+```jac
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404, SERVER_ERROR = 500 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
+def get_status(description: str) -> HttpStatus by llm();
+```
+
+`: int` desugars to `IntEnum`, `: str` to `StrEnum`, and any other base `T` to the mixin form `class X(T, Enum)`.
+
 ### Object Types
 
 ```jac
@@ -530,8 +560,15 @@ Parameters passed to `by llm()` at call time:
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 | `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
+| `conversation` | list | Caller-owned list bound as conversation history. byLLM reads it as prior context, runs the ReAct loop, and writes the persistable turn (user, assistant `tool_calls`, tool results, final answer) back into the same list. Input may be `Message` instances or dicts; byLLM always writes back as plain dicts so the list is JSON-serialisable. Use this for multi-turn `by llm()` calls without managing the message list manually |
 | `parallelize` | bool | Enable parallel tool execution for this call. Overrides global `[plugins.byllm.parallel]` config. Default: inherits global setting |
 | `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
+| `compaction_enabled` | bool | Enable/disable auto-compaction for this call. Overrides `[plugins.byllm.compaction] enabled`. Default: `True` |
+| `threshold_ratio` | float | Fraction of the context window at which compaction triggers. Default: `0.80` |
+| `keep_recent_iterations` | int | Number of most-recent tool-call rounds to preserve verbatim; older rounds are summarised. Default: `3` |
+| `ctx_window` | int | Context window size override in tokens. Highest priority - overrides `Model.ctx_window`, `jac.toml`, and LiteLLM auto-detect. `0` = use lower-priority source |
+| `compaction_model` | str | Model name to use for the summarisation call. Empty string / omitted = copy of the active model |
+| `on_compaction` | callable | Hook called instead of built-in summarisation. Signature: `(messages: list, keep_recent: int) -> list`. Must return the compacted message list |
 
 !!! warning "Deprecated: `method` parameter"
     The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
@@ -562,7 +599,27 @@ def generate_essay(topic: str) -> str by llm(stream=True);
 def smart_answer(question: str) -> str by llm(
     tools=[search_db], stream=True, logging=True
 );
+
+# Multi-turn - bind a caller-owned list as conversation history
+glob history: list = [];
+def chat(message: str) -> str by llm(
+    tools=[search_db],
+    conversation=history
+);
 ```
+
+#### What's in the conversation list
+
+After each call byLLM appends the turn to your list **in place** as plain dicts. Iterate it like any list of message dicts:
+
+```python
+{"role": "user",      "content": "How is Paris?"}
+{"role": "assistant", "content": "Let me check.", "tool_calls": [...]}
+{"role": "tool",      "content": "sunny in Paris", "tool_call_id": "...", "name": "get_weather"}
+{"role": "assistant", "content": "It's sunny in Paris."}
+```
+
+The auto-generated SYSTEM prompt and `finish_tool` calls are excluded from the list - byLLM regenerates them each turn. The list is safe to JSON-serialise and replay across sessions.
 
 ---
 
@@ -840,6 +897,96 @@ BYLLM_LOG_LEVEL=INFO jac run my_agent.jac
 ```
 
 Look for `byllm.parallel` log lines: `dispatch=parallel` confirms concurrent execution, `wall_ms` shows wall-clock time (e.g. ~1000ms for 3 tools that each take 1s proves they ran in parallel)
+
+---
+
+## Auto-Compaction
+
+When a ReAct loop runs many tool-calling iterations the message history grows until it hits the model's context window limit. Auto-compaction monitors token usage after each iteration and automatically summarises old tool-call rounds before the limit is reached, letting agents run indefinitely long tasks without interruption.
+
+### How it works
+
+After every LLM response byLLM compares `prompt_tokens / ctx_window` against a threshold (default 80 %). When the threshold is exceeded:
+
+1. The oldest tool-call rounds are serialised and sent to a summarisation LLM call.
+2. The summary replaces those rounds with a single user message tagged `[Compacted context summary]`.
+3. The system message and original user task (`messages[0]` and `messages[1]`) are always preserved verbatim.
+4. The most-recent `keep_recent_iterations` tool-call rounds are also kept verbatim for immediate context.
+
+The summarisation call goes through the full byLLM stack - it inherits telemetry, prompt caching, and proxy configuration from the active model.
+
+A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up.
+
+### Context window resolution
+
+byLLM resolves the effective context window for each model in priority order:
+
+1. `ctx_window` passed in `by llm(ctx_window=N)` call params *(highest)*
+2. `ctx_window` field on the `Model` object
+3. `[plugins.byllm.compaction] ctx_window` in `jac.toml`
+4. LiteLLM model registry (`litellm.get_model_info()`) - covers 100+ providers automatically
+5. `0` - unknown; threshold check is disabled, only the emergency exception path remains *(lowest)*
+
+For **`ModelPool`**, when no explicit override is set, the effective window is `min(ctx_window for each member)` - the most conservative value in the pool.
+
+### Per-call and per-object override
+
+```jac
+# Per-call - highest priority
+def my_agent(query: str) -> str by llm(
+    tools=[search, compute],
+    ctx_window=128000,
+    threshold_ratio=0.75,
+    keep_recent_iterations=5,
+    compaction_model="ollama/llama3.2:1b",
+    compaction_enabled=True,
+    on_compaction=my_hook
+);
+
+# Per-object - applied to every call on this model instance
+glob llm = Model(model_name="gpt-4o", ctx_window=128000);
+```
+
+### Custom compaction hook (`on_compaction`)
+
+Replace the built-in summarisation with your own logic by passing `on_compaction`. The hook receives the full serialised message list and `keep_recent`, and must return the compacted list:
+
+```jac
+def my_compactor(messages: list, keep_recent: int) -> list {
+    # messages[0] = system, messages[1] = original user task - always preserve
+    # messages[2:] = tool-call history to summarise
+    summary = my_domain_summariser(messages[2:]);
+    summary_msg = {"role": "user", "content": f"[Summary] {summary}"};
+    return [messages[0], messages[1], summary_msg] + messages[-keep_recent * 2:];
+}
+
+def my_agent(query: str) -> str by llm(
+    tools=[search],
+    on_compaction=my_compactor
+);
+```
+
+When `on_compaction` is set the built-in summarisation call is skipped entirely - the hook's return value becomes the new message history.
+
+### Using a separate model for compaction
+
+By default byLLM reuses a copy of the active model for the summarisation call, inheriting its `api_key` and `base_url`. Set `compaction_model` to use a cheaper or faster model instead:
+
+```jac
+# In jac.toml - applies globally
+# [plugins.byllm.compaction]
+# compaction_model = "ollama/llama3.2:1b"
+
+# Per-call
+def my_agent(query: str) -> str by llm(
+    tools=[search],
+    compaction_model="ollama/llama3.2:1b"
+);
+```
+
+### `CompactionNotEffectiveError`
+
+If the threshold fires on two consecutive iterations with a compaction between them - meaning the summarisation produced no meaningful reduction - byLLM raises `CompactionNotEffectiveError` rather than looping forever. See [Error Handling](#error-handling) for how to catch it.
 
 ---
 
@@ -1315,13 +1462,14 @@ byLLM raises typed exceptions that all inherit from `ByLLMError`. Catching the b
 
 ```
 ByLLMError (base)
-├── AuthenticationError   - API key missing, expired, or rejected
-├── RateLimitError        - Rate limit or quota exceeded
-├── ModelNotFoundError    - Model name does not exist or is unavailable
-├── OutputConversionError - LLM response cannot be parsed / converted to the declared return type
-├── UnknownToolError      - LLM called a tool name that was not registered
-├── FinishToolError       - finish_tool output failed validation against the declared return type
-└── ConfigurationError    - Invalid byLLM usage (e.g. streaming with a non-str return type)
+├── AuthenticationError          - API key missing, expired, or rejected
+├── RateLimitError               - Rate limit or quota exceeded
+├── ModelNotFoundError           - Model name does not exist or is unavailable
+├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
+├── UnknownToolError             - LLM called a tool name that was not registered
+├── FinishToolError              - finish_tool output failed validation against the declared return type
+├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
+└── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
 ```
 
 All exceptions are importable from `byllm.lib`.
@@ -1337,6 +1485,7 @@ All exceptions are importable from `byllm.lib`.
 | `UnknownToolError` | The LLM tried to call a tool function that was not in the registered tool list |
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
+| `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
 
 ### Importing Exceptions
 
@@ -1349,7 +1498,8 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         UnknownToolError,
-        ConfigurationError
+        ConfigurationError,
+        CompactionNotEffectiveError
     }
     ```
 
@@ -1363,6 +1513,7 @@ All exceptions are importable from `byllm.lib`.
         OutputConversionError,
         UnknownToolError,
         ConfigurationError,
+        CompactionNotEffectiveError,
     )
     ```
 
@@ -1431,6 +1582,27 @@ with entry {
 }
 ```
 
+### `CompactionNotEffectiveError`
+
+Raised when auto-compaction fires on two consecutive iterations without reducing the context size. This prevents an infinite compaction loop:
+
+```jac
+import from byllm.lib { CompactionNotEffectiveError }
+
+with entry {
+    try {
+        result = my_long_running_agent(query);
+    } except CompactionNotEffectiveError as e {
+        print(f"Context could not be compacted: {e}");
+        # Recovery options:
+        # 1. Provide a more aggressive on_compaction hook
+        # 2. Increase ctx_window if the model supports it
+        # 3. Switch to a model with a larger context window
+        # 4. Reduce keep_recent_iterations to discard more history
+    }
+}
+```
+
 ### `ConfigurationError`
 
 Raised immediately (before any API call) when `by llm()` is used in a way that byLLM cannot support:
@@ -1478,6 +1650,30 @@ test "summarize returns second mock" {
 - Unit testing LLM-powered functions without API costs
 - Deterministic assertions on function behavior
 - CI/CD pipelines where API keys aren't available
+
+#### Injecting usage metadata (for compaction tests)
+
+Each entry in `outputs` may be a `(payload, usage_dict)` tuple to inject token-usage metadata. This lets you test threshold-based auto-compaction without a real model:
+
+```jac
+import from byllm.lib { MockLLM, MockToolCall }
+
+def step_a -> str { return "a"; }
+def finish_tool(final_output: str) -> str { return final_output; }
+
+glob llm = MockLLM(
+    model_name="mockllm",
+    ctx_window=1000,
+    config={"outputs": [
+        # (tool_call, usage) - triggers compaction at 85 % of 1000 tokens
+        (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
+        # plain entry - no usage injection, loop exits via finish_tool
+        MockToolCall(tool=finish_tool, args={"final_output": "done"})
+    ]}
+);
+```
+
+Non-tuple entries behave exactly as before - usage defaults to `{}`.
 
 ---
 

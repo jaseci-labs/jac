@@ -29,6 +29,7 @@ class JacScaleConfig(PluginConfigBase) {
     def get_admin_config(self: JacScaleConfig) -> dict[str, Any];
     def get_scheduler_config(self: JacScaleConfig) -> dict[str, Any];
     def get_telemetry_config(self: JacScaleConfig) -> dict[str, Any];
+    def get_microservices_config(self: JacScaleConfig) -> dict[str, Any];
 }
 
 glob _scale_config_instance: JacScaleConfig | None = None;

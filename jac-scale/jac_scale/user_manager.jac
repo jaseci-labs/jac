@@ -44,7 +44,9 @@ obj JacScaleUserManager(UserManager) {
     def postinit -> None;
     # Identity-based user CRUD
     def create_user(
-        identities: list[dict[str, Any]], credential: dict[str, Any]
+        identities: list[dict[str, Any]],
+        credential: dict[str, Any],
+        profile: dict[str, Any] | None = None
     ) -> dict[str, Any];
 
     def create_internal_user(
