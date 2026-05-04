@@ -106,6 +106,11 @@ Returns keys like "x" or "obj.speed" for use in affected_symbols.
 Returns None for expressions that cannot be represented as a key.
 """
 def _int_subscript_suffix(right: uni.IndexSlice) -> str | None {
+    # Only constant non-negative integer indices are supported (e.g. items[0]).
+    # Not yet supported (returns None, no narrowing):
+    #   items[-1]  - UnaryExpr wrapping Int
+    #   config["host"] - String literal index
+    #   items[FIRST] - named constant index
     if (
         not right.is_range
         and len(right.slices) == 1
