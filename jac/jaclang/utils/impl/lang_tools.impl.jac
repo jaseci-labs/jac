@@ -73,13 +73,20 @@ impl AstTool.ir(args: list[str]) -> str {
                 ir = prog.compile(
                     use_str=rep.unparse(),
                     file_path=(file_name[:-3] + '.jac'),
-                    no_cgen=True
+                    options=CompileOptions(
+                        type_check=True, no_cgen=True, force_target_program=True
+                    )
                 );
             } except Exception as e {
                 return f"Error While Jac to Py AST conversion: {e}";
             }
         } else {
-            ir = prog.compile(file_name, no_cgen=True);
+            ir = prog.compile(
+                file_name,
+                options=CompileOptions(
+                    type_check=True, no_cgen=True, force_target_program=True
+                )
+            );
         }
         match output {
             case 'sym':
@@ -115,7 +122,10 @@ impl AstTool.ir(args: list[str]) -> str {
                 return ir.unparse();
 
             case 'pyast':
-                ir = prog.compile(file_name);
+                ir = prog.compile(
+                    file_name,
+                    options=CompileOptions(type_check=False, force_target_program=True)
+                );
                 return f"{py_ast.dump(ir.gen.py_ast[0], indent=2)}"
                     if isinstance(ir.gen.py_ast[0], py_ast.AST)
                     else 'Compile failed.';
@@ -124,7 +134,10 @@ impl AstTool.ir(args: list[str]) -> str {
                 return str(DocIRGenPass(ir_in=ir, prog=prog).ir_out.gen.doc_ir);
 
             case 'py':
-                ir = prog.compile(file_name);
+                ir = prog.compile(
+                    file_name,
+                    options=CompileOptions(type_check=False, force_target_program=True)
+                );
                 return f"{ir.gen.py}"
                     if isinstance(ir.gen.py[0], str)
                     else 'Compile failed.';

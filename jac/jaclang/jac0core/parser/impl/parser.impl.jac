@@ -4000,6 +4000,14 @@ impl Parser.parse_statement{
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
     }
+    # Handle `static def` / `static can` (staticmethod) in code blocks.
+    # Required so `with entry { static def ... { ... } }` parses inside an
+    # enum or archetype body — otherwise `static` falls through to the
+    # E0005 "unexpected token" branch.
+    if self.check(TokenKind.KW_STATIC)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
+        return self.parse_ability();
+    }
     if self.check(TokenKind.DECOR_OP) {
         return self._dispatch_decorated();
     }
@@ -6071,11 +6079,19 @@ impl Parser.parse_enum -> Enum {
         name_tok = self.expect_name();
     }
     name = self.make_name_or_special(name_tok);
+    value_type: Expr | None = None;
+    enum_colon_uni: UniToken | None = None;
     base_classes: list = [];
     enum_lp_uni: UniToken | None = None;
     enum_rp_uni: UniToken | None = None;
     enum_base_comma_unis: list = [];
-    if self.match_tok(TokenKind.LPAREN) {
+    if self.match_tok(TokenKind.COLON) {
+        # Typed-base shorthand: `enum X: int { ... }` desugars to `class X(IntEnum)`,
+        # `enum X: str { ... }` to `class X(StrEnum)`, and `enum X: T { ... }` to
+        # `class X(T, Enum)` (Python mixin pattern). Mutually exclusive with `(...)`.
+        enum_colon_uni = self.make_uni_token(self.previous());
+        value_type = self.parse_atomic_chain();
+    } elif self.match_tok(TokenKind.LPAREN) {
         enum_lp_uni = self.make_uni_token(self.previous());
         if not self.check(TokenKind.RPAREN) {
             base_classes.append(self.parse_atomic_chain());
@@ -6134,7 +6150,10 @@ impl Parser.parse_enum -> Enum {
         kid.append(access);
     }
     kid.append(name);
-    if base_classes {
+    if value_type {
+        kid.append(enum_colon_uni);
+        kid.append(value_type);
+    } elif base_classes {
         kid.append(enum_lp_uni);
         for (i, base) in enumerate(base_classes) {
             kid.append(base);
@@ -6154,6 +6173,7 @@ impl Parser.parse_enum -> Enum {
     return Enum(
         name=name,
         access=access,
+        value_type=value_type,
         base_classes=base_classes,
         body=body,
         kid=kid,

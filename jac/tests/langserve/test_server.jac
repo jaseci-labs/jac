@@ -228,11 +228,20 @@ test "test_go_to_definition_method_manual_impl" {
     try {
         lsp = create_server("");
         decldef_file = uris.from_fs_path(
-            examples_abs_path("micro/decl_defs_main.impl.jac")
+            os.path.join(
+                JAC_ROOT,
+                "tests",
+                "compiler",
+                "fixtures",
+                "micro",
+                "decl_defs_main.impl.jac"
+            )
         );
         lsp.type_check_file(decldef_file);
         decldef_main_file = uris.from_fs_path(
-            examples_abs_path("micro/decl_defs_main.jac")
+            os.path.join(
+                JAC_ROOT, "tests", "compiler", "fixtures", "micro", "decl_defs_main.jac"
+            )
         );
         lsp.type_check_file(decldef_main_file);
         lsp.type_check_file(decldef_file);
