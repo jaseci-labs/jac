@@ -34,6 +34,15 @@ def on_node_destroyed(node_anchor: Any) -> None;
 """Try to extract the type name from a filter lambda."""
 def _extract_type_name_from_filter(filt: (Callable | None)) -> (str | None);
 
+"""Detect if a filter lambda has predicates beyond a pure type check.
+
+The topology index can only resolve type-only filters; predicates on
+attributes must be evaluated by the linear path. Returns True if the
+filter does anything beyond `isinstance(i, T)`, including the
+conservative-on-failure case where the lambda cannot be inspected.
+"""
+def _filter_has_predicates(filt: (Callable | None)) -> bool;
+
 """Use the topology index to resolve which node UUIDs will survive
 the type-only filters in a path chain. Returns set of target UUIDs
 if planning succeeded, or None to fall back to normal approach."""

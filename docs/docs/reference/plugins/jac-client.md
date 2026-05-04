@@ -1090,7 +1090,7 @@ def:pub StylingExamples() -> JsxElement {
 > import from "clsx" { clsx }
 > import from "tailwind-merge" { twMerge }
 >
-> def:pub cn(inputs: Any) -> str {
+> def:pub cn(inputs: any) -> str {
 >     args = [].slice.call(arguments);
 >     return twMerge(clsx(args));
 > }
@@ -2220,7 +2220,7 @@ url = Reflect.construct(URL, [String(baseUrl)]);
 now = Reflect.construct(Date, []);
 
 # Promise
-p = Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+p = Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
     resolve.call(None, "done");
 }]);
 
@@ -2237,7 +2237,7 @@ When passing callbacks to be invoked later, use `.call(None, ...)`:
 to cl:
 
 handler = myCallback;
-ws.onmessage = lambda(e: Any) {
+ws.onmessage = lambda(e: any) {
     handler.call(None, JSON.parse(e.data));
 };
 ```
@@ -2250,7 +2250,7 @@ Use `glob` for state shared across a module:
 to cl:
 
 glob initialized: bool = False;
-glob cache: Any = None;
+glob cache: any = None;
 ```
 
 For more patterns, see the [Advanced Patterns & JS Interop tutorial](../../tutorials/fullstack/advanced-patterns.md).

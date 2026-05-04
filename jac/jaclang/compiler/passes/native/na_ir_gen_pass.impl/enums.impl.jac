@@ -102,32 +102,37 @@ impl NaIRGenPass._build_enum_string_table(enum_name: str, entries: list) -> None
     i32 = ir.IntType(32);
     i64 = ir.IntType(64);
     sentinel_val = ir.Constant(i64, 0x7FFFFFFFFFFFFFFF);
+    zero_i64 = ir.Constant(i64, 0);
     value_ptrs: list = [];
     name_ptrs: list = [];
     for (mname, str_val, ordinal) in entries {
-        # Create global constant for the .value string
+        # Create global constant for the .value string.
+        # Use full 16-byte RC header { i64 RC_SENTINEL, i64 dtor=0, [N x i8] data }
+        # so that __rc_retain(ptr) reading at ptr-16 finds the sentinel and skips.
         val_bytes = bytearray((str_val + "\0").encode("utf8"));
         val_arr_type = ir.ArrayType(i8, len(val_bytes));
-        val_struct_type = ir.LiteralStructType([i64, val_arr_type]);
+        val_struct_type = ir.LiteralStructType([i64, i64, val_arr_type]);
         val_c_str = ir.Constant(val_arr_type, val_bytes);
-        val_struct = ir.Constant(val_struct_type, [sentinel_val, val_c_str]);
+        val_struct = ir.Constant(val_struct_type, [sentinel_val, zero_i64, val_c_str]);
         val_gv = ir.GlobalVariable(
             self.llvm_module, val_struct_type, name=f"__enum.{enum_name}.v.{ordinal}"
         );
         val_gv.linkage = "private";
         val_gv.global_constant = True;
         val_gv.initializer = val_struct;
-        # Constant GEP to string data (skip RC sentinel header)
+        # Constant GEP to string data (skip full 16-byte RC header = 2 fields)
         val_ptr = val_gv.gep(
-            [ir.Constant(i32, 0), ir.Constant(i32, 1), ir.Constant(i32, 0)]
+            [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
         );
         value_ptrs.append(val_ptr);
         # Create global constant for the .name string (member name)
         name_bytes = bytearray((mname + "\0").encode("utf8"));
         name_arr_type = ir.ArrayType(i8, len(name_bytes));
-        name_struct_type = ir.LiteralStructType([i64, name_arr_type]);
+        name_struct_type = ir.LiteralStructType([i64, i64, name_arr_type]);
         name_c_str = ir.Constant(name_arr_type, name_bytes);
-        name_struct = ir.Constant(name_struct_type, [sentinel_val, name_c_str]);
+        name_struct = ir.Constant(
+            name_struct_type, [sentinel_val, zero_i64, name_c_str]
+        );
         name_gv = ir.GlobalVariable(
             self.llvm_module, name_struct_type, name=f"__enum.{enum_name}.n.{ordinal}"
         );
@@ -135,7 +140,7 @@ impl NaIRGenPass._build_enum_string_table(enum_name: str, entries: list) -> None
         name_gv.global_constant = True;
         name_gv.initializer = name_struct;
         name_ptr = name_gv.gep(
-            [ir.Constant(i32, 0), ir.Constant(i32, 1), ir.Constant(i32, 0)]
+            [ir.Constant(i32, 0), ir.Constant(i32, 2), ir.Constant(i32, 0)]
         );
         name_ptrs.append(name_ptr);
     }

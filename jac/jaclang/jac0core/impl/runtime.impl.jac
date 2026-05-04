@@ -13,19 +13,56 @@ impl JacAccessValidation._resolve_anchor(
     return (anchor, jctx);
 }
 
-"""Check if current root has at least min_level access to target anchor."""
+"""Check if current root has at least min_level access to target anchor.
+
+When the check fails for a write-class operation (anything other than
+`read`), build a typed PermissionDenied diagnostic, push it onto the
+request-scoped ExecutionContext.diagnostics list, and either raise
+PermissionError (strict mode) or log a warning. Read denials are part of
+normal traversal (you just don't see foreign nodes) and stay silent —
+emitting on every reachable foreign node would be noise.
+
+Strict-mode raise happens *after* the diagnostic is recorded, so a
+caller that catches the PermissionError still sees it on ctx.diagnostics.
+"""
 impl JacAccessValidation._check_access(
     `to: Anchor, min_level: AccessLevel, operation: str
 ) -> bool {
-    access_level = JacRuntimeInterface.check_access_level(`to).value > min_level.value;
-    if not access_level {
+    actual = JacRuntimeInterface.check_access_level(`to);
+    granted = actual.value > min_level.value;
+    if not granted {
         logger.info(
             "Current root doesn't have " + operation + " access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
                 `to.id
             ) + "]"
         );
+        if operation != "read" {
+            # `min_level` is the strict-greater-than threshold (e.g.
+            # CONNECT for write_access). The user-facing "required"
+            # level is the next step up — the level they actually need
+            # to pass the check.
+            required = AccessLevel(min_level.value + 1);
+            diag = PermissionDenied(
+                operation=operation,
+                target_id=str(`to.id),
+                target_type=`to.archetype.__class__.__name__,
+                target_owner=str(`to.root) if `to.root else None,
+                required=required,
+                actual=actual
+            );
+            try {
+                ctx = JacRuntimeInterface.get_context();
+                ctx.diagnostics.append(diag);
+            } except Exception {
+                ;
+            }
+            if JacRuntime.strict_permissions {
+                raise PermissionError(diag.message());
+            }
+            logger.warning(diag.message());
+        }
     }
-    return access_level;
+    return granted;
 }
 
 """Allow all access from target root graph to current Archetype."""
@@ -89,13 +126,17 @@ impl JacAccessValidation.check_read_access(`to: Anchor) -> bool {
 }
 
 """Connect Access Validation."""
-impl JacAccessValidation.check_connect_access(`to: Anchor) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.READ, "connect");
+impl JacAccessValidation.check_connect_access(
+    `to: Anchor, op_hint: str = "connect"
+) -> bool {
+    return JacAccessValidation._check_access(`to, AccessLevel.READ, op_hint);
 }
 
 """Write Access Validation."""
-impl JacAccessValidation.check_write_access(`to: Anchor) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.CONNECT, "write");
+impl JacAccessValidation.check_write_access(
+    `to: Anchor, op_hint: str = "write"
+) -> bool {
+    return JacAccessValidation._check_access(`to, AccessLevel.CONNECT, op_hint);
 }
 
 """Access validation."""
@@ -1497,10 +1538,12 @@ impl JacBasics.connect(
     edges = [];
     for i in left {
         _left = i.__jac__;
-        if JacRuntimeInterface.check_connect_access(_left) {
+        if JacRuntimeInterface.check_connect_access(_left, op_hint="edge_write") {
             for j in right {
                 _right = j.__jac__;
-                if JacRuntimeInterface.check_connect_access(_right) {
+                if JacRuntimeInterface.check_connect_access(
+                    _right, op_hint="edge_write"
+                ) {
                     edges.append(
                         JacRuntimeInterface.build_edge(
                             is_undirected=undir,
@@ -1541,7 +1584,9 @@ impl JacBasics.disconnect(
                     (dir in [EdgeDir.OUT, EdgeDir.ANY])
                     and (nd == source)
                     and (target.archetype in right)
-                    and JacRuntimeInterface.check_connect_access(target)
+                    and JacRuntimeInterface.check_connect_access(
+                        target, op_hint="edge_delete"
+                    )
                 ) {
                     JacRuntimeInterface.destroy([anchor])
                         if anchor.persistent
@@ -1552,7 +1597,9 @@ impl JacBasics.disconnect(
                     (dir in [EdgeDir.IN, EdgeDir.ANY])
                     and (nd == target)
                     and (source.archetype in right)
-                    and JacRuntimeInterface.check_connect_access(source)
+                    and JacRuntimeInterface.check_connect_access(
+                        source, op_hint="edge_delete"
+                    )
                 ) {
                     JacRuntimeInterface.destroy([anchor])
                         if anchor.persistent
@@ -1672,7 +1719,7 @@ impl JacBasics.destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) ->
             return;
         }
         anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
-        if JacRuntimeInterface.check_write_access(anchor) {
+        if JacRuntimeInterface.check_write_access(anchor, op_hint="delete") {
             match anchor {
                 case NodeAnchor():
                     for `edge in anchor.edges[:] {
@@ -1838,6 +1885,136 @@ impl JacAPIServer.ensure_sv_service(module_name: str, base_path: str) -> None {
         );
     }
     sv_client.register(module_name, base_url);
+}
+
+"""Default sv-to-sv RPC transport: plain httpx.post, no auth, no retries.
+
+Plugins override this to inject auth forwarding, retries, circuit breakers,
+or tracing. The resolution order for the target (test client, registry,
+env var, ensure_sv_service) is handled by sv_client.call before this runs.
+
+Two response shapes are honoured:
+
+  - JSON envelope (`Content-Type: application/json`): the existing
+    TransportResponse wire format. Decoded and unwrapped.
+  - SSE stream (`Content-Type: text/event-stream`): the function on
+    the other end returned an iterator. We hand back a Python
+    generator that yields parsed event dicts as they arrive — the
+    caller's `for ev in sv_func(...)` loop sees live events instead
+    of a str-ified generator object. See jac/jaclang/runtimelib/
+    sv_sse.jac for the framing contract.
+"""
+impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) -> Any {
+    import from jaclang.runtimelib { sv_client }
+    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
+
+    func_label = f"{module_name}.{func_name}";
+
+    if module_name in sv_client._test_clients {
+        # TestClient path: open via stream() so we can pivot to SSE if
+        # the downstream returns a generator. The body is unread until
+        # we explicitly .read() (JSON path) or iter_lines() (SSE path).
+        client = sv_client._test_clients[module_name];
+        stream_cm = client.stream("POST", f"/function/{func_name}", json=args);
+        resp = stream_cm.__enter__();
+        ct = resp.headers.get("content-type", "");
+        if ct.startswith("text/event-stream") {
+            # Hand off lifecycle to the wrapper. It will exhaust
+            # iter_lines() and call __exit__ on the cm in finally —
+            # we MUST NOT exit it here.
+            return _wrap_sse_keepalive(stream_cm, resp, None, func_label);
+        }
+        try {
+            # Streaming responses don't auto-read the body; call .read()
+            # before .json() (httpx raises ResponseNotRead otherwise).
+            resp.read();
+            data = resp.json();
+        } finally {
+            stream_cm.__exit__(None, None, None);
+        }
+    } else {
+        url = sv_client.resolve_url(module_name);
+        try {
+            import httpx;
+        } except ImportError {
+            raise RuntimeError(
+                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
+            );
+        }
+        client = httpx.Client();
+        stream_cm = client.stream("POST", f"{url}/function/{func_name}", json=args);
+        resp = stream_cm.__enter__();
+        ct = resp.headers.get("content-type", "");
+        if ct.startswith("text/event-stream") {
+            return _wrap_sse_keepalive(stream_cm, resp, client, func_label);
+        }
+        try {
+            resp.read();
+            data = resp.json();
+        } finally {
+            stream_cm.__exit__(None, None, None);
+            client.close();
+        }
+    }
+
+    if isinstance(data, dict) and data.get("ok") {
+        result_envelope = data.get("data");
+        if isinstance(result_envelope, dict) and ("result" in result_envelope) {
+            return result_envelope["result"];
+        }
+        return result_envelope;
+    }
+
+    err = (data.get("error") if isinstance(data, dict) else None) or {};
+    msg = err.get("message") if isinstance(err, dict) else str(err);
+    raise RuntimeError(
+        f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
+    );
+}
+
+
+"""Drive consume_sse_stream against an already-entered httpx Response,
+then `__exit__` the parent context manager (and `close()` the owning
+Client, if any) once the consumer is done iterating. Hoisted to module
+scope (Jac doesn't support nested defs).
+
+`client` may be None — the TestClient code path passes None because
+the TestClient instance is owned by sv_client._test_clients and lives
+beyond the call.
+"""
+def _wrap_sse_keepalive(
+    stream_cm: Any, resp: Any, client: Any, func_label: str
+) -> Any {
+    import from jaclang.runtimelib.sv_sse { consume_sse_stream }
+    try {
+        for ev in consume_sse_stream(resp, func_label) {
+            yield ev;
+        }
+    } finally {
+        try {
+            stream_cm.__exit__(None, None, None);
+        } except Exception {
+            ;
+        }
+        if client {
+            try {
+                client.close();
+            } except Exception {
+                ;
+            }
+        }
+    }
+}
+
+"""Default sv-service registry: a snapshot of sv_client._registry.
+
+Plugins (e.g. jac-scale's KubernetesDeployer) override this to source
+URLs from a different authority without touching the gateway or other
+callers that consume the registry.
+"""
+impl JacAPIServer.get_sv_registry -> dict[str, str] {
+    import from jaclang.runtimelib { sv_client }
+    return dict(sv_client._registry);
 }
 
 """Create the API server instance.

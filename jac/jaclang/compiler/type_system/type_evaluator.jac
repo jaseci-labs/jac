@@ -88,6 +88,7 @@ import from jaclang.jac0core.diagnostics {
     E1104,
     E1110,
     E1111,
+    W0062,
     W1050,
     W1051,
     W1100,

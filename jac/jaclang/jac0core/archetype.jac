@@ -56,6 +56,27 @@ obj Permission {
         roots: Access = field(default_factory=Access);
 }
 
+"""Diagnostic for a denied permission check.
+
+Emitted by the runtime when a write-class operation (edge create, field
+mutation, or delete) is rejected because the actor's root lacks
+sufficient access to the target anchor. Accumulated on the request-scoped
+ExecutionContext.diagnostics list and surfaced in the API response
+envelope so callers can see why their write silently no-opped.
+"""
+@dataclass
+obj PermissionDenied {
+    has operation: str,
+        target_id: str,
+        target_type: str,
+        target_owner: (str | None),
+        required: AccessLevel,
+        actual: AccessLevel;
+
+    def to_dict -> dict[(str, Any)];
+    def message -> str;
+}
+
 """Report Handler."""
 obj AnchorReport {
     has id: str,

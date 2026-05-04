@@ -49,6 +49,7 @@ import from jaclang.jac0core.constructs {
     JsxElement,
     NodeAnchor,
     NodeArchetype,
+    PermissionDenied,
     WalkerAnchor,
     WalkerArchetype
 }
@@ -123,11 +124,22 @@ class JacAccessValidation {
     """Read Access Validation."""
     static def check_read_access(`to: Anchor) -> bool;
 
-    """Connect Access Validation."""
-    static def check_connect_access(`to: Anchor) -> bool;
+    """Connect Access Validation.
 
-    """Write Access Validation."""
-    static def check_write_access(`to: Anchor) -> bool;
+    `op_hint` is the user-facing operation label that flows into a
+    PermissionDenied diagnostic on failure (e.g. "edge_write" for
+    cross-user edge creation, "edge_delete" for disconnect). Defaults to
+    the generic "connect" — overrides should be specific.
+    """
+    static def check_connect_access(`to: Anchor, op_hint: str = "connect") -> bool;
+
+    """Write Access Validation.
+
+    `op_hint` is the user-facing operation label (e.g. "delete" for
+    `del node`, "field_write" for the persist-time drop of a foreign
+    field mutation). Defaults to the generic "write".
+    """
+    static def check_write_access(`to: Anchor, op_hint: str = "write") -> bool;
 
     """Access validation."""
     static def check_access_level(`to: Anchor, no_custom: bool = False) -> AccessLevel;
@@ -585,6 +597,37 @@ class JacAPIServer {
         """
     static def ensure_sv_service(module_name: str, base_path: str) -> None;
 
+    """Execute an sv-to-sv RPC call.
+
+        Called by sv_client.call() to perform the actual HTTP request to a
+        resolved provider URL. Plugins (e.g. jac-scale) can override this to
+        inject auth, retries, tracing, or a circuit breaker. The default
+        implementation does a plain httpx.post with no extra behavior.
+
+        Args:
+          module_name: the provider module being called.
+          func_name:   the exported function on that module.
+          args:        kwargs dict passed through as the JSON body.
+
+        Returns the unwrapped result from the TransportResponse envelope.
+        Raises RuntimeError on transport or application-level failure.
+        """
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any;
+
+    """Return the current sv-service registry as a {module_name: base_url} dict.
+
+        Public accessor for the sv-service URL table. Callers (e.g. a
+        microservice gateway) should use this instead of reaching into
+        `sv_client._registry` directly. Plugins can override to source URLs
+        from a different authority - jac-scale's KubernetesDeployer will
+        return K8s Service DNS names instead of localhost loopbacks, with
+        no change required at the call site.
+
+        The returned dict is a snapshot; callers must not mutate it and
+        should call again for fresh data.
+        """
+    static def get_sv_registry -> dict[str, str];
+
     """Create the API server instance.
 
     If the specified port is in use, tries subsequent ports up to max_retries times.
@@ -1004,6 +1047,14 @@ class JacRuntime(JacRuntimeInterface) {
         pool: ThreadPoolExecutor = ThreadPoolExecutor();
         exec_ctx: (ExecutionContext | None) = None;
         loaded_modules: dict[(str, types.ModuleType)] = {};
+        # When True, permission-denied write-class operations raise
+        # PermissionError instead of silently no-opping. Defaults to the
+        # JAC_STRICT_PERMISSIONS env var (truthy values: "1", "true",
+        # "yes", "on" — case-insensitive). Tests and embedders may set
+        # this attribute directly.
+        strict_permissions: bool = os.environ.get(
+            "JAC_STRICT_PERMISSIONS", ""
+        ).strip().lower() in ("1", "true", "yes", "on");
     }
 
     """Get or create the JacCompiler singleton.

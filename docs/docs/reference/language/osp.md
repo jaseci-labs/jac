@@ -8,7 +8,7 @@
 - [Walkers](#walkers) - Walker declaration, visit, report, disengage
 - [Graph Construction](#graph-construction) - Creating and connecting nodes
 - [Graph Traversal](#graph-traversal) - Filtered traversal, entry/exit events
-- [Data Spatial Queries](#data-spatial-queries) - Edge references, attribute filtering
+- [Object Spatial Queries](#object-spatial-queries) - Edge references, attribute filtering
 - [Typed Context Blocks](#typed-context-blocks) - Type-based dispatch
 
 ---
@@ -422,7 +422,7 @@ walker DataCollector {
 }
 ```
 
-If omitted, `reports` defaults to `list[Any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
+If omitted, `reports` defaults to `list[any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
 
 ### 5 The `disengage` Statement
 
@@ -861,7 +861,7 @@ node Room {
 
 ---
 
-## Data Spatial Queries
+## Object Spatial Queries
 
 ### 1 Edge Reference Syntax
 

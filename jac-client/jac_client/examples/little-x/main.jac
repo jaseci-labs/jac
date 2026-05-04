@@ -475,8 +475,14 @@ cl async def handle_signup(event: Any) -> None {
     # Use runtime auth function - no need to know about /user/register endpoint!
     result = await jacSignup(username, password);
     if result["success"] if "success" in result else False {
-        alert("Account created successfully! Welcome to LittleX!");
-        navigate("/home");
+        # /user/register does not return a token, sign in to start a session
+        logged_in = await jacLogin(username, password);
+        if logged_in {
+            alert("Account created successfully! Welcome to LittleX!");
+            navigate("/home");
+        } else {
+            alert("Account created but login failed");
+        }
     } else {
         alert(result["error"] if "error" in result else "Signup failed");
     }
