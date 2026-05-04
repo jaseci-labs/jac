@@ -418,12 +418,23 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
     }
     # Collect base classes (Example: enum Color(IntEnum) → base_classes = [IntEnum])
     base_classes: list[types.TypeBase] = [];
+    # Typed-base shorthand `enum X: T { ... }` desugars to `class X(T, Enum)`
+    # for type-system purposes. T flows in as a leading base so the MRO carries
+    # both T and Enum — feeding get_special_enum_value_type_from_bases for the
+    # int/str shortcuts and exposing the mixin parent's attributes for custom
+    # variants. Mutually exclusive with parenthesized `enum X(B) { ... }`.
+    if node_.value_type {
+        base_classes.append(self.get_type_of_expression(node_.value_type));
+    }
     for base_class in node_.base_classes or [] {
         base_class_type = self.get_type_of_expression(base_class);
         base_classes.append(base_class_type);
     }
-    # No base specified, Then add Enum as implicit base (Example: enum Color { RED=1 } → base_classes = [Enum])
-    if not base_classes and self.prefetch and self.prefetch.enum_class {
+    # Plain `enum X { ... }` and typed `enum X: T { ... }` both get an
+    # implicit Enum base (matching what codegen emits as the trailing kind).
+    # `enum X(B) { ... }` does NOT — the user is responsible for inheriting
+    # from Enum themselves.
+    if not node_.base_classes and self.prefetch and self.prefetch.enum_class {
         base_classes.append(self.prefetch.enum_class);
     }
     # Get required value type for special enums (IntEnum → int, StrEnum → str, IntFlag → int)

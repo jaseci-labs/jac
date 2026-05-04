@@ -2831,6 +2831,31 @@ test "enum_static_method" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+"""Typed-base enum syntax: members of `enum X: int` are int instances.
+
+`enum X: int { ... }` desugars to `class X(IntEnum)` and members satisfy
+`list[int]`/int positions without `.value`. `enum X: str` mirrors that
+with str. Custom `enum X: T` uses Python's mixin pattern. Plain
+`enum X { ... }` keeps the prior behavior — members are NOT int.
+"""
+test "enum_typed_base" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_enum_typed_base.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Exactly one error expected: `bad: list[int] = [Plain.A, Plain.B]`
+    # (plain Enum members are not int instances).
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+    err_text = program.errors_had[0].pretty_print();
+    assert "Plain" in err_text and "int" in err_text , (
+        "Expected the single error to flag the Plain.A/Plain.B → list[int] "
+        f"assignment; got: {err_text}"
+    );
+}
+
 """Self member assignments with TypeVar annotations propagate through inheritance."""
 test "generic_self_member_type_propagation" {
     program = JacProgram();
