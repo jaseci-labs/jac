@@ -54,8 +54,11 @@ pip install jaseci
 jac create myapp --use client
 
 # 3. Run
-jac start main.jac
+jac start
 ```
+
+!!! note
+    `main.jac` is the default entry point. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
 
 ---
 
@@ -196,7 +199,7 @@ port = 5173
 _authToken = "${NODE_AUTH_TOKEN}"
 
 [scripts]
-dev = "jac start main.jac --dev"
+dev = "jac start --dev"
 test = "jac test"
 build = "jac build"
 

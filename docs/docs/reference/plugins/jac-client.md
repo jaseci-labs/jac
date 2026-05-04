@@ -147,8 +147,11 @@ walker:pub GetUsers {
 
 Start the server:
 
+!!! note
+    `main.jac` is the default entry point. All `jac start` commands below omit the filename. If your entry point differs (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
+
 ```bash
-jac start main.jac --port 8000
+jac start --port 8000
 ```
 
 ### Typed Object Passing
@@ -1604,7 +1607,7 @@ A desktop build produces a Tauri shell that hosts a webview pointed at a bundled
 jac setup desktop
 
 # 2. Development with hot reload
-jac start main.jac --client desktop --dev
+jac start --client desktop --dev
 
 # 3. Build installer for current platform
 jac build --client desktop
@@ -1921,16 +1924,16 @@ jac-client uses [Bun](https://bun.sh/) for package management and JavaScript bun
 
 ```bash
 # Basic
-jac start main.jac
+jac start
 
 # With hot module replacement
-jac start main.jac --dev
+jac start --dev
 
 # HMR without client bundling (API only)
-jac start main.jac --dev --no-client
+jac start --dev --no-client
 
 # Dev server for desktop target
-jac start main.jac --client desktop
+jac start --client desktop
 ```
 
 ### API Proxy
@@ -2263,7 +2266,7 @@ For more patterns, see the [Advanced Patterns & JS Interop tutorial](../../tutor
 
 ```bash
 # Enable with --dev flag
-jac start main.jac --dev
+jac start --dev
 ```
 
 Changes to `.jac` files automatically reload without restart.

@@ -1625,18 +1625,21 @@ jac lint . --fix
 
 ### Production
 
+!!! note
+    `main.jac` is the default entry point. All commands below omit the filename. If your entry point differs (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
+
 ```bash
 # Start locally
 jac start -p 8000
 
 # Deploy to Kubernetes
-jac start main.jac --scale
+jac start --scale
 
 # Check deployment status
-jac status main.jac
+jac status
 
 # Remove deployment
-jac destroy main.jac
+jac destroy
 ```
 
 ## See Also
