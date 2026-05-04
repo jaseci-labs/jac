@@ -1,9 +1,18 @@
 """Expression codegen: binary, unary, comparisons, bool expressions."""
-"""Generate IR for an expression, returning the resulting value."""
+import os;
+"""Generate IR for an expression, returning the resulting value.
+
+Sets val.jac_loc = "file:line" on every non-None result so that downstream
+helpers (_coerce_type, _box_value_tuple, etc.) can attribute RC allocations
+to the originating source line without needing a loc parameter.
+"""
 impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if nd is None {
         return None;
     }
+    _jac_loc: str = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
     if isinstance(nd, uni.Int) {
         # Handle hex, octal, binary literals based on name attribute
         tok_name = nd?.name;
@@ -27,75 +36,70 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
     if isinstance(nd, uni.Null) {
         return ir.Constant(ir.IntType(8).as_pointer(), None);
     }
-    if isinstance(nd, uni.Name) {
-        return self._codegen_name(nd);
-    }
-    if isinstance(nd, uni.BinaryExpr) {
-        return self._codegen_binary(nd);
-    }
-    if isinstance(nd, uni.CompareExpr) {
-        return self._codegen_compare(nd);
-    }
-    if isinstance(nd, uni.UnaryExpr) {
-        return self._codegen_unary(nd);
-    }
-    if isinstance(nd, uni.FuncCall) {
-        return self._codegen_call(nd);
-    }
-    if isinstance(nd, uni.AtomTrailer) {
-        return self._codegen_atom_trailer(nd);
-    }
+    # Unwrap CfgExpr (CFG-participating wrapper) to its inner expression.
+    # CfgExpr nodes are introduced by cfg_build_pass to wrap BoolExpr operands
+    # and IfElseExpr branches; native codegen treats them transparently.
     if isinstance(nd, uni.CfgExpr) {
         return self._codegen_expr(nd.expr);
     }
-    if isinstance(nd, uni.BoolExpr) {
-        return self._codegen_bool_expr(nd);
+    _result: (ir.Value | None) = None;
+    if isinstance(nd, uni.Name) {
+        _result = self._codegen_name(nd);
+    } elif isinstance(nd, uni.BinaryExpr) {
+        _result = self._codegen_binary(nd);
+    } elif isinstance(nd, uni.CompareExpr) {
+        _result = self._codegen_compare(nd);
+    } elif isinstance(nd, uni.UnaryExpr) {
+        _result = self._codegen_unary(nd);
+    } elif isinstance(nd, uni.FuncCall) {
+        _call_result = self._codegen_call(nd);
+        if _call_result is not None and isinstance(_call_result.type, ir.PointerType) {
+            self._mark_owned(_call_result);
+        }
+        _result = _call_result;
+    } elif isinstance(nd, uni.AtomTrailer) {
+        _result = self._codegen_atom_trailer(nd);
+    } elif isinstance(nd, uni.BoolExpr) {
+        _result = self._codegen_bool_expr(nd);
+    } elif isinstance(nd, uni.IfElseExpr) {
+        _result = self._codegen_if_else_expr(nd);
+    } elif isinstance(nd, uni.MultiString) {
+        _result = self._codegen_multistring(nd);
+    } elif isinstance(nd, uni.String) {
+        _result = self._codegen_string(nd);
+    } elif isinstance(nd, uni.FString) {
+        _result = self._codegen_fstring(nd);
+    } elif isinstance(nd, uni.ListVal) {
+        _result = self._codegen_list_val(nd);
+        # Check dict and set comprehensions BEFORE list comprehension
+        # (DictCompr and SetCompr do NOT inherit from ListCompr)
+    } elif isinstance(nd, uni.DictCompr) {
+        _result = self._codegen_dict_compr(nd);
+    } elif isinstance(nd, uni.SetCompr) {
+        _result = self._codegen_set_compr(nd);
+    } elif isinstance(nd, uni.ListCompr) {
+        _result = self._codegen_list_compr(nd);
+    } elif isinstance(nd, uni.TupleVal) {
+        _result = self._codegen_tuple_val(nd);
+    } elif isinstance(nd, uni.DictVal) {
+        _result = self._codegen_dict_val(nd);
+    } elif isinstance(nd, uni.SetVal) {
+        _result = self._codegen_set_val(nd);
+        # Handle parenthesized expressions: (expr) → AtomUnit
+    } elif isinstance(nd, uni.AtomUnit) {
+        _result = self._codegen_expr(nd.value);
+        # Lambda expressions: emit an anonymous LLVM function and return
+        # a function pointer to it.
+    } elif isinstance(nd, uni.LambdaExpr) {
+        _result = self._codegen_lambda(nd);
     }
-    if isinstance(nd, uni.IfElseExpr) {
-        return self._codegen_if_else_expr(nd);
+    # Stamp source location on every produced value so downstream helpers
+    # (_coerce_type clib.box path, _box_value_tuple) can attribute RC
+    # allocations without needing a loc parameter threaded through.
+    if _result is not None {
+        _result.jac_loc = _jac_loc;
     }
-    if isinstance(nd, uni.MultiString) {
-        return self._codegen_multistring(nd);
-    }
-    if isinstance(nd, uni.String) {
-        return self._codegen_string(nd);
-    }
-    if isinstance(nd, uni.FString) {
-        return self._codegen_fstring(nd);
-    }
-    if isinstance(nd, uni.ListVal) {
-        return self._codegen_list_val(nd);
-    }
-    # Check dict and set comprehensions BEFORE list comprehension
-    # (DictCompr and SetCompr do NOT inherit from ListCompr)
-    if isinstance(nd, uni.DictCompr) {
-        return self._codegen_dict_compr(nd);
-    }
-    if isinstance(nd, uni.SetCompr) {
-        return self._codegen_set_compr(nd);
-    }
-    if isinstance(nd, uni.ListCompr) {
-        return self._codegen_list_compr(nd);
-    }
-    if isinstance(nd, uni.TupleVal) {
-        return self._codegen_tuple_val(nd);
-    }
-    if isinstance(nd, uni.DictVal) {
-        return self._codegen_dict_val(nd);
-    }
-    if isinstance(nd, uni.SetVal) {
-        return self._codegen_set_val(nd);
-    }
-    # Handle parenthesized expressions: (expr) → AtomUnit
-    if isinstance(nd, uni.AtomUnit) {
-        return self._codegen_expr(nd.value);
-    }
-    # Lambda expressions: emit an anonymous LLVM function and return
-    # a function pointer to it.
-    if isinstance(nd, uni.LambdaExpr) {
-        return self._codegen_lambda(nd);
-    }
-    return None;
+    return _result;
 }
 
 """Collect free variable names referenced in a lambda body that are not
@@ -267,7 +271,23 @@ impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
         return None;
     }
     op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
-    return self._emit_binary_op(op, left, right);
+    result = self._emit_binary_op(op, left, right);
+    # RC: for string concatenation (i8* + i8*), _emit_binary_op creates a new
+    # owned buffer and returns it.  The input operands are borrowed — if the
+    # caller owns them (e.g. freshly-allocated fstring or prior concat result),
+    # release them here.  Mirrors the same release pattern in _codegen_multistring.
+    if result is not None {
+        i8p = ir.IntType(8).as_pointer();
+        if op == Tok.PLUS and left.type == i8p and right.type == i8p {
+            if self._is_owned(left) {
+                self._emit_rc_release_typed(left, op="binop_lhs", loc="");
+            }
+            if self._is_owned(right) {
+                self._emit_rc_release_typed(right, op="binop_rhs", loc="");
+            }
+        }
+    }
+    return result;
 }
 
 """Generate comparison expression."""
@@ -280,6 +300,9 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
     if right is None {
         return None;
     }
+    # Save originals before any type coercions (bitcast/promote) for cleanup.
+    _cmp_left_orig = left;
+    _cmp_right_orig = right;
     op = nd.ops[0].name if isinstance(nd.ops[0], uni.Token) else str(nd.ops[0]);
     # Handle "in" operator for dicts and sets: left in right
     if op == Tok.KW_IN or op == Tok.KW_NIN {
@@ -509,7 +532,16 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             if left.type != right.type {
                 right = self.builder.bitcast(right, left.type);
             }
-            return self.builder.icmp_unsigned("==", left, right, name="is.eq");
+            _is_result = self.builder.icmp_unsigned("==", left, right, name="is.eq");
+            if isinstance(_cmp_left_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_left_orig) {
+                self._emit_rc_release_simple(_cmp_left_orig, op="cmp_is", loc="");
+            }
+            if isinstance(_cmp_right_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_right_orig) {
+                self._emit_rc_release_simple(_cmp_right_orig, op="cmp_is", loc="");
+            }
+            return _is_result;
         }
         # i64 is None: compare against -1 sentinel (for optional enum/int)
         if isinstance(left.type, ir.IntType)
@@ -525,7 +557,16 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
             if left.type != right.type {
                 right = self.builder.bitcast(right, left.type);
             }
-            return self.builder.icmp_unsigned("!=", left, right, name="is.ne");
+            _isn_result = self.builder.icmp_unsigned("!=", left, right, name="is.ne");
+            if isinstance(_cmp_left_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_left_orig) {
+                self._emit_rc_release_simple(_cmp_left_orig, op="cmp_isn", loc="");
+            }
+            if isinstance(_cmp_right_orig.type, ir.PointerType)
+            and self._is_owned(_cmp_right_orig) {
+                self._emit_rc_release_simple(_cmp_right_orig, op="cmp_isn", loc="");
+            }
+            return _isn_result;
         }
         # i64 is not None: compare against -1 sentinel (for optional enum/int)
         if isinstance(left.type, ir.IntType)
@@ -540,7 +581,16 @@ impl NaIRGenPass._codegen_compare(nd: uni.CompareExpr) -> (ir.Value | None) {
     if is_float {
         (left, right) = self._promote_to_float(left, right);
     }
-    return self._emit_comparison(op, left, right, is_float);
+    _cmp_result = self._emit_comparison(op, left, right, is_float);
+    if isinstance(_cmp_left_orig.type, ir.PointerType)
+    and self._is_owned(_cmp_left_orig) {
+        self._emit_rc_release_simple(_cmp_left_orig, op="cmp_op", loc="");
+    }
+    if isinstance(_cmp_right_orig.type, ir.PointerType)
+    and self._is_owned(_cmp_right_orig) {
+        self._emit_rc_release_simple(_cmp_right_orig, op="cmp_op", loc="");
+    }
+    return _cmp_result;
 }
 
 """Generate unary expression."""

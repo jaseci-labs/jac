@@ -71,12 +71,19 @@ impl app.handleSignup -> None {
     }
     loading = True;
     result = await jacSignup(username, password);
-    loading = False;
     if result["success"] {
-        isLoggedIn = True;
-        username = "";
-        password = "";
+        # /user/register does not return a token, sign in to start a session
+        logged_in = await jacLogin(username, password);
+        loading = False;
+        if logged_in {
+            isLoggedIn = True;
+            username = "";
+            password = "";
+        } else {
+            error = "Account created but login failed";
+        }
     } else {
+        loading = False;
         error = str(result["error"]) if result["error"] else "Signup failed";
     }
 }

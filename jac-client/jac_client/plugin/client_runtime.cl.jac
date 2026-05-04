@@ -45,7 +45,9 @@ async def:pub __jacCallFunction(function_name: str, args: dict = {}) -> Any;
 def:pub __normalizeIdentity(x: Any) -> dict;
 def:pub __normalizeCredential(x: Any) -> dict;
 async def:pub jacSignup(
-    identities_or_username: (str | list), credential_or_password: (str | dict)
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
 ) -> dict;
 
 async def:pub jacLogin(
@@ -85,8 +87,19 @@ def:pub __overlaps(list1: list, list2: list) -> bool;
 # ============================================================================
 # Client Error Reporting
 # ============================================================================
+# `componentStack` carries React's named call chain (e.g. "in App\n  in Router")
+# captured by the boundary's onError; the JS `stack` is engine frames only.
 def:pub __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None;
 
 def:pub __jacInstallErrorHandlers -> None;
+
+# onError prop for JacClientErrorBoundary. Wired by entry-script generators
+# so `info.componentStack` reaches the server (FallbackComponent's props
+# don't include `info`, so reporting from there can't see componentStack).
+def:pub __jacReactErrorHandler(error: Any, info: Any) -> None;

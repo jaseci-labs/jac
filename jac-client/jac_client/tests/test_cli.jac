@@ -1224,6 +1224,7 @@ test "vite config generation" {
             assert "/admin" in dev_config_content;  # Admin portal proxy
             assert "/graph" in dev_config_content;  # Graph visualization proxy
             assert "/redoc" in dev_config_content;  # ReDoc API docs proxy
+            assert "/assets" in dev_config_content;  # Project assets/ dir proxy
             assert "tailwindcss()" in dev_config_content;  # Tailwind plugin
             assert "@tailwindcss/vite" in dev_config_content;  # Tailwind import
 
