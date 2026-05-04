@@ -66,8 +66,15 @@ def _scale_pre_hook(context: HookContext) -> None {
         scale_config = get_scale_config();
         # Create logger
         logger = UtilityFactory.create_logger('standard');
-        # Get target-specific config
-        if target == 'kubernetes' {
+        # Get target-specific config. P0.20: 'kubernetes-microservice'
+        # shares the [plugins.scale.kubernetes] config shape with the
+        # monolith target - it's a different deployment strategy on top
+        # of the same K8s config (resource limits, probe cadences,
+        # ingress, registry). Without this, the microservice path got
+        # an empty target_config and fell back to every default
+        # (1Gi memory limit, 15s liveness probe), making jac.toml's
+        # explicit values silently invisible.
+        if target in ('kubernetes', 'kubernetes-microservice') {
             target_config = scale_config.get_kubernetes_config();
         } else {
             # Custom targets load config from [plugins.scale.<target>]
@@ -406,8 +413,9 @@ class JacCmd {
             # Create logger
             logger = UtilityFactory.create_logger('standard');
 
-            # Get target-specific config
-            if target == 'kubernetes' {
+            # Get target-specific config (P0.20: see notes on the
+            # equivalent block above; same dispatch for `--destroy`).
+            if target in ('kubernetes', 'kubernetes-microservice') {
                 target_config = scale_config.get_kubernetes_config();
             } else {
                 # Custom targets load config from [plugins.scale.<target>]
