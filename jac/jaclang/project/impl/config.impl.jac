@@ -869,6 +869,12 @@ impl _parse_toml_data(
             create_dirs=storage_data.get("create_dirs", True)
         );
     }
+    if "client_errors" in data {
+        ce_data = data["client_errors"];
+        config.client_errors = ClientErrorsConfig(
+            verbose=ce_data.get("verbose", False)
+        );
+    }
     if "plugins" in data {
         plugins_data = data["plugins"];
         config.plugins_config = PluginsConfig(

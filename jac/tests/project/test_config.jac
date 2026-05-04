@@ -213,6 +213,28 @@ test "load run config" {
     }
 }
 
+test "client_errors verbose defaults to false when section omitted" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.client_errors.verbose is False;
+    }
+}
+
+test "client_errors verbose loads from jac.toml" {
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = Path(tmpdir) / "verbose_project";
+        temp_project.mkdir();
+        (temp_project / "jac.toml").write_text(
+            "[project]\nname = \"v\"\n\n[client_errors]\nverbose = true\n"
+        );
+        cfg = JacConfig.load(temp_project / "jac.toml");
+        assert cfg.client_errors.verbose is True;
+    }
+}
+
 test "load scripts" {
     config_mod._config = None;
     with TemporaryDirectory() as tmpdir {

@@ -545,8 +545,29 @@ def load_plugins_with_disabling(
             }
             plugin_manager.register(plugin, name=ep.name);
             plugin_manager._plugin_distinfo.append((plugin, DistFacade(dist)));
-        } except Exception {
-            ;
+        } except Exception as exc {
+            # Surface plugin-load failures so users know why an installed
+            # plugin's features (e.g. jac-scale's /docs and /graph routes)
+            # are missing. Most common cause is an unmet runtime dep on
+            # the plugin's own side — name it explicitly and let the user
+            # decide whether to install the dep or disable the plugin via
+            # JAC_DISABLED_PLUGINS / [plugins].disabled in jac.toml.
+            # sys.stderr.write (not print) -- we're called from
+            # jaclang/__init__.py during the foundational-module phase,
+            # before cli.console is safe to import.
+            import sys;
+            cause = type(exc).__name__;
+            if isinstance(exc, ModuleNotFoundError) and exc?.name {
+                detail = f"missing dependency '{exc.name}'";
+            } else {
+                detail = f"{cause}: {exc}";
+            }
+            sys.stderr.write(
+                f"warning: plugin '{qualified_name}' failed to load -- "
+                f"{detail}. Install the missing package, or disable this "
+                "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
+                "jac.toml.\n"
+            );
         }
     }
 }
