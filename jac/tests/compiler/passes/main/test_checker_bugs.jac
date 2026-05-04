@@ -597,14 +597,19 @@ test "bug_dloc1_decorated_class_in_function_body" {
     );
 }
 
-# =========================================================================
-# Bug: isinstance narrowing not applied to non-Name AtomTrailer targets
-# =========================================================================
-test "bug_5768_atomtrailer_base_narrowing" {
+test "bug_atomtrailer_base_narrowing" {
     program = compile_and_check("checker_bug_subscript_base_narrowing.jac");
 
     assert len(program.errors_had) == 0 , (
         "`if isinstance(path[0], StringVal)` should narrow path[0].lit_value access. "
+         );
+}
+
+test "bug_while_loop_narrowing" {
+    program = compile_and_check("checker_bug_while_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`while cur` should narrow cur from Item|None to Item inside the body. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
