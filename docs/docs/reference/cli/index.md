@@ -1626,7 +1626,7 @@ jac lint . --fix
 ### Production
 
 !!! note
-    `main.jac` is the default entry point. All commands below omit the filename. If your entry point differs (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
+    `main.jac` is the default entry point for `jac start`. If your entry point differs (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
 
 ```bash
 # Start locally
@@ -1636,10 +1636,10 @@ jac start -p 8000
 jac start --scale
 
 # Check deployment status
-jac status
+jac status main.jac
 
 # Remove deployment
-jac destroy
+jac destroy main.jac
 ```
 
 ## See Also

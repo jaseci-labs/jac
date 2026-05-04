@@ -83,7 +83,7 @@ walker:pub health {
 ### 2. Deploy to Kubernetes
 
 !!! note
-    `main.jac` is the default entry point. Commands below omit the filename. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
+    `main.jac` is the default entry point for `jac start`. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
 
 ```bash
 jac start --scale
@@ -181,10 +181,10 @@ Configure deployment via environment variables in `.env`:
 
 ### Check Status
 
-Use `jac status` to see the health of all deployment components at a glance:
+Use `jac status main.jac` to see the health of all deployment components at a glance:
 
 ```bash
-jac status
+jac status main.jac
 ```
 
 This displays a table showing each component's status (Running, Degraded, Pending, Restarting, or Not Deployed), pod readiness counts, and service URLs.
@@ -213,7 +213,7 @@ kubectl logs -l app=jaseci -f
 Remove all Kubernetes resources created by jac-scale:
 
 ```bash
-jac destroy
+jac destroy main.jac
 ```
 
 This removes:
@@ -277,7 +277,7 @@ alias kubectl='microk8s kubectl'
 
 ```bash
 # Check all component statuses at once
-jac status
+jac status main.jac
 
 # Or use kubectl for more detail
 kubectl get pods
@@ -311,7 +311,7 @@ kubectl logs -l app=redis
 
 ```bash
 # Quick overview of all components
-jac status
+jac status main.jac
 
 # Describe a pod for events
 kubectl describe pod <pod-name>
