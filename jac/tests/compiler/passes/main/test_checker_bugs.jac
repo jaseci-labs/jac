@@ -608,4 +608,3 @@ test "bug_5768_subscript_key_narrowing" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
-
