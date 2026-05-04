@@ -122,6 +122,27 @@ def _scale_pre_hook(context: HookContext) -> None {
             console.print(
                 "Installing Jaseci packages from repository (experimental mode)..."
             );
+        } elif target == "kubernetes-microservice" {
+            # P0.10: the previous "Installing Jaseci packages from PyPI..."
+            # message was a lie for the K-track. Auto-build's Dockerfile
+            # resolution picks Dockerfile.microservice.ci (local source) for
+            # developer checkouts, falls back to Dockerfile.microservice
+            # (PyPI) only for end-user installs. Detect the developer-checkout
+            # case here so the log matches reality.
+            import from jac_scale.microservices._image_build {
+                find_jaseci_repo_root
+            }
+            repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
+            if repo is not None {
+                console.print(
+                    f"Preparing microservice deployment "
+                    f"(jaseci local source: {repo})..."
+                );
+            } else {
+                console.print(
+                    "Preparing microservice deployment (jaseci from PyPI)..."
+                );
+            }
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }

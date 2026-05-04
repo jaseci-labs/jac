@@ -377,6 +377,99 @@ def run_kind_image_load(image_tag: str, cluster: str) {
 }
 
 
+"""P0.12: read the locally-stored image ID for a tag.
+
+Returns "sha256:..." or None on any failure (no-op fallback). Accepts
+an env override so we can talk to minikube's internal docker daemon
+when the build was executed there.
+"""
+def _docker_image_id(
+    image_tag: str, env_overrides: dict[str, str] | None = None
+) -> str | None {
+    env = dict(os.environ);
+    if env_overrides {
+        env.update(env_overrides);
+    }
+    try {
+        result = subprocess.run(
+            ["docker", "inspect", "--format={{.Id}}", image_tag],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env
+        );
+    } except Exception {
+        return None;
+    }
+    if result.returncode != 0 {
+        return None;
+    }
+    digest = result.stdout.strip();
+    if digest.startswith("sha256:") {
+        return digest;
+    }
+    return None;
+}
+
+
+"""P0.12: retag a freshly-built image with a content-derived suffix.
+
+K8s deployments roll only when the pod spec changes. With a fixed
+`<app>:dev` tag, every `jac start --scale` rebuild produces an image
+whose tag is identical to the previous one - K8s sees no spec diff,
+skips the rollout, and the user's edits never reach the running pods.
+The user sees "deployment applied" + "Successfully built" and assumes
+fresh code is live; in practice yesterday's pod stays.
+
+Tagging with a digest-derived suffix (`<app>:dev-<id12>`) makes the
+spec content-addressed: identical content -> identical tag -> no
+churn; changed content -> new tag -> automatic rolling update. The
+local-cluster image distribution step (`k3d image import`, `kind load`)
+re-runs against the new tag, so the cluster always has what the
+manifest references.
+
+Returns the new tag on success, the original `base_tag` on any
+docker-CLI failure (we'd rather degrade to the old "no auto-rollout"
+behavior than break the deploy entirely - manual `kubectl rollout
+restart` still works).
+
+`base_tag` is the tag that was just `docker build`-ed (always
+`<name>:dev` or `<registry>/<name>:dev`). `env_overrides` reaches
+docker's daemon (e.g. minikube). Registry prefixes are preserved:
+`ghcr.io/org/app:dev` -> `ghcr.io/org/app:dev-<id>`.
+"""
+def _retag_with_content_id(
+    base_tag: str, env_overrides: dict[str, str] | None = None
+) -> str {
+    image_id = _docker_image_id(base_tag, env_overrides);
+    if image_id is None or not image_id.startswith("sha256:") {
+        return base_tag;
+    }
+    short_id = image_id[len("sha256:"):][:12];
+    new_tag = f"{base_tag}-{short_id}";
+
+    env = dict(os.environ);
+    if env_overrides {
+        env.update(env_overrides);
+    }
+    try {
+        result = subprocess.run(
+            ["docker", "tag", base_tag, new_tag],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            env=env
+        );
+    } except Exception {
+        return base_tag;
+    }
+    if result.returncode != 0 {
+        return base_tag;
+    }
+    return new_tag;
+}
+
+
 """Run `docker push <tag>` for remote-cluster deploys."""
 def run_docker_push(image_tag: str) {
     cmd: list[str] = ["docker", "push", image_tag];
@@ -390,6 +483,26 @@ def run_docker_push(image_tag: str) {
             f"Verify your registry credentials with `docker login "
             f"<registry>`."
         );
+    }
+}
+
+
+"""P0.11 helper: detect whether jac-client is importable.
+
+`jac build <entry>` is contributed by the jac-client package, not jac
+itself. When jac-client isn't installed, `jac build` either errors with
+an unhelpful "unknown command" or (worse, depending on version) returns
+exit 0 without producing any dist output. Either way, the docker image
+ends up without `.jac/client/dist/` and the gateway pod serves a blank
+page at /. Surface a clear, actionable message before the build runs.
+"""
+def _jac_client_installed -> bool {
+    try {
+        import importlib;
+        importlib.import_module("jac_client");
+        return True;
+    } except ImportError {
+        return False;
     }
 }
 
@@ -426,6 +539,20 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
             "entry from jac.toml."
         );
     }
+    # P0.11: explicit jac-client pre-flight. Without this, a missing
+    # jac-client install becomes a silent FE-skip discovered only when
+    # the gateway pod serves an empty page minutes later.
+    if not _jac_client_installed() {
+        raise RuntimeError(
+            f"jac-client is not installed but "
+            f"[plugins.scale.microservices.client].entry='{client_entry}' "
+            "is set in jac.toml. The frontend bundle build needs "
+            "jac-client.\n"
+            "  Fix:    pip install jac-client\n"
+            "  Or:     remove the [plugins.scale.microservices.client] "
+            "section from jac.toml if this app has no frontend."
+        );
+    }
     cmd: list[str] = ["jac", "build", client_entry];
     try {
         result = subprocess.run(
@@ -434,8 +561,8 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
     } except subprocess.TimeoutExpired {
         raise RuntimeError(
             f"jac build {client_entry} timed out after 300s. The client "
-            f"build is usually <30s; if it's hanging, check for a vite "
-            f"watcher or infinite frontend hot-reload loop."
+            "build is usually <30s; if it's hanging, check for a vite "
+            "watcher or infinite frontend hot-reload loop."
         );
     }
     if result.returncode != 0 {
@@ -444,6 +571,25 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
             f"jac build {client_entry} failed (exit {result.returncode}):\n"
             f"  cwd: {project_dir}\n"
             f"  last 20 lines:\n{tail}"
+        );
+    }
+    # P0.13: assert the bundle is actually where the docker COPY step
+    # expects it. `jac build` can return exit 0 without producing a
+    # bundle in some failure modes (cached-but-broken state, vite skip,
+    # missing entry file). Without this guard the image silently ships
+    # without the FE and the gateway serves a blank page - making the
+    # platform feel half-broken when the real cause is one config away.
+    dist_index = project_dir / ".jac" / "client" / "dist" / "index.html";
+    if not dist_index.is_file() {
+        raise RuntimeError(
+            f"jac build {client_entry} completed (exit 0) but no FE bundle "
+            f"was produced at {dist_index}. Expected "
+            ".jac/client/dist/index.html after a successful build.\n"
+            f"  - Verify the entry compiles: jac build {client_entry}\n"
+            "  - Check the project's `.jac/client/` directory exists "
+            "and is writable\n"
+            "  - Reinstall jac-client: pip install --force-reinstall "
+            "jac-client"
         );
     }
 }
@@ -510,12 +656,19 @@ def auto_build_and_distribute(
         image_tag = f"{app_name}:dev";
         env_overrides = get_minikube_docker_env();
         run_docker_build(context_dir, image_tag, dockerfile, build_args, env_overrides);
-        return image_tag;
+        # P0.12: retag with content-derived suffix so the manifest spec
+        # changes when the image changes (forces automatic rollout).
+        return _retag_with_content_id(image_tag, env_overrides);
     }
 
     if cluster_type == CLUSTER_K3D {
         image_tag = f"{app_name}:dev";
         run_docker_build(context_dir, image_tag, dockerfile, build_args);
+        # P0.12: retag BEFORE importing so the new content-addressed tag
+        # is what k3d's containerd ends up holding (and what the manifest
+        # references). Importing the bare `:dev` tag would let the cluster
+        # keep yesterday's content under the same name.
+        image_tag = _retag_with_content_id(image_tag);
         cluster = k3d_cluster_name(_active_context_name());
         run_k3d_image_import(image_tag, cluster);
         return image_tag;
@@ -524,6 +677,7 @@ def auto_build_and_distribute(
     if cluster_type == CLUSTER_KIND {
         image_tag = f"{app_name}:dev";
         run_docker_build(context_dir, image_tag, dockerfile, build_args);
+        image_tag = _retag_with_content_id(image_tag);
         cluster = kind_cluster_name(_active_context_name());
         run_kind_image_load(image_tag, cluster);
         return image_tag;
@@ -543,6 +697,10 @@ def auto_build_and_distribute(
     registry_prefix = registry_url.rstrip("/");
     image_tag = f"{registry_prefix}/{app_name}:dev";
     run_docker_build(context_dir, image_tag, dockerfile, build_args);
+    # P0.12: retag with content suffix BEFORE pushing. The remote cluster
+    # pulls by exact tag from the registry, so the registry must hold the
+    # tag the manifest references.
+    image_tag = _retag_with_content_id(image_tag);
     run_docker_push(image_tag);
     return image_tag;
 }

@@ -99,7 +99,10 @@ test "resolve_dockerfile falls back to embedded template + .jac/Dockerfile.gen" 
         assert df.exists();
         contents = df.read_text();
         assert "FROM python:3.12-slim" in contents;
-        assert "jac-scale[deploy]" in contents;
+        # Embedded template installs the [deploy,data] extras so pymongo
+        # + redis are available in the runtime image (P0.8 unblocked
+        # Mongo/Redis auto-provisioning).
+        assert "jac-scale[deploy,data]" in contents;
         assert ctx.resolve() == project.resolve();
         assert args == {};
     }
@@ -200,6 +203,12 @@ test "P0.7: build_client_bundle invokes `jac build <entry>` from project_dir" {
     # sensitive to whether the jac binary is on the test runner's PATH.
     with tempfile.TemporaryDirectory() as tmp {
         project = Path(tmp);
+        # Pre-create the dist artifact so P0.13's post-build assertion
+        # (added later) is satisfied - this test is about the subprocess
+        # call shape, not the artifact check.
+        dist = project / ".jac" / "client" / "dist";
+        dist.mkdir(parents=True);
+        (dist / "index.html").write_text("<html></html>");
         fake_result = mock.MagicMock(returncode=0, stdout="", stderr="");
         with mock.patch("shutil.which", return_value="/usr/local/bin/jac") {
             with mock.patch("subprocess.run", return_value=fake_result) as mock_run {
@@ -429,5 +438,317 @@ test "auto_build_and_distribute on unknown cluster raises actionable error" {
             assert "kubeconfig" in msg.lower() or "cluster" in msg.lower();
             assert "minikube start" in msg or "kubectl cluster-info" in msg;
         }
+    }
+}
+
+
+# =============================================================================
+# P0.11: jac-client pre-flight check
+# =============================================================================
+test "P0.11: build_client_bundle raises if jac-client not importable" {
+    # Without this guard, missing jac-client manifests as a silent FE-skip:
+    # `jac build` returns exit 0 (or unhelpful stderr) and the docker image
+    # ships without .jac/client/dist/. The user sees a blank gateway page
+    # and has no breadcrumb leading back to the missing pip install.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        with mock.patch("shutil.which", return_value="/usr/local/bin/jac") {
+            with mock.patch.object(
+                ib_mod, "_jac_client_installed", return_value=False
+            ) {
+                raised = False;
+                msg = "";
+                try {
+                    build_client_bundle(project, "main.jac");
+                } except RuntimeError as e {
+                    raised = True;
+                    msg = str(e);
+                }
+                assert raised;
+                # Must name the package + the fix the user can act on.
+                assert "jac-client" in msg;
+                assert "pip install jac-client" in msg;
+                # Must echo the entry the user configured.
+                assert "main.jac" in msg;
+            }
+        }
+    }
+}
+
+
+test "P0.11: build_client_bundle proceeds when jac-client present" {
+    # Companion to the missing-jac-client test - confirms the guard
+    # doesn't fire false-positives when the package IS installed.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        # Pre-create the dist file so the P0.13 post-build assertion passes.
+        dist = project / ".jac" / "client" / "dist";
+        dist.mkdir(parents=True);
+        (dist / "index.html").write_text("<html></html>");
+        run_calls: dict[str, int] = {"count": 0};
+        def fake_run(*_args: Any, **_kwargs: Any) -> Any {
+            run_calls["count"] += 1;
+            return mock.MagicMock(returncode=0, stdout="", stderr="");
+        }
+        with mock.patch("shutil.which", return_value="/usr/local/bin/jac") {
+            with mock.patch.object(
+                ib_mod, "_jac_client_installed", return_value=True
+            ) {
+                with mock.patch("subprocess.run", side_effect=fake_run) {
+                    build_client_bundle(project, "main.jac");
+                }
+            }
+        }
+        # The actual jac build subprocess should still run.
+        assert run_calls["count"] == 1;
+    }
+}
+
+
+# =============================================================================
+# P0.13: post-build dist assertion
+# =============================================================================
+test "P0.13: build_client_bundle raises when index.html absent post-build" {
+    # `jac build` can return exit 0 without producing dist/index.html
+    # (cached-but-broken state, vite skip on missing entry). Without
+    # this assertion the docker COPY step succeeds and the gateway pod
+    # silently serves nothing - looks like the platform is broken when
+    # the cause is one config away.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        # Notably DO NOT create .jac/client/dist/index.html
+        fake_result = mock.MagicMock(returncode=0, stdout="", stderr="");
+        with mock.patch("shutil.which", return_value="/usr/local/bin/jac") {
+            with mock.patch.object(
+                ib_mod, "_jac_client_installed", return_value=True
+            ) {
+                with mock.patch("subprocess.run", return_value=fake_result) {
+                    raised = False;
+                    msg = "";
+                    try {
+                        build_client_bundle(project, "main.jac");
+                    } except RuntimeError as e {
+                        raised = True;
+                        msg = str(e);
+                    }
+                    assert raised;
+                    # Error must point at the missing artifact + name the
+                    # entry so users can reproduce manually.
+                    assert "index.html" in msg;
+                    assert "main.jac" in msg;
+                    assert "no FE bundle" in msg or "no FE" in msg;
+                }
+            }
+        }
+    }
+}
+
+
+test "P0.13: build_client_bundle accepts dist created by jac build" {
+    # If jac build does its job, no exception. Companion to the
+    # absent-bundle test.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        dist = project / ".jac" / "client" / "dist";
+        dist.mkdir(parents=True);
+        (dist / "index.html").write_text("<html></html>");
+        fake_result = mock.MagicMock(returncode=0, stdout="", stderr="");
+        with mock.patch("shutil.which", return_value="/usr/local/bin/jac") {
+            with mock.patch.object(
+                ib_mod, "_jac_client_installed", return_value=True
+            ) {
+                with mock.patch("subprocess.run", return_value=fake_result) {
+                    # No exception expected.
+                    build_client_bundle(project, "main.jac");
+                }
+            }
+        }
+    }
+}
+
+
+# =============================================================================
+# P0.12: content-addressed image tag (force rollout on content change)
+# =============================================================================
+test "P0.12: _docker_image_id returns sha256:<hex> when inspect succeeds" {
+    fake_result = mock.MagicMock(
+        returncode=0,
+        stdout="sha256:abcdef0123456789aaaa\n",
+        stderr=""
+    );
+    with mock.patch("subprocess.run", return_value=fake_result) {
+        digest = ib_mod._docker_image_id("myapp:dev");
+    }
+    assert digest == "sha256:abcdef0123456789aaaa";
+}
+
+
+test "P0.12: _docker_image_id returns None on inspect failure" {
+    # docker not installed, image absent, daemon unreachable - all
+    # collapse to None so the caller can fall back to the base tag.
+    fake_result = mock.MagicMock(returncode=1, stdout="", stderr="No such image");
+    with mock.patch("subprocess.run", return_value=fake_result) {
+        digest = ib_mod._docker_image_id("not-real:dev");
+    }
+    assert digest is None;
+}
+
+
+test "P0.12: _docker_image_id passes env_overrides through to subprocess" {
+    # Minikube case: docker daemon lives inside the VM; the inspect call
+    # needs DOCKER_HOST/CERT_PATH overrides or it'd query the wrong
+    # daemon and return None for an image that exists where it matters.
+    captured: dict[str, Any] = {};
+    def fake_run(*_args: Any, **kwargs: Any) -> Any {
+        captured["env"] = kwargs.get("env");
+        return mock.MagicMock(
+            returncode=0, stdout="sha256:cafe1234567890ab\n", stderr=""
+        );
+    }
+    with mock.patch("subprocess.run", side_effect=fake_run) {
+        digest = ib_mod._docker_image_id(
+            "myapp:dev", env_overrides={"DOCKER_HOST": "tcp://192.168.49.2:2376"}
+        );
+    }
+    assert digest == "sha256:cafe1234567890ab";
+    assert captured["env"]["DOCKER_HOST"] == "tcp://192.168.49.2:2376";
+}
+
+
+test "P0.12: _retag_with_content_id appends 12-char id to base tag" {
+    full_id = "sha256:abcdef012345dead0000beef0000face1234";
+    expected_short = "abcdef012345";  # first 12 hex chars after sha256:
+    fake_tag_ok = mock.MagicMock(returncode=0, stdout="", stderr="");
+    with mock.patch.object(
+        ib_mod, "_docker_image_id", return_value=full_id
+    ) {
+        with mock.patch("subprocess.run", return_value=fake_tag_ok) {
+            new_tag = ib_mod._retag_with_content_id("myapp:dev");
+        }
+    }
+    assert new_tag == f"myapp:dev-{expected_short}";
+}
+
+
+test "P0.12: _retag_with_content_id preserves registry prefix" {
+    # Remote-cluster tags include the registry prefix; the new tag must
+    # too, otherwise the push would target the wrong repo.
+    full_id = "sha256:0011223344556677889900";
+    fake_tag_ok = mock.MagicMock(returncode=0, stdout="", stderr="");
+    with mock.patch.object(
+        ib_mod, "_docker_image_id", return_value=full_id
+    ) {
+        with mock.patch("subprocess.run", return_value=fake_tag_ok) {
+            new_tag = ib_mod._retag_with_content_id("ghcr.io/org/myapp:dev");
+        }
+    }
+    assert new_tag == "ghcr.io/org/myapp:dev-001122334455";
+}
+
+
+test "P0.12: _retag_with_content_id falls back to base_tag when inspect fails" {
+    # If docker inspect can't read the digest (daemon down, image
+    # missing, etc.), keep the deploy moving with the bare :dev tag.
+    # Manual `kubectl rollout restart` is the workaround; better than
+    # crashing the whole `jac start --scale`.
+    with mock.patch.object(ib_mod, "_docker_image_id", return_value=None) {
+        new_tag = ib_mod._retag_with_content_id("myapp:dev");
+    }
+    assert new_tag == "myapp:dev";
+}
+
+
+test "P0.12: _retag_with_content_id falls back when docker tag fails" {
+    # docker inspect succeeded so we know the digest - but the docker
+    # tag step itself failed (rare; would mean daemon hiccupped between
+    # two calls). Same fallback: let the deploy continue with the base
+    # tag rather than half-committed state.
+    fake_tag_fail = mock.MagicMock(
+        returncode=1, stdout="", stderr="failed to tag"
+    );
+    with mock.patch.object(
+        ib_mod, "_docker_image_id", return_value="sha256:abc123def4567890aaaa"
+    ) {
+        with mock.patch("subprocess.run", return_value=fake_tag_fail) {
+            new_tag = ib_mod._retag_with_content_id("myapp:dev");
+        }
+    }
+    assert new_tag == "myapp:dev";
+}
+
+
+test "P0.12: auto_build_and_distribute on k3d imports the retagged image" {
+    # End-to-end check on the K3D path: the tag flowing into
+    # k3d image import (and therefore into the manifest) must be the
+    # content-addressed one, not the bare `:dev`.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        (project / "Dockerfile.microservice").write_text("FROM scratch\n");
+        import_called: dict[str, Any] = {};
+        def fake_import(image_tag: str, cluster: str) {
+            import_called["image_tag"] = image_tag;
+            import_called["cluster"] = cluster;
+        }
+        with mock.patch.object(
+            ib_mod, "detect_cluster_type", return_value=CLUSTER_K3D
+        ) {
+            with mock.patch.object(
+                ib_mod, "_active_context_name", return_value="k3d-mycluster"
+            ) {
+                with mock.patch.object(ib_mod, "run_docker_build") {
+                    with mock.patch.object(
+                        ib_mod,
+                        "_retag_with_content_id",
+                        return_value="myapp:dev-cafe12345678"
+                    ) {
+                        with mock.patch.object(
+                            ib_mod,
+                            "run_k3d_image_import",
+                            side_effect=fake_import
+                        ) {
+                            tag = auto_build_and_distribute("myapp", project);
+                        }
+                    }
+                }
+            }
+        }
+        assert tag == "myapp:dev-cafe12345678";
+        assert import_called["image_tag"] == "myapp:dev-cafe12345678";
+    }
+}
+
+
+test "P0.12: auto_build_and_distribute on remote pushes the retagged image" {
+    # Equivalent check on the registry path - what gets pushed (and
+    # what the manifest references on the remote cluster) must be
+    # the content-addressed tag.
+    with tempfile.TemporaryDirectory() as tmp {
+        project = Path(tmp);
+        (project / "Dockerfile.microservice").write_text("FROM scratch\n");
+        push_called: dict[str, Any] = {};
+        def fake_push(image_tag: str) {
+            push_called["image_tag"] = image_tag;
+        }
+        with mock.patch.object(
+            ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE
+        ) {
+            with mock.patch.object(ib_mod, "run_docker_build") {
+                with mock.patch.object(
+                    ib_mod,
+                    "_retag_with_content_id",
+                    return_value="ghcr.io/myorg/myapp:dev-deadbeef0011"
+                ) {
+                    with mock.patch.object(
+                        ib_mod, "run_docker_push", side_effect=fake_push
+                    ) {
+                        tag = auto_build_and_distribute(
+                            "myapp", project, registry_url="ghcr.io/myorg"
+                        );
+                    }
+                }
+            }
+        }
+        assert tag == "ghcr.io/myorg/myapp:dev-deadbeef0011";
+        assert push_called["image_tag"] == "ghcr.io/myorg/myapp:dev-deadbeef0011";
     }
 }
