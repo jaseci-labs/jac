@@ -160,11 +160,11 @@ with entry {
 
 !!! note "No tuple unpacking in for loops"
     Unlike Python, Jac doesn't support tuple unpacking in `for` loop headers. Use `for item in list` with an explicit index counter when you need both the index and value:
-    
+
     ```jac
     # This doesn't work in Jac:
     # for i, task in enumerate(tasks) { ... }
-    
+
     # Instead, use:
     i = 0;
     for task in tasks {
