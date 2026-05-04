@@ -3614,6 +3614,23 @@ impl TypeEvaluator._get_type_from_flow_node(
         # The CFG builds correct links but type checker sees different node instances.
         # This is a future PR task.
 
+        # WhileStmt predecessor: the loop body is the true branch of the condition.
+        # `while x:` guarantees x is truthy inside the body, so narrow accordingly.
+        if isinstance(pred, uni.WhileStmt) and not isinstance(flow_node, uni.CfgExpr) {
+            predicate = self._find_predicate_for(target, pred.condition);
+            if predicate is not None and pred.body and flow_node is pred.body[0] {
+                narrowed = self._apply_narrowing(
+                    predicate, pred_narrowed, True, target
+                );
+                if narrowed is not None {
+                    incoming_types.append(narrowed);
+                } else {
+                    has_unnarrowed_pred = True;
+                }
+                continue;
+            }
+        }
+
         # AssertStmt predecessor: a passed assert narrows along the true branch.
         if isinstance(pred, uni.AssertStmt) {
             predicate = self._find_predicate_for(target, pred.condition);
