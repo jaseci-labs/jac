@@ -411,6 +411,19 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
+        # P0.25: PVCs first so Deployments referencing them don't hit
+        # `persistentvolumeclaim "X" not found` and back off. PVCs in
+        # "Pending" state are fine - kube-scheduler waits for binding.
+        for (pvc_name, pvc_manifest) in bundle.get("pvcs", {}).items() {
+            self._apply_or_replace_pvc(core_v1, namespace, pvc_manifest);
+            if self.logger {
+                self.logger.info(
+                    f"Applied PVC for shared volume '{pvc_name}'",
+                    {"name": pvc_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
         # Services first - their endpoints registry is empty until the
         # paired Deployment's first pod becomes ready, but DNS for the
         # Service hostname needs to exist BEFORE pods boot so any
@@ -492,6 +505,36 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except ApiException as e {
             if e.status == 404 {
                 core_v1.create_namespaced_service(namespace=namespace, body=manifest);
+            } else {
+                raise;
+            }
+        }
+    }
+
+    """P0.25: idempotent PVC apply - create on 404, otherwise no-op.
+
+    PVCs are mostly immutable (size/access_mode/storage_class can't be
+    changed after binding without recreating). We deliberately do NOT
+    patch existing PVCs on subsequent deploys - patching a bound PVC
+    fails (`spec.accessModes is immutable`) and even if it didn't, a
+    storage-class change would orphan the underlying PV. So existing
+    PVCs are left as-is. Users who need to resize/rebind delete the
+    PVC manually (or use `jac start --scale --destroy`).
+    """
+    def _apply_or_replace_pvc(
+        core_v1: Any, namespace: str, manifest: dict[str, Any]
+    ) {
+        name: str = manifest["metadata"]["name"];
+        try {
+            core_v1.read_namespaced_persistent_volume_claim(
+                name=name, namespace=namespace
+            );
+            # Already exists - skip the patch. See docstring above.
+        } except ApiException as e {
+            if e.status == 404 {
+                core_v1.create_namespaced_persistent_volume_claim(
+                    namespace=namespace, body=manifest
+                );
             } else {
                 raise;
             }
@@ -751,6 +794,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
+        # P0.25: PVCs for any PVC-mode shared_volumes. Empty when no
+        # shared_volumes configured or all entries use host_path.
+        pvcs = self._build_shared_pvc_manifests();
+        if pvcs {
+            bundle["pvcs"] = pvcs;
+        }
         try {
             import from jac_scale.config_loader { get_scale_config }
             ms_cfg = get_scale_config().get_microservices_config();
@@ -795,6 +844,184 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         } except Exception {
             return {};
         }
+    }
+
+    """P0.25: read shared_volumes from [[plugins.scale.microservices.shared_volumes]].
+
+    Each entry declares a volume that gets mounted at the same path on
+    every named service. Two backing modes are supported:
+
+      - PVC (production / cloud K8s):
+            [[plugins.scale.microservices.shared_volumes]]
+            name = "jac-ide-projects"
+            mount_path = "/root/.jac-ide/projects"
+            services = ["builder_sv", "jac_coder_sv"]
+            size = "10Gi"
+            access_mode = "ReadWriteMany"   # default ReadWriteOnce
+            storage_class = ""              # default cluster default
+
+      - hostPath (single-node dev clusters: k3d, kind, minikube):
+            [[plugins.scale.microservices.shared_volumes]]
+            name = "jac-ide-projects"
+            mount_path = "/root/.jac-ide/projects"
+            services = ["builder_sv", "jac_coder_sv"]
+            host_path = "/var/lib/jacbuilder/projects"
+
+    Use case: services that intentionally share filesystem state (e.g.
+    jacBuilder's IDE workspace passed by path between builder_sv and
+    jac_coder_sv). Without this, microservice-mode deploys force apps
+    to either pass file content via RPC payload or hand-roll PVC
+    manifests outside `jac start --scale`.
+
+    `services` may include "__gateway__" for the gateway pod.
+
+    Read failures (no jac.toml, malformed config) return [] - any
+    service that doesn't appear in any volume's `services` list just
+    gets no extra mounts (current default behavior preserved).
+    """
+    def _shared_volumes_config -> list[dict[str, Any]] {
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            ms_cfg = get_scale_config().get_microservices_config();
+            raw = ms_cfg.get("shared_volumes", []);
+            if not isinstance(raw, list) {
+                return [];
+            }
+            out: list[dict[str, Any]] = [];
+            for entry in raw {
+                if isinstance(entry, dict) {
+                    out.append(dict(entry));
+                }
+            }
+            return out;
+        } except Exception {
+            return [];
+        }
+    }
+
+    """P0.25: build (volumes, volumeMounts) for the named service from
+    shared_volumes config.
+
+    Returns the additions to inject - existing volume/mount entries
+    on the pod-spec / container are left untouched. Service name must
+    match what the user wrote in jac.toml's `services` list (e.g.
+    "builder_sv", "__gateway__"). Volume name in the K8s spec is the
+    user-provided `name` field, sanitized to DNS-1123 (k8s_safe_name)
+    so kebab-case names round-trip correctly.
+    """
+    def _shared_volumes_for_service(
+        svc_name: str
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] {
+        volumes: list[dict[str, Any]] = [];
+        mounts: list[dict[str, Any]] = [];
+        for vol in self._shared_volumes_config() {
+            services = vol.get("services", []);
+            if not isinstance(services, list) {
+                continue;
+            }
+            if svc_name not in services {
+                continue;
+            }
+            name = str(vol.get("name", "")).strip();
+            mount_path = str(vol.get("mount_path", "")).strip();
+            if not name or not mount_path {
+                continue;
+            }
+            vol_name = k8s_safe_name(name);
+            host_path = str(vol.get("host_path", "")).strip();
+            if host_path {
+                # hostPath mode (dev clusters only - all pods must land
+                # on the same node for actual file sharing).
+                volumes.append(
+                    {
+                        "name": vol_name,
+                        "hostPath": {"path": host_path, "type": "DirectoryOrCreate"}
+                    }
+                );
+            } else {
+                # PVC mode (production). PVC manifest emitted separately
+                # by _build_shared_pvc_manifests; here we just reference
+                # it by name.
+                volumes.append(
+                    {
+                        "name": vol_name,
+                        "persistentVolumeClaim": {"claimName": vol_name}
+                    }
+                );
+            }
+            mount_entry: dict[str, Any] = {
+                "name": vol_name,
+                "mountPath": mount_path
+            };
+            sub_path = str(vol.get("sub_path", "")).strip();
+            if sub_path {
+                mount_entry["subPath"] = sub_path;
+            }
+            mounts.append(mount_entry);
+        }
+        return (volumes, mounts);
+    }
+
+    """P0.25: build PVC manifests for every PVC-mode shared volume.
+
+    Skips hostPath entries (no PVC needed) and entries with empty
+    name. Each PVC is named after the shared-volume's `name` (passed
+    through k8s_safe_name) so the volume references in pod specs
+    match. Default access_mode is ReadWriteOnce (works on every cluster
+    OOTB); users on multi-node clusters set ReadWriteMany when their
+    storage class supports it (NFS/EFS/Filestore).
+    """
+    def _build_shared_pvc_manifests -> dict[str, dict[str, Any]] {
+        pvcs: dict[str, dict[str, Any]] = {};
+        for vol in self._shared_volumes_config() {
+            name = str(vol.get("name", "")).strip();
+            if not name {
+                continue;
+            }
+            # Mirror the validation _shared_volumes_for_service does -
+            # an entry the pod-spec helper would skip should NOT result
+            # in an orphan PVC nobody mounts.
+            mount_path = str(vol.get("mount_path", "")).strip();
+            if not mount_path {
+                continue;
+            }
+            services = vol.get("services", []);
+            if not isinstance(services, list) or not services {
+                continue;
+            }
+            # hostPath mode skips PVC creation entirely.
+            if str(vol.get("host_path", "")).strip() {
+                continue;
+            }
+            size = str(vol.get("size", "1Gi")).strip() or "1Gi";
+            access_mode_raw = str(vol.get("access_mode", "ReadWriteOnce")).strip();
+            access_mode = access_mode_raw if access_mode_raw else "ReadWriteOnce";
+            storage_class = str(vol.get("storage_class", "")).strip();
+            pvc_name = k8s_safe_name(name);
+
+            spec: dict[str, Any] = {
+                "accessModes": [access_mode],
+                "resources": {"requests": {"storage": size}}
+            };
+            if storage_class {
+                spec["storageClassName"] = storage_class;
+            }
+            pvcs[pvc_name] = {
+                "apiVersion": "v1",
+                "kind": "PersistentVolumeClaim",
+                "metadata": {
+                    "name": pvc_name,
+                    "namespace": self.k8s_config.namespace,
+                    "labels": {
+                        "app": "jac-scale-shared",
+                        "managed": "jac-scale",
+                        "jac-scale.role": "shared-volume"
+                    }
+                },
+                "spec": spec
+            };
+        }
+        return pvcs;
     }
 
     """K7: extra env vars merged with the auto-set JAC_SV_NAME.
@@ -1429,6 +1656,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if resources {
             container["resources"] = resources;
         }
+        # P0.25: shared volumes from [[microservices.shared_volumes]].
+        # Apps that pass file paths between services (e.g. jacBuilder's
+        # IDE workspace) need the same mount on each pod that touches
+        # the data.
+        (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
+        if shared_mounts {
+            container["volumeMounts"] = shared_mounts;
+        }
         spec: dict[str, Any] = {
             "containers": [container],
             # +5s cushion lets uvicorn finish exiting AFTER our drain
@@ -1436,6 +1671,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             # mid-drain.
             "terminationGracePeriodSeconds": drain_t + 5
         };
+        if shared_vols {
+            spec["volumes"] = shared_vols;
+        }
         # P0.8: wait-for-Mongo / wait-for-Redis init containers so
         # service pods don't crash-loop on startup before the database
         # StatefulSet is reachable. Only attached when the parent's DB
@@ -1471,10 +1709,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if resources {
             container["resources"] = resources;
         }
+        # P0.25: shared volumes - gateway opts in by listing GATEWAY_NAME
+        # ("__gateway__") in a shared_volume's `services` list. Rare but
+        # supported (e.g. gateway needs to read the same project files
+        # for static-asset proxy use cases).
+        (shared_vols, shared_mounts) = self._shared_volumes_for_service(GATEWAY_NAME);
+        if shared_mounts {
+            container["volumeMounts"] = shared_mounts;
+        }
         spec: dict[str, Any] = {
             "containers": [container],
             "terminationGracePeriodSeconds": drain_t + 5
         };
+        if shared_vols {
+            spec["volumes"] = shared_vols;
+        }
         init_containers = getattr(self, "_microservice_init_containers", []) or [];
         if init_containers {
             spec["initContainers"] = list(init_containers);

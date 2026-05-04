@@ -1495,6 +1495,36 @@ def _with_services_config(
 }
 
 
+"""P0.25 helper: stub microservices config with shared_volumes entries.
+
+Each entry mirrors the [[plugins.scale.microservices.shared_volumes]]
+schema so tests can assert against realistic configs.
+"""
+def _with_shared_volumes(
+    shared_volumes: list[dict[str, Any]],
+    services: dict[str, Any] = {},
+    routes: dict[str, str] = {}
+) -> tuple[Any, Any] {
+    import jac_scale.config_loader as cfg_mod;
+    original = getattr(cfg_mod, "get_scale_config");
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda : _StubMsCfg(
+            data={
+                "routes": routes,
+                "services": services,
+                "shared_volumes": shared_volumes
+            }
+        )
+    );
+    def restore {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+    return (cfg_mod, restore);
+}
+
+
 test "Deployment.spec.replicas honors per-service config" {
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(app_name="demo", namespace="prod")
@@ -2493,5 +2523,354 @@ test "P1.3: empty routes produces actionable error, not silent gateway-only depl
         assert "my_service" in msg or "/api/" in msg;
     } finally {
         setattr(cfg_mod, "get_scale_config", original);
+    }
+}
+
+
+# =============================================================================
+# P0.25: cross-service shared volumes
+# =============================================================================
+
+test "P0.25: PVC-mode shared volume creates PVC manifest" {
+    # Most common case: production cloud K8s, RWX-capable storage class
+    # (EFS / Filestore). Apps that share filesystem state across pods
+    # (jacBuilder's IDE workspace) need the PVC pre-created so the pod
+    # specs can mount it.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", namespace="prod")
+    );
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "ide-workspace",
+                "mount_path": "/root/.jac-ide/projects",
+                "services": ["builder_sv", "jac_coder_sv"],
+                "size": "10Gi",
+                "access_mode": "ReadWriteMany",
+                "storage_class": "efs-sc"
+            }
+        ]
+    );
+    try {
+        pvcs = target._build_shared_pvc_manifests();
+        assert "ide-workspace" in pvcs , (
+            f"expected PVC keyed by 'ide-workspace', got {list(pvcs.keys())}"
+        );
+        pvc = pvcs["ide-workspace"];
+        assert pvc["kind"] == "PersistentVolumeClaim";
+        assert pvc["metadata"]["name"] == "ide-workspace";
+        assert pvc["metadata"]["namespace"] == "prod";
+        assert pvc["spec"]["accessModes"] == ["ReadWriteMany"];
+        assert pvc["spec"]["resources"]["requests"]["storage"] == "10Gi";
+        assert pvc["spec"]["storageClassName"] == "efs-sc";
+        # Labels for managed-by tracking + destroy filtering
+        assert pvc["metadata"]["labels"]["managed"] == "jac-scale";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: hostPath-mode shared volume skips PVC creation" {
+    # k3d / kind / minikube single-node case. hostPath uses the same
+    # node directory on every pod - no PVC needed.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "ide-workspace",
+                "mount_path": "/root/.jac-ide/projects",
+                "services": ["builder_sv", "jac_coder_sv"],
+                "host_path": "/var/lib/jacbuilder/projects"
+            }
+        ]
+    );
+    try {
+        pvcs = target._build_shared_pvc_manifests();
+        # No PVCs emitted - hostPath doesn't need one
+        assert pvcs == {} , (
+            f"hostPath shared_volume must NOT emit a PVC, got {pvcs}"
+        );
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: PVC defaults to ReadWriteOnce + 1Gi when not specified" {
+    # The bare-minimum config still works - users who don't care about
+    # the access_mode/size details get sane defaults that work on every
+    # cluster OOTB (ReadWriteOnce is the only universally-supported mode).
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "scratch",
+                "mount_path": "/scratch",
+                "services": ["worker_a"]
+            }
+        ]
+    );
+    try {
+        pvcs = target._build_shared_pvc_manifests();
+        pvc = pvcs["scratch"];
+        assert pvc["spec"]["accessModes"] == ["ReadWriteOnce"];
+        assert pvc["spec"]["resources"]["requests"]["storage"] == "1Gi";
+        # storageClassName omitted = cluster default class wins
+        assert "storageClassName" not in pvc["spec"];
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: PVC name + volume name normalized to DNS-1123" {
+    # Underscores / camelCase aren't valid DNS-1123 labels and would
+    # be rejected by the K8s API server. k8s_safe_name converts them
+    # to kebab-case before they hit any K8s resource name field.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "my_shared_volume",  # underscores -> hyphens
+                "mount_path": "/data",
+                "services": ["worker"],
+                "size": "5Gi"
+            }
+        ]
+    );
+    try {
+        pvcs = target._build_shared_pvc_manifests();
+        # Sanitized
+        assert "my-shared-volume" in pvcs;
+        assert pvcs["my-shared-volume"]["metadata"]["name"] == "my-shared-volume";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: pod-spec injects volumeMount + PVC volume for matching service" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="demo", container_port=8000)
+    );
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "workspace",
+                "mount_path": "/root/.jac-ide/projects",
+                "services": ["builder_sv"],
+                "size": "10Gi",
+                "access_mode": "ReadWriteMany"
+            }
+        ]
+    );
+    try {
+        spec = target._build_service_pod_spec("builder_sv", "demo:latest");
+        # Volume in pod spec
+        vols = spec.get("volumes", []);
+        assert len(vols) == 1 , f"expected 1 volume, got {vols}";
+        vol = vols[0];
+        assert vol["name"] == "workspace";
+        assert "persistentVolumeClaim" in vol;
+        assert vol["persistentVolumeClaim"]["claimName"] == "workspace";
+
+        # VolumeMount in container
+        container = spec["containers"][0];
+        mounts = container.get("volumeMounts", []);
+        assert len(mounts) == 1;
+        assert mounts[0]["name"] == "workspace";
+        assert mounts[0]["mountPath"] == "/root/.jac-ide/projects";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: pod-spec uses hostPath volume when host_path set (dev clusters)" {
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "workspace",
+                "mount_path": "/root/.jac-ide/projects",
+                "services": ["builder_sv"],
+                "host_path": "/var/lib/jacbuilder/projects"
+            }
+        ]
+    );
+    try {
+        spec = target._build_service_pod_spec("builder_sv", "demo:latest");
+        vols = spec.get("volumes", []);
+        assert len(vols) == 1;
+        vol = vols[0];
+        assert vol["name"] == "workspace";
+        assert "hostPath" in vol , f"expected hostPath, got {vol}";
+        assert vol["hostPath"]["path"] == "/var/lib/jacbuilder/projects";
+        # DirectoryOrCreate so missing path doesn't fail pod boot - the
+        # shared dir gets created on first mount.
+        assert vol["hostPath"]["type"] == "DirectoryOrCreate";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: services NOT in services list get NO volumeMount" {
+    # The whole point of `services` is to scope the mount. A service
+    # that doesn't appear in any volume's services list must not get
+    # an unrelated mount injected.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "workspace",
+                "mount_path": "/root/.jac-ide/projects",
+                "services": ["builder_sv", "jac_coder_sv"],
+                "size": "10Gi"
+            }
+        ]
+    );
+    try {
+        # Different service - should NOT get the volume
+        spec = target._build_service_pod_spec("orders_sv", "demo:latest");
+        assert "volumes" not in spec , (
+            f"orders_sv shouldn't get builder_sv/jac_coder_sv's volume, "
+            f"got {spec.get('volumes')}"
+        );
+        assert "volumeMounts" not in spec["containers"][0];
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: gateway can opt into shared volumes via __gateway__ in services list" {
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "static-content",
+                "mount_path": "/srv/static",
+                "services": ["__gateway__"],
+                "size": "1Gi"
+            }
+        ]
+    );
+    try {
+        spec = target._build_gateway_pod_spec("demo:latest");
+        # Gateway gets the mount because __gateway__ is in services
+        assert spec["volumes"][0]["name"] == "static-content";
+        assert spec["containers"][0]["volumeMounts"][0]["mountPath"] == "/srv/static";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: multiple shared volumes per service compose correctly" {
+    # Multi-PVC apps: e.g. one PVC for project workspace, another for
+    # cached build artifacts. Both should appear on the same pod.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "workspace",
+                "mount_path": "/data/workspace",
+                "services": ["builder_sv"],
+                "size": "10Gi"
+            },
+            {
+                "name": "cache",
+                "mount_path": "/data/cache",
+                "services": ["builder_sv"],
+                "size": "5Gi"
+            }
+        ]
+    );
+    try {
+        spec = target._build_service_pod_spec("builder_sv", "demo:latest");
+        vols = spec["volumes"];
+        mounts = spec["containers"][0]["volumeMounts"];
+        assert len(vols) == 2;
+        assert len(mounts) == 2;
+        names = sorted([v["name"] for v in vols]);
+        assert names == ["cache", "workspace"];
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: subPath honored when set on a shared_volume entry" {
+    # Storage-class-backed PVCs are usually shared across many use cases
+    # via subPath. Avoids one PVC per (volume, service) cross-product.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {
+                "name": "shared-data",
+                "mount_path": "/app/builder",
+                "services": ["builder_sv"],
+                "sub_path": "builder",
+                "size": "20Gi"
+            }
+        ]
+    );
+    try {
+        spec = target._build_service_pod_spec("builder_sv", "demo:latest");
+        mount = spec["containers"][0]["volumeMounts"][0];
+        assert mount["subPath"] == "builder";
+        assert mount["mountPath"] == "/app/builder";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: empty / missing shared_volumes config = no volumes injected" {
+    # Back-compat: existing apps with no shared_volumes block get
+    # exactly the same pod spec they got before P0.25.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes([]);
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        assert "volumes" not in spec;
+        assert "volumeMounts" not in spec["containers"][0];
+        # PVCs bundle entry should be absent too
+        assert target._build_shared_pvc_manifests() == {};
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.25: malformed shared_volumes entries are skipped, not crashy" {
+    # User forgot mount_path; user wrote `services` as a string instead
+    # of a list. We tolerate both rather than crashing the whole deploy
+    # (which would block their working services from being applied).
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
+    (_cfg, restore) = _with_shared_volumes(
+        [
+            {"name": "no-mount-path", "services": ["worker"]},  # missing mount_path
+            {"mount_path": "/data", "services": ["worker"]},  # missing name
+            {"name": "bad-svcs", "mount_path": "/x", "services": "worker"},  # str not list
+            {
+                "name": "good",
+                "mount_path": "/data",
+                "services": ["worker"],
+                "size": "1Gi"
+            }
+        ]
+    );
+    try {
+        # Only the good one becomes a PVC + mount
+        pvcs = target._build_shared_pvc_manifests();
+        assert list(pvcs.keys()) == ["good"];
+
+        spec = target._build_service_pod_spec("worker", "demo:latest");
+        assert spec["volumes"][0]["name"] == "good";
+    } finally {
+        restore();
     }
 }
