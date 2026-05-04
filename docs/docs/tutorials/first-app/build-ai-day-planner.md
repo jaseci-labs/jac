@@ -158,6 +158,21 @@ with entry {
 }
 ```
 
+!!! note "No tuple unpacking in for loops"
+    Unlike Python, Jac doesn't support tuple unpacking in `for` loop headers. Use `for item in list` with an explicit index counter when you need both the index and value:
+    
+    ```jac
+    # This doesn't work in Jac:
+    # for i, task in enumerate(tasks) { ... }
+    
+    # Instead, use:
+    i = 0;
+    for task in tasks {
+        print(f"{i}: {task}");
+        i += 1;
+    }
+    ```
+
 Jac provides two pattern-matching constructs, each designed for a different purpose. **`switch`/`case`** is for classic simple value matching -- there's no fall-through and no `break` needed, which avoids a common source of bugs in C-family languages:
 
 ```jac
@@ -313,7 +328,7 @@ with entry {
 Run it with `jac <your-filename>.jac`. Your graph now looks like:
 
 !!! tip "Running examples multiple times"
-    Nodes connected to `root` persist between runs. If you run an example again, you'll see duplicate data. To start fresh, delete the `.jac/` directory in the folder where you ran the script: `rm -rf .jac/`. (Starting in Part 3 when you create a project, you can use `jac clean --all` instead.)
+    Nodes connected to `root` persist between runs. If you run an example again, you'll see duplicate data. To start fresh, delete the `.jac/` directory in the folder where you ran the script: `rm -rf .jac/`. (Starting in Part 3 when you create a project, you can use `jac clean` instead.)
 
 ```mermaid
 graph LR
@@ -655,6 +670,9 @@ cl def:pub app -> JsxElement {
 
 Notice the `has` keyword appearing again -- you first saw it in `obj` and `node` declarations. Inside a component, `has` declares **reactive state**. When any of these values change, the UI automatically re-renders to reflect the new data. If you're familiar with React, this is the same concept as `useState`, but expressed as simple property declarations rather than hook function calls.
 
+!!! note "Type annotations for lists"
+    The `tasks: list = []` declaration uses an untyped list. While this works at runtime, you may see LSP warnings like "Expression type could not be resolved" when accessing properties like `t.title`. This is because the type checker can't infer the element type from an empty list. These warnings are benign and don't affect functionality. For a cleaner IDE experience, you could use `tasks: list[Task] = []`, but this requires the `Task` type to be visible in the client context.
+
 ??? info "You can also use React's `useState` directly"
     Since Jac's client-side code compiles to JavaScript that runs in a React context, you can import and use `useState` from React directly if you prefer:
 
@@ -793,7 +811,7 @@ cl def:pub app -> JsxElement {
                     }}
                     placeholder="What needs to be done today?"
                 />
-                <button class="btn-add" onClick={add_new_task}>Add</button>
+                <button class="btn-add" onClick={lambda { add_new_task(); }}>Add</button>
             </div>
             {[
                 <div key={jid(t)} class="task-item">
@@ -852,14 +870,14 @@ cl def:pub app -> JsxElement {
                     }}
                     placeholder="What needs to be done today?"
                 />
-                <button class="btn-add" onClick={add_new_task}>Add</button>
+                <button class="btn-add" onClick={lambda { add_new_task(); }}>Add</button>
             </div>
             {[
                 <div key={jid(t)} class="task-item">
                     <input
                         type="checkbox"
                         checked={t.done}
-                        onChange={lambda { toggle(jid(t)); }}
+                        onChange={lambda e: ChangeEvent { toggle(jid(t)); }}
                     />
                     <span class={"task-title " + ("task-done" if t.done else "")}>
                         {t.title}
@@ -987,14 +1005,14 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
                         }}
                         placeholder="What needs to be done today?"
                     />
-                    <button class="btn-add" onClick={add_new_task}>Add</button>
+                    <button class="btn-add" onClick={lambda { add_new_task(); }}>Add</button>
                 </div>
                 {[
                     <div key={jid(t)} class="task-item">
                         <input
                             type="checkbox"
                             checked={t.done}
-                            onChange={lambda { toggle(jid(t)); }}
+                            onChange={lambda e: ChangeEvent { toggle(jid(t)); }}
                         />
                         <span class={"task-title " + ("task-done" if t.done else "")}>
                             {t.title}
@@ -1317,14 +1335,14 @@ cl def:pub app -> JsxElement {
                             }}
                             placeholder="What needs to be done today?"
                         />
-                        <button class="btn-add" onClick={add_new_task}>Add</button>
+                        <button class="btn-add" onClick={lambda { add_new_task(); }}>Add</button>
                     </div>
                     {[
                         <div key={jid(t)} class="task-item">
                             <input
                                 type="checkbox"
                                 checked={t.done}
-                                onChange={lambda { toggle(jid(t)); }}
+                                onChange={lambda e: ChangeEvent { toggle(jid(t)); }}
                             />
                             <span class={"task-title " + ("task-done" if t.done else "")}>
                                 {t.title}
@@ -1396,6 +1414,9 @@ cl def:pub app -> JsxElement {
 **Update Styles**
 
 Replace `styles.css` with the expanded version that supports the two-column layout and shopping list:
+
+!!! warning "CSS changes require server restart"
+    If the dev server from Part 4 is still running, stop it (Ctrl-C) and re-run `jac start main.jac` after editing `styles.css`. CSS changes aren't hot-reloaded.
 
 ```css
 .container { max-width: 900px; margin: 40px auto; font-family: system-ui; padding: 20px; }
@@ -1611,14 +1632,14 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
                                 }}
                                 placeholder="What needs to be done today?"
                             />
-                            <button class="btn-add" onClick={add_new_task}>Add</button>
+                            <button class="btn-add" onClick={lambda { add_new_task(); }}>Add</button>
                         </div>
                         {[
                             <div key={jid(t)} class="task-item">
                                 <input
                                     type="checkbox"
                                     checked={t.done}
-                                    onChange={lambda { toggle(jid(t)); }}
+                                    onChange={lambda e: ChangeEvent { toggle(jid(t)); }}
                                 />
                                 <span class={"task-title " + ("task-done" if t.done else "")}>
                                     {t.title}
@@ -2090,7 +2111,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                     <input
                                                         type="checkbox"
                                                         checked={t.done}
-                                                        onChange={lambda { toggleTask(jid(t)); }}
+                                                        onChange={lambda e: ChangeEvent { toggleTask(jid(t)); }}
                                                     />
                                                     <span class={"task-title " + ("task-done" if t.done else "")}>
                                                         {t.title}
@@ -3058,7 +3079,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                                                     <input
                                                         type="checkbox"
                                                         checked={t.done}
-                                                        onChange={lambda { toggleTask(jid(t)); }}
+                                                        onChange={lambda e: ChangeEvent { toggleTask(jid(t)); }}
                                                     />
                                                     <span class={"task-title " + ("task-done" if t.done else "")}>
                                                         {t.title}
