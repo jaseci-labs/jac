@@ -171,7 +171,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         redis_enable_keyspace_notifications = db_config.get(
             'redis_enable_keyspace_notifications', False
         );
-        redis_username = k8s_config.get('redis_username', 'admin');
+        redis_username = k8s_config.get('redis_username', 'default');
         redis_password = k8s_config.get('redis_password', 'password');
         connection_string = f"redis://{redis_username}:{redis_password}@{redis_service_name}:{redis_port}/0";
 
@@ -404,7 +404,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         if not self.connection_string {
             scale_config = get_scale_config();
             k8s_config = scale_config.get_kubernetes_config();
-            redis_username = k8s_config.get('redis_username', 'admin');
+            redis_username = k8s_config.get('redis_username', 'default');
             redis_password = k8s_config.get('redis_password', 'password');
             service_name = f"{self.app_name}-redis-service";
             self.connection_string = f"redis://{redis_username}:{redis_password}@{service_name}:6379/0";
