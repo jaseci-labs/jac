@@ -587,7 +587,51 @@ with entry {
 }
 ```
 
-### 4 Enums with Inline Python
+### 4 Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are instances of `T`. The base type follows the enum name after a colon. `int` and `str` desugar to Python's `IntEnum` and `StrEnum`; any other base `T` desugars to the mixin form `class X(T, Enum)`.
+
+```jac
+enum HttpStatus: int {
+    OK = 200,
+    NOT_FOUND = 404,
+    SERVER_ERROR = 500
+}
+
+enum Tag: str {
+    OPEN = "open",
+    CLOSE = "close"
+}
+
+with entry {
+    # Members compare and behave as the underlying type
+    print(HttpStatus.OK == 200);             # True
+    print(isinstance(Tag.OPEN, str));        # True
+    print(HttpStatus.OK + 1);                # 201 -- arithmetic works
+}
+```
+
+| Declaration | Desugars to |
+|-------------|-------------|
+| `enum X { A = 0 }` | `class X(Enum)` |
+| `enum X: int { A = 0 }` | `class X(IntEnum)` |
+| `enum X: str { A = "a" }` | `class X(StrEnum)` |
+| `enum X: T { A = T(...) }` | `class X(T, Enum)` (mixin) |
+
+The mixin form is useful when members must carry behavior or state from a custom type:
+
+```jac
+obj Box {
+    has size: int = 0;
+}
+
+enum Crate: Box {
+    SMALL = Box(),
+    LARGE = Box()
+}
+```
+
+### 5 Enums with Inline Python
 
 ```jac
 enum HttpStatus {
@@ -605,7 +649,7 @@ enum HttpStatus {
 }
 ```
 
-### 5 Properties and Encapsulation
+### 6 Properties and Encapsulation
 
 ```jac
 obj Account {

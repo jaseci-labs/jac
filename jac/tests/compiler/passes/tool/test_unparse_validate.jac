@@ -10,7 +10,9 @@ import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 
-glob EXAMPLES = os.path.join(str(Path(jaclang.__file__).parent.parent), "examples");
+glob EXAMPLES = os.path.join(
+         str(Path(jaclang.__file__).parent.parent), "examples"
+     );
 
 test "double unparse" {
     code_gen_pure = JacProgram().compile(
@@ -41,5 +43,22 @@ test "bracket filter unparse roundtrip" {
     second = code_gen2.unparse();
     assert first == second , "Bracket filter unparse roundtrip failed:\n" + "\n".join(
         unified_diff(first.splitlines(), second.splitlines())
+    );
+}
+
+test "typed enum base unparse roundtrip" {
+    # `enum X: T { ... }` shorthand must round-trip through unparse.
+    src = "enum Color: int { RED=0, GREEN=1 } enum Tag: str { OPEN='open' }";
+    first = JacProgram().compile(use_str=src, file_path="t.jac").unparse();
+    second = JacProgram().compile(use_str=first, file_path="t.jac").unparse();
+    assert first == second , "Typed enum unparse roundtrip failed:\n" + "\n".join(
+        unified_diff(first.splitlines(), second.splitlines())
+    );
+    assert ": int" in first , (
+        "Unparse should emit the `: T` shorthand, not the parenthesized "
+        "form; got:\n" + first
+    );
+    assert ": str" in first , (
+        "Unparse should emit the `: str` shorthand; got:\n" + first
     );
 }

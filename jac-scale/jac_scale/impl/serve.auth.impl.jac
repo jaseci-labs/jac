@@ -6,6 +6,7 @@ impl JacAPIServerAuth.register_auth_endpoints -> None {
     self.register_login_endpoint();
     self.register_refresh_token_endpoint();
     self.register_update_password_endpoint();
+    self.register_me_endpoint();
     self.register_sso_endpoints();
     self.register_api_key_endpoints();
 }
@@ -18,7 +19,16 @@ impl JacAPIServerAuth.register_register_endpoint -> None {
         identities = [i.model_dump(mode='json') for i in body_data.identities];
         credential = body_data.credential.model_dump(mode='json');
         try {
-            result = self.user_manager.create_user(identities, credential);
+            profile = validate_profile(body_data.profile);
+        } except ValueError as ve {
+            return TransportResponse.fail(
+                code='VALIDATION_ERROR',
+                message=str(ve),
+                meta=Meta(extra={'http_status': 400})
+            );
+        }
+        try {
+            result = self.user_manager.create_user(identities, credential, profile);
             if 'error' in result {
                 return TransportResponse.fail(
                     code=result.get('code', 'REGISTRATION_FAILED'),
@@ -180,6 +190,72 @@ impl JacAPIServerAuth.register_update_password_endpoint -> None {
             tags=['User APIs'],
             summary='Update password',
             description='Update the authenticated user\'s password. Requires Bearer token.'
+        )
+    );
+}
+
+# ============================================================================
+# Current user (/user/me) — returns the authenticated user's profile
+# ============================================================================
+impl JacAPIServerAuth.register_me_endpoint -> None {
+    async def me_handler(request: Request) -> TransportResponse {
+        authorization = request.headers.get('Authorization');
+        user_id = extract_bearer_token(authorization, self.user_manager);
+        if not user_id {
+            return TransportResponse.fail(
+                code='UNAUTHORIZED',
+                message='Invalid or expired token',
+                meta=Meta(extra={'http_status': 401})
+            );
+        }
+        user = self.user_manager.get_user(user_id);
+        if not user {
+            return TransportResponse.fail(
+                code='NOT_FOUND',
+                message='User not found',
+                meta=Meta(extra={'http_status': 404})
+            );
+        }
+        # Strip credentials and other internal fields. Identities are
+        # returned without value_normalized or external_id to keep the
+        # response clean.
+        identities_out = [];
+        for ident in user.get('identities', []) {
+            identity_out: dict[str, Any] = {
+                'type': ident.get('type'),
+                'verified': ident.get('verified', False),
+                'is_recovery': ident.get('is_recovery', False)
+            };
+            if ident.get('type') == 'sso' {
+                identity_out['provider'] = ident.get('provider');
+            } else {
+                identity_out['value'] = ident.get('value_raw');
+            }
+            identities_out.append(identity_out);
+        }
+        data = {
+            'user_id': user.get('user_id'),
+            'role': user.get('role', 'user'),
+            'status': user.get('status', 'active'),
+            'identities': identities_out,
+            'profile': user.get('profile') or {},
+            'created_at': user.get('created_at'),
+            'updated_at': user.get('updated_at')
+        };
+        return TransportResponse.success(
+            data=dict[(str, JsonValue)](data), meta=Meta(extra={'http_status': 200})
+        );
+    }
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/user/me',
+            callback=me_handler,
+            parameters=[],
+            response_model=None,
+            tags=['User APIs'],
+            summary='Get current user',
+            description='Returns the authenticated user\'s identities, role, and profile. Requires Bearer token.'
         )
     );
 }

@@ -1,0 +1,14 @@
+[project]
+name = "auth-calling-forms"
+version = "1.0.0"
+description = "Demonstrates jacLogin/jacSignup with both string and identity/credential calling forms"
+entry-point = "main.jac"
+
+[jacpack]
+name = "auth-calling-forms"
+description = "Demonstrates jacLogin/jacSignup with both string and identity/credential calling forms"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]

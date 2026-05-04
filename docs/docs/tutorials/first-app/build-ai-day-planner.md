@@ -1101,6 +1101,9 @@ enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
 This is a crucial concept: the enum constrains the AI to return *exactly one* of these predefined values. Without it, an LLM might return "shopping", "Shopping", "groceries", or "grocery shopping" -- all meaning the same thing but impossible to handle consistently in code. The enum eliminates that ambiguity entirely, making AI output as predictable as any other function return value.
 
+!!! tip "Typed-base enums"
+    For cases where you want enum members to behave as a primitive type, use `enum X: T { ... }`. `enum Status: str { OK = "ok", FAIL = "fail" }` makes members real `str` instances (no `.value` needed); `enum Code: int { ... }` does the same for `int`. Plain `enum` (used here) stays the right choice when the member identity matters more than the underlying value.
+
 **by llm() -- AI Function Delegation**
 
 Now for the core idea. Pay close attention, because this pattern is central to how Jac integrates AI:
@@ -1736,7 +1739,7 @@ Jac has built-in authentication functions for client-side code:
 import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 ```
 
-- **`jacSignup(username, password)`** -- create an account (returns `{"success": True/False}`)
+- **`jacSignup(username, password)`** -- create an account (returns `{"success": True/False}`). Note: signup does not start a session by itself, so call `jacLogin` after a successful result to actually log the user in.
 - **`jacLogin(username, password)`** -- log in (returns `True` or `False`)
 - **`jacLogout()`** -- log out
 - **`jacIsLoggedIn()`** -- check login status
@@ -1790,7 +1793,7 @@ sv import from main {
 }
 ```
 
-**`cl { }` blocks** let you embed client-side code in a server file. This is useful for the entry point:
+**`to cl:` section headers** let you embed client-side code in a server file. Once you write `to cl:`, every following module-level declaration is client-side until the next `to X:` header (or end of file). This is useful for the entry point:
 
 ```jac
 to cl:
@@ -1801,9 +1804,13 @@ def:pub app -> JsxElement {
     return
         <ClientApp />;
 }
+
+to sv:
+
+# Back to server-side: nodes, walkers, AI delegations, etc. live here.
 ```
 
-Everything outside `cl { }` runs on the server. Everything inside runs in the browser.
+Everything before `to cl:` and everything after the next `to sv:` runs on the server. Everything between them runs in the browser.
 
 **Dependency-Triggered Abilities**
 
@@ -1848,14 +1855,16 @@ All the complete files are in the collapsible sections below. Create each file, 
     ```jac
     """AI Day Planner -- authenticated, multi-file version."""
 
-    cl {
-        import from frontend { app as ClientApp }
+    to cl:
 
-        def:pub app -> JsxElement {
-            return
-                <ClientApp />;
-        }
+    import from frontend { app as ClientApp }
+
+    def:pub app -> JsxElement {
+        return
+            <ClientApp />;
     }
+
+    to sv:
 
     import from byllm.lib { Model }
 
@@ -2287,12 +2296,20 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
         loading = True;
         result = await jacSignup(username, password);
-        loading = False;
         if result["success"] {
-            isLoggedIn = True;
-            username = "";
-            password = "";
+            # /user/register creates the account but does not return a
+            # session token; sign in immediately to establish one.
+            logged_in = await jacLogin(username, password);
+            loading = False;
+            if logged_in {
+                isLoggedIn = True;
+                username = "";
+                password = "";
+            } else {
+                error = "Account created but sign-in failed";
+            }
         } else {
+            loading = False;
             error = result["error"] if result["error"] else "Signup failed";
         }
     }
@@ -2436,7 +2453,7 @@ Step back and consider what you've built: a **complete, fully functional applica
 - **`jacSignup`**, **`jacLogin`**, **`jacLogout`**, **`jacIsLoggedIn`** -- built-in auth functions
 - **`import from "@jac/runtime"`** -- import Jac's built-in client-side utilities
 - **`can with [deps] entry`** -- dependency-triggered abilities (re-runs when state changes)
-- **`cl { }`** -- embed client-side code in a server file
+- **`to cl:`** / **`to sv:`** -- section headers that switch the default context for everything that follows, until the next `to X:` header or end of file
 - **Declaration/implementation split** -- `.cl.jac` for UI, `.impl.jac` for logic
 - **`impl app.method { ... }`** -- implement declared methods in a separate file
 
@@ -2522,11 +2539,11 @@ Spawn it:
 
 <!-- jac-skip -->
 ```jac
-result = root() spawn AddTask(title="Buy groceries");
+result = root spawn AddTask(title="Buy groceries");
 print(result.reports[0]);  # The reported dict
 ```
 
-**`root() spawn AddTask(title="...")`** creates a walker and starts it at root. Whatever the walker `report`s ends up in `result.reports`.
+**`root spawn AddTask(title="...")`** creates a walker and starts it at root. Whatever the walker `report`s ends up in `result.reports`.
 
 **The Accumulator Pattern**
 
@@ -2724,11 +2741,11 @@ Then in the frontend methods:
 task = await add_task(task_text.strip());
 
 # Walker style (Part 7):
-result = root() spawn AddTask(title=task_text.strip());
+result = root spawn AddTask(title=task_text.strip());
 new_task = result.reports[0];  # A typed Task object
 ```
 
-The key pattern: **`root() spawn Walker(params)`** creates a walker and starts it at root. The walker traverses the graph, and whatever it `report`s ends up in `result.reports`. Since the walker reports typed `Task` objects, the client receives them with full field access -- `new_task.title`, `new_task.done`, `new_task.category` all work directly.
+The key pattern: **`root spawn Walker(params)`** creates a walker and starts it at root. The walker traverses the graph, and whatever it `report`s ends up in `result.reports`. Since the walker reports typed `Task` objects, the client receives them with full field access -- `new_task.title`, `new_task.done`, `new_task.category` all work directly.
 
 **walker:priv -- Per-User Data Isolation**
 
@@ -2770,14 +2787,16 @@ All the complete files are in the collapsible sections below. Create each file, 
     ```jac
     """AI Day Planner -- walker-based version with OSP."""
 
-    cl {
-        import from frontend { app as ClientApp }
+    to cl:
 
-        def:pub app -> JsxElement {
-            return
-                <ClientApp />;
-        }
+    import from frontend { app as ClientApp }
+
+    def:pub app -> JsxElement {
+        return
+            <ClientApp />;
     }
+
+    to sv:
 
     import from byllm.lib { Model }
 
@@ -3194,26 +3213,26 @@ All the complete files are in the collapsible sections below. Create each file, 
 
     impl app.fetchTasks {
         tasksLoading = True;
-        result = root() spawn ListTasks();
+        result = root spawn ListTasks();
         tasks = result.reports[0] if result.reports else [];
         tasksLoading = False;
     }
 
     impl app.addTask {
         if not taskText.strip() { return; }
-        response = root() spawn AddTask(title=taskText);
+        response = root spawn AddTask(title=taskText);
         tasks = tasks + [response.reports[0]];
         taskText = "";
     }
 
     impl app.toggleTask(id: str) {
-        response = root() spawn ToggleTask(task_id=id);
+        response = root spawn ToggleTask(task_id=id);
         updated = response.reports[0];
         tasks = [updated if jid(t) == id else t for t in tasks];
     }
 
     impl app.deleteTask(id: str) {
-        root() spawn DeleteTask(task_id=id);
+        root spawn DeleteTask(task_id=id);
         tasks = [t for t in tasks if jid(t) != id];
     }
 
@@ -3247,12 +3266,20 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
         loading = True;
         result = await jacSignup(username, password);
-        loading = False;
         if result["success"] {
-            isLoggedIn = True;
-            username = "";
-            password = "";
+            # /user/register creates the account but does not return a
+            # session token; sign in immediately to establish one.
+            logged_in = await jacLogin(username, password);
+            loading = False;
+            if logged_in {
+                isLoggedIn = True;
+                username = "";
+                password = "";
+            } else {
+                error = "Account created but sign-in failed";
+            }
         } else {
+            loading = False;
             error = result["error"] if result["error"] else "Signup failed";
         }
     }
@@ -3276,20 +3303,20 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     impl app.fetchShoppingList {
-        result = root() spawn GetShoppingList();
+        result = root spawn GetShoppingList();
         ingredients = result.reports[0] if result.reports else [];
     }
 
     impl app.generateList {
         if not mealText.strip() { return; }
         generating = True;
-        result = root() spawn GenerateShoppingList(meal_description=mealText);
+        result = root spawn GenerateShoppingList(meal_description=mealText);
         ingredients = result.reports[0] if result.reports else [];
         generating = False;
     }
 
     impl app.clearList {
-        root() spawn ClearShoppingList();
+        root spawn ClearShoppingList();
         ingredients = [];
         mealText = "";
     }
@@ -3403,7 +3430,7 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 - **`visitor`** -- inside a node ability, the walker that's visiting
 - **`report`** -- send data back (typed objects or dicts), collected in `.reports`
 - **`disengage`** -- stop traversal immediately
-- **`root() spawn Walker()`** -- create and start a walker at a node
+- **`root spawn Walker()`** -- create and start a walker at a node
 - **`result.reports[0]`** -- access the walker's reported data
 - **`walker:priv`** -- per-user walker with data isolation
 - **`sv import`** -- import server walkers into client code

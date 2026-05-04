@@ -229,8 +229,8 @@ When `cancel_execution` is `True`, the executor skips the handler and returns im
 | Member | Type | Purpose |
 |---|---|---|
 | `command_name` | `str` | The command being executed (e.g., `"run"`). |
-| `args` | `dict[str, Any]` | Parsed CLI arguments -- a copy, so mutating is safe. |
-| `data` | `dict[str, Any]` | Hook-to-hook scratch space. |
+| `args` | `dict[str, any]` | Parsed CLI arguments -- a copy, so mutating is safe. |
+| `data` | `dict[str, any]` | Hook-to-hook scratch space. |
 | `get_arg(name, default=None)` | method | Read a parsed argument. |
 | `set_data(key, value)` | method | Write to the scratch dict (for cancel keys, hook chaining, etc.). |
 | `get_data(key, default=None)` | method | Read from the scratch dict. |
@@ -262,7 +262,7 @@ The most commonly overridden hooks:
 | `store` | `(base_path='./storage', create_dirs=True) -> Storage` | The graph/object storage backend. Default: `LocalStorage`. jac-scale returns S3/GCS/Azure backends from `[plugins.scale]` config. |
 | `get_console` | `() -> ConsoleImpl` | The console used for all CLI output. jac-super returns a Rich-backed implementation with colors, panels, and spinners. |
 | `get_client_bundle_builder` | `() -> ClientBundleBuilder` | The bundler used to compile `.cl.jac` modules to JS. jac-client returns a Vite-backed builder. |
-| `render_page` | `(introspector, function_name, args, username) -> dict[str, Any]` | Server-side rendering of client components. jac-client implements full SSR. |
+| `render_page` | `(introspector, function_name, args, username) -> dict[str, any]` | Server-side rendering of client components. jac-client implements full SSR. |
 | `format_build_error` | `(error_output: str, project_dir: Path, config) -> str` | Pretty error messages for client build failures. |
 | `ensure_sv_service` | `(module_name: str, base_path: str) -> None` | Lazy spawn an `sv import`-ed microservice provider when `sv_client.call()` first needs it. |
 | `get_mtir`, `call_llm`, `by`, `by_operator` | various | Hooks the byllm plugin uses to implement the `by llm()` language feature. |
@@ -276,7 +276,6 @@ The full list and signatures live in [jac/jaclang/jac0core/runtime.jac:861-888](
 ```jac
 import from jaclang.cli.console { JacConsole }
 import from jaclang.jac0core.runtime { hookimpl }
-import from typing { Any }
 import datetime;
 
 """Console wrapper that prefixes every line with a timestamp."""
@@ -286,7 +285,7 @@ obj TimestampConsole(JacConsole) {
     def init(wrapped: JacConsole) -> None {
         self._wrapped = wrapped;
     }
-    def print(*args: Any, **kwargs: Any) -> None {
+    def print(*args: any, **kwargs: any) -> None {
         ts = datetime.datetime.now().strftime("%H:%M:%S");
         self._wrapped.print(f"[{ts}]", *args, **kwargs);
     }
@@ -325,13 +324,12 @@ If your plugin reads configuration from the user's `jac.toml`, declare a config 
 
 ```jac
 import from jaclang.jac0core.runtime { hookimpl }
-import from typing { Any }
 
 """Plugin config for jac-myplugin."""
 class JacMypluginPluginConfig {
     """Plugin metadata for `jac plugins info`."""
     @hookimpl
-    static def get_plugin_metadata -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "myplugin",
             "version": "0.1.0",
@@ -341,7 +339,7 @@ class JacMypluginPluginConfig {
 
     """Schema for the [plugins.myplugin] section of jac.toml."""
     @hookimpl
-    static def get_config_schema -> dict[str, Any] {
+    static def get_config_schema -> dict[str, any] {
         return {
             "section": "myplugin",
             "options": {
@@ -368,7 +366,7 @@ class JacMypluginPluginConfig {
 
     """Validate the loaded config and return a list of error messages."""
     @hookimpl
-    static def validate_config(config: dict[str, Any]) -> list[str] {
+    static def validate_config(config: dict[str, any]) -> list[str] {
         errors: list[str] = [];
         retries = config.get("max_retries", 3);
         if retries < 0 {
@@ -430,7 +428,7 @@ class JacMypluginPluginConfig {
 
     """Register a 'starter' template for `jac create --use starter`."""
     @hookimpl
-    static def register_project_template -> dict[str, Any] | None {
+    static def register_project_template -> dict[str, any] | None {
         return {
             "name": "starter",
             "description": "Minimal starter project for jac-myplugin",
@@ -457,7 +455,7 @@ class JacMypluginPluginConfig {
 }
 
 """Post-create hook called after the template is scaffolded on disk."""
-def _post_create_starter(project_path: Any, project_name: str) -> None {
+def _post_create_starter(project_path: any, project_name: str) -> None {
     # Run `npm install`, copy assets, anything else.
     return;
 }
@@ -487,7 +485,7 @@ class JacMypluginPluginConfig {
 
     """Register a 'cargo' dependency type for Rust crates."""
     @hookimpl
-    static def register_dependency_type -> dict[str, Any] | None {
+    static def register_dependency_type -> dict[str, any] | None {
         return {
             "name": "cargo",
             "dev_name": "cargo.dev",
@@ -618,10 +616,10 @@ A command-line argument descriptor. Construct via `Arg.create(name, ...)`.
 | `name` | `str` | Argument name (becomes the parameter name on the handler function). |
 | `kind` | `ArgKind` | `POSITIONAL`, `OPTION` (default -- `--name VALUE`), `FLAG` (`--name`, no value), `MULTI` (collects multiple values), or `REMAINDER` (everything after `--`). |
 | `typ` | `type` | Python type for conversion (`str`, `int`, `float`, `bool`, …). |
-| `default` | `Any` | Default value if the user doesn't pass the flag. |
+| `default` | `any` | Default value if the user doesn't pass the flag. |
 | `help` | `str` | Help text for the argument. |
 | `short` | `str \| None` | Short flag (e.g., `"f"` for `-f`). Pass `""` to disable the auto-generated short flag. |
-| `choices` | `list[Any] \| None` | Restricted set of valid values (argparse `choices`). |
+| `choices` | `list[any] \| None` | Restricted set of valid values (argparse `choices`). |
 | `required` | `bool` | Whether the argument is required. |
 | `metavar` | `str \| None` | Display name in `--help`. |
 
@@ -634,8 +632,8 @@ Mutable context passed to pre and post hooks.
 | Field / method | Type | Purpose |
 |---|---|---|
 | `command_name` | `str` | The name of the command currently executing. |
-| `args` | `dict[str, Any]` | A copy of the parsed CLI arguments. Mutating is safe but does not change what the handler sees -- for that, use `set_data` and have the handler read it back. |
-| `data` | `dict[str, Any]` | Hook-to-hook scratch space. Persists across pre-hook → handler → post-hook. |
+| `args` | `dict[str, any]` | A copy of the parsed CLI arguments. Mutating is safe but does not change what the handler sees -- for that, use `set_data` and have the handler read it back. |
+| `data` | `dict[str, any]` | Hook-to-hook scratch space. Persists across pre-hook → handler → post-hook. |
 | `get_arg(name, default=None)` | method | Read an argument by name. |
 | `set_data(key, value)` | method | Write to the scratch dict. |
 | `get_data(key, default=None)` | method | Read from the scratch dict. |
@@ -698,9 +696,9 @@ A condensed list of every hook plugins can override. The full definitions are in
 | Hook | Signature |
 |---|---|
 | `get_mtir` | `(caller, args, call_params) -> MTRuntime` |
-| `call_llm` | `(model, mt_run) -> Any` |
+| `call_llm` | `(model, mt_run) -> any` |
 | `by` | `(model) -> Callable` |
-| `by_operator` | `(lhs, rhs) -> Any` |
+| `by_operator` | `(lhs, rhs) -> any` |
 | `filter_visitable_by` | `(connected_nodes, model, descriptions: str = "") -> list` |
 
 **CLI (`JacCmd` mixin):**

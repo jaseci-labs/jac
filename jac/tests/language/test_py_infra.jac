@@ -50,8 +50,7 @@ test "pyfunc 1" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -71,8 +70,7 @@ test "pyfunc 2" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -90,8 +88,7 @@ test "pyfunc 3" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -109,8 +106,7 @@ test "pyfunc binop" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -144,8 +140,7 @@ test "py2jac" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -163,8 +158,7 @@ test "py2jac params" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -184,8 +178,7 @@ test "py2jac empty file" {
         file_source = f.read();
         converted_ast = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out;
@@ -200,8 +193,7 @@ test "py2jac augassign and doc" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -217,8 +209,7 @@ test "py2jac reassign semantics" {
         file_source = f.read();
         jac_code = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -258,8 +249,7 @@ test "py namedexpr" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -274,8 +264,7 @@ test "py bool parentheses" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -368,27 +357,6 @@ test "deep outer imports from loc" {
         "module 'jaclang.tests.fixtures.pyfunc' from " in stdout_value
         or "module 'pyfunc' from " in stdout_value
     );
-}
-
-test "inherit baseclass sym" {
-    pytest.xfail("TODO: Support symtable for inheritance");
-    mypass = JacProgram().compile(
-        os.path.join(EXAMPLES, "guess_game", "guess_game3.jac")
-    );
-    table = None;
-    for i in mypass.sym_tab.kid_scope {
-        if i.scope_name == "GuessTheNumberGame" {
-            for j in i.kid_scope {
-                if j.scope_name == "play" {
-                    table = j;
-                    break;
-                }
-            }
-            break;
-        }
-    }
-    assert table is not None;
-    assert table.lookup("attempts") is not None;
 }
 
 test "list methods" {
@@ -557,7 +525,9 @@ test "import jac from py" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        jac_from_py_mod = importlib.import_module("tests.language.fixtures.jac_from_py");
+        jac_from_py_mod = importlib.import_module(
+            "tests.language.fixtures.jac_from_py"
+        );
         jac_from_py_mod.main();
     } finally {
         sys.stdout = old_stdout;
@@ -658,7 +628,9 @@ test "read file with encoding utf16" {
 
 test "read file with encoding utf8 bom" {
     Jac.attach_program(JacProgram());
-    with tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8-sig") as f {
+    with tempfile.NamedTemporaryFile(
+        delete=False, mode="w", encoding="utf-8-sig"
+    ) as f {
         test_content = "Hello, UTF-8 BOM test! \U0001f680";
         f.write(test_content);
         temp_path = f.name;

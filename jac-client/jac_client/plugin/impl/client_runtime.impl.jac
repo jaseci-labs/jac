@@ -352,7 +352,9 @@ impl __normalizeCredential(x: Any) -> dict {
 }
 
 impl jacSignup(
-    identities_or_username: (str | list), credential_or_password: (str | dict)
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
 ) -> dict {
     base_url = __getApiBaseUrl();
     credential = __normalizeCredential(credential_or_password);
@@ -361,32 +363,27 @@ impl jacSignup(
             if Array.isArray(identities_or_username)
             else [__normalizeIdentity(identities_or_username)]
     );
-    primary_username = identities[0]["value"] if len(identities) > 0 else "";
+    body = {"identities": identities, "credential": credential};
+    if profile != None {
+        body["profile"] = profile;
+    }
     response = await fetch(
         f"{base_url}/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"identities": identities, "credential": credential})
+            "body": JSON.stringify(body)
         }
     );
     if response.ok {
-        data = JSON.parse(await response.text());
-        token = None;
-        if data["data"] and data["data"]["token"] {
-            token = data["data"]["token"];
-        }
-        if token {
-            # Clear cache on auth change
-            state = __getCacheState();
-            for key in Object.keys(state["cache"]) {
-                Reflect.deleteProperty(state["cache"], key);
+        user_id = None;
+        try {
+            data = JSON.parse(await response.text());
+            if data["data"] and data["data"]["user_id"] {
+                user_id = data["data"]["user_id"];
             }
-            state["order"].splice(0, state["order"].length);
-            __setLocalStorage("jac_token", token);
-            return {"success": True, "token": token, "username": primary_username};
-        }
-        return {"success": False, "error": "No token received"};
+        } except Exception { }
+        return {"success": True, "user_id": user_id};
     } else {
         error_text = await response.text();
         try {
@@ -487,14 +484,8 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
-    # Report error to server for logging
-    try {
-        errMsg = error.error.message if error.error else str(error);
-        errStack = error.error.stack if error.error else "";
-        __jacReportError(errMsg, errStack, "", "ErrorBoundary");
-    } except Exception as e {
-        console.warn("[jac-client] ErrorFallback: failed to report error:", e);
-    }
+    # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
+    # which is the only place React exposes `info.componentStack`.
     return
         <div
             role="alert"
@@ -1028,7 +1019,11 @@ impl JacForm(props: dict) -> JsxElement {
 Fires asynchronously and silently ignores failures (to avoid error loops).
 """
 impl __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None {
     try {
         baseUrl = __getApiBaseUrl();
@@ -1043,6 +1038,7 @@ impl __jacReportError(
                         "stack": stack,
                         "url": url or window.location.href,
                         "source": source,
+                        "componentStack": componentStack,
                         "timestamp": Reflect.construct(Date, []).toISOString()
                     }
                 )
@@ -1051,6 +1047,22 @@ impl __jacReportError(
     } except Exception {
     # Intentionally silent - error reporting must never throw, as that
     # could cause infinite loops or mask the original error.
+    }
+}
+
+"""onError prop for JacClientErrorBoundary. The FallbackComponent React passes
+to ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
+therefore `info.componentStack`, the only thing that names user components when
+the JS stack lives inside react-dom) is exclusively delivered to onError.
+Wiring this here is the one place we can capture it."""
+impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+    try {
+        message = error.message if error else "Unknown error";
+        stack = error.stack if error else "";
+        componentStack = info.componentStack if info else "";
+        __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
+    } except Exception {
+    # Silent: error reporting from a React lifecycle must never throw.
     }
 }
 
