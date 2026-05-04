@@ -77,6 +77,29 @@ enum HttpStatus {
 def get_status(response_description: str) -> HttpStatus by llm();
 ```
 
+### Typed-Base Enums
+
+When you want enum members to behave as their underlying type (so callers can compare against ints or strings without `.value`), use the typed-base shorthand `enum X: T { ... }`:
+
+```jac
+enum HttpStatus: int {
+    OK = 200,
+    NOT_FOUND = 404,
+    SERVER_ERROR = 500
+}
+
+def get_status(response_description: str) -> HttpStatus by llm();
+
+with entry {
+    status = get_status("page missing");
+    if status == 404 {                 # direct int comparison
+        print("not found");
+    }
+}
+```
+
+`: int` desugars to Python's `IntEnum`, `: str` to `StrEnum`. Pass an LLM-typed result straight into a typed API expecting `int` or `str` without converting.
+
 ---
 
 ## Objects (Dataclasses)
