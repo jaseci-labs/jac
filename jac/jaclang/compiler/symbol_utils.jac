@@ -106,11 +106,6 @@ Returns keys like "x" or "obj.speed" for use in affected_symbols.
 Returns None for expressions that cannot be represented as a key.
 """
 def _int_subscript_suffix(right: uni.IndexSlice) -> str | None {
-    # Only constant non-negative integer indices are supported (e.g. items[0]).
-    # Not yet supported (returns None, no narrowing):
-    #   items[-1]  - UnaryExpr wrapping Int
-    #   config["host"] - String literal index
-    #   items[FIRST] - named constant index
     if (
         not right.is_range
         and len(right.slices) == 1
@@ -120,9 +115,25 @@ def _int_subscript_suffix(right: uni.IndexSlice) -> str | None {
             idx.start is not None
             and idx.stop is None
             and idx.step is None
-            and isinstance(idx.start, uni.Int)
         ) {
-            return f"[{idx.start.lit_value}]";
+            start = idx.start;
+            # items[0] - positive integer literal
+            if isinstance(start, uni.Int) {
+                return f"[{start.lit_value}]";
+            }
+            # items[-1] - negative integer (UnaryExpr with minus op)
+            if (
+                isinstance(start, uni.UnaryExpr)
+                and isinstance(start.op, uni.Token)
+                and start.op.name == "MINUS"
+                and isinstance(start.operand, uni.Int)
+            ) {
+                return f"[-{start.operand.lit_value}]";
+            }
+            # config["host"] - string literal index (MultiString wraps String in Jac AST)
+            if isinstance(start, uni.MultiString) and len(start.strings) == 1 and isinstance(start.strings[0], uni.String) {
+                return f'[{start.strings[0].lit_value!r}]';
+            }
         }
     }
     return None;

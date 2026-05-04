@@ -597,9 +597,6 @@ test "bug_dloc1_decorated_class_in_function_body" {
     );
 }
 
-# =========================================================================
-# Bug: while-loop guard does not narrow the condition variable
-# =========================================================================
 test "bug_5768_while_loop_narrowing" {
     program = compile_and_check("checker_bug_while_narrowing.jac");
 
@@ -609,20 +606,20 @@ test "bug_5768_while_loop_narrowing" {
     );
 }
 
-test "bug_5768_subscript_key_narrowing" {
+test "bug_subscript_index_narrowing" {
     program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
 
     assert len(program.errors_had) == 0 , (
-        "`if items[0].start is not None` should narrow items[0].start to int. "
+        "items[0], items[-1], config[\"host\"] should all narrow inside isinstance guard. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
 
-test "bug_5768_subscript_key_narrowing_negative" {
+test "bug_subscript_index_narrowing_negative" {
     program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
 
     assert len(program.errors_had) >= 2 , (
-        "Variable index items[i] and range slice items[0:2] must NOT narrow. "
+        "Variable index items[i] and range slice must NOT narrow. "
         "Expected at least 2 E1099 errors but got "
         f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
     );
