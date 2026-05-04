@@ -46,7 +46,8 @@ import from jac_scale._optdeps.kubernetes {
     ConfigException
 }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
-    ensure_namespace_exists
+    ensure_namespace_exists,
+    create_k8s_secret
 }
 
 glob logger = logging.getLogger(__name__);
@@ -420,6 +421,27 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 self.logger.info(
                     f"Applied PVC for shared volume '{pvc_name}'",
                     {"name": pvc_manifest["metadata"]["name"]}
+                );
+            }
+        }
+
+        # P4.1: user-secret BEFORE Deployments so envFrom: secretRef
+        # resolves at pod startup. Reuses parent's create_k8s_secret
+        # helper which handles the create-or-replace idempotency
+        # (409 -> replace_namespaced_secret).
+        user_secret = bundle.get("user_secret");
+        if user_secret {
+            create_k8s_secret(
+                core_v1,
+                namespace,
+                user_secret["metadata"]["name"],
+                user_secret["stringData"]
+            );
+            if self.logger {
+                self.logger.info(
+                    f"Applied Secret for user-defined [plugins.scale.secrets] "
+                    f"({len(user_secret['stringData'])} keys)",
+                    {"name": user_secret["metadata"]["name"]}
                 );
             }
         }
@@ -800,6 +822,15 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if pvcs {
             bundle["pvcs"] = pvcs;
         }
+        # P4.1: K8s Secret holding `[plugins.scale.secrets]` values
+        # (already env-interpolated by jaclang core's
+        # apply_env_interpolation). pod-spec builders inject envFrom
+        # referencing this Secret's name. None when the user defined
+        # no secrets - back-compat with apps that never had any.
+        user_secret = self._build_user_secret_manifest();
+        if user_secret is not None {
+            bundle["user_secret"] = user_secret;
+        }
         try {
             import from jac_scale.config_loader { get_scale_config }
             ms_cfg = get_scale_config().get_microservices_config();
@@ -1023,6 +1054,58 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
         return pvcs;
     }
+
+    """P4.1: K8s Secret manifest for user-defined `[plugins.scale.secrets]`.
+
+    Same shape the parent KubernetesTarget already uses for monolith
+    deploys. Reuses parent's create_k8s_secret in apply_manifests; this
+    builder just produces the manifest dict so the K-track bundle can
+    own it (dry-run / inspection / destroy filtering).
+
+    `self.secrets` is populated upstream by `_scale_pre_hook` (in
+    plugin.jac) which calls `scale_config.get_secrets_config()` - that
+    in turn returns jaclang-core-interpolated values from
+    `[plugins.scale.secrets]`. So `${OPENAI_API_KEY}` etc. are already
+    expanded by the time we get here.
+
+    Returns None when `self.secrets` is empty - no Secret created, no
+    `envFrom` injected. Apps with no secrets keep their pod spec
+    identical to pre-P4.1 (back-compat).
+    """
+    def _build_user_secret_manifest -> dict[str, Any] | None {
+        if not self.secrets {
+            return None;
+        }
+        return {
+            "apiVersion": "v1",
+            "kind": "Secret",
+            "metadata": {
+                "name": f"{self.k8s_config.app_name}-secrets",
+                "namespace": self.k8s_config.namespace,
+                "labels": {
+                    "app": "jac-scale-user-secrets",
+                    "managed": "jac-scale",
+                    "jac-scale.role": "user-secrets"
+                }
+            },
+            "type": "Opaque",
+            # stringData (vs data) so we don't have to base64-encode
+            # values on the client - K8s accepts plaintext here and
+            # encodes server-side. Identical to parent's create_k8s_secret.
+            "stringData": dict(self.secrets)
+        };
+    }
+
+    """P4.1: name of the Secret holding user `[plugins.scale.secrets]`.
+
+    Centralized so _build_user_secret_manifest, _build_service_pod_spec
+    (envFrom), and apply_manifests all reference the same name string
+    instead of recomputing it.
+    """
+    def _user_secret_name -> str {
+        return f"{self.k8s_config.app_name}-secrets";
+    }
+
 
     """K7: extra env vars merged with the auto-set JAC_SV_NAME.
 
@@ -1664,6 +1747,17 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }
+        # P4.1: inject every key from the user-secret as an env var via
+        # envFrom (single line vs N per-key entries). The Secret is
+        # created in apply_manifests; envFrom is tolerant of forward
+        # references but we apply Secret BEFORE Deployment to avoid
+        # the "secret not found" startup error. Empty self.secrets =
+        # no envFrom (back-compat with apps that don't declare any).
+        if self.secrets {
+            container["envFrom"] = [
+                {"secretRef": {"name": self._user_secret_name()}}
+            ];
+        }
         spec: dict[str, Any] = {
             "containers": [container],
             # +5s cushion lets uvicorn finish exiting AFTER our drain
@@ -1716,6 +1810,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(GATEWAY_NAME);
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
+        }
+        # P4.1: gateway also gets envFrom so secrets like SSO client_ids,
+        # JWT signing keys, public host URL etc. land in its env. Same
+        # Secret as services - no need for a separate gateway-only one.
+        if self.secrets {
+            container["envFrom"] = [
+                {"secretRef": {"name": self._user_secret_name()}}
+            ];
         }
         spec: dict[str, Any] = {
             "containers": [container],

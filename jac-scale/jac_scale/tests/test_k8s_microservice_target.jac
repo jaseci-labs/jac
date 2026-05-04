@@ -2528,6 +2528,148 @@ test "P1.3: empty routes produces actionable error, not silent gateway-only depl
 
 
 # =============================================================================
+# P4.1: K8s Secrets injection for user [plugins.scale.secrets]
+# =============================================================================
+
+test "P4.1: _build_user_secret_manifest produces Opaque Secret with stringData" {
+    # Mirrors what the parent KubernetesTarget already does for monolith
+    # deploys. The K-track subclass had the gap - it set self.secrets
+    # but never created a K8s Secret nor wired envFrom into pod specs,
+    # so jacBuilder's 17 secrets sat in memory and never reached pods.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="prod")
+    );
+    target.secrets = {
+        "OPENAI_API_KEY": "sk-real-key",
+        "HOST": "https://api.example.com",
+        "GOOGLE_CLIENT_ID": "google-id-123"
+    };
+
+    secret = target._build_user_secret_manifest();
+    assert secret is not None;
+    assert secret["kind"] == "Secret";
+    assert secret["apiVersion"] == "v1";
+    assert secret["type"] == "Opaque";
+    assert secret["metadata"]["name"] == "myapp-secrets";
+    assert secret["metadata"]["namespace"] == "prod";
+    # stringData (vs data) so values aren't base64-encoded client-side -
+    # K8s server encodes them. Same shape as parent's create_k8s_secret.
+    assert secret["stringData"]["OPENAI_API_KEY"] == "sk-real-key";
+    assert secret["stringData"]["HOST"] == "https://api.example.com";
+    assert secret["stringData"]["GOOGLE_CLIENT_ID"] == "google-id-123";
+    # Standard managed-by label so destroy / inspection commands can
+    # filter to jac-scale-owned objects.
+    assert secret["metadata"]["labels"]["managed"] == "jac-scale";
+}
+
+
+test "P4.1: _build_user_secret_manifest returns None when self.secrets empty" {
+    # Apps with no [plugins.scale.secrets] block must NOT get an empty
+    # Secret object created (would clutter the namespace + confuse
+    # operators looking at `kubectl get secrets`).
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="bare"));
+    target.secrets = {};
+    assert target._build_user_secret_manifest() is None;
+
+    # Also handles the never-set case (some test paths construct the
+    # target without going through plugin.jac).
+    target2 = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="bare2"));
+    if hasattr(target2, "secrets") and target2.secrets {
+        target2.secrets = {};
+    }
+    assert target2._build_user_secret_manifest() is None;
+}
+
+
+test "P4.1: pod-spec injects envFrom secretRef when user secrets present" {
+    # All keys of <app>-secrets become env vars in the container - one
+    # envFrom entry beats N per-key env entries (smaller spec, simpler
+    # to update when secret values change without redeploying pods).
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="default")
+    );
+    target.secrets = {"OPENAI_API_KEY": "sk-test", "HOST": "x"};
+
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    container = spec["containers"][0];
+    env_from = container.get("envFrom", []);
+    assert len(env_from) == 1;
+    assert env_from[0]["secretRef"]["name"] == "myapp-secrets";
+
+    # JAC_SV_NAME (the sentinel) still appears in the explicit env list -
+    # envFrom doesn't replace it, just adds alongside.
+    env = container["env"];
+    assert any(e["name"] == "JAC_SV_NAME" and e["value"] == "orders" for e in env);
+}
+
+
+test "P4.1: pod-spec OMITS envFrom when self.secrets empty" {
+    # Back-compat: pod specs for apps without secrets stay byte-identical
+    # to the pre-P4.1 shape - no envFrom field at all.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="myapp"));
+    target.secrets = {};
+
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    container = spec["containers"][0];
+    assert "envFrom" not in container;
+}
+
+
+test "P4.1: gateway pod-spec also gets envFrom (SSO/JWT/HOST need it)" {
+    # The gateway's middleware reads HOST, SSO client_ids, JWT secret,
+    # etc. - all of which live in [plugins.scale.secrets]. Same Secret
+    # as services; no need for a gateway-only one.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="myapp"));
+    target.secrets = {"HOST": "https://example.com", "GOOGLE_CLIENT_ID": "x"};
+
+    spec = target._build_gateway_pod_spec("demo:latest");
+    container = spec["containers"][0];
+    env_from = container.get("envFrom", []);
+    assert len(env_from) == 1;
+    assert env_from[0]["secretRef"]["name"] == "myapp-secrets";
+}
+
+
+test "P4.1: generate_manifests bundles user_secret alongside deployments" {
+    # apply_manifests reads bundle["user_secret"] and applies the Secret
+    # BEFORE Deployments. Without the bundle entry, the apply path skips
+    # the Secret and pods crash on "secret not found".
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="myapp"));
+    target.secrets = {"OPENAI_API_KEY": "sk"};
+    (_cfg, restore) = _with_services_config(
+        {}, routes={"orders": "/api/orders"}
+    );
+    try {
+        ac = AppConfig(code_folder=".", app_name="myapp", build=False);
+        bundle = target.generate_manifests(ac);
+        assert "user_secret" in bundle;
+        assert bundle["user_secret"]["kind"] == "Secret";
+        assert bundle["user_secret"]["metadata"]["name"] == "myapp-secrets";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P4.1: generate_manifests OMITS user_secret entry when self.secrets empty" {
+    # Same back-compat check at the bundle level - apps without secrets
+    # don't get a phantom bundle["user_secret"] = None entry.
+    target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="bare"));
+    target.secrets = {};
+    (_cfg, restore) = _with_services_config(
+        {}, routes={"orders": "/api/orders"}
+    );
+    try {
+        ac = AppConfig(code_folder=".", app_name="bare", build=False);
+        bundle = target.generate_manifests(ac);
+        assert "user_secret" not in bundle;
+    } finally {
+        restore();
+    }
+}
+
+
+# =============================================================================
 # P0.25: cross-service shared volumes
 # =============================================================================
 
