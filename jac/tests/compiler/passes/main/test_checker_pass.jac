@@ -1293,12 +1293,7 @@ test "union_type_annotation" {
     );
 }
 
-"""Regression: TypeAlias unions that include `Callable[..., Any]` next to
-another class arm (e.g. `type[Any]`) used to collapse to `UnionType | type[Any]`
-because Callable annotations resolve to FunctionType, which the `|` evaluator
-did not recognize as a valid union arm — so it fell into magic-method dispatch
-on the inner UnionType and discarded every other arm. inspect.getfile uses
-exactly this 8-arm alias (`_SourceObjectType`) and was rejecting all callers."""
+"""Regression: `Callable[..., Any]` is accepted as a `|` union arm."""
 test "union_callable_member" {
     program = JacProgram();
     mod = program.compile(
