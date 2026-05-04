@@ -586,23 +586,6 @@ test "bug_super1_super_call_returns_parent_instance" {
     );
 }
 
-# =========================================================================
-# Bug: subscript expressions not tracked as narrowing keys (issue #5768)
-#
-# create_key_for_reference and get_expr_key could not build keys for
-# subscript expressions like items[0], so `if items[0].start is not None`
-# produced a None key and the narrowing was silently dropped.
-# =========================================================================
-test "bug_5768_subscript_key_narrowing" {
-    program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
-
-    assert len(program.errors_had) == 0 , (
-        "Bug #5768: subscript expressions must be tracked as narrowing keys. "
-        "`if items[0].start is not None` should narrow items[0].start to int. "
-        f"Got errors: {[str(e) for e in program.errors_had]}"
-    );
-}
-
 test "bug_dloc1_decorated_class_in_function_body" {
     program = compile_and_check("checker_bug_decorated_local_class.jac");
 
@@ -613,3 +596,16 @@ test "bug_dloc1_decorated_class_in_function_body" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# =========================================================================
+# Bug: subscript expressions not tracked as narrowing keys
+# =========================================================================
+test "bug_5768_subscript_key_narrowing" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`if items[0].start is not None` should narrow items[0].start to int. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
