@@ -379,7 +379,15 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
         },
         # K10: Ingress block. Pass through opaquely so K8s target sees
         # whatever the user wrote (host / ingress_class_name / annotations).
-        'ingress': dict(ms_config.get('ingress', {}))
+        'ingress': dict(ms_config.get('ingress', {})),
+        # P0.25: cross-service shared volumes. Array-of-tables in jac.toml
+        # ([[plugins.scale.microservices.shared_volumes]]) decoded as a
+        # list of dicts. Pass through opaquely so the K8s microservice
+        # target validates each entry (name/mount_path/services/...) at
+        # manifest-build time. Empty list when the user hasn't declared
+        # any - existing microservice apps without shared FS state get
+        # exactly the same pod specs they got before P0.25.
+        'shared_volumes': list(ms_config.get('shared_volumes', []))
     };
 }
 
