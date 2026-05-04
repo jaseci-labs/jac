@@ -47,17 +47,6 @@ def has_error(prog: JacProgram, code: str) -> bool {
     return False;
 }
 
-"""Return the total number of errors with the given code string."""
-def count_errors(prog: JacProgram, code: str) -> int {
-    n = 0;
-    for e in prog.errors_had {
-        if e.code is not None and e.code.code == code {
-            n += 1;
-        }
-    }
-    return n;
-}
-
 # ═══════════════════════════════════════════════════════════════════════
 # E0027 — forward typed connection missing :+>
 #   Pattern:  node1 +>: EdgeType <anything other than :+>
@@ -85,7 +74,6 @@ test "E0027: +>: type with colon prefix on node instead of :+>" {
 
 test "E0027: E0027 is emitted as the first error" {
     prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +>: Friend n2; }');
-    assert has_error(prog, "E0027") , "E0027 must be emitted";
     assert prog.errors_had[0].code.code == "E0027" , "E0027 must be the first error so the developer sees it first";
 }
 
@@ -110,9 +98,13 @@ test "E0028: <+: type followed by semicolon instead of :<+" {
     assert has_error(prog, "E0028") , "E0028 must fire when :<+ is missing and a semicolon terminates the statement";
 }
 
+test "E0028: <+: type followed by EOF instead of :<+" {
+    prog = compile_snippet('with entry { n1 = None; n1 <+: Friend');
+    assert has_error(prog, "E0028") , "E0028 must fire when :<+ is missing and the source ends unexpectedly";
+}
+
 test "E0028: E0028 is emitted as the first error" {
     prog = compile_snippet('with entry { n1 = None; n2 = None; n1 <+: Friend n2; }');
-    assert has_error(prog, "E0028") , "E0028 must be emitted";
     assert prog.errors_had[0].code.code == "E0028" , "E0028 must be the first error so the developer sees it first";
 }
 
@@ -132,15 +124,14 @@ test "E0029: ++> followed by edge type name and right node" {
     assert has_error(prog, "E0029") , "E0029 must fire when ++> is followed by an edge type name (use +>: EdgeType :+> instead)";
 }
 
+test "E0029: E0029 is emitted as the first error" {
+    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 ++> Friend n2; }');
+    assert prog.errors_had[0].code.code == "E0029" , "E0029 must be the first error so the developer sees it first";
+}
+
 test "E0029: fixture — ++> with edge type" {
     prog = compile_fixture("connect_simple_op_with_type.jac");
     assert has_error(prog, "E0029") , "E0029 must fire in the fixture file for ++> used with an edge type";
-}
-
-test "E0029: E0029 is emitted as the first error" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 ++> Friend n2; }');
-    assert has_error(prog, "E0029") , "E0029 must be emitted";
-    assert prog.errors_had[0].code.code == "E0029" , "E0029 must be the first error so the developer sees it first";
 }
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -154,15 +145,14 @@ test "E0035: <++ followed by edge type name and right node" {
     assert has_error(prog, "E0035") , "E0035 must fire when <++ is followed by an edge type name (use <+: EdgeType :<+ instead)";
 }
 
+test "E0035: E0035 is emitted as the first error" {
+    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 <++ Friend n2; }');
+    assert prog.errors_had[0].code.code == "E0035" , "E0035 must be the first error so the developer sees it first";
+}
+
 test "E0035: fixture — <++ with edge type" {
     prog = compile_fixture("connect_backward_simple_op_with_type.jac");
     assert has_error(prog, "E0035") , "E0035 must fire in the fixture file for <++ used with an edge type";
-}
-
-test "E0035: E0035 is emitted as the first error" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 <++ Friend n2; }');
-    assert has_error(prog, "E0035") , "E0035 must be emitted";
-    assert prog.errors_had[0].code.code == "E0035" , "E0035 must be the first error so the developer sees it first";
 }
 
 # ═══════════════════════════════════════════════════════════════════════
@@ -173,12 +163,12 @@ test "E0035: E0035 is emitted as the first error" {
 test "E0036: +> used instead of ++>" {
     prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +> n2; }');
     assert has_error(prog, "E0036") , "E0036 must fire when +> is used instead of ++>";
+    assert prog.errors_had[0].code.code == "E0036" , "E0036 must be the first error so the developer sees it first";
 }
 
-test "E0036: E0036 is emitted as the first error" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +> n2; }');
-    assert has_error(prog, "E0036") , "E0036 must be emitted";
-    assert prog.errors_had[0].code.code == "E0036" , "E0036 must be the first error so the developer sees it first";
+test "E0036: fixture — bare +> operator" {
+    prog = compile_fixture("connect_bare_plus_gt.jac");
+    assert has_error(prog, "E0036") , "E0036 must fire in the fixture file for bare +> operator";
 }
 
 # ═══════════════════════════════════════════════════════════════════════
