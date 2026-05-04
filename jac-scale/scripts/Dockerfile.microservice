@@ -29,18 +29,26 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install jaclang + jac-scale with the K8s deploy extras (kubernetes
-# Python client, etc.). Pin versions to match what your local CI tests
+# Python client, etc.) + jac-client (provides the `jac install`
+# subcommand below). Pin versions to match what your local CI tests
 # against to avoid silent skew between dev and prod.
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir \
         jaclang \
-        "jac-scale[deploy,data]"
+        "jac-scale[deploy,data]" \
+        jac-client
 
 WORKDIR /app
 
 # Copy the whole project. Adjust the .dockerignore alongside this file
 # to exclude .jac/data/, .jac/logs/, node_modules/, .git/, etc.
 COPY . /app
+
+# P0.15: install the project's own pip deps from jac.toml [dependencies].
+# Without this, real apps that declare deps in [dependencies] crash at
+# startup with "No module named 'X'". `|| true` so projects without
+# any [dependencies] don't fail the build.
+RUN if [ -f jac.toml ]; then jac install || true; fi
 
 # Sanity-check the jac install. We used to pre-compile .jac files
 # here via `jac tool jac2py` but that subcommand was removed/renamed

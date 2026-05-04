@@ -103,8 +103,74 @@ test "resolve_dockerfile falls back to embedded template + .jac/Dockerfile.gen" 
         # + redis are available in the runtime image (P0.8 unblocked
         # Mongo/Redis auto-provisioning).
         assert "jac-scale[deploy,data]" in contents;
+        # P0.15: jac-client must be installed so the `jac install` step
+        # below can resolve jac.toml [dependencies].
+        assert "jac-client" in contents;
+        # P0.15: must run `jac install` so user app deps land in the image.
+        assert "jac install" in contents;
         assert ctx.resolve() == project.resolve();
         assert args == {};
+    }
+}
+
+
+# =============================================================================
+# P0.15: shipped + dev-checkout Dockerfiles also install user pip deps
+# =============================================================================
+test "P0.15: shipped Dockerfile.microservice installs jac-client + runs jac install" {
+    # Apps that auto-build via the shipped (PyPI-install) variant must
+    # also get their jac.toml [dependencies] resolved. Without this,
+    # any real app that declares pip deps (jacBuilder declares
+    # websockets/httpx/watchdog/mcp) would crash at startup with a
+    # `ModuleNotFoundError`.
+    shipped = ib_mod.find_shipped_dockerfile();
+    if shipped is None {
+        # Test runner doesn't have a shipped variant on disk (rare; happens
+        # for non-editable installs without scripts/). Skip rather than
+        # asserting against a None.
+        return;
+    }
+    contents = shipped.read_text();
+    assert "jac-client" in contents , (
+        "shipped Dockerfile.microservice missing jac-client install (P0.15)"
+    );
+    assert "jac install" in contents , (
+        "shipped Dockerfile.microservice missing `jac install` step (P0.15)"
+    );
+}
+
+
+test "P0.15: dev-checkout Dockerfile.microservice.ci installs jac-client + runs jac install" {
+    # The CI variant (used when project_dir is inside a jaseci checkout)
+    # has the same requirement - users on dev checkouts get the same
+    # auto-installed deps as users on a PyPI install.
+    with tempfile.TemporaryDirectory() as tmp {
+        repo = Path(tmp) / "jaseci";
+        (repo / "jac").mkdir(parents=True);
+        scripts_dir = repo / "jac-scale" / "scripts";
+        scripts_dir.mkdir(parents=True);
+        # Mirror the contents we expect on a real checkout. find_jaseci_repo_root
+        # walks based on directory existence, not file content, so a stub file
+        # is enough to satisfy resolve_dockerfile's decision tree.
+        ci_df = scripts_dir / "Dockerfile.microservice.ci";
+        # Use the actual file from the repo so the assertion catches
+        # drift (someone removing `jac install` from the CI Dockerfile).
+        import shutil as _shutil;
+        real_ci = (
+            Path(ib_mod.__file__).parent.parent.parent / "scripts" /
+            "Dockerfile.microservice.ci"
+        );
+        if not real_ci.is_file() {
+            return;
+        }
+        _shutil.copy(real_ci, ci_df);
+        contents = ci_df.read_text();
+        assert "jac-client" in contents , (
+            "Dockerfile.microservice.ci missing jac-client install (P0.15)"
+        );
+        assert "jac install" in contents , (
+            "Dockerfile.microservice.ci missing `jac install` step (P0.15)"
+        );
     }
 }
 

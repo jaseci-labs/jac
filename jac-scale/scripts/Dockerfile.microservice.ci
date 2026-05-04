@@ -29,17 +29,28 @@ RUN pip install --no-cache-dir --upgrade pip
 # Install jaclang + jac-scale from local source (the actual code under
 # test, including K1-K10). `-e` (editable) keeps the install pointing
 # at /build/jac so `jac --version` reports the right SHA-derived version.
+# jac-client comes from PyPI (not in this repo); it provides the `jac
+# install` subcommand that resolves jac.toml `[dependencies]` later.
 WORKDIR /build
 COPY jac /build/jac
 COPY jac-scale /build/jac-scale
 RUN pip install --no-cache-dir -e /build/jac \
-    && pip install --no-cache-dir -e "/build/jac-scale[deploy,data]"
+    && pip install --no-cache-dir -e "/build/jac-scale[deploy,data]" \
+    && pip install --no-cache-dir jac-client
 
 # The project dir to deploy. Build arg lets the e2e script point at
 # any project under the repo (default: the K8s e2e fixture).
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
 WORKDIR /app
 COPY ${PROJECT_PATH} /app
+
+# P0.15: install the project's own pip deps from jac.toml [dependencies].
+# Without this, real apps (e.g. jacBuilder) crash at startup with
+# "No module named 'websockets'" because our base layer only ships
+# jaclang + jac-scale + jac-client, not the user's app deps.
+# `|| true` so projects without [dependencies] (e.g. the e2e fixture)
+# don't fail the build.
+RUN if [ -f jac.toml ]; then jac install || true; fi
 
 # Sanity-check the jac install. We used to pre-compile .jac files here
 # via `jac tool jac2py` but that subcommand was removed/renamed in
