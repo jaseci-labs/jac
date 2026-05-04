@@ -17,15 +17,15 @@ obj ClassDef {
 
 def get_func_name(nd: object) -> str {
     func = cast((FuncDef | AsyncFuncDef), nd);
-    return func.name;  # name exists on both members
+    return func.name;  # ok: name exists on all union members
 }
 
 def get_line(nd: object) -> int {
     func = cast((FuncDef | AsyncFuncDef), nd);
-    return func.lineno;  # lineno exists on both members
+    return func.lineno;  # ok: lineno exists on all union members
 }
 
 def get_def_name(nd: object) -> str {
     defn = cast((FuncDef | AsyncFuncDef | ClassDef), nd);
-    return defn.name;  # name exists on all three members
+    return defn.name;  # ok: name exists on all union members
 }
