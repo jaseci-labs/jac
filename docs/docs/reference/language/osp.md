@@ -8,7 +8,7 @@
 - [Walkers](#walkers) - Walker declaration, visit, report, disengage
 - [Graph Construction](#graph-construction) - Creating and connecting nodes
 - [Graph Traversal](#graph-traversal) - Filtered traversal, entry/exit events
-- [Data Spatial Queries](#data-spatial-queries) - Edge references, attribute filtering
+- [Object Spatial Queries](#object-spatial-queries) - Edge references, attribute filtering
 - [Typed Context Blocks](#typed-context-blocks) - Type-based dispatch
 
 ---
@@ -861,7 +861,7 @@ node Room {
 
 ---
 
-## Data Spatial Queries
+## Object Spatial Queries
 
 ### 1 Edge Reference Syntax
 

@@ -95,7 +95,7 @@ For graph programming, use `node`, `edge`, and `walker` archetypes instead.
 
 ### 5. `def` for regular methods, `can` ONLY for event-driven abilities
 
-Use `def` for regular methods in archetypes. The `can` keyword is ONLY for data-spatial abilities that respond to walker entry/exit events --the compiler enforces this with: *"Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"*
+Use `def` for regular methods in archetypes. The `can` keyword is ONLY for object-spatial abilities that respond to walker entry/exit events --the compiler enforces this with: *"Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"*
 
 WRONG:
 
@@ -359,7 +359,7 @@ try {
 }
 ```
 
-## Data-Spatial Gotchas
+## Object-Spatial Gotchas
 
 ### 17. Walker definition and visit syntax
 

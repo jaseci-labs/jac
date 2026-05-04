@@ -1101,6 +1101,9 @@ enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
 This is a crucial concept: the enum constrains the AI to return *exactly one* of these predefined values. Without it, an LLM might return "shopping", "Shopping", "groceries", or "grocery shopping" -- all meaning the same thing but impossible to handle consistently in code. The enum eliminates that ambiguity entirely, making AI output as predictable as any other function return value.
 
+!!! tip "Typed-base enums"
+    For cases where you want enum members to behave as a primitive type, use `enum X: T { ... }`. `enum Status: str { OK = "ok", FAIL = "fail" }` makes members real `str` instances (no `.value` needed); `enum Code: int { ... }` does the same for `int`. Plain `enum` (used here) stays the right choice when the member identity matters more than the underlying value.
+
 **by llm() -- AI Function Delegation**
 
 Now for the core idea. Pay close attention, because this pattern is central to how Jac integrates AI:

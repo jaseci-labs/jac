@@ -65,9 +65,7 @@ repos:
               ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
               ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
-              ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$
+              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$
           )
 
       - id: validate-fragments

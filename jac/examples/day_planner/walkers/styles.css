@@ -1,0 +1,61 @@
+/* Base */
+.container { max-width: 900px; margin: 40px auto; font-family: system-ui; padding: 20px; }
+h1 { margin: 0; color: #333; }
+h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
+.header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+.subtitle { margin: 4px 0 0 0; color: #888; font-size: 0.85rem; }
+
+/* Layout */
+.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 700px) { .two-column { grid-template-columns: 1fr; } }
+
+/* Inputs */
+.input-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+
+/* Buttons */
+.btn-add { padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.btn-generate { padding: 10px 16px; background: #2196F3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+.btn-generate:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-delete { background: #e53e3e; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85rem; }
+.btn-clear { background: #888; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 0.85rem; }
+.btn-signout { padding: 8px 16px; background: #f5f5f5; color: #666; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
+
+/* Task Items */
+.task-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; gap: 10px; }
+.task-title { flex: 1; }
+.task-done { text-decoration: line-through; color: #888; }
+.category { padding: 2px 8px; background: #e8f5e9; border-radius: 12px; font-size: 0.75rem; color: #2e7d32; margin-right: 8px; }
+.count { text-align: center; color: #888; margin-top: 12px; font-size: 0.9rem; }
+
+/* Shopping Items */
+.ingredient-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+.ing-info { display: flex; flex-direction: column; gap: 2px; }
+.ing-name { font-weight: 500; }
+.ing-qty { color: #666; font-size: 0.85rem; }
+.ing-meta { display: flex; align-items: center; gap: 8px; }
+.ing-cost { color: #2196F3; font-weight: 600; }
+.carb-badge { padding: 2px 6px; background: #fff3e0; border-radius: 12px; font-size: 0.7rem; color: #e65100; }
+.shopping-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; margin-top: 8px; border-top: 1px solid #ddd; }
+.total { font-weight: 700; color: #2196F3; }
+.generating-msg { text-align: center; padding: 20px; color: #666; }
+
+/* Status Messages */
+.loading-msg { text-align: center; padding: 20px; color: #888; }
+.empty-msg { text-align: center; padding: 30px; color: #888; }
+.auth-loading { display: flex; justify-content: center; align-items: center; min-height: 100vh; color: #888; font-family: system-ui; }
+
+/* Auth Form */
+.auth-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui; background: #f5f5f5; }
+.auth-card { background: white; border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 400px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+.auth-title { margin: 0 0 4px 0; text-align: center; font-size: 1.75rem; color: #333; }
+.auth-subtitle { margin: 0 0 24px 0; text-align: center; color: #888; font-size: 0.9rem; }
+.auth-error { margin-bottom: 16px; padding: 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #dc2626; font-size: 0.9rem; }
+.form-field { margin-bottom: 16px; }
+.form-label { display: block; color: #555; font-size: 0.85rem; margin-bottom: 6px; }
+.auth-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
+.auth-submit { width: 100%; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 8px; }
+.auth-submit:disabled { opacity: 0.6; }
+.auth-toggle { margin-top: 16px; text-align: center; }
+.auth-toggle-text { color: #888; font-size: 0.9rem; }
+.auth-toggle-btn { background: none; border: none; color: #4CAF50; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
