@@ -597,7 +597,16 @@ test "bug_dloc1_decorated_class_in_function_body" {
     );
 }
 
-test "bug_5768_comprehension_filter_narrowing" {
+test "bug_while_loop_narrowing" {
+    program = compile_and_check("checker_bug_while_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`while cur` should narrow cur from Item|None to Item inside the body. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_comprehension_filter_narrowing" {
     program = compile_and_check("checker_bug_compr_filter_narrowing.jac");
 
     assert len(program.errors_had) == 0 , (
@@ -605,6 +614,7 @@ test "bug_5768_comprehension_filter_narrowing" {
         "must narrow the output expression. "
         "[x.sym_name for x in items if isinstance(x, NameAtom)] should not "
         "produce E1099 on x.sym_name. "
-        f"Got errors: {[str(e) for e in program.errors_had]}"
-    );
+            );
 }
+        
+
