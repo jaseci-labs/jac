@@ -17,7 +17,9 @@ impl app.addTask{
 
 impl app.toggleTask(id: str) {
     updated = await toggle_task(id);
-    tasks = [updated if jid(t) == id else t for t in tasks];
+    if updated is not None {
+        tasks = [updated if jid(t) == id else t for t in tasks];
+    }
 }
 
 impl app.deleteTask(id: str) {

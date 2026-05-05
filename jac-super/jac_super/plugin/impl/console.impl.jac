@@ -38,11 +38,23 @@ obj JacSuperConsole(BaseJacConsole) {
         self._console_stderr = RichConsole(theme=self.JAC_THEME, file=sys.stderr);
     }
 
-    """Override print to use Rich console."""
+    """Override print to use Rich console.
+
+    Rich's `Console.print` parses bracket-delimited markup like `[red]...[/red]`
+    by default. User-supplied content (file paths, source-line snippets,
+    f-string output) routinely contains square brackets that look like
+    markup — e.g. a diagnostic snippet for `[root()-->][?:Task]` would have
+    the `[root()-->]` interpreted as a malformed tag and stripped, leaving a
+    misleading `[?:Task]` underneath the carets. Disable markup parsing by
+    default; callers that want Rich markup must opt in explicitly via
+    `markup=True`. Auto-highlighting (`highlight`) is left at Rich's default
+    so numbers, strings, paths, and keywords still get their accent colors.
+    """
     def print(*args: Any, **kwargs: Any) {
         # Extract style if provided, otherwise use default
         style = kwargs.pop('style', None);
         file = kwargs.pop('file', None);
+        kwargs.setdefault('markup', False);
         # Use appropriate console based on file
         console = self._console_stderr if (file == sys.stderr) else self._console;
         if style {
@@ -60,29 +72,35 @@ obj JacSuperConsole(BaseJacConsole) {
     """Override success to use Rich styling."""
     def success(message: str, emoji: bool = True) {
         prefix = '✔' if (emoji and self.use_emoji) else '[SUCCESS]';
-        self._console.print(f"{prefix} {message}", style='success');
+        self._console.print(f"{prefix} {message}", style='success', markup=False);
     }
 
     """Override error to use Rich styling with stderr."""
     def error(message: str, hint: (str | None) = None, emoji: bool = True) {
         prefix = '✖' if (emoji and self.use_emoji) else '[ERROR]';
-        self._console_stderr.print(f"{prefix} Error: {message}", style='error');
+        self._console_stderr.print(
+            f"{prefix} Error: {message}", style='error', markup=False
+        );
         if hint {
             hint_prefix = '💡' if self.use_emoji else 'HINT:';
-            self._console_stderr.print(f"{hint_prefix} {hint}", style='info');
+            self._console_stderr.print(
+                f"{hint_prefix} {hint}", style='info', markup=False
+            );
         }
     }
 
     """Override warning to use Rich styling."""
     def warning(message: str, emoji: bool = True) {
         prefix = '⚠' if (emoji and self.use_emoji) else '[WARNING]';
-        self._console_stderr.print(f"{prefix} {message}", style='warning');
+        self._console_stderr.print(
+            f"{prefix} {message}", style='warning', markup=False
+        );
     }
 
     """Override info to use Rich styling."""
     def info(message: str, emoji: bool = True) {
         prefix = 'ℹ' if (emoji and self.use_emoji) else '[INFO]';
-        self._console.print(f"{prefix} {message}", style='info');
+        self._console.print(f"{prefix} {message}", style='info', markup=False);
     }
 
     """Override print_header to use Rich styling."""

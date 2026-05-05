@@ -114,6 +114,24 @@ obj MockLLM(BaseLLM) {
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
 }
 
+"""Local LLM connector backed by llama.cpp via `llama-cpp-python`.
+
+Activated by `Model("local:<alias>")`. Weights are pulled lazily
+through `byllm.model_cache` and the in-process `Llama` instance is
+built on first call to keep plugin import cheap.
+"""
+obj LocalLLM(BaseLLM) {
+    has alias: str = "",
+        spec: dict = {},
+        _llama: object = None;
+
+    def postinit -> None;
+    def _ensure_llama -> object;
+    override def model_call_no_stream(params: dict) -> dict;
+    override def model_call_with_stream(params: dict) -> Generator[object, None, None];
+    override def _get_ctx_window(call_params: dict) -> int;
+}
+
 """Pool of LLM models with fallback and load-balancing via LiteLLM Router.
 
 Strategies: 'fallback' (ordered), 'simple-shuffle' (random pick per call),
@@ -139,13 +157,15 @@ obj ModelPool(BaseLLM) {
 
 Provides a unified interface for interacting with various language models
 (OpenAI, Anthropic, etc.) through LiteLLM. Supports both direct API calls
-and proxy-based routing. Automatically delegates to MockLLM when model_name
-is 'mockllm'.
+and proxy-based routing. Delegates to MockLLM when model_name is
+'mockllm', and to LocalLLM (in-process llama.cpp) when model_name starts
+with 'local:'.
 """
 obj Model(BaseLLM) {
     has proxy: bool = False,
         http_client: bool = False,
-        _mock_delegate: MockLLM | None = None;
+        _mock_delegate: MockLLM | None = None,
+        _local_delegate: BaseLLM | None = None;
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> object;

@@ -550,7 +550,6 @@ impl LanguageServer._read_message(stream: Any) -> Optional[dict] {
         line = stream.readline();
         if not line {
             return None;  # EOF
-
         }
         line_str = line.decode("ascii").strip();
         if not line_str {

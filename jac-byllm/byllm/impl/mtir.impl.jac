@@ -360,7 +360,6 @@ impl MTRuntime.get_output_schema -> dict | None {
     if len(self.tools) == 0 and self.resp_type {
         if self.resp_type is str {
             return None;  # Strings are default and not using a schema.
-
         }
         # Use MTIR info if available, otherwise None (Python library mode)
         return_type_info = self.mtir.ir_info.return_type
