@@ -856,7 +856,7 @@ def _collect_compr_predicates(
 }
 
 """Push isinstance narrowing from comprehension filters BEFORE visiting body."""
-def _enter_compr(evaluator: object, compr_list: list) -> None {
+def _enter_compr(evaluator: object, compr_list: list) {
     added_keys: list[str] = [];
     for compr in compr_list {
         if compr.conditional {
@@ -869,7 +869,7 @@ def _enter_compr(evaluator: object, compr_list: list) -> None {
 }
 
 """Pop isinstance narrowing added by _enter_compr."""
-def _exit_compr(evaluator: object) -> None {
+def _exit_compr(evaluator: object) {
     if evaluator._comprehension_key_stack {
         keys = evaluator._comprehension_key_stack.pop();
         for key in keys {
