@@ -21,13 +21,6 @@ documentation = "https://jac-lang.org"
 [package.include]
 packages = ["byllm*"]
 
-[package.include.data]
-# '*.py' covers __init__.py and other Python shims.
-# 'impl/**/*.jac' covers the plain impl/ directory (setuptools *.impl/ glob misses it).
-# '*.impl/**/*.jac' covers named impl dirs like llm.impl/, types.impl/, telemetry.impl/.
-"*" = ["*.jac", "*.py", "*.pyi", "py.typed", "*.lark", "impl/**/*.jac", "*.impl/**/*.jac", "*.cl/**/*.jac"]
-byllm = ["_precompiled/**/*.jir", "_precompiled/manifest.json"]
-
 [dependencies]
 jaclang = ">=0.14.0"
 litellm = ">=1.70.0,<=1.82.6"
