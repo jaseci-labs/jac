@@ -10,7 +10,7 @@ the ESTree specification by:
    - Control flow statements (if/else, loops, try/catch)
    - Data structures (arrays, objects)
    - Special Jac features (walkers, abilities, archetypes) converted to JS classes
-   - Data spatial operations converted to appropriate JS patterns
+   - Object spatial operations converted to appropriate JS patterns
 
 3. Managing imports and module dependencies
 4. Preserving source location information
@@ -34,7 +34,7 @@ import from jaclang.jac0core.modresolver {
     convert_to_js_import_path,
     resolve_relative_path
 }
-import from jaclang.jac0core.diagnostics { E5010, E5011, E5012, W5013, W5014 }
+import from jaclang.jac0core.diagnostics { E5010, E5011, E5012, W5013, W5014, W5015 }
 
 glob _T = TypeVar('_T', bound=es.Node),
      ES_LOGICAL_OPS: dict[(Tok, str)] = {Tok.KW_AND: '&&', Tok.KW_OR: '||'},
@@ -63,6 +63,8 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.GT: '>',
          Tok.LTE: '<=',
          Tok.GTE: '>=',
+         Tok.KW_IS: '===',
+         Tok.KW_ISN: '!==',
          Tok.KW_IN: 'in',
          Tok.KW_NIN: 'in'
      },

@@ -506,6 +506,19 @@ sem Personality.AMBIVERT = "Comfortable in both social and solitary settings";
 def classify_personality(bio: str) -> Personality by llm();
 ```
 
+#### Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are `T` instances. This lets a `by llm()` return type flow directly into APIs that expect `int` or `str` without calling `.value`:
+
+```jac
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404, SERVER_ERROR = 500 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
+def get_status(description: str) -> HttpStatus by llm();
+```
+
+`: int` desugars to `IntEnum`, `: str` to `StrEnum`, and any other base `T` to the mixin form `class X(T, Enum)`.
+
 ### Object Types
 
 ```jac

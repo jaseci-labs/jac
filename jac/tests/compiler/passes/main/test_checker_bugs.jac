@@ -596,3 +596,15 @@ test "bug_dloc1_decorated_class_in_function_body" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# =========================================================================
+# Bug: while-loop guard does not narrow the condition variable
+# =========================================================================
+test "bug_5768_while_loop_narrowing" {
+    program = compile_and_check("checker_bug_while_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`while cur` should narrow cur from Item|None to Item inside the body. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}

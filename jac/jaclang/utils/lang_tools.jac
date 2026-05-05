@@ -14,6 +14,7 @@ import from jaclang.compiler.passes.main.cfg_build_pass { cfg_dot_from_file }
 import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.helpers { pascal_to_snake }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 """Information about a kid."""
