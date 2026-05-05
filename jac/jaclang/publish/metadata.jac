@@ -6,14 +6,18 @@ import from jaclang.project.config { JacConfig, PersonConfig }
 
 glob METADATA_VERSION: str = "2.4";
 
-"""Normalize a package name per PEP 503/625 (lowercase, collapse hyphens/underscores/dots)."""
+"""Normalize a package name per PEP 503/625.
+   e.g. 'My_Pkg.Name' -> 'my-pkg-name', 'JAC--Lang' -> 'jac-lang' """
 def normalize_package_name(name: str) -> str;
 
-"""Normalise a version constraint (npm caret/tilde or PEP 440) to a pip-compatible specifier string."""
+"""Convert a version constraint to a pip-compatible specifier.
+   e.g. '^1.2.3' -> '>=1.2.3,<2.0.0', '~1.2' -> '>=1.2.0,<1.3.0', '*' -> '' """
 def normalize_constraint(raw: str) -> str;
 
-"""Build a Requires-Dist value; appends '; extra == "group"' marker when extra is given."""
+"""Build a Requires-Dist line.
+   e.g. ('requests', '>=2.28.0') -> 'requests>=2.28.0'
+        ('pytest', '*', 'dev')   -> 'pytest; extra == "dev"' """
 def build_requires_dist(name: str, raw_ver: str, extra: str | None = None) -> str;
 
-"""Generate a complete METADATA 2.4 string from a JacConfig; raises ValueError when config.package is None."""
+"""Generate the full METADATA 2.4 string from a JacConfig. Raises ValueError when config.package is None."""
 def generate_metadata(config: JacConfig, project_root: Path | None = None) -> str;
