@@ -257,6 +257,18 @@ def get_type_of_binary_operation(
             if isinstance(ty, jtypes.TypeVarType) {
                 return True;
             }
+            # Callable[...] annotations evaluate to a FunctionType with empty
+            # func_name. Without this, an alias like `A | type[Any] | Callable[..., Any]`
+            # falls into magic-method dispatch on the inner UnionType and gets
+            # collapsed to the return type of `type.__or__`.
+            if isinstance(ty, jtypes.FunctionType)
+            and ty.is_from_callable_annotation() {
+                return True;
+            }
+            # `Never` / `NoReturn` are valid annotation arms (PEP 484, PEP 604).
+            if isinstance(ty, jtypes.NeverType) {
+                return True;
+            }
             # Although None is not a valid class, it can be used as a class in the type annotation.
             if isinstance(ty, jtypes.ClassType) {
                 return ty.shared == evaluator.prefetch.none_type_class.shared;
@@ -293,6 +305,15 @@ def get_type_of_binary_operation(
             }
             # TypeVarType is valid in union type annotations (e.g., T | None)
             if isinstance(ty, jtypes.TypeVarType) {
+                return True;
+            }
+            # Callable[...] annotations evaluate to FunctionType with empty func_name.
+            if isinstance(ty, jtypes.FunctionType)
+            and ty.is_from_callable_annotation() {
+                return True;
+            }
+            # `Never` / `NoReturn` are valid annotation arms.
+            if isinstance(ty, jtypes.NeverType) {
                 return True;
             }
             # Although None is not a valid class, it can be used as a class in the type annotation.

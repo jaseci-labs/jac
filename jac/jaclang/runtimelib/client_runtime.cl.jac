@@ -146,9 +146,18 @@ def useEffect(effectFn: Any, deps: list = []) -> None;
 # ============================================================================
 # Client Error Reporting
 # ============================================================================
-# Report client-side errors to the server for logging
+# Report client-side errors to the server for logging.
+# `componentStack` carries React's named call chain (e.g. "in App\n  in Router")
+# captured by the boundary's onError; the JS `stack` is engine frames only.
 def __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None;
 # Install global error handlers (window.onerror, unhandledrejection)
 def __jacInstallErrorHandlers -> None;
+# onError prop for ErrorBoundary; captures React's componentStack which
+# FallbackComponent props don't expose, then forwards via __jacReportError.
+def __jacReactErrorHandler(error: Any, info: Any) -> None;

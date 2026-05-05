@@ -60,6 +60,256 @@ def _apply_prompt_caching(messages: list, tools: list | None) {
 }
 
 
+"""Resolve the effective context window size for a model name via LiteLLM registry."""
+def _litellm_ctx_window(model_name: str) -> int {
+    try {
+        info = litellm.get_model_info(model_name);
+        return int(info.get("max_input_tokens") or info.get("max_tokens") or 0);
+    } except Exception {
+        return 0;
+    }
+}
+
+
+"""Shallow copy of model for compaction - resets call_params and _usage_history
+so the summarisation call cannot recurse or inflate the outer loop's token totals.
+Works for both Model and ModelPool (shares the already-built _router at zero cost).
+"""
+def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
+    import copy;
+    m = copy.copy(model);
+    m.call_params = {"compaction_enabled": False};
+    # Shallow copy shares the list object - give the compaction call its own
+    # history so its token usage does not inflate the outer ReAct loop totals.
+    m._usage_history = [];
+    return m;
+}
+
+
+"""Summarise old ReAct tool-call rounds into one compact message.
+
+Always keeps messages[0] (system) and messages[1] (user task) verbatim. Preserves
+the last `keep_recent` complete assistant+tool_result rounds verbatim as immediate
+context. Everything between index 2 and the kept tail is replaced with a single
+summary user message tagged [Compacted context summary].
+
+Assistant messages are serialised with their tool_calls (name+args) since content
+is None when a tool is called - without this the summary LLM loses the action.
+"""
+def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
+    # Need at least: system + user + 1 assistant + something to compact
+    if len(messages) < 4 {
+        return messages;
+    }
+    # Walk backwards counting assistant turns to find the keep boundary
+    kept_tail: list = [];
+    assistant_rounds = 0;
+    i = len(messages) - 1;
+    while i >= 2 and assistant_rounds < keep_recent {
+        msg = messages[i];
+        role = msg.get("role") if isinstance(msg, dict) else msg?.role;
+        if str(role) == "assistant" {
+            assistant_rounds += 1;
+        }
+        kept_tail.insert(0, msg);
+        i -= 1;
+    }
+    # The slice to compact is messages[2 .. i+1]
+    compact_slice = messages[2:i + 1];
+    if not compact_slice {
+        return messages;
+    }
+    # Serialise the slice for the summarisation call.
+    # Assistant messages have content=None when they only contain tool_calls,
+    # so we serialise the tool names+args explicitly - otherwise the summary
+    # LLM would see "[assistant] " with no content and lose the action context.
+    lines: list = [];
+    for msg in compact_slice {
+        if isinstance(msg, dict) {
+            role = msg.get("role", "");
+            content = msg.get("content") or "";
+            if isinstance(content, list) {
+                content = " ".join(
+                    p.get("text", "") if isinstance(p, dict) else str(p)
+                    for p in content
+                );
+            }
+            if str(role) == "assistant" and not content {
+                tool_calls = msg.get("tool_calls") or [];
+                if tool_calls {
+                    descs: list = [];
+                    for tc in tool_calls {
+                        fn = tc.get("function", {})
+                            if isinstance(tc, dict)
+                            else (tc?.function or {});
+                        name = (
+                            fn.get("name", "?") if isinstance(fn, dict) else fn?.name
+                        )
+                        or "?";
+                        args = (
+                            fn.get("arguments", "")
+                                if isinstance(fn, dict)
+                                else fn?.arguments
+                        )
+                        or "";
+                        descs.append(f"{name}({args})");
+                    }
+                    content = "called: " + "; ".join(descs);
+                }
+            }
+            lines.append(f"[{role}] {content}");
+        } else {
+            lines.append(str(msg));
+        }
+    }
+    history_text = "\n".join(lines);
+    summary_prompt = (
+        "Summarise the following agent tool-call history concisely. "
+        "Preserve key findings, decisions, and intermediate results that "
+        "may be needed to complete the ongoing task. Output plain text only.\n\n" + history_text
+    );
+    comp_mt_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content="You are a concise summariser."),
+            Message(role=MessageRole.USER, content=summary_prompt)
+        ],
+        tools=[],
+        resp_type=str,
+        stream=False,
+        call_params={"compaction_enabled": False},
+        mtir=None
+    );
+    summary = str(model.invoke(comp_mt_run));
+    summary_msg = {
+        "role": "user",
+        "content": f"[Compacted context summary]\n{summary}"
+    };
+    return [messages[0], messages[1], summary_msg] + kept_tail;
+}
+
+
+"""Resolve the effective context window for this model instance.
+
+Priority: call_params["ctx_window"] > self.ctx_window > jac.toml compaction.ctx_window
+          > litellm.get_model_info() > 0 (unknown - disable threshold check).
+"""
+impl BaseLLM._get_ctx_window(call_params: dict) -> int {
+    override = int(
+        call_params.get("ctx_window")
+        or self.ctx_window
+        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+        or 0
+    );
+    if override > 0 {
+        return override;
+    }
+    return _litellm_ctx_window(self.model_name);
+}
+
+
+"""Resolve compaction config for one invocation (call_params > self.call_params > jac.toml).
+Returns dict with keys: enabled, threshold, keep_recent, model, ctx_window.
+"""
+impl BaseLLM._resolve_compaction_params(mt_run: MTRuntime) -> dict {
+    comp_cfg = get_byllm_config().get_compaction_config();
+    enabled = bool(
+        mt_run.call_params.get("compaction_enabled")
+            if mt_run.call_params.get("compaction_enabled") is not None
+            else comp_cfg.get("enabled", True)
+    );
+    _raw_threshold = (
+        mt_run.call_params.get("threshold_ratio")
+            if mt_run.call_params.get("threshold_ratio") is not None
+            else self.call_params.get("threshold_ratio")
+                if self.call_params.get("threshold_ratio") is not None
+                else None
+    );
+    threshold = float(str(_raw_threshold))
+        if _raw_threshold is not None
+        else float(comp_cfg.get("threshold_ratio", 0.80));
+    _raw_keep_recent = (
+        mt_run.call_params.get("keep_recent_iterations")
+            if mt_run.call_params.get("keep_recent_iterations") is not None
+            else self.call_params.get("keep_recent_iterations")
+                if self.call_params.get("keep_recent_iterations") is not None
+                else None
+    );
+    keep_recent = int(str(_raw_keep_recent))
+        if _raw_keep_recent is not None
+        else int(comp_cfg.get("keep_recent_iterations", 3));
+    _raw_model = (
+        mt_run.call_params.get("compaction_model")
+        or self.call_params.get("compaction_model")
+        or comp_cfg.get("compaction_model")
+    );
+    model: str | None = str(_raw_model) if _raw_model else None;
+    return {
+        "enabled": enabled,
+        "threshold": threshold,
+        "keep_recent": keep_recent,
+        "model": model,
+        "ctx_window": self._get_ctx_window(mt_run.call_params)
+    };
+}
+
+
+"""Compact mt_run.messages in-place.
+
+Resolves the `on_compaction` hook: if the caller supplied one (via call_params
+or model.call_params) it is called instead of the built-in default. Either way
+the compacted list is written back to mt_run.messages.
+"""
+impl BaseLLM._compact_messages(
+    mt_run: MTRuntime, keep_recent: int, comp_model: str | None
+) -> None {
+    on_compaction = (
+        mt_run.call_params.get("on_compaction") or self.call_params.get("on_compaction")
+    );
+    original_len = len(mt_run.messages);
+    msg_dicts = mt_run.get_msg_list();
+    if on_compaction {
+        compacted = on_compaction(msg_dicts, keep_recent);
+        if not isinstance(compacted, list) or len(compacted) < 2 {
+            got_type = type(compacted).__name__;
+            got_len = len(compacted) if isinstance(compacted, list) else "N/A";
+            raise ConfigurationError(
+                "on_compaction hook must return a list with at least 2 messages "
+                f"(system + user task). Got: {got_type} of length {got_len}."
+            );
+        }
+    } else {
+        if comp_model {
+            # Named model - inherit api_key and config so proxy routing still works.
+            model_for_compaction = Model(
+                model_name=comp_model,
+                api_key=self.api_key,
+                config=self.config,
+                call_params={"compaction_enabled": False}
+            );
+        } else {
+            model_for_compaction = _copy_for_compaction(self);
+        }
+        compacted = _default_compact(msg_dicts, keep_recent, model_for_compaction);
+    }
+    removed = original_len - len(compacted);
+    if removed == 0 and original_len >= 4 {
+        # _default_compact returned unchanged (compact_slice was non-empty but
+        # summarisation produced nothing new) or hook returned same length.
+        raise CompactionNotEffectiveError(
+            "Compaction produced no reduction in message history - "
+            "check on_compaction hook or compaction model."
+        );
+    }
+    mt_run.messages = compacted;
+    logger.info(
+        f"byLLM compaction: reduced message list from {original_len} to {len(
+            compacted
+        )} "
+        f"({removed} messages replaced with summary)"
+    );
+}
+
+
 """Construct the call parameters and return self (factory pattern).
 
 Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
@@ -123,10 +373,17 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
     on_iteration = (
         mt_run.call_params.get("on_iteration") or self.call_params.get("on_iteration")
     );
+    _cp = self._resolve_compaction_params(mt_run);
+    comp_enabled = bool(_cp["enabled"]);
+    comp_threshold = float(_cp["threshold"]);
+    comp_keep_recent = int(_cp["keep_recent"]);
+    comp_model: str | None = _cp["model"];
+    ctx_window = int(_cp["ctx_window"]);
     iter_count = 0;
     last_tool = "";
     last_result = "";
     total_tokens = 0;
+    just_compacted = False;
     while True {
         iter_count += 1;
         if on_iteration and iter_count > 1 {
@@ -157,8 +414,27 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         }
         try {
             resp = self.dispatch_no_streaming(mt_run);
+        } except litellm.exceptions.ContextWindowExceededError {
+            # Context window exceeded - compact and retry once before giving up.
+            # Honour the opt-out: if compaction is disabled, re-raise immediately.
+            if not comp_enabled {
+                raise;
+            }
+            if just_compacted {
+                raise CompactionNotEffectiveError(
+                    "Context window exceeded again after emergency compaction - "
+                    "provide a custom on_compaction hook, increase ctx_window, "
+                    "or switch to a model with a larger context window."
+                );
+            }
+            logger.warning(
+                "byLLM compaction: context window exceeded, triggering emergency compaction."
+            );
+            self._compact_messages(mt_run, comp_keep_recent, comp_model);
+            just_compacted = True;
+            resp = self.dispatch_no_streaming(mt_run);
         } except OutputConversionError {
-            # gpt-4o returned plain text that can't be parsed — attempt recovery.
+            # gpt-4o returned plain text that can't be parsed - attempt recovery.
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
                 raise;
@@ -179,8 +455,37 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                 if isinstance(usage, dict)
                 else getattr(usage, "total_tokens", 0)
         );
+        # Threshold-based proactive compaction: check current input size against the
+        # context window and compact before the next iteration crosses the limit.
+        if comp_enabled and ctx_window > 0 {
+            prompt_tokens = int(
+                usage.get("prompt_tokens", 0)
+                    if isinstance(usage, dict)
+                    else usage?.prompt_tokens or 0
+            );
+            if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
+                if just_compacted {
+                    raise CompactionNotEffectiveError(
+                        f"{prompt_tokens}/{ctx_window} tokens "
+                        f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
+                        f"{comp_threshold:.0%} after compaction - provide a custom "
+                        "on_compaction hook, increase ctx_window, or switch to a model "
+                        "with a larger context window."
+                    );
+                }
+                logger.info(
+                    f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
+                    f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
+                    "Compacting message history."
+                );
+                self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                just_compacted = True;
+            } else {
+                just_compacted = False;
+            }
+        }
         if resp.tool_calls {
-            # Split at first finish_tool — anything after it is discarded.
+            # Split at first finish_tool - anything after it is discarded.
             # This normalizes history regardless of parallel/sequential mode:
             # both modes see the same tool calls and produce the same mt_run.messages.
             non_finish_calls: list = [];
@@ -193,7 +498,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
                 non_finish_calls.append(tc);
             }
 
-            # Always route through dispatch_batch — one code path for both modes.
+            # Always route through dispatch_batch - one code path for both modes.
             # Parallel: full batch (concurrent). Sequential: one-at-a-time (inline, no pool overhead).
             if non_finish_calls {
                 batches = (
@@ -227,7 +532,7 @@ impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
         } else {
             # LLM returned plain text without calling any tool.
             # If finish_tool is available and a structured return type was expected,
-            # the model skipped the expected workflow — attempt recovery.
+            # the model skipped the expected workflow - attempt recovery.
             # (This also handles subclasses like MockLLM that bypass parse_response
             # and thus don't trigger OutputConversionError.)
             recovery_resp = self._attempt_recovery(mt_run);
@@ -299,7 +604,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
                 desc = fn.get("description", "");
                 if is_serial {
                     serial_names.append(fn.get("name", "unknown"));
-                    tag = " [SEQUENTIAL: has side-effects — must be called alone, never batch with other tools]";
+                    tag = " [SEQUENTIAL: has side-effects - must be called alone, never batch with other tools]";
                 } else {
                     tag = " [PARALLEL-SAFE: can be batched with other independent tools in one response]";
                 }
@@ -328,7 +633,7 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
                     "\n - A tool's argument depends on another tool's return value"
                     "\n - Two tools write to the same file or shared state"
                     "\n - A tool is labeled [SEQUENTIAL] in its description"
-                    "\n\nKEY TEST: For each tool ask — 'Can I fill in ALL of this tool's arguments RIGHT NOW"
+                    "\n\nKEY TEST: For each tool ask - 'Can I fill in ALL of this tool's arguments RIGHT NOW"
                     " without waiting for any other tool's result?' YES for all → batch. NO for any → separate it."
                 );
 
@@ -575,7 +880,7 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
     original_tools = mt_run.tools;
     finish_tool_obj = mt_run.get_tool("finish_tool");
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
-    # Force text generation — tool_choice="none" tells the LLM
+    # Force text generation - tool_choice="none" tells the LLM
     # "tools are defined but do NOT call any, just produce text"
     # Save caller's original tool_choice (if any) so we can restore it after.
     original_tool_choice = mt_run.call_params.pop("tool_choice", None);
@@ -698,10 +1003,17 @@ impl BaseLLM._invoke_streaming(
             mt_run.call_params.get("on_iteration")
             or self.call_params.get("on_iteration")
         );
+        _cp = self._resolve_compaction_params(mt_run);
+        comp_enabled = bool(_cp["enabled"]);
+        comp_threshold = float(_cp["threshold"]);
+        comp_keep_recent = int(_cp["keep_recent"]);
+        comp_model: str | None = _cp["model"];
+        ctx_window = int(_cp["ctx_window"]);
         iter_count = 0;
         last_tool = "";
         last_result = "";
         total_tokens = 0;
+        just_compacted = False;
         while True {
             iter_count += 1;
 
@@ -762,8 +1074,25 @@ impl BaseLLM._invoke_streaming(
             _llm_t0 = _time.time();
             try {
                 resp = self.dispatch_no_streaming(mt_run);
+            } except litellm.exceptions.ContextWindowExceededError {
+                if not comp_enabled {
+                    raise;
+                }
+                if just_compacted {
+                    raise CompactionNotEffectiveError(
+                        "Context window exceeded again after emergency compaction - "
+                        "provide a custom on_compaction hook, increase ctx_window, "
+                        "or switch to a model with a larger context window."
+                    );
+                }
+                logger.warning(
+                    "byLLM compaction: context window exceeded, triggering emergency compaction."
+                );
+                self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                just_compacted = True;
+                resp = self.dispatch_no_streaming(mt_run);
             } except OutputConversionError {
-                # gpt-4o returned plain text that can't be parsed — attempt recovery.
+                # gpt-4o returned plain text that can't be parsed - attempt recovery.
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
                     raise;
@@ -782,6 +1111,34 @@ impl BaseLLM._invoke_streaming(
                     if isinstance(usage, dict)
                     else getattr(usage, "total_tokens", 0)
             );
+            # Threshold-based proactive compaction - identical logic to invoke().
+            if comp_enabled and ctx_window > 0 {
+                prompt_tokens = int(
+                    usage.get("prompt_tokens", 0)
+                        if isinstance(usage, dict)
+                        else usage?.prompt_tokens or 0
+                );
+                if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
+                    if just_compacted {
+                        raise CompactionNotEffectiveError(
+                            f"{prompt_tokens}/{ctx_window} tokens "
+                            f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
+                            f"{comp_threshold:.0%} after compaction - provide a custom "
+                            "on_compaction hook, increase ctx_window, or switch to a model "
+                            "with a larger context window."
+                        );
+                    }
+                    logger.info(
+                        f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
+                        f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
+                        "Compacting message history."
+                    );
+                    self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                    just_compacted = True;
+                } else {
+                    just_compacted = False;
+                }
+            }
 
             # Metrics: emit LLM call duration for this iteration
             yield StreamEvent(
@@ -798,7 +1155,7 @@ impl BaseLLM._invoke_streaming(
             }
 
             if resp.tool_calls {
-                # Split at first finish_tool — normalizes history for both modes.
+                # Split at first finish_tool - normalizes history for both modes.
                 non_finish_calls: list = [];
                 finish_tc = None;
                 for tc in resp.tool_calls {
@@ -892,12 +1249,12 @@ impl BaseLLM._invoke_streaming(
                     break;
                 }
             } else {
-                # No tool calls — check if recovery is needed.
+                # No tool calls - check if recovery is needed.
                 # (OutputConversionError catch above handles real Model;
                 # this branch handles MockLLM which bypasses parse_response.)
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
-                    # Plain string return or no finish_tool — yield and exit
+                    # Plain string return or no finish_tool - yield and exit
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );

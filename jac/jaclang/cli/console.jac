@@ -11,7 +11,7 @@ Plugins (like jac-super) can override this to provide Rich-enhanced output.
 import os;
 import sys;
 import from contextlib { contextmanager }
-import from typing { Any }
+import from typing { Any, cast }
 
 """Console utility class for terminal output in Jac CLI.
 
@@ -61,5 +61,7 @@ class _ConsoleProxy {
     }
 }
 
-# Export the proxy as console - provides clean attribute access with lazy initialization
-glob console = _ConsoleProxy();
+# Export the proxy as console - provides clean attribute access with lazy initialization.
+# The annotation lets the type checker resolve `console.print(...)` etc. against the
+# JacConsole interface; the cast satisfies the proxy-to-JacConsole assignment.
+glob console: JacConsole = cast(JacConsole, _ConsoleProxy());

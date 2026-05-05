@@ -1119,6 +1119,13 @@ impl TypeEvaluator._get_special_form_type(
             # Pyright: createSelfType (line 21227-21228) - returns TypeVarType for Self
             return type_utils.synthesize_self_type_var();
 
+        case "Never":
+            return types.NeverType();
+
+        case "NoReturn":
+            # PEP 484: NoReturn is a synonym for Never.
+            return types.NeverType();
+
         # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
         # Requires _create_literal_type() method to parse type args into literal ClassTypes.
 

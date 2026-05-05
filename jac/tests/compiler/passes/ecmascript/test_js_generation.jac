@@ -976,7 +976,9 @@ test "compr set basic" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
     # set_compr_basic: {x * 2 for x in items} → new Set(items.map(x => (x * 2)))
-    assert "new Set(" in js_code , ("Set comprehension should wrap result in new Set()");
+    assert "new Set(" in js_code , (
+        "Set comprehension should wrap result in new Set()"
+    );
     assert "new Set(items.map(" in js_code , (
         "Set comprehension should be new Set(items.map(...))"
     );
@@ -1181,4 +1183,95 @@ test "private identifier generates hash prefix" {
         f"PrivateIdentifier should emit '#secret', got: {js_code}"
     );
     assert "class Foo" in js_code;
+}
+
+test "jsx preserves single-space whitespace between adjacent expression children" {
+    # BUG: The parser dropped any whitespace-only JSX_TEXT token, including
+    # an intentional single space between two `{expr}` children on the same
+    # line.  As a result `<div>{count} {("task" ...)} remaining</div>`
+    # emitted children `[count, (cond), " remaining"]` instead of
+    # `[count, " ", (cond), " remaining"]`, so the rendered DOM showed
+    # "3tasks remaining" instead of "3 tasks remaining" (and "1.5lb"
+    # instead of "1.5 lb" in the shopping-list code from the AI day
+    # planner tutorial).
+    #
+    # Whitespace that crosses a newline (indent between `}` and the next
+    # `{` on a new line) is structural and must still be dropped, matching
+    # Babel's JSX text normalization.
+    fixture = "jsx_adjacent_expressions_spaces.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # First span: same-line `{count} {("task" if ... else "tasks")} remaining`.
+    # Children must include a literal " " separator between count and the
+    # conditional, AND between the conditional and "remaining".
+    assert (
+        "[count, \" \", ((count === 1) ? \"task\" : \"tasks\"), \" remaining\"]" in js_code
+    ) , (
+        "Same-line `{a} {b}` must emit a `\" \"` child between adjacent "
+        f"expressions, got:\n{js_code}"
+    );
+
+    # Second span: `{amount} {unit}` — two adjacent expressions only.
+    assert "[amount, \" \", unit]" in js_code , (
+        f"Same-line adjacent `{{amount}} {{unit}}` must emit a `\" \"` "
+        f"separator child, got:\n{js_code}"
+    );
+
+    # Third span: newline-separated `{count}\n{unit}` — structural
+    # whitespace MUST be dropped, no `" "` child.
+    assert "__jacJsx(\"p\", {}, [count, unit])" in js_code , (
+        "Newline-separated `{a}\\n{b}` must NOT emit a whitespace child "
+        f"(structural whitespace is dropped per Babel rules), got:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "is and is not emit identity comparison operators" {
+    # BUG: ES_COMPARISON_OPS had no entries for Tok.KW_IS / Tok.KW_ISN, so
+    # both `is` and `is not` fell through to the `===` default. `is None`
+    # was accidentally correct; `is not None` silently inverted to `===`,
+    # causing branches like `if x is not None { ... }` to run only when x
+    # *was* None.
+    jac_code = "\"\"\"Test is/is not codegen.\"\"\"\n\ncl def check(x: int | None) -> int {\n    if x is None {\n        return 1;\n    }\n    if x is not None {\n        return 2;\n    }\n    return 3;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "x === null" in js_code , (
+            f"`is None` must emit `=== null`, got:\n{js_code}"
+        );
+        assert "x !== null" in js_code , (
+            f"`is not None` must emit `!== null`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "fstring format spec invokes runtime format helper" {
+    # BUG: exit_formatted_value ignored nd.format_spec, so format mini-language
+    # specs like `:.2f` were dropped — `f"{x:.2f}"` rendered "8" instead of
+    # "8.00". The fix routes formatted values with a spec through the
+    # _jac.builtin.format runtime helper, which honors precision, width,
+    # alignment, and type specifiers.
+    jac_code = "\"\"\"Test f-string format spec.\"\"\"\n\ncl def fmt_price(x: float) -> str {\n    return f\"${x:.2f}\";\n}\n\ncl def fmt_plain(x: float) -> str {\n    return f\"${x}\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.builtin.format(x, \".2f\")" in js_code , (
+            "`f\"{x:.2f}\"` must compile to a runtime format() call, "
+            f"got:\n{js_code}"
+        );
+        # Bare `f"{x}"` (no spec) must still emit a plain template
+        # interpolation — the runtime call is reserved for spec'd values.
+        assert "${x}" in js_code , (
+            f"Bare `f\"{{x}}\"` should still use plain `${{x}}`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
 }

@@ -3,6 +3,7 @@
 import os;
 import from pathlib { Path }
 import jaclang;
+import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.program { JacProgram }
 
 glob FIXTURES = os.path.join(
@@ -123,4 +124,67 @@ test "sem def match for s e m prefixed functions" {
     assert sym_fetch.decl.name_of.semstr == "Fetch data from the remote source." , (
         f"f-prefix: expected sem string, got '{sym_fetch.decl.name_of.semstr}'"
     );
+}
+
+test "sem target names produce no spurious warnings" {
+    # `sem Foo.field = "..."` is a dotted-name path resolved against the
+    # symbol table — not a chain of module-scope expressions. The Name
+    # nodes inside SemDef.target must not produce W1051 ("type could not
+    # be resolved") or W2001 ("may be undefined") warnings.
+    file_path = os.path.join(FIXTURES, "sem_target_no_warnings.jac");
+    prog = JacProgram();
+    prog.compile(file_path, type_check=True);
+    warning_msgs = [str(w) for w in prog.warnings_had];
+    sem_target_names = ["cost", "carby", "Inner"];
+
+    undef_warnings = [
+        w
+        for w in warning_msgs
+        if "may be undefined" in w and any(f"'{n}'" in w for n in sem_target_names)
+    ];
+    assert len(undef_warnings) == 0 , (
+        f"Expected no W2001 warnings on sem target names, got: {undef_warnings}"
+    );
+
+    unresolved_warnings = [
+        w
+        for w in warning_msgs
+        if "could not be resolved" in w
+    ];
+    assert len(unresolved_warnings) == 0 , (
+        f"Expected no W1051 warnings on sem targets, got: {unresolved_warnings}"
+    );
+
+    # Sem strings must still be linked to their declarations.
+    mod = prog.mod.hub[file_path];
+    sym_ing = mod.lookup("Ingredient");
+    assert sym_ing is not None and sym_ing.symbol_table is not None;
+    sym_cost = sym_ing.symbol_table.lookup("cost");
+    assert sym_cost is not None;
+    assert sym_cost.decl.name_of.semstr == "Estimated cost in USD";
+
+    sym_outer = mod.lookup("Outer");
+    assert sym_outer is not None and sym_outer.symbol_table is not None;
+    sym_inner = sym_outer.symbol_table.lookup("Inner");
+    assert sym_inner is not None and sym_inner.symbol_table is not None;
+    sym_tag = sym_inner.symbol_table.lookup("tag");
+    assert sym_tag is not None;
+    assert sym_tag.decl.name_of.semstr == "Tag string for the inner object.";
+
+    # Each Name in the target chain should be registered as a proper use
+    # of the resolved symbol — sym bound for the type checker / static
+    # analysis passes, AND present in Symbol.uses so find-references and
+    # refactor tooling see each segment as a real reference site.
+    sem_defs = mod.get_all_sub_nodes(typ=uni.SemDef, brute_force=True);
+    for semdef in sem_defs {
+        for part in semdef.target {
+            assert part.sym is not None , (
+                f"sem target Name '{part.sym_name}' has no resolved sym"
+            );
+            assert part in part.sym.uses , (
+                f"sem target Name '{part.sym_name}' is not registered "
+                "in Symbol.uses — find-references will miss it"
+            );
+        }
+    }
 }

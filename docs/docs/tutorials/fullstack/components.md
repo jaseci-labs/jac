@@ -1,6 +1,6 @@
 # React-Style Components
 
-Jac's client-side code uses JSX syntax (the same HTML-in-code approach popularized by React) to build UI components. Components are functions declared inside `cl { }` blocks that return `JsxElement` values. They support props for data passing, composition for building complex UIs from simple parts, and all the familiar React patterns -- conditional rendering, list mapping, and event handling.
+Jac's client-side code uses JSX syntax (the same HTML-in-code approach popularized by React) to build UI components. Components are functions declared inside `cl { }` blocks that return `JsxElement` values. Each prop is a named parameter -- the type-checker validates every JSX call site per attribute -- and components compose just like in React, with conditional rendering, list mapping, and event handling.
 
 The key difference from a standard React setup: there's no separate JavaScript project, no webpack configuration, and no build toolchain to manage. You write components in Jac syntax, the compiler generates optimized JavaScript, and the dev server bundles and serves it automatically.
 
@@ -16,8 +16,8 @@ The key difference from a standard React setup: there's no separate JavaScript p
 ```jac
 to cl:
 
-def:pub Greeting(props: dict) -> JsxElement {
-    return <h1>Hello, {props.name}!</h1>;
+def:pub Greeting(name: str) -> JsxElement {
+    return <h1>Hello, {name}!</h1>;
 }
 
 def:pub app() -> JsxElement {
@@ -32,8 +32,27 @@ def:pub app() -> JsxElement {
 
 - Components are functions returning JSX
 - `def:pub` exports the component
-- `props` contains passed attributes
+- Each prop is a named parameter -- `<Greeting name="Alice" />` is type-checked against the `name: str` declaration
 - Self-closing tags: `<Component />`
+
+---
+
+## Forwarding the props bundle (advanced)
+
+`props` is a Jac keyword that names the call-site argument object as a whole, the same way `self` names the receiver. A component declared with a single parameter literally named `props` receives the object verbatim instead of having each prop destructured into its own local:
+
+```jac
+to cl:
+
+# jac:ignore[W5015]
+def:pub PassThrough(props: dict) -> JsxElement {
+    return <Inner {**props} />;
+}
+```
+
+This shape is useful for higher-order components, wrappers, and forwarding helpers, but it has a real cost: the type-checker keys per-prop validation on parameter *names*, so a `props`-bundle signature cannot validate `<PassThrough title="..." />` per attribute. The compiler emits **W5015** on every single-`props` definition for that reason -- suppress it inline (`# jac:ignore[W5015]`) only when the forwarding behavior is intentional.
+
+**Default to direct named parameters.** Reach for `props: dict` only when you genuinely need the unstructured bundle.
 
 ---
 
@@ -84,9 +103,9 @@ Use `{ }` to embed any Jac expression.
 ```jac
 to cl:
 
-def:pub Status(props: dict) -> JsxElement {
+def:pub Status(active: bool) -> JsxElement {
     return <span>
-        {("Active" if props.active else "Inactive")}
+        {("Active" if active else "Inactive")}
     </span>;
 }
 ```
@@ -96,9 +115,9 @@ def:pub Status(props: dict) -> JsxElement {
 ```jac
 to cl:
 
-def:pub Notification(props: dict) -> JsxElement {
+def:pub Notification(count: int) -> JsxElement {
     return <div>
-        {props.count > 0 and <span>You have {props.count} messages</span>}
+        {count > 0 and <span>You have {count} messages</span>}
     </div>;
 }
 ```
@@ -108,8 +127,8 @@ def:pub Notification(props: dict) -> JsxElement {
 ```jac
 to cl:
 
-def:pub UserGreeting(props: dict) -> JsxElement {
-    if props.isLoggedIn {
+def:pub UserGreeting(isLoggedIn: bool) -> JsxElement {
+    if isLoggedIn {
         return <h1>Welcome back!</h1>;
     }
     return <h1>Please sign in</h1>;
@@ -123,9 +142,9 @@ def:pub UserGreeting(props: dict) -> JsxElement {
 ```jac
 to cl:
 
-def:pub TodoList(props: dict) -> JsxElement {
+def:pub TodoList(items: list[dict]) -> JsxElement {
     return <ul>
-        {[<li key={item.id}>{item.text}</li> for item in props.items]}
+        {[<li key={item.id}>{item.text}</li> for item in items]}
     </ul>;
 }
 
@@ -217,10 +236,10 @@ def:pub LoginForm() -> JsxElement {
 ```jac
 to cl:
 
-def:pub Card(props: dict) -> JsxElement {
+def:pub Card(title: str, children: Any) -> JsxElement {
     return <div className="card">
-        <div className="card-header">{props.title}</div>
-        <div className="card-body">{props.children}</div>
+        <div className="card-header">{title}</div>
+        <div className="card-body">{children}</div>
     </div>;
 }
 
@@ -273,9 +292,9 @@ def:pub app() -> JsxElement {
 ```jac
 # No cl { } needed for .cl.jac files
 
-def:pub Header(props: dict) -> JsxElement {
+def:pub Header(title: str) -> JsxElement {
     return <header>
-        <h1>{props.title}</h1>
+        <h1>{title}</h1>
     </header>;
 }
 ```
@@ -381,14 +400,15 @@ def:pub app() -> JsxElement {
 
 | Concept | Syntax |
 |---------|--------|
-| Define component | `def:pub Name(props: dict) -> JsxElement { }` |
+| Define component | `def:pub Name(title: str, count: int) -> JsxElement { }` |
 | JSX element | `<div className="x">content</div>` |
 | Expression | `{expression}` |
 | Click handler | `onClick={lambda -> None { ... }}` |
 | Input handler | `onChange={lambda e: ChangeEvent { ... }}` |
 | List rendering | `{[<li>{x}</li> for x in items]}` |
 | Conditional | `{("A" if condition else "B")}` |
-| Children | `{props.children}` |
+| Children | `def:pub Card(children: Any) { ... }` then `{children}` |
+| Forwarding bundle | `def:pub Wrap(props: dict)` (suppress W5015) |
 | Import component | `import from "./File.cl.jac" { Component }` |
 
 ---
