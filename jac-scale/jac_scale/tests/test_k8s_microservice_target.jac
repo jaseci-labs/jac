@@ -3103,3 +3103,267 @@ test "P0.30: KubernetesConfig.from_dict default empty service_account_name" {
     );
     assert cfg.service_account_name == "";
 }
+
+
+# =============================================================================
+# P0.32: peer URL env vars on every microservice + gateway pod.
+#
+# Mirrors LocalDeployer's process_manager pattern (which injects
+# `JAC_SV_<PEER>_URL=http://127.0.0.1:<port>` into every spawned
+# subprocess) so sv_client._ensure_available's env-var fast-path
+# resolves to the K8s service DNS name. Without this, sv-to-sv dispatch
+# silently falls back to local module imports when the peer source is
+# in the image — making the microservice split theatre at runtime.
+# =============================================================================
+
+def _peer_env_map(spec: dict) -> dict[str, str] {
+    # Pluck JAC_SV_<peer>_URL entries out of a built pod-spec's container
+    # env list (skipping JAC_SV_NAME, which is the sentinel sentinel and
+    # not a peer-URL).
+    out: dict[str, str] = {};
+    for entry in spec["containers"][0]["env"] {
+        name = entry["name"];
+        if name.startswith("JAC_SV_") and name.endswith("_URL") and name != "JAC_SV_NAME" {
+            out[name] = entry["value"];
+        }
+    }
+    return out;
+}
+
+
+test "P0.32: pod env injects JAC_SV_<PEER>_URL for every other peer route" {
+    # Three-service mesh: orders should see env URLs for billing + auth,
+    # but never JAC_SV_ORDERS_URL (no point pointing a service at itself).
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="prod")
+    );
+    (_cfg, restore) = _with_services_config(
+        {},
+        routes={
+            "orders": "/api/orders",
+            "billing": "/api/billing",
+            "auth": "/api/auth"
+        }
+    );
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        peers = _peer_env_map(spec);
+        assert peers["JAC_SV_BILLING_URL"] == (
+            "http://billing-service.prod.svc.cluster.local:8000"
+        );
+        assert peers["JAC_SV_AUTH_URL"] == (
+            "http://auth-service.prod.svc.cluster.local:8000"
+        );
+        assert "JAC_SV_ORDERS_URL" not in peers;
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: gateway pod env injects JAC_SV_<PEER>_URL for every microservice" {
+    # The gateway also issues sv-to-sv calls (e.g. middleware that
+    # forwards to a peer for auth/SSO). Same env injection applies.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="prod")
+    );
+    (_cfg, restore) = _with_services_config(
+        {}, routes={"orders": "/api/orders"}
+    );
+    try {
+        spec = target._build_gateway_pod_spec("demo:latest");
+        peers = _peer_env_map(spec);
+        assert peers["JAC_SV_ORDERS_URL"] == (
+            "http://orders-service.prod.svc.cluster.local:8000"
+        );
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: GATEWAY_NAME never appears as a peer (it's the ingress, not an sv target)" {
+    # No one writes `sv import from __gateway__`. Even if the routes
+    # table somehow listed it (defensive), it must not appear as a
+    # JAC_SV_<...>_URL entry.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="prod")
+    );
+    (_cfg, restore) = _with_services_config(
+        {},
+        routes={
+            "orders": "/api/orders",
+            "__gateway__": "/api/gateway"  # malformed but defensive
+        }
+    );
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        peers = _peer_env_map(spec);
+        # __gateway__.upper() = '__GATEWAY__' → would-be key
+        # JAC_SV___GATEWAY___URL: must not appear.
+        for k in peers {
+            assert "GATEWAY" not in k;
+        }
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: hyphen-translated peer name uses k8s_safe_name in URL host" {
+    # jac.toml routes use jaclang module names (underscored, valid
+    # Python identifiers); the K8s Service host needs DNS-1123 (hyphens
+    # not underscores). The env-var key keeps the raw .upper() form
+    # because sv_client._ensure_available computes its lookup key as
+    # `f"JAC_SV_{module_name.upper()}_URL"` against the raw module name,
+    # NOT against the k8s_safe_name.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="prod")
+    );
+    (_cfg, restore) = _with_services_config(
+        {},
+        routes={
+            "builder_sv": "/api/builder_sv",
+            "jac_coder_sv": "/api/jac_coder_sv"
+        }
+    );
+    try {
+        spec = target._build_service_pod_spec("builder_sv", "demo:latest");
+        peers = _peer_env_map(spec);
+        # Raw .upper() in the env-var key
+        assert "JAC_SV_JAC_CODER_SV_URL" in peers;
+        # k8s_safe_name in the URL host
+        assert peers["JAC_SV_JAC_CODER_SV_URL"] == (
+            "http://jac-coder-sv-service.prod.svc.cluster.local:8000"
+        );
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: empty routes table -> no peer URLs (back-compat / single-service)" {
+    # Apps without microservice routes should produce pod specs whose
+    # only JAC_SV_* entry is the sentinel JAC_SV_NAME.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="solo", namespace="prod")
+    );
+    (_cfg, restore) = _with_services_config({}, routes={});
+    try {
+        spec = target._build_service_pod_spec("solo", "demo:latest");
+        peers = _peer_env_map(spec);
+        assert peers == {};
+
+        # JAC_SV_NAME still set (sentinel, not a peer URL).
+        names = [e["name"] for e in spec["containers"][0]["env"]];
+        assert "JAC_SV_NAME" in names;
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: per-service env override cannot shadow JAC_SV_<PEER>_URL" {
+    # If a user (intentionally or by accident) declares
+    # `[plugins.scale.microservices.services.NAME.env]` with a
+    # JAC_SV_<X>_URL entry, the K-track-injected value must win.
+    # A stale override would silently route sv-to-sv calls to the wrong
+    # backend; this is one of those "fail loud at deploy time" cases.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="prod")
+    );
+    (_cfg, restore) = _with_services_config(
+        {
+            "orders": {
+                "env": {
+                    # User-supplied override that points at a stale URL.
+                    "JAC_SV_BILLING_URL": "http://wrong-host:9999",
+                    # Unrelated env — must still pass through.
+                    "FEATURE_FLAG_X": "on"
+                }
+            }
+        },
+        routes={"orders": "/api/orders", "billing": "/api/billing"}
+    );
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        peers = _peer_env_map(spec);
+        assert peers["JAC_SV_BILLING_URL"] == (
+            "http://billing-service.prod.svc.cluster.local:8000"
+        );
+        # Unrelated user env still propagates.
+        names = {e["name"]: e["value"] for e in spec["containers"][0]["env"]};
+        assert names["FEATURE_FLAG_X"] == "on";
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: container_port flows through to peer URL" {
+    # Apps that change container_port (e.g. user picks 9000) must have
+    # peer URLs that match — the K8s Service spec uses the same port.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="myapp", namespace="prod", container_port=9000
+        )
+    );
+    (_cfg, restore) = _with_services_config(
+        {}, routes={"orders": "/api/orders", "billing": "/api/billing"}
+    );
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        peers = _peer_env_map(spec);
+        assert peers["JAC_SV_BILLING_URL"] == (
+            "http://billing-service.prod.svc.cluster.local:9000"
+        );
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: namespace flows through to peer URL host" {
+    # Different namespaces produce different DNS hosts; the FQDN form
+    # `<svc>-service.<ns>.svc.cluster.local` is what kube-dns resolves.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="staging-2")
+    );
+    (_cfg, restore) = _with_services_config(
+        {}, routes={"a": "/api/a", "b": "/api/b"}
+    );
+    try {
+        spec = target._build_service_pod_spec("a", "demo:latest");
+        peers = _peer_env_map(spec);
+        assert peers["JAC_SV_B_URL"] == (
+            "http://b-service.staging-2.svc.cluster.local:8000"
+        );
+    } finally {
+        restore();
+    }
+}
+
+
+test "P0.32: routes-config read failure -> zero peer URLs (defensive)" {
+    # Mirrors the defensive try/except in _drain_timeout / _service_config.
+    # If get_microservices_config blows up (corrupt jac.toml, etc.),
+    # _microservice_routes returns {} and the pod still gets a complete
+    # spec — just without sv-to-sv routing. Better than an unbuildable
+    # manifest.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", namespace="prod")
+    );
+    import jac_scale.config_loader as cfg_mod;
+    original = getattr(cfg_mod, "get_scale_config");
+    def boom {
+        raise RuntimeError("simulated TOML parse failure");
+    }
+    setattr(cfg_mod, "get_scale_config", boom);
+    try {
+        spec = target._build_service_pod_spec("orders", "demo:latest");
+        peers = _peer_env_map(spec);
+        assert peers == {};
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}

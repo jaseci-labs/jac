@@ -1122,6 +1122,46 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
 
+    """P0.32: routes table from [plugins.scale.microservices.routes].
+
+    Used by _build_env to inject `JAC_SV_<PEER>_URL` env vars on every
+    pod, mirroring what LocalDeployer's process_manager does for
+    subprocesses (process_manager.impl.jac:138-139). sv_client's
+    _ensure_available reads the env var BEFORE invoking
+    ensure_sv_service, so dispatch to peer pods works without depending
+    on the runtime hookimpl populating the registry first.
+
+    Returns {} on config-read failure (unit tests / jac.toml absent),
+    matching the defensive pattern used by _drain_timeout / _service_config.
+    """
+    def _microservice_routes -> dict[str, str] {
+        try {
+            import from jac_scale.config_loader { get_scale_config }
+            ms_cfg = get_scale_config().get_microservices_config();
+            return dict(ms_cfg.get("routes", {}));
+        } except Exception {
+            return {};
+        }
+    }
+
+
+    """P0.32: build the in-cluster DNS URL for a peer microservice.
+
+    Mirrors LocalDeployer.url_for (loopback URL for local subprocesses)
+    but in K8s we resolve via the headless Service's DNS name. The host
+    name uses k8s_safe_name (DNS-1123 — `jac_coder_sv` -> `jac-coder-sv`)
+    while the env-var key keeps the raw module name with .upper() because
+    sv_client._ensure_available computes the env var as
+    `JAC_SV_{module_name.upper()}_URL` against the same raw name.
+    """
+    def _peer_dns_url(peer_name: str) -> str {
+        port: int = self.k8s_config.container_port;
+        ns: str = self.k8s_config.namespace;
+        host: str = k8s_safe_name(peer_name);
+        return f"http://{host}-service.{ns}.svc.cluster.local:{port}";
+    }
+
+
     """K7: extra env vars merged with the auto-set JAC_SV_NAME.
 
     Order:
@@ -1137,6 +1177,34 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, Any]] {
         env: list[dict[str, Any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
 
+        # P0.32: peer URL env vars (mirrors LocalDeployer's pattern at
+        # process_manager.impl.jac:138-139). Every microservice + gateway
+        # pod gets `JAC_SV_<PEER>_URL` set to the K8s DNS URL of every
+        # other peer in the routes table. sv_client._ensure_available
+        # checks this env var BEFORE invoking ensure_sv_service, so
+        # sv-to-sv dispatch resolves via this fast-path without depending
+        # on the runtime hookimpl populating sv_client._registry.
+        # Without this, builder_sv -> jac_coder_sv calls silently fall
+        # back to local module imports (the source files are in the
+        # image), making the microservice split theatre at runtime.
+        # The env-var key uses raw module_name.upper() (matching
+        # sv_client.jac:115 `f"JAC_SV_{module_name.upper()}_URL"`); the
+        # URL host uses k8s_safe_name to satisfy DNS-1123. Self is
+        # skipped (no point); GATEWAY_NAME is skipped because it is the
+        # ingress front, not an sv-import target.
+        routes: dict[str, str] = self._microservice_routes();
+        seen_peer_keys: set = set();
+        for peer_name in routes {
+            if peer_name == svc_name { continue; }
+            if peer_name == GATEWAY_NAME { continue; }
+            key = f"JAC_SV_{peer_name.upper()}_URL";
+            if key in seen_peer_keys {
+                continue;  # defensive against duplicate route entries
+            }
+            seen_peer_keys.add(key);
+            env.append({"name": key, "value": self._peer_dns_url(peer_name)});
+        }
+
         # P0.8: database env injected by _provision_databases (Mongo +
         # Redis URIs from K8s Secrets). Empty if databases disabled
         # or _provision_databases hasn't run yet (e.g. unit tests).
@@ -1149,6 +1217,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         for (k, v) in extra.items() {
             if k == "JAC_SV_NAME" {
                 continue;  # protected; users can't shadow the sentinel
+            }
+            if k.startswith("JAC_SV_") and k.endswith("_URL") {
+                # Protected: peer-URL env vars are computed by K-track
+                # from the routes table; users can't override them via
+                # `[plugins.scale.microservices.services.<name>.env]`
+                # because a stale override would silently route
+                # sv-to-sv calls to the wrong place.
+                continue;
             }
             env.append({"name": k, "value": str(v)});
         }
