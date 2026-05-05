@@ -991,7 +991,7 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
-impl publish(output: str = "dist") -> int {
+impl bundle(output: str = "dist") -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.publish.builder { WheelBuilder }
@@ -1007,7 +1007,7 @@ impl publish(output: str = "dist") -> int {
     if config.package is None {
         console.error(
             "No [package] section in jac.toml",
-            hint="Add [package] with name and version to use jac publish."
+            hint="Add [package] with name and version to use jac bundle."
         );
         return 1;
     }

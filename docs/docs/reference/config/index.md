@@ -510,7 +510,7 @@ secret = "${SECRET:?Secret is required}"   # Required with error
 
 ### [package]
 
-PyPI-publishable package metadata. This section is required to run `jac publish`. It is separate from `[project]` so that application-level metadata (entry point, run settings) does not pollute the distributed package manifest.
+PyPI-publishable package metadata. This section is required to run `jac bundle`. It is separate from `[project]` so that application-level metadata (entry point, run settings) does not pollute the distributed package manifest.
 
 ```toml
 [package]

@@ -3,23 +3,21 @@
 import from jaclang.project.config { JacConfig }
 import from jaclang.publish.metadata { normalize_package_name }
 
-import jaclang;
-glob _JAC_VERSION: str = getattr(jaclang, "__version__", "");
+import from importlib.metadata { version as _pkg_version }
+glob _JAC_VERSION: str = _pkg_version("jaclang");
 
 def _pkg_norm_name(config: JacConfig) -> str {
     return normalize_package_name(config.package.name).replace("-", "_");
 }
 
 impl generate_wheel_file(
-    generator_version: str = "",
+    generator_version: str = _JAC_VERSION,
     pure_python: bool = True,
     python_tag: str = "py3",
     abi_tag: str = "none",
     platform_tag: str = "any",
 ) -> str {
-    ver = generator_version or _JAC_VERSION;
-    generator_str = f"jac ({ver})" if ver else "jac";
-
+    generator_str = f"jac ({generator_version})" if generator_version else "jac";
     lines = [
         "Wheel-Version: 1.0",
         f"Generator: {generator_str}",

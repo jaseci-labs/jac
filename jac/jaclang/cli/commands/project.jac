@@ -296,7 +296,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
 """Build a wheel from jac.toml into the output directory."""
 @registry.command(
-    name="publish",
+    name="bundle",
     help="Build a .whl from jac.toml (upload separately with twine)",
     args=[
         Arg.create(
@@ -308,10 +308,10 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
 
     ],
     examples=[
-        ("jac publish", "Build wheel into dist/"),
-        ("jac publish -o /tmp/wheels", "Build to custom output directory"),
+        ("jac bundle", "Build wheel into dist/"),
+        ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],
     group="project"
 )
-def publish(output: str = "dist") -> int;
+def bundle(output: str = "dist") -> int;

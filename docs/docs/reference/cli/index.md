@@ -27,10 +27,10 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project dependencies |
+| `jac install` | Install project/project dependencies |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
-| `jac publish` | Build a distributable `.whl` from `jac.toml` |
+| `jac bundle` | Build a distributable `.whl` from `jac.toml` |
 | `jac jacpack` | Manage project templates (.jacpack files) |
 | `jac eject` | Compile a project to standalone Python + JavaScript (zero `.jac` files) |
 | `jac grammar` | Extract and print the Jac grammar |
@@ -1140,12 +1140,12 @@ jac purge
 
 ---
 
-### jac publish
+### jac bundle
 
 Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`.
 
 ```bash
-jac publish [-h] [-o OUTPUT]
+jac bundle [-h] [-o OUTPUT]
 ```
 
 | Option | Description | Default |
@@ -1163,13 +1163,13 @@ jac publish [-h] [-o OUTPUT]
 
 ```bash
 # Build wheel into dist/ (default)
-jac publish
+jac bundle
 
 # Build to a custom directory
-jac publish -o /tmp/wheels
+jac bundle -o /tmp/wheels
 
 # Upload to PyPI after building
-jac publish && twine upload dist/*
+jac bundle && twine upload dist/*
 
 # Install locally to test before publishing
 pip install dist/mylib-1.0.0-py3-none-any.whl
@@ -1686,7 +1686,7 @@ mylib/
 
 ```bash
 # Build wheel from jac.toml
-jac publish
+jac bundle
 
 # Test locally in a clean environment before uploading
 python -m venv test_env && source test_env/bin/activate

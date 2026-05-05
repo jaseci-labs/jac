@@ -1,4 +1,4 @@
-"""RECORD file (PEP 376 / PEP 427 CSV with SHA-256 fingerprints) generator for jac publish."""
+"""RECORD file (PEP 376 / PEP 427 CSV with SHA-256 fingerprints) generator for jac bundle."""
 
 import from pathlib { Path }
 

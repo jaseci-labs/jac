@@ -1,4 +1,4 @@
-"""Source file collector for jac publish — walks [package.include] dirs and gathers wheel bundle files."""
+"""Source file collector for jac bundle — walks [package.include] dirs and gathers wheel bundle files."""
 
 import from pathlib { Path }
 import from jaclang.project.config { JacConfig }

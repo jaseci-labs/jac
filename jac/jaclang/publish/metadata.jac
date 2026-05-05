@@ -1,4 +1,4 @@
-"""METADATA 2.4 string generator for jac publish — in-memory, nothing written to disk."""
+"""METADATA 2.4 string generator for jac bundle — in-memory, nothing written to disk."""
 
 import from pathlib { Path }
 import from typing { Any }

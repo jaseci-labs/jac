@@ -1,4 +1,4 @@
-"""WHEEL file and entry_points.txt generators for jac publish."""
+"""WHEEL file and entry_points.txt generators for jac bundle."""
 
 import from jaclang.project.config { JacConfig }
 

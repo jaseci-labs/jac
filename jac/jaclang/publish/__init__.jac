@@ -1,4 +1,4 @@
-"""Publisher pipeline: wheel builder for jac publish."""
+"""Publisher pipeline: wheel builder for jac bundle."""
 
 import from jaclang.publish.builder { WheelBuilder }
 import from jaclang.publish.metadata { normalize_package_name, generate_metadata }
