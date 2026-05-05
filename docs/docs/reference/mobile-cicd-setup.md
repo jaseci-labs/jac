@@ -9,6 +9,7 @@ This guide explains how to set up and use the mobile build pipeline for iOS and 
    - Create a project or use an existing one
 
 2. **EAS CLI** (for local testing)
+
    ```bash
    npm install -g eas-cli
    eas login
@@ -25,11 +26,13 @@ This guide explains how to set up and use the mobile build pipeline for iOS and 
 ### Step 1: Generate Expo Access Token
 
 1. Log in to your Expo account:
+
    ```bash
    eas login
    ```
 
 2. Generate an access token:
+
    ```bash
    eas whoami
    ```
@@ -132,11 +135,13 @@ If the `mobile/` directory doesn't exist, the workflow will automatically run `j
 ### Android (APK)
 
 **Method 1: Direct Install**
+
 1. Download the APK to your Android device
 2. Enable "Install from Unknown Sources" in Settings
 3. Tap the APK file to install
 
 **Method 2: ADB**
+
 ```bash
 adb install app-android-preview.apk
 ```
@@ -148,10 +153,12 @@ App Bundles (`.aab`) cannot be installed directly. They must be uploaded to Goog
 ### iOS (IPA)
 
 **Method 1: TestFlight** (Preview/Production)
+
 1. Upload to App Store Connect
 2. Share TestFlight link with testers
 
 **Method 2: Xcode** (Development)
+
 1. Extract the tar.gz file
 2. Use Xcode → Devices to install on connected device
 
@@ -162,6 +169,7 @@ App Bundles (`.aab`) cannot be installed directly. They must be uploaded to Goog
 ### Build Fails with "Authentication Error"
 
 **Solution**: Verify `EXPO_TOKEN` secret is set correctly:
+
 ```bash
 # Test locally first
 eas whoami
@@ -170,6 +178,7 @@ eas whoami
 ### Build Fails with "Invalid Project ID"
 
 **Solution**: Ensure `app.json` has the correct `projectId`:
+
 ```json
 {
   "expo": {
@@ -191,6 +200,7 @@ Run `eas build:configure` to generate/update the project ID.
 ### Build Takes Too Long
 
 EAS builds can take 10-30 minutes depending on:
+
 - Platform (iOS is typically slower)
 - Queue time (Expo's build servers)
 - Build profile (production builds take longer)
@@ -200,6 +210,7 @@ The workflow will wait for the build to complete automatically.
 ### No Artifacts Uploaded
 
 **Possible causes**:
+
 1. Build failed on EAS (check Expo dashboard)
 2. Download step failed (check workflow logs)
 3. Network timeout (retry the workflow)
@@ -216,6 +227,7 @@ The workflow will wait for the build to complete automatically.
 Check your usage at [https://expo.dev/accounts/[account]/settings/billing](https://expo.dev/accounts/)
 
 To avoid unexpected charges, consider:
+
 - Building only when necessary (manual trigger)
 - Using development profile for testing
 - Caching dependencies

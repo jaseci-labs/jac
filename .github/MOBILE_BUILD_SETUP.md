@@ -44,6 +44,7 @@ Or create a token from: https://expo.dev/accounts/[your-account]/settings/access
 ## 📱 Testing Your Build
 
 ### Android APK
+
 ```bash
 # On your Android device
 1. Download the APK artifact
@@ -52,6 +53,7 @@ Or create a token from: https://expo.dev/accounts/[your-account]/settings/access
 ```
 
 ### iOS IPA
+
 ```bash
 # Requires TestFlight or Xcode
 1. Extract the .tar.gz file
@@ -74,12 +76,15 @@ Or create a token from: https://expo.dev/accounts/[your-account]/settings/access
 ## ❓ Common Issues
 
 ### "Authentication failed"
+
 → Check your `EXPO_TOKEN` secret is set correctly
 
 ### "Project not found"
+
 → Run `eas build:configure` in your mobile directory to set up project ID
 
 ### "Build failed"
+
 → Check Expo dashboard for detailed logs: https://expo.dev
 
 ---
