@@ -28,6 +28,17 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git curl \
     && rm -rf /var/lib/apt/lists/*
 
+# Apps that use [[plugins.scale.microservices.shared_volumes]] (P0.25) get
+# their volume mounted across multiple pods. The volume's directories may
+# be owned by a UID that doesn't match the pod's effective UID (EFS CSI
+# access points enforce a posix uid; pod-spec runs as the image's default
+# UID). Any in-pod `git` command on that volume then trips git's
+# CVE-2022-24765 dubious-ownership check and aborts. Marking '*' as a
+# safe directory bypasses the check globally — fine here because the pod
+# already trusts everything mounted into it. (No-op for apps that don't
+# use shared_volumes; just sets a config flag.)
+RUN git config --system --add safe.directory '*'
+
 # Install jaclang + jac-scale with the K8s deploy extras (kubernetes
 # Python client, etc.) + jac-client (provides the `jac install`
 # subcommand below). Pin versions to match what your local CI tests
