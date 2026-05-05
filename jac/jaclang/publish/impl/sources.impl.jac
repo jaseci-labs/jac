@@ -100,13 +100,8 @@ impl collect_source_files(
     pkg_include = config.package.include;
     data_map = pkg_include.data;
 
-    # If the caller wrote no [package.include.data] at all, use smart defaults
-    use_defaults = not data_map;
-
-    # Global patterns: applied to every discovered package directory
-    global_patterns: list[str] = (
-        DEFAULT_INCLUDE_PATTERNS if use_defaults else list(data_map.get("*", []))
-    );
+    # Global patterns: "*" key overrides defaults; if absent, defaults apply.
+    global_patterns: list[str] = list(data_map.get("*", DEFAULT_INCLUDE_PATTERNS));
 
     seen: set = set();
     result: list[SourceFile] = [];
@@ -133,9 +128,7 @@ impl collect_source_files(
             }
 
             # Combine global patterns with any package-specific ones
-            specific: list[str] = (
-                [] if use_defaults else list(data_map.get(candidate.name, []))
-            );
+            specific: list[str] = list(data_map.get(candidate.name, []));
             patterns = global_patterns + specific;
 
             pkg_files = _collect_from_dir(candidate, root, patterns, seen);

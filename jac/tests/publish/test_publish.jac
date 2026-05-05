@@ -37,9 +37,8 @@ import from jaclang.publish.sources {
 }
 import from jaclang.publish.builder { WheelBuilder }
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
+
+# Helpers --------------------------------------------------------------------------
 def sha256_b64(data: bytes) -> str {
     b64 = base64.urlsafe_b64encode(hashlib.sha256(data).digest()).rstrip(b"=");
     return f"sha256={b64.decode('ascii')}";
@@ -61,9 +60,7 @@ def pkg_config_with_include(
     return cfg;
 }
 
-# ===========================================================================
-# metadata
-# ===========================================================================
+# metadata --------------------------------------------------------------------------
 test "normalize_package_name lowercases and collapses separators" {
     assert normalize_package_name("My_Pkg.Name") == "my-pkg-name";
     assert normalize_package_name("JAC--Lang") == "jac-lang";
@@ -107,9 +104,7 @@ test "generate_metadata raises when package section missing" {
     assert raised;
 }
 
-# ===========================================================================
-# record
-# ===========================================================================
+# record --------------------------------------------------------------------------
 test "record_entry_from_bytes has correct sha256 and size" {
     data = b"hello jac";
     entry = record_entry_from_bytes("pkg/main.jac", data);
@@ -134,9 +129,8 @@ test "generate_record self-entry last with empty hash and unix line endings" {
     assert "\r\n" not in text;
 }
 
-# ===========================================================================
-# wheel_meta
-# ===========================================================================
+
+# wheel_meta --------------------------------------------------------------------------
 test "generate_wheel_file has required headers and ends with newline" {
     content = generate_wheel_file();
     assert "Wheel-Version: 1.0" in content;
@@ -163,9 +157,8 @@ test "wheel_filename and dist_info_dirname are consistent" {
     assert dist_info_dirname(cfg) == "mypkg-2.0.0.dist-info";
 }
 
-# ===========================================================================
-# sources
-# ===========================================================================
+
+# sources --------------------------------------------------------------------------
 test "read_source_file returns preloaded content and reads from disk" {
     sf_mem = SourceFile(wheel_path="x.jac", content=b"data");
     assert read_source_file(sf_mem) == b"data";
@@ -234,9 +227,8 @@ test "collect_source_files raises without project root or package section" {
     }
 }
 
-# ===========================================================================
-# builder — end-to-end
-# ===========================================================================
+
+# builder — end-to-end --------------------------------------------------------------------------
 test "WheelBuilder.build produces a valid whl with required dist-info files" {
     tmpdir = tempfile.mkdtemp();
     try {
