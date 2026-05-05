@@ -698,28 +698,24 @@ impl JacConfig.remove_dependency(
                 del self.dev_dependencies[name];
                 return True;
             }
-        } else {
-            if name in self.dependencies {
-                del self.dependencies[name];
-                return True;
-            }
+        } elif name in self.dependencies {
+            del self.dependencies[name];
+            return True;
         }
     } elif dep_type == "git" {
         if name in self.git_dependencies {
             del self.git_dependencies[name];
             return True;
         }
-    } else {
-        if dep_type in self.plugin_dependencies {
-            if dev and "dev" in self.plugin_dependencies[dep_type] {
-                if name in self.plugin_dependencies[dep_type]["dev"] {
-                    del self.plugin_dependencies[dep_type]["dev"][name];
-                    return True;
-                }
-            } elif name in self.plugin_dependencies[dep_type] {
-                del self.plugin_dependencies[dep_type][name];
+    } elif dep_type in self.plugin_dependencies {
+        if dev and "dev" in self.plugin_dependencies[dep_type] {
+            if name in self.plugin_dependencies[dep_type]["dev"] {
+                del self.plugin_dependencies[dep_type]["dev"][name];
                 return True;
             }
+        } elif name in self.plugin_dependencies[dep_type] {
+            del self.plugin_dependencies[dep_type][name];
+            return True;
         }
     }
     return False;

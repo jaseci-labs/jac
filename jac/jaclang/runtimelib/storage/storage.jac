@@ -64,4 +64,16 @@ class Storage {
 
     """Move a file within storage."""
     def move(self: Storage, source: str, destination: str) -> bool abs;
+
+    """Return a public or pre-signed URL for the given path.
+
+    Args:
+        path: Storage path/key
+        expires_in: Seconds until signed URL expires (None = use backend default,
+                    ignored for public buckets)
+
+    Returns:
+        HTTP/HTTPS URL the client can fetch directly.
+    """
+    def get_url(self: Storage, path: str, expires_in: (int | None) = 3600) -> str abs;
 }

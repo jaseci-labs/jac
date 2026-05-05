@@ -35,13 +35,17 @@ deploy = [
     "kubernetes>=34.1.0,<35.0.0",
     "docker>=7.1.0,<8.0.0",
 ]
+aws = [
+    "boto3>=1.40.0",
+]
 all = [
-    "jac-scale[data,monitoring,scheduler,deploy]",
+    "jac-scale[data,monitoring,scheduler,deploy,aws]",
 ]
 test = [
     "jac-scale[all]",
     "testcontainers[mongodb,redis]",
     "requests",
+    "moto[s3]>=5.0.0",
 ]
 
 [project.urls]
