@@ -296,6 +296,20 @@ WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transp
 
 The gateway reference lives at [`jac-scale/jac_scale/microservices/docs.md`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/microservices/docs.md) in the jac-scale source tree.
 
+### Kubernetes (microservice mode)
+
+When `[plugins.scale.microservices].enabled = true`, `jac start --scale` deploys every service as its own Kubernetes Deployment, fronted by the gateway. Each service gets its own pod template, HPA, and PodDisruptionBudget; peer URLs and routing are derived from `[plugins.scale.microservices.routes]`. You do not write any of those manifests by hand and you do not set the peer URLs by hand either -- in `--scale` K8s mode the consumer's `JAC_SV_<MODULE>_URL` for every peer is auto-injected on every pod, pointing at the in-cluster Service DNS:
+
+```text
+JAC_SV_INVENTORY_SERVICE_URL=http://inventory-service.<namespace>.svc.cluster.local:<port>
+```
+
+The env-var name follows the same convention as the manual setup above (raw module name from `sv import from <name>`, upper-cased, joined with `JAC_SV_…_URL`); the URL host uses the Kubernetes Service's DNS-1123 form (`jac_coder_sv` becomes `jac-coder-sv-service`). Per-service env overrides under `[plugins.scale.microservices.services.<name>.env]` cannot shadow these keys -- a stale override would silently route sv-to-sv calls to the wrong backend.
+
+If you need a sibling sv-to-sv call to leave the cluster (e.g. point at a vendor SaaS), wire it like the [Kubernetes section](#kubernetes) above by editing the Deployment's env spec directly; the value you set wins for that one service. Most apps never need to.
+
+For the full deploy pipeline (image building, ingress, autoscaling, secrets, shared volumes), see the [Kubernetes tutorial](kubernetes.md).
+
 ---
 
 ## Common Pitfalls
