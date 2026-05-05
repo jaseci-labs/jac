@@ -13,6 +13,14 @@ dependencies = [
     "litellm>=1.70.0,<=1.82.6",  # SECURITY: v1.82.7+ was compromised and yanked from PyPI
     "loguru>=0.7.2,<0.8.0",
     "pillow>=12.0.0,<13.0.0",
+    # In-process local-model runtime (Gemma 4, Qwen 3.5, ... via GGUF).
+    # Hard deps because the default_llm fallback routes to `local:<alias>`
+    # when no provider API key is configured -- without these, the
+    # zero-config path raises ImportError instead of doing the right thing.
+    # Prebuilt wheels cover linux x86_64 / macOS arm64 / win64; GPU-enabled
+    # builds require an explicit `CMAKE_ARGS=...` reinstall (see byLLM docs).
+    "llama-cpp-python>=0.2.90",
+    "huggingface_hub>=0.24.0",
 ]
 
 [project.urls]
@@ -23,6 +31,7 @@ Documentation = "https://jac-lang.org"
 [project.entry-points."jac"]
 byllm = "byllm.plugin:JacRuntime"
 byllm_plugin_config = "byllm.plugin_config:JacByllmPluginConfig"
+byllm_cli = "byllm.cli:JacCmd"
 
 [project.optional-dependencies]
 dev = [
@@ -31,6 +40,11 @@ dev = [
 tools = ["wikipedia"]
 video = ["opencv-python-headless"]
 mcp = ["mcp>=1.0.0"]
+# Backward-compat alias: `byllm[local]` used to install the in-process
+# llama.cpp runtime. Those packages are now base dependencies, so this
+# extra is empty -- kept so existing `pip install byllm[local]` commands
+# in user docs and CI scripts continue to resolve cleanly.
+local = []
 
 [tool.setuptools.packages.find]
 include = ["byllm*"]

@@ -10,8 +10,11 @@ In this tutorial, you'll set up byLLM, write your first AI-powered function, exp
 >
 > - Completed: [Installation](../../quick-guide/install.md)
 > - Jac installed with `pip install jaseci`
-> - An API key from OpenAI, Anthropic, or Google
+> - **Either** an API key from OpenAI, Anthropic, or Google **or** ~5 GB of disk for the bundled local model
 > - Time: ~20 minutes
+
+!!! tip "No API key? Run a model locally."
+    byLLM ships a built-in local runtime out of the box: just set `default_model = "local:gemma-4-e4b"` in `jac.toml`. The first `by llm()` call downloads ~5 GB of Gemma 4 E4B weights to `~/.cache/jac/models/`, then runs in-process via `llama.cpp` -- no key, no daemon, no proxy. See [Built-in Local Models](../../reference/plugins/byllm.md#built-in-local-models) for the full reference.
 
 ---
 
@@ -25,18 +28,29 @@ If you haven't already:
 pip install byllm
 ```
 
-### 2. Set Your API Key
+### 2. Pick a Backend
 
-```bash
-# OpenAI
-export OPENAI_API_KEY="sk-..."
+=== "Cloud (API key)"
+    ```bash
+    # OpenAI
+    export OPENAI_API_KEY="sk-..."
 
-# Or Anthropic
-export ANTHROPIC_API_KEY="sk-ant-..."
+    # Or Anthropic
+    export ANTHROPIC_API_KEY="sk-ant-..."
 
-# Or Google
-export GOOGLE_API_KEY="..."
-```
+    # Or Google
+    export GOOGLE_API_KEY="..."
+    ```
+
+=== "Local (no API key)"
+    The local runtime is included in `pip install byllm` -- no extra step. Add this to your project's `jac.toml`:
+
+    ```toml
+    [plugins.byllm.model]
+    default_model = "local:gemma-4-e4b"
+    ```
+
+    The first `by llm()` call will prompt to download the model (~5 GB). Set `BYLLM_AUTO_DOWNLOAD=1` to skip the prompt, or pre-fetch with `jac model pull gemma-4-e4b`.
 
 ---
 
