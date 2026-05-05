@@ -2803,6 +2803,12 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
     if isinstance(dest_type, types.UnknownType) {
         return True;
     }
+    # `Never` / `NoReturn` is the bottom type: assignable to anything.
+    # A function returning Never never produces a value, so its "return"
+    # is compatible with any expected type at the call site.
+    if isinstance(src_type, types.NeverType) {
+        return True;
+    }
     # Any is compatible with everything in both directions (PEP 484).
     if isinstance(src_type, types.AnyType) or isinstance(dest_type, types.AnyType) {
         return True;

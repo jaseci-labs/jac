@@ -1306,6 +1306,18 @@ test "union_callable_member" {
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 }
 
+"""Regression: `Never` / `NoReturn` are accepted as `|` union arms."""
+test "union_never_arm" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_never_arm.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
 """Test member access on union types."""
 test "union_member_access" {
     program = JacProgram();
