@@ -2,6 +2,11 @@ import os;
 import pathlib;
 import from jaclang.cli.console { console }
 import from jac_scale._optdeps.kubernetes { client }
+import from jac_scale.targets.kubernetes.cluster_provider {
+    AWSProvider,
+    ClusterProvider,
+    LocalProvider
+}
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
@@ -434,6 +439,44 @@ impl cluster_type -> str {
         return 'local';
     } except Exception {
         return 'local';
+    }
+}
+
+impl get_cluster_provider -> ClusterProvider {
+    try {
+        v1 = client.CoreV1Api();
+        nodes = v1.list_node();
+        if not nodes.items {
+            return LocalProvider();
+        }
+        for nd in nodes.items {
+            provider_id = nd.spec.provider_id or '';
+            if provider_id.startswith('aws://') {
+                return AWSProvider();
+            }
+        }
+        for nd in nodes.items {
+            labels = nd.metadata.labels or {};
+            if (
+                ('topology.kubernetes.io/region' in labels)
+                and any(
+                    (region in labels.get('topology.kubernetes.io/region', ''))
+                    for region in ['us-', 'eu-', 'ap-', 'ca-', 'sa-']
+                )
+                and (
+                    ('karpenter.sh/provisioner-name' in labels)
+                    or (
+                        ('kubernetes.io/os' in labels)
+                        and ('node.kubernetes.io/instance-type' in labels)
+                    )
+                )
+            ) {
+                return AWSProvider();
+            }
+        }
+        return LocalProvider();
+    } except Exception {
+        return LocalProvider();
     }
 }
 
