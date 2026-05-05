@@ -265,6 +265,10 @@ def get_type_of_binary_operation(
             and ty.is_from_callable_annotation() {
                 return True;
             }
+            # `Never` / `NoReturn` are valid annotation arms (PEP 484, PEP 604).
+            if isinstance(ty, jtypes.NeverType) {
+                return True;
+            }
             # Although None is not a valid class, it can be used as a class in the type annotation.
             if isinstance(ty, jtypes.ClassType) {
                 return ty.shared == evaluator.prefetch.none_type_class.shared;
@@ -306,6 +310,10 @@ def get_type_of_binary_operation(
             # Callable[...] annotations evaluate to FunctionType with empty func_name.
             if isinstance(ty, jtypes.FunctionType)
             and ty.is_from_callable_annotation() {
+                return True;
+            }
+            # `Never` / `NoReturn` are valid annotation arms.
+            if isinstance(ty, jtypes.NeverType) {
                 return True;
             }
             # Although None is not a valid class, it can be used as a class in the type annotation.
