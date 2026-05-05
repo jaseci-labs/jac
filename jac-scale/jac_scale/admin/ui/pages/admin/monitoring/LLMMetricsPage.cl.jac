@@ -26,13 +26,15 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda { loadSummary();}, []);
+        useEffect(lambda { loadSummary(); }, []);
 
         useEffect(
             lambda -> any {
-                if not autoRefresh { return undefined;  }
-                interval = setInterval(lambda { loadSummary();}, 15000);
-                return lambda { clearInterval(interval);};
+                if not autoRefresh {
+                    return undefined;
+                }
+                interval = setInterval(lambda { loadSummary(); }, 15000);
+                return lambda { clearInterval(interval); };
             },
             [autoRefresh]
         );
@@ -93,7 +95,7 @@ cl {
                             <input
                                 type="checkbox"
                                 checked={autoRefresh}
-                                onChange={lambda e: any { autoRefresh = e.target.checked;}}
+                                onChange={lambda e: any { autoRefresh = e.target.checked; }}
                                 className="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
                             />
                             Auto-refresh

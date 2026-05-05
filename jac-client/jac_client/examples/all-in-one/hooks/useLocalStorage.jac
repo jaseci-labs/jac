@@ -30,6 +30,6 @@ cl {
             [key, storedValue]
         );
 
-        return [storedValue, lambda val: any { storedValue = val;}];
+        return [storedValue, lambda val: any { storedValue = val; }];
     }
 }

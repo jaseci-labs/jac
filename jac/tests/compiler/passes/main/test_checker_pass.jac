@@ -1293,6 +1293,31 @@ test "union_type_annotation" {
     );
 }
 
+"""Regression: `Callable[..., Any]` is accepted as a `|` union arm."""
+test "union_callable_member" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_callable_member.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
+"""Regression: `Never` / `NoReturn` are accepted as `|` union arms."""
+test "union_never_arm" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_never_arm.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
 """Test member access on union types."""
 test "union_member_access" {
     program = JacProgram();
@@ -2000,6 +2025,32 @@ test "callable_type_annotation" {
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[7].pretty_print()
+    );
+}
+
+"""Shorter callables are assignable to longer ones (TS-style param drop).
+
+A function with fewer parameters is a valid value for a callable type expecting
+more — the extras are simply dropped at the call site. This unblocks the React
+idiom `onClick={handler}` where `handler` takes no MouseEvent arg.
+"""
+test "callable_param_drop" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_callable_param_drop.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    # The lone error is the long-to-short direction, which must still be rejected.
+    assert_error_pretty_found(
+        """
+        bad: Callable[[], None] = two_ints;  # Error: extra src params have no defaults
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
     );
 }
 

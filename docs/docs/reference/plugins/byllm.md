@@ -62,6 +62,29 @@ This means your Jac type system functions as the LLM's output schema. Declaring 
 pip install byllm
 ```
 
+For local inference without an API key, byLLM supports two paths -- pick the one that fits your environment (see [Built-in Local Models](#built-in-local-models) for the full discussion):
+
+=== "Ollama (recommended)"
+    ```bash
+    # Install Ollama: https://ollama.com/download
+    ollama pull gemma3:4b
+    ```
+    ```toml
+    [plugins.byllm.model]
+    default_model = "ollama/gemma3:4b"
+    ```
+    Separate daemon, automatic GPU detection (CUDA / Metal / Vulkan picked up by Ollama itself), curated quantization registry. byLLM routes through litellm's Ollama provider -- nothing extra to install on the byLLM side.
+
+=== "In-process `local:*` (opt-in extra)"
+    ```bash
+    pip install 'byllm[local]'
+    ```
+    ```toml
+    [plugins.byllm.model]
+    default_model = "local:gemma-4-e4b"
+    ```
+    No daemon, single `pip install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
+
 For video support, install with the `video` extra:
 
 ```bash
@@ -166,6 +189,13 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
     ```
     No API key needed - runs locally. See [Ollama](https://ollama.ai/).
 
+=== "Built-in Local (`local:*`)"
+    ```toml
+    [plugins.byllm.model]
+    default_model = "local:gemma-4-e4b"
+    ```
+    No API key, no daemon. byLLM downloads a Q4_K_M GGUF on first use and runs `llama.cpp` in-process. See [Built-in Local Models](#built-in-local-models) below.
+
 === "HuggingFace"
     ```toml
     [plugins.byllm.model]
@@ -185,10 +215,145 @@ You can also override per-file with `glob llm = Model(...)` (see [Custom Model (
 | Anthropic | `claude-*` | `claude-sonnet-4-6` |
 | Google | `gemini/*` | `gemini/gemini-2.0-flash` |
 | Ollama | `ollama/*` | `ollama/llama3:70b` |
+| Built-in Local | `local:<alias>` | `local:gemma-4-e4b`, `local:gemma-4-e2b`, `local:qwen3.5-4b` |
 | HuggingFace | `huggingface/*` | `huggingface/meta-llama/Llama-3.3-70B-Instruct` |
 
 ??? tip "Full Provider List"
     For the complete list of supported providers and model name formats, see the [LiteLLM providers documentation](https://docs.litellm.ai/docs/providers).
+
+---
+
+## Built-in Local Models
+
+!!! tip "Most users want Ollama, not this."
+    Ollama is the recommended local-first path: native installer, automatic GPU detection across CUDA/Metal/Vulkan, curated registry of quantized models, and full byLLM compatibility through litellm (`default_model = "ollama/<model>"`). It works without anything from this section. The `local:*` route below is for users who specifically don't want a separate daemon -- everything stays inside the Python process and a single `pip install`.
+
+Any model name prefixed with `local:` runs in-process via `llama.cpp`, with weights pulled from HuggingFace on first use and cached under `~/.cache/jac/models/<alias>/`. No API key, no separate daemon, and no proxy server -- the GGUF is loaded directly into the Jac process. Activate by installing the `[local]` extra:
+
+```bash
+pip install 'byllm[local]' \
+  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+```
+
+The `--extra-index-url` flag points pip at `llama-cpp-python`'s prebuilt wheel index. Without it, pip falls back to the PyPI source tarball and runs a 30-60 second C++ build (`llama-cpp-python` does not publish wheels on PyPI). Use `/cu124`, `/metal`, `/vulkan` etc. for the matching GPU build (see [GPU Acceleration](#gpu-acceleration) below).
+
+The `local:*` route bypasses LiteLLM and replicates what cloud providers do server-side: it flattens multimodal content blocks for `llama.cpp`'s chat templates, rewrites OpenAI-style `json_schema` response formats into the GBNF grammar shape `llama.cpp` understands, and injects schema descriptions (e.g. `1=WORK, 2=PERSONAL, ...`) into the prompt so small open-weight models see the same constraints frontier models receive natively.
+
+### Quick Start
+
+```jac
+def categorize(title: str) -> Category by llm();
+```
+
+```toml
+# jac.toml
+[plugins.byllm.model]
+default_model = "local:gemma-4-e4b"
+```
+
+After `pip install 'byllm[local]'` (see [Installation](#installation)), the first `by llm()` call downloads the GGUF (interactive TTY prompts; non-TTY contexts require `BYLLM_AUTO_DOWNLOAD=1` or a prior `jac model pull`).
+
+### Bundled Aliases
+
+| Alias | Repo | Q4_K_M Size | Notes |
+|-------|------|-------------|-------|
+| `gemma-4-e4b` | `unsloth/gemma-4-E4B-it-GGUF` | ~5.0 GB | Default. Google Gemma 4 E4B (instruction-tuned). |
+| `gemma-4-e2b` | `unsloth/gemma-4-E2B-it-GGUF` | ~2.5 GB | Smaller / faster Gemma 4 variant. |
+| `qwen3.5-4b` | `unsloth/Qwen3.5-4B-GGUF` | ~2.8 GB | Alibaba Qwen 3.5 4B (instruction-tuned). |
+
+Run `jac model list` to see download status. Run `jac model pull <alias>` to fetch weights ahead of time (e.g. in a Dockerfile) or `jac model rm <alias>` to free disk.
+
+### First-Run Download Flow
+
+| Context | Behavior |
+|---------|----------|
+| Interactive TTY | Prompts once with the alias, repo, file size, and target path. The answer is cached as a sidecar marker in the alias directory; subsequent runs do not prompt. |
+| Non-interactive (CI, Docker, daemon) | Refuses to download. Surface message: `Local model 'X' is not downloaded and auto-download is disabled in this context. Run: jac model pull X` |
+| `BYLLM_AUTO_DOWNLOAD=1` | Skips the prompt and downloads silently. |
+| `[plugins.byllm.local].auto_download = true` | Same as the env override, but project-scoped. |
+
+### GPU Acceleration
+
+The default install uses the CPU-only wheel index. To enable CUDA (or Metal on Apple Silicon), reinstall `llama-cpp-python` from the matching prebuilt-wheel index:
+
+=== "CUDA 12.4"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+    ```
+
+=== "Metal (Apple Silicon)"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+    ```
+
+=== "Vulkan"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/vulkan
+    ```
+
+If your platform isn't covered by a prebuilt wheel, you can compile from source instead:
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python
+```
+
+(Replace `GGML_CUDA` with `GGML_METAL` / `GGML_VULKAN` / `GGML_HIP` etc. for other backends.)
+
+Then offload layers via `jac.toml`:
+
+```toml
+[plugins.byllm.local]
+n_gpu_layers = -1   # -1 = all layers; positive int = that many; 0 = CPU only
+```
+
+`llama_cpp.llama_supports_gpu_offload()` reports whether the installed wheel was built with GPU support.
+
+### `[plugins.byllm.local]` Configuration
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_alias` | str | `"gemma-4-e4b"` | Bundled alias used when `default_model` is unset and no provider API key is detected. |
+| `n_ctx` | int | `0` | Override context window in tokens. `0` uses the alias's bundled default (typically 8192). |
+| `n_gpu_layers` | int | `0` | Layers to offload to GPU. `-1` for all, `0` for CPU only. Requires a GPU-enabled `llama-cpp-python` build. |
+| `n_threads` | int | `0` | CPU thread count. `0` lets `llama.cpp` choose. |
+| `verbose` | bool | `false` | Enable `llama.cpp`'s verbose logging. |
+| `auto_download` | bool | `false` | Skip the first-run prompt and download silently. Equivalent to `BYLLM_AUTO_DOWNLOAD=1`. |
+
+### Environment Overrides
+
+| Variable | Effect |
+|----------|--------|
+| `BYLLM_DEFAULT_MODEL` | Overrides `[plugins.byllm.model].default_model` for the current shell. Useful for ad-hoc switches like `BYLLM_DEFAULT_MODEL=local:gemma-4-e4b jac run app.jac`. |
+| `BYLLM_AUTO_DOWNLOAD` | `1` to skip the TTY prompt; `0` to refuse silently. |
+| `JAC_MODELS_DIR` | Override the on-disk cache root. Defaults to `~/.cache/jac/models`. |
+
+### Default Model Resolution
+
+When no model is explicitly set, byLLM picks one in this order:
+
+1. `BYLLM_DEFAULT_MODEL` environment variable
+2. `[plugins.byllm.model].default_model` in `jac.toml`
+3. **Auto-detect** -- if any provider API key is present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`), falls through to `gpt-4o-mini`
+4. Otherwise, falls back to `local:<default_alias>` if the `[local]` extra is installed -- the bundled in-process runtime takes over so `by llm()` works offline out of the box. If `[local]` isn't installed and no key is set, byLLM raises a `ConfigurationError` listing the three concrete fixes (set an API key, configure `default_model` explicitly with an Ollama or other model, or `pip install 'byllm[local]'`).
+
+### Managing the Cache
+
+The `jac model` CLI command manages the local model cache. See [jac model](../cli/index.md#jac-model) for the full reference.
+
+```bash
+jac model                        # list bundled aliases + download status
+jac model pull gemma-4-e4b       # fetch weights ahead of time
+jac model rm gemma-4-e4b         # delete cached weights for an alias
+```
+
+### Limitations
+
+- `local:*` does not currently support the streaming response path used by some `ModelPool` strategies; use a regular `Model` for streaming.
+- Tool-calling capability depends on the underlying GGUF; not all bundled aliases handle `by llm(tools=[...])` reliably. Frontier cloud models remain the safe default for agentic flows.
+- Multimodal inputs (images, audio) require a `llama-cpp-python` build that ships an `mmproj` handler. The bundled aliases include text-only inference.
 
 ---
 
