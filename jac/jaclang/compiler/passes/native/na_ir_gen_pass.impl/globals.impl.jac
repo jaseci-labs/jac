@@ -125,7 +125,6 @@ impl NaIRGenPass._codegen_const_expr(
     if isinstance(nd, uni.String) or isinstance(nd, uni.MultiString) {
         # String constants - create global string
         return None;  # Complex initialization handled at runtime
-
     }
     return None;
 }

@@ -477,7 +477,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
-         "W1051", Category.TYPE, "Expression type could not be resolved (Unknown)"
+         "W1051",
+         Category.TYPE,
+         "Expression type could not be resolved (Unknown)",
+         "Often fixed by adding a more specific type annotation to the relevant declaration (e.g., 'list[Task]' instead of bare 'list', or annotating an unannotated parameter or attribute). Can also indicate an unresolved import, a forward reference the checker cannot bind, or fallout from an upstream error."
      ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),

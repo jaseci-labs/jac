@@ -904,9 +904,7 @@ impl Parser.parse_by_expr -> Expr {
     if self.match_tok(TokenKind.KW_BY) {
         by_uni = self.make_uni_token(self.previous());
         right = self.parse_by_expr();
-        return BinaryExpr(
-            left=left, op=by_uni, right=right, kid=[left, by_uni, right]
-        );
+        return BinaryExpr(left=left, op=by_uni, right=right, kid=[left, by_uni, right]);
     }
     return left;
 }

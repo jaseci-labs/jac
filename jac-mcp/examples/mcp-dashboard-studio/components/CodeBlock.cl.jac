@@ -5,7 +5,7 @@ def:pub CodeBlock(code: str, maxHeight: str = "320px") -> JsxElement {
     def handleCopy {
         navigator.clipboard.writeText(code);
         copied = True;
-        setTimeout(lambda { copied = False;}, 1500);
+        setTimeout(lambda { copied = False; }, 1500);
     }
 
     return
