@@ -1,7 +1,4 @@
-import from byllm.lib { Model }
 cl import "./styles.css";
-
-glob llm = Model(model_name="claude-sonnet-4-20250514");
 
 # --- Enums ---
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
@@ -45,18 +42,18 @@ node ShoppingItem {
 """Add a task with AI categorization."""
 def:pub add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
-    task = root() ++> Task(title=title, category=category);
+    task = root ++> Task(title=title, category=category);
     return task[0];
 }
 
 """Get all tasks."""
 def:pub get_tasks -> list[Task] {
-    return [root()-->][?:Task];
+    return [root-->][?:Task];
 }
 
 """Toggle a task's done status."""
 def:pub toggle_task(id: str) -> Task | None {
-    for task in [root()-->][?:Task] {
+    for task in [root-->][?:Task] {
         if jid(task) == id {
             task.done = not task.done;
             return task;
@@ -66,8 +63,8 @@ def:pub toggle_task(id: str) -> Task | None {
 }
 
 """Delete a task."""
-def:pub delete_task(id: str) -> dict {
-    for task in [root()-->][?:Task] {
+def:pub delete_task(id: str) -> dict[str, str] {
+    for task in [root-->][?:Task] {
         if jid(task) == id {
             del task;
             return {"deleted": id};
@@ -79,12 +76,12 @@ def:pub delete_task(id: str) -> dict {
 # --- Shopping List Endpoints ---
 """Generate a shopping list from a meal description."""
 def:pub generate_list(meal: str) -> list[ShoppingItem] {
-    for item in [root()-->][?:ShoppingItem] {
+    for item in [root-->][?:ShoppingItem] {
         del item;
     }
     ingredients = generate_shopping_list(meal);
     for ing in ingredients {
-        root() ++> ShoppingItem(
+        root ++> ShoppingItem(
             name=ing.name,
             quantity=ing.quantity,
             unit=str(ing.unit).split(".")[-1].lower(),
@@ -92,17 +89,17 @@ def:pub generate_list(meal: str) -> list[ShoppingItem] {
             carby=ing.carby
         );
     }
-    return [root()-->][?:ShoppingItem];
+    return [root-->][?:ShoppingItem];
 }
 
 """Get the current shopping list."""
 def:pub get_shopping_list -> list[ShoppingItem] {
-    return [root()-->][?:ShoppingItem];
+    return [root-->][?:ShoppingItem];
 }
 
 """Clear the shopping list."""
-def:pub clear_shopping_list -> dict {
-    for item in [root()-->][?:ShoppingItem] {
+def:pub clear_shopping_list -> dict[str, bool] {
+    for item in [root-->][?:ShoppingItem] {
         del item;
     }
     return {"cleared": True};
@@ -110,10 +107,10 @@ def:pub clear_shopping_list -> dict {
 
 # --- Frontend ---
 cl def:pub app -> JsxElement {
-    has tasks: list = [],
+    has tasks: list[Task] = [],
         task_text: str = "",
         meal_text: str = "",
-        ingredients: list = [],
+        ingredients: list[ShoppingItem] = [],
         generating: bool = False;
 
     async can with entry {
@@ -131,7 +128,9 @@ cl def:pub app -> JsxElement {
 
     async def toggle(id: str) {
         updated = await toggle_task(id);
-        tasks = [updated if jid(t) == id else t for t in tasks];
+        if updated is not None {
+            tasks = [updated if jid(t) == id else t for t in tasks];
+        }
     }
 
     async def remove(id: str) {
@@ -179,7 +178,7 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: ChangeEvent { task_text = e.target.value;}}
+                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
                             onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
                                 add_new_task();
                             }}}
@@ -192,7 +191,7 @@ cl def:pub app -> JsxElement {
                             <input
                                 type="checkbox"
                                 checked={t.done}
-                                onChange={lambda { toggle(jid(t));}}
+                                onChange={lambda { toggle(jid(t)); }}
                             />
                             <span
                                 class={"task-title " + ("task-done" if t.done else "")}
@@ -204,7 +203,7 @@ cl def:pub app -> JsxElement {
                                 else None}
                             <button
                                 class="btn-delete"
-                                onClick={lambda { remove(jid(t));}}
+                                onClick={lambda { remove(jid(t)); }}
                             >
                                 X
                             </button>
@@ -220,7 +219,7 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: ChangeEvent { meal_text = e.target.value;}}
+                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
                             onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
                                 generate_meal_list();
                             }}}
@@ -247,13 +246,13 @@ cl def:pub app -> JsxElement {
                                 {(<span class="carb-badge">Carbs</span>)
                                     if ing.carby
                                     else None}
-                                <span class="ing-cost">${ing.cost.toFixed(2)}</span>
+                                <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
                             </div>
                         </div> for ing in ingredients
                     ]}
                     {(
                         <div class="shopping-footer">
-                            <span class="total">Total: ${total_cost.toFixed(2)}</span>
+                            <span class="total">Total: ${f"{total_cost:.2f}"}</span>
                             <button class="btn-clear" onClick={clear_list}>
                                 Clear
                             </button>

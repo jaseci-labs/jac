@@ -97,14 +97,14 @@ cl {
                         type="text"
                         data-testid="username-input"
                         value={username}
-                        onChange={lambda e: ChangeEvent { username = e.target.value;}}
+                        onChange={lambda e: ChangeEvent { username = e.target.value; }}
                         placeholder="username"
                     />
                     <input
                         type="password"
                         data-testid="password-input"
                         value={password}
-                        onChange={lambda e: ChangeEvent { password = e.target.value;}}
+                        onChange={lambda e: ChangeEvent { password = e.target.value; }}
                         placeholder="password"
                     />
                 </div>

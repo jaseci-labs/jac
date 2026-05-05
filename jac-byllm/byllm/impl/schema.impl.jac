@@ -152,7 +152,22 @@ impl _type_to_schema(
             enum_names = [];
             enum_values = [];
             for member in enum_info_to_use.members {
+                # Skip MTIR members that aren't present at runtime — they
+                # come from stale bytecode or cross-module name collisions
+                # and would otherwise unbalance enum_names vs enum_values
+                # (causing an index shift like 5=FITNESS for an enum that
+                # actually maps 5=OTHER).
+                runtime_member = None;
+                try {
+                    runtime_member = ty.__members__.get(member.name);
+                } except Exception {
+                    runtime_member = None;
+                }
+                if runtime_member is None {
+                    continue;
+                }
                 enum_names.append(member.name);
+                enum_values.append(runtime_member.value);
 
                 # Determine type from type_info (can be "int", "str", "float", "bool", or None)
                 if member.type_info {
@@ -164,17 +179,6 @@ impl _type_to_schema(
                             f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
                         );
                     }
-                }
-
-                # Try to get the actual runtime value for the description
-                try {
-                    runtime_member = ty.__members__.get(member.name);
-                    if runtime_member {
-                        enum_values.append(runtime_member.value);
-                    }
-                } except Exception {
-                    # If runtime introspection fails, skip adding the value
-                    ;
                 }
             }
             # Default to int if no type was determined
@@ -209,11 +213,19 @@ impl _type_to_schema(
             }
             base_desc = enum_info_to_use.semstr or semstr or "";
             full_desc = f"{base_desc}{enum_desc}";
-            return {
+            schema_out: dict = {
                 "description": full_desc,
                 "type": "integer" if enum_type == "int" else "string",
 
             };
+            # Emit a JSON-Schema `enum` constraint so providers / GBNF grammars
+            # bind the value to the actual member set. Cloud frontier models
+            # infer the constraint from the prose description, but smaller
+            # local models (Qwen 3.5 4B, etc.) only honour `enum`.
+            if enum_values {
+                schema_out["enum"] = enum_values;
+            }
+            return schema_out;
         }
         # Fallback to runtime introspection if EnumInfo not available
         enum_type = None;
@@ -237,11 +249,15 @@ impl _type_to_schema(
                 "Only int and str enums are supported for schema generation."
             );
         }
-        return {
+        schema_fb: dict = {
             "description": semstr + enum_desc,
             "type": "integer" if enum_type is int else "string",
 
         };
+        if enum_values {
+            schema_fb["enum"] = enum_values;
+        }
+        return schema_fb;
     }
     # Handle functions
     if isinstance(ty, (FunctionType, MethodType)) {

@@ -721,7 +721,6 @@ impl SqliteMemory.sync -> None {
     has_persistent = any(a.persistent for a in self.__mem__.values());
     if not self.__gc__ and not has_persistent {
         return;  # Nothing to sync, don't create DB
-
     }
     with self.__lock__ {
         # Lazily create connection now that we have data to persist

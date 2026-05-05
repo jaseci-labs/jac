@@ -63,6 +63,8 @@ glob _T = TypeVar('_T', bound=es.Node),
          Tok.GT: '>',
          Tok.LTE: '<=',
          Tok.GTE: '>=',
+         Tok.KW_IS: '===',
+         Tok.KW_ISN: '!==',
          Tok.KW_IN: 'in',
          Tok.KW_NIN: 'in'
      },
