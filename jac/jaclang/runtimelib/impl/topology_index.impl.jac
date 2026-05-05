@@ -63,9 +63,12 @@ impl TopologyIndex._ensure_type(
         self.type_to_id[type_name] = tid;
         self.type_mro_ids.append([]);
     }
-    # Lazily fill the MRO chain. The first element of `mro_chain` is the
-    # concrete type itself, so encoded chains always include `tid` at index 0.
-    if mro_chain and not self.type_mro_ids[tid] {
+    # Lazily fill / upgrade the MRO chain. The first element of `mro_chain`
+    # is the concrete type itself, so encoded chains always include `tid`
+    # at index 0. We also accept a longer chain over a shorter one — this
+    # lets the v1->v2 migration's stub `[tid]` chain upgrade to the real
+    # ancestor list on the next mutation that provides one.
+    if mro_chain and len(mro_chain) > len(self.type_mro_ids[tid]) {
         chain_ids: list[int] = [];
         for anc in mro_chain {
             chain_ids.append(self._ensure_type(anc));
@@ -390,11 +393,41 @@ impl TopologyIndex.encode -> bytes {
     return bytes(buf);
 }
 
+"""Migrate a v1 encoded blob to v2 by splicing default MRO chains into the
+type table. Pure byte-level — no graph data is loaded. Each type is given a
+chain of `[self]`; subsequent mutations replace it with the real ancestor
+chain via `_ensure_type`'s widen-the-check logic."""
+def _migrate_v1_to_v2(data: bytes) -> bytes {
+    if len(data) < 9 or data[0] != 1 {
+        return data;
+    }
+    (_, num_types, num_nodes, num_edges) = struct.unpack_from("<BHHi", data, 0);
+    out = bytearray();
+    out.extend(struct.pack("<BHHi", TOPO_VERSION, num_types, num_nodes, num_edges));
+    offset = struct.calcsize("<BHHi");
+    for tid in range(num_types) {
+        (name_len, ) = struct.unpack_from("<B", data, offset);
+        offset += 1;
+        out.append(name_len);
+        out.extend(data[offset:offset + name_len]);
+        offset += name_len;
+        # Stub MRO: type is its own only ancestor. Real chain gets installed
+        # on the next mutation that calls _ensure_type with mro_chain.
+        out.append(1);
+        out.extend(struct.pack("<H", tid));
+    }
+    out.extend(data[offset:]);
+    return bytes(out);
+}
+
 """Deserialize from compact binary format. Rebuilds the buckets by replaying edges."""
 impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
     idx = TopologyIndex();
     if not data {
         return idx;
+    }
+    if data[0] == 1 {
+        data = _migrate_v1_to_v2(data);
     }
     offset = 0;
     (version, num_types, num_nodes, num_edges) = struct.unpack_from(

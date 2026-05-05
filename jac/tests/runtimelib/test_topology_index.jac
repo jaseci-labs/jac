@@ -185,7 +185,7 @@ test "subtype query returns instances of all descendants" {
     idx.add_edge(r, post, "Authored");
     idx.add_edge(r, article, "Authored");
     # Query by parent type — both subtypes match.
-    assert idx.resolve_chain({r}, [(None, "BaseContent", 2)]) == {post, article};
+    assert idx.resolve_chain({r}, [(None, "BaseContent", 2)]) == {post,article};
     # Query by concrete subtype — only that subtype matches.
     assert idx.resolve_chain({r}, [(None, "PostNode", 2)]) == {post};
 }
@@ -233,6 +233,60 @@ test "multi-edge between same pair preserves edge-type isolation" {
     idx.remove_edge(a, b, "Follow");
     # Now everything is gone — n: column too.
     assert idx.resolve_chain({a}, [(None, "B", 2)]) == set();
+}
+
+# ── v1 → v2 migration ────────────────────────────────────────────────
+test "v1 blob migrates to v2 on decode and warms up MRO via mutation" {
+    # Construct a v1 blob by hand: 3 types, 2 nodes, 1 edge.
+    import struct;
+
+    root_id = uuid4();
+    child_id = uuid4();
+    self_root = UUID(int=0);
+
+    blob = bytearray();
+    # Header (v1): version=1, num_types=3, num_nodes=2, num_edges=1
+    blob.extend(struct.pack("<BHHi", 1, 3, 2, 1));
+    # TypeTable (v1: just name_len + name, no MRO chain)
+    for name in [b"Root", b"NodeA", b"EdgeX"] {
+        blob.append(len(name));
+        blob.extend(name);
+    }
+    # NodeTable: (uuid, type_id, owner_root)
+    blob.extend(root_id.bytes);
+    blob.extend(struct.pack("<H", 0));
+    blob.extend(self_root.bytes);
+    blob.extend(child_id.bytes);
+    blob.extend(struct.pack("<H", 1));
+    blob.extend(self_root.bytes);
+    # AdjList: (src_lid, edge_type_id, tgt_lid)
+    blob.extend(struct.pack("<HHH", 0, 2, 1));
+
+    idx = TopologyIndex.decode(bytes(blob));
+
+    # All persisted data made it across.
+    assert len(idx.adj_list) == 1;
+    assert len(idx.node_table) == 2;
+    assert idx.type_table == ["Root", "NodeA", "EdgeX"];
+    # Migration installed stub MRO chains: each type is its own ancestor.
+    assert idx.type_mro_ids == [[0], [1], [2]];
+
+    # Concrete-type queries work immediately on the migrated index.
+    assert idx.resolve_chain({root_id}, [(None, "NodeA", 2)]) == {child_id};
+    assert idx.resolve_chain({root_id}, [("EdgeX", "NodeA", 2)]) == {child_id};
+
+    # Adding a new node with a real MRO chain warms up subtype queries for
+    # that type. The widen-the-check logic in _ensure_type lets the longer
+    # chain replace the migration stub.
+    new_child = uuid4();
+    idx.add_node(new_child, "PostNode", ["PostNode", "BaseContent"]);
+    idx.add_edge(root_id, new_child, "EdgeX");
+    assert idx.resolve_chain({root_id}, [(None, "BaseContent", 2)]) == {new_child};
+    assert idx.resolve_chain({root_id}, [(None, "PostNode", 2)]) == {new_child};
+
+    # Re-encoding the migrated index produces a v2 blob that round-trips.
+    re_decoded = TopologyIndex.decode(idx.encode());
+    assert re_decoded.resolve_chain({root_id}, [(None, "BaseContent", 2)]) == {new_child};
 }
 
 # ── Compact-encoding fidelity ────────────────────────────────────────
