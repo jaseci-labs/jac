@@ -181,7 +181,7 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={task_text}
-                            onChange={lambda e: ChangeEvent { task_text = e.target.value;}}
+                            onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
                             onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
                                 add_new_task();
                             }}}
@@ -194,7 +194,7 @@ cl def:pub app -> JsxElement {
                             <input
                                 type="checkbox"
                                 checked={t.done}
-                                onChange={lambda { toggle(jid(t));}}
+                                onChange={lambda { toggle(jid(t)); }}
                             />
                             <span
                                 class={"task-title " + ("task-done" if t.done else "")}
@@ -206,7 +206,7 @@ cl def:pub app -> JsxElement {
                                 else None}
                             <button
                                 class="btn-delete"
-                                onClick={lambda { remove(jid(t));}}
+                                onClick={lambda { remove(jid(t)); }}
                             >
                                 X
                             </button>
@@ -222,7 +222,7 @@ cl def:pub app -> JsxElement {
                         <input
                             class="input"
                             value={meal_text}
-                            onChange={lambda e: ChangeEvent { meal_text = e.target.value;}}
+                            onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
                             onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" {
                                 generate_meal_list();
                             }}}

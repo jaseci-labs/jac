@@ -21,7 +21,7 @@ def:pub TodoItem(
             <input
                 type="checkbox"
                 checked={todo["completed"]}
-                onChange={lambda _e: ChangeEvent { onToggle(todo["id"]);}}
+                onChange={lambda _e: ChangeEvent { onToggle(todo["id"]); }}
                 style={{"width": "20px", "height": "20px", "cursor": "pointer"}}
             />
             <span
@@ -34,7 +34,7 @@ def:pub TodoItem(
                 {todo["title"]}
             </span>
             <button
-                onClick={lambda _e: MouseEvent { onDelete(todo["id"]);}}
+                onClick={lambda _e: MouseEvent { onDelete(todo["id"]); }}
                 style={{
                     "padding": "0.5rem",
                     "backgroundColor": "transparent",

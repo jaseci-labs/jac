@@ -242,7 +242,6 @@ def marshal_value(
             );
         }
         return raw;  # fallback if no layout info
-
     }
 
     # Struct pointer: "StructName*" -- zero-copy NativeStructView
@@ -250,7 +249,6 @@ def marshal_value(
         struct_name = llvm_type[:-1];
         if struct_name == "ptr" {
             return raw;  # Can't auto-marshal opaque pointers
-
         }
         ct_cls = ctypes_classes.get(struct_name);
         if (ct_cls is None or raw is None or raw == 0) {

@@ -65,7 +65,7 @@ walker:priv AddTask {
 }
 
 walker:priv ListTasks {
-    has results: list = [];
+    has results: list[Task] = [];
 
     can start with Root entry {
         visit [-->];
@@ -137,7 +137,7 @@ walker:priv GenerateShoppingList {
 }
 
 walker:priv GetShoppingList {
-    has items: list = [];
+    has items: list[ShoppingItem] = [];
 
     can collect with Root entry {
         visit [-->];
