@@ -143,7 +143,7 @@ impl onMount(mountFn: Any) -> None {
         __jacReactiveContext.mountedComponents[componentId] = True;
         # Run in next tick to ensure component is fully rendered
         try {
-            setTimeout(lambda { __jacRunEffect(mountFn);}, 0);
+            setTimeout(lambda { __jacRunEffect(mountFn); }, 0);
         } except Exception {
             # Fallback if setTimeout not available
             __jacRunEffect(mountFn);
@@ -274,7 +274,9 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
         "popstate",
         lambda event: Any {
             newPath = __jacGetPath();
-            if not newPath { newPath = defaultRoute; }
+            if not newPath {
+                newPath = defaultRoute;
+            }
             setCurrentPath(newPath);
         }
     );
@@ -780,10 +782,10 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
-        value.then(lambda nd: Any { __jacApplyRender(renderer, rootEl, nd);}).catch(
+        value.then(lambda nd: Any { __jacApplyRender(renderer, rootEl, nd); }).catch(
             lambda err: Any { console.error(
                 "[Jac] Error resolving client function promise", err
-            );}
+            ); }
         );
     } else {
         __jacApplyRender(renderer, rootEl, value);
@@ -813,7 +815,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
         hydration.registered = True;
         documentRef.addEventListener(
             "DOMContentLoaded",
-            lambda _event: Any { __jacExecuteHydration();},
+            lambda _event: Any { __jacExecuteHydration(); },
             {"once": True}
         );
     }
@@ -999,7 +1001,7 @@ impl __jacInstallErrorHandlers -> None {
             event.error.stack if event.error else "",
             event.filename or "",
             "window.onerror"
-        );}
+        ); }
     );
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     scope.addEventListener(

@@ -49,7 +49,6 @@ impl Tool.get_name -> str {
 impl Tool.get_func_description(func: Callable) -> str {
     if func?._jac_semstr {
         return func._jac_semstr;  # type: ignore
-
     }
     return func.__doc__ or func.__name__;
 }

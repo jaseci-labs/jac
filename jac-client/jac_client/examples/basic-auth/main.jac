@@ -235,7 +235,7 @@ cl {
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: Any { username = e.target.value;}}
+                                onChange={lambda e: Any { username = e.target.value; }}
                                 placeholder="Enter your username"
                                 style={{
                                     "width": "100%",
@@ -264,7 +264,7 @@ cl {
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: Any { password = e.target.value;}}
+                                onChange={lambda e: Any { password = e.target.value; }}
                                 placeholder="Enter your password"
                                 style={{
                                     "width": "100%",

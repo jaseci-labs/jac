@@ -391,6 +391,21 @@ See [Kubernetes Secrets](../plugins/jac-scale.md#kubernetes-secrets) for details
 
 See also [jac-scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
 
+**Built-in Local Models (byllm):**
+
+```toml
+[plugins.byllm.model]
+default_model = "local:gemma-4-e4b"   # in-process llama.cpp; no API key, no daemon
+
+[plugins.byllm.local]
+default_alias  = "gemma-4-e4b"        # used when default_model is unset
+n_gpu_layers   = -1                   # -1 = offload all layers to GPU; 0 = CPU only
+n_ctx          = 0                    # 0 = use the alias's bundled default
+auto_download  = false                # true = skip the first-run TTY prompt
+```
+
+Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>/` on first use and managed via `jac model list/pull/rm`. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) for the full reference and [`jac model`](../cli/index.md#jac-model) for cache management.
+
 **Import Path Aliases (jac-client):**
 
 ```toml

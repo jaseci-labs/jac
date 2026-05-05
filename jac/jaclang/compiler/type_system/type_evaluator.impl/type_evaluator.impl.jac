@@ -1457,7 +1457,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if isinstance(base_type, types.ClassType) {
                     if base_type.is_builtin("str") {
                         return base_type;  # str[n] returns str
-
                     }
                     if base_type.is_builtin("bytes") {
                         if self.prefetch and self.prefetch.int_class {
@@ -2832,7 +2831,6 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
         if src_type.is_literal_type() and not dest_type.is_literal_type() {
             if src_type.shared == dest_type.shared {
                 return True;  # Literal[value] is assignable to its base type
-
             }
         }
 
@@ -3180,9 +3178,7 @@ impl TypeEvaluator._prefetch_types{
         return as_class_type(self._get_type_from_module(self.types_module, type_name));
     }
     def get_typing_class(type_name: str) -> types.ClassType | None {
-        return as_class_type(
-            self._get_type_from_module(self.typing_module, type_name)
-        );
+        return as_class_type(self._get_type_from_module(self.typing_module, type_name));
     }
     def get_builtin_class(type_name: str) -> types.ClassType | None {
         return as_class_type(
@@ -3885,9 +3881,7 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
             if op_name == Tok.KW_IS {
                 return ConditionInfo(kind=NarrowingKind.NONE_IS, key=narrowing_key);
             } elif op_name == Tok.KW_ISN {
-                return ConditionInfo(
-                    kind=NarrowingKind.NONE_IS_NOT, key=narrowing_key
-                );
+                return ConditionInfo(kind=NarrowingKind.NONE_IS_NOT, key=narrowing_key);
             }
         }
     }
@@ -4010,7 +4004,6 @@ impl TypeEvaluator._find_predicate_for(
                 ];
                 if not positive_preds {
                     return all_preds[0];  # All inverted, return first
-
                 }
                 # Find most specific (subclass) among positive predicates.
                 most_specific = positive_preds[0];

@@ -60,7 +60,7 @@ cl {
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={lambda e: Any { inputValue = e.target.value;}}
+                            onChange={lambda e: Any { inputValue = e.target.value; }}
                             placeholder="Search users and posts..."
                             style={{
                                 "flex": "1",
@@ -146,7 +146,7 @@ cl {
                     style={{"marginTop": "1.5rem", "display": "flex", "gap": "0.5rem"}}
                 >
                     <button
-                        onClick={lambda { goToPage(page - 1);}}
+                        onClick={lambda { goToPage(page - 1); }}
                         disabled={page <= 1}
                         style={{
                             "padding": "0.5rem 1rem",
@@ -160,7 +160,7 @@ cl {
                     </button>
                     <span style={{"padding": "0.5rem 1rem"}}>Page{page}</span>
                     <button
-                        onClick={lambda { goToPage(page + 1);}}
+                        onClick={lambda { goToPage(page + 1); }}
                         style={{
                             "padding": "0.5rem 1rem",
                             "border": "1px solid #d1d5db",

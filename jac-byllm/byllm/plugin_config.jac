@@ -110,6 +110,43 @@ class JacByllmPluginConfig {
                     "default": "",
                     "description": "Override the default system prompt for LLM interactions. Leave empty to use built-in default."
                 },
+                "local": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "In-process local model runtime (llama.cpp via GGUF). Activated when default_model starts with 'local:' or when no API key is configured.",
+                    "nested": {
+                        "default_alias": {
+                            "type": "string",
+                            "default": "gemma-4-e4b",
+                            "description": "Bundled local-model alias to use when default_model is unset and no provider API key is detected"
+                        },
+                        "n_ctx": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Override context window in tokens (0 = use the alias's bundled default)"
+                        },
+                        "n_gpu_layers": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "Number of transformer layers to offload to GPU (0 = pure CPU; -1 = all layers; requires a CUDA/Metal-enabled llama-cpp-python build)"
+                        },
+                        "n_threads": {
+                            "type": "int",
+                            "default": 0,
+                            "description": "CPU threads for inference (0 = let llama.cpp decide based on cores)"
+                        },
+                        "verbose": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable llama.cpp verbose logging"
+                        },
+                        "auto_download": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Skip the first-run download prompt and pull weights silently. Equivalent to BYLLM_AUTO_DOWNLOAD=1."
+                        }
+                    }
+                },
                 "compaction": {
                     "type": "dict",
                     "default": {},

@@ -23,6 +23,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac dot` | Generate graph visualization |
 | `jac debug` | Interactive debugger |
 | `jac plugins` | Manage plugins |
+| `jac model` | Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …) |
 | `jac config` | Manage project configuration |
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
@@ -612,6 +613,58 @@ jac plugins disabled
 > - **jac-super**: Enhanced console output with Rich formatting, colors, and spinners (`pip install jac-super`)
 > - **jac-client**: Full-stack web development with client-side rendering (`pip install jac-client`)
 > - **jac-scale**: Kubernetes deployment and scaling (`pip install jac-scale`)
+
+---
+
+## Local Model Cache
+
+The `jac model` command manages the on-disk cache of bundled local LLM weights used by byLLM's `local:<alias>` route. Weights live under `~/.cache/jac/models/<alias>/` (override with `JAC_MODELS_DIR`). See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) in the byLLM reference for the full backend.
+
+### jac model
+
+Manage byLLM local-model weights (Gemma 4, Qwen 3.5, …).
+
+```bash
+jac model [-h] [action] [alias]
+```
+
+| Action | Description |
+|--------|-------------|
+| `list` | Show bundled aliases and download status (default). |
+| `pull <alias>` | Download GGUF weights for an alias from HuggingFace. |
+| `rm <alias>` | Delete cached weights for an alias. Aliases: `remove`, `delete`. |
+
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `action` | One of `list`, `pull`, `rm`. | `list` |
+| `alias` | Local-model alias (e.g. `gemma-4-e4b`). Required for `pull` / `rm`; omit for `list`. | `""` |
+
+**Examples:**
+
+```bash
+# Show bundled aliases and which are cached locally
+jac model
+
+# Download Gemma 4 E4B weights (~5 GB) ahead of first use
+jac model pull gemma-4-e4b
+
+# Free disk by removing cached weights
+jac model rm gemma-4-e4b
+```
+
+**Sample output of `jac model`:**
+
+```text
+Local model cache: /home/you/.cache/jac/models
+
+  ALIAS                       SIZE STATUS       DESCRIPTION
+  ---------------------- --------- ------------ ----------------------------------------
+  gemma-4-e2b             ~2500 MB not cached   Google Gemma 4 E2B (smaller, faster)
+  gemma-4-e4b               4.6 GB downloaded   Google Gemma 4 E4B (instruction-tuned, Q4_K_M)
+  qwen3.5-4b              ~2800 MB not cached   Alibaba Qwen 3.5 4B (instruction-tuned, Q4_K_M)
+```
+
+> **Note:** In CI and other non-TTY contexts, the runtime will not prompt to download. Either `jac model pull <alias>` ahead of time, or set `BYLLM_AUTO_DOWNLOAD=1` (or `[plugins.byllm.local].auto_download = true` in `jac.toml`) to allow silent first-run downloads.
 
 ---
 

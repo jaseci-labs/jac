@@ -390,7 +390,6 @@ def get_type_of_binary_operation(
                     return is_valid_node_operand(t.private.type_args[0]);
                 }
                 return True;  # Unparameterized list - allow
-
             }
             return False;
         }
