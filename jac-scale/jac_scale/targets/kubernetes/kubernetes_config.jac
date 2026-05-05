@@ -75,7 +75,15 @@ obj KubernetesConfig(BaseConfig) {
         ingress_session_affinity: bool = True,
         # Domain / TLS configuration
         domain: str = "",
-        cert_manager_email: str = "";
+        cert_manager_email: str = "",
+        # P0.30: K-track microservice deployments default to the namespace
+        # `default` ServiceAccount (no RBAC). Apps that need cluster API
+        # access (e.g. sandbox-spawning apps that watch pods, create
+        # namespaces) point this at a pre-bound SA. K-track does not
+        # create the SA - it must already exist in the namespace, with
+        # whatever RoleBindings / ClusterRoleBindings the app needs.
+        # Auto-creating + binding the SA is P4.3.
+        service_account_name: str = "";
 
     override def to_dict -> dict[str, Any] {
         base = super.to_dict();
@@ -143,7 +151,9 @@ obj KubernetesConfig(BaseConfig) {
                 'ingress_session_affinity': self.ingress_session_affinity,
                 # Domain / TLS configuration
                 'domain': self.domain,
-                'cert_manager_email': self.cert_manager_email
+                'cert_manager_email': self.cert_manager_email,
+                # P0.30
+                'service_account_name': self.service_account_name
             }
         );
         return base;
@@ -212,7 +222,8 @@ obj KubernetesConfig(BaseConfig) {
             ingress_limit_connections=config.get('ingress_limit_connections', 20),
             ingress_session_affinity=config.get('ingress_session_affinity', True),
             domain=config.get('domain', ''),
-            cert_manager_email=config.get('cert_manager_email', '')
+            cert_manager_email=config.get('cert_manager_email', ''),
+            service_account_name=config.get('service_account_name', '')
         );
     }
 }

@@ -3016,3 +3016,90 @@ test "P0.25: malformed shared_volumes entries are skipped, not crashy" {
         restore();
     }
 }
+
+
+# =============================================================================
+# P0.30: service_account_name config knob — let apps point microservice
+# Deployments at a pre-bound ServiceAccount (sandbox-spawning apps need
+# cluster API access; the namespace `default` SA has none).
+# =============================================================================
+
+test "P0.30: empty service_account_name omits serviceAccountName from pod spec" {
+    # Back-compat: pre-P0.30 K-track pods had no serviceAccountName field
+    # (defaulted to namespace `default` SA). Apps that don't set the new
+    # config knob get exactly the same pod spec shape.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp")
+    );
+
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    assert "serviceAccountName" not in spec;
+
+    gw_spec = target._build_gateway_pod_spec("demo:latest");
+    assert "serviceAccountName" not in gw_spec;
+}
+
+
+test "P0.30: configured service_account_name propagates to service pod spec" {
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="myapp", service_account_name="myapp-sa"
+        )
+    );
+
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    assert spec["serviceAccountName"] == "myapp-sa";
+}
+
+
+test "P0.30: configured service_account_name propagates to gateway pod spec" {
+    # Gateway runs subdomain-preview proxy middleware that may resolve
+    # sandbox pods, so it needs the same RBAC as the services.
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(
+            app_name="myapp", service_account_name="myapp-sa"
+        )
+    );
+
+    spec = target._build_gateway_pod_spec("demo:latest");
+    assert spec["serviceAccountName"] == "myapp-sa";
+}
+
+
+test "P0.30: whitespace-only service_account_name treated as unset" {
+    # Defensive: TOML parsers and shell-substitution can leave stray
+    # whitespace. An accidental "  " shouldn't pin the pod to a literal
+    # whitespace SA name (which would fail at admission with a
+    # confusing "ServiceAccount '  ' not found" error).
+    target = KubernetesMicroserviceTarget(
+        config=KubernetesConfig(app_name="myapp", service_account_name="   ")
+    );
+
+    spec = target._build_service_pod_spec("orders", "demo:latest");
+    assert "serviceAccountName" not in spec;
+}
+
+
+test "P0.30: KubernetesConfig.from_dict round-trips service_account_name" {
+    # Config-loader path: jac.toml -> dict -> from_dict -> back to dict.
+    # Every other field has this round-trip; service_account_name should
+    # too so it shows up in the dict the microservice target receives.
+    cfg_dict = {
+        "app_name": "myapp",
+        "namespace": "prod",
+        "service_account_name": "myapp-sa"
+    };
+    cfg = KubernetesConfig.from_dict(KubernetesConfig, cfg_dict);
+    assert cfg.service_account_name == "myapp-sa";
+    assert cfg.to_dict()["service_account_name"] == "myapp-sa";
+}
+
+
+test "P0.30: KubernetesConfig.from_dict default empty service_account_name" {
+    # Apps that don't declare the field get '' (back-compat with all
+    # existing jac.toml files in the wild).
+    cfg = KubernetesConfig.from_dict(
+        KubernetesConfig, {"app_name": "bare"}
+    );
+    assert cfg.service_account_name == "";
+}

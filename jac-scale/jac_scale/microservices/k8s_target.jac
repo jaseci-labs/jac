@@ -1107,6 +1107,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
 
+    """P0.30: ServiceAccount name to attach to every microservice
+    Deployment + the gateway Deployment. Empty string means "fall back
+    to the namespace's `default` SA" - same behavior K-track had pre-P0.30.
+
+    The parent (non-microservice) kubernetes target auto-creates
+    `<app_name>-sa` and binds it; K-track does not provision the SA
+    yet (P4.3). Apps that need cluster API access (sandbox-spawning,
+    operator-style controllers) point this at a pre-bound SA in the
+    target namespace.
+    """
+    def _service_account_name -> str {
+        return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
+    }
+
+
     """K7: extra env vars merged with the auto-set JAC_SV_NAME.
 
     Order:
@@ -1765,6 +1780,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             # mid-drain.
             "terminationGracePeriodSeconds": drain_t + 5
         };
+        # P0.30: opt into a pre-bound ServiceAccount when configured.
+        sa_name = self._service_account_name();
+        if sa_name {
+            spec["serviceAccountName"] = sa_name;
+        }
         if shared_vols {
             spec["volumes"] = shared_vols;
         }
@@ -1823,6 +1843,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "containers": [container],
             "terminationGracePeriodSeconds": drain_t + 5
         };
+        # P0.30: gateway also runs as the configured SA so any cluster
+        # API calls from middleware (e.g. subdomain preview proxy that
+        # may resolve sandbox pod IPs) inherit the same RBAC.
+        sa_name = self._service_account_name();
+        if sa_name {
+            spec["serviceAccountName"] = sa_name;
+        }
         if shared_vols {
             spec["volumes"] = shared_vols;
         }
