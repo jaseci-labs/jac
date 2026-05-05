@@ -300,7 +300,7 @@ impl Db.expire(key: str, seconds: int, col_name: str = 'default') -> bool {
 }
 
 # Lua script kept at module scope so redis-py can cache its SHA after the first
-# EVAL — subsequent calls send EVALSHA, avoiding round-trips of the script body.
+# EVAL; subsequent calls send EVALSHA, avoiding round-trips of the script body.
 glob _DELETE_IF_EQUALS_LUA: str = '''
 if redis.call('GET', KEYS[1]) == ARGV[1] then
     return redis.call('DEL', KEYS[1])

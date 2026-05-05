@@ -1618,7 +1618,7 @@ with entry{
 ## Redis Operations
 
 **Common Methods:** `get()`, `set()`, `delete()`, `exists()`
-**Redis Methods:** `set_with_ttl()`, `expire()`, `incr()`, `scan_keys()`
+**Redis Methods:** `set_with_ttl()`, `expire()`, `incr()`, `scan_keys()`, `set_nx_with_ttl()`, `delete_if_equals()`
 
 **Example:**
 
@@ -1639,6 +1639,89 @@ with entry {
 ```
 
 **Note:** Database-specific methods raise `NotImplementedError` on wrong database type.
+
+---
+
+## Distributed Locks (Redis only)
+
+When a jac-scale app runs with multiple replicas behind a load balancer, two pods can land on the same shared resource (an EFS-backed file, an external API rate limit, a row in a downstream database) at the same instant. Python's `threading.Lock` only serializes inside one process, so it cannot prevent the race. The kvstore exposes two primitives that together build a correct cross-pod mutex on top of Redis.
+
+### Acquire: `set_nx_with_ttl(key, value, ttl)`
+
+Atomically sets the key only if it does not already exist, with an automatic expiration. Maps to Redis `SET key value NX EX ttl`. Returns `True` if the caller acquired the lock, `False` if another caller already holds it.
+
+The TTL is mandatory: if the holder crashes without releasing, Redis frees the lock automatically after `ttl` seconds, so an orphan never blocks the cluster forever.
+
+### Release: `delete_if_equals(key, expected_value)`
+
+Atomically deletes the key only when its current value matches `expected_value`. Implemented with a server-side Lua script so the GET and DEL run as one operation. Returns `True` if deleted, `False` otherwise.
+
+Pair `delete_if_equals` with `set_nx_with_ttl` and a unique fence token: a slow holder whose TTL expired during a long operation will not delete a lock another caller has since acquired, since the values no longer match.
+
+### Cross-pod mutex pattern
+
+```jac
+import os;
+import time;
+import from uuid { uuid4 }
+import from jac_scale.lib { kvstore }
+
+glob _kv = kvstore(db_name='myapp', db_type='redis');
+
+def with_repo_lock(repo_id: str, action: str) -> dict {
+    fence = str(uuid4());
+    payload = {'fence': fence, 'pod': os.environ.get('HOSTNAME', 'local')};
+
+    # Acquire: retry up to ~25s, give up if contention persists.
+    deadline = time.time() + 25.0;
+    acquired = False;
+    while time.time() < deadline {
+        if _kv.set_nx_with_ttl(f'repo_lock:{repo_id}', payload, ttl=30) {
+            acquired = True;
+            break;
+        }
+        time.sleep(0.2);
+    }
+    if not acquired {
+        return {'success': False, 'error': 'lock contention timeout'};
+    }
+
+    try {
+        return run_protected_op(repo_id, action);
+    } finally {
+        # Release: compare-and-delete. Safe even if our TTL already expired
+        # and another pod owns the key now; the value mismatch makes it a no-op.
+        _kv.delete_if_equals(f'repo_lock:{repo_id}', payload);
+    }
+}
+```
+
+### Cluster-wide debounce
+
+`set_nx_with_ttl` also collapses N pods running the same periodic task into a single execution per window. No release needed: the TTL is the window length.
+
+```jac
+def maybe_run_periodic_task(task_id: str) -> bool {
+    payload = {'pod': os.environ.get('HOSTNAME', 'local'), 'ts': time.time()};
+    if _kv.set_nx_with_ttl(f'task_dbnce:{task_id}', payload, ttl=60) {
+        run_task(task_id);
+        return True;
+    }
+    return False;  # Another pod already ran it within the last 60s.
+}
+```
+
+This is the right pattern for autosave debouncing, leader-only reconciliation cycles, and any other "exactly once per window across the cluster" requirement.
+
+### When to use which
+
+| Need | Primitive | Release |
+|---|---|---|
+| Mutual exclusion (only one caller in the cluster runs the protected block) | `set_nx_with_ttl` + retry on `False` | `delete_if_equals` with a unique fence token |
+| Debounce (throttle to one execution per window across the cluster) | `set_nx_with_ttl` once, no retry | None: let TTL expire |
+| Leader election (one pod holds a long-lived role) | `set_nx_with_ttl` with renewing TTL | `delete_if_equals` on graceful shutdown |
+
+`set_nx_with_ttl` and `delete_if_equals` raise `NotImplementedError` on MongoDB; distributed-lock semantics require Redis.
 
 ---
 

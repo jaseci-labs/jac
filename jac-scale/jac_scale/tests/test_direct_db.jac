@@ -184,7 +184,7 @@ test "redis distlock primitives" {
     assert db.delete_if_equals("lock:repo", fence_b) is True;
     assert db.delete_if_equals("lock:repo", fence_b) is False;
 
-    # TTL is honored — a 1s lock expires and the next acquirer succeeds.
+    # TTL is honored: a 1s lock expires and the next acquirer succeeds.
     import time;
     assert db.set_nx_with_ttl("lock:short", fence_a, ttl=1) is True;
     assert db.set_nx_with_ttl("lock:short", fence_b, ttl=1) is False;
