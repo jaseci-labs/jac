@@ -822,38 +822,80 @@ impl TypeCheckPass.exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> No
 }
 
 """Apply isinstance narrowing from comprehension filters BEFORE visiting body elements."""
-impl TypeCheckPass.enter_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> None {
+"""Extract isinstance predicates from a condition, recursing into AND expressions."""
+def _collect_compr_predicates(
+    evaluator: object, cond: uni.Expr, added_keys: list[str]
+) -> None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingKind }
+    import from jaclang.jac0core.constant { Tokens as Tok }
+    # Unwrap CFG expression wrappers
+    if isinstance(cond, uni.CfgExpr) {
+        _collect_compr_predicates(evaluator, cond.expr, added_keys);
+        return;
+    }
+    # Recurse into AND: isinstance(x, A) and isinstance(y, B)
+    if (
+        isinstance(cond, uni.BoolExpr)
+        and isinstance(cond.op, uni.Token)
+        and cond.op.name == Tok.KW_AND
+    ) {
+        for val in cond.values {
+            _collect_compr_predicates(evaluator, val, added_keys);
+        }
+        return;
+    }
+    cond_info = evaluator.classify_condition(cond);
+    if (
+        cond_info is not None
+        and cond_info.kind == NarrowingKind.ISINSTANCE
+        and cond_info.narrow_type is not None
+        and cond_info.key not in evaluator._comprehension_narrowing
+    ) {
+        evaluator._comprehension_narrowing[cond_info.key] = cond_info.narrow_type;
+        added_keys.append(cond_info.key);
+    }
+}
+
+"""Push isinstance narrowing from comprehension filters BEFORE visiting body."""
+def _enter_compr(evaluator: object, compr_list: list) -> None {
     added_keys: list[str] = [];
-    for compr in nd.compr {
+    for compr in compr_list {
         if compr.conditional {
             for cond in compr.conditional {
-                cond_info = self.evaluator.classify_condition(cond);
-                if (
-                    cond_info is not None
-                    and cond_info.kind == NarrowingKind.ISINSTANCE
-                    and cond_info.narrow_type is not None
-                    and cond_info.key not in self.evaluator._comprehension_narrowing
-                ) {
-                    self.evaluator._comprehension_narrowing[cond_info.key] = cond_info.narrow_type;
-                    added_keys.append(cond_info.key);
-                }
+                _collect_compr_predicates(evaluator, cond, added_keys);
             }
         }
     }
-    self.evaluator._comprehension_key_stack.append(added_keys);
+    evaluator._comprehension_key_stack.append(added_keys);
+}
+
+"""Pop isinstance narrowing added by _enter_compr."""
+def _exit_compr(evaluator: object) -> None {
+    if evaluator._comprehension_key_stack {
+        keys = evaluator._comprehension_key_stack.pop();
+        for key in keys {
+            if key in evaluator._comprehension_narrowing {
+                del evaluator._comprehension_narrowing[key];
+            }
+        }
+    }
+}
+
+impl TypeCheckPass.enter_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> None {
+    _enter_compr(self.evaluator, nd.compr);
 }
 
 """Remove comprehension narrowing entries added by enter_list_compr."""
 impl TypeCheckPass.exit_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> None {
-    if self.evaluator._comprehension_key_stack {
-        keys = self.evaluator._comprehension_key_stack.pop();
-        for key in keys {
-            if key in self.evaluator._comprehension_narrowing {
-                del self.evaluator._comprehension_narrowing[key];
-            }
-        }
-    }
+    _exit_compr(self.evaluator);
+}
+
+impl TypeCheckPass.enter_dict_compr(self: TypeCheckPass, nd: uni.DictCompr) -> None {
+    _enter_compr(self.evaluator, nd.compr);
+}
+
+impl TypeCheckPass.exit_dict_compr(self: TypeCheckPass, nd: uni.DictCompr) -> None {
+    _exit_compr(self.evaluator);
 }
 
 """Bind alias types from context manager BEFORE visiting body."""

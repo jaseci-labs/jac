@@ -61,6 +61,8 @@ class TypeCheckPass(UniPass) {
     def exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> None;
     def enter_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> None;
     def exit_list_compr(self: TypeCheckPass, nd: uni.ListCompr) -> None;
+    def enter_dict_compr(self: TypeCheckPass, nd: uni.DictCompr) -> None;
+    def exit_dict_compr(self: TypeCheckPass, nd: uni.DictCompr) -> None;
     def enter_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None;
     def exit_with_stmt(self: TypeCheckPass, nd: uni.WithStmt) -> None;
     def exit_while_stmt(self: TypeCheckPass, nd: uni.WhileStmt) -> None;

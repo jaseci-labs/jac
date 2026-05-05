@@ -606,7 +606,7 @@ test "bug_while_loop_narrowing" {
     );
 }
 
-test "bug_comprehension_filter_narrowing" {
+test "comprehension_filter_narrowing" {
     program = compile_and_check("checker_bug_compr_filter_narrowing.jac");
 
     assert len(program.errors_had) == 0 , (
@@ -616,3 +616,14 @@ test "bug_comprehension_filter_narrowing" {
         "produce E1099 on x.sym_name. "
             );
 }
+
+test "comprehension_filter_narrowing_negative" {
+    program = compile_and_check("checker_bug_compr_filter_narrowing_neg.jac");
+
+    assert len(program.errors_had) >= 2 , (
+        "Missing isinstance filter and wrong attribute must still produce errors. "
+        "Expected at least 2 errors but got "
+        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+    );
+}
+
