@@ -575,6 +575,161 @@ test "genai ability with kwargs preserves by and arguments" {
     assert formatted == prog2.mod.main.gen.jac , "genai kwargs formatting is not idempotent";
 }
 
+# --- JSX body block comment formatter tests ---
+test "jsx body comment between siblings stays in position" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            <span/>\n'
+        '            {#* between *#}\n'
+        '            <span/>\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on JSX body comment: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "#* between *#" in formatted , (
+        "Block comment was dropped from formatted output:\n" + formatted
+    );
+    lines = formatted.splitlines();
+    comment_idx = next(
+        (
+            i
+            for (i, ln) in enumerate(lines)
+            if "#* between *#" in ln
+        ),
+        None
+    );
+    first_span = next(
+        (
+            i
+            for (i, ln) in enumerate(lines)
+            if "<span" in ln
+        ),
+        None
+    );
+    last_span = next(
+        (
+            i
+            for (i, ln) in enumerate(reversed(lines))
+            if "<span" in ln
+        ),
+        None
+    );
+    last_span_idx = len(lines) - 1 - last_span if last_span is not None else None;
+    assert comment_idx is not None , "Comment line not found in output";
+    assert first_span is not None and last_span_idx is not None , "Span lines not found";
+    assert first_span < comment_idx < last_span_idx , (
+        f"Comment at line {comment_idx + 1} is not between the two spans "
+        f"(first span: {first_span + 1}, last span: {last_span_idx + 1}):\n" + formatted
+    );
+}
+
+test "jsx body comment as only child preserves parent element" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return <div>{#* only *#}</div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on JSX body comment: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "<div>" in formatted or "<div" in formatted , (
+        "Parent <div> was dropped from formatted output:\n" + formatted
+    );
+    assert "</div>" in formatted , (
+        "Closing </div> was dropped from formatted output:\n" + formatted
+    );
+    assert "#* only *#" in formatted , (
+        "Block comment was dropped from formatted output:\n" + formatted
+    );
+}
+
+test "jsx body comment formatting is idempotent" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            <span/>\n'
+        '            {#* comment *#}\n'
+        '            <span/>\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on first pass: {prog.errors_had}";
+    first = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=first, file_path="<test>.jac");
+    assert not prog2.errors_had , f"Formatter errored on second pass: {prog2.errors_had}";
+    second = prog2.mod.main.gen.jac;
+    assert first == second , (
+        "JSX body comment formatting is not idempotent.\n" "First pass:\n" + first + "\nSecond pass:\n" + second
+    );
+}
+
+test "jsx body comment does not displace non-jsx block comment" {
+    source = (
+        '#* file-level comment *#\n'
+        'cl def:pub comp -> JsxElement {\n'
+        '    return <div>{#* jsx comment *#}</div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "#* file-level comment *#" in formatted , (
+        "Non-JSX block comment was dropped:\n" + formatted
+    );
+    assert "#* jsx comment *#" in formatted , (
+        "JSX body comment was dropped:\n" + formatted
+    );
+    file_idx = formatted.index("#* file-level comment *#");
+    jsx_idx = formatted.index("#* jsx comment *#");
+    assert file_idx < jsx_idx , (
+        "Non-JSX comment was displaced after JSX comment:\n" + formatted
+    );
+}
+
+test "jsx block comment as only child with attributes keeps braces" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <p\n'
+        '            role="alert"\n'
+        '            style={{"color": "red"}}\n'
+        '        >{#*This is a message*#}</p>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "{#*This is a message*#}" in formatted , (
+        "Block comment lost its {} braces inside attributed JSX element:\n" + formatted
+    );
+}
+
+test "jsx block comment only child multi-line element is idempotent" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            {#* only child *#}\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on first pass: {prog.errors_had}";
+    first = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=first, file_path="<test>.jac");
+    assert not prog2.errors_had , f"Formatter errored on second pass: {prog2.errors_had}";
+    second = prog2.mod.main.gen.jac;
+    assert first == second , (
+        "JSX only-child comment is not idempotent.\nFirst:\n" + first + "\nSecond:\n" + second
+    );
+}
+
 """Regression: jac_str_formatter must populate errors_had on syntax error
 so that the LSP returns the original source instead of an empty string."""
 test "syntax error preserves original source" {

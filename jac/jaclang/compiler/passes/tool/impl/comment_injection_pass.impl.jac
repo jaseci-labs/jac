@@ -301,7 +301,8 @@ impl CommentInjectionPass._emit_standalone_comments(
     sink: list[doc.DocType],
     comments: Sequence[CommentInfo],
     *,
-    prev_item_line: (int | None)
+    prev_item_line: (int | None),
+    in_jsx: bool = False
 ) -> (int | None) {
     last_line = prev_item_line;
     prev_comment_line: (int | None) = None;
@@ -324,7 +325,7 @@ impl CommentInjectionPass._emit_standalone_comments(
                 sink.append(doc.Line(hard=True));
             }
         }
-        sink.append(self._make_standalone_comment(info.token));
+        sink.append(self._make_standalone_comment(info.token, in_jsx=in_jsx));
         last_line = info.last_line;
         prev_comment_line = comment_line;
     }
@@ -344,9 +345,13 @@ impl CommentInjectionPass._make_inline_comment(
 
 """Create standalone comment DocIR."""
 impl CommentInjectionPass._make_standalone_comment(
-    comment: uni.CommentToken
+    comment: uni.CommentToken, in_jsx: bool = False
 ) -> doc.DocType {
-    return doc.Concat([doc.Text(comment.value), doc.Line(hard=True)]);
+    text = comment.value;
+    if (in_jsx and text.startswith("#*")) {
+        text = "{" + text + "}";
+    }
+    return doc.Concat([doc.Text(text), doc.Line(hard=True)]);
 }
 
 """
@@ -525,7 +530,7 @@ impl CommentInjectionPass._handle_body_comments(
     body: (Sequence[uni.UniNode] | None) = None;
     if nd?.body {
         body = nd.body;
-    } elif (isinstance(nd, uni.JsxElement) and nd.children) {
+    } elif (isinstance(nd, uni.JsxElement) and nd.children is not None) {
         body = nd.children;
     } elif (isinstance(nd, uni.ArchHas) and nd.vars) {
         body = nd.vars;
@@ -579,6 +584,16 @@ impl CommentInjectionPass._handle_body_comments(
     if ((body_start is None) and isinstance(nd, uni.JsxElement)) {
         body_start = nd.get_body_start_line();
         body_end = nd.get_body_end_line();
+        # get_body_end_line() can return None when the closing-tag token name
+        # doesn't match Tok.JSX_CLOSE_START (token stores the literal string '</'
+        # rather than the canonical constant). Fall back to the closing JsxElement's
+        # own location so the empty-body comment-injection path still runs.
+        if (body_end is None and nd.kid) {
+            closing_kid = nd.kid[-1];
+            if (isinstance(closing_kid, uni.JsxElement) and closing_kid.loc) {
+                body_end = closing_kid.loc.first_line;
+            }
+        }
     }
     if ((body_start is None) and isinstance(nd, (uni.ArchHas, uni.GlobalVars))) {
         body_start = next(
@@ -676,7 +691,10 @@ impl CommentInjectionPass._handle_body_comments(
                 }
                 if comments {
                     prev_item_line = self._emit_standalone_comments(
-                        parts_with_standalone, comments, prev_item_line=prev_item_line
+                        parts_with_standalone,
+                        comments,
+                        prev_item_line=prev_item_line,
+                        in_jsx=isinstance(nd, uni.JsxElement)
                     );
                 }
                 current_line = body_item.loc.last_line + 1;
@@ -704,7 +722,10 @@ impl CommentInjectionPass._handle_body_comments(
             }
             if comments {
                 self._emit_standalone_comments(
-                    result, comments, prev_item_line=last_body_line
+                    result,
+                    comments,
+                    prev_item_line=last_body_line,
+                    in_jsx=isinstance(nd, uni.JsxElement)
                 );
                 if (result and self._is_comment_with_line(result[-1])) {
                     result[-1] = self._strip_trailing_line_from_comment(result[-1]);
@@ -713,12 +734,31 @@ impl CommentInjectionPass._handle_body_comments(
         } else {
             comments = [];
             if self._comments {
-                comments = self._comments.take_standalone_between(body_start, body_end);
+                # For single-line JSX elements, get_body_start_line() returns
+                # JSX_TAG_END.last_line + 1, which can exceed get_body_end_line()
+                # (JSX_CLOSE_START.first_line) when both tokens are on the same line.
+                # Swap to recover a valid [close_line, open_line+1) range so that
+                # block comments on the tag-end line are still captured.
+                adj_start = body_start;
+                adj_end = body_end;
+                if (
+                    isinstance(nd, uni.JsxElement)
+                    and adj_start is not None
+                    and adj_end is not None
+                    and adj_start > adj_end
+                ) {
+                    adj_start = adj_end;
+                    adj_end = body_start;
+                }
+                comments = self._comments.take_standalone_between(adj_start, adj_end);
             }
             if comments {
                 result.append(doc.Line(hard=True));
                 self._emit_standalone_comments(
-                    result, comments, prev_item_line=(body_start - 1)
+                    result,
+                    comments,
+                    prev_item_line=(body_start - 1),
+                    in_jsx=isinstance(nd, uni.JsxElement)
                 );
                 if (result and self._is_comment_with_line(result[-1])) {
                     result[-1] = self._strip_trailing_line_from_comment(result[-1]);
@@ -972,7 +1012,7 @@ impl CommentInjectionPass._process(ctx: uni.UniNode, nd: doc.DocType) -> doc.Doc
             nd.ast_node
             and (
                 (ctx?.body is not None)
-                or (isinstance(ctx, uni.JsxElement) and ctx.children)
+                or (isinstance(ctx, uni.JsxElement) and ctx.children is not None)
                 or (isinstance(ctx, uni.ArchHas) and ctx.vars)
                 or (isinstance(ctx, uni.DictVal) and ctx.kv_pairs)
                 or (isinstance(ctx, uni.ListVal) and ctx.values)
@@ -1145,7 +1185,12 @@ impl CommentStore.from_module(module: uni.Module) -> CommentStore {
             }
         }
         anchor_token_id: (int | None) = None;
-        if (left_token and (left_token.loc.last_line == comment.loc.first_line)) {
+        is_block_comment = comment.value.startswith("#*");
+        if (
+            not is_block_comment
+            and left_token
+            and (left_token.loc.last_line == comment.loc.first_line)
+        ) {
             anchor_token_id = hash(
                 (
                     left_token.loc.first_line,

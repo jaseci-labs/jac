@@ -884,6 +884,43 @@ test "decorated class in code block parses as archetype" {
     }
 }
 
+# --- JSX body block comment tests ---
+test "jsx body block comment between siblings parses" {
+    source = 'with entry { x = <div><span/>{#* comment *#}<span/></div>; }';
+    (module, had_error) = rd_parse(source, "test.jac");
+    assert not had_error , "Block comment between JSX siblings caused parse error";
+}
+
+test "jsx body block comment as only child parses" {
+    source = 'with entry { x = <div>{#* only child *#}</div>; }';
+    (module, had_error) = rd_parse(source, "test.jac");
+    assert not had_error , "Block comment as only JSX child caused parse error";
+}
+
+test "jsx body block comment with internal whitespace parses" {
+    source = 'with entry { x = <div>{ #* spaced *# }</div>; }';
+    (module, had_error) = rd_parse(source, "test.jac");
+    assert not had_error , "Spaced block comment in JSX body caused parse error";
+}
+
+test "jsx bare empty braces still error" {
+    source = 'with entry { x = <div>{}</div>; }';
+    (module, had_error) = rd_parse(source, "test.jac");
+    assert had_error , "Bare {} in JSX body must remain a parse error";
+}
+
+test "jsx whitespace-only braces still error" {
+    source = 'with entry { x = <div>{   }</div>; }';
+    (module, had_error) = rd_parse(source, "test.jac");
+    assert had_error , "Whitespace-only {} in JSX body must remain a parse error";
+}
+
+test "jsx line comment in braces still errors" {
+    source = 'with entry { x = <div>{# not a block comment\n}</div>; }';
+    (module, had_error) = rd_parse(source, "test.jac");
+    assert had_error , "Line comment inside JSX braces must not be accepted";
+}
+
 with entry {
     parametrize(
         "parser", MICRO_JAC_FILES, parser_file_test, id_fn=lambda f : Path(f).stem
