@@ -3820,11 +3820,9 @@ impl TypeEvaluator.create_key_for_reference(expr: uni.Expr) -> str | None {
         }
     }
     if isinstance(expr, uni.AtomTrailer) and not expr.is_attr {
-        # Build path like "x[0]" for constant integer subscripts
-        import from jaclang.compiler.symbol_utils { _int_subscript_suffix }
         base_key = self.create_key_for_reference(expr.target);
         if base_key and isinstance(expr.right, uni.IndexSlice) {
-            suffix = _int_subscript_suffix(expr.right);
+            suffix = int_subscript_suffix(expr.right);
             if suffix {
                 return f"{base_key}{suffix}";
             }

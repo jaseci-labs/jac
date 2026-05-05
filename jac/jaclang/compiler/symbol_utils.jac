@@ -105,7 +105,7 @@ def collect_field_names(
 Returns keys like "x" or "obj.speed" for use in affected_symbols.
 Returns None for expressions that cannot be represented as a key.
 """
-def _int_subscript_suffix(right: uni.IndexSlice) -> str | None {
+def int_subscript_suffix(right: uni.IndexSlice) -> str | None {
     if (not right.is_range and len(right.slices) == 1) {
         idx = right.slices[0];
         if (idx.start is not None and idx.stop is None and idx.step is None) {
@@ -147,7 +147,7 @@ def get_expr_key(expr: uni.Expr) -> str | None {
     if isinstance(expr, uni.AtomTrailer) and not expr.is_attr {
         base = get_expr_key(expr.target);
         if base and isinstance(expr.right, uni.IndexSlice) {
-            suffix = _int_subscript_suffix(expr.right);
+            suffix = int_subscript_suffix(expr.right);
             if suffix {
                 return f"{base}{suffix}";
             }
