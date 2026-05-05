@@ -821,7 +821,6 @@ impl TypeCheckPass.exit_raise_stmt(self: TypeCheckPass, nd: uni.RaiseStmt) -> No
     }
 }
 
-"""Apply isinstance narrowing from comprehension filters BEFORE visiting body elements."""
 """Extract isinstance predicates from a condition, recursing into AND expressions."""
 def _collect_compr_predicates(
     evaluator: object, cond: uni.Expr, added_keys: list[str]
