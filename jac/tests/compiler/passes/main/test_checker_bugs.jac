@@ -616,5 +616,3 @@ test "bug_comprehension_filter_narrowing" {
         "produce E1099 on x.sym_name. "
             );
 }
-        
-
