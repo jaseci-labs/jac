@@ -230,6 +230,12 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         # Non-self-closing element with no children: generate an empty Indent
         # (ast_node set) so comment_injection_pass can detect this element's
         # body and inject block comments that were stripped from the AST.
+        # Do NOT use break_contiguous=True here: that would cause the if_break
+        # to fire whenever the opening-tag group breaks (e.g. multi-line attrs),
+        # inserting a spurious newline between > and </Tag> even when no
+        # comment is present. Without break_contiguous, the group only breaks
+        # when a hard_line exists inside it — which only happens after comment
+        # injection — so the closing tag stays inline when the body is empty.
         parts.append(
             self.group(
                 self.concat(
@@ -238,7 +244,6 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                         self.if_break(self.hard_line(), self.concat([]))
                     ]
                 ),
-                break_contiguous=True,
                 ast_node=nd
             )
         );
