@@ -149,9 +149,7 @@ impl JacAPIServerStatic.serve_client_js_callback -> Callable[..., Response] {
                 media_type='application/javascript'
             );
         } except RuntimeError as exc {
-            return Response(
-                content=str(exc), status_code=503, media_type='text/plain'
-            );
+            return Response(content=str(exc), status_code=503, media_type='text/plain');
         }
     }
     return callback;

@@ -1801,7 +1801,6 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
     binaries_dir = tauri_dir / "binaries";
     if not binaries_dir.exists() {
         return;  # No binaries directory, skip
-
     }
 
     # Onedir output ships the sidecar as a directory (binaries/jac-sidecar/
@@ -1839,7 +1838,6 @@ def _add_sidecar_to_config(tauri_dir: Path, config: dict) -> None {
             ];
         }
         return;  # No sidecar found, skip
-
     }
 
     # Tauri v2 uses "resources" in bundle section for sidecars
@@ -1993,7 +1991,6 @@ def _copy_assets_to_dist(project_dir: Path, dist_dir: Path) -> None {
 
     if not compiled_assets.exists() {
         return;  # No assets to copy
-
     }
 
     # Create static directory and copy assets

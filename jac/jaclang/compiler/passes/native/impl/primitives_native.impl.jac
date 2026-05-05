@@ -1542,7 +1542,6 @@ impl NativeStrEmitter.emit_format(
     # Implements by chaining single-replace operations for each arg
     if not args {
         return target;  # No args, return template unchanged
-
     }
     p = ctx.pass_ref;
     b = get_builder(p);
