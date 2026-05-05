@@ -533,7 +533,7 @@ impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
                     {error.error.message}
                 </pre>
                 <button
-                    onClick={lambda { error.resetErrorBoundary();}}
+                    onClick={lambda { error.resetErrorBoundary(); }}
                     style={{
                         backgroundColor: "#2563eb",
                         color: "#fff",
@@ -903,7 +903,7 @@ impl JacForm(props: dict) -> JsxElement {
                                     newState[fieldName] = not isVisible;
                                     return newState;
                                 }
-                            );}}
+                            ); }}
                             style={{cursor: "pointer"}}
                         />
                         <span>Show password</span>
@@ -1082,7 +1082,7 @@ impl __jacInstallErrorHandlers -> None {
             event.error.stack if event.error else "",
             event.filename or "",
             "window.onerror"
-        );}
+        ); }
     );
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(

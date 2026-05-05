@@ -88,7 +88,7 @@ def:pub DashboardPage -> JsxElement {
                             <input
                                 type="text"
                                 value={server_url}
-                                onChange={lambda e: Any { server_url = e.target.value;}}
+                                onChange={lambda e: Any { server_url = e.target.value; }}
                                 placeholder={DEFAULT_URL}
                                 className="w-72 bg-zinc-900/60 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-400 placeholder-zinc-700 font-mono focus:outline-none focus:border-orange-500/40 focus:text-zinc-200 transition"
                             />
@@ -131,7 +131,7 @@ def:pub DashboardPage -> JsxElement {
                         <input
                             type="text"
                             value={query}
-                            onChange={lambda e: Any { query = e.target.value;}}
+                            onChange={lambda e: Any { query = e.target.value; }}
                             onKeyPress={lambda e: Any { if e.key == "Enter" {
                                 runTool("search_docs", {"query": query});
                             }}}
@@ -141,7 +141,7 @@ def:pub DashboardPage -> JsxElement {
                         <button
                             onClick={lambda { runTool(
                                 "search_docs", {"query": query}
-                            );}}
+                            ); }}
                             disabled={loading != "" or not connected}
                             className={"px-5 py-2 text-sm rounded-xl font-medium transition disabled:opacity-30 disabled:cursor-not-allowed " + (
                                 "bg-orange-500/80 animate-pulse text-white"
@@ -185,7 +185,7 @@ def:pub DashboardPage -> JsxElement {
                                     <button
                                         onClick={lambda { runTool(
                                             "validate_jac", {"code": code}
-                                        );}}
+                                        ); }}
                                         disabled={loading != "" or not connected}
                                         className={"px-2.5 py-1 text-[10px] rounded-md bg-orange-500 hover:bg-orange-400 text-white disabled:opacity-30 disabled:cursor-not-allowed transition " + (
                                             "animate-pulse"
@@ -200,7 +200,7 @@ def:pub DashboardPage -> JsxElement {
                                     <button
                                         onClick={lambda { runTool(
                                             "check_syntax", {"code": code}
-                                        );}}
+                                        ); }}
                                         disabled={loading != "" or not connected}
                                         className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
                                             "bg-white/20 animate-pulse"
@@ -216,7 +216,7 @@ def:pub DashboardPage -> JsxElement {
                                     <button
                                         onClick={lambda { runTool(
                                             "format_jac", {"code": code}
-                                        );}}
+                                        ); }}
                                         disabled={loading != "" or not connected}
                                         className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
                                             "bg-white/20 animate-pulse"
@@ -232,7 +232,7 @@ def:pub DashboardPage -> JsxElement {
                                     <button
                                         onClick={lambda { runTool(
                                             "get_ast_tree", {"code": code}
-                                        );}}
+                                        ); }}
                                         disabled={loading != "" or not connected}
                                         className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
                                             "bg-white/20 animate-pulse"
@@ -247,7 +247,7 @@ def:pub DashboardPage -> JsxElement {
                                     <button
                                         onClick={lambda { runTool(
                                             "get_ast_json", {"code": code}
-                                        );}}
+                                        ); }}
                                         disabled={loading != "" or not connected}
                                         className={"px-2.5 py-1 text-[10px] rounded-md border border-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition " + (
                                             "bg-white/20 animate-pulse"
@@ -286,8 +286,8 @@ def:pub DashboardPage -> JsxElement {
                                 </div>
                                 <textarea
                                     value={code}
-                                    onChange={lambda e: Any { code = e.target.value;}}
-                                    onScroll={lambda e: Any { code_scroll = e.target.scrollTop;}}
+                                    onChange={lambda e: Any { code = e.target.value; }}
+                                    onScroll={lambda e: Any { code_scroll = e.target.scrollTop; }}
                                     spellCheck={False}
                                     className="flex-1 resize-none bg-[#0d0e10] pl-3 pr-4 py-4 font-mono text-xs leading-6 text-zinc-100 outline-none placeholder-zinc-700"
                                     placeholder="# Paste your Jac code here..."
@@ -304,7 +304,7 @@ def:pub DashboardPage -> JsxElement {
                                 <button
                                     onClick={lambda { runTool(
                                         "py_to_jac", {"code": python_input}
-                                    );}}
+                                    ); }}
                                     disabled={loading != "" or not connected}
                                     className={"px-3 py-1.5 text-[10px] rounded-lg text-white disabled:opacity-30 disabled:cursor-not-allowed transition " + (
                                         "bg-purple-500 animate-pulse"
@@ -319,7 +319,7 @@ def:pub DashboardPage -> JsxElement {
                             </div>
                             <textarea
                                 value={python_input}
-                                onChange={lambda e: Any { python_input = e.target.value;}}
+                                onChange={lambda e: Any { python_input = e.target.value; }}
                                 rows={5}
                                 spellCheck={False}
                                 className={inputCls + " resize-y"}
@@ -343,7 +343,7 @@ def:pub DashboardPage -> JsxElement {
                                             );
                                             jac_copied = True;
                                             setTimeout(
-                                                lambda { jac_copied = False;}, 2000
+                                                lambda { jac_copied = False; }, 2000
                                             );
                                         }}
                                         className={"px-2 py-1 text-[9px] rounded-md border transition " + (
@@ -387,14 +387,14 @@ def:pub DashboardPage -> JsxElement {
                             <input
                                 type="text"
                                 value={error_message}
-                                onChange={lambda e: Any { error_message = e.target.value;}}
+                                onChange={lambda e: Any { error_message = e.target.value; }}
                                 placeholder="Paste an error message..."
                                 className={inputCls}
                             />
                             <button
                                 onClick={lambda { runTool(
                                     "explain_error", {"error_message": error_message}
-                                );}}
+                                ); }}
                                 disabled={loading != "" or not connected}
                                 className={ghostBtn + (
                                     " animate-pulse" if busy("explain_error") else ""
@@ -406,7 +406,7 @@ def:pub DashboardPage -> JsxElement {
                         <div className={panelCls}>
                             <div className={sectionLabel}>Examples</div>
                             <button
-                                onClick={lambda { runTool("list_examples", {});}}
+                                onClick={lambda { runTool("list_examples", {}); }}
                                 disabled={loading != "" or not connected}
                                 className={ghostBtn + (
                                     " animate-pulse" if busy("list_examples") else ""
@@ -420,14 +420,14 @@ def:pub DashboardPage -> JsxElement {
                                 <input
                                     type="text"
                                     value={example_name}
-                                    onChange={lambda e: Any { example_name = e.target.value;}}
+                                    onChange={lambda e: Any { example_name = e.target.value; }}
                                     placeholder="Category name..."
                                     className={inputCls + " flex-1"}
                                 />
                                 <button
                                     onClick={lambda { runTool(
                                         "get_example", {"name": example_name}
-                                    );}}
+                                    ); }}
                                     disabled={loading != "" or not connected}
                                     className={ghostBtn + " whitespace-nowrap" + (
                                         " animate-pulse" if busy("get_example") else ""

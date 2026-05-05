@@ -34,13 +34,15 @@ cl {
             isLoading = False;
         }
 
-        useEffect(lambda { loadMetrics();}, []);
+        useEffect(lambda { loadMetrics(); }, []);
 
         useEffect(
             lambda -> any {
-                if not autoRefresh { return undefined;  }
-                interval = setInterval(lambda { loadMetrics();}, 3000);
-                return lambda { clearInterval(interval);};
+                if not autoRefresh {
+                    return undefined;
+                }
+                interval = setInterval(lambda { loadMetrics(); }, 3000);
+                return lambda { clearInterval(interval); };
             },
             [autoRefresh]
         );
@@ -304,14 +306,14 @@ cl {
                                 <input
                                     type="checkbox"
                                     checked={autoRefresh}
-                                    onChange={lambda e: any { autoRefresh = e.target.checked;}}
+                                    onChange={lambda e: any { autoRefresh = e.target.checked; }}
                                     className="rounded border-teal-500/50 bg-slate-800 text-teal-500 focus:ring-teal-500/50"
                                 />
                                 LIVE SYNC
                             </label>
                             <Button
                                 variant="secondary"
-                                onClick={lambda { loadMetrics();}}
+                                onClick={lambda { loadMetrics(); }}
                             >
                                 REFRESH
                             </Button>
