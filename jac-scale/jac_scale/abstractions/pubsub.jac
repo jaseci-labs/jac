@@ -16,22 +16,13 @@ consumers (Kafka clients, Redis CLI, ...) do not need to learn a
 jac-scale-specific schema.
 """
 obj Event {
-    has type: str,
+    has event_type: str,
         data: dict[str, Any] = {},
-        id: str = "",
+        id: str = str(uuid.uuid4()),
         source: str = "jac-scale",
-        time: str = "",
+        time: str = datetime.now(UTC).isoformat(),
         trace_id: str | None = None,
         headers: dict[str, str] = {};
-
-    def postinit {
-        if not self.id {
-            self.id = str(uuid.uuid4());
-        }
-        if not self.time {
-            self.time = datetime.now(UTC).isoformat();
-        }
-    }
 }
 
 """Retry policy applied to a subscription.
@@ -65,27 +56,24 @@ obj HealthStatus {
         details: dict[str, Any] = {};
 }
 
-"""Abstract base class for a pub/sub message broker.
+"""Abstract base for a pub/sub message broker.
 
 Implementations must guarantee at-least-once delivery, ack on
 handler success, and route to dead-letter on retry exhaustion.
 """
-class MessageBroker {
-    """Initialize the broker with backend-specific configuration."""
-    def init(self: MessageBroker, config: dict[str, Any] = {}) -> None;
-
+obj MessageBroker {
     """Start background consumer threads / connections.
 
     Idempotent. Must be safe to call after subscribe().
     """
-    def start(self: MessageBroker) -> None;
+    def start -> None;
 
     """Stop the broker.
 
     If drain is True, wait for in-flight handlers to finish (with a
     backend-defined timeout) before closing connections.
     """
-    def stop(self: MessageBroker, drain: bool = True) -> None;
+    def stop(drain: bool = True) -> None;
 
     """Publish an event to a topic.
 
@@ -93,31 +81,53 @@ class MessageBroker {
     to the same partition. Ignored by Redis Streams.
     """
     def publish(
-        self: MessageBroker,
         topic: str,
         event: Event,
         key: str | None = None
     ) -> None;
 
-    """Register a handler for a topic.
+    """Register a handler for a topic (push delivery).
 
     `group` is the consumer group name. Multiple processes sharing a
     group will load-balance messages; distinct groups each receive a
     full copy of the stream. None lets the backend pick a default.
+    Successful handler returns auto-ack; raised exceptions trigger
+    retry per `retry` policy.
     """
     def subscribe(
-        self: MessageBroker,
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,
         retry: RetryPolicy | None = None
     ) -> Subscription;
 
+    """Pull a batch of events synchronously.
+
+    Returns up to `max_messages` events, blocking up to
+    `timeout_seconds` for at least one. Empty list on timeout.
+    Caller MUST call ack(event) after processing or the broker will
+    redeliver the message after its own visibility timeout.
+    """
+    def consume(
+        topic: str,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 5.0
+    ) -> list[Event];
+
+    """Acknowledge an event pulled via consume().
+
+    No-op for events delivered through subscribe() (those are
+    auto-acked on handler success). For consume(), this advances
+    the consumer-group offset so the message is not redelivered.
+    """
+    def ack(event: Event) -> None;
+
     """Probe backend health (connection state, consumer lag, etc.)."""
-    def health(self: MessageBroker) -> HealthStatus;
+    def health -> HealthStatus;
 
     """Whether this broker is a real implementation or a no-op."""
-    def is_enabled(self: MessageBroker) -> bool;
+    def is_enabled -> bool;
 }
 
 """No-op broker used when pub/sub is disabled.
@@ -125,21 +135,17 @@ class MessageBroker {
 All methods are safe to call but perform no work. Lets the rest of
 the codebase publish unconditionally without an `if enabled` check.
 """
-class NoOpBroker(MessageBroker) {
-    def init(self: NoOpBroker, config: dict[str, Any] = {}) { }
-
-    def start(self: NoOpBroker) { }
-    def stop(self: NoOpBroker, drain: bool = True) { }
+obj NoOpBroker(MessageBroker) {
+    def start { }
+    def stop(drain: bool = True) { }
 
     def publish(
-        self: NoOpBroker,
         topic: str,
         event: Event,
         key: str | None = None
     ) { }
 
     def subscribe(
-        self: NoOpBroker,
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,
@@ -148,11 +154,22 @@ class NoOpBroker(MessageBroker) {
         return Subscription(topic=topic, group=group, handler=handler);
     }
 
-    def health(self: NoOpBroker) -> HealthStatus {
+    def consume(
+        topic: str,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 5.0
+    ) -> list[Event] {
+        return [];
+    }
+
+    def ack(event: Event) { }
+
+    def health -> HealthStatus {
         return HealthStatus(healthy=True, backend="noop");
     }
 
-    def is_enabled(self: NoOpBroker) -> bool {
+    def is_enabled -> bool {
         return False;
     }
 }

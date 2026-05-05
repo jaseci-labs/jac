@@ -86,9 +86,13 @@ class UtilityFactory {
         if broker_type == 'noop' {
             return NoOpBroker();
         } elif broker_type == 'redis_streams' {
-            # Redis Streams backend lands in Phase 2. Until then, fall
-            # back to no-op so enabling pub/sub never crashes startup.
-            return NoOpBroker();
+            if not is_optional_available("redis") {
+                return NoOpBroker();
+            }
+            import from jac_scale.utilities.pubsub.redis_streams_broker {
+                RedisStreamsBroker
+            }
+            return RedisStreamsBroker(config=config);
         } else {
             raise ValueError(f"Unsupported broker type: {broker_type}");
         }
