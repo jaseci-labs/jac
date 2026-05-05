@@ -5,6 +5,8 @@ import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
 import "./styles.css";
 
 sv import from main {
+    Task,
+    ShoppingItem,
     AddTask,
     ListTasks,
     ToggleTask,
@@ -22,11 +24,11 @@ def:pub app -> JsxElement {
         password: str = "",
         error: str = "",
         loading: bool = False,
-        tasks: list = [],
+        tasks: list[Task] = [],
         taskText: str = "",
         tasksLoading: bool = True,
         mealText: str = "",
-        ingredients: list = [],
+        ingredients: list[ShoppingItem] = [],
         generating: bool = False;
 
     can with entry {
@@ -89,11 +91,11 @@ def:pub app -> JsxElement {
                             <input
                                 class="input"
                                 value={taskText}
-                                onChange={lambda e: ChangeEvent { taskText = e.target.value;}}
+                                onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
                                 onKeyPress={handleTaskKeyPress}
                                 placeholder="What needs to be done today?"
                             />
-                            <button class="btn-add" onClick={lambda { addTask();}}>
+                            <button class="btn-add" onClick={lambda { addTask(); }}>
                                 Add
                             </button>
                         </div>
@@ -116,7 +118,7 @@ def:pub app -> JsxElement {
                                                             checked={t.done}
                                                             onChange={lambda { toggleTask(
                                                                 jid(t)
-                                                            );}}
+                                                            ); }}
                                                         />
                                                         <span
                                                             class={"task-title " + (
@@ -139,7 +141,7 @@ def:pub app -> JsxElement {
                                                             class="btn-delete"
                                                             onClick={lambda { deleteTask(
                                                                 jid(t)
-                                                            );}}
+                                                            ); }}
                                                         >
                                                             X
                                                         </button>
@@ -161,13 +163,13 @@ def:pub app -> JsxElement {
                             <input
                                 class="input"
                                 value={mealText}
-                                onChange={lambda e: ChangeEvent { mealText = e.target.value;}}
+                                onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
                                 onKeyPress={handleMealKeyPress}
                                 placeholder="e.g. 'chicken stir fry for 4'"
                             />
                             <button
                                 class="btn-generate"
-                                onClick={lambda { generateList();}}
+                                onClick={lambda { generateList(); }}
                                 disabled={generating}
                             >
                                 {("Generating..." if generating else "Generate")}
@@ -209,18 +211,18 @@ def:pub app -> JsxElement {
                                                                 if ing.carby
                                                                 else None}
                                                             <span class="ing-cost">
-                                                                ${ing.cost.toFixed(2)}
+                                                                ${f"{ing.cost:.2f}"}
                                                             </span>
                                                         </div>
                                                     </div> for ing in ingredients
                                                 ]}
                                                 <div class="shopping-footer">
                                                     <span class="total">
-                                                        Total: ${totalCost.toFixed(2)}
+                                                        Total: ${f"{totalCost:.2f}"}
                                                     </span>
                                                     <button
                                                         class="btn-clear"
-                                                        onClick={lambda { clearList();}}
+                                                        onClick={lambda { clearList(); }}
                                                     >
                                                         Clear
                                                     </button>
@@ -248,7 +250,7 @@ def:pub app -> JsxElement {
                         <input
                             type="text"
                             value={username}
-                            onChange={lambda e: ChangeEvent { username = e.target.value;}}
+                            onChange={lambda e: ChangeEvent { username = e.target.value; }}
                             placeholder="Enter username"
                             class="auth-input"
                         />
@@ -258,7 +260,7 @@ def:pub app -> JsxElement {
                         <input
                             type="password"
                             value={password}
-                            onChange={lambda e: ChangeEvent { password = e.target.value;}}
+                            onChange={lambda e: ChangeEvent { password = e.target.value; }}
                             placeholder="Enter password"
                             class="auth-input"
                         />

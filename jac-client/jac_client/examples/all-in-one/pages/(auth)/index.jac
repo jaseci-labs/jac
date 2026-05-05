@@ -50,11 +50,11 @@ cl {
                     print("Message received from worker:", event.data);
                     message = event.data;
                 };
-                return (lambda { workerRef.current.terminate();});
+                return (lambda { workerRef.current.terminate(); });
             },
             []
         );
-        handleClick = lambda { workerRef.current.postMessage("");};
+        handleClick = lambda { workerRef.current.postMessage(""); };
 
         return
             <div
@@ -138,7 +138,7 @@ cl {
                         times.
                     </p>
                     <button
-                        onClick={lambda e: Any { count = count + 1;}}
+                        onClick={lambda e: Any { count = count + 1; }}
                         style={{
                             "padding": "0.6rem 1.4rem",
                             "fontSize": "1rem",
@@ -165,7 +165,7 @@ cl {
                         <code>get_server_message</code>
                     </p>
                     <button
-                        onClick={lambda e: Any { handlePing();}}
+                        onClick={lambda e: Any { handlePing(); }}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "marginRight": "0.75rem",
@@ -179,7 +179,7 @@ cl {
                         Ping Backend
                     </button>
                     <button
-                        onClick={lambda e: Any { handleCreateSampleTodo();}}
+                        onClick={lambda e: Any { handleCreateSampleTodo(); }}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "backgroundColor": "#10b981",
@@ -237,7 +237,7 @@ cl {
                         — Runs in a separate thread to avoid blocking the UI.
                     </p>
                     <button
-                        onClick={lambda { handleClick();}}
+                        onClick={lambda { handleClick(); }}
                         style={{
                             "padding": "0.5rem 1.2rem",
                             "marginRight": "0.75rem",

@@ -949,9 +949,7 @@ impl TypeEvaluator._create_callable_type(
         if len(type_arg_values) == 0 {
             # Empty Callable[] - emit error and return gradual form
             self.emit_diag(E1070, error_node);
-            return types.create_callable_type(
-                [], types.UnknownType(), is_gradual=True
-            );
+            return types.create_callable_type([], types.UnknownType(), is_gradual=True);
         }
         # First argument: parameter types list or ellipsis
         first_arg = type_arg_values[0];
@@ -1118,6 +1116,13 @@ impl TypeEvaluator._get_special_form_type(
         case "Self":
             # Pyright: createSelfType (line 21227-21228) - returns TypeVarType for Self
             return type_utils.synthesize_self_type_var();
+
+        case "Never":
+            return types.NeverType();
+
+        case "NoReturn":
+            # PEP 484: NoReturn is a synonym for Never.
+            return types.NeverType();
 
         # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
         # Requires _create_literal_type() method to parse type args into literal ClassTypes.
@@ -1475,7 +1480,6 @@ impl TypeEvaluator.validate_typevar_scope(
                 while sig_check {
                     if isinstance(sig_check, uni.FuncSignature) {
                         return;  # Valid: module-level TypeVar in function signature
-
                     }
                     if isinstance(
                         sig_check, (uni.Ability, uni.Archetype, uni.Module)
@@ -1509,7 +1513,6 @@ impl TypeEvaluator.validate_typevar_scope(
         for tp in func_type_params {
             if tp.name == type_var.name {
                 return;  # Valid: TypeVar used in function signature
-
             }
         }
         # TypeVar not in scope for this function
@@ -1523,7 +1526,6 @@ impl TypeEvaluator.validate_typevar_scope(
         for tp in class_type_params {
             if tp.name == type_var.name {
                 return;  # Valid: TypeVar declared in this class
-
             }
         }
         # TypeVar not declared in this class
