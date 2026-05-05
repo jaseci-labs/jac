@@ -1,10 +1,7 @@
 """Tests for intent-aware error diagnostics on malformed node connection operators.
-These tests cover five diagnostic codes:
+These tests cover two diagnostic codes:
   E0027 — forward typed connection (+>: Type) missing closing :+>
   E0028 — backward typed connection (<+: Type) missing closing :<+ or :+>
-  E0029 — simple ++> used as if it accepts an edge type
-  E0035 — simple <++ used as if it accepts an edge type
-  E0036 — bare +> is not a valid connection operator
 All error-detection tests MUST FAIL until the implementation is complete.
 All positive (valid-syntax) tests MUST PASS both before and after implementation.
 """
@@ -114,85 +111,23 @@ test "E0028: fixture — complex backward connection missing :<+" {
 }
 
 # ═══════════════════════════════════════════════════════════════════════
-# E0029 — ++> used as if it takes an edge type
-#   Pattern:  node1 ++> EdgeType node2
-#   Correct:  node1 ++> node2          (simple, no type)
-#             node1 +>: EdgeType :+> node2  (typed form)
-# ═══════════════════════════════════════════════════════════════════════
-test "E0029: ++> followed by edge type name and right node" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 ++> Friend n2; }');
-    assert has_error(prog, "E0029") , "E0029 must fire when ++> is followed by an edge type name (use +>: EdgeType :+> instead)";
-}
-
-test "E0029: E0029 is emitted as the first error" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 ++> Friend n2; }');
-    assert prog.errors_had[0].code.code == "E0029" , "E0029 must be the first error so the developer sees it first";
-}
-
-test "E0029: fixture — ++> with edge type" {
-    prog = compile_fixture("connect_simple_op_with_type.jac");
-    assert has_error(prog, "E0029") , "E0029 must fire in the fixture file for ++> used with an edge type";
-}
-
-# ═══════════════════════════════════════════════════════════════════════
-# E0035 — <++ used as if it takes an edge type
-#   Pattern:  node1 <++ EdgeType node2
-#   Correct:  node1 <++ node2          (simple, no type)
-#             node1 <+: EdgeType :<+ node2  (typed form)
-# ═══════════════════════════════════════════════════════════════════════
-test "E0035: <++ followed by edge type name and right node" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 <++ Friend n2; }');
-    assert has_error(prog, "E0035") , "E0035 must fire when <++ is followed by an edge type name (use <+: EdgeType :<+ instead)";
-}
-
-test "E0035: E0035 is emitted as the first error" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 <++ Friend n2; }');
-    assert prog.errors_had[0].code.code == "E0035" , "E0035 must be the first error so the developer sees it first";
-}
-
-test "E0035: fixture — <++ with edge type" {
-    prog = compile_fixture("connect_backward_simple_op_with_type.jac");
-    assert has_error(prog, "E0035") , "E0035 must fire in the fixture file for <++ used with an edge type";
-}
-
-# ═══════════════════════════════════════════════════════════════════════
-# E0036 — +> alone is not a valid connection operator
-#   Pattern:  node1 +> node2
-#   Correct:  node1 ++> node2   (simple forward connection)
-# ═══════════════════════════════════════════════════════════════════════
-test "E0036: +> used instead of ++>" {
-    prog = compile_snippet('with entry { n1 = None; n2 = None; n1 +> n2; }');
-    assert has_error(prog, "E0036") , "E0036 must fire when +> is used instead of ++>";
-    assert prog.errors_had[0].code.code == "E0036" , "E0036 must be the first error so the developer sees it first";
-}
-
-test "E0036: fixture — bare +> operator" {
-    prog = compile_fixture("connect_bare_plus_gt.jac");
-    assert has_error(prog, "E0036") , "E0036 must fire in the fixture file for bare +> operator";
-}
-
-# ═══════════════════════════════════════════════════════════════════════
 # POSITIVE TESTS — valid syntax that must NOT trigger any of the new codes.
 # These must PASS both before and after implementation.
 # ═══════════════════════════════════════════════════════════════════════
 test "valid: simple ++> connection between two nodes" {
     prog = compile_snippet('node N {} with entry { n1 = N(); n2 = N(); n1 ++> n2; }');
     assert not has_error(prog, "E0027") , "++> without type must not trigger E0027";
-    assert not has_error(prog, "E0029") , "++> without type must not trigger E0029";
 }
 
 test "valid: simple <++ connection between two nodes" {
     prog = compile_snippet('node N {} with entry { n1 = N(); n2 = N(); n1 <++ n2; }');
     assert not has_error(prog, "E0028") , "<++ without type must not trigger E0028";
-    assert not has_error(prog, "E0035") , "<++ without type must not trigger E0035";
 }
 
 test "valid: bidirectional <++> connection" {
     prog = compile_snippet('node N {} with entry { n1 = N(); n2 = N(); n1 <++> n2; }');
     assert not has_error(prog, "E0027") , "<++> must not trigger E0027";
     assert not has_error(prog, "E0028") , "<++> must not trigger E0028";
-    assert not has_error(prog, "E0029") , "<++> must not trigger E0029";
-    assert not has_error(prog, "E0035") , "<++> must not trigger E0035";
 }
 
 test "valid: complete forward typed connection +>: EdgeType :+>" {
@@ -235,26 +170,26 @@ test "valid: ++> where right-hand node is a function call" {
     prog = compile_snippet(
         'node N {} def get_n() -> N { return N(); } with entry { n1 = N(); n1 ++> get_n(); }'
     );
-    assert not has_error(prog, "E0029") , "++> get_n() must not trigger E0029 (NAME LPAREN is a valid node expression)";
+    assert not prog.errors_had , "++> get_n() must parse cleanly";
 }
 
 test "valid: ++> where right-hand node is an attribute access" {
     prog = compile_snippet(
         'node N { has child: N = N(); } with entry { n1 = N(); n2 = N(); n1 ++> n2.child; }'
     );
-    assert not has_error(prog, "E0029") , "++> obj.attr must not trigger E0029 (NAME DOT is a valid node expression)";
+    assert not prog.errors_had , "++> obj.attr must parse cleanly";
 }
 
 test "valid: <++ where right-hand node is a function call" {
     prog = compile_snippet(
         'node N {} def get_n() -> N { return N(); } with entry { n1 = N(); n1 <++ get_n(); }'
     );
-    assert not has_error(prog, "E0035") , "<++ get_n() must not trigger E0035 (NAME LPAREN is a valid node expression)";
+    assert not prog.errors_had , "<++ get_n() must parse cleanly";
 }
 
 test "valid: <++ where right-hand node is an attribute access" {
     prog = compile_snippet(
         'node N { has child: N = N(); } with entry { n1 = N(); n2 = N(); n1 <++ n2.child; }'
     );
-    assert not has_error(prog, "E0035") , "<++ obj.attr must not trigger E0035 (NAME DOT is a valid node expression)";
+    assert not prog.errors_had , "<++ obj.attr must parse cleanly";
 }

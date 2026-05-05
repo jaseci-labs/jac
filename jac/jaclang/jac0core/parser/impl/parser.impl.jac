@@ -146,9 +146,6 @@ import from jaclang.jac0core.diagnostics {
     E0025,
     E0027,
     E0028,
-    E0029,
-    E0035,
-    E0036,
     E0030,
     E0032,
     E0034,
@@ -1171,11 +1168,6 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
     # Connect to: ++> or +>:Type:+>
     if self.match_tok(TokenKind.CARROW_R) {
         tok = self.make_uni_token(self.previous());
-        if self.check(TokenKind.NAME) and self.check_peek(TokenKind.NAME) {
-            self.emit_diag(E0029);
-            self.synchronize();
-            return None;
-        }
         return ConnectOp(
             conn_type=None, conn_assign=None, edge_dir=EdgeDir.OUT, kid=[tok]
         );
@@ -1227,11 +1219,6 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
     # Connect from: <++ or <+:Type:<+
     if self.match_tok(TokenKind.CARROW_L) {
         tok = self.make_uni_token(self.previous());
-        if self.check(TokenKind.NAME) and self.check_peek(TokenKind.NAME) {
-            self.emit_diag(E0035);
-            self.synchronize();
-            return None;
-        }
         return ConnectOp(
             conn_type=None, conn_assign=None, edge_dir=EdgeDir.IN, kid=[tok]
         );
@@ -1298,14 +1285,6 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
         return ConnectOp(
             conn_type=None, conn_assign=None, edge_dir=EdgeDir.ANY, kid=[tok]
         );
-    }
-    # +> has no lexer token so it reaches here as PLUS+GT; safe to treat as a
-    # connection mistake because parse_connect_op() is only called from parse_connect()
-    if self.check(TokenKind.PLUS) and self.check_peek_any(TokenKind.GT) {
-        self.advance();
-        self.advance();
-        self.emit_diag(E0036);
-        return None;
     }
     return None;
 }
