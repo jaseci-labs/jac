@@ -626,4 +626,3 @@ test "comprehension_filter_narrowing_negative" {
         f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
     );
 }
-
