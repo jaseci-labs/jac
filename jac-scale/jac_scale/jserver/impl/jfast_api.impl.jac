@@ -543,9 +543,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -569,9 +567,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -590,9 +586,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = await callback(**{'request': __jac_request__});
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -606,9 +600,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = await callback();
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -627,9 +619,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = callback(**{'request': __jac_request__});
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -643,9 +633,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = callback();
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {

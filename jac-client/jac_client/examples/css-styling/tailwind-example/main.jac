@@ -9,11 +9,11 @@ cl {
             print("Count changed: ", count);
         }
 
-        handleIncrement = lambda e: Any { count = count + 1;};
+        handleIncrement = lambda e: Any { count = count + 1; };
 
-        handleDecrement = lambda e: Any { count = count - 1;};
+        handleDecrement = lambda e: Any { count = count - 1; };
 
-        handleReset = lambda e: Any { count = 0;};
+        handleReset = lambda e: Any { count = 0; };
 
         countColorClass = "text-gray-800"
             if count == 0

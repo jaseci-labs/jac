@@ -1226,3 +1226,52 @@ test "jsx preserves single-space whitespace between adjacent expression children
 
     assert_balanced_syntax(js_code, fixture);
 }
+
+test "is and is not emit identity comparison operators" {
+    # BUG: ES_COMPARISON_OPS had no entries for Tok.KW_IS / Tok.KW_ISN, so
+    # both `is` and `is not` fell through to the `===` default. `is None`
+    # was accidentally correct; `is not None` silently inverted to `===`,
+    # causing branches like `if x is not None { ... }` to run only when x
+    # *was* None.
+    jac_code = "\"\"\"Test is/is not codegen.\"\"\"\n\ncl def check(x: int | None) -> int {\n    if x is None {\n        return 1;\n    }\n    if x is not None {\n        return 2;\n    }\n    return 3;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "x === null" in js_code , (
+            f"`is None` must emit `=== null`, got:\n{js_code}"
+        );
+        assert "x !== null" in js_code , (
+            f"`is not None` must emit `!== null`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "fstring format spec invokes runtime format helper" {
+    # BUG: exit_formatted_value ignored nd.format_spec, so format mini-language
+    # specs like `:.2f` were dropped — `f"{x:.2f}"` rendered "8" instead of
+    # "8.00". The fix routes formatted values with a spec through the
+    # _jac.builtin.format runtime helper, which honors precision, width,
+    # alignment, and type specifiers.
+    jac_code = "\"\"\"Test f-string format spec.\"\"\"\n\ncl def fmt_price(x: float) -> str {\n    return f\"${x:.2f}\";\n}\n\ncl def fmt_plain(x: float) -> str {\n    return f\"${x}\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.builtin.format(x, \".2f\")" in js_code , (
+            "`f\"{x:.2f}\"` must compile to a runtime format() call, "
+            f"got:\n{js_code}"
+        );
+        # Bare `f"{x}"` (no spec) must still emit a plain template
+        # interpolation — the runtime call is reserved for spec'd values.
+        assert "${x}" in js_code , (
+            f"Bare `f\"{{x}}\"` should still use plain `${{x}}`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}

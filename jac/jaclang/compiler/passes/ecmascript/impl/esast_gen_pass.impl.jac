@@ -284,6 +284,36 @@ impl EsastGenPass.exit_f_string(nd: uni.FString) -> None {
 impl EsastGenPass.exit_formatted_value(nd: uni.FormattedValue) -> None {
     expr = nd.format_part.gen.es_ast
     or self.sync_loc(es.Literal(value=''), jac_node=nd.format_part);
+    if nd.format_spec is not None {
+        spec_es = nd.format_spec.gen.es_ast
+        or self.sync_loc(es.Literal(value=''), jac_node=nd.format_spec);
+        format_callee = self.sync_loc(
+            es.MemberExpression(
+                object=self.sync_loc(
+                    es.MemberExpression(
+                        object=self.sync_loc(es.Identifier(name='_jac'), jac_node=nd),
+                        property=self.sync_loc(
+                            es.Identifier(name='builtin'), jac_node=nd
+                        ),
+                        computed=False
+                    ),
+                    jac_node=nd
+                ),
+                property=self.sync_loc(es.Identifier(name='format'), jac_node=nd),
+                computed=False
+            ),
+            jac_node=nd
+        );
+        self.needs_jac_runtime = True;
+        nd.gen.es_ast = self.sync_loc(
+            es.CallExpression(
+                callee=cast(es.Expression, format_callee),
+                arguments=[cast(es.Expression, expr), cast(es.Expression, spec_es)]
+            ),
+            jac_node=nd
+        );
+        return;
+    }
     nd.gen.es_ast = expr;
 }
 

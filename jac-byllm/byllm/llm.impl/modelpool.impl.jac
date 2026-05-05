@@ -131,7 +131,6 @@ impl ModelPool.model_call_no_stream(params: dict) -> dict {
         return response;
     }
     return self._router.completion(**params);  # type: ignore
-
 }
 
 """Make a streaming model call via the LiteLLM Router.
@@ -155,7 +154,6 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
         }
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool {
             return pool.submit(asyncio.run, _collect_stream()).result();  # type: ignore
-
         }
     }
     # Fallback strategy: call Router._completion() per model with fallbacks=[]
@@ -198,5 +196,4 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
         return _fallback_gen();
     }
     return self._router.completion(stream=True, **params);  # type: ignore
-
 }
