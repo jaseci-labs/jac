@@ -64,13 +64,15 @@ cl {
             }
         }
 
-        useEffect(lambda { loadTraces();}, []);
+        useEffect(lambda { loadTraces(); }, []);
 
         useEffect(
             lambda -> any {
-                if not autoRefresh { return undefined;  }
-                interval = setInterval(lambda { loadTraces();}, 15000);
-                return lambda { clearInterval(interval);};
+                if not autoRefresh {
+                    return undefined;
+                }
+                interval = setInterval(lambda { loadTraces(); }, 15000);
+                return lambda { clearInterval(interval); };
             },
             [autoRefresh]
         );
@@ -234,7 +236,7 @@ cl {
                                         className="text-teal-400 font-mono text-xs cursor-pointer hover:underline"
                                         onClick={lambda { loadTraceDetail(
                                             selectedTrace["parent_invocation_id"]
-                                        );}}
+                                        ); }}
                                     >
                                         {selectedTrace["parent_invocation_id"]}
                                     </div>
@@ -388,7 +390,7 @@ cl {
                                         className="bg-slate-800 border border-slate-700 rounded-lg p-4 cursor-pointer hover:border-teal-500/50 transition-colors"
                                         onClick={lambda { loadTraceDetail(
                                             child["invocation_id"]
-                                        );}}
+                                        ); }}
                                     >
                                         <div
                                             className="flex items-center justify-between"
@@ -492,7 +494,7 @@ cl {
                             <input
                                 type="checkbox"
                                 checked={autoRefresh}
-                                onChange={lambda e: any { autoRefresh = e.target.checked;}}
+                                onChange={lambda e: any { autoRefresh = e.target.checked; }}
                                 className="rounded border-slate-600 bg-slate-800 text-teal-500 focus:ring-teal-500"
                             />
                             Auto-refresh
@@ -543,7 +545,7 @@ cl {
                                 }}
                                 onClick={lambda { loadTraceDetail(
                                     item["trace"]["invocation_id"]
-                                );}}
+                                ); }}
                             >
                                 {(item["trace"]["child_count"] or 0) > 0
                                 and <button

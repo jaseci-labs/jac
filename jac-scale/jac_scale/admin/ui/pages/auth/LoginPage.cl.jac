@@ -43,7 +43,7 @@ cl {
                                 label="Username"
                                 type="text"
                                 value={loginUsername}
-                                onChange={lambda e: Any { loginUsername = e.target.value;}}
+                                onChange={lambda e: Any { loginUsername = e.target.value; }}
                                 placeholder="admin"
                                 className="mb-4"
                             />
@@ -51,7 +51,7 @@ cl {
                                 label="Password"
                                 type="password"
                                 value={loginPassword}
-                                onChange={lambda e: Any { loginPassword = e.target.value;}}
+                                onChange={lambda e: Any { loginPassword = e.target.value; }}
                                 placeholder="Enter password"
                                 className="mb-5"
                             />
