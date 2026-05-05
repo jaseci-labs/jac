@@ -95,29 +95,56 @@ pip install byllm[video]
 
 ## Model Configuration
 
-### Default (Zero-Config)
+`llm` is **ambient** in Jac -- it's a built-in name, you never import it or pass it as an argument. The model that *powers* `llm` is configured project-wide via `jac.toml` (typical), with an optional per-module override (`glob llm = Model(...)`) when one file needs something different from the rest of the project.
 
-`llm` is a **built-in name** in Jac -- just use `by llm()` directly with no imports:
+### Project-wide default (typical: `jac.toml`)
+
+```toml
+# jac.toml
+[plugins.byllm.model]
+default_model = "gpt-4o-mini"
+```
 
 ```jac
-def summarize(text: str) -> str by llm();
+# any file in the project
+def summarize(text: str) -> str by llm();   # uses jac.toml's default
 
 with entry {
     print(summarize("Jac is a programming language..."));
 }
 ```
 
-The default model is `gpt-4o-mini`. Configure it via `jac.toml` (see [Default Model Configuration](#default-model-configuration) below).
+Most projects do this and nothing else: set the default once, and every `by llm()` in the project picks it up. See [Default Model Configuration](#default-model-configuration) for the full schema (api_key, base_url, proxy, verbose, etc.) and [Supported Providers](#supported-providers) for provider name formats.
 
-### Custom Model (Override)
+### Per-module override
 
-For per-file customization, override the builtin with an explicit `Model`:
+When a single file needs a different model -- most often when composing a [`ModelPool`](#modelpool), calling a fine-tuned endpoint, or pinning a specific provider for that module -- redeclare `llm` as a module-level glob:
 
 ```jac
 import from byllm.lib { Model }
 
 glob llm = Model(model_name="gpt-4o");
+
+def summarize(text: str) -> str by llm();   # uses gpt-4o here only
 ```
+
+The glob shadows the project default **for this module only**. Other files keep using whatever `jac.toml` says unless they declare their own `glob llm`.
+
+The name `llm` is just convention -- `by <name>()` accepts any module-level glob whose value is a `Model` (or `ModelPool`). Use whatever name reads best at the call site, especially when one file talks to multiple models:
+
+```jac
+import from byllm.lib { Model }
+
+glob fast_model    = Model(model_name="gpt-4o-mini");
+glob smart_model   = Model(model_name="gpt-4o");
+glob summarizer    = Model(model_name="claude-sonnet-4-6");
+
+def quick_label(text: str) -> str by fast_model();
+def deep_analyze(text: str) -> dict by smart_model();
+def tldr(article: str) -> str by summarizer();
+```
+
+`by llm()` only refers to the ambient builtin when no `glob llm` shadows it. Once you define a glob with the name `llm`, that glob takes over for the module; any other named globs (`fast_model`, `smart_model`, ...) coexist alongside it and are selected explicitly per call.
 
 ### Model Constructor Parameters
 
@@ -205,7 +232,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
     export HUGGINGFACE_API_KEY="hf_..."
     ```
 
-You can also override per-file with `glob llm = Model(...)` (see [Custom Model (Override)](#custom-model-override)).
+You can also override per-file with `glob llm = Model(...)` (see [Per-module override](#per-module-override)).
 
 **Provider Model Name Formats:**
 
