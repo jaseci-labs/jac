@@ -63,8 +63,13 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             # Probe timings
             'readiness_initial_delay': 10,
             'readiness_period': 20,
+            'readiness_timeout': 1,
+            'readiness_success_threshold': 1,
+            'readiness_failure_threshold': 3,
             'liveness_initial_delay': 10,
             'liveness_period': 20,
+            'liveness_timeout': 1,
+            'liveness_success_threshold': 1,
             'liveness_failure_threshold': 80
         },
         'secrets': {},
