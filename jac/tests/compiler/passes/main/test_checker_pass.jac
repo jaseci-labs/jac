@@ -647,6 +647,21 @@ test "checker_jac_runtime_alias" {
     ]}";
 }
 
+test "checker_react_router_props" {
+    # Regression for #5847: `@jac/runtime` exposes a React Router v6-shaped
+    # surface (`<Route element=...>`, `<Link to=...>`, `Routes`, `Navigate`,
+    # `Outlet`, `useNavigate` / `useLocation` / `useParams`) in both runtimes —
+    # bare-serve implements it natively, jac-client wraps React Router. The
+    # type checker validates JSX props against bare-serve's declarations.
+    path = os.path.join(CHECKER_FIXTURES, "checker_react_router_props.cl.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "cyclic_symbol" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cyclic_symbol.jac");
     program = JacProgram();

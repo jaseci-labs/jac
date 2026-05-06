@@ -1,8 +1,4 @@
-"""Jac project configuration module.
-
-This module provides the JacConfig class and related types for managing
-project configuration from jac.toml files.
-"""
+"""JacConfig and related types for jac.toml project configuration."""
 
 import os;
 import re;
@@ -22,6 +18,33 @@ obj ProjectConfig {
         jac_version: str = "",
         entry_point: str = "main.jac",
         urls: dict[str, str] = {};
+}
+
+"""Author or maintainer contact info for [package] section."""
+obj PersonConfig {
+    has name: str = "",
+        email: str = "";
+}
+
+"""File inclusion rules from [package.include]."""
+obj PackageIncludeConfig {
+    has packages: list[str] = [],
+        data: dict[str, list[str]] = {};
+}
+
+"""PyPI-publishable package metadata from [package] section."""
+obj PackageConfig {
+    has name: str = "",
+        version: str = "",
+        description: str = "",
+        authors: list[PersonConfig] = [],
+        maintainers: list[PersonConfig] = [],
+        license: str = "",
+        readme: str = "README.md",
+        keywords: list[str] = [],
+        requires_python: str = "",
+        urls: dict[str, str] = {},
+        include: PackageIncludeConfig = PackageIncludeConfig();
 }
 
 """Run command defaults from [run] section."""
@@ -191,7 +214,12 @@ obj JacConfig {
         toml_path: Path | None = None,
         config_files: list[Path] | None = None,
         active_profile: str = "",
-        _raw_data: dict[str, Any] = {};
+        _raw_data: dict[str, Any] = {},
+        # Publishing fields — populated when [package], [entrypoints],
+        # or [optional-dependencies] are present in jac.toml.
+        package: PackageConfig | None = None,
+        entrypoints: dict[str, dict[str, str]] = {},
+        optional_dependencies: dict[str, dict[str, str]] = {};
 
     static def discover(
         start_path: Path | None = None, profile: str | None = None

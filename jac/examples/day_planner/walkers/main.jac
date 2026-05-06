@@ -11,10 +11,6 @@ def:pub app -> JsxElement {
 
 to sv:
 
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="claude-sonnet-4-20250514");
-
 # --- Enums ---
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 

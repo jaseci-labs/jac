@@ -18,7 +18,15 @@ impl Model.postinit -> None {
     if self.model_name == MODEL_MOCK {
         self._mock_delegate = MockLLM(model_name=self.model_name, config=self.config);
     }
-    if not self._mock_delegate {
+    # When model_name starts with 'local:', delegate to in-process llama.cpp.
+    # LocalLLM lives alongside MockLLM in byllm.llm so both delegates share
+    # the same module and avoid a circular import via local_runtime.jac.
+    if self.model_name.startswith("local:") {
+        self._local_delegate = LocalLLM(
+            model_name=self.model_name, config=self.config, call_params=self.call_params
+        );
+    }
+    if not self._mock_delegate and not self._local_delegate {
         logging.getLogger("httpx").setLevel(logging.WARNING);
         if not _litellm_config.get("debug", False) {
             _disable_debugging();
@@ -45,9 +53,13 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
     _start = time.time();
 
     try {
-        result = self._mock_delegate.invoke(mt_run)
-            if self._mock_delegate
-            else super.invoke(mt_run);
+        if self._mock_delegate {
+            result = self._mock_delegate.invoke(mt_run);
+        } elif self._local_delegate {
+            result = self._local_delegate.invoke(mt_run);
+        } else {
+            result = super.invoke(mt_run);
+        }
 
         # For streaming (generator) results, wrap so ContextVar stays active
         # during lazy iteration — tool calls inside the generator need the parent ID.

@@ -118,7 +118,7 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         `jac clean` requires a Jac project (a directory with `jac.toml`). If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac init` or `jac create <name>`.
 
     ??? question "I see 'Address already in use' when running `jac start`."
-        Another process is using the port (default 8000). Either stop the other process or use a different port: `jac start main.jac --port 3000`.
+        Another process is using the port (default 8000). Either stop the other process or use a different port: `jac start --port 3000`.
 
     ??? question "My frontend shows data but fields are empty or undefined."
         When returning node objects directly from `def:pub` endpoints, use `jid(node)` to access the node's unique identity. For reliable client-side access, return explicit dictionaries from your endpoints:
