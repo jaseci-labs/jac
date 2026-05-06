@@ -91,6 +91,22 @@ walker:pub PublicInfo {
     }
 }
 
+# Walker with a defaulted-list `has` field. Compiles to a dataclass with
+# field(default_factory=list); this exercises the introspector's handling of
+# the dataclasses._HAS_DEFAULT_FACTORY sentinel during request-body schema
+# generation.
+walker:pub CollectWithDefault {
+    has tags: list[str] = [],
+        seen: dict[str, int] = {};
+
+    can collect with Root entry {
+        for tag in self.tags {
+            self.seen[tag] = self.seen.get(tag, 0) + 1;
+        }
+        report {"tags": self.tags, "seen": self.seen};
+    }
+}
+
 # Streaming Walker Test
 walker:pub WalkerStream {
     has count: int = 3;
