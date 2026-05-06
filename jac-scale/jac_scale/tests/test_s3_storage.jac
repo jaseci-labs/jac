@@ -5,9 +5,10 @@ import boto3;
 import pytest;
 import from moto { mock_aws }
 
+import from unittest.mock { patch, MagicMock }
 import from jaclang.runtimelib.storage { Storage }
+import from jaclang.runtimelib.storage.local_storage { LocalStorage }
 import from jac_scale.storage.s3_storage { S3Storage }
-
 """Helper to create a mocked S3Storage instance."""
 def get_mock_s3_storage(
     bucket: str = "test-bucket", public: bool = False
@@ -169,6 +170,48 @@ test "s3 download nonexistent raises" {
             assert False , "Should have raised an error";
         } except Exception as e {
             assert "404" in str(e);
+        }
+    }
+}
+
+test "store builtin defaults to local storage" {
+    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    env_patcher = patch.dict("os.environ", {}, clear=True);
+
+    mock_cfg = cfg_patcher.start();
+    env_patcher.start();
+
+    try {
+        mock_cfg.return_value = MagicMock(storage=None);
+
+        s = store();
+        assert isinstance(s, LocalStorage);
+        assert s.base_path == "./storage";
+    } finally {
+        env_patcher.stop();
+        cfg_patcher.stop();
+    }
+}
+
+test "store builtin resolves to s3 storage when configured" {
+    with mock_aws() {
+        env = {
+            "JAC_STORAGE_TYPE": "s3",
+            "JAC_STORAGE_S3_BUCKET": "builtin-test-bucket"
+        };
+        cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+        env_patcher = patch.dict("os.environ", env);
+        mock_cfg = cfg_patcher.start();
+        env_patcher.start();
+        try {
+            mock_cfg.return_value = MagicMock(storage=None);
+
+            s = store();
+            assert isinstance(s, S3Storage);
+            assert s.bucket == "builtin-test-bucket";
+        } finally {
+            env_patcher.stop();
+            cfg_patcher.stop();
         }
     }
 }

@@ -57,6 +57,9 @@ Documentation = "https://jac-lang.org"
 scale = "jac_scale.plugin:JacCmd"
 scale_plugin_config = "jac_scale.plugin_config:JacScalePluginConfig"
 
+[project.entry-points."jac_plugins"]
+scale = "jac_scale.plugin:JacScalePlugin"
+
 [tool.setuptools.packages.find]
 include = ["jac_scale*"]
 
