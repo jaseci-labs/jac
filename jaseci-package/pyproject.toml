@@ -31,12 +31,12 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Jaseci-Labs/jaseci"
+Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://jac-lang.org"
-Source = "https://github.com/Jaseci-Labs/jaseci/tree/main/jaseci-package"
-Issues = "https://github.com/Jaseci-Labs/jaseci/issues"
-Changelog = "https://github.com/Jaseci-Labs/jaseci/releases"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jaseci-package"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+Changelog = "https://github.com/jaseci-labs/jaseci/releases"
 
 [tool.setuptools.packages.find]
 include = ["jaseci*"]

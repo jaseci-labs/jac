@@ -1,23 +1,20 @@
 version: 2
 updates:
   - package-ecosystem: "pip"
-    directory: "/"
+    directories:
+      - "/jac"
+      - "/jac-byllm"
+      - "/jac-client"
+      - "/jac-scale"
+      - "/jac-super"
+      - "/jac-mcp"
+      - "/jaseci-package"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 10
-    allow:
-      - dependency-type: "all"
     labels:
       - "dependencies"
-    ignore:
-      - dependency-name: "jaclang"
-      - dependency-name: "byllm"
-      - dependency-name: "jac-client"
-      - dependency-name: "jac-scale"
-      - dependency-name: "jac-super"
-      - dependency-name: "jac-mcp"
-      - dependency-name: "jaseci"
 
   - package-ecosystem: "github-actions"
     directory: "/"
