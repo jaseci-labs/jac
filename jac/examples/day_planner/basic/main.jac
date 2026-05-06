@@ -1,7 +1,4 @@
-import from byllm.lib { Model }
 cl import "./styles.css";
-
-glob llm = Model(model_name="claude-sonnet-4-20250514");
 
 # --- Enums ---
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
