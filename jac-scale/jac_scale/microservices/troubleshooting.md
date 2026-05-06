@@ -170,6 +170,7 @@ $ kubectl describe pod <pod-name> | grep Image:
 Image is `python:3.12-slim` — the deploy fell back to the generic Python image because the `jac start --scale` flow couldn't find a way to build/load YOUR app's image. Generic Python doesn't have `jac` or `jac-scale` installed, hence "command not found."
 
 This happens when:
+
 1. No `Dockerfile` in the project root + no `image_registry` configured in jac.toml (auto-build doesn't know what to build/where to push).
 2. `app_config.build = False` — explicit opt-out.
 3. You ran `jac start --scale` from inside a fixture / test directory that wasn't designed for direct `jac start --scale` use (e.g. `jac-scale/jac_scale/tests/fixtures/k8s_e2e/` is for the e2e script, not direct deploy).
@@ -304,6 +305,7 @@ Common shapes:
 
 - **Port mismatch** → container `containerPort: 8000` but your code
   binds 8080. Fix in jac.toml:
+
   ```toml
   [plugins.scale.kubernetes]
   container_port = 8080
