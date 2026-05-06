@@ -152,7 +152,6 @@ def print_inventory_table {
     print("");  # Add spacing after inventory
 
     return 7 + max_items;  # Return number of lines used for inventory
-
 }
 
 def display_chat_history {

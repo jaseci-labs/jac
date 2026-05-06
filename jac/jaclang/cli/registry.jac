@@ -51,7 +51,10 @@ obj CommandRegistry {
     def get_groups -> list[str];
     def finalize -> argparse.ArgumentParser;
     def _apply_pending_extensions(name: str) -> None;
-    def _build_subparser(subparsers: Any, spec: CommandSpec) -> argparse.ArgumentParser;
+    def _build_subparser(
+        subparsers: Any, spec: CommandSpec
+    ) -> argparse.ArgumentParser;
+
     def _add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None;
 }
 

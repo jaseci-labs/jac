@@ -762,9 +762,7 @@ impl MachOLinker.build_executable -> bytes {
     if len(data_data) > 0 {
         data_content_end = data_sec_foff + len(data_data);
     }
-    data_seg_size = _align(
-        data_content_end - data_seg_foff, page_size
-    )
+    data_seg_size = _align(data_content_end - data_seg_foff, page_size)
         if has_data_seg
         else 0;
 
@@ -1152,7 +1150,9 @@ impl MachOLinker.build_executable -> bytes {
     pagezero_name = b"__PAGEZERO\x00\x00\x00\x00\x00\x00";
     struct.pack_into("<II", output, lc_off, LC_SEGMENT_64, 72);
     output[lc_off + 8:lc_off + 24] = pagezero_name;
-    struct.pack_into("<QQQQIIII", output, lc_off + 24, 0, base_vmaddr, 0, 0, 0, 0, 0, 0);
+    struct.pack_into(
+        "<QQQQIIII", output, lc_off + 24, 0, base_vmaddr, 0, 0, 0, 0, 0, 0
+    );
     lc_off += 72;
 
     # LC_SEGMENT_64 __TEXT
@@ -1332,7 +1332,9 @@ impl MachOLinker.build_executable -> bytes {
     # LC_DYSYMTAB
     struct.pack_into("<II", output, lc_off, LC_DYSYMTAB, 80);
     struct.pack_into("<II", output, lc_off + 8, 0, 0);  # ilocalsym, nlocalsym
-    struct.pack_into("<II", output, lc_off + 16, 0, n_defined);  # iextdefsym, nextdefsym
+    struct.pack_into(
+        "<II", output, lc_off + 16, 0, n_defined
+    );  # iextdefsym, nextdefsym
     struct.pack_into(
         "<II", output, lc_off + 24, n_defined, n_undef
     );  # iundefsym, nundefsym
@@ -1370,7 +1372,9 @@ impl MachOLinker.build_executable -> bytes {
     codesig_lc_off = 0;
     if is_arm64 {
         codesig_lc_off = lc_off;
-        struct.pack_into("<IIII", output, lc_off, LC_CODE_SIGNATURE, 16, codesig_off, 0);
+        struct.pack_into(
+            "<IIII", output, lc_off, LC_CODE_SIGNATURE, 16, codesig_off, 0
+        );
         lc_off += 16;
     }
 

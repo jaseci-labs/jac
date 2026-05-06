@@ -1,6 +1,6 @@
 # Build a Chess Engine
 
-> **Prerequisites:** Familiarity with [Native Compilation](../../reference/language/native-pathway.md) basics -- `na {}` blocks, `.na.jac` files, and `with entry {}`.
+> **Prerequisites:** Familiarity with [Native Compilation](../../reference/language/native-pathway.md) basics -- `to na:` sections (or `.na.jac` files) and `with entry {}`.
 
 In this tutorial you will explore a fully playable chess engine written in idiomatic Jac, run it on the native compilation pathway, and compile it to a standalone binary. Along the way you will learn:
 
@@ -141,6 +141,9 @@ glob PIECE_VALUES: dict[PieceKind, int] = {
 ```
 
 **Native features:** enums, global variables, hex/binary literals, dict literals with enum keys.
+
+!!! tip "Typed-base enum shorthand"
+    Plain `enum Color { WHITE = 0, BLACK = 1 }` works here because the members are used as dictionary keys -- their identity matters more than their numeric value. If you wanted `Color.WHITE` to also act as a real `int` (for arithmetic, indexing, or interop with `int`-typed APIs), use the typed-base form: `enum Color: int { WHITE = 0, BLACK = 1 }`. `: int` desugars to Python's `IntEnum`, `: str` to `StrEnum`.
 
 ### Forward Declarations and Function Signatures
 

@@ -8,7 +8,7 @@ with entry {
     f: Foo = Foo();
 
     i = 42;
-    s = "foo";
+    s: str = "foo";
 
     i = f.bar;  # <-- Ok
     s = f.bar;  # <-- Error

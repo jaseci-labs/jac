@@ -21,7 +21,8 @@ obj ProjectTemplate {
         files: dict[str, str],  # path -> content (with {{name}} placeholders)
         directories: list[str] = [],  # directories to create
         root_gitignore_entries: list[str] = [],  # entries for project-root .gitignore
-        post_create: Callable | None = None;  # optional callback(project_path, project_name)
+        post_create:
+            Callable | None = None;  # optional callback(project_path, project_name)
 
     def to_dict -> dict[str, Any];
 }

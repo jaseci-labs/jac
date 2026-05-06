@@ -86,8 +86,15 @@ async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any;
 # Function call function - calls server-side functions from client
 async def __jacCallFunction(function_name: str, args: dict = {}) -> Any;
 # Authentication helpers
-async def jacSignup(username: str, password: str) -> dict;
-async def jacLogin(username: str, password: str) -> bool;
+def __normalizeIdentity(x: Any) -> dict;
+def __normalizeCredential(x: Any) -> dict;
+async def jacSignup(
+    identities_or_username: (str | list), credential_or_password: (str | dict)
+) -> dict;
+
+async def jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool;
 
 def jacLogout -> None;
 def jacIsLoggedIn -> bool;
@@ -139,9 +146,18 @@ def useEffect(effectFn: Any, deps: list = []) -> None;
 # ============================================================================
 # Client Error Reporting
 # ============================================================================
-# Report client-side errors to the server for logging
+# Report client-side errors to the server for logging.
+# `componentStack` carries React's named call chain (e.g. "in App\n  in Router")
+# captured by the boundary's onError; the JS `stack` is engine frames only.
 def __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None;
 # Install global error handlers (window.onerror, unhandledrejection)
 def __jacInstallErrorHandlers -> None;
+# onError prop for ErrorBoundary; captures React's componentStack which
+# FallbackComponent props don't expose, then forwards via __jacReportError.
+def __jacReactErrorHandler(error: Any, info: Any) -> None;

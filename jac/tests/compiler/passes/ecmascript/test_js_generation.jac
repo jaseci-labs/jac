@@ -666,7 +666,12 @@ test "separated files" {
 
     # Check the spawned walker function is present
     assert "let response = await __jacSpawn(" in js_code;
-    assert "__jacSpawn(\"create_todo\", \"\", {\"text\": input.strip()});" in js_code;
+    # `input` is destructured from useState (external React typings) so its
+    # static type is unknown — `.strip()` routes through the polymorphic
+    # runtime helper instead of leaking the Python method name.
+    assert (
+        "__jacSpawn(\"create_todo\", \"\", {\"text\": _jac.poly.strip(input)});" in js_code
+    );
 }
 
 test "separated defpub generates rpc stubs" {
@@ -876,11 +881,14 @@ test "compr list multiple filters" {
 test "compr list method call" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
-    # list_compr_method: [x.strip() for x in items] → items.map(x => x.strip())
-    # items is typed as bare `list` (no element type), so x is Unknown
-    # and strip() correctly stays untranspiled.
-    assert ".strip()" in js_code , (
-        "Method call in comprehension output should be preserved"
+    # list_compr_method: [x.strip() for x in items] → items.map(x => _jac.poly.strip(x))
+    # `items` is typed as bare `list` (no element type), so x is Unknown.
+    # Pre-#5508 the codegen leaked the Python `.strip()` verbatim into JS,
+    # which crashes at runtime. The polymorphic runtime helper dispatches
+    # to `String.prototype.trim` for actual strings.
+    assert "_jac.poly.strip(x)" in js_code , (
+        "Untyped element method calls in comprehensions should route "
+        "through _jac.poly.* runtime helpers"
     );
 }
 
@@ -891,6 +899,67 @@ test "str methods on local vars and chained calls" {
     assert "text.toUpperCase().trim()" in js_code , "chained str.upper().strip() should map to .toUpperCase().trim()";
     assert "text.trim().toUpperCase()" in js_code , "chained str.strip().upper() should map to .trim().toUpperCase()";
     assert "text.toUpperCase().trim().toLowerCase()" in js_code , "triple-chained str.upper().strip().lower() should map to .toUpperCase().trim().toLowerCase()";
+}
+
+test "issue 5508 case1 in operator on str method call" {
+    # Regression for jaseci-labs/jaseci#5508 case 1.
+    # `"a" in name.lower()` was emitting a raw JS `in` operator on a string
+    # because operator-side dispatch (_try_primitive_op) did not walk the MRO
+    # to recognize the LiteralString return type as `str`. The receiver of
+    # `.lower()` got translated to `.toLowerCase()`, but the `in` operator
+    # itself was left untranslated, crashing at runtime in the browser.
+    js_code = compile_fixture_to_js("issue_5508_str_method_dispatch.cl.jac", FIXTURES);
+    assert "name.toLowerCase().includes(\"a\")" in js_code , (
+        "`x in str_method()` should lower to .includes() on the method result"
+    );
+    assert "(\"a\" in name.toLowerCase())" not in js_code , (
+        "raw JS `in` operator on a string would crash at runtime"
+    );
+}
+
+test "issue 5508 case2 str methods on untyped receivers" {
+    # Regression for jaseci-labs/jaseci#5508 case 2 (also covers #5453).
+    # When the static type of the receiver is not provably `str` (props of
+    # type `dict`, results of `or` widening, comprehension over untyped
+    # list, etc.) the codegen used to emit Python method names verbatim
+    # (`.upper`, `.strip`, `.lower`) which crash at runtime in JS. Fall
+    # back to runtime-polymorphic helpers (`_jac.poly.*`) instead.
+    js_code = compile_fixture_to_js("issue_5508_str_method_dispatch.cl.jac", FIXTURES);
+    # Pluck out the user-compiled function bodies (skip the injected
+    # _jac runtime, which legitimately contains `s.upper()` etc. as the
+    # user-class fallback inside its polyfills).
+    user_chunks = [];
+    for fn_name in ["case2_props_upper", "case2_props_strip", "case2_props_lower"] {
+        idx = js_code.find("function " + fn_name);
+        assert idx >= 0 , (f"missing compiled function {fn_name}");
+        user_chunks.append(js_code[idx:idx + 400]);
+    }
+    user_code = "\n".join(user_chunks);
+    # Untyped string methods must NOT survive verbatim into the user code.
+    assert ".upper()" not in user_code , (
+        "Python `.upper()` should not appear verbatim in compiled user JS"
+    );
+    assert ".strip()" not in user_code , (
+        "Python `.strip()` should not appear verbatim in compiled user JS"
+    );
+    assert ".lower()" not in user_code , (
+        "Python `.lower()` (without a static str type) should not appear "
+        "verbatim in compiled user JS"
+    );
+    # Should route through the polymorphic runtime helpers.
+    assert "_jac.poly.upper(" in user_code , (
+        "Untyped .upper() should route through _jac.poly.upper()"
+    );
+    assert "_jac.poly.strip(" in user_code , (
+        "Untyped .strip() should route through _jac.poly.strip()"
+    );
+    assert "_jac.poly.lower(" in user_code , (
+        "Untyped .lower() should route through _jac.poly.lower()"
+    );
+    # The _jac runtime must be injected when poly helpers are used.
+    assert "const _jac = {" in js_code , (
+        "_jac runtime must be injected when _jac.poly.* helpers are emitted"
+    );
 }
 
 test "compr list ternary output" {
@@ -907,7 +976,9 @@ test "compr set basic" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
     # set_compr_basic: {x * 2 for x in items} → new Set(items.map(x => (x * 2)))
-    assert "new Set(" in js_code , ("Set comprehension should wrap result in new Set()");
+    assert "new Set(" in js_code , (
+        "Set comprehension should wrap result in new Set()"
+    );
     assert "new Set(items.map(" in js_code , (
         "Set comprehension should be new Set(items.map(...))"
     );
@@ -1112,4 +1183,95 @@ test "private identifier generates hash prefix" {
         f"PrivateIdentifier should emit '#secret', got: {js_code}"
     );
     assert "class Foo" in js_code;
+}
+
+test "jsx preserves single-space whitespace between adjacent expression children" {
+    # BUG: The parser dropped any whitespace-only JSX_TEXT token, including
+    # an intentional single space between two `{expr}` children on the same
+    # line.  As a result `<div>{count} {("task" ...)} remaining</div>`
+    # emitted children `[count, (cond), " remaining"]` instead of
+    # `[count, " ", (cond), " remaining"]`, so the rendered DOM showed
+    # "3tasks remaining" instead of "3 tasks remaining" (and "1.5lb"
+    # instead of "1.5 lb" in the shopping-list code from the AI day
+    # planner tutorial).
+    #
+    # Whitespace that crosses a newline (indent between `}` and the next
+    # `{` on a new line) is structural and must still be dropped, matching
+    # Babel's JSX text normalization.
+    fixture = "jsx_adjacent_expressions_spaces.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # First span: same-line `{count} {("task" if ... else "tasks")} remaining`.
+    # Children must include a literal " " separator between count and the
+    # conditional, AND between the conditional and "remaining".
+    assert (
+        "[count, \" \", ((count === 1) ? \"task\" : \"tasks\"), \" remaining\"]" in js_code
+    ) , (
+        "Same-line `{a} {b}` must emit a `\" \"` child between adjacent "
+        f"expressions, got:\n{js_code}"
+    );
+
+    # Second span: `{amount} {unit}` — two adjacent expressions only.
+    assert "[amount, \" \", unit]" in js_code , (
+        f"Same-line adjacent `{{amount}} {{unit}}` must emit a `\" \"` "
+        f"separator child, got:\n{js_code}"
+    );
+
+    # Third span: newline-separated `{count}\n{unit}` — structural
+    # whitespace MUST be dropped, no `" "` child.
+    assert "__jacJsx(\"p\", {}, [count, unit])" in js_code , (
+        "Newline-separated `{a}\\n{b}` must NOT emit a whitespace child "
+        f"(structural whitespace is dropped per Babel rules), got:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "is and is not emit identity comparison operators" {
+    # BUG: ES_COMPARISON_OPS had no entries for Tok.KW_IS / Tok.KW_ISN, so
+    # both `is` and `is not` fell through to the `===` default. `is None`
+    # was accidentally correct; `is not None` silently inverted to `===`,
+    # causing branches like `if x is not None { ... }` to run only when x
+    # *was* None.
+    jac_code = "\"\"\"Test is/is not codegen.\"\"\"\n\ncl def check(x: int | None) -> int {\n    if x is None {\n        return 1;\n    }\n    if x is not None {\n        return 2;\n    }\n    return 3;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "x === null" in js_code , (
+            f"`is None` must emit `=== null`, got:\n{js_code}"
+        );
+        assert "x !== null" in js_code , (
+            f"`is not None` must emit `!== null`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "fstring format spec invokes runtime format helper" {
+    # BUG: exit_formatted_value ignored nd.format_spec, so format mini-language
+    # specs like `:.2f` were dropped — `f"{x:.2f}"` rendered "8" instead of
+    # "8.00". The fix routes formatted values with a spec through the
+    # _jac.builtin.format runtime helper, which honors precision, width,
+    # alignment, and type specifiers.
+    jac_code = "\"\"\"Test f-string format spec.\"\"\"\n\ncl def fmt_price(x: float) -> str {\n    return f\"${x:.2f}\";\n}\n\ncl def fmt_plain(x: float) -> str {\n    return f\"${x}\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.builtin.format(x, \".2f\")" in js_code , (
+            "`f\"{x:.2f}\"` must compile to a runtime format() call, "
+            f"got:\n{js_code}"
+        );
+        # Bare `f"{x}"` (no spec) must still emit a plain template
+        # interpolation — the runtime call is reserved for spec'd values.
+        assert "${x}" in js_code , (
+            f"Bare `f\"{{x}}\"` should still use plain `${{x}}`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
 }

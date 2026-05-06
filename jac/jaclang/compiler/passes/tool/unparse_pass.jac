@@ -84,6 +84,7 @@ obj UnparsePass(UniPass) {
     def exit_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def exit_binary_expr(nd: uni.BinaryExpr) -> None;
     def exit_compare_expr(nd: uni.CompareExpr) -> None;
+    def exit_cfg_expr(nd: uni.CfgExpr) -> None;
     def exit_bool_expr(nd: uni.BoolExpr) -> None;
     def exit_lambda_expr(nd: uni.LambdaExpr) -> None;
     def exit_unary_expr(nd: uni.UnaryExpr) -> None;

@@ -408,9 +408,7 @@ impl JSCodeGenerator.gen_literal(nd: es.Literal) -> str {
         return nd.raw;
     }
     if isinstance(nd.value, str) {
-        escaped = nd.value.replace('\\', '\\\\').replace(
-            '"', '\\"'
-        ).replace(
+        escaped = nd.value.replace('\\', '\\\\').replace('"', '\\"').replace(
             '\n', '\\n'
         ).replace(
             '\r', '\\r'

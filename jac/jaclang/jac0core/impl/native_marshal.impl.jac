@@ -64,12 +64,7 @@ impl NativeStructView._resolve(name: str, raw: Any) -> Any {
             ct_cls = self.ctypes_classes.get(sname);
             if ct_cls {
                 return NativeStructView(
-                    raw,
-                    ct_cls,
-                    sname,
-                    self.layout,
-                    self.ctypes_classes,
-                    self.enum_maps
+                    raw, ct_cls, sname, self.layout, self.ctypes_classes, self.enum_maps
                 );
             }
         }
@@ -181,9 +176,7 @@ impl NativeListView.__iter__ -> Any {
 
 impl NativeListView.__eq__(other: Any) -> Any {
     if isinstance(other, list) {
-        return (
-            len(self) == len(other) and all(a == b for (a, b) in zip(self, other))
-        );
+        return (len(self) == len(other) and all(a == b for (a, b) in zip(self, other)));
     }
     return NotImplemented;
 }

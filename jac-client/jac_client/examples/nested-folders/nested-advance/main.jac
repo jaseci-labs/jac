@@ -7,9 +7,7 @@ cl import from .level1.Card { Card }
 cl def:pub app -> JsxElement {
     return
         <div style={{padding: "20px"}}>
-            <h1>
-                Nested Folder Levels Demo
-            </h1>
+            <h1>Nested Folder Levels Demo</h1>
             <div style={{margin: "10px 0"}}>
                 <ButtonRoot/>
             </div>

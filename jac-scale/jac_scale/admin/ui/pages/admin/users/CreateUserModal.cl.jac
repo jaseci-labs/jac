@@ -44,30 +44,26 @@ cl {
                         label="Username"
                         type="text"
                         value={newUsername}
-                        onChange={lambda e: Any { newUsername = e.target.value;}}
+                        onChange={lambda e: Any { newUsername = e.target.value; }}
                         className="mb-3"
                     />
                     <Input
                         label="Password"
                         type="password"
                         value={newPassword}
-                        onChange={lambda e: Any { newPassword = e.target.value;}}
+                        onChange={lambda e: Any { newPassword = e.target.value; }}
                         className="mb-3"
                     />
                     <Select
                         label="Role"
                         value={newRole}
-                        onChange={lambda e: Any { newRole = e.target.value;}}
+                        onChange={lambda e: Any { newRole = e.target.value; }}
                         options={ROLE_OPTIONS}
                         className="mb-4"
                     />
                     <ModalFooter>
-                        <Button variant="ghost" onClick={handleClose}>
-                            Cancel
-                        </Button>
-                        <Button type="submit">
-                            Create
-                        </Button>
+                        <Button variant="ghost" onClick={handleClose}>Cancel</Button>
+                        <Button type="submit">Create</Button>
                     </ModalFooter>
                 </form>
             </Modal>;

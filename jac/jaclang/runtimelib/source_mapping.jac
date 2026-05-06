@@ -303,6 +303,15 @@ def _is_node_modules(path: str) -> bool {
     return "node_modules" in path;
 }
 
+"""Trim a node_modules path to the package + relative file (e.g.
+'../node_modules/react-dom/cjs/foo.js' -> 'node_modules/react-dom/cjs/foo.js').
+Used by verbose mode to render node_modules frames with a readable path
+instead of the bundle map's `..`-relative form."""
+def _short_node_modules(path: str) -> str {
+    idx = path.find("node_modules/");
+    return path[idx:] if idx >= 0 else path;
+}
+
 """Compute a cache signature from .map file modification times."""
 def _get_map_signature(base_path: str) -> str {
     client_dir = Path(base_path) / ".jac" / "client";
@@ -381,7 +390,8 @@ Supports two-layer resolution:
 obj SourceMapper {
     has _source_map: SourceMap | None = None,
         _per_file_maps: dict[str, SourceMap] = {},
-        _base_path: str = "";
+        _base_path: str = "",
+        _abs_base_path: str = "";
 
     """Create a SourceMapper from a project's .jac/client/ directory.
     Caches the result and invalidates when .map files change.
@@ -483,58 +493,162 @@ obj SourceMapper {
         return SourceLocation(file=jac_path, line=compiled_line, column=compiled_col);
     }
 
-    """Resolve a JS stack trace, replacing JS locations with .jac locations."""
-    def resolve_stack_trace(stack: str) -> str {
+    """Resolve a JS stack trace, replacing JS locations with .jac locations.
+
+    The single rule: a resolved frame is user source iff its path ends in
+    `.jac`. Anything else (node_modules, compiled JS, bundle output) lives
+    inside `.jac/` and is auto-generated. When `verbose` is False (the
+    default) those frames are dropped; verbose=True keeps them, with
+    node_modules paths shortened for readability. Unresolved frames pass
+    through unchanged either way.
+    """
+    def resolve_stack_trace(stack: str, verbose: bool = False) -> str {
         if self._source_map is None {
             return stack;
         }
         resolved_lines: list[str] = [];
         for line in stack.split("\n") {
-            resolved_lines.append(self._resolve_stack_line(line));
+            result = self._resolve_stack_line(line, verbose);
+            if result is not None {
+                resolved_lines.append(result);
+            }
         }
         return "\n".join(resolved_lines);
     }
 
-    """Resolve a single stack trace line."""
-    def _resolve_stack_line(line: str) -> str {
+    """Resolve a single stack trace line.
+
+    Returns None when a non-user-source frame is filtered out (so
+    `resolve_stack_trace` can drop it from the joined output); otherwise
+    returns the (possibly rewritten) line.
+    """
+    def _resolve_stack_line(line: str, verbose: bool = False) -> str | None {
         if self._source_map is None {
             return line;
         }
         m = _STACK_PATTERN.search(line);
         if m {
             func_name = m.group(1);
-            js_line = int(m.group(3));
-            js_col = int(m.group(4));
-            loc = self.resolve(js_line, js_col);
-            if loc and not _is_node_modules(loc.file) {
-                display_path = self._make_relative(loc.file);
-                return f"    at {func_name} ({display_path}:{loc.line}:{loc.column})";
+            loc = self.resolve(int(m.group(3)), int(m.group(4)));
+            if loc {
+                display = self._format_resolved_path(loc.file, verbose);
+                if display is None {
+                    return None;
+                }
+                return f"    at {func_name} ({display}:{loc.line}:{loc.column})";
             }
             return line;
         }
         m = _STACK_PATTERN_ANON.search(line);
         if m {
-            js_line = int(m.group(2));
-            js_col = int(m.group(3));
-            loc = self.resolve(js_line, js_col);
-            if loc and not _is_node_modules(loc.file) {
-                display_path = self._make_relative(loc.file);
-                return f"    at {display_path}:{loc.line}:{loc.column}";
+            loc = self.resolve(int(m.group(2)), int(m.group(3)));
+            if loc {
+                display = self._format_resolved_path(loc.file, verbose);
+                if display is None {
+                    return None;
+                }
+                return f"    at {display}:{loc.line}:{loc.column}";
             }
             return line;
         }
         return line;
     }
 
-    """Make a path relative to the project for cleaner display."""
+    """Render a resolved file path for a stack frame, or signal a drop.
+
+    Returns None when the frame should be filtered (non-user-source path
+    in non-verbose mode). User-source paths get project-relative form;
+    verbose-mode node_modules paths get the shortened package form to
+    stay readable; everything else gets project-relative form.
+    """
+    def _format_resolved_path(path: str, verbose: bool) -> str | None {
+        if not path.endswith(".jac") {
+            if not verbose {
+                return None;
+            }
+            if _is_node_modules(path) {
+                return _short_node_modules(path);
+            }
+        }
+        return self._make_relative(path);
+    }
+
+    """Make a path relative to the project for cleaner display.
+
+    Both sides are absolutized lexically (abspath, not resolve) so we don't
+    touch the filesystem or follow symlinks per stack line. The base path is
+    cached on first call since it is constant for the mapper's lifetime.
+    """
     def _make_relative(path: str) -> str {
         if not self._base_path {
             return path;
         }
+        if not self._abs_base_path {
+            self._abs_base_path = os.path.abspath(self._base_path);
+        }
         try {
-            return str(Path(path).relative_to(self._base_path));
+            return str(Path(os.path.abspath(path)).relative_to(self._abs_base_path));
         } except ValueError {
             return path;
         }
     }
+}
+
+# ---------------------------------------------------------------------------
+# Client error report helpers
+# ---------------------------------------------------------------------------
+"""Resolve `stack` and `componentStack` to .jac locations via SourceMapper,
+swallowing any mapper failure so error reporting can never raise. React's
+componentStack uses the same `at fn (url:line:col)` format as JS stacks,
+so the same mapper resolves both — and that is the chain that points at
+user components when the JS stack lives inside react-dom.
+
+`verbose` is forwarded to the mapper. False (the default) drops build-
+artifact frames from the output; True keeps them. Wired from
+`[client_errors] verbose` in jac.toml at each handler's call site.
+"""
+def resolve_client_error_stacks(
+    base_path: (str | None),
+    stack: str = "",
+    component_stack: str = "",
+    verbose: bool = False
+) -> tuple[str, str] {
+    if base_path and (stack or component_stack) {
+        try {
+            mapper = SourceMapper.from_bundle(base_path);
+            if stack {
+                stack = mapper.resolve_stack_trace(stack, verbose);
+            }
+            if component_stack {
+                component_stack = mapper.resolve_stack_trace(component_stack, verbose);
+            }
+        } except Exception { }
+    }
+    return (stack, component_stack);
+}
+
+"""Format a /cl/__error__ payload into the canonical log lines shared by every
+server impl that exposes the endpoint.
+"""
+def format_client_error_log(
+    message: str,
+    stack: str = "",
+    component_stack: str = "",
+    url: str = "",
+    source: str = ""
+) -> list[str] {
+    log_parts: list[str] = [f"[Client] {message}"];
+    if stack {
+        log_parts.append(f"  Stack: {stack}");
+    }
+    if component_stack {
+        log_parts.append(f"  Component stack: {component_stack}");
+    }
+    if url {
+        log_parts.append(f"  URL: {url}");
+    }
+    if source {
+        log_parts.append(f"  Source: {source}");
+    }
+    return log_parts;
 }

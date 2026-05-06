@@ -413,6 +413,7 @@ class TypeAliasDef:
 class EnumDef:
     name: str = ""
     bases: str = ""
+    value_type: str = ""  # `enum X: T { ... }` shorthand: T as raw text
     body: list = field(default_factory=list)
     decorators: list = field(default_factory=list)
 
@@ -1241,13 +1242,26 @@ class Parser:
         self._expect(TT.NAME, "enum")
         name = self._expect(TT.NAME).value
         bases = ""
-        if self._match(TT.LPAREN):
+        value_type = ""
+        # Typed-base shorthand `enum X: T { ... }` — mutually exclusive with
+        # the parenthesized form `enum X(B) { ... }`. T is collected as raw
+        # text and routed to the codegen which expands int -> IntEnum,
+        # str -> StrEnum, and anything else into a mixin pattern.
+        if self._match(TT.COLON):
+            value_type = self._collect_until(TT.LBRACE).strip()
+        elif self._match(TT.LPAREN):
             bases = self._collect_until(TT.RPAREN)
             self._expect(TT.RPAREN)
         self._expect(TT.LBRACE)
         body = self._parse_enum_body()
         self._expect(TT.RBRACE)
-        return EnumDef(name=name, bases=bases, body=body, decorators=decorators)
+        return EnumDef(
+            name=name,
+            bases=bases,
+            value_type=value_type,
+            body=body,
+            decorators=decorators,
+        )
 
     def _parse_enum_body(self) -> list:
         """Parse enum body — handles comma OR semicolon separated members."""
@@ -1780,7 +1794,7 @@ class CodeGen:
                         self.needs_dataclass_import = True
                 self._scan_needs(node.body)
             elif isinstance(node, EnumDef):
-                if not node.bases:
+                if not node.bases or node.value_type:
                     self.needs_enum_import = True
             elif isinstance(node, WithEntry):
                 self._scan_needs(node.body)
@@ -1929,6 +1943,11 @@ class CodeGen:
                         continue  # Skip stub; impl will provide the method
                 self._emit(bnode)
             for impl in impls:
+                parts = impl.target.split(".")
+                mname = parts[-1] if len(parts) > 1 else parts[0]
+                mname = _dunder_names.get(mname, mname)
+                if mname not in stub_lookup:
+                    continue
                 self._emit_impl_as_method(impl, stub_lookup)
             self._in_class = prev_in_class
         self.indent -= 1
@@ -1941,7 +1960,18 @@ class CodeGen:
     def _emit_enum(self, node: EnumDef) -> None:
         for dec in node.decorators:
             self._line(f"@{dec}")
-        if node.bases:
+        if node.value_type:
+            # Typed-base shorthand: int -> IntEnum, str -> StrEnum, anything
+            # else uses Python's mixin pattern `class X(T, enum.Enum)`.
+            self.needs_enum_import = True
+            vt = node.value_type
+            if vt == "int":
+                bases = "enum.IntEnum"
+            elif vt == "str":
+                bases = "enum.StrEnum"
+            else:
+                bases = f"{vt}, enum.Enum"
+        elif node.bases:
             bases = node.bases
         else:
             bases = "enum.Enum"
@@ -1989,10 +2019,27 @@ class CodeGen:
         self.indent += 1
         prev_in_class = self._in_class
         self._in_class = False  # nested functions are not methods
-        self._emit_body(node.body)
+        # Module-level impl stitching: a top-level forward-decl `def foo(...);`
+        # paired with `impl foo(...) { body }` in the same module or an
+        # .impl.jac file. The full compiler uses DeclImplMatchPass for this;
+        # jac0 (bootstrap) approximates by splicing the impl's body into the
+        # stub's emitted function. Class-method impls remain stitched in
+        # `_emit_class` where they have access to the surrounding class body.
+        body = node.body
+        if not prev_in_class and self._is_stub_body(body):
+            for impl in self.impl_registry.get(node.name, []):
+                if "." not in impl.target:
+                    body = impl.body
+                    break
+        self._emit_body(body)
         self._in_class = prev_in_class
         self.indent -= 1
         self._line()
+
+    @staticmethod
+    def _is_stub_body(body: list) -> bool:
+        """A forward-decl stub is a body of a single PassStmt (from `def f(...);`)."""
+        return len(body) == 1 and isinstance(body[0], PassStmt)
 
     def _format_params(self, params: list[Param]) -> str:
         parts: list[str] = []

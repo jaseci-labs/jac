@@ -412,10 +412,7 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, Any] {
                 for e in prog.errors_had {
                     errors.append(str(e));
                 }
-                return {
-                    "python_code": "",
-                    "warnings": errors or ["Conversion failed"]
-                };
+                return {"python_code": "", "warnings": errors or ["Conversion failed"]};
             }
 
             py_code = ir.gen.py or "";
@@ -445,7 +442,9 @@ impl CompilerBridge.jac_to_js(code: str) -> dict[str, Any] {
 
         Jac.setup();
 
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".cl.jac", delete=False) as f {
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".cl.jac", delete=False
+        ) as f {
             f.write(code);
             tmp_path = f.name;
         }

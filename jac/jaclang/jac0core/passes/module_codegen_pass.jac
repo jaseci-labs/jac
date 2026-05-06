@@ -65,8 +65,7 @@ obj ModuleCodegenPass(Transform[uni.Module, uni.Module]) {
             ) {
                 result.append(stmt);
             } elif (
-                not isinstance(stmt, uni.ContextAwareNode)
-                and ctx == CodeContext.SERVER
+                not isinstance(stmt, uni.ContextAwareNode) and ctx == CodeContext.SERVER
             ) {
                 # Undecorated top-level nodes default to SERVER context
                 result.append(stmt);

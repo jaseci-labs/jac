@@ -106,7 +106,9 @@ def _download_bun(bin_dir: Path) -> Path | None {
                     }
                 }
                 if not bun_member {
-                    console.print("  [red]✖[/red] Could not find bun binary in archive");
+                    console.print(
+                        "  [red]✖[/red] Could not find bun binary in archive"
+                    );
                     return None;
                 }
                 # Extract just the binary

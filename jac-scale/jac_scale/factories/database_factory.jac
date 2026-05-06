@@ -3,6 +3,7 @@ import from typing { Any, Optional, Dict, cast }
 import from jac_scale.abstractions.database_provider { DatabaseProvider }
 import from jac_scale.abstractions.deployment_target { DeploymentTarget }
 import from jac_scale.config_loader { get_scale_config }
+import from jac_scale._optdeps.optional_deps { require_optional }
 import from enum { StrEnum }
 
 enum DatabaseType ( StrEnum ) { MONGODB = 'mongodb', REDIS = 'redis' }
@@ -79,9 +80,11 @@ class DatabaseProviderFactory {
 
         # Create appropriate client
         if (db_type_enum == DatabaseType.MONGODB) {
+            require_optional("pymongo", "data");
             import from pymongo { MongoClient }
             return MongoClient(resolved_uri, **(config or {}));
         } elif (db_type_enum == DatabaseType.REDIS) {
+            require_optional("redis", "data");
             import from redis { Redis }
             return Redis.from_url(resolved_uri, **(config or {}));
         } else {

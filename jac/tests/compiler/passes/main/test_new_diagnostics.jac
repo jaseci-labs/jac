@@ -65,6 +65,17 @@ def compile_only(fixture_name: str) -> tuple {
     return (program, mod);
 }
 
+"""Parse source string with diagnostic capture: returns (program, had_error)."""
+def parse_with_prog(source: str) -> tuple[JacProgram, bool] {
+    prog = JacProgram();
+    try {
+        (_, had_error) = parse(source, "/tmp/test.jac", prog=prog);
+        return (prog, had_error);
+    } except Exception {
+        return (prog, True);
+    }
+}
+
 """Parse source string, return (has_errors: bool, program: JacProgram)."""
 def parse_and_validate(source: str) -> tuple {
     try {
@@ -168,6 +179,69 @@ test "E0117: mixed tabs and spaces" {
 #  Infrastructure: INFRA-8 for E0055-E0058
 #  Milestone: 1 (Context Validity) + 4 (Parser/Lexer Hardening)
 # ══════════════════════════════════════════════════════════════════
+
+# ── E0025: JS arrow function syntax (=>) ───────────────────────────
+test "E0025: js arrow in jsx attribute slot" {
+    src = 'cl { def:pub Foo() -> JsxElement {' + ' return <button onClick={e => doThing(e)}>Click</button>; } }';
+    (prog, _) = parse_with_prog(src);
+    assert has_diagnostic_code(prog, "E0025");
+    assert count_diagnostic_code(prog, "E0025") == 1;
+}
+
+test "E0025: js arrow in jsx child slot" {
+    src = 'cl { def:pub Foo() -> JsxElement {' + ' return <div>{e => fn(e)}</div>; } }';
+    (prog, _) = parse_with_prog(src);
+    assert has_diagnostic_code(prog, "E0025");
+    assert count_diagnostic_code(prog, "E0025") == 1;
+}
+
+test "E0025: js arrow at module level glob" {
+    (prog, _) = parse_with_prog('glob f = x => x + 1;');
+    assert has_diagnostic_code(prog, "E0025");
+    assert count_diagnostic_code(prog, "E0025") == 1;
+}
+
+test "E0025: js arrow with block body" {
+    (prog, _) = parse_with_prog('with entry { f = x => { print(x); }; }');
+    assert has_diagnostic_code(prog, "E0025");
+    assert count_diagnostic_code(prog, "E0025") == 1;
+}
+
+test "E0025: chained arrows emit one diagnostic per arrow" {
+    (prog, _) = parse_with_prog('with entry { f = a => b => c; }');
+    assert count_diagnostic_code(prog, "E0025") == 2;
+}
+
+test "E0025: gte (>=) does not fire" {
+    (prog, had_err) = parse_with_prog('with entry { x = (a >= b); }');
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0025");
+}
+
+test "E0025: lambda syntax unaffected" {
+    (prog, had_err) = parse_with_prog('with entry { f = lambda x: int : x + 1; }');
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0025");
+}
+
+test "E0025: spaced '= >' is not an arrow" {
+    # '=' and '>' separated by whitespace should never match the arrow shape;
+    # the source is invalid for other reasons, but E0025 must not fire.
+    (prog, _) = parse_with_prog('with entry { x = a = > b; }');
+    assert not has_diagnostic_code(prog, "E0025");
+}
+
+test "E0025: arrow in fstring slot" {
+    (prog, _) = parse_with_prog('with entry { s = f"{x => y}"; }');
+    assert has_diagnostic_code(prog, "E0025");
+}
+
+test "E0025: empty body recovers without crash" {
+    (prog, _) = parse_with_prog('with entry { f = x =>; }');
+    assert has_diagnostic_code(prog, "E0025");
+}
+
+
 test "E0052: missing type annotation on parameter" {
     (has_err, prog) = parse_and_validate('def foo(x) { }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0052"));
@@ -501,23 +575,6 @@ test "W2050: missing return on non-None function" {
     assert has_diagnostic_code(prog, "W2050", in_warnings=True);
 }
 
-test "W2052: overly broad except" {
-    (prog, _) = compile_and_check("semantic_W2052_broad_except.jac");
-    assert has_diagnostic_code(prog, "W2052", in_warnings=True);
-    # Verify underline is clamped to the token, not the entire Except block
-    for w in prog.warnings_had {
-        if "W2052" in w.msg {
-            output = w.pretty_print();
-            for line in output.split('\n') {
-                caret_count = line.count('^');
-                assert caret_count <= len("Exception") , f"Underline too wide ({caret_count} carets): {repr(
-                    line
-                )}";
-            }
-        }
-    }
-}
-
 test "E2055: return in finally block" {
     (prog, _) = compile_and_check("context_E2055_return_in_finally.jac");
     assert has_diagnostic_code(prog, "E2055");
@@ -617,6 +674,16 @@ test "W3025: identical if/else branches" {
     assert has_diagnostic_code(prog, "W3025", in_warnings=True);
 }
 
+test "W3025: no false positive on subscript targets and call kwargs" {
+    path = os.path.join(
+        NEW_DIAG_FIXTURES, "lint_W3025_identical_branches_false_positive.jac"
+    );
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    # Fixture has 3 if/else pairs: 2 differ (must not warn) + 1 truly matches
+    # with a subscript target (must warn). Expect exactly 1 W3025.
+    assert count_diagnostic_code(prog, "W3025", in_warnings=True) == 1;
+}
+
 test "W3026: not (a == b) should be a != b" {
     pytest.skip("W3026 not yet implemented");
     (_, prog) = parse_and_validate('with entry { x = 5; y = not (x == 3); }');
@@ -640,6 +707,12 @@ test "W3036: mutable default argument" {
     path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3036_mutable_default.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);
     assert has_diagnostic_code(prog, "W3036", in_warnings=True);
+}
+
+test "W3040: filter comparison tautology on shadowed name" {
+    path = os.path.join(NEW_DIAG_FIXTURES, "lint_W3040_filter_tautology.jac");
+    prog = JacProgram.jac_file_formatter(path, auto_lint=True);
+    assert has_diagnostic_code(prog, "W3040", in_warnings=True);
 }
 
 
@@ -701,8 +774,7 @@ test "W0061: bracket filter no warning" {
 test "W0061: multiple deprecated filters emit multiple warnings" {
     prog = JacProgram();
     prog.compile(
-        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }',
-        file_path="test.jac"
+        use_str='with entry { x = [1,2](?a<1); y = [3,4](?a>2); }', file_path="test.jac"
     );
     assert count_diagnostic_code(prog, "W0061", in_warnings=True) == 2 , "Each deprecated filter occurrence should emit its own W0061";
 }
@@ -767,7 +839,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
 glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
      IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
 
-def reject_test(name_snippet: tuple) -> None {
+def reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_REJECT {
         pytest.skip(f"{name} not yet implemented");
@@ -777,7 +849,7 @@ def reject_test(name_snippet: tuple) -> None {
     assert has_errors , f"Validation must reject '{name}': {snippet}";
 }
 
-def validate_reject_test(name_snippet: tuple) -> None {
+def validate_reject_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     if name not in IMPLEMENTED_VALIDATE {
         pytest.skip(f"{name} not yet implemented");

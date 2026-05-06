@@ -1,4 +1,3 @@
-import logging;
 import from jaclang.cli.console { console }
 import from jaclang.cli.banners { JAC_DISCORD_URL }
 import from jaclang.runtimelib.serializer { Serializer }
@@ -6,64 +5,82 @@ import from jaclang.runtimelib.client_bundle {
     _lookup_module_in_hub,
     _ensure_js_generated
 }
-
-glob _client_error_logger = logging.getLogger("jaclang.client_errors");
+import from jaclang.runtimelib.auth_models {
+    IdentityType,
+    LoginRequest,
+    RegisterRequest
+}
 
 impl UserManager.postinit -> None {
     import sqlite3;
-    data_dir = os.path.join(self.base_path, ".jac", "data");
+    import threading;
+    # Check for data path override (JAC_DATA_PATH env var for read-only deployments like AppImage)
+    data_path_override = os.environ.get('JAC_DATA_PATH');
+    effective_data_path = data_path_override or self.base_path;
+    data_dir = os.path.join(effective_data_path, ".jac", "data");
     os.makedirs(data_dir, exist_ok=True);
     self._db_path = os.path.join(data_dir, "main.db");
     self._conn = None;
+    # RLock lets a caller that already holds the lock re-enter it (e.g.
+    # create_user holding the lock while calling helpers that also lock).
+    self._lock = threading.RLock();
 }
 
 """Lazily initialize SQLite connection when first needed."""
 impl UserManager._ensure_connection -> None {
     import sqlite3;
-    if self._conn is not None {
-        return;
+    with self._lock {
+        if self._conn is not None {
+            return;
+        }
+        self._conn = sqlite3.connect(self._db_path, check_same_thread=False);
+        self._conn.execute("PRAGMA journal_mode=WAL");
+        self._conn.execute("PRAGMA synchronous=NORMAL");
+        self._conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                username TEXT PRIMARY KEY,
+                password_hash TEXT NOT NULL,
+                token TEXT UNIQUE NOT NULL,
+                root_id TEXT NOT NULL
+            )
+            """
+        );
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)"
+        );
+        self._conn.commit();
     }
-    self._conn = sqlite3.connect(self._db_path, check_same_thread=False);
-    self._conn.execute("PRAGMA journal_mode=WAL");
-    self._conn.execute("PRAGMA synchronous=NORMAL");
-    self._conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            username TEXT PRIMARY KEY,
-            password_hash TEXT NOT NULL,
-            token TEXT UNIQUE NOT NULL,
-            root_id TEXT NOT NULL
-        )
-        """
-    );
-    self._conn.execute("CREATE INDEX IF NOT EXISTS idx_users_token ON users(token)");
-    self._conn.commit();
 }
 
 """Create a new user with their own root node. Returns dict with user data or error."""
 impl UserManager.create_user(username: str, password: str) -> dict[str, str] {
     import from jaclang.jac0core.constructs { Root }
     self._ensure_connection();
-    # Check if user already exists
-    cursor = self._conn.execute("SELECT 1 FROM users WHERE username = ?", (username, ));
-    if cursor.fetchone() {
-        return {'error': 'User already exists'};
+    with self._lock {
+        # Check if user already exists
+        cursor = self._conn.execute(
+            "SELECT 1 FROM users WHERE username = ?", (username, )
+        );
+        if cursor.fetchone() {
+            return {'error': 'User already exists'};
+        }
+        # Use existing context instead of creating new one (avoids shelf locking issues)
+        ctx = Jac.get_context();
+        user_root = Root();
+        root_anchor = user_root.__jac__;
+        Jac.save(root_anchor);
+        Jac.commit(root_anchor);
+        root_id = root_anchor.id.hex;
+        token = secrets.token_urlsafe(32);
+        password_hash = hashlib.sha256(password.encode()).hexdigest();
+        self._conn.execute(
+            "INSERT INTO users (username, password_hash, token, root_id) VALUES (?, ?, ?, ?)",
+            (username, password_hash, token, root_id)
+        );
+        self._conn.commit();
+        return {'username': username, 'token': token, 'root_id': root_id};
     }
-    # Use existing context instead of creating new one (avoids shelf locking issues)
-    ctx = Jac.get_context();
-    user_root = Root();
-    root_anchor = user_root.__jac__;
-    Jac.save(root_anchor);
-    Jac.commit(root_anchor);
-    root_id = root_anchor.id.hex;
-    token = secrets.token_urlsafe(32);
-    password_hash = hashlib.sha256(password.encode()).hexdigest();
-    self._conn.execute(
-        "INSERT INTO users (username, password_hash, token, root_id) VALUES (?, ?, ?, ?)",
-        (username, password_hash, token, root_id)
-    );
-    self._conn.commit();
-    return {'username': username, 'token': token, 'root_id': root_id};
 }
 
 """Authenticate a user and return their data."""
@@ -72,11 +89,13 @@ impl UserManager.authenticate(
 ) -> (dict[(str, str)] | None) {
     self._ensure_connection();
     password_hash = hashlib.sha256(password.encode()).hexdigest();
-    cursor = self._conn.execute(
-        "SELECT token, root_id FROM users WHERE username = ? AND password_hash = ?",
-        (username, password_hash)
-    );
-    row = cursor.fetchone();
+    with self._lock {
+        cursor = self._conn.execute(
+            "SELECT token, root_id FROM users WHERE username = ? AND password_hash = ?",
+            (username, password_hash)
+        );
+        row = cursor.fetchone();
+    }
     if row {
         return {'username': username, 'token': row[0], 'root_id': row[1]};
     }
@@ -86,28 +105,41 @@ impl UserManager.authenticate(
 """Validate token and return username."""
 impl UserManager.validate_token(token: str) -> (str | None) {
     self._ensure_connection();
-    cursor = self._conn.execute("SELECT username FROM users WHERE token = ?", (token, ));
-    row = cursor.fetchone();
+    with self._lock {
+        cursor = self._conn.execute(
+            "SELECT username FROM users WHERE token = ?", (token, )
+        );
+        row = cursor.fetchone();
+    }
     return row[0] if row else None;
 }
 
 """Get user's root node ID."""
 impl UserManager.get_root_id(username: str) -> (str | None) {
     self._ensure_connection();
-    cursor = self._conn.execute(
-        "SELECT root_id FROM users WHERE username = ?", (username, )
-    );
-    row = cursor.fetchone();
+    with self._lock {
+        cursor = self._conn.execute(
+            "SELECT root_id FROM users WHERE username = ?", (username, )
+        );
+        row = cursor.fetchone();
+    }
     return row[0] if row else None;
+}
+
+"""Async mirror of get_root_id — offloads the SQLite read to a thread."""
+impl UserManager.aget_root_id(username: str) -> (str | None) {
+    return await asyncio.to_thread(self.get_root_id, username);
 }
 
 """Get user data by username."""
 impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
     self._ensure_connection();
-    cursor = self._conn.execute(
-        "SELECT token, root_id FROM users WHERE username = ?", (username, )
-    );
-    row = cursor.fetchone();
+    with self._lock {
+        cursor = self._conn.execute(
+            "SELECT token, root_id FROM users WHERE username = ?", (username, )
+        );
+        row = cursor.fetchone();
+    }
     if not row {
         return None;
     }
@@ -117,8 +149,12 @@ impl UserManager.get_user(username: str) -> (dict[(str, str)] | None) {
 """Check if a user exists."""
 impl UserManager.user_exists(username: str) -> bool {
     self._ensure_connection();
-    cursor = self._conn.execute("SELECT 1 FROM users WHERE username = ?", (username, ));
-    return cursor.fetchone() is not None;
+    with self._lock {
+        cursor = self._conn.execute(
+            "SELECT 1 FROM users WHERE username = ?", (username, )
+        );
+        return cursor.fetchone() is not None;
+    }
 }
 
 """Update user's username."""
@@ -127,28 +163,30 @@ impl UserManager.update_username(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
-    # Check if new username already exists
-    cursor = self._conn.execute(
-        "SELECT 1 FROM users WHERE username = ? ", (new_username, )
-    );
-    if cursor.fetchone() {
-        return {'error': 'Username already taken'};
+    with self._lock {
+        # Check if new username already exists
+        cursor = self._conn.execute(
+            "SELECT 1 FROM users WHERE username = ? ", (new_username, )
+        );
+        if cursor.fetchone() {
+            return {'error': 'Username already taken'};
+        }
+        # Update username
+        cursor = self._conn.execute(
+            "UPDATE users SET username = ? WHERE username = ?",
+            (new_username, current_username)
+        );
+        self._conn.commit();
+        if cursor.rowcount == 0 {
+            return {'error': 'User not found'};
+        }
+        # Get updated user data
+        cursor = self._conn.execute(
+            "SELECT token, root_id FROM users WHERE username = ?", (new_username, )
+        );
+        row = cursor.fetchone();
+        return {'username': new_username, 'token': row[0], 'root_id': row[1]};
     }
-    # Update username
-    cursor = self._conn.execute(
-        "UPDATE users SET username = ? WHERE username = ?",
-        (new_username, current_username)
-    );
-    self._conn.commit();
-    if cursor.rowcount == 0 {
-        return {'error': 'User not found'};
-    }
-    # Get updated user data
-    cursor = self._conn.execute(
-        "SELECT token, root_id FROM users WHERE username = ?", (new_username, )
-    );
-    row = cursor.fetchone();
-    return {'username': new_username, 'token': row[0], 'root_id': row[1]};
 }
 
 """Update user's password."""
@@ -157,40 +195,57 @@ impl UserManager.update_password(
 ) -> dict[str, str] {
     import hashlib;
     self._ensure_connection();
-    # Verify current password
-    current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
-    cursor = self._conn.execute(
-        "SELECT 1 FROM users WHERE username = ?  AND password_hash = ?",
-        (username, current_password_hash)
-    );
-    if not cursor.fetchone() {
-        return {'error': 'Current password is incorrect'};
+    with self._lock {
+        # Verify current password
+        current_password_hash = hashlib.sha256(current_password.encode()).hexdigest();
+        cursor = self._conn.execute(
+            "SELECT 1 FROM users WHERE username = ?  AND password_hash = ?",
+            (username, current_password_hash)
+        );
+        if not cursor.fetchone() {
+            return {'error': 'Current password is incorrect'};
+        }
+        # Update password
+        new_password_hash = hashlib.sha256(new_password.encode()).hexdigest();
+        cursor = self._conn.execute(
+            "UPDATE users SET password_hash = ? WHERE username = ?",
+            (new_password_hash, username)
+        );
+        self._conn.commit();
+        return {'username': username, 'message': 'Password updated successfully'};
     }
-    # Update password
-    new_password_hash = hashlib.sha256(new_password.encode()).hexdigest();
-    cursor = self._conn.execute(
-        "UPDATE users SET password_hash = ? WHERE username = ?",
-        (new_password_hash, username)
-    );
-    self._conn.commit();
-    return {'username': username, 'message': 'Password updated successfully'};
 }
 
 """Close SQLite connection."""
 impl UserManager.close -> None {
-    if self._conn {
-        self._conn.close();
-        self._conn = None;
+    with self._lock {
+        if self._conn {
+            self._conn.close();
+            self._conn = None;
+        }
     }
 }
 
-"""Collect reports from function, spawn execution asynchronously."""
+"""Collect reports from a completed function/spawn invocation.
+
+The walker (sync or async) has already joined by the time we get here —
+`_finalize_call_response` calls us after awaiting the spawn. So the
+`queue.Queue` is fully populated and no concurrent producer is active.
+Drain synchronously via `get_nowait`; this keeps the report path off
+the event loop thread-safe boundary and avoids the asyncio.Queue
+put-from-worker-thread hazard (asyncio.Queue's waiter wakeup is not
+thread-safe).
+"""
 impl ExecutionManager.report_collector(call_state: CallState) -> dict[str, JsonValue] {
+    import from queue { Empty }
     final_reports = [];
     while True {
-        report_item = await call_state.reports.get();
+        try {
+            report_item = call_state.reports.get_nowait();
+        } except Empty {
+            return final_reports;
+        }
         if report_item is call_state._sentinel {
-            call_state.reports.task_done();
             return final_reports;
         } elif isgenerator(report_item) or isinstance(report_item, AsyncGenerator) {
             return report_item;
@@ -200,93 +255,250 @@ impl ExecutionManager.report_collector(call_state: CallState) -> dict[str, JsonV
     }
 }
 
-"""Execute a function in user's context."""
-impl ExecutionManager.execute_function(
-    func: Callable[(..., Any)], args: dict[(str, Any)], username: str
-) -> dict[str, JsonValue] {
-    root_id = self.user_manager.get_root_id(username);
-    if not root_id {
-        return {'error': 'User not found'};
-    }
-    # Set user context for permission checks and ownership
-    ctx = Jac.get_context();
-    ctx.set_user_root(root_id);
-    call_token = ctx.call_state.set(CallState());
-    call_state = ctx.call_state.get();
-    try {
-        # Deserialize typed arguments from wire format
-        for (k, v) in list(args.items()) {
-            if isinstance(v, dict) and '__type__' in v {
-                deserialized = Serializer.deserialize(v);
-                if deserialized is not None {
-                    args[k] = deserialized;
-                }
-            } elif isinstance(v, list) {
-                args[k] = [
-                    Serializer.deserialize(item)
-                        if isinstance(item, dict) and '__type__' in item
-                        else item for item in v
-                ];
-            }
-        }
-        func_result = func(**args);
-        if iscoroutine(func_result) {
-            result = await func_result;
-        } else {
-            result = func_result;
-        }
-        call_state.reports.put_nowait(call_state._sentinel);
-        reports = await self.report_collector(call_state);
-        Jac.commit();
-        if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
-            return reports;
-        } else {
-            return {
-                'result': Serializer.serialize(result, api_mode=True),
-                'reports': Serializer.serialize(reports, api_mode=True)
-            };
-        }
-    } except Exception as e {
-        return {'error': str(e)};
-    } finally {
-        ctx.call_state.reset(call_token);
-    }
+"""Fork the current ExecutionContext for a single request and push it
+into `_request_context`.
+
+Concurrent requests arrive each in their own asyncio Task (FastAPI
+invariant), so each gets its own copy of the `_request_context`
+ContextVar. Mutating `user_root` / `entry_node` on the per-request fork
+is therefore isolated from other in-flight requests; the Memory
+backend and system root stay shared through the `_parent` link.
+
+Returns the fork and the reset token. Callers MUST call
+`Jac.reset_request_context(token)` in a `finally` block.
+"""
+async def _begin_request_context(user_root_id: str) -> tuple[(ExecutionContext, Any)] {
+    parent = Jac.get_context();
+    req_ctx = ExecutionContext(_parent=parent);
+    await req_ctx.aset_user_root(user_root_id);
+    token = Jac.push_request_context(req_ctx);
+    return (req_ctx, token);
 }
 
-"""Spawn a walker in user's context."""
-impl ExecutionManager.spawn_walker(
-    walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
-) -> dict[str, JsonValue] {
-    import from jaclang.jac0core.constructs { NodeArchetype }
-    root_id = self.user_manager.get_root_id(username);
-    if not root_id {
-        return {'error': 'User not found'};
-    }
-    target_node_id = fields.pop('_jac_spawn_node', None);
-    # Deserialize typed walker fields from wire format
-    for (k, v) in list(fields.items()) {
+"""Deserialize typed arguments from wire format in-place."""
+def _deserialize_wire_args(args: dict[(str, Any)]) {
+    for (k, v) in list(args.items()) {
         if isinstance(v, dict) and '__type__' in v {
             deserialized = Serializer.deserialize(v);
             if deserialized is not None {
-                fields[k] = deserialized;
+                args[k] = deserialized;
             }
         } elif isinstance(v, list) {
-            fields[k] = [
+            args[k] = [
                 Serializer.deserialize(item)
                     if isinstance(item, dict) and '__type__' in item
                     else item for item in v
             ];
         }
     }
-    # Set user context for permission checks and ownership
+}
+
+"""Drain the reports queue and package the wire response for a completed call.
+
+Commit goes through the async Memory surface (`Jac.acommit`) so L3 writes
+do not block the event loop — this is what keeps post-walker persistence
+from serializing async walkers that would otherwise all pay the commit
+round-trip on the loop in series.
+
+Two streaming paths are honored — both are propagated to the caller as
+a raw (Async)Generator so jac-scale's serve.endpoints can wrap them in a
+StreamingResponse instead of materializing the events:
+
+  1. The function/walker explicitly returns an iterator. This is the
+     `def:pub stream_events(...) -> Iterator[dict]` shape used by
+     long-running RPCs (e.g. jac-coder turn streaming).
+  2. The walker pushes a generator into call_state.reports. This is
+     the older live-reports pattern; report_collector itself returns
+     the generator straight from the queue (see line 250).
+
+If both paths fire on the same call, the explicit return wins — that's
+the authoritative result for the caller; reports are auxiliary. Anything
+else falls into the normal serialize-and-envelope path.
+"""
+impl ExecutionManager._finalize_call_response(
+    call_state: CallState, result: Any
+) -> dict[str, JsonValue] | Generator | AsyncGenerator {
+    call_state.reports.put_nowait(call_state._sentinel);
+    reports = await self.report_collector(call_state);
+    await Jac.acommit();
+    if isgenerator(result) or isinstance(result, AsyncGenerator) {
+        return result;
+    }
+    if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
+        return reports;
+    }
+    # Drain permission-denial diagnostics accumulated during the walker
+    # run *and* the commit that follows it. Surfaces silent cross-user
+    # write rejections (edge writes, field mutations, deletes) on the
+    # wire so callers stop debugging "200 OK but nothing changed".
+    envelope: dict[str, JsonValue] = {
+        'result': Serializer.serialize(result, api_mode=True),
+        'reports': Serializer.serialize(reports, api_mode=True)
+    };
     ctx = Jac.get_context();
-    ctx.set_user_root(root_id);
+    if ctx.diagnostics {
+        envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
+        ctx.diagnostics.clear();
+    }
+    return envelope;
+}
+
+"""Dispatcher: pick sync/async variant based on function kind.
+
+Kept for backwards compatibility with external callers (jac-scale, etc).
+Internal callers should prefer `execute_function_sync` / `execute_function_async`.
+"""
+impl ExecutionManager.execute_function(
+    func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    if asyncio.iscoroutinefunction(func) {
+        return await self.execute_function_async(func, args, username);
+    }
+    return await self.execute_function_sync(func, args, username);
+}
+
+"""Execute a sync function in user's context.
+
+User code runs on a worker thread via `asyncio.to_thread`; the surrounding
+context setup, report collection, and commit stay on the event loop.
+"""
+impl ExecutionManager.execute_function_sync(
+    func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    root_id = await self.user_manager.aget_root_id(username);
+    if not root_id {
+        return {'error': 'User not found'};
+    }
+    (ctx, req_token) = await _begin_request_context(root_id);
+    call_token = ctx.call_state.set(CallState());
+    call_state = ctx.call_state.get();
+    try {
+        _deserialize_wire_args(args);
+        result = await asyncio.to_thread(func, **args);
+        # Preserve legacy behavior: a plain-sync wrapper may return a
+        # coroutine (e.g. `def wrap(): return some_async()`). Unwrap it
+        # back on the event loop so callers see the awaited value, not
+        # the coroutine object.
+        if iscoroutine(result) {
+            result = await result;
+        }
+        return await self._finalize_call_response(call_state, result);
+    } except Exception as e {
+        return {'error': str(e)};
+    } finally {
+        ctx.call_state.reset(call_token);
+        Jac.reset_request_context(req_token);
+    }
+}
+
+"""Execute an async function in user's context.
+
+User coroutine is awaited directly on the event loop.
+"""
+impl ExecutionManager.execute_function_async(
+    func: Callable[(..., Any)], args: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    root_id = await self.user_manager.aget_root_id(username);
+    if not root_id {
+        return {'error': 'User not found'};
+    }
+    (ctx, req_token) = await _begin_request_context(root_id);
+    call_token = ctx.call_state.set(CallState());
+    call_state = ctx.call_state.get();
+    try {
+        _deserialize_wire_args(args);
+        result = await func(**args);
+        return await self._finalize_call_response(call_state, result);
+    } except Exception as e {
+        return {'error': str(e)};
+    } finally {
+        ctx.call_state.reset(call_token);
+        Jac.reset_request_context(req_token);
+    }
+}
+
+"""Dispatcher: pick sync/async variant based on walker metadata.
+
+Kept for backwards compatibility with external callers (jac-scale, etc).
+Internal callers should prefer `spawn_walker_sync` / `spawn_walker_async`.
+"""
+impl ExecutionManager.spawn_walker(
+    walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    if getattr(walker_cls, '__jac_async__', False) {
+        return await self.spawn_walker_async(walker_cls, fields, username);
+    }
+    return await self.spawn_walker_sync(walker_cls, fields, username);
+}
+
+"""Spawn a sync walker in user's context.
+
+User walker entry/exit abilities run on a worker thread via
+`asyncio.to_thread`, so blocking IO inside them (sleep, network, LLM,
+heavy CPU) does not stall the event loop. Context setup, report
+collection, and commit stay on the loop.
+"""
+impl ExecutionManager.spawn_walker_sync(
+    walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    import from jaclang.jac0core.constructs { NodeArchetype }
+    root_id = await self.user_manager.aget_root_id(username);
+    if not root_id {
+        return {'error': 'User not found'};
+    }
+    target_node_id = fields.pop('_jac_spawn_node', None);
+    _deserialize_wire_args(fields);
+    (ctx, req_token) = await _begin_request_context(root_id);
     call_token = ctx.call_state.set(CallState());
     call_state = ctx.call_state.get();
     try {
         `walker = walker_cls(**fields);
         if target_node_id {
-            target_node = Jac.get_object(target_node_id);
+            target_node = await Jac.aget_object(target_node_id);
+            if not isinstance(target_node, NodeArchetype) {
+                return {'error': f"Invalid target node: {target_node_id}"};
+            }
+        } else {
+            target_node = ctx.get_root();
+        }
+        result = await asyncio.to_thread(Jac.spawn, `walker, target_node);
+        # Defensive: if a caller reaches this path with a walker whose
+        # spawn path returned a coroutine, await it on the loop rather
+        # than returning an unawaited coroutine object.
+        if iscoroutine(result) {
+            result = await result;
+        }
+        return await self._finalize_call_response(call_state, result);
+    } except Exception as e {
+        import traceback;
+        return {'error': str(e), 'traceback': traceback.format_exc()};
+    } finally {
+        ctx.call_state.reset(call_token);
+        Jac.reset_request_context(req_token);
+    }
+}
+
+"""Spawn an async walker in user's context.
+
+Walker coroutine is awaited directly on the event loop.
+"""
+impl ExecutionManager.spawn_walker_async(
+    walker_cls: type[WalkerArchetype], fields: dict[(str, Any)], username: str
+) -> dict[str, JsonValue] {
+    import from jaclang.jac0core.constructs { NodeArchetype }
+    root_id = await self.user_manager.aget_root_id(username);
+    if not root_id {
+        return {'error': 'User not found'};
+    }
+    target_node_id = fields.pop('_jac_spawn_node', None);
+    _deserialize_wire_args(fields);
+    (ctx, req_token) = await _begin_request_context(root_id);
+    call_token = ctx.call_state.set(CallState());
+    call_state = ctx.call_state.get();
+    try {
+        `walker = walker_cls(**fields);
+        if target_node_id {
+            target_node = await Jac.aget_object(target_node_id);
             if not isinstance(target_node, NodeArchetype) {
                 return {'error': f"Invalid target node: {target_node_id}"};
             }
@@ -294,28 +506,18 @@ impl ExecutionManager.spawn_walker(
             target_node = ctx.get_root();
         }
         spawn_result = Jac.spawn(`walker, target_node);
-        # Handle async walkers - await the coroutine if spawn returns one
         if iscoroutine(spawn_result) {
             result = await spawn_result;
         } else {
             result = spawn_result;
         }
-        call_state.reports.put_nowait(call_state._sentinel);
-        reports = await self.report_collector(call_state);
-        Jac.commit();  # Persist changes
-        if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
-            return reports;
-        } else {
-            return {
-                'result': Serializer.serialize(result, api_mode=True),
-                'reports': Serializer.serialize(reports, api_mode=True)
-            };
-        }
+        return await self._finalize_call_response(call_state, result);
     } except Exception as e {
         import traceback;
         return {'error': str(e), 'traceback': traceback.format_exc()};
     } finally {
         ctx.call_state.reset(call_token);
+        Jac.reset_request_context(req_token);
     }
 }
 
@@ -353,7 +555,7 @@ impl ModuleIntrospector._load_manifest -> None {
     if not self._module {
         return;
     }
-    mod_path = getattr(self._module, '__file__', None);
+    mod_path = self._module?.__file__;
     if mod_path {
         mod = _lookup_module_in_hub(os.path.abspath(mod_path), Jac.program.mod.hub);
         if not mod {
@@ -438,7 +640,9 @@ impl ModuleIntrospector._extract_access_levels -> None {
             }
             sym = source_ast.lookup(name) if source_ast else None;
             is_walker = sym is not None and sym.sym_type == SymbolType.WALKER_ARCH;
-            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode) if sym else None;
+            decl_node = sym.decl.find_parent_of_type(uni.AstAccessNode)
+                if sym
+                else None;
             if is_walker {
                 walker_access[name] = not is_public(decl_node);
             } else {
@@ -448,7 +652,7 @@ impl ModuleIntrospector._extract_access_levels -> None {
     }
 
     # Get main module AST
-    mod_path = getattr(self._module, '__file__', None);
+    mod_path = self._module?.__file__;
     if not mod_path {
         return;
     }
@@ -545,7 +749,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
         return None;
     }
     # Get main module AST
-    mod_path = getattr(self._module, '__file__', None);
+    mod_path = self._module?.__file__;
     if not mod_path {
         return;
     }
@@ -1077,7 +1281,9 @@ impl AuthHandler.update_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    result = self.user_manager.update_password(username, current_password, new_password);
+    result = self.user_manager.update_password(
+        username, current_password, new_password
+    );
     if ('error' in result) {
         return TransportResponse.fail(
             code='UPDATE_FAILED',
@@ -1175,7 +1381,8 @@ impl IntrospectionHandler.get_walker_info(name: str) -> TransportResponse {
     );
 }
 
-"""Call a function."""
+"""Call a function. The ExecutionManager dispatcher picks the sync/async
+path based on the function kind."""
 impl ExecutionHandler.call_function(
     name: str, args: dict[(str, Any)], username: str
 ) -> TransportResponse {
@@ -1196,7 +1403,8 @@ impl ExecutionHandler.call_function(
     );
 }
 
-"""Spawn a walker."""
+"""Spawn a walker. The ExecutionManager dispatcher picks the sync/async
+path based on the walker's `__jac_async__` metadata."""
 impl ExecutionHandler.spawn_walker(
     name: str, fields: dict[(str, Any)], username: str
 ) -> TransportResponse {
@@ -1417,7 +1625,9 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                             Jac.send_css(self, css_content);
                             return;
                         } elif assets_file_simple.exists() {
-                            css_content = assets_file_simple.read_text(encoding='utf-8');
+                            css_content = assets_file_simple.read_text(
+                                encoding='utf-8'
+                            );
                             Jac.send_css(self, css_content);
                             return;
                         } else {
@@ -1571,15 +1781,46 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 return;
             }
             if (path == '/user/register') {
+                try {
+                    register_req = RegisterRequest.from_dict(data);
+                } except ValueError as ve {
+                    Jac.send_json(self, 400, {'error': str(ve)});
+                    return;
+                }
+                username_identity = None;
+                for ident in register_req.identities {
+                    if ident.type == IdentityType.USERNAME.value {
+                        username_identity = ident;
+                        break;
+                    }
+                }
+                if username_identity is None {
+                    Jac.send_json(
+                        self, 400, {'error': "identity.type 'username' is required"}
+                    );
+                    return;
+                }
                 response = server.auth_handler.create_user(
-                    data.get('username', ''), data.get('password', '')
+                    username_identity.value, register_req.credential.password
                 );
                 self._send_response(response);
                 return;
             }
             if (path == '/user/login') {
+                try {
+                    login_req = LoginRequest.from_dict(data);
+                } except ValueError as ve {
+                    Jac.send_json(self, 400, {'error': str(ve)});
+                    return;
+                }
+                if login_req.identity.type != IdentityType.USERNAME.value {
+                    Jac.send_json(
+                        self, 400, {'error': "identity.type must be 'username'"}
+                    );
+                    return;
+                }
                 response = server.auth_handler.login(
-                    data.get('username', ''), data.get('password', '')
+                    login_req.identity.value, login_req.credential.password
                 );
                 self._send_response(response);
                 return;
@@ -1644,32 +1885,29 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     # Rate limit and deduplicate
                     import from jaclang.runtimelib.source_mapping {
-                        SourceMapper,
-                        _error_rate_limiter
+                        _error_rate_limiter,
+                        resolve_client_error_stacks,
+                        format_client_error_log
                     }
+                    import from jaclang.project.config { get_config }
                     if not _error_rate_limiter.should_log(message) {
                         Jac.send_json(self, 200, {'ok': True, 'throttled': True});
                     } else {
-                        stack = data.get('stack', '');
-                        url = data.get('url', '');
-                        source = data.get('source', '');
-                        # Resolve stack trace to .jac files via source maps
-                        if stack and server.base_path {
-                            try {
-                                mapper = SourceMapper.from_bundle(server.base_path);
-                                stack = mapper.resolve_stack_trace(stack);
-                            } except Exception { }
-                        }
-                        log_parts = [f"[Client] {message}"];
-                        if stack {
-                            log_parts.append(f"  Stack: {stack}");
-                        }
-                        if url {
-                            log_parts.append(f"  URL: {url}");
-                        }
-                        if source {
-                            log_parts.append(f"  Source: {source}");
-                        }
+                        cfg = get_config();
+                        verbose = cfg.client_errors.verbose if cfg else False;
+                        (stack, component_stack) = resolve_client_error_stacks(
+                            server.base_path,
+                            data.get('stack', ''),
+                            data.get('componentStack', ''),
+                            verbose=verbose
+                        );
+                        log_parts = format_client_error_log(
+                            message,
+                            stack=stack,
+                            component_stack=component_stack,
+                            url=data.get('url', ''),
+                            source=data.get('source', '')
+                        );
                         import logging;
                         logging.getLogger("jaclang.client_errors").error(
                             '\n'.join(log_parts)
@@ -1784,6 +2022,57 @@ impl JacAPIServer.print_endpoint_docs -> None {
     print_endpoint_docs(self);
 }
 
+"""Eagerly spawn every sv-to-sv provider this consumer imports.
+
+Walks the consumer's compile-time-recorded provider list (populated by
+PyastGenPass in every `sv import` stub) and dispatches them through
+sv_client.ensure_all. Siblings spawned via ensure_sv_service skip this
+step (is_sv_sibling=True) so only the root consumer drives the spawn.
+
+Performs a BFS over the loaded sibling modules' provider lists to pick
+up transitive providers. If A imports B and B imports C, A's first
+pass spawns B; the BFS then reads B's just-loaded _consumer_providers
+entry and spawns C in a second wave. Terminates when no new providers
+are discovered.
+
+Idempotent: anything already in sv_client._registry or _test_clients
+is skipped by ensure_all without submitting a task.
+
+Fail-fast: ensure_all re-raises the first spawn failure, which
+propagates out of this method and crashes the consumer startup.
+"""
+impl JacAPIServer._ensure_sv_siblings -> None {
+    if self.is_sv_sibling {
+        return;
+    }
+    import from jaclang.runtimelib { sv_client }
+    visited: set[str] = set();
+    frontier: list[str] = sv_client.get_consumer_providers(self.module_name);
+    while frontier {
+        wave: list[str] = [
+            p
+            for p in frontier
+            if p not in visited
+        ];
+        if not wave {
+            break;
+        }
+        for p in wave {
+            visited.add(p);
+        }
+        sv_client.ensure_all(wave);
+        next_frontier: list[str] = [];
+        for provider in wave {
+            for transitive in sv_client.get_consumer_providers(provider) {
+                if transitive not in visited {
+                    next_frontier.append(transitive);
+                }
+            }
+        }
+        frontier = next_frontier;
+    }
+}
+
 """Start the HTTP server."""
 impl JacAPIServer.start(
     dev: bool = False,
@@ -1792,6 +2081,7 @@ impl JacAPIServer.start(
 ) -> None {
     import from pathlib { Path }
     self.introspector.load();
+    self._ensure_sv_siblings();
     # Register scheduled walkers and functions, start scheduler only if needed
     for (name, walker_cls) in self.introspector._walkers.items() {
         if walker_cls?.schedule_spec {
@@ -1898,44 +2188,6 @@ impl JacAPIServer.start(
             self.scheduler.stop();
         }
     }
-}
-
-"""Handle a client-side error report posted to /cl/__error__.
-
-Logs the error via the client_errors logger and prints to console.
-Requires at least a 'message' field in the JSON payload.
-"""
-def _handle_client_error(handler: Any, data: dict[str, Any]) -> None {
-    message = data.get('message', '');
-    if not message {
-        Jac.send_json(handler, 400, {'error': 'Missing required field: message'});
-        return;
-    }
-    stack = data.get('stack', '');
-    url = data.get('url', '');
-    source = data.get('source', '');
-    timestamp = data.get('timestamp', '');
-    # Log to the client_errors logger
-    log_parts = [f"[Client] {message}"];
-    if stack {
-        log_parts.append(f"  Stack: {stack}");
-    }
-    if url {
-        log_parts.append(f"  URL: {url}");
-    }
-    if source {
-        log_parts.append(f"  Source: {source}");
-    }
-    log_message = '\n'.join(log_parts);
-    _client_error_logger.error(log_message);
-    # Also print to console for dev visibility
-    console.error(f"[Client] {message}");
-    if stack {
-        for line in stack.split('\n') {
-            console.print(f"    {line}");
-        }
-    }
-    Jac.send_json(handler, 200, {'ok': True});
 }
 
 """Print comprehensive documentation for all endpoints that would be generated."""

@@ -121,7 +121,9 @@ impl JacConfig.load(toml_path: Path) -> JacConfig {
     return config;
 }
 
-impl JacConfig.from_toml_str(toml_str: str, toml_path: Path | None = None) -> JacConfig {
+impl JacConfig.from_toml_str(
+    toml_str: str, toml_path: Path | None = None
+) -> JacConfig {
     import tomllib;
     data = tomllib.loads(toml_str);
     return _parse_toml_data(data, toml_path);
@@ -726,7 +728,9 @@ impl JacConfig.remove_dependency(
 # ===============================================================================
 # Helper Functions Implementation
 # ===============================================================================
-impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig {
+impl _parse_toml_data(
+    data: dict[str, Any], toml_path: Path | None = None
+) -> JacConfig {
     config = JacConfig();
     config._raw_data = data;
     if toml_path {
@@ -865,6 +869,12 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
             create_dirs=storage_data.get("create_dirs", True)
         );
     }
+    if "client_errors" in data {
+        ce_data = data["client_errors"];
+        config.client_errors = ClientErrorsConfig(
+            verbose=ce_data.get("verbose", False)
+        );
+    }
     if "plugins" in data {
         plugins_data = data["plugins"];
         config.plugins_config = PluginsConfig(
@@ -889,6 +899,56 @@ impl _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> Ja
     }
     if "scripts" in data {
         config.scripts = data["scripts"];
+    }
+    if "package" in data {
+        pkg = data["package"];
+        pkg_authors: list[PersonConfig] = [];
+        for a in pkg.get("authors", []) {
+            if isinstance(a, dict) {
+                pkg_authors.append(
+                    PersonConfig(name=a.get("name", ""), email=a.get("email", ""))
+                );
+            }
+        }
+        pkg_maintainers: list[PersonConfig] = [];
+        for m in pkg.get("maintainers", []) {
+            if isinstance(m, dict) {
+                pkg_maintainers.append(
+                    PersonConfig(name=m.get("name", ""), email=m.get("email", ""))
+                );
+            }
+        }
+        inc_raw = pkg.get("include", {});
+        pkg_include = PackageIncludeConfig(
+            packages=inc_raw.get("packages", []), data=inc_raw.get("data", {})
+        );
+        config.package = PackageConfig(
+            name=pkg.get("name", ""),
+            version=pkg.get("version", ""),
+            description=pkg.get("description", ""),
+            authors=pkg_authors,
+            maintainers=pkg_maintainers,
+            license=pkg.get("license", ""),
+            readme=pkg.get("readme", "README.md"),
+            keywords=pkg.get("keywords", []),
+            requires_python=pkg.get("requires-python", ""),
+            urls=pkg.get("urls", {}),
+            include=pkg_include
+        );
+    }
+    if "entrypoints" in data {
+        for (group, refs) in data["entrypoints"].items() {
+            if isinstance(refs, dict) {
+                config.entrypoints[group] = dict(refs);
+            }
+        }
+    }
+    if "optional-dependencies" in data {
+        for (group, deps) in data["optional-dependencies"].items() {
+            if isinstance(deps, dict) {
+                config.optional_dependencies[group] = dict(deps);
+            }
+        }
     }
     return config;
 }

@@ -24,6 +24,20 @@ def create_enum_member_info(
     assignment: uni.Assignment, evaluator: "TypeEvaluator"
 ) -> (types.EnumMemberInfo | None);
 
+"""Validate a per-member type annotation against the member's value type.
+
+Enum member declarations may carry explicit type annotations (e.g.
+`PENDING: int = "wrong"`). The declaration site's symbol type is
+EnumMemberType, so the generic `exit_assignment` compatibility check
+cannot validate the annotation — we do it here, where the member's
+value-type context is known.
+"""
+def validate_enum_member_annotation(
+    assignment: uni.Assignment,
+    member_info: types.EnumMemberInfo,
+    evaluator: "TypeEvaluator"
+) -> None;
+
 """Build enum members map for an enum or class-based enum."""
 def build_enum_members(
     enum_node: uni.Enum | uni.Archetype,

@@ -163,8 +163,8 @@ obj InteropBinding {
         source_context: InteropContext,
         callers: set[InteropContext] = field(default_factory=`set),
         ret_type: str = 'int',
-        param_types: list = [],
-        param_names: list = [],
+        param_types: list[str] = [],
+        param_names: list[str] = [],
         ast_node: Any = None,
         route: list[InteropContext] = [],
         source_module: (str | None) = None;
@@ -214,6 +214,9 @@ obj InteropManifest {
 
     @property
     def server_exports_to_client -> list[InteropBinding];
+
+    @property
+    def server_exports_to_server -> list[InteropBinding];
 }
 
 """Code generation target."""

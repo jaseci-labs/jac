@@ -114,9 +114,7 @@ cl {
                 }
             }
             return
-                <div className="text-slate-500">
-                    Page not found
-                </div>;
+                <div className="text-slate-500">Page not found</div>;
         }
 
         return
@@ -138,9 +136,7 @@ cl {
                     />
                 </header>
                 <Alert message={alert["message"]} type={alert["alertType"]}/>
-                <main className="p-4">
-                    {renderContent()}
-                </main>
+                <main className="p-4">{renderContent()}</main>
             </div>;
     }
 }

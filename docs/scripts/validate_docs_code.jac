@@ -117,7 +117,8 @@ def validate_code_blocks(code_blocks: list[CodeBlock]) -> list[ValidationResult]
                     for line in output.split("\n")
                     if filename in line or temp_path in line
                 ];
-                has_error = any("error" in line.lower() for line in file_errors);
+                error_pattern = re.compile(r"error\[E\d+\]|\b[1-9]\d* error");
+                has_error = any(error_pattern.search(line) for line in file_errors);
                 results.append(
                     ValidationResult(
                         code_block=block,

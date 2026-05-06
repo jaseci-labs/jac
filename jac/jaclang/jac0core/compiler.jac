@@ -152,7 +152,9 @@ def get_py_code_gen -> list[type[Transform[uni.Module, uni.Module]]] {
     _codegen_sched_loading = True;
     try {
         import from jaclang.compiler.passes.ecmascript { EsastGenPass }
-        import from jaclang.compiler.passes.main.pyjac_ast_link_pass { PyJacAstLinkPass }
+        import from jaclang.compiler.passes.main.pyjac_ast_link_pass {
+            PyJacAstLinkPass
+        }
         passes: list[type[Transform[uni.Module, uni.Module]]] = [
             InteropAnalysisPass,
             EsastGenPass
@@ -358,14 +360,14 @@ obj JacCompiler {
         full_target: str,
         target_program: JacProgram,
         cached_ir: str,
-        cached_interop: (dict | None)
+        cached_interop: (dict[str, Any] | None)
     ) -> None;
 
     def _load_native_from_bitcode(
         full_target: str,
         target_program: JacProgram,
         section_data: bytes,
-        cached_interop: (dict | None)
+        cached_interop: (dict[str, Any] | None)
     ) -> None;
 
     def _restore_sections(
@@ -385,7 +387,7 @@ obj JacCompiler {
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,
-        options: (CompileOptions | None) = None
+        options: CompileOptions = CompileOptions()
     ) -> uni.Module;
 
     def build(

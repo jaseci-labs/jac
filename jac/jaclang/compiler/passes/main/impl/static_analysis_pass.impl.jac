@@ -97,17 +97,6 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.value in dir(builtins) or name_nd.value in ("self", "super") {
             continue;
         }
-        # root is a Jac ambient builtin — warn if used bare (not as root() call)
-        if name_nd.value == "root" {
-            is_root_call = (
-                isinstance(name_nd.parent, uni.FuncCall)
-                and name_nd.parent.target is name_nd
-            );
-            if not is_root_call {
-                self.emit(W0062, node_override=name_nd);
-            }
-            continue;
-        }
         # Skip dunder names
         if name_nd.value.startswith("__") and name_nd.value.endswith("__") {
             continue;
@@ -152,7 +141,7 @@ impl StaticAnalysisPass._check_unreachable_code(mod: uni.Module) -> None {
     }
 
     for container in containers {
-        body = getattr(container, 'body', None);
+        body = container?.body;
         if not body or not isinstance(body, Sequence) {
             continue;
         }
@@ -243,15 +232,6 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
                 if isinstance(right, uni.Bool) {
                     self.emit(W2075, node_override=nd);
                 }
-            }
-        }
-    }
-
-    # W2052: overly broad except (catching Exception or BaseException)
-    for nd in mod.get_all_sub_nodes(typ=uni.Except, brute_force=True) {
-        if nd.ex_type is not None and isinstance(nd.ex_type, uni.Name) {
-            if nd.ex_type.value in ("Exception", "BaseException") {
-                self.emit(W2052, node_override=nd.ex_type, type=nd.ex_type.value);
             }
         }
     }

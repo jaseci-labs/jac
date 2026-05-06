@@ -65,6 +65,7 @@ obj NormalizePass(UniPass) {
     def enter_concurrent_expr(nd: uni.ConcurrentExpr) -> None;
     def enter_binary_expr(nd: uni.BinaryExpr) -> None;
     def enter_compare_expr(nd: uni.CompareExpr) -> None;
+    def enter_cfg_expr(nd: uni.CfgExpr) -> None;
     def enter_bool_expr(nd: uni.BoolExpr) -> None;
     def enter_lambda_expr(nd: uni.LambdaExpr) -> None;
     def enter_unary_expr(nd: uni.UnaryExpr) -> None;

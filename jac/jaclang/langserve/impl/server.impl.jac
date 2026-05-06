@@ -45,7 +45,9 @@ impl run_lang_server -> None {
     )(
         completion
     );
-    server.feature(lspt.TEXT_DOCUMENT_HOVER, lspt.HoverOptions(work_done_progress=True))(
+    server.feature(
+        lspt.TEXT_DOCUMENT_HOVER, lspt.HoverOptions(work_done_progress=True)
+    )(
         hover
     );
     server.feature(lspt.TEXT_DOCUMENT_DOCUMENT_SYMBOL)(document_symbol);
@@ -77,9 +79,7 @@ impl rename(
     ls: JacLangServer, params: lspt.RenameParams
 ) -> Optional[lspt.WorkspaceEdit] {
     ls.log_warning('Auto Rename is Experimental, Please use with caution.');
-    return ls.rename_symbol(
-        params.text_document.uri, params.position, params.new_name
-    );
+    return ls.rename_symbol(params.text_document.uri, params.position, params.new_name);
 }
 
 """Provide references."""

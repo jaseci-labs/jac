@@ -1,6 +1,6 @@
 # Jac vs Traditional Stack: A Side-by-Side Comparison
 
-A traditional full-stack web application requires separate projects, frameworks, and glue code -- a Python backend, a React frontend, an ORM, API route definitions, and serialization logic. In Jac, you write all of this in a single file: nodes are your data model, walkers are your API endpoints, and `cl { }` blocks are your UI components. This comparison builds the same Todo app both ways so you can see the difference.
+A traditional full-stack web application requires separate projects, frameworks, and glue code -- a Python backend, a React frontend, an ORM, API route definitions, and serialization logic. In Jac, you write all of this in a single file: nodes are your data model, walkers are your API endpoints, and a `to cl:` section (or `.cl.jac` file) holds your UI components. This comparison builds the same Todo app both ways so you can see the difference.
 
 ---
 

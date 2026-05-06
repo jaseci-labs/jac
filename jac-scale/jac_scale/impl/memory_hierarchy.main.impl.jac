@@ -4,14 +4,14 @@ Storage configuration comes from environment variables or jac.toml.
 """
 
 """Initialize ScaleTieredMemory with distributed backends."""
-impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
+impl ScaleTieredMemory.postinit -> None {
     # L1: Initialize volatile memory (inherited from VolatileMemory via TieredMemory)
     self.__mem__ = {};
     self.__gc__ = set();
     # L2: Try to initialize Redis cache (replaces LocalCacheMemory)
     redis_backend = RedisBackend();
     self._cache_available = redis_backend.is_available();
-    if self._cache_available and use_cache {
+    if self._cache_available and self.use_cache {
         self.l2 = redis_backend;
         logger.debug("Redis cache backend initialized");
     } else {
@@ -47,30 +47,14 @@ impl ScaleTieredMemory.init(use_cache: bool = True) -> None {
 }
 
 
-"""Commit changes: delegate to L3's sync() which handles change detection."""
+"""Commit changes: delegate to L3's sync() which handles change detection
+and merge-aware atomic writes."""
 impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 is None {
         return;
     }
-    # Single anchor commit (explicit save via Jac.commit)
-    if anchor is not None {
-        if not anchor.persistent {
-            return;
-        }
-        if not Jac.check_write_access(anchor) {
-            return;
-        }
-        try {
-            self.l3.put(anchor);
-            if self.l2 {
-                self.l2.put(anchor);
-            }
-        } except Exception as e {
-            logger.warning(f"ScaleTieredMemory.commit(anchor) failed: {e}");
-        }
-        return;
-    }
-    # Batch commit: delegate to L3's sync() which uses hash-based change detection.
+    # Both single-anchor and batch commits go through sync() to ensure
+    # all writes use merge-aware paths (no direct L3 put bypass).
     # Capture L2-pending anchors BEFORE L3 sync (which updates hashes).
     if self.l3 {
         try {
@@ -80,8 +64,8 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
                     mem_anchor
                     for (_, mem_anchor) in list(self.__mem__.items())
                     if mem_anchor.persistent
-                    and Jac.check_write_access(mem_anchor)
                     and Serializer._compute_hash(mem_anchor) != mem_anchor.hash
+                    and Jac.check_write_access(mem_anchor)
                 ];
             }
             self.l3.sync();

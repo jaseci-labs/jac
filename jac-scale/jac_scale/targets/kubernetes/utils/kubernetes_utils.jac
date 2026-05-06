@@ -8,9 +8,12 @@ import from pathlib { Path }
 import requests;
 import urllib3;
 import from dotenv { dotenv_values }
-import from kubernetes { client, config }
-import from kubernetes.client.rest { ApiException }
-import from kubernetes.config.config_exception { ConfigException }
+import from jac_scale._optdeps.kubernetes {
+    client,
+    config,
+    ApiException,
+    ConfigException
+}
 import from requests.exceptions { RequestException }
 
 """Each companion component: (suffix, display_name, is_statefulset).
@@ -95,6 +98,12 @@ def ensure_pvc_exists(
     storage_size: str,
     storage_class: (str | None) = None,
     access_mode: str = 'ReadWriteOnce'
+) -> None;
+
+def parse_storage_quantity(quantity: str) -> int;
+
+def resize_pvc_if_needed(
+    core_v1: client.CoreV1Api, namespace: str, pvc_name: str, desired_size: str
 ) -> None;
 
 def wait_for_pod_phase(

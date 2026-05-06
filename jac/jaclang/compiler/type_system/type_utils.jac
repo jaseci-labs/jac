@@ -8,6 +8,27 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.unitree { Symbol }
 import from . { types }
+"""Result of get_property_write_type: classifies the assignment target.
+
+NOT_PROPERTY  — symbol is not @property / @cached_property; fall through
+               to the normal declared-type path.
+READ_ONLY     — @property with no setter; assignment is illegal.
+WRITABLE      — @cached_property or @property with setter; `write_type`
+               holds the type that values must match.
+"""
+class PropertyWriteKind(Enum) {
+    with entry {
+        NOT_PROPERTY = 0;
+        READ_ONLY = 1;
+        WRITABLE = 2;
+    }
+}
+
+obj PropertyWriteResult {
+    has kind: PropertyWriteKind,
+        write_type: (types.TypeBase | None) = None;
+}
+
 """Represents a member of a class."""
 obj ClassMember {
     has symbol: Symbol,
@@ -97,6 +118,29 @@ def class_implements_protocol(
     cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
 ) -> bool;
 
+# Generator / Iterator return-type helpers.
+"""Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
+def get_generator_type_args(
+    return_type: types.TypeBase
+) -> (list[types.TypeBase] | None);
+
+"""Yield type Y of a generator-like return type, or None.
+
+`is_async` selects the `Async*` family; otherwise the sync family
+(Generator/Iterator/Iterable/AwaitableGenerator).
+"""
+def get_generator_yield_type(
+    declared_return_type: types.TypeBase, is_async: bool
+) -> (types.TypeBase | None);
+
+"""R parameter of Generator[Y, S, R] (send/return), or None."""
+def get_declared_generator_return_type(
+    return_type: types.TypeBase
+) -> (types.TypeBase | None);
+
+"""True if `return_type` is any generator/iterator-family builtin."""
+def is_generator_family_type(return_type: types.TypeBase) -> bool;
+
 """
 Module source flags computed from file path.
 
@@ -123,6 +167,13 @@ Convert a type to its instance form.
 - Other types -> unchanged
 """
 def convert_to_instance(ty: types.TypeBase) -> types.TypeBase;
+
+"""Synthesize the implicit `Self` TypeVar marker.
+
+The marker is keyed by `is_self=True`. The binding context (which class
+`Self` resolves to) is supplied by the caller of `apply_solved_type_vars`.
+"""
+def synthesize_self_type_var -> types.TypeVarType;
 
 """
 Apply type variable substitutions to a type.

@@ -115,8 +115,7 @@ impl JacLangServer.type_check_file(
         all_warnings = list(self.warnings_had);
         for f in files_to_check {
             self.publish_diagnostics(
-                uris.from_fs_path(f),
-                utils.gen_diagnostics(f, all_errors, all_warnings)
+                uris.from_fs_path(f), utils.gen_diagnostics(f, all_errors, all_warnings)
             );
         }
     } except Exception as e {
@@ -515,7 +514,9 @@ impl JacLangServer.format_document(
             if not prog.errors_had
             else document.source;
     } except Exception as e {
-        self.log_error(f"Error during {'lintfix ' if auto_lint else ''}formatting: {e}");
+        self.log_error(
+            f"Error during {'lintfix ' if auto_lint else ''}formatting: {e}"
+        );
         formatted_text = document.source;
     }
     return [
@@ -576,9 +577,7 @@ impl JacLangServer.get_completion_items_of(
             detail = lspt.CompletionItemLabelDetails(detail=item.detail);
         }
         items.append(
-            lspt.CompletionItem(
-                label=item.label, kind=item.kind, label_details=detail,
-            )
+            lspt.CompletionItem(label=item.label, kind=item.kind, label_details=detail,)
         );
     }
     return lspt.CompletionList(is_incomplete=False, items=items,);

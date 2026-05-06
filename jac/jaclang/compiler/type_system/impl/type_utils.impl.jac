@@ -1,3 +1,80 @@
+# Generator / Iterator return-type helpers.
+"""Type args of Generator/AsyncGenerator/AwaitableGenerator, or None."""
+impl get_generator_type_args(
+    return_type: types.TypeBase
+) -> (list[types.TypeBase] | None) {
+    if not isinstance(return_type, types.ClassType) {
+        return None;
+    }
+    if return_type.is_builtin(["Generator", "AsyncGenerator"]) {
+        return return_type.private.type_args;
+    }
+    if return_type.is_builtin("AwaitableGenerator") {
+        # AwaitableGenerator has four type args; the first three mirror
+        # Generator[Y, S, R].
+        if return_type.private.type_args {
+            return return_type.private.type_args[0:3];
+        }
+        return None;
+    }
+    return None;
+}
+
+"""Yield type Y of a generator-like return type, or None."""
+impl get_generator_yield_type(
+    declared_return_type: types.TypeBase, is_async: bool
+) -> (types.TypeBase | None) {
+    if not isinstance(declared_return_type, types.ClassType) {
+        return None;
+    }
+    sync_names = ["Iterable", "Iterator", "Generator", "AwaitableGenerator"];
+    async_names = ["AsyncIterable", "AsyncIterator", "AsyncGenerator"];
+    candidates = async_names if is_async else sync_names;
+    if not declared_return_type.is_builtin(candidates) {
+        return None;
+    }
+    if (
+        declared_return_type.private.type_args
+        and len(declared_return_type.private.type_args) >= 1
+    ) {
+        return declared_return_type.private.type_args[0];
+    }
+    return None;
+}
+
+"""R parameter of Generator[Y, S, R] (send/return), or None."""
+impl get_declared_generator_return_type(
+    return_type: types.TypeBase
+) -> (types.TypeBase | None) {
+    args = get_generator_type_args(return_type);
+    if args is None {
+        return None;
+    }
+    if len(args) >= 3 {
+        return args[2];
+    }
+    return None;
+}
+
+"""True for any generator/iterator-family builtin."""
+impl is_generator_family_type(return_type: types.TypeBase) -> bool {
+    if not isinstance(return_type, types.ClassType) {
+        return False;
+    }
+    return return_type.is_builtin(
+        [
+            "Generator",
+            "AsyncGenerator",
+            "AwaitableGenerator",
+            "Iterator",
+            "Iterable",
+            "AsyncIterator",
+            "AsyncIterable"
+        ]
+    );
+}
+
+
 """Determine if a class implements a protocol.
 
 This checks if a class has all the methods required by a protocol,
@@ -254,8 +331,7 @@ impl ParamAssignmentTracker.lookup_named_parameter(
 ) -> (types.Parameter | None) {
     for param in self.params {
         if (
-            (param.param_kind == types.ParamKind.POSONLY)
-            and (param_name == param.name)
+            (param.param_kind == types.ParamKind.POSONLY) and (param_name == param.name)
         ) {
             self.matched_params.add(param);
             raise Exception(
@@ -434,6 +510,11 @@ impl convert_to_instance(ty: types.TypeBase) -> types.TypeBase {
     return ty;
 }
 
+"""Synthesize the implicit `Self` TypeVar marker."""
+impl synthesize_self_type_var -> types.TypeVarType {
+    return types.TypeVarType(name="Self", is_self=True);
+}
+
 """
 Apply type variable substitutions to a type.
 
@@ -563,7 +644,6 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
     # TypeVars to Any so downstream operations (iteration, subscript,
     # method calls) work correctly instead of producing Unknown.
     if class_type.shared.type_params
-    and class_type.private
     and class_type.private.type_args
     and len(class_type.private.type_args) > 0 {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
@@ -571,7 +651,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
                 solution[tp.name] = class_type.private.type_args[idx];
             }
         }
-    } elif class_type.shared and class_type.shared.type_params {
+    } elif class_type.shared.type_params {
         # Bare generic (e.g. list without [T]): default all TypeVars to Any
         # per PEP 484 so downstream operations (iteration, subscript,
         # method calls) work correctly instead of producing Unknown.
@@ -585,9 +665,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
     # Walk MRO and accumulate base class TypeVar mappings.
     # Only add NEW bindings — never overwrite a concrete binding with a TypeVar.
     for mro_cls in class_type.shared.mro {
-        if mro_cls.shared.type_params
-        and mro_cls.private
-        and mro_cls.private.type_args {
+        if mro_cls.shared.type_params and mro_cls.private.type_args {
             for (idx, tp) in enumerate(mro_cls.shared.type_params) {
                 if tp.name and idx < len(mro_cls.private.type_args) {
                     arg = mro_cls.private.type_args[idx];
@@ -616,7 +694,7 @@ impl build_type_var_solution(class_type: types.ClassType) -> dict[str, types.Typ
             continue;
         }
         specialized = specialize_for_base_class(class_type, mro_cls);
-        if specialized.private is not None and specialized.private.type_args {
+        if specialized.private.type_args {
             for (idx, tp) in enumerate(specialized.shared.type_params) {
                 if tp.name and idx < len(specialized.private.type_args) {
                     arg = specialized.private.type_args[idx];
@@ -640,9 +718,7 @@ impl build_solution_from_specialized_class(
 ) -> dict[str, types.TypeBase] {
     solution: dict[str, types.TypeBase] = {};
 
-    if class_type.shared.type_params
-    and class_type.private
-    and class_type.private.type_args {
+    if class_type.shared.type_params and class_type.private.type_args {
         for (idx, tp) in enumerate(class_type.shared.type_params) {
             if tp.name and idx < len(class_type.private.type_args) {
                 # Skip duplicates (e.g., Generator has _YieldT_co twice)
@@ -730,7 +806,7 @@ Apply a TypeVar solution to specialize a ClassType's type_args.
 def _apply_solution_to_class(
     class_type: types.ClassType, solution: dict[str, types.TypeBase]
 ) -> types.ClassType {
-    if not class_type.private or not class_type.private.type_args {
+    if not class_type.private.type_args {
         return class_type;
     }
 
@@ -759,7 +835,8 @@ def _apply_to_function(
     solution: dict[str, types.TypeBase],
     class_type: (types.ClassType | None)
 ) -> types.FunctionType {
-    # Clone the function
+    # `function_flags` must be carried over — losing the ClassMethod /
+    # StaticMethod markers breaks the call site's cls/self auto-strip.
     clone = types.FunctionType(
         func_name=func.func_name,
         return_type=func.return_type,
@@ -774,6 +851,7 @@ def _apply_to_function(
                 param_kind=param.param_kind
             ) for param in func.parameters
         ],
+        function_flags=func.function_flags,
         type_params=func.type_params,
     );
 

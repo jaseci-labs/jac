@@ -41,12 +41,20 @@ impl JacScaleScheduler.setup(system_token: str, server: Any | None = None) -> No
     }
     # APScheduler uses in-memory job store — MongoDB persistence is handled manually
     # via _persist_job / _load_jobs_from_db, avoiding serialisation issues with closures.
-    executors = {'default': ThreadPoolExecutor(10)};
-    job_defaults = {'coalesce': False, 'max_instances': 1};
-    self._apscheduler = BackgroundScheduler(
-        executors=executors, job_defaults=job_defaults
-    );
-    logger.debug("APScheduler initialized with in-memory job store");
+    if HAS_APSCHEDULER {
+        executors = {'default': ThreadPoolExecutor(10)};
+        job_defaults = {'coalesce': False, 'max_instances': 1};
+        self._apscheduler = BackgroundScheduler(
+            executors=executors, job_defaults=job_defaults
+        );
+        logger.debug("APScheduler initialized with in-memory job store");
+    } else {
+        self._apscheduler = None;
+        logger.info(
+            "APScheduler not installed — dynamic scheduling disabled. "
+            "Install with: pip install jac-scale[scheduler]"
+        );
+    }
 }
 
 """Start the APScheduler background scheduler."""
@@ -166,7 +174,7 @@ impl JacScaleScheduler.create_job(
 ) -> dict {
     if self._apscheduler is None {
         raise RuntimeError(
-            "APScheduler is not available. Install apscheduler>=3.0.0,<4.0.0."
+            "APScheduler is not available. Install with: pip install jac-scale[scheduler]"
         );
     }
 

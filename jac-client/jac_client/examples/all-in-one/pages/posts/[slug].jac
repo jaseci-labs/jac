@@ -32,21 +32,18 @@ cl {
         if not post {
             return
                 <div style={{"padding": "2rem", "textAlign": "center"}}>
-                    <h1>
-                        Post Not Found
-                    </h1>
-                    <p>
-                        No post exists with slug: "{slug}"
-                    </p>
-                    <Link to="/posts">
-                        Browse All Posts
-                    </Link>
+                    <h1>Post Not Found</h1>
+                    <p>No post exists with slug: "{slug}"</p>
+                    <Link to="/posts">Browse All Posts</Link>
                 </div>;
         }
 
         return
             <article style={{"padding": "2rem", "maxWidth": "700px"}}>
-                <Link to="/posts" style={{"color": "#3b82f6", "textDecoration": "none"}}>
+                <Link
+                    to="/posts"
+                    style={{"color": "#3b82f6", "textDecoration": "none"}}
+                >
                     ← Back to Posts
                 </Link>
                 <h1 style={{"marginTop": "1rem", "fontSize": "2rem"}}>
@@ -67,9 +64,7 @@ cl {
                         "fontSize": "0.875rem"
                     }}
                 >
-                    <strong>
-                        URL Slug:
-                    </strong>
+                    <strong>URL Slug:</strong>
                     {slug}
                 </div>
             </article>;

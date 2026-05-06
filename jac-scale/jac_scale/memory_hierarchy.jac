@@ -11,13 +11,13 @@ Falls back to jaclang's SqliteMemory when MongoDB is unavailable.
 """
 import json;
 import logging;
-import redis;
 import from collections.abc { Callable, Generator, Iterable }
+import from datetime { datetime, timezone }
 import from pickle { dumps, loads }
 import from typing { Any, cast }
 import from uuid { UUID }
-import from pymongo { MongoClient, UpdateOne }
-import from pymongo.errors { ConnectionFailure }
+import from jac_scale._optdeps.redis { redis_module as redis }
+import from jac_scale._optdeps.pymongo { MongoClient, UpdateOne, ConnectionFailure }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.memory {
     CacheMemory,
@@ -59,13 +59,11 @@ obj RedisBackend(CacheMemory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
@@ -95,6 +93,7 @@ obj MongoBackend(PersistentMemory) {
     # PersistentMemory interface (Memory methods + persistence-specific)
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
+    def put_partial(anchor: Anchor, field_names: set[str]) -> None;
     def delete(id: UUID) -> None;
     def close -> None;
     def `has(id: UUID) -> bool;
@@ -104,13 +103,11 @@ obj MongoBackend(PersistentMemory) {
 
     def get_roots -> Generator[Root, None, None];
     def find(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
 
     def find_one(
-        ids: (UUID | Iterable[UUID]),
-        filter: (Callable[[Anchor], Anchor] | None) = None
+        ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
@@ -118,8 +115,23 @@ obj MongoBackend(PersistentMemory) {
     # PersistentMemory-specific
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
+    # Layer 1+2+3 operator surface
+    def inspect_summary -> dict;
+    def list_quarantined(limit: int = 50) -> list;
+    def show_quarantined(id_prefix: str) -> (dict | None);
+    def recover_one(id_prefix: str) -> tuple;
+    def recover_all -> tuple;
+    def list_aliases -> list;
+    def add_alias(old_name: str, new_name: str) -> None;
+    def remove_alias(old_name: str) -> bool;
     # Internal
     def _load_anchor(raw: dict[(str, Any)]) -> (Anchor | None);
+    def _load_db_aliases -> int;
+    def _put_node_atomic(
+        anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
+    ) -> None;
+
+    def _write_to_db(anchor: Anchor) -> None;
 }
 
 """
@@ -143,9 +155,11 @@ Storage configuration comes from environment variables or jac.toml.
 """
 obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
-        _persistence_type: PersistenceType = PersistenceType.NONE;
+        _persistence_type: PersistenceType = PersistenceType.NONE,
+        use_cache:
+            bool = True;  # Override parent default to enable Redis cache by default
 
-    def init(use_cache: bool = True) -> None;
+    def postinit -> None;
     def commit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];

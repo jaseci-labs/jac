@@ -1,3 +1,13 @@
+"""Return the effective type of root."""
+impl TypeEvaluator._get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase {
+    if self.prefetch and self.prefetch.root_class {
+        node_.sym = self.prefetch.root_class.get_class_symbol();
+        node_.type = self.prefetch.root_class.clone_as_instance();
+        return node_.type;
+    }
+    return types.UnknownType();
+}
+
 """Return the effective type of self."""
 impl TypeEvaluator._get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase {
     if method := self._get_enclosing_method(node_) {
@@ -42,6 +52,110 @@ impl TypeEvaluator._get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase {
     return types.UnknownType();
 }
 
+"""Type an LHS Name receives from its enclosing assignment, or None.
+
+Flat `x = e` returns the type of `e`. Destructure `(x, _) = e` (and
+nested) descends the RHS tuple's `type_args` by positional path.
+
+None is returned — callers keep the declared type — for the declaration
+site itself (its cached `.type` doubles as the declared-type lookup for
+`_get_type_of_symbol`), augmented assignments, member assignments,
+starred slots, and RHS shapes that aren't a concrete positional tuple.
+"""
+impl TypeEvaluator._get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None {
+    import from jaclang.compiler.symbol_utils { find_destructure_index_path }
+    # Declaration site: leave the cached declared type intact.
+    if expr.sym is not None and expr.sym.decl is expr {
+        return None;
+    }
+    # Peel destructure / paren wrappers to find the enclosing Assignment.
+    parent = expr.parent;
+    lhs_root: uni.UniNode = expr;
+    while isinstance(parent, (uni.TupleVal, uni.ListVal, uni.AtomUnit)) {
+        lhs_root = parent;
+        parent = parent.parent;
+    }
+    if not isinstance(parent, uni.Assignment) or parent.value is None {
+        return None;
+    }
+    assignment = parent;
+    # `x += e` evaluates to `x <op> e` — defer to the declared type.
+    if assignment.aug_op is not None {
+        return None;
+    }
+    # Identity check — a TupleVal can appear on both sides, `in` uses equality.
+    target_hit = False;
+    for t in assignment.target {
+        if t is lhs_root {
+            target_hit = True;
+            break;
+        }
+    }
+    if not target_hit {
+        return None;
+    }
+    # Flat: the Name is the target.
+    if lhs_root is expr {
+        return self.get_type_of_expression(assignment.value);
+    }
+    # Destructure: descend `type_args` by positional path.
+    path = find_destructure_index_path(lhs_root, expr.value);
+    if path is None or len(path) == 0 {
+        return None;
+    }
+    return self._extract_tuple_element_type_path(
+        self.get_type_of_expression(assignment.value), path
+    );
+}
+
+"""Extract the element type at `idx` from a concrete tuple-like class.
+
+Handles regular `tuple[T1, T2, ...]` via `private.type_args` and
+NamedTuple via `is_namedtuple()` + `get_has_vars()`. Returns the
+element as an instance, or None when `tuple_type` isn't a concrete
+tuple with a valid slot at `idx`.
+"""
+impl TypeEvaluator._extract_tuple_element_type(
+    tuple_type: TypeBase, idx: int
+) -> TypeBase | None {
+    if not isinstance(tuple_type, types.ClassType) or idx < 0 {
+        return None;
+    }
+    cls: types.ClassType = tuple_type;
+    if cls.is_namedtuple() {
+        has_vars = cls.shared.symbol_table.get_has_vars();
+        if idx >= len(has_vars) {
+            return None;
+        }
+        field = has_vars[idx];
+        if field.type_tag is None {
+            return None;
+        }
+        return self._convert_to_instance(
+            self.get_type_of_expression(field.type_tag.tag)
+        );
+    }
+    if cls.private.type_args and idx < len(cls.private.type_args) {
+        return self._convert_to_instance(cls.private.type_args[idx]);
+    }
+    return None;
+}
+
+"""Walk `tuple_type` through a positional index path and return the
+element type at the leaf, or None if any step fails."""
+impl TypeEvaluator._extract_tuple_element_type_path(
+    tuple_type: TypeBase, path: list[int]
+) -> TypeBase | None {
+    cursor: TypeBase | None = tuple_type;
+    for idx in path {
+        if cursor is None {
+            return None;
+        }
+        cursor = self._extract_tuple_element_type(cursor, idx);
+    }
+    return cursor;
+}
+
 """Return the effective type of the float."""
 impl TypeEvaluator.get_type_of_float(nd: uni.Float) -> TypeBase {
     assert self.prefetch.float_class is not None;
@@ -77,9 +191,7 @@ impl TypeEvaluator.get_type_of_ability(node_: uni.Ability) -> TypeBase {
         func_type_params = [
             types.TypeVarType(
                 name=tp.sym_name,
-                bound=self._convert_to_instance(
-                    self.get_type_of_expression(tp.bound)
-                )
+                bound=self._convert_to_instance(self.get_type_of_expression(tp.bound))
                     if tp.bound
                     else None
             ) for tp in node_.type_params
@@ -224,6 +336,24 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
     );
     is_builtin_class = mod_flags.is_builtin_stub;
     is_from_stdlib_stub = mod_flags.is_stdlib_stub;
+    # Add implicit base classes for Jac archetype keywords.
+    # walker Foo {} → base_classes = [Walker]  (so .reports etc. are visible)
+    # node Foo {}   → base_classes = [Node]
+    if not base_classes and self.prefetch {
+        if (
+            node_.sym_category == SymbolType.WALKER_ARCH
+            and self.prefetch.walker_class
+            and not (is_builtin_class and node_.name_spec.sym_name == "Walker")
+        ) {
+            base_classes.append(self.prefetch.walker_class);
+        } elif (
+            node_.sym_category == SymbolType.NODE_ARCH
+            and self.prefetch.node_class
+            and not (is_builtin_class and node_.name_spec.sym_name == "Node")
+        ) {
+            base_classes.append(self.prefetch.node_class);
+        }
+    }
     # Add object as implicit base class (Every class inherits from object)
     if not base_classes and self.prefetch and self.prefetch.object_class {
         is_object_class = is_builtin_class and node_.name_spec.sym_name == "object";
@@ -257,7 +387,7 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
         enum_members = enum_utils.build_enum_members(node_, self, enum_value_type);
     }
     cls_type = types.ClassType(
-        shared=types.ClassType.ClassDetailsShared(
+        _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=type_params,
@@ -270,7 +400,6 @@ impl TypeEvaluator.get_type_of_class(node_: uni.Archetype) -> types.ClassType {
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),
-        private=None,
         flags=types.TypeFlags.Instantiable,
     );
     # Compute the MRO for the class.
@@ -289,12 +418,23 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
     }
     # Collect base classes (Example: enum Color(IntEnum) → base_classes = [IntEnum])
     base_classes: list[types.TypeBase] = [];
+    # Typed-base shorthand `enum X: T { ... }` desugars to `class X(T, Enum)`
+    # for type-system purposes. T flows in as a leading base so the MRO carries
+    # both T and Enum — feeding get_special_enum_value_type_from_bases for the
+    # int/str shortcuts and exposing the mixin parent's attributes for custom
+    # variants. Mutually exclusive with parenthesized `enum X(B) { ... }`.
+    if node_.value_type {
+        base_classes.append(self.get_type_of_expression(node_.value_type));
+    }
     for base_class in node_.base_classes or [] {
         base_class_type = self.get_type_of_expression(base_class);
         base_classes.append(base_class_type);
     }
-    # No base specified, Then add Enum as implicit base (Example: enum Color { RED=1 } → base_classes = [Enum])
-    if not base_classes and self.prefetch and self.prefetch.enum_class {
+    # Plain `enum X { ... }` and typed `enum X: T { ... }` both get an
+    # implicit Enum base (matching what codegen emits as the trailing kind).
+    # `enum X(B) { ... }` does NOT — the user is responsible for inheriting
+    # from Enum themselves.
+    if not node_.base_classes and self.prefetch and self.prefetch.enum_class {
         base_classes.append(self.prefetch.enum_class);
     }
     # Get required value type for special enums (IntEnum → int, StrEnum → str, IntFlag → int)
@@ -309,7 +449,7 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
         parent_module.loc.mod_path if parent_module and parent_module.loc else ""
     );
     cls_type = types.ClassType(
-        shared=types.ClassType.ClassDetailsShared(
+        _shared=types.ClassType.ClassDetailsShared(
             class_name=node_.name_spec.sym_name,
             symbol_table=node_,
             type_params=None,
@@ -321,7 +461,6 @@ impl TypeEvaluator.get_type_of_enum(node_: uni.Enum) -> types.ClassType {
             enum_value_type=enum_value_type,
             enum_members=enum_members,
         ),
-        private=None,
         flags=types.TypeFlags.Instantiable,
     );
     type_utils.compute_mro_linearization(cls_type);

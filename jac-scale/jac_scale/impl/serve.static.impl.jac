@@ -149,9 +149,7 @@ impl JacAPIServerStatic.serve_client_js_callback -> Callable[..., Response] {
                 media_type='application/javascript'
             );
         } except RuntimeError as exc {
-            return Response(
-                content=str(exc), status_code=503, media_type='text/plain'
-            );
+            return Response(content=str(exc), status_code=503, media_type='text/plain');
         }
     }
     return callback;
@@ -264,7 +262,9 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     if (not file_ext or (file_ext not in allowed_extensions)) {
         # SPA catch-all: serve base_route_app for extensionless paths
         base_route_app = config.serve.base_route_app if config else "";
-        if (not file_ext and base_route_app and not file_path.startswith(api_prefixes)) {
+        if (
+            not file_ext and base_route_app and not file_path.startswith(api_prefixes)
+        ) {
             try {
                 render_payload = self.introspector.render_page(
                     base_route_app, {}, Con.GUEST.value
@@ -451,7 +451,10 @@ impl JacAPIServerStatic.graph_data(Authorization: (str | None) = None) -> JSONRe
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {'from': str(id(source_node)), 'to': str(id(target_node))};
+            edge_data: dict = {
+                'from': str(id(source_node)),
+                'to': str(id(target_node))
+            };
             if (repr(edge_arch) != 'GenericEdge()') {
                 edge_data['label'] = repr(edge_arch);
             }

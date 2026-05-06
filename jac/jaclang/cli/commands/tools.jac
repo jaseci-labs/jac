@@ -38,11 +38,7 @@ def tool(tool: str, args: list = []) -> int;
         Arg.create("initial", default="", help="Initial node ID", short="i"),
         Arg.create("depth", typ=int, default=-1, help="Max traversal depth", short="d"),
         Arg.create(
-            "traverse",
-            typ=bool,
-            default=False,
-            help="Enable traversal mode",
-            short="t"
+            "traverse", typ=bool, default=False, help="Enable traversal mode", short="t"
         ),
         Arg.create(
             "connection",

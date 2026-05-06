@@ -10,27 +10,19 @@ cl {
                     "fontFamily": "system-ui, -apple-system, sans-serif"
                 }}
             >
-                <h1>
-                    📁 Nested Folder Imports
-                </h1>
+                <h1>📁 Nested Folder Imports</h1>
                 <p>
                     This page mirrors the
                     {" "}
-                    <code>
-                        nested-folders/nested-basic
-                    </code>
+                    <code>nested-folders/nested-basic</code>
                     {" "}
                     example by importing components from both
                     {" "}
-                    <code>
-                        components.button
-                    </code>
+                    <code>components.button</code>
                     {" "}
                     and
                     {" "}
-                    <code>
-                        button
-                    </code>
+                    <code>button</code>
                 </p>
                 <p style={{"marginTop": "0.75rem"}}>
                     Both buttons below are rendered via relative imports:

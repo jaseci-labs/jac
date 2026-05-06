@@ -14,19 +14,11 @@ cl def:pub Card -> JsxElement {
                 backgroundColor: "#f8f9fa"
             }}
         >
-            <h3>
-                Card Component (Second Level)
-            </h3>
-            <p>
-                This card imports from:
-            </p>
+            <h3>Card Component (Second Level)</h3>
+            <p>This card imports from:</p>
             <ul>
-                <li>
-                    Root level: ButtonRoot (using ..)
-                </li>
-                <li>
-                    Third level: ButtonThirdL (using .level2)
-                </li>
+                <li>Root level: ButtonRoot (using ..)</li>
+                <li>Third level: ButtonThirdL (using .level2)</li>
             </ul>
             <div style={{marginTop: "15px"}}>
                 <ButtonRoot/>

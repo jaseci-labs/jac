@@ -192,9 +192,7 @@ impl NaIRGenPass._generate_inherited_method_wrappers -> None {
                     args: list[ir.Value] = list(wrapper_fn.args);
                 } else {
                     parent_self = builder.bitcast(
-                        wrapper_fn.args[0],
-                        impl_struct.as_pointer(),
-                        name="parent.self"
+                        wrapper_fn.args[0], impl_struct.as_pointer(), name="parent.self"
                     );
                     args: list[ir.Value] = [parent_self];
                     for i in range(1, len(wrapper_fn.args)) {

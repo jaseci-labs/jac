@@ -75,13 +75,13 @@ impl InteropAnalysisPass._resolve_native_module(
     return src_mod_str;
 }
 
-"""Track imports from .na.jac modules."""
+"""Track imports from .na.jac modules and sv-to-sv microservice imports."""
 impl InteropAnalysisPass.enter_import(
     self: InteropAnalysisPass, nd: uni.Import
 ) -> None {
     import_context = self._get_context(nd);
     if (nd.from_loc and isinstance(nd.from_loc, uni.ModulePath)) {
-        module_name = getattr(nd.from_loc, 'dot_path_str', None);
+        module_name = nd.from_loc?.dot_path_str;
         if (not module_name and nd.from_loc?.path and nd.from_loc.path) {
             module_name = '.'.join(
                 getattr(p, 'value', str(p)) for p in nd.from_loc.path
@@ -89,6 +89,25 @@ impl InteropAnalysisPass.enter_import(
         }
         if module_name {
             native_path = self._resolve_native_module(module_name);
+            # sv-to-sv microservice import detection: triggered when the user
+            # explicitly wrote `sv import from ...` (we detect via the sv
+            # token, not code_context which defaults to SERVER for all nodes).
+            mod_path_str = self.ir_in.loc.mod_path
+                if (self.ir_in and self.ir_in.loc)
+                else '';
+            in_server_module = (
+                mod_path_str.endswith('.jac')
+                and not mod_path_str.endswith('.cl.jac')
+                and not mod_path_str.endswith('.na.jac')
+                and not mod_path_str.endswith('.impl.jac')
+            );
+            sv_token = nd._source_context_token()
+                if nd?._source_context_token
+                else None;
+            has_sv_prefix = sv_token is not None and sv_token.name == Tok.KW_SERVER;
+            if (has_sv_prefix and not native_path and in_server_module and nd.items) {
+                self._register_sv_to_sv_import(nd, module_name);
+            }
             if (native_path and nd.items) {
                 manifest = self.ir_in.gen.interop_manifest;
                 for item in nd.items {
@@ -129,6 +148,149 @@ impl InteropAnalysisPass.enter_import(
             }
         }
     }
+}
+
+"""Register an sv-to-sv import: create InteropBindings for each item.
+
+For each function imported, look up the source module's symbol table to
+extract param names, types, and return type. These bindings drive PyAST
+codegen of HTTP client stubs and inform boundary type collection.
+"""
+impl InteropAnalysisPass._register_sv_to_sv_import(
+    self: InteropAnalysisPass, nd: uni.Import, module_name: str
+) -> None {
+    # Resolve the source module. If it's not yet in the program hub, parse
+    # it standalone (no semantic analysis) so we can extract function
+    # signatures via AST walk. This only triggers for actual sv imports
+    # (we use the sv token check), not for every import.
+    source_mod: (uni.Module | None) = None;
+    if nd.from_loc {
+        try {
+            resolved_path = nd.from_loc.resolve_relative_path();
+            if (self.prog and self.prog.mod and self.prog.mod.hub) {
+                source_mod = self.prog.mod.hub.get(resolved_path);
+            }
+        } except Exception {
+            source_mod = None;
+        }
+        if (source_mod is None) {
+            try {
+                resolved_path = nd.from_loc.resolve_relative_path();
+                import os;
+                if resolved_path and os.path.isfile(resolved_path) {
+                    source_mod = self._parse_only_source_module(resolved_path);
+                }
+            } except Exception {
+                source_mod = None;
+            }
+        }
+    }
+    # Build a name -> Ability map by walking the source module's AST.
+    # This works whether or not the source has had symtab built.
+    source_abilities: dict[str, Any] = {};
+    if source_mod {
+        try {
+            self._collect_abilities(source_mod, source_abilities);
+        } except Exception { }
+    }
+    manifest = self.ir_in.gen.interop_manifest;
+    for item in nd.items {
+        if not isinstance(item, uni.ModuleItem) {
+            continue;
+        }
+        func_name = getattr(item.name, 'value', str(item.name));
+        param_names: list = [];
+        param_types: list = [];
+        ret_type: str = 'Any';
+        ability_node: (uni.Ability | None) = source_abilities.get(func_name);
+        if (ability_node and isinstance(ability_node.signature, uni.FuncSignature)) {
+            sig = ability_node.signature;
+            if sig.params {
+                for p in sig.params {
+                    param_names.append(p.sym_name);
+                    if p.type_tag {
+                        param_types.append(self._extract_type_name(p.type_tag.tag));
+                    } else {
+                        param_types.append('Any');
+                    }
+                }
+            }
+            if sig.return_type {
+                ret_type = self._extract_type_name(sig.return_type);
+            }
+        }
+        local_name = item.alias.sym_name if item.alias else func_name;
+        binding = InteropBinding(
+            name=func_name,
+            source_context=InteropContext.SERVER,
+            callers={InteropContext.SERVER},
+            ret_type=ret_type,
+            param_types=param_types,
+            param_names=param_names,
+            ast_node=ability_node,
+            route=[InteropContext.SERVER, InteropContext.SERVER],
+            source_module=module_name
+        );
+        manifest.bindings[local_name] = binding;
+    }
+}
+
+"""Walk a module AST collecting Ability nodes by name."""
+impl InteropAnalysisPass._collect_abilities(
+    self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+) -> None {
+    if isinstance(nd, uni.Ability) and nd.sym_name {
+        out[nd.sym_name] = nd;
+    }
+    if nd?.kid and nd.kid {
+        for k in nd.kid {
+            self._collect_abilities(k, out);
+        }
+    }
+}
+
+"""Parse a source file standalone (no semantic analysis).
+
+Used by sv-to-sv detection to extract function signatures from a
+provider module that hasn't been compiled yet. We avoid running the
+full compile pipeline to prevent recursive compilation cascades.
+"""
+impl InteropAnalysisPass._parse_only_source_module(
+    self: InteropAnalysisPass, file_path: str
+) -> Any {
+    import from jaclang.jac0core.compiler { JacCompiler }
+    try {
+        f = open(file_path, 'r');
+        try {
+            src_text = f.read();
+        } finally {
+            f.close();
+        }
+        compiler_obj = JacCompiler();
+        return compiler_obj.parse_str(
+            source_str=src_text, file_path=file_path, target_program=self.prog
+        );
+    } except Exception {
+        return None;
+    }
+}
+
+"""Find an Archetype or Enum node by name via AST walk."""
+impl InteropAnalysisPass._find_archetype(
+    self: InteropAnalysisPass, nd: Any, target: str
+) -> Any {
+    if (isinstance(nd, (uni.Archetype, uni.Enum)) and nd?.sym_name == target) {
+        return nd;
+    }
+    if nd?.kid and nd.kid {
+        for k in nd.kid {
+            found = self._find_archetype(k, target);
+            if found is not None {
+                return found;
+            }
+        }
+    }
+    return None;
 }
 
 """Record function definition and its context."""
@@ -367,6 +529,21 @@ impl InteropAnalysisPass._collect_boundary_type(
             break;
         }
     }
+    # AST-walk fallback for modules without a built sym_tab (e.g., a source
+    # module that's already in prog.mod.hub but for which boundary type
+    # collection runs before symtab build).
+    if arch_node is None {
+        for mod in search_mods {
+            try {
+                arch_node = self._find_archetype(mod, type_name);
+            } except Exception {
+                arch_node = None;
+            }
+            if arch_node is not None {
+                break;
+            }
+        }
+    }
     if arch_node is None {
         return;
     }
@@ -489,6 +666,37 @@ impl InteropAnalysisPass.after_pass(self: InteropAnalysisPass) -> None {
                     if p.type_tag {
                         for tn in self._extract_all_type_names(p.type_tag.tag) {
                             self._collect_boundary_type(tn, None);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    # Collect types from SV->SV (microservice) bindings. The source module
+    # holds the canonical type definition; walk up from the ast_node to
+    # find the containing Module.
+    for binding in manifest.server_exports_to_server {
+        source_mod_obj: (uni.Module | None) = None;
+        if (binding.ast_node and isinstance(binding.ast_node, uni.Ability)) {
+            walker_node: (uni.UniNode | None) = binding.ast_node;
+            while walker_node {
+                if isinstance(walker_node, uni.Module) {
+                    source_mod_obj = walker_node;
+                    break;
+                }
+                walker_node = walker_node.parent;
+            }
+            sig = binding.ast_node.signature;
+            if isinstance(sig, uni.FuncSignature) {
+                if sig.return_type {
+                    for tn in self._extract_all_type_names(sig.return_type) {
+                        self._collect_boundary_type(tn, source_mod_obj);
+                    }
+                }
+                for p in sig.params {
+                    if p.type_tag {
+                        for tn in self._extract_all_type_names(p.type_tag.tag) {
+                            self._collect_boundary_type(tn, source_mod_obj);
                         }
                     }
                 }

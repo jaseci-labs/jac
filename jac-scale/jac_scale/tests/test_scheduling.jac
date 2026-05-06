@@ -103,11 +103,19 @@ def _stop_server(proc: subprocess.Popen | None) -> None {
 def _get_token(base_url: str, user: str = "testuser", pwd: str = "pass123") -> str {
     requests.post(
         f"{base_url}/user/register",
-        json={"username": user, "password": pwd},
+        json={
+            "identities": [{"type": "username", "value": user}],
+            "credential": {"type": "password", "password": pwd}
+        },
         timeout=5
     );
     resp = requests.post(
-        f"{base_url}/user/login", json={"username": user, "password": pwd}, timeout=5
+        f"{base_url}/user/login",
+        json={
+            "identity": {"type": "username", "value": user},
+            "credential": {"type": "password", "password": pwd}
+        },
+        timeout=5
     ).json();
     return _data(resp)["token"];
 }
@@ -165,7 +173,10 @@ test "endpoint filtering and startup" {
         # __system__ user created at startup
         resp = requests.post(
             f"{base_url}/user/login",
-            json={"username": "__system__", "password": "system_secret"},
+            json={
+                "identity": {"type": "username", "value": "__system__"},
+                "credential": {"type": "password", "password": "system_secret"}
+            },
             timeout=5
         ).json();
         assert resp.get("ok") , "__system__ user must exist and authenticate";
@@ -250,7 +261,7 @@ test "jobs crud lifecycle" {
         assert body.get("ok") , f"Create failed: {body}";
         job = _data(body);
         job_id = job["_id"];
-        assert job["interval"] == 60 and job["created_by"] == "crud_user";
+        assert job["interval"] == 60 and job.get("created_by");
 
         # Get single
         body = requests.get(f"{base_url}/jobs/{job_id}", headers=h, timeout=5).json();

@@ -437,7 +437,94 @@ with entry {
 }
 ```
 
-### 2 Inheritance
+### 2 Explicit vs. Dynamic Attributes
+
+Jac enforces a **declarative data model**. All instance attributes must be declared upfront using `has`. While the current runtime might permit dynamic attribute assignment (adding a field that wasn't in `has`), this is considered an **anti-pattern** and will be strictly forbidden in future compiler versions.
+
+> [!WARNING]
+> **Dynamic Attribute Assignment is an Anti-Pattern**
+> Explicitly declare all fields using `has`. Avoid adding new attributes to an instance after creation, as this violates the declarative nature of Jac objects and breaks portability across codespaces (server, client, native).
+
+**Anti-Pattern (Dynamic Assignment):**
+
+```jac
+obj Person {
+    has name: str;
+}
+
+with entry {
+    p = Person(name="Alice");
+    p.height = 175; # INVALID: 'height' is not in 'has'
+    print(p.height);
+}
+```
+
+**Correct Approach (Declarative):**
+
+```jac
+obj Person {
+    has name: str,
+        height: int = 0; # Declare all expected fields
+}
+
+with entry {
+    p = Person(name="Alice", height=175);
+    print(p.height);
+}
+```
+
+#### Initialization with `by postinit`
+
+If an attribute's value depends on other fields or requires complex calculation during setup, use the `by postinit` modifier and define a `postinit` method.
+
+```jac
+obj Rectangle {
+    has width: float,
+        height: float;
+    has area: float by postinit;
+
+    def postinit() {
+        self.area = self.width * self.height;
+    }
+}
+```
+
+#### More Examples (Using `class`)
+
+Even when using `class` for Python compatibility, you should avoid dynamic assignment within methods:
+
+**Avoid this pattern:**
+
+```jac
+class Dog {
+    def rename() -> None {
+        self.secret = "oops"; # Dynamic assignment - Avoid!
+    }
+
+    def train() -> None {
+        self.trick = "sit"; # Dynamic assignment - Avoid!
+    }
+}
+```
+
+**Prefer this pattern:**
+
+```jac
+obj Dog {
+    has secret: str = "",
+        trick: str = "";
+
+    def rename() -> None {
+        self.secret = "oops";
+    }
+
+    def train() -> None {
+        self.trick = "sit";
+    }
+}
+```
+
+### 3 Inheritance
 
 ```jac
 obj Animal {
@@ -500,7 +587,51 @@ with entry {
 }
 ```
 
-### 4 Enums with Inline Python
+### 4 Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are instances of `T`. The base type follows the enum name after a colon. `int` and `str` desugar to Python's `IntEnum` and `StrEnum`; any other base `T` desugars to the mixin form `class X(T, Enum)`.
+
+```jac
+enum HttpStatus: int {
+    OK = 200,
+    NOT_FOUND = 404,
+    SERVER_ERROR = 500
+}
+
+enum Tag: str {
+    OPEN = "open",
+    CLOSE = "close"
+}
+
+with entry {
+    # Members compare and behave as the underlying type
+    print(HttpStatus.OK == 200);             # True
+    print(isinstance(Tag.OPEN, str));        # True
+    print(HttpStatus.OK + 1);                # 201 -- arithmetic works
+}
+```
+
+| Declaration | Desugars to |
+|-------------|-------------|
+| `enum X { A = 0 }` | `class X(Enum)` |
+| `enum X: int { A = 0 }` | `class X(IntEnum)` |
+| `enum X: str { A = "a" }` | `class X(StrEnum)` |
+| `enum X: T { A = T(...) }` | `class X(T, Enum)` (mixin) |
+
+The mixin form is useful when members must carry behavior or state from a custom type:
+
+```jac
+obj Box {
+    has size: int = 0;
+}
+
+enum Crate: Box {
+    SMALL = Box(),
+    LARGE = Box()
+}
+```
+
+### 5 Enums with Inline Python
 
 ```jac
 enum HttpStatus {
@@ -518,7 +649,7 @@ enum HttpStatus {
 }
 ```
 
-### 5 Properties and Encapsulation
+### 6 Properties and Encapsulation
 
 ```jac
 obj Account {
@@ -720,11 +851,11 @@ impl CircleService.describe -> str {
 
 #### Native Variant Files (`.na.jac`)
 
-Native variant files compile to LLVM IR and execute via JIT (MCJIT). Code in `.na.jac` files runs as native machine code, bypassing the Python runtime entirely. This is useful for performance-critical code and for calling C libraries directly. The same functionality is available inside `na {}` blocks in regular `.jac` files.
+Native variant files compile to LLVM IR and execute via JIT (MCJIT). Code in `.na.jac` files runs as native machine code, bypassing the Python runtime entirely. This is useful for performance-critical code and for calling C libraries directly. The same functionality is available in `to na:` sections (or `na` statement prefixes) within regular `.jac` files.
 
 **C Library Imports:**
 
-Native code can import C shared libraries using the `import from` syntax with a library path and extern function declarations, either at the top level of a `.na.jac` file or inside a `na {}` block:
+Native code can import C shared libraries using the `import from` syntax with a library path and extern function declarations, either at the top level of a `.na.jac` file or under a `to na:` section in a regular `.jac` file:
 
 <!-- jac-skip -->
 ```jac

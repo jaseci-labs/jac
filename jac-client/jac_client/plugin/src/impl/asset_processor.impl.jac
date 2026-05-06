@@ -2,10 +2,7 @@ import from jaclang.cli.console { console }
 
 """Copy custom asset files (based on jac.toml configuration) from source to destination recursively."""
 impl AssetProcessor.copy_custom_asset_types(
-    self: AssetProcessor,
-    src_dir: Path,
-    dest_dir: Path,
-    preserve_structure: bool = True
+    self: AssetProcessor, src_dir: Path, dest_dir: Path, preserve_structure: bool = True
 ) -> None {
     if not src_dir.exists() {
         return;
@@ -52,10 +49,7 @@ impl AssetProcessor.copy_custom_asset_types(
 
 """Copy TypeScript files (.ts, .tsx) from source to destination recursively."""
 impl AssetProcessor.copy_typescript_files(
-    self: AssetProcessor,
-    src_dir: Path,
-    dest_dir: Path,
-    preserve_structure: bool = True
+    self: AssetProcessor, src_dir: Path, dest_dir: Path, preserve_structure: bool = True
 ) -> None {
     if not src_dir.exists() {
         return;
@@ -97,10 +91,7 @@ impl AssetProcessor.copy_typescript_files(
 
 """Copy CSS and other asset files from source to destination recursively."""
 impl AssetProcessor.copy_assets(
-    self: AssetProcessor,
-    src_dir: Path,
-    dest_dir: Path,
-    preserve_structure: bool = True
+    self: AssetProcessor, src_dir: Path, dest_dir: Path, preserve_structure: bool = True
 ) -> None {
     if not src_dir.exists() {
         return;

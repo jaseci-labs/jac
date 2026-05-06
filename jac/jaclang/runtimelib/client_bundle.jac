@@ -62,7 +62,10 @@ obj ClientBundleBuilder {
 
     def _compile_bundle(module: ModuleType, module_path: Path) -> ClientBundle;
     def _compile_to_js(source_path: Path) -> tuple[str, Module];
-    static def _strip_import_statements(js_code: str, bundled_modules: set[str]) -> str;
+    static def _strip_import_statements(
+        js_code: str, bundled_modules: set[str]
+    ) -> str;
+
     static def _signature(paths: Iterable[Path]) -> str;
     static def _generate_registration_js(
         module_name: str,

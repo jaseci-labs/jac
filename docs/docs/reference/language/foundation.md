@@ -233,6 +233,9 @@ obj Example {
 }
 ```
 
+!!! note "The `any` Special Case"
+    Because `any` is a built-in type in Jac, the backtick escape is used as a convention to refer to the Python/Jac built-in **`any()` function**. Always use `` `any `` when you want to call the function and `any` (without a backtick) when referring to the type.
+
 !!! danger
     Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
@@ -355,6 +358,10 @@ obj Container {
     has value: any;
 }
 ```
+
+!!! tip "Remember the backtick"
+    If you need to use the built-in function to check if any item is truthy, use `` `any ``:
+    ``if `any([True, False]) { ... }``
 
 ### 4 The `Self` Type
 
@@ -639,6 +646,10 @@ obj Rectangle {
     }
 }
 ```
+
+> [!WARNING]
+> **Strict Data Model**
+> Jac enforces a declarative data model. Only attributes declared with `has` are part of the object's structure. While the runtime may currently allow dynamic assignment of undeclared attributes, this is an anti-pattern that should be avoided. Future versions of the Jac compiler will strictly forbid this behavior.
 
 ### 3 Global Variables (glob)
 
@@ -1908,11 +1919,11 @@ Native and Python codespaces can call each other within the same module:
 
 ```jac
 # main.jac (Python/server codespace)
-sv {
-    def process_data(data: list) -> list {
-        # Python code with full PyPI access
-        return sorted(data);
-    }
+to sv:
+
+def process_data(data: list) -> list {
+    # Python code with full PyPI access
+    return sorted(data);
 }
 
 # main.na.jac (native codespace)

@@ -23,9 +23,7 @@ cl {
 
         return
             <div style={{"padding": "2rem"}}>
-                <h1>
-                    Blog Posts
-                </h1>
+                <h1>Blog Posts</h1>
                 <p style={{"color": "#6b7280", "marginBottom": "1.5rem"}}>
                     Click on a post to read it (demonstrates slug-based [slug] routing)
                 </p>

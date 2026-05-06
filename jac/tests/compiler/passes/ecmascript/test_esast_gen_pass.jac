@@ -232,7 +232,12 @@ test "export semantics for pub declarations" {
 
     # All :pub items in export, private items excluded
     pub_items = ["PUBLIC_API_URL", "PublicClass", "public_function", "PublicStatus"];
-    priv_items = ["PRIVATE_SECRET", "PrivateClass", "private_function", "PrivateStatus"];
+    priv_items = [
+        "PRIVATE_SECRET",
+        "PrivateClass",
+        "private_function",
+        "PrivateStatus"
+    ];
     assert all(item in last_line for item in pub_items) , (
         "All :pub items should be exported"
     );
@@ -416,5 +421,96 @@ test "jsx comprehension with filter" {
     # Check that filter is chained with map
     assert ".filter(" in js_code and ".map(" in js_code , (
         "Filtered JSX comprehension should chain .filter().map()"
+    );
+}
+
+test "jsx html entity decoding in text and attributes" {
+    es_ast = compile_to_esast(fixture_path("jsx_entity_decode.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Attribute value: &amp; must be decoded to &
+    assert '"A & B"' in js_code , (
+        "HTML entity &amp; in attribute should be decoded to & in emitted JS"
+    );
+    assert '"A &amp; B"' not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS attribute value"
+    );
+
+    # Text children: named entities must be decoded
+    assert "Before > After & More" in js_code , (
+        "HTML entities &gt; and &amp; in text content should be decoded"
+    );
+    assert "&gt;" not in js_code , (
+        "Raw &gt; should NOT appear in emitted JS text content"
+    );
+    assert "&amp;" not in js_code , (
+        "Raw &amp; should NOT appear in emitted JS text content"
+    );
+
+    # Decimal and hex numeric references must be decoded
+    assert "Decimal > and Hex > refs" in js_code , (
+        "Decimal &#62; and hex &#x3e; references should both decode to >"
+    );
+    assert "&#62;" not in js_code , (
+        "Raw decimal entity should NOT appear in emitted JS"
+    );
+    assert "&#x3e;" not in js_code , ("Raw hex entity should NOT appear in emitted JS");
+}
+
+test "stale has read emits W3041" {
+    # Compile with type_check=True so the lint schedule (JacLintCheckPass)
+    # runs and W3041 surfaces in prog.warnings_had.
+    prog = JacProgram();
+    _ir = prog.compile(
+        file_path=fixture_path("stale_has_read.jac"), no_cgen=True, type_check=True
+    );
+    assert not prog.errors_had , (
+        "Compilation errors: " + str([str(e) for e in prog.errors_had])
+    );
+    w3041_hits = [
+        w
+        for w in prog.warnings_had
+        if w.code and w.code.code == "W3041"
+    ];
+    assert len(w3041_hits) >= 1 , (
+        "Expected W3041 diagnostic for stale `has` field read, got: " + str(
+            [(w.code.code if w.code else "?") for w in prog.warnings_had]
+        )
+    );
+}
+
+test "single-`props` component definition warns W5015" {
+    fixture = fixture_path("component_props_idiom.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True);
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture}: {[str(e) for e in prog.errors_had]}"
+    );
+    EsastGenPass(ir_in=ir, prog=prog);
+
+    w5015 = [
+        w
+        for w in prog.warnings_had
+        if w.code is not None and w.code.code == "W5015"
+    ];
+    msgs = [str(w) for w in w5015];
+
+    # Only the JS-idiomatic single-`props` shape sacrifices per-prop call-site
+    # validation, so JsPropsStyle is the one and only component that warns.
+    assert len(w5015) == 1 , (
+        f"Expected exactly one W5015 (JsPropsStyle), got {len(w5015)}: {msgs}"
+    );
+    assert any("JsPropsStyle" in m for m in msgs) , (
+        f"W5015 should name the offending component 'JsPropsStyle', got: {msgs}"
+    );
+
+    # The Jac-idiomatic shapes (direct named params, or a typed single-key
+    # bundle whose name isn't the `props` keyword) must not warn — both
+    # preserve per-prop validation at JSX call sites.
+    assert not any("DirectStyle" in m for m in msgs) , (
+        f"DirectStyle (multi-param) should not warn, got: {msgs}"
+    );
+    assert not any("SingleKeyStyle" in m for m in msgs) , (
+        f"SingleKeyStyle (typed single-key bundle) should not warn, got: {msgs}"
     );
 }

@@ -1,6 +1,7 @@
 """Core constructs for Jac Language - re-exports."""
 import from jaclang.jac0core.archetype {
     AccessLevel,
+    access_level_cast,
     Anchor,
     Archetype,
     EdgeAnchor,
@@ -10,6 +11,7 @@ import from jaclang.jac0core.archetype {
     NodeAnchor,
     NodeArchetype,
     ObjectSpatialFunction,
+    PermissionDenied,
     Root,
     WalkerAnchor,
     WalkerArchetype
@@ -17,6 +19,7 @@ import from jaclang.jac0core.archetype {
 import from jaclang.jac0core.mtp { MTIR, MTRuntime }
 glob __all__ = [
          'AccessLevel',
+         'access_level_cast',
          'Anchor',
          'NodeAnchor',
          'EdgeAnchor',
@@ -27,6 +30,7 @@ glob __all__ = [
          'WalkerArchetype',
          'GenericEdge',
          'JsxElement',
+         'PermissionDenied',
          'Root',
          'MTIR',
          'MTRuntime',

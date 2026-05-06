@@ -8,20 +8,14 @@ cl {
         if len(transactions) == 0 {
             return
                 <div className="empty-state">
-                    <p>
-                        No transactions yet.
-                    </p>
-                    <p>
-                        Add your first income or expense above!
-                    </p>
+                    <p>No transactions yet.</p>
+                    <p>Add your first income or expense above!</p>
                 </div>;
         }
 
         return
             <div className="transaction-list">
-                <h3 className="list-title">
-                    Transactions ({len(transactions)})
-                </h3>
+                <h3 className="list-title">Transactions ({len(transactions)})</h3>
                 {[
                     <TransactionItem
                         key={tx["id"]}

@@ -207,7 +207,9 @@ def _handle_npm_add(ctx: HookContext) -> None {
 
     config = get_config();
     if config is None {
-        console.error("No jac.toml found", hint="Run 'jac create' to create a project.");
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
         return;

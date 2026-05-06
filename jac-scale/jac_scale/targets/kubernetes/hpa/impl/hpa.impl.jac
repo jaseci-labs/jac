@@ -26,10 +26,7 @@ impl create_hpa(
                     `type='Resource',
                     resource=V2ResourceMetricSource(
                         name='cpu',
-                        target={
-                            'type': 'Utilization',
-                            'averageUtilization': cpu_target
-                        }
+                        target={'type': 'Utilization', 'averageUtilization': cpu_target}
                     )
                 )
             ]

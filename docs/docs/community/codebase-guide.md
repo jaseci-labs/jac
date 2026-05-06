@@ -207,6 +207,8 @@ Registration happens in `pyproject.toml`:
 | `jac-mcp` | Exposes the Jac project as an MCP server so AI coding assistants can query it. |
 | `jac-super` | Pretty-printed console output via `rich`. |
 
+For the full how-to on writing your own plugin -- CLI extension, runtime hook overrides, jac.toml schemas, project templates, and the entry-point setup -- see the [Plugin Authoring Guide](../reference/plugin-authoring.md).
+
 ---
 
 ## Tests

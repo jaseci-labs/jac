@@ -213,7 +213,9 @@ impl ClientBundleBuilder._compile_bundle(
     # First compile to ensure module is in hub and get JS code + manifest
     (module_js, compiled_mod) = self._compile_to_js(module_path);
     manifest = compiled_mod.gen.client_manifest if compiled_mod else None;
-    (import_pieces, bundled_module_names) = self._process_imports(manifest, module_path);
+    (import_pieces, bundled_module_names) = self._process_imports(
+        manifest, module_path
+    );
     module_js = self._strip_import_statements(module_js, bundled_module_names);
     client_exports = self._extract_client_exports(manifest);
     client_globals_map = self._extract_client_globals(manifest, module);

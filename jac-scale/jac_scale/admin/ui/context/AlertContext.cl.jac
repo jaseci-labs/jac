@@ -13,15 +13,13 @@ cl {
         def showAlert(msg: str, type: str = "success") {
             message = msg;
             alertType = type;
-            setTimeout(lambda { message = "";}, ALERT_DISMISS_MS);
+            setTimeout(lambda { message = ""; }, ALERT_DISMISS_MS);
         }
 
         value = {"message": message, "alertType": alertType, "showAlert": showAlert};
 
         return
-            <AlertContext.Provider value={value}>
-                {children}
-            </AlertContext.Provider>;
+            <AlertContext.Provider value={value}>{children}</AlertContext.Provider>;
     }
 
     def:pub useAlert -> dict {

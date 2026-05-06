@@ -1,29 +1,4 @@
-"""Extract Bearer token from request and validate. Returns (username, None) or (None, error_response)."""
-def _authenticate_request(
-    request: Request, user_manager: Any
-) -> tuple[str | None, TransportResponse | None] {
-    authorization = request.headers.get('Authorization');
-    token: (str | None) = None;
-    if (
-        authorization
-        and isinstance(authorization, str)
-        and authorization.startswith('Bearer ')
-    ) {
-        token = authorization[7:];
-    }
-    username = user_manager.validate_jwt_token(token) if token else None;
-    if not username {
-        return (
-            None,
-            TransportResponse.fail(
-                code='UNAUTHORIZED',
-                message='Authorization required',
-                meta=Meta(extra={'http_status': 401})
-            )
-        );
-    }
-    return (username, None);
-}
+import from jac_scale.utils { authenticate_or_fail }
 
 """Validate trigger type and trigger-specific fields. Returns error response or None."""
 def _validate_trigger(
@@ -168,7 +143,8 @@ impl JacAPIServerScheduler.register_scheduler_endpoints -> None {
 """Build POST /jobs callback — creates a new dynamic scheduled job."""
 impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request) -> TransportResponse {
-        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        authorization = request.headers.get('Authorization');
+        (username, auth_err) = authenticate_or_fail(authorization, self.user_manager);
         if auth_err {
             return auth_err;
         }
@@ -270,7 +246,8 @@ impl JacAPIServerScheduler.create_job_callback -> Callable[..., TransportRespons
 """Build GET /jobs callback — lists all dynamic scheduled jobs."""
 impl JacAPIServerScheduler.list_jobs_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request) -> TransportResponse {
-        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        authorization = request.headers.get('Authorization');
+        (username, auth_err) = authenticate_or_fail(authorization, self.user_manager);
         if auth_err {
             return auth_err;
         }
@@ -296,7 +273,8 @@ impl JacAPIServerScheduler.list_jobs_callback -> Callable[..., TransportResponse
 """Build GET /jobs/{job_id} callback — retrieves a single dynamic job."""
 impl JacAPIServerScheduler.get_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
-        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        authorization = request.headers.get('Authorization');
+        (username, auth_err) = authenticate_or_fail(authorization, self.user_manager);
         if auth_err {
             return auth_err;
         }
@@ -328,7 +306,8 @@ impl JacAPIServerScheduler.get_job_callback -> Callable[..., TransportResponse] 
 """Build PUT /jobs/{job_id} callback — updates an existing dynamic job's schedule."""
 impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
-        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        authorization = request.headers.get('Authorization');
+        (username, auth_err) = authenticate_or_fail(authorization, self.user_manager);
         if auth_err {
             return auth_err;
         }
@@ -395,7 +374,8 @@ impl JacAPIServerScheduler.update_job_callback -> Callable[..., TransportRespons
 """Build DELETE /jobs/{job_id} callback — deletes a dynamic scheduled job."""
 impl JacAPIServerScheduler.delete_job_callback -> Callable[..., TransportResponse] {
     async def callback(request: Request, job_id: str) -> TransportResponse {
-        (username, auth_err) = _authenticate_request(request, self.user_manager);
+        authorization = request.headers.get('Authorization');
+        (username, auth_err) = authenticate_or_fail(authorization, self.user_manager);
         if auth_err {
             return auth_err;
         }

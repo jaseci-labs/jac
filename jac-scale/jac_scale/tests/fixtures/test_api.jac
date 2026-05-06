@@ -15,6 +15,10 @@ def multiply(x: int, y: int) -> int {
     return x * y;
 }
 
+def:pub public_status -> dict {
+    return {"status": "ok", "public": True};
+}
+
 # ============================================================================
 # Test Data Models
 # ============================================================================

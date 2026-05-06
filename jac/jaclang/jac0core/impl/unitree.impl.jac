@@ -297,13 +297,13 @@ impl Symbol.init(
     parent_tab: (UniScopeNode | None) = None,
     imported: bool = False
 ) -> None {
-    self.defn: list[NameAtom] = [defn];
-    self.uses: list[NameAtom] = [];
-    self.imported: bool = imported;
+    self.defn = [defn];
+    self.uses = [];
+    self.imported = imported;
     defn.sym = self;
-    self.access: SymbolAccess = access;
+    self.access = access;
     self.parent_tab = parent_tab;
-    self.semstr: str = '';
+    self.semstr = '';
 }
 
 """Get decl."""
@@ -721,6 +721,13 @@ impl ConditionalNode.postinit -> None {
     UniCFGNode.postinit(self);
 }
 
+"""Initialize CfgExpr (expression-level CFG wrapper)."""
+impl CfgExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+    ConditionalNode.postinit(self);
+}
+
 
 """Get head by walking up the CFG iteratively."""
 impl UniCFGNode.get_head -> UniCFGNode {
@@ -728,9 +735,7 @@ impl UniCFGNode.get_head -> UniCFGNode {
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
-        and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
-        )
+        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
             nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
@@ -748,10 +753,10 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
+        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
-            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+            nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
         )
-        and not isinstance(nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt))
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
     ) {
@@ -932,9 +937,7 @@ impl ProgramModule.postinit -> None {
     self.main = self.main_mod or Module.make_stub();
     self.kid = [self.main];
     UniNode.postinit(self);
-    self.hub: dict[(str, Module)] = {self.loc.mod_path: self.main_mod}
-        if self.main_mod
-        else {};
+    self.hub = {self.loc.mod_path: self.main_mod} if self.main_mod else {};
 }
 
 
@@ -1108,7 +1111,7 @@ impl Import.__jac_detected -> bool {
 }
 
 impl ModulePath.postinit -> None {
-    self.abs_path: (str | None) = None;
+    self.abs_path = None;
     UniNode.postinit(self);
 }
 
@@ -1129,31 +1132,13 @@ impl ModulePath.dot_path_str -> str {
         return (('.' * self.level) + self.path[0].lit_value);
     }
     return (
-        ('.' * self.level) + '.'.join(
-            [p.value for p in self.path] if self.path else []
-        )
+        ('.' * self.level) + '.'.join([p.value for p in self.path] if self.path else [])
     );
 }
 
 """Convert an import target string into a relative file path."""
 impl ModulePath.resolve_relative_path(target_item: (str | None) = None) -> str {
     target = self.dot_path_str + (f".{target_item}" if target_item else '');
-    if target.startswith('@jac/') {
-        import jaclang.runtimelib;
-        runtime_dir = os.path.dirname(jaclang.runtimelib.__file__);
-        module_name = target[5:];
-        module_map = {'runtime': 'client_runtime.cl.jac'};
-        if (module_name in module_map) {
-            return os.path.join(runtime_dir, module_map[module_name]);
-        }
-        for ext in ['.cl.jac', '.jac', '.js'] {
-            path = os.path.join(runtime_dir, (module_name + ext));
-            if os.path.exists(path) {
-                return path;
-            }
-        }
-        return os.path.join(runtime_dir, (module_name + '.jac'));
-    }
     return resolve_relative_path(target, self.loc.mod_path);
 }
 
@@ -1212,7 +1197,7 @@ impl ModulePath.resolve_relative_path_list -> list[str] {
 
 impl ModuleItem.postinit -> None {
     UniNode.postinit(self);
-    self.abs_path: (str | None) = None;
+    self.abs_path = None;
 }
 
 
@@ -1274,9 +1259,7 @@ impl Archetype._get_impl_resolved_body -> list {
     return `list(self.body)
         if isinstance(self.body, Sequence)
         else `list(self.body.body)
-            if (
-                isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence)
-            )
+            if (isinstance(self.body, ImplDef) and isinstance(self.body.body, Sequence))
             else [];
 }
 
@@ -1583,10 +1566,7 @@ impl ParamVar.postinit -> None {
     self.param_kind = ParamKind.NORMAL;
     UniNode.postinit(self);
     AstSymbolNode._init_symbol(
-        self,
-        sym_name=self.name.value,
-        name_spec=self.name,
-        sym_category=SymbolType.VAR
+        self, sym_name=self.name.value, name_spec=self.name, sym_category=SymbolType.VAR
     );
 }
 
@@ -1810,7 +1790,6 @@ impl CompareExpr.postinit -> None {
 impl BoolExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
-    ConditionalNode.postinit(self);
 }
 
 
@@ -1931,7 +1910,9 @@ impl AtomTrailer.postinit -> None {
 impl AtomTrailer.as_attr_list -> list[AstSymbolNode] {
     left = self.right if isinstance(self.right, AtomTrailer) else self.target;
     right = self.target if isinstance(self.right, AtomTrailer) else self.right;
-    trag_list: list[AstSymbolNode] = [right] if isinstance(right, AstSymbolNode) else [];
+    trag_list: list[AstSymbolNode] = [right]
+        if isinstance(right, AstSymbolNode)
+        else [];
     while (isinstance(left, AtomTrailer) and left.is_attr) {
         if isinstance(left.right, AstSymbolNode) {
             trag_list.insert(0, left.right);
@@ -2090,23 +2071,60 @@ impl JsxText.postinit -> None {
 
 """Normalize JSX text whitespace (single source of truth).
 
-    HTML-like rules: strip leading/trailing newline+whitespace,
-    collapse internal newline+whitespace sequences to a single space.
+    Implements Babel's JSX text-content rules so the rendered output
+    matches what React/Babel produce:
+
+      1. Split the raw text on line breaks.
+      2. Convert tabs to spaces; strip leading whitespace from every
+         line except the first, and trailing whitespace from every line
+         except the last. (i.e. only newline-crossing whitespace is
+         trimmed; same-line whitespace at the boundaries is preserved.)
+      3. Lines that are empty after step 2 are dropped entirely.
+      4. Surviving lines are joined with a single space separator.
+
+    Consequences:
+      - "{a} {b}" (single space, no newline) -> " "  (preserved)
+      - "}\n  {"  (whitespace with newline)  -> ""   (dropped)
+      - "  hello\n    world  " -> "  hello world  " (cross-line ws becomes
+        a single space; first-line leading ws and last-line trailing ws
+        are preserved.)
+
+    Returning "" tells the codegen to skip this child.
     """
 impl JsxText.get_normalized_text -> str {
     import re;
     raw = self.value.value if isinstance(self.value, Token) else str(self.value);
-    stripped = raw.strip();
-    if not stripped {
+    if not raw {
         return "";
     }
-    # Strip leading newline+whitespace, trailing whitespace
-    result = re.sub(r'^\s*\n\s*', '', raw).rstrip();
-    if not result {
-        result = stripped;
+    lines = re.split(r'\r\n|\n|\r', raw);
+    # Index of the last line that contains any non-space/tab character.
+    # Used to suppress the trailing inter-line space after the final line.
+    last_non_empty = -1;
+    for i in range(len(lines)) {
+        if re.search(r'[^ \t]', lines[i]) {
+            last_non_empty = i;
+        }
     }
-    # Collapse internal newline+whitespace to single space
-    return re.sub(r'\s*\n\s*', ' ', result);
+    result = "";
+    for i in range(len(lines)) {
+        line = lines[i].replace('\t', ' ');
+        is_first = i == 0;
+        is_last = i == len(lines) - 1;
+        if not is_first {
+            line = re.sub(r'^[ ]+', '', line);
+        }
+        if not is_last {
+            line = re.sub(r'[ ]+$', '', line);
+        }
+        if line {
+            if last_non_empty >= 0 and i != last_non_empty {
+                line += ' ';
+            }
+            result += line;
+        }
+    }
+    return result;
 }
 
 impl JsxExpression.postinit -> None {
@@ -2292,6 +2310,8 @@ impl SpecialVarRef.py_resolve_name -> str {
         return 'props';
     } elif (self.orig.name == Tok.KW_SUPER) {
         return 'super';
+    } elif (self.orig.name == Tok.KW_ROOT) {
+        return Con.ROOT.value;
     } elif (self.orig.name == Tok.KW_HERE) {
         return Con.HERE.value;
     } elif (self.orig.name == Tok.KW_VISITOR) {
@@ -2558,8 +2578,8 @@ impl Source.init(source: str, mod_path: str) -> None {
     self.value = source;
     self.hash = md5(source.encode()).hexdigest();
     self.file_path = mod_path;
-    self.comments: list[CommentToken] = [];
-    self.inline_suppressions: dict[int, set[str]] = {};
+    self.comments = [];
+    self.inline_suppressions = {};
 }
 
 """Return the source code as string."""

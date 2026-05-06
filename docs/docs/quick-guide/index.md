@@ -87,7 +87,7 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     ```bash
     pip install jaseci
     export ANTHROPIC_API_KEY="your-key-here"
-    jac start main.jac
+    jac start
     ```
 
     Open [http://localhost:8000](http://localhost:8000) to see it running. Jac supports any [LiteLLM-compatible model](https://docs.litellm.ai/docs/providers) -- use `gemini/gemini-2.5-flash` for a free alternative or `ollama/llama3.2:1b` for local models.
@@ -142,11 +142,11 @@ Jac introduces **codespaces** -- regions of code that target different execution
 
 | Codespace | Target | Ecosystem | Syntax |
 |-----------|--------|-----------|--------|
-| **Server** | Python runtime | PyPI (`numpy`, `pandas`, `fastapi`) | `sv { }` or `.sv.jac` |
-| **Client** | Browser/JavaScript | npm (`react`, `tailwind`, `@mui`) | `cl { }` or `.cl.jac` |
-| **Native** | Compiled binary | C ABI | `na { }` or `.na.jac` |
+| **Server** | Python runtime | PyPI (`numpy`, `pandas`, `fastapi`) | `to sv:` or `.sv.jac` |
+| **Client** | Browser/JavaScript | npm (`react`, `tailwind`, `@mui`) | `to cl:` or `.cl.jac` |
+| **Native** | Compiled binary | C ABI | `to na:` or `.na.jac` |
 
-Server definitions are visible to client blocks. When the client calls a server function, the compiler generates the HTTP request, serialization, and routing automatically. You write one language; the compiler produces the interop layer.
+Server definitions are visible to client sections. When the client calls a server function, the compiler generates the HTTP request, serialization, and routing automatically. You write one language; the compiler produces the interop layer.
 
 !!! example "See it in action"
     Want to see exactly how much code Jac eliminates? Check out [Jac vs Traditional Stack](jac-vs-traditional-stack.md) -- a side-by-side comparison showing **~30 lines of Jac** vs **>300 lines** of Python + FastAPI + SQLite + TypeScript + React for the same Todo app.
@@ -204,12 +204,12 @@ with entry {
 }
 ```
 
-This same program runs three ways with no code changes:
+This same program runs three ways with no code changes (`main.jac` is the default entry point; omit it or specify a different name explicitly):
 
 | Command | What Happens |
 |---------|-------------|
-| `jac app.jac` | Runs locally, SQLite persistence |
-| `jac start app.jac` | HTTP API server, walkers become REST endpoints |
+| `jac main.jac` | Runs locally, SQLite persistence |
+| `jac start` | HTTP API server, walkers become REST endpoints |
 | `jac start --scale` | Kubernetes deployment with Redis, MongoDB, load balancing |
 
 The runtime handles database schemas, user authentication (per-user graph isolation), API generation (Swagger docs at `/docs`), caching tiers, and Kubernetes orchestration. You write application logic; the runtime handles infrastructure.

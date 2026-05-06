@@ -143,7 +143,7 @@ impl onMount(mountFn: Any) -> None {
         __jacReactiveContext.mountedComponents[componentId] = True;
         # Run in next tick to ensure component is fully rendered
         try {
-            setTimeout(lambda { __jacRunEffect(mountFn);}, 0);
+            setTimeout(lambda { __jacRunEffect(mountFn); }, 0);
         } except Exception {
             # Fallback if setTimeout not available
             __jacRunEffect(mountFn);
@@ -272,9 +272,13 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
     # Listen to popstate (back/forward buttons and pushState navigation)
     window.addEventListener(
         "popstate",
-        lambda event: Any { newPath = __jacGetPath();if not newPath {
-            newPath = defaultRoute;
-        }setCurrentPath(newPath);}
+        lambda event: Any {
+            newPath = __jacGetPath();
+            if not newPath {
+                newPath = defaultRoute;
+            }
+            setCurrentPath(newPath);
+        }
     );
     # Render method - returns component for current route
     def render -> JsxElement {
@@ -286,9 +290,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
                 # Check guard if present
                 if route.guard and not route.guard() {
                     return
-                        <div>
-                            Access Denied
-                        </div>;
+                        <div>Access Denied</div>;
                 }
                 return route.component();
             }
@@ -296,9 +298,7 @@ impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
 
         # No match - show 404
         return
-            <div>
-                404 - Route not found:{path}
-            </div>;
+            <div>404 - Route not found:{path}</div>;
     }
     # Navigate method
     def navigateTo(path: str) {
@@ -405,13 +405,36 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
     return result;
 }
 
-impl jacSignup(username: str, password: str) -> dict {
+def __normalizeIdentity(x: Any) -> dict {
+    if __isObject(x) {
+        return x;
+    }
+    return {"type": "username", "value": x};
+}
+
+def __normalizeCredential(x: Any) -> dict {
+    if __isObject(x) {
+        return x;
+    }
+    return {"type": "password", "password": x};
+}
+
+impl jacSignup(
+    identities_or_username: (str | list), credential_or_password: (str | dict)
+) -> dict {
+    credential = __normalizeCredential(credential_or_password);
+    identities = (
+        identities_or_username
+            if Array.isArray(identities_or_username)
+            else [__normalizeIdentity(identities_or_username)]
+    );
+    primary_username = identities[0]["value"] if len(identities) > 0 else "";
     response = await fetch(
-        "/user/create",
+        "/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"username": username, "password": password})
+            "body": JSON.stringify({"identities": identities, "credential": credential})
         }
     );
     if response.ok {
@@ -426,7 +449,7 @@ impl jacSignup(username: str, password: str) -> dict {
         } except Exception { }
         if token {
             __setLocalStorage("jac_token", token);
-            return {"success": True, "token": token, "username": username};
+            return {"success": True, "token": token, "username": primary_username};
         }
         return {"success": False, "error": "No token received"};
     } else {
@@ -450,13 +473,17 @@ impl jacSignup(username: str, password: str) -> dict {
     }
 }
 
-impl jacLogin(username: str, password: str) -> bool {
+impl jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool {
+    identity = __normalizeIdentity(identity_or_username);
+    credential = __normalizeCredential(credential_or_password);
     response = await fetch(
         "/user/login",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"username": username, "password": password})
+            "body": JSON.stringify({"identity": identity, "credential": credential})
         }
     );
     if response.ok {
@@ -741,9 +768,12 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
         return;
     }
     # Set up reactive root component for automatic re-rendering
-    __jacReactiveContext.rootComponent = lambda -> Any { __jacReactiveContext.currentComponent = "__root__";result = target.apply(
-        scope, orderedArgs
-    );__jacReactiveContext.currentComponent = None;return result; };
+    __jacReactiveContext.rootComponent = lambda -> Any {
+        __jacReactiveContext.currentComponent = "__root__";
+        result = target.apply(scope, orderedArgs);
+        __jacReactiveContext.currentComponent = None;
+        return result;
+    };
     renderer = __jacResolveRenderer(scope);
     if not renderer {
         console.warn("[Jac] renderJsxTree is not available in client bundle");
@@ -752,10 +782,10 @@ impl __jacHydrateFromDom(defaultModuleName: str) -> None {
     __jacReactiveContext.hookIndex = 0;
     value = __jacReactiveContext.rootComponent();
     if value and __isObject(value) and __isFunction(value.then) {
-        value.then(lambda nd: Any { __jacApplyRender(renderer, rootEl, nd);}).catch(
+        value.then(lambda nd: Any { __jacApplyRender(renderer, rootEl, nd); }).catch(
             lambda err: Any { console.error(
                 "[Jac] Error resolving client function promise", err
-            );}
+            ); }
         );
     } else {
         __jacApplyRender(renderer, rootEl, value);
@@ -785,7 +815,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
         hydration.registered = True;
         documentRef.addEventListener(
             "DOMContentLoaded",
-            lambda _event: Any { __jacExecuteHydration();},
+            lambda _event: Any { __jacExecuteHydration(); },
             {"once": True}
         );
     }
@@ -905,7 +935,11 @@ impl useEffect(effectFn: Any, deps: list = []) -> None {
 Fires asynchronously and silently ignores failures (to avoid error loops).
 """
 impl __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None {
     try {
         fetch(
@@ -919,6 +953,7 @@ impl __jacReportError(
                         "stack": stack,
                         "url": url or window.location.href,
                         "source": source,
+                        "componentStack": componentStack,
                         "timestamp": Reflect.construct(Date, []).toISOString()
                     }
                 )
@@ -926,6 +961,22 @@ impl __jacReportError(
         );
     } except Exception {
     # Silently ignore - never let error reporting cause more errors
+    }
+}
+
+"""onError prop for ErrorBoundary. The FallbackComponent React passes to
+ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
+therefore `info.componentStack`, the only thing that names user components
+when the JS stack lives inside react-dom) is exclusively delivered to onError.
+Wiring this here is the one place we can capture it."""
+impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+    try {
+        message = error.message if error else "Unknown error";
+        stack = error.stack if error else "";
+        componentStack = info.componentStack if info else "";
+        __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
+    } except Exception {
+    # Silent: error reporting from a React lifecycle must never throw.
     }
 }
 
@@ -950,16 +1001,22 @@ impl __jacInstallErrorHandlers -> None {
             event.error.stack if event.error else "",
             event.filename or "",
             "window.onerror"
-        );}
+        ); }
     );
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     scope.addEventListener(
         "unhandledrejection",
-        lambda event: Any { reason = event.reason;message = "";stack = "";if reason {
-            message = reason.message or str(reason);
-            stack = reason.stack or "";
-        } else {
-            message = "Unhandled promise rejection";
-        } __jacReportError(message, stack, "", "unhandledrejection");}
+        lambda event: Any {
+            reason = event.reason;
+            message = "";
+            stack = "";
+            if reason {
+                message = reason.message or str(reason);
+                stack = reason.stack or "";
+            } else {
+                message = "Unhandled promise rejection";
+            }
+            __jacReportError(message, stack, "", "unhandledrejection");
+        }
     );
 }

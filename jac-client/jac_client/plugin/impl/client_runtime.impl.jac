@@ -337,33 +337,59 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
     );
 }
 
-impl jacSignup(username: str, password: str) -> dict {
+impl __normalizeIdentity(x: Any) -> dict {
+    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
+        return x;
+    }
+    return {"type": "username", "value": x};
+}
+
+impl __normalizeCredential(x: Any) -> dict {
+    if x != None and Object.prototype.toString.call(x) == "[object Object]" {
+        return x;
+    }
+    return {"type": "password", "password": x};
+}
+
+impl jacSignup(
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
+) -> dict {
     base_url = __getApiBaseUrl();
+    credential = __normalizeCredential(credential_or_password);
+    identities = (
+        identities_or_username
+            if Array.isArray(identities_or_username)
+            else [__normalizeIdentity(identities_or_username)]
+    );
+    body = {"identities": identities, "credential": credential};
+    if profile != None {
+        body["profile"] = profile;
+    }
     response = await fetch(
         f"{base_url}/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"username": username, "password": password})
+            "body": JSON.stringify(body)
         }
     );
     if response.ok {
-        data = JSON.parse(await response.text());
-        token = None;
-        if data["data"] and data["data"]["token"] {
-            token = data["data"]["token"];
-        }
-        if token {
-            # Clear cache on auth change
-            state = __getCacheState();
-            for key in Object.keys(state["cache"]) {
-                Reflect.deleteProperty(state["cache"], key);
+        body_text = await response.text();
+        user_id = None;
+        try {
+            data = JSON.parse(body_text);
+            if data["data"] and data["data"]["user_id"] {
+                user_id = data["data"]["user_id"];
             }
-            state["order"].splice(0, state["order"].length);
-            __setLocalStorage("jac_token", token);
-            return {"success": True, "token": token, "username": username};
+        } except Exception as e {
+            return {
+                "success": False,
+                "error": f"Signup response was not valid JSON: {e}"
+            };
         }
-        return {"success": False, "error": "No token received"};
+        return {"success": True, "user_id": user_id};
     } else {
         error_text = await response.text();
         try {
@@ -380,14 +406,18 @@ impl jacSignup(username: str, password: str) -> dict {
     }
 }
 
-impl jacLogin(username: str, password: str) -> bool {
+impl jacLogin(
+    identity_or_username: (str | dict), credential_or_password: (str | dict)
+) -> bool {
     base_url = __getApiBaseUrl();
+    identity = __normalizeIdentity(identity_or_username);
+    credential = __normalizeCredential(credential_or_password);
     response = await fetch(
         f"{base_url}/user/login",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"username": username, "password": password})
+            "body": JSON.stringify({"identity": identity, "credential": credential})
         }
     );
     if response.ok {
@@ -460,14 +490,8 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
-    # Report error to server for logging
-    try {
-        errMsg = error.error.message if error.error else str(error);
-        errStack = error.error.stack if error.error else "";
-        __jacReportError(errMsg, errStack, "", "ErrorBoundary");
-    } except Exception as e {
-        console.warn("[jac-client] ErrorFallback: failed to report error:", e);
-    }
+    # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
+    # which is the only place React exposes `info.componentStack`.
     return
         <div
             role="alert"
@@ -515,7 +539,7 @@ impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
                     {error.error.message}
                 </pre>
                 <button
-                    onClick={lambda { error.resetErrorBoundary();}}
+                    onClick={lambda { error.resetErrorBoundary(); }}
                     style={{
                         backgroundColor: "#2563eb",
                         color: "#fff",
@@ -576,17 +600,13 @@ impl errorOverlay(filePath: str, errors: str) -> JsxElement {
                     }}
                 >
                     <div style={{marginBottom: 16}}>
-                        <div style={{color: "#888", marginBottom: 8}}>
-                            File:
-                        </div>
+                        <div style={{color: "#888", marginBottom: 8}}>File:</div>
                         <div style={{color: "#64b5f6", fontWeight: "bold"}}>
                             {filePath}
                         </div>
                     </div>
                     <div>
-                        <div style={{color: "#888", marginBottom: 8}}>
-                            Error:
-                        </div>
+                        <div style={{color: "#888", marginBottom: 8}}>Error:</div>
                         <pre
                             style={{
                                 background: "#2d2d2d",
@@ -759,9 +779,7 @@ impl JacForm(props: dict) -> JsxElement {
                         className={inputClassName}
                         style={{cursor: "pointer"}}
                     />
-                    <span className={labelClassName}>
-                        {label}
-                    </span>
+                    <span className={labelClassName}>{label}</span>
                 </label>
             );
         }
@@ -780,14 +798,10 @@ impl JacForm(props: dict) -> JsxElement {
                     className={inputClassName}
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
-                    <option value="">
-                        {placeholder or f"Select {label}"}
-                    </option>
+                    <option value="">{placeholder or f"Select {label}"}</option>
                     {options.map(
                         lambda opt: any -> JsxElement { return
-                            <option value={opt} key={opt}>
-                                {opt}
-                            </option>; }
+                            <option value={opt} key={opt}>{opt}</option>; }
                     )}
                 </select>
             );
@@ -821,9 +835,7 @@ impl JacForm(props: dict) -> JsxElement {
                                     className={inputClassName}
                                     style={{cursor: "pointer"}}
                                 />
-                                <span>
-                                    {opt}
-                                </span>
+                                <span>{opt}</span>
                             </label>
                         ); }
                     )}
@@ -892,15 +904,15 @@ impl JacForm(props: dict) -> JsxElement {
                             type="checkbox"
                             checked={isVisible}
                             onChange={lambda e: any { setPasswordVisible(
-                                lambda prev: any -> dict { newState = Object.assign(
-                                    {}, prev
-                                );newState[fieldName] = not isVisible;return newState; }
-                            );}}
+                                lambda prev: any -> dict {
+                                    newState = Object.assign({}, prev);
+                                    newState[fieldName] = not isVisible;
+                                    return newState;
+                                }
+                            ); }}
                             style={{cursor: "pointer"}}
                         />
-                        <span>
-                            Show password
-                        </span>
+                        <span>Show password</span>
                     </label>
                 </div>
             );
@@ -988,9 +1000,7 @@ impl JacForm(props: dict) -> JsxElement {
     buttonClassName = submitClassName or "";
     return (
         <form onSubmit={form.handleSubmit(onSubmit)} className={formClassName}>
-            <div style={layoutStyle}>
-                {fields}
-            </div>
+            <div style={layoutStyle}>{fields}</div>
             <button
                 type="submit"
                 disabled={isSubmitting or not isDirty}
@@ -1015,7 +1025,11 @@ impl JacForm(props: dict) -> JsxElement {
 Fires asynchronously and silently ignores failures (to avoid error loops).
 """
 impl __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None {
     try {
         baseUrl = __getApiBaseUrl();
@@ -1030,6 +1044,7 @@ impl __jacReportError(
                         "stack": stack,
                         "url": url or window.location.href,
                         "source": source,
+                        "componentStack": componentStack,
                         "timestamp": Reflect.construct(Date, []).toISOString()
                     }
                 )
@@ -1038,6 +1053,22 @@ impl __jacReportError(
     } except Exception {
     # Intentionally silent - error reporting must never throw, as that
     # could cause infinite loops or mask the original error.
+    }
+}
+
+"""onError prop for JacClientErrorBoundary. The FallbackComponent React passes
+to ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
+therefore `info.componentStack`, the only thing that names user components when
+the JS stack lives inside react-dom) is exclusively delivered to onError.
+Wiring this here is the one place we can capture it."""
+impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+    try {
+        message = error.message if error else "Unknown error";
+        stack = error.stack if error else "";
+        componentStack = info.componentStack if info else "";
+        __jacReportError(message, stack, "", "ErrorBoundary", componentStack);
+    } except Exception {
+    # Silent: error reporting from a React lifecycle must never throw.
     }
 }
 
@@ -1057,16 +1088,22 @@ impl __jacInstallErrorHandlers -> None {
             event.error.stack if event.error else "",
             event.filename or "",
             "window.onerror"
-        );}
+        ); }
     );
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(
         "unhandledrejection",
-        lambda event: Any { reason = event.reason;message = "";stack = "";if reason {
-            message = reason.message or str(reason);
-            stack = reason.stack or "";
-        } else {
-            message = "Unhandled promise rejection";
-        } __jacReportError(message, stack, "", "unhandledrejection");}
+        lambda event: Any {
+            reason = event.reason;
+            message = "";
+            stack = "";
+            if reason {
+                message = reason.message or str(reason);
+                stack = reason.stack or "";
+            } else {
+                message = "Unhandled promise rejection";
+            }
+            __jacReportError(message, stack, "", "unhandledrejection");
+        }
     );
 }

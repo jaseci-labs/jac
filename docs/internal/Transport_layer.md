@@ -31,9 +31,9 @@ obj TransportRequest {
     has method: str,                                   # HTTP method (GET, POST, etc.)
         path: str,                                     # Request path
         headers: dict[(str, str)] = {},                # Request headers
-        body: Any = None,                              # Request body
+        body: any = None,                              # Request body
         query_params: dict[(str, list[str])] = {},     # Query parameters
-        metadata: dict[(str, Any)] = {};               # Custom metadata
+        metadata: dict[(str, any)] = {};               # Custom metadata
 }
 ```
 
@@ -45,7 +45,7 @@ Encapsulates error information for responses:
 obj ErrorInfo {
     has code: str,          # Error code (e.g., "INVALID_REQUEST")
         message: str,       # Human-readable error message
-        details: Any = None; # Additional error context
+        details: any = None; # Additional error context
 }
 ```
 
@@ -58,7 +58,7 @@ obj Meta {
     has request_id: (str | None) = None,     # Unique request identifier
         trace_id: (str | None) = None,       # Distributed trace identifier
         timestamp: (str | None) = None,      # Request timestamp
-        extra: dict[(str, Any)] = {};        # Custom metadata
+        extra: dict[(str, any)] = {};        # Custom metadata
 }
 ```
 
@@ -70,7 +70,7 @@ Transport-agnostic response container following the envelope pattern:
 obj TransportResponse {
     has type: MessageType = MessageType.RESPONSE.value,  # Message type
         ok: bool = True,                                 # Success flag
-        data: Any = None,                                # Response data
+        data: any = None,                                # Response data
         error: (ErrorInfo | None) = None,               # Error info if failed
         meta: Meta = Meta();                            # Metadata
 }
@@ -87,12 +87,12 @@ The abstract interface all transport implementations must extend:
 
 ```jac
 obj BaseTransport {
-    has on_message: (Callable[(..., Any)] | None) = None,  # Message callback
-        on_error: (Callable[(..., Any)] | None) = None,    # Error callback
-        on_close: (Callable[(..., Any)] | None) = None;    # Close callback
+    has on_message: (Callable[(..., any)] | None) = None,  # Message callback
+        on_error: (Callable[(..., any)] | None) = None,    # Error callback
+        on_close: (Callable[(..., any)] | None) = None;    # Close callback
 
     async def connect -> None;      # Establish connection
-    async def send(data: Any) -> None;  # Send data
+    async def send(data: any) -> None;  # Send data
     async def close -> None;        # Close connection
 }
 ```
@@ -105,11 +105,11 @@ Handles stateless HTTP request/response communication:
 
 ```jac
 obj HTTPTransport(BaseTransport) {
-    has handler: Any = None,
-        response_data: dict[(str, Any)] = {};
+    has handler: any = None,
+        response_data: dict[(str, any)] = {};
 
     def connect -> None;        # No-op (HTTP is stateless)
-    def send(data: Any) -> None;   # Store response and trigger callback
+    def send(data: any) -> None;   # Store response and trigger callback
     def close -> None;          # No-op (HTTP is stateless)
 }
 ```
@@ -147,14 +147,14 @@ Extend `BaseTransport` and implement the three required methods:
 
 ```jac
 obj NewProtocolTransport(BaseTransport) {
-    has connection: Any = None;
+    has connection: any = None;
 
     async def connect -> None {
         # Initialize connection to the new protocol
         # Example: establish gRPC channel, AMQP connection, etc.
     }
 
-    async def send(data: Any) -> None {
+    async def send(data: any) -> None {
         # Serialize and send data through the protocol
         # Example: marshal to protobuf, AMQP serialize, etc.
         # Don't forget to trigger: self.on_message(response)
@@ -175,7 +175,7 @@ Handle data serialization/deserialization for your protocol:
 obj NewProtocolTransport(BaseTransport) {
     # ... existing code ...
 
-    private def serialize(data: Any) -> bytes {
+    private def serialize(data: any) -> bytes {
         # Convert TransportResponse to protocol format
         # Example: JSON encoding, protobuf, AMQP message, etc.
     }
@@ -191,7 +191,7 @@ obj NewProtocolTransport(BaseTransport) {
 Ensure callbacks are properly triggered:
 
 ```jac
-async def send(data: Any) -> None {
+async def send(data: any) -> None {
     try {
         encoded = self.serialize(data);
         # Send through protocol
@@ -210,15 +210,15 @@ Here's a concrete example:
 
 ```jac
 obj gRPCTransport(BaseTransport) {
-    has stub: Any = None,
-        context: Any = None;
+    has stub: any = None,
+        context: any = None;
 
     async def connect -> None {
         # Create gRPC channel and stub
         self.stub = initialize_grpc_stub();
     }
 
-    async def send(data: Any) -> None {
+    async def send(data: any) -> None {
         # Serialize to protobuf
         grpc_message = self.to_protobuf(data);
         # Send via gRPC
@@ -231,7 +231,7 @@ obj gRPCTransport(BaseTransport) {
         await self.stub.close();
     }
 
-    private def to_protobuf(data: Any) -> Any {
+    private def to_protobuf(data: any) -> any {
         # Convert TransportResponse to protobuf message
     }
 }

@@ -8,7 +8,7 @@ import from jac_scale.db { close_all_db_connections }
 import from jac_scale.config_loader { reset_scale_config }
 import from testcontainers.mongodb { MongoDbContainer }
 import from uuid { uuid4 }
-import from jaclang.jac0core.archetype { NodeAnchor, EdgeAnchor }
+import from jaclang.jac0core.archetype { NodeAnchor, EdgeAnchor, ObjectAnchor }
 
 def cleanup_connections {
     with contextlib.suppress(Exception) {
@@ -122,4 +122,102 @@ test "EdgeAnchor source/target restored as lazy stubs" {
     );
     assert anchor.source.id == src_id and not anchor.source.is_populated();
     assert anchor.target.id == tgt_id and not anchor.target.is_populated();
+}
+
+# ref_mode tests
+obj City {
+    has name: str;
+}
+
+obj Person {
+    has name: str,
+        city: City,
+        friend: (Person | None) = None;
+}
+
+test "ref_mode: shared refs deduplicated, circular graphs terminate, $ref round-trips to live objects" {
+    city = City(name="Metropolis");
+    alice = Person(name="Alice", city=city);
+    bob = Person(name="Bob", city=city);
+
+    # ref_mode=False on non-circular shared refs: both cities fully inlined, no $ref
+    off = Serializer.serialize([alice, bob], ref_mode=False);
+    assert off[0]["city"]["name"] == "Metropolis"
+    and off[1]["city"]["name"] == "Metropolis"
+    and "$ref" not in str(off);
+
+    # Now create the cycle
+    bob.friend = alice;
+    alice.friend = bob;
+    city_id = jid(city);
+    alice_id = jid(alice);
+
+    # ref_mode=True: shared city → first inline, second $ref; circular friends → $ref breaks cycle
+    data = Serializer.serialize(alice, ref_mode=True);
+    assert data["name"] == "Alice" and data["city"]["name"] == "Metropolis";
+    assert data["friend"]["name"] == "Bob";
+    assert data["friend"]["city"] == {"$ref": city_id, "$type": "object"};
+    assert data["friend"]["friend"] == {"$ref": alice_id, "$type": "object"};
+
+    # $ref round-trips to live archetype via context memory
+    resolved_city = Serializer._deserialize_value(data["friend"]["city"]);
+    resolved_alice = Serializer._deserialize_value(data["friend"]["friend"]);
+    assert resolved_city.name == "Metropolis" and resolved_alice.name == "Alice";
+}
+
+test "ref_mode: mutations reflect inline, identity and $ref stay stable across lifecycle" {
+    city = City(name="Metropolis");
+    alice = Person(name="Alice", city=city);
+    bob = Person(name="Bob", city=city);
+    alice.friend = bob;
+    bob.friend = alice;
+    city_id = jid(city);
+    alice_id = jid(alice);
+
+    # Mutate city — inline shows new value, $ref UUID unchanged
+    city.name = "Gotham";
+    data = Serializer.serialize(alice, ref_mode=True);
+    assert data["city"]["name"] == "Gotham"
+    and data["friend"]["city"]["$ref"] == city_id;
+
+    # Break cycle — None serializes cleanly
+    alice.friend = None;
+    data2 = Serializer.serialize(alice, ref_mode=True);
+    assert data2["friend"] is None and data2["city"]["name"] == "Gotham";
+
+    # Reassign friend — new object fully inlined with its own city
+    alice.friend = Person(name="Carol", city=City(name="Star City"));
+    data3 = Serializer.serialize(alice, ref_mode=True);
+    assert data3["friend"]["name"] == "Carol"
+    and data3["friend"]["city"]["name"] == "Star City";
+
+    # jid() stable through all mutations
+    assert jid(city) == city_id and jid(alice) == alice_id;
+}
+
+test "ref_mode: unknown $ref falls back to typed anchor stub" {
+    ref_id = uuid4();
+    # Default type → ObjectAnchor stub
+    stub = Serializer._deserialize_value({"$ref": ref_id.hex});
+    assert isinstance(stub, ObjectAnchor)
+    and stub.id == ref_id
+    and not stub.is_populated();
+    # $type selects correct anchor class
+    assert isinstance(
+        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "node"}),
+        NodeAnchor
+    );
+    assert isinstance(
+        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "edge"}),
+        EdgeAnchor
+    );
+    # Invalid $ref → None
+    assert Serializer._deserialize_value({"$ref": "not-a-uuid"}) is None;
+    # User dict with $ref key + extra keys is NOT treated as a Jac ref
+    user_dict = {"$ref": "some-value", "name": "Alice", "count": 42};
+    result = Serializer._deserialize_value(user_dict);
+    assert isinstance(result, dict)
+    and result["$ref"] == "some-value"
+    and result["name"] == "Alice"
+    and result["count"] == 42;
 }

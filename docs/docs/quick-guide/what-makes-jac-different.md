@@ -12,24 +12,26 @@ This page focuses on the three concepts that Jac adds beyond traditional program
 
 ## 1. How can one language target frontends, backends, and native binaries at the same time?
 
-Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace either with a **block prefix** inside a file or with a **file extension**:
+Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace with a **section header** (or **statement prefix**) inside a file, or with a **file extension**:
 
 ```mermaid
 graph LR
     JAC["main.jac"] --> SV["Server (PyPI Ecosystem)
-    sv { }"]
+    to sv:"]
     JAC --> CL["Client (NPM Ecosystem)
-    cl { }"]
+    to cl:"]
     JAC --> NA["Native (C ABI)
-    na { }"]
+    to na:"]
 ```
 
-**Inline blocks** -- mix codespaces in a single file:
+**Section headers** -- partition a file into codespaces at module scope:
 
-- `sv { }` -- code that runs on the server (compiles to Python)
-- `cl { }` -- code that runs in the browser (compiles to JavaScript)
-- `na { }` -- code that runs natively compiled on the host machine (compiles to native binary)
-- Code outside any block defaults to the server codespace
+- `to sv:` -- following code runs on the server (compiles to Python)
+- `to cl:` -- following code runs in the browser (compiles to JavaScript)
+- `to na:` -- following code runs natively compiled on the host machine (compiles to native binary)
+- Code before any header defaults to the server codespace. A header applies until the next `to X:` header or end of file.
+
+A single-statement prefix (`cl def foo() ...`) tags one declaration. The older braced form (`cl { ... }`) still works for inner-scope overrides, but at module scope emits **W0064** pointing at the section-header form.
 
 **File extensions** -- set the default top-level codespace for a file, e.g., for a module `prog`:
 
@@ -38,9 +40,9 @@ graph LR
 - `prog.na.jac` -- top-level code defaults to native
 - `prog.jac` -- defaults to the server codespace
 
-Any `.jac` file can still use all codespace blocks regardless of its extension. The extension only changes what the default is for code outside any block.
+Any `.jac` file can still use all codespace forms regardless of its extension. The extension only changes what the default is for untagged code.
 
-Here's a file that uses two codespaces via inline blocks:
+Here's a file that uses two codespaces via section headers:
 
 ```jac
 # Server codespace (default)
@@ -53,26 +55,25 @@ def:pub add_todo(title: str) -> dict {
     return {"id": jid(todo[0]), "title": todo[0].title};
 }
 
-# Client codespace
-cl {
-    def:pub app -> JsxElement {
-        has items: list = [];
+to cl:
 
-        async def add -> None {
-            todo = await add_todo("New");
-            items = items + [todo];
-        }
+def:pub app -> JsxElement {
+    has items: list = [];
 
-        return <div>
-            <button onClick={lambda -> None { add(); }}>
-                Add
-            </button>
-        </div>;
+    async def add -> None {
+        todo = await add_todo("New");
+        items = items + [todo];
     }
+
+    return <div>
+        <button onClick={lambda -> None { add(); }}>
+            Add
+        </button>
+    </div>;
 }
 ```
 
-The server definitions are visible to the `cl` block. When the client calls `add_todo(...)`, the compiler generates the HTTP call, serialization, and routing between codespaces. You write one language; the compiler produces the interop layer.
+The server definitions are visible to the client section. When the client calls `add_todo(...)`, the compiler generates the HTTP call, serialization, and routing between codespaces. You write one language; the compiler produces the interop layer.
 
 Codespaces are similar to namespaces, but instead of organizing names, they organize where code executes. Interop between them -- function calls, spawn calls, type sharing -- is handled by the compiler and runtime.
 
@@ -211,9 +212,9 @@ In practice, these compose: walkers traverse a graph on the server, delegate dec
 
 | Syntax | Meaning |
 |--------|---------|
-| `sv { }` | Server codespace |
-| `cl { }` | Client codespace |
-| `na { }` | Native codespace |
+| `to sv:` | Server codespace section header |
+| `to cl:` | Client codespace section header |
+| `to na:` | Native codespace section header |
 | `node X { has ...; }` | Declare a graph data type |
 | `root` | Built-in starting node (persistence anchor) |
 | `a ++> b` | Connect node `a` to node `b` |

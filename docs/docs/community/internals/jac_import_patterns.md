@@ -106,11 +106,11 @@ Path aliases let you define short prefixes (like `@components`) that map to proj
 Then use them in imports:
 
 ```jac
-cl {
-    import from "@components/Button" { Button }
-    import from "@utils/format" { formatDate }
-    import from "@shared" { constants }
-}
+to cl:
+
+import from "@components/Button" { Button }
+import from "@utils/format" { formatDate }
+import from "@shared" { constants }
 ```
 
 Aliases are resolved by:
@@ -172,45 +172,45 @@ All patterns tested and verified in:
 ### Full Feature Demo
 
 ```jac
-cl {
-    # Named imports
-    import from react { useEffect, useRef }
-    import from lodash { map as mapArray, filter }
+to cl:
 
-    # Default imports
-    import from react { default as React }
-    import from axios { default as axios }
+# Named imports
+import from react { useEffect, useRef }
+import from lodash { map as mapArray, filter }
 
-    # Namespace imports
-    import from "date-fns" { * as DateFns }
-    import from .utils { * as Utils }
+# Default imports
+import from react { default as React }
+import from axios { default as axios }
 
-    # String literal imports (for hyphenated packages)
-    import from "react-dom" { render, hydrate }
-    import from "styled-components" { default as styled }
-    import from "react-router-dom" { BrowserRouter, Route }
+# Namespace imports
+import from "date-fns" { * as DateFns }
+import from .utils { * as Utils }
 
-    # Mixed imports
-    import from react { default as React, useEffect }
+# String literal imports (for hyphenated packages)
+import from "react-dom" { render, hydrate }
+import from "styled-components" { default as styled }
+import from "react-router-dom" { BrowserRouter, Route }
 
-    # Relative paths
-    import from .components.Button { default as Button }
-    import from ..lib.helpers { formatDate }
-    import from ...config.constants { API_URL }
+# Mixed imports
+import from react { default as React, useEffect }
 
-    def MyComponent() {
-        # Reactive state - auto-generates useState
-        has count: int = 0;
+# Relative paths
+import from .components.Button { default as Button }
+import from ..lib.helpers { formatDate }
+import from ...config.constants { API_URL }
 
-        now = DateFns.format(Date.now());
-        axios.get(API_URL);
+def MyComponent() {
+    # Reactive state - auto-generates useState
+    has count: int = 0;
 
-        return count;
-    }
+    now = DateFns.format(Date.now());
+    axios.get(API_URL);
+
+    return count;
 }
 ```
 
-> **Note:** Inside `cl {}` blocks and `.cl.jac` files, use `has` variables for reactive state instead of explicit `useState` calls. The compiler automatically generates `const [count, setCount] = useState(0);`, auto-injects the `useState` import from `@jac-client/utils`, and transforms assignments to setter calls.
+> **Note:** Inside client-tagged code (`to cl:` sections, `.cl.jac` files, and `cl { }` blocks), use `has` variables for reactive state instead of explicit `useState` calls. The compiler automatically generates `const [count, setCount] = useState(0);`, auto-injects the `useState` import from `@jac-client/utils`, and transforms assignments to setter calls.
 
 ### Generated JavaScript Output
 

@@ -25,13 +25,13 @@ repos:
     - id: markdownlint-cli2
       args: [--fix]
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.8
+    rev: v0.15.11
     hooks:
       - id: ruff
         args: [--fix]
       - id: ruff-format
   - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.19.1
+    rev: v1.20.1
     hooks:
       - id: mypy
         args:
@@ -65,10 +65,16 @@ repos:
               ^jac-byllm/tests/fixtures/webp_image_of_person\.webp$|
               ^jac-client/jac_client/examples/asset-serving/css-with-image/assets/burger\.png$|
               ^jac-client/jac_client/examples/asset-serving/image-asset/assets/burger\.png$|
-              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$|
-              ^jac/examples/rpg_game/jac_impl/fonts/8bitoperator_jve\.ttf$|
-              ^jac/examples/rpg_game/lib_mode/8bitoperator_jve\.ttf$
+              ^jac-client/jac_client/examples/asset-serving/import-alias/assets/burger\.png$
           )
+
+      - id: validate-fragments
+        name: Validate release note fragment filenames
+        entry: env PYTHONPATH=jac python3 -m jaclang run scripts/validate_fragments.jac
+        language: python
+        files: ^docs/docs/community/release_notes/unreleased/.*\.md$
+        exclude: README\.md
+        require_serial: true
 
       - id: ban-em-dashes
         name: Ban em-dashes (—)
@@ -81,6 +87,21 @@ repos:
         language: pygrep
         entry: '(?i)co-authored-by:.*\b(claude|anthropic|openai|copilot|gpt|gemini|ai|bot)\b'
         stages: [commit-msg]
+
+      - id: check-release-notes
+        name: Require release-note fragment for code changes
+        description: |
+          Same check the Contribution Checks CI workflow runs. Catches
+          missing fragments locally on `git push` instead of after the
+          PR opens. Mirrors the script's CI branch (which uses
+          PRE_COMMIT_FROM_REF / PRE_COMMIT_TO_REF that pre-commit sets
+          for the pre-push stage), so behavior locally matches CI.
+          Requires `pre-commit install --hook-type pre-push` once.
+        entry: bash scripts/check-release-notes.sh
+        language: system
+        stages: [pre-push]
+        pass_filenames: false
+        always_run: true
 
       - id: jac-format
         name: jac-format

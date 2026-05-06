@@ -30,6 +30,7 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0023,
+    E0025,
     E0030,
     E0031,
     E0032,
@@ -46,7 +47,9 @@ import from jaclang.jac0core.diagnostics {
     E0050,
     E0051,
     W0060,
-    W0061
+    W0061,
+    W0063,
+    W0064
 }
 import from jaclang.jac0core.unitree { Name, String, Int, Float, Bool, Null }
 import from jaclang.jac0core.unitree {
@@ -122,7 +125,8 @@ import from jaclang.jac0core.unitree {
     UnaryExpr,
     CompareExpr,
     BoolExpr,
-    IfElseExpr
+    IfElseExpr,
+    CfgExpr
 }
 import from jaclang.jac0core.unitree {
     AtomTrailer,
@@ -147,7 +151,12 @@ import from jaclang.jac0core.unitree {
     GenCompr,
     InnerCompr
 }
-import from jaclang.jac0core.unitree { FString, FormattedValue, MultiString, LambdaExpr }
+import from jaclang.jac0core.unitree {
+    FString,
+    FormattedValue,
+    MultiString,
+    LambdaExpr
+}
 import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
@@ -272,6 +281,7 @@ glob TOKEN_KIND_TO_TOK: dict[TokenKind, str] = {
          TokenKind.KW_DISENGAGE: Tok.KW_DISENGAGE.value,
          TokenKind.KW_HERE: Tok.KW_HERE.value,
          TokenKind.KW_VISITOR: Tok.KW_VISITOR.value,
+         TokenKind.KW_ROOT: Tok.KW_ROOT.value,
          TokenKind.KW_ASYNC: Tok.KW_ASYNC.value,
          TokenKind.KW_AWAIT: Tok.KW_AWAIT.value,
          TokenKind.KW_FLOW: Tok.KW_FLOW.value,
@@ -420,8 +430,14 @@ obj Parser {
     def error(message: str);
     def error_at(message: str, loc: SourceLoc);
     def warn_at(message: str, loc: SourceLoc);
-    def emit_diag(diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object);
-    def emit_warn(diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object);
+    def emit_diag(
+        diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+    );
+
+    def emit_warn(
+        diag: DiagnosticInfo, loc: SourceLoc | None = None, **kwargs: object
+    );
+
     def make_uni_token(tok: Token) -> UniToken;
     def make_name(tok: Token, is_enum_stmt: bool = False) -> Name;
     def make_special_name(tok: Token) -> Name;
@@ -440,6 +456,8 @@ obj Parser {
     def parse -> Module;
     def parse_module -> Module;
     def parse_expression -> Expr;
+    def _check_js_arrow_fault -> bool;
+    def _recover_js_arrow_fault(left: Expr) -> Expr;
     def parse_concurrent_expr -> Expr;
     def parse_walrus_assign -> Expr;
     def parse_by_expr -> Expr;

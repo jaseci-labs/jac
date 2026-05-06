@@ -7,15 +7,9 @@ def:pub Dashboard -> JsxElement {
 
     return
         <div style={{padding: '2rem', maxWidth: '800px', margin: '0 auto'}}>
-            <h1>
-                Dashboard
-            </h1>
-            <p>
-                Hello,{ctx.user.name}!
-            </p>
-            <p>
-                Email:{ctx.user.email}
-            </p>
+            <h1>Dashboard</h1>
+            <p>Hello,{ctx.user.name}!</p>
+            <p>Email:{ctx.user.email}</p>
             <button
                 onClick={ctx.handleLogout}
                 style={{

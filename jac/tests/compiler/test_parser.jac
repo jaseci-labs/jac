@@ -237,6 +237,20 @@ test "jsx comprehensive fixture" {
     }
 }
 
+test "jsx star_pow spread attribute" {
+    source = 'with entry { x = <div {**props} title="hi"/>; }';
+    (module, had_error) = rd_parse(source, "test_spread.jac");
+    assert not had_error , "Parser rejected {**props} spread syntax";
+    tree_repr = module.pp();
+    assert "JsxSpreadAttribute" in tree_repr , "Missing JsxSpreadAttribute node";
+    assert "Token - **" in tree_repr , "Missing ** token in spread";
+    # Ellipsis form should warn but still parse
+    source2 = 'with entry { x = <div {...props}/>; }';
+    (module2, had_error2) = rd_parse(source2, "test_spread2.jac");
+    assert not had_error2 , "Parser rejected {...props} spread syntax";
+    assert "Ellipsis" in module2.pp() , "Missing Ellipsis node for ... spread";
+}
+
 test "client keyword tagging" {
     # Test 1: Mixed single and block client markers
     source = """
@@ -262,7 +276,10 @@ cl {
     client_block = bd[2];
     assert isinstance(client_block, uni.ClientBlock);
     assert len(client_block.body) == 2;
-    assert [type(stmt).__name__ for stmt in client_block.body] == ["GlobalVars", "Test"];
+    assert [type(stmt).__name__ for stmt in client_block.body] == [
+        "GlobalVars",
+        "Test"
+    ];
     assert all(
         stmt.code_context == CodeContext.CLIENT
         for stmt in client_block.body
@@ -340,6 +357,154 @@ cl test my_test {}
         for stmt in bd
         if isinstance(stmt, uni.ContextAwareNode)
     );
+}
+
+test "to section headers" {
+    # Basic: each 'to X:' produces an implicit XBlock whose body contains
+    # all statements until the next header or EOF.
+    source = """
+to sv:
+def sv_fn() -> int { return 1; }
+to cl:
+def cl_fn() -> int { return 2; }
+to na:
+def na_fn() -> int { return 3; }
+to sv:
+def sv_fn2() -> int { return 4; }
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    bd = mod.body;
+    assert len(bd) == 4;
+    assert isinstance(bd[0], uni.ServerBlock) and bd[0].implicit;
+    assert isinstance(bd[1], uni.ClientBlock) and bd[1].implicit;
+    assert isinstance(bd[2], uni.NativeBlock) and bd[2].implicit;
+    assert isinstance(bd[3], uni.ServerBlock) and bd[3].implicit;
+    expected_ctxs = [
+        CodeContext.SERVER,
+        CodeContext.CLIENT,
+        CodeContext.NATIVE,
+        CodeContext.SERVER
+    ];
+    for (blk, expected) in zip(bd, expected_ctxs) {
+        inner = [
+            stmt
+            for stmt in blk.body
+            if isinstance(stmt, uni.ContextAwareNode)
+        ];
+        assert len(inner) == 1;
+        assert inner[0].code_context == expected;
+    }
+
+    # Explicit cl/sv/na single-stmt prefix inside a 'to X:' section overrides
+    # the active section's tagging for that one statement.
+    source = """
+to cl:
+def cl_a() -> int { return 1; }
+sv def sv_b() -> int { return 2; }
+def cl_c() -> int { return 3; }
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    assert len(mod.body) == 1;
+    block = mod.body[0];
+    assert isinstance(block, uni.ClientBlock) and block.implicit;
+    ctxs = [
+        s.code_context
+        for s in block.body
+        if isinstance(s, uni.ContextAwareNode)
+    ];
+    assert ctxs == [CodeContext.CLIENT, CodeContext.SERVER, CodeContext.CLIENT];
+
+    # A braced 'cl { ... }' block nested inside a 'to sv:' section is itself
+    # an element of that section's body — the braced block's own stmts are
+    # tagged CLIENT, and a later plain def resumes the surrounding SERVER.
+    source = """
+to sv:
+def sv_a() -> int { return 1; }
+cl {
+    def cl_b() -> int { return 2; }
+}
+def sv_c() -> int { return 3; }
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    assert len(mod.body) == 1;
+    outer = mod.body[0];
+    assert isinstance(outer, uni.ServerBlock) and outer.implicit;
+    assert len(outer.body) == 3;
+    assert isinstance(outer.body[0], uni.Ability);
+    assert outer.body[0].code_context == CodeContext.SERVER;
+    assert isinstance(outer.body[1], uni.ClientBlock);
+    assert not outer.body[1].implicit;
+    assert all(
+        s.code_context == CodeContext.CLIENT
+        for s in outer.body[1].body
+        if isinstance(s, uni.ContextAwareNode)
+    );
+    assert isinstance(outer.body[2], uni.Ability);
+    assert outer.body[2].code_context == CodeContext.SERVER;
+
+    # A 'to X:' header at EOF with no following stmt still parses as an empty
+    # implicit XBlock; earlier statements stay at module scope.
+    source = """
+def a() -> int { return 1; }
+to cl:
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    assert mod.body[0].code_context == CodeContext.SERVER;
+    assert isinstance(mod.body[1], uni.ClientBlock);
+    assert mod.body[1].implicit;
+    assert len(mod.body[1].body) == 0;
+}
+
+test "cl/sv/na braced-block deprecation warning" {
+    # Braced block form emits W0064 for each block
+    source = """
+cl { def a() -> int { return 1; } }
+sv { def b() -> int { return 2; } }
+na { def c() -> int { return 3; } }
+""";
+    prog = JacProgram();
+    prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    w_codes: list[str] = [];
+    for w in prog.warnings_had {
+        c = w.code;
+        if c is not None {
+            w_codes.append(c.code);
+        }
+    }
+    assert w_codes.count("W0064") == 3;
+
+    # Section headers and single-statement prefix forms do not warn
+    source = """
+to cl:
+def a() -> int { return 1; }
+to sv:
+def b() -> int { return 2; }
+to na:
+def c() -> int { return 3; }
+cl def d() -> int { return 4; }
+sv def e() -> int { return 5; }
+na def f() -> int { return 6; }
+""";
+    prog = JacProgram();
+    prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    w_codes: list[str] = [];
+    for w in prog.warnings_had {
+        c = w.code;
+        if c is not None {
+            w_codes.append(c.code);
+        }
+    }
+    assert "W0064" not in w_codes;
 }
 
 test "anonymous ability decl" {
@@ -589,6 +754,134 @@ test "bracket vs paren filter produce same AST" {
 test "bracket filter on list" {
     (mod, err) = rd_parse('with entry { print(my_list[?:MyObj, a<4]); }', "");
     assert not err , "Failed to parse list bracket filter";
+}
+
+test "typed edge ref after start expr - no filter" {
+    # BUG: `[root()->:Type:->]` failed to parse because parse_list_or_compr
+    # only checked for ARROW_R/ARROW_L/ARROW_BI/ARROW_R_P1/ARROW_L_P1 after
+    # the first expression, missing the (RETURN_HINT, COLON, ...) form the
+    # lexer actually produces for `->:`. The bare-start form `[->:Type:->]`
+    # already parsed because that path went through parse_edge_ref_chain
+    # directly. (Reproduces the docs example in the Part 2 'Advanced:
+    # Custom Edges' section of the AI day planner tutorial.)
+    src = (
+        'edge Scheduled { has time: str; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(time="9:00am") :+> Task(title="Run");'
+        '    x = [root()->:Scheduled:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:->] (typed edge ref after "
+        "explicit start expression)"
+    );
+}
+
+test "typed edge ref after start expr - with filter condition" {
+    # Same root cause as the test above, plus continue_edge_ref_chain
+    # was using a stripped-down inline branch that did not accept the
+    # `:cond` filter clause that parse_edge_op_ref already supports.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(priority=3) :+> Task(title="A");'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:priority>=3:->] (typed edge "
+        "ref with a filter condition after an explicit start expression)"
+    );
+}
+
+test "typed edge ref bare start with filter still parses" {
+    # Sanity check: the bare-start form (no explicit start expression)
+    # was already parsing before the fix and must keep working — the
+    # parser routes it through parse_edge_ref_chain which uses the rich
+    # parse_edge_op_ref helper.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'walker W { can go with entry { '
+        '    visit [->:Scheduled:priority>=3:->]; '
+        '} }'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , ("Failed to parse bare-start [->:Scheduled:priority>=3:->]");
+}
+
+test "typed edge ref produces FilterCompr with compares" {
+    # Structural check: the AST produced for the fixed form must include
+    # a FilterCompr that actually carries the filter compare conditions
+    # (otherwise downstream traversal cannot evaluate the filter).
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err;
+
+    def find_filter_compr_with_compares(nd: object) -> object {
+        if isinstance(nd, uni.FilterCompr) and nd.compares {
+            return nd;
+        }
+        if hasattr(nd, "kid") {
+            for k in nd.kid {
+                if k is not None {
+                    result = find_filter_compr_with_compares(k);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
+        }
+        return None;
+    }
+    fc = find_filter_compr_with_compares(mod);
+    assert fc is not None , (
+        "Typed edge ref `[root()->:Scheduled:priority>=3:->]` must produce "
+        "a FilterCompr carrying the `priority>=3` condition; an EdgeOpRef "
+        "with an empty FilterCompr means the filter clause was silently "
+        "dropped."
+    );
+}
+
+test "decorated class in code block parses as archetype" {
+    (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
+    assert not err , "Parser reported errors for decorated declarations in code blocks";
+
+    def collect(nd: uni.UniNode) -> list {
+        results: list = [];
+        if isinstance(nd, uni.Archetype) {
+            results.append(nd);
+        }
+        for k in (nd.kid) {
+            results.extend(collect(k));
+        }
+        return results;
+    }
+
+    archetype_names = [a.name.sym_name for a in collect(mod)];
+
+    for name in [
+        "A_TopClass",
+        "A_InEntryClass",
+        "A_InEntryObj",
+        "A_StackedDec",
+        "A_InDefBodyClass",
+        "A_InDefBodyObj",
+        "A_Container",
+        "A_InMethodClass"
+    ] {
+        assert name in archetype_names , f"{name} should be Archetype but was not found";
+    }
 }
 
 with entry {

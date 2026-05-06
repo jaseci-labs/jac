@@ -219,7 +219,10 @@ are classified via classify_condition_key.
 def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     symbols: set[str] = set();
     # Structural wrappers — recurse
-    if isinstance(condition, uni.AtomUnit) and isinstance(condition.value, uni.Expr) {
+    if isinstance(condition, uni.CfgExpr) {
+        symbols.update(collect_narrowing_symbols(condition.expr));
+    } elif isinstance(condition, uni.AtomUnit)
+    and isinstance(condition.value, uni.Expr) {
         symbols.update(collect_narrowing_symbols(condition.value));
     } elif isinstance(condition, uni.UnaryExpr) {
         symbols.update(collect_narrowing_symbols(condition.operand));
@@ -237,6 +240,88 @@ def collect_narrowing_symbols(condition: uni.Expr) -> set[str] {
     return symbols;
 }
 
+"""Find the positional index path of a reference key inside a single
+destructuring target, or `None` if the key isn't written there.
+
+For `(x, _) = ...` with key `"x"` the result is `[0]`; for
+`((a, b), c) = ...` with key `"b"` it's `[0, 1]`. The starred slot in
+`(a, *rest) = ...` is intentionally excluded because its type is the
+list of the tail, not a single element at a fixed index — callers that
+want to narrow `rest` need different logic.
+
+Only the first occurrence wins; a well-formed destructuring target
+binds each key at most once anyway.
+"""
+def find_destructure_index_path(target: uni.UniNode, key: str) -> list[int] | None {
+    if isinstance(target, uni.Name) {
+        return [] if target.value == key else None;
+    }
+    if isinstance(target, uni.AtomTrailer) and target.is_attr {
+        matched_key = get_expr_key(target);
+        return [] if matched_key == key else None;
+    }
+    if isinstance(target, uni.AtomUnit) and isinstance(target.value, uni.UniNode) {
+        return find_destructure_index_path(target.value, key);
+    }
+    if isinstance(target, (uni.TupleVal, uni.ListVal)) and target.values {
+        for (i, sub) in enumerate(target.values) {
+            if not isinstance(sub, uni.UniNode) {
+                continue;
+            }
+            # Skip starred slots — their type isn't a single element.
+            if (
+                isinstance(sub, uni.UnaryExpr)
+                and isinstance(sub.op, uni.Token)
+                and sub.op.name == Tok.STAR_MUL
+            ) {
+                continue;
+            }
+            sub_path = find_destructure_index_path(sub, key);
+            if sub_path is not None {
+                return [i] + sub_path;
+            }
+        }
+    }
+    return None;
+}
+
+"""Collect every reference key bound by a single assignment target.
+
+Walks one element of `Assignment.target`, extracting the reference keys
+it writes. Handles flat names, dotted attribute paths, recursive
+tuple/list destructuring (e.g. `(a, (b, c)) = ...`), and starred
+unpack slots (`(a, *rest) = ...`).
+"""
+def collect_assignment_target_keys(target: uni.UniNode) -> set[str] {
+    keys: set[str] = set();
+    if isinstance(target, uni.Name) {
+        keys.add(target.value);
+    } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
+        if key := get_expr_key(target) {
+            keys.add(key);
+        }
+    } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
+        if target.values {
+            for sub in target.values {
+                if isinstance(sub, uni.UniNode) {
+                    keys.update(collect_assignment_target_keys(sub));
+                }
+            }
+        }
+    } elif (
+        isinstance(target, uni.UnaryExpr)
+        and isinstance(target.op, uni.Token)
+        and target.op.name == Tok.STAR_MUL
+    ) {
+        # Starred unpack slot: `*rest` inside (a, *rest) = ...
+        keys.update(collect_assignment_target_keys(target.operand));
+    } elif isinstance(target, uni.AtomUnit) and isinstance(target.value, uni.UniNode) {
+        # Parenthesized target: `(x) = ...` or `((x, y)) = ...`.
+        keys.update(collect_assignment_target_keys(target.value));
+    }
+    return keys;
+}
+
 """Collect all symbols assigned/bound in a statement.
 
 Extracted from CFGBuildPass._collect_assigned_symbols.
@@ -244,16 +329,10 @@ Handles assignments, for-loops, and walrus operators.
 """
 def collect_assigned_symbols(nd: uni.UniNode) -> set[str] {
     symbols: set[str] = set();
-    # Assignment: x = ...
+    # Assignment: x = ..., (x, y) = ..., obj.attr = ...
     if isinstance(nd, uni.Assignment) {
         for target in nd.target {
-            if isinstance(target, uni.Name) {
-                symbols.add(target.value);
-            } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
-                if key := get_expr_key(target) {
-                    symbols.add(key);
-                }
-            }
+            symbols.update(collect_assignment_target_keys(target));
         }
     }
     # For loop: for x in ...

@@ -43,3 +43,15 @@ obj FinishToolError(ByLLMError) {}
 
 """Raised for invalid byLLM usage such as unsupported type annotations or mismatched stream settings."""
 obj ConfigurationError(ByLLMError) {}
+
+"""Raised when an MCP server connection or tool call fails."""
+obj McpError(ByLLMError) {}
+
+"""Raised when compaction failed to reduce the context window sufficiently.
+
+Occurs when the threshold triggers two consecutive iterations with a compaction
+in between - meaning the summarisation produced no meaningful reduction. The
+caller should either provide a custom on_compaction hook, increase ctx_window,
+or switch to a model with a larger context.
+"""
+obj CompactionNotEffectiveError(ByLLMError) {}

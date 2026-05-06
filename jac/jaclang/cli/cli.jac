@@ -14,6 +14,7 @@ import from jaclang.cli.commands {
     analysis,
     transform,
     project,
+    eject,
     tools,
     config,
     nacompile

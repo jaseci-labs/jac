@@ -15,7 +15,8 @@ import from jaclang.jac0core.runtime { JacRuntime }
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
-     EXAMPLES = os.path.join(JAC_ROOT, "examples");
+     EXAMPLES = os.path.join(JAC_ROOT, "examples"),
+     COMPILER_FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures");
 
 """Import a .jac file as __main__ and return its captured stdout."""
 def run_jac(filepath: str) -> str {
@@ -239,6 +240,21 @@ test "edge node walk" {
 test "enum inside arch" {
     output = run_jac(os.path.join(FIXTURES, "enum_inside_archtype.jac"));
     assert "2 Accessing privileged Data" in output;
+}
+
+test "enum typed base shorthand" {
+    output = run_jac(os.path.join(FIXTURES, "enum_typed_base.jac"));
+    # `enum X: int` makes members int instances (no .value needed).
+    assert "int_member: True True 0" in output;
+    # `enum X: str` makes members str instances.
+    assert "str_member: True True" in output;
+    # Custom mixin `enum X: T` makes members T instances.
+    assert "mixin_member: True" in output;
+    # Plain `enum X { ... }` keeps the old behavior — members are NOT int.
+    assert "plain_keeps_old: False False" in output;
+    # Comprehension iteration over typed enum yields proper members.
+    assert "color_names: ['RED', 'GREEN', 'BLUE']" in output;
+    assert "tag_values: ['open', 'close']" in output;
 }
 
 test "refs target" {
@@ -759,19 +775,19 @@ test "visit traversal" {
     assert "MyWalker() from node MyNode(val=70)" in lines[9];
 }
 
-# ── Tests using examples_path ────────────────────────────────────────────────
+# ── Tests using micro fixtures ───────────────────────────────────────────────
 test "simple jac red" {
-    output = run_module("micro.simple_walk", EXAMPLES, as_main=True);
+    output = run_module("micro.simple_walk", COMPILER_FIXTURES, as_main=True);
     assert output == "Value: -1\nValue: 0\nValue: 1\nValue: 2\nValue: 3\nValue: 4\nValue: 5\nValue: 6\nValue: 7\nFinal Value: 8\nDone walking.\n";
 }
 
 test "simple walk by edge" {
-    output = run_module("micro.simple_walk_by_edge", EXAMPLES);
+    output = run_module("micro.simple_walk_by_edge", COMPILER_FIXTURES);
     assert output == "Visited 1\nVisited 2\n";
 }
 
 test "typed filter compr" {
-    output = run_module("micro.typed_filter_compr", EXAMPLES);
+    output = run_module("micro.typed_filter_compr", COMPILER_FIXTURES);
     assert "[MyObj(a=0), MyObj2(a=2), MyObj(a=1), MyObj2(a=3), MyObj(a=2), MyObj(a=3)]\n" in output;
     assert "[MyObj(a=0), MyObj(a=1), MyObj(a=2)]\n" in output;
 }
@@ -835,4 +851,23 @@ test "escape sequences in strings and fstrings" {
 
     # Test 9: unicode \u001b → ESC (third distinct escape syntax)
     assert "unicode_escape_first_ord:27" in output , f"Unicode escape failed: {output}";
+}
+
+test "bidirectional edge traversal" {
+    output = run_jac(os.path.join(FIXTURES, "bidirectional_edge_traversal.jac"));
+    lines = output.strip().split("\n");
+    assert "From a:" in lines[0];
+    assert "Friend found: 2" in lines[1];
+    assert "From b:" in lines[2];
+    assert "Friend found: 1" in lines[3];
+    assert "Generic from c:" in lines[4];
+    assert "Neighbor found: 4" in lines[5];
+    assert "Generic from d:" in lines[6];
+    assert "Neighbor found: 3" in lines[7];
+    assert "Reverse from a:\nFriend found: 2" in output;
+    assert "Reverse from b:\nFriend found: 1" in output;
+    assert "Forward from e:\nFollower found: 6" in output;
+    assert "Forward from f:\nBackward from f:" in output;
+    assert "Backward from f:\nFollower found: 5" in output;
+    assert "Backward from e:\nDone." in output;
 }

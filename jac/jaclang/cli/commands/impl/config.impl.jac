@@ -124,7 +124,9 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             # Case 0: Wildcard - disable all external plugins
             if target == '*' {
                 if '*' not in config.plugins_config.disabled {
-                    config.plugins_config.disabled = ['*'];  # Replace with just wildcard
+                    config.plugins_config.disabled = [
+                        '*'
+                    ];  # Replace with just wildcard
                     console.success("Disabled: * (all external plugins)", emoji=False);
                 } else {
                     console.warning(
@@ -364,7 +366,12 @@ impl plugins(action: str = 'list', names: list = [], verbose: bool = False) -> i
             pkg_name = pkg_name.replace(" (built-in)", "");
         }
 
-        for (short_name, qualified_name, plugin, plugin_class_name) in plugins_in_dist {
+        for (
+            short_name,
+            qualified_name,
+            plugin,
+            plugin_class_name
+        ) in plugins_in_dist {
             # Check disabled status using qualified name
             if qualified_name in disabled_plugins {
                 console.print(
@@ -872,7 +879,6 @@ def _format_value(value: object) -> str {
 def _to_toml_value(value: object) -> str {
     if value is None {
         return '""';  # TOML doesn't have null, use empty string
-
     } elif isinstance(value, bool) {
         return "true" if value else "false";
     } elif isinstance(value, int) {
@@ -1214,7 +1220,6 @@ def _save_config_without_setting(
 
     if not config.toml_path.exists() {
         return;  # Nothing to remove
-
     }
 
     # Load existing file content

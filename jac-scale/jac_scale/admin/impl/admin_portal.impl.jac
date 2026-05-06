@@ -256,7 +256,9 @@ impl JacAPIServerAdmin.register_admin_endpoints -> None {
             description='Update user role or settings (admin only)'
         )
     );
-    async def delete_user_handler(request: Request, username: str) -> TransportResponse {
+    async def delete_user_handler(
+        request: Request, username: str
+    ) -> TransportResponse {
         authorization = request.headers.get('Authorization');
         return self.admin_delete_user(username, authorization);
     }
@@ -500,20 +502,20 @@ impl JacAPIServerAdmin.bootstrap_admin -> None {
     }
 }
 
-"""Validate admin token and return username if valid admin."""
+"""Validate admin token and return user_id if valid admin."""
 impl JacAPIServerAdmin.validate_admin_token(Authorization: str | None) -> (str | None) {
     if not Authorization or not Authorization.startswith('Bearer ') {
         return None;
     }
     token = Authorization[7:];
-    username = self.user_manager.validate_jwt_token(token);
-    if not username {
+    user_id = self.user_manager.validate_jwt_token(token);
+    if not user_id {
         return None;
     }
-    if not self.user_manager.is_admin(username) {
+    if not self.user_manager.is_admin(user_id) {
         return None;
     }
-    return username;
+    return user_id;
 }
 
 """Check if request is from admin, return error response if not."""
@@ -548,21 +550,22 @@ impl JacAPIServerAdmin.admin_login(username: str, password: str) -> TransportRes
             meta=Meta(extra={'http_status': 401})
         );
     }
+    user_id = result.get('user_id', '');
     # Check if user is admin
-    if not self.user_manager.is_admin(username) {
+    if not self.user_manager.is_admin(user_id) {
         return TransportResponse.fail(
             code='FORBIDDEN',
             message='Admin access required',
             meta=Meta(extra={'http_status': 403})
         );
     }
-    # Check if password reset is required
-    requires_reset = self.user_manager.requires_password_reset(username);
-    token = self.user_manager.create_jwt_token(username);
+    requires_reset = self.user_manager.requires_password_reset(user_id);
+    token = self.user_manager.create_jwt_token(user_id);
     return TransportResponse.success(
         data={
             'message': 'Login successful',
             'token': token,
+            'user_id': user_id,
             'username': username,
             'role': 'admin',
             'requires_password_reset': requires_reset
@@ -584,8 +587,8 @@ impl JacAPIServerAdmin.reset_password(
         );
     }
     token = Authorization[7:];
-    username = self.user_manager.validate_jwt_token(token);
-    if not username {
+    user_id = self.user_manager.validate_jwt_token(token);
+    if not user_id {
         return TransportResponse.fail(
             code='UNAUTHORIZED',
             message='Invalid or expired token',
@@ -607,7 +610,7 @@ impl JacAPIServerAdmin.reset_password(
         );
     }
     # Update password
-    result = self.user_manager.update_password(username, current_password, new_password);
+    result = self.user_manager.update_password(user_id, current_password, new_password);
     if 'error' in result {
         return TransportResponse.fail(
             code='UPDATE_FAILED',
@@ -615,10 +618,10 @@ impl JacAPIServerAdmin.reset_password(
             meta=Meta(extra={'http_status': 400})
         );
     }
-    # Clear the requires_password_reset flag
-    self.user_manager.set_requires_password_reset(username, False);
+    # Clear password reset requirement
+    self.user_manager.set_requires_password_reset(user_id, False);
     # Generate new token
-    new_token = self.user_manager.create_jwt_token(username);
+    new_token = self.user_manager.create_jwt_token(user_id);
     return TransportResponse.success(
         data={'message': 'Password updated successfully', 'token': new_token},
         meta=Meta(extra={'http_status': 200})
@@ -634,6 +637,19 @@ impl JacAPIServerAdmin.admin_list_users(
         return error;
     }
     users = self.user_manager.list_all_users(limit, offset);
+    # Add top-level username for admin UI compatibility
+    for user in users {
+        identities = user.get('identities', []);
+        username = next(
+            (
+                identity.get('value_raw', '')
+                for identity in identities
+                if identity.get('type') == 'username'
+            ),
+            identities[0].get('value_raw', '') if identities else ''
+        );
+        user['username'] = username;
+    }
     return TransportResponse.success(
         data={'users': users, 'count': len(users), 'limit': limit, 'offset': offset},
         meta=Meta(extra={'http_status': 200})
@@ -656,11 +672,12 @@ impl JacAPIServerAdmin.admin_get_user(
             meta=Meta(extra={'http_status': 404})
         );
     }
+    user_id = user.get('user_id', username);
     # Get additional user info
-    role = self.user_manager.get_user_role(username);
-    requires_reset = self.user_manager.requires_password_reset(username);
-    is_pwd_required = self.user_manager.is_password_required(username);
-    sso_accounts = self.user_manager.get_sso_accounts(username);
+    role = self.user_manager.get_user_role(user_id);
+    requires_reset = self.user_manager.requires_password_reset(user_id);
+    is_pwd_required = self.user_manager.is_password_required(user_id);
+    sso_accounts = self.user_manager.get_sso_accounts(user_id);
     return TransportResponse.success(
         data={
             'username': username,
@@ -723,9 +740,10 @@ impl JacAPIServerAdmin.admin_update_user(
             meta=Meta(extra={'http_status': 404})
         );
     }
+    user_id = user.get('user_id', username);
     updates = [];
     if role is not None {
-        result = self.user_manager.set_user_role(username, role);
+        result = self.user_manager.set_user_role(user_id, role);
         if 'error' in result {
             return TransportResponse.fail(
                 code='UPDATE_FAILED',
@@ -737,7 +755,7 @@ impl JacAPIServerAdmin.admin_update_user(
     }
     if requires_password_reset is not None {
         result = self.user_manager.set_requires_password_reset(
-            username, requires_password_reset
+            user_id, requires_password_reset
         );
         if 'error' in result {
             return TransportResponse.fail(
@@ -769,7 +787,9 @@ impl JacAPIServerAdmin.admin_delete_user(
     if error {
         return error;
     }
-    result = self.user_manager.delete_user(username);
+    user = self.user_manager.get_user(username);
+    user_id = user.get('user_id', username) if user else username;
+    result = self.user_manager.delete_user(user_id);
     if 'error' in result {
         return TransportResponse.fail(
             code='DELETE_FAILED',
@@ -832,7 +852,8 @@ impl JacAPIServerAdmin.admin_get_user_sso_accounts(
             meta=Meta(extra={'http_status': 404})
         );
     }
-    accounts = self.user_manager.get_sso_accounts(username);
+    user_id = user.get('user_id', username);
+    accounts = self.user_manager.get_sso_accounts(user_id);
     return TransportResponse.success(
         data={'username': username, 'sso_accounts': accounts},
         meta=Meta(extra={'http_status': 200})
@@ -965,7 +986,10 @@ impl JacAPIServerAdmin.admin_graph_data(
             }
         }
         for (_, source_node, target_node, edge_arch) in connections {
-            edge_data: dict = {'from': str(id(source_node)), 'to': str(id(target_node))};
+            edge_data: dict = {
+                'from': str(id(source_node)),
+                'to': str(id(target_node))
+            };
             if repr(edge_arch) != 'GenericEdge()' {
                 edge_data['label'] = repr(edge_arch);
             }
@@ -993,7 +1017,7 @@ impl JacAPIServerAdmin.admin_get_metrics(
     Authorization: str | None = None
 ) -> TransportResponse {
     import re;
-    import from prometheus_client { generate_latest, REGISTRY }
+    import from jac_scale._optdeps.prometheus { generate_latest, REGISTRY }
     error = self.require_admin(Authorization);
     if error {
         return error;
@@ -1105,9 +1129,7 @@ def _parse_prometheus_text(raw_metrics: str) -> list[dict] {
                             'name': metric_name,
                             'description': '',
                             'type': 'unknown',
-                            'values': [
-                                {'labels': labels, 'value': value, 'suffix': ''}
-                            ]
+                            'values': [{'labels': labels, 'value': value, 'suffix': ''}]
                         }
                     );
                 }

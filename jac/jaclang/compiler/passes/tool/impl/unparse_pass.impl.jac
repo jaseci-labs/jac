@@ -367,7 +367,9 @@ impl UnparsePass.exit_enum(nd: uni.Enum) -> None {
         parts.append(nd.access.gen.jac);
     }
     parts.append(nd.name.gen.jac);
-    if nd.base_classes {
+    if nd.value_type {
+        parts.append(": " + nd.value_type.gen.jac);
+    } elif nd.base_classes {
         parts.append("(" + self._comma_sep(nd.base_classes) + ")");
     }
     if nd.body {
@@ -825,6 +827,11 @@ impl UnparsePass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         result = result + " " + nd.ops[i].gen.jac + " " + nd.rights[i].gen.jac;
     }
     nd.gen.jac = result;
+}
+
+"""CfgExpr: propagate inner expression's unparsed source."""
+impl UnparsePass.exit_cfg_expr(nd: uni.CfgExpr) -> None {
+    nd.gen.jac = nd.expr.gen.jac;
 }
 
 """BoolExpr: expr1 op expr2 op expr3."""

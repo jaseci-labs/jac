@@ -1,8 +1,16 @@
 # jac-mcp Release Notes
 
-## jac-mcp 0.1.11 (Unreleased)
+## jac-mcp 0.1.12 (Latest Release)
 
-## jac-mcp 0.1.10 (Latest Release)
+### New Features
+
+- **Add: `mode` setting for tool/prompt surface (lite/standard/full)**: The MCP server now reads a `mode` field from `[plugins.mcp]` in `jac.toml` and exposes a `--mode` CLI flag on `jac mcp` that writes the choice into the in-memory plugin config. Resolution order is CLI > `jac.toml` > default (`full`). `full` preserves existing behavior; `lite` and `standard` are reserved tiers for smaller models and currently expose the same surface as `full`. Per-mode exclusion sets will be populated in follow-up releases. Unknown values fall back to `full` with a logged warning.
+
+## jac-mcp 0.1.11
+
+- 1 small refactor/change.
+
+## jac-mcp 0.1.10
 
 - **Content QA fixes**: Updated `root` to `root()` in pitfalls and knowledge map to match current deprecation (W0062). Fixed invalid graph filter syntax `` [-->](`?B) `` → `[-->][?:B]` in pitfalls. Updated `root spawn` → `root() spawn` in client-side examples.
 - **New doc mappings**: Added `jac://docs/tutorial-fullstack-npm`, `jac://docs/tutorial-fullstack-advanced`, and `jac://docs/diagnostics` to DOC_MAPPINGS and knowledge map. Bundled docs updated.

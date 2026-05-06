@@ -571,7 +571,9 @@ impl PySetEmitter.emit_difference_update(target: str, args: list[str]) -> str {
     return _mcall(target, "difference_update", args);
 }
 
-impl PySetEmitter.emit_symmetric_difference_update(target: str, args: list[str]) -> str {
+impl PySetEmitter.emit_symmetric_difference_update(
+    target: str, args: list[str]
+) -> str {
     return _mcall(target, "symmetric_difference_update", args);
 }
 

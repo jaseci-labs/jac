@@ -17,9 +17,7 @@ cl {
             <div className="min-h-screen bg-slate-950 flex items-center justify-center">
                 <div className="text-center">
                     <Spinner/>
-                    <p className="text-slate-400 text-sm mt-3">
-                        Loading
-                    </p>
+                    <p className="text-slate-400 text-sm mt-3">Loading</p>
                 </div>
             </div>;
     }

@@ -19,7 +19,7 @@ include = ["jac_shadcn*"]
 
 [tool.setuptools.package-data]
 "*" = ["*.jac"]
-"jac_shadcn" = ["templates/*.jacpack"]
+"jac_shadcn" = ["templates/**/*", "templates/**/.*"]
 
 [build-system]
 requires = ["setuptools>=61.0"]

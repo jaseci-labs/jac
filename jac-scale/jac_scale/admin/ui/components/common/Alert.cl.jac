@@ -19,9 +19,7 @@ cl {
         );
 
         return
-            <div className={classes}>
-                {message}
-            </div>;
+            <div className={classes}>{message}</div>;
     }
 
     def:pub InlineAlert(message: str, type: str = "error") -> JsxElement {
@@ -41,8 +39,6 @@ cl {
         );
 
         return
-            <div className={classes}>
-                {message}
-            </div>;
+            <div className={classes}>{message}</div>;
     }
 }

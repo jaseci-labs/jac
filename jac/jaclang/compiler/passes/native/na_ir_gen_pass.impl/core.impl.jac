@@ -3,6 +3,10 @@
 impl NaIRGenPass.postinit -> None {
     # Use the source file name as the LLVM module ID so GDB shows it.
     import os as _ni_os;
+    # Phase R2: gate debug-only RC machinery (live-list, ctx attribution,
+    # leak dump) on JAC_RC_DEBUG_CODEGEN. Default OFF so production binaries
+    # don't pay the per-allocation malloc(LIVE_NODE_SIZE) overhead.
+    self._rc_debug_codegen = bool(_ni_os.environ.get("JAC_RC_DEBUG_CODEGEN", ""));
     _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
@@ -529,7 +533,7 @@ impl NaIRGenPass._extract_import_module_name(imp: uni.Import) -> (str | None) {
     if imp.from_loc.path and isinstance(imp.from_loc.path[0], uni.String) {
         return None;
     }
-    mod_name = getattr(imp.from_loc, 'dot_path_str', None);
+    mod_name = imp.from_loc?.dot_path_str;
     if not mod_name and imp.from_loc?.path and imp.from_loc.path {
         mod_name = '.'.join(getattr(p, 'value', str(p)) for p in imp.from_loc.path);
     }

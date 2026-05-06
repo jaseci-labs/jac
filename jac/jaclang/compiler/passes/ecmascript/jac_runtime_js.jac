@@ -290,6 +290,61 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
     }
   },
 
+  // Runtime-polymorphic helpers used when the static type of the receiver is
+  // not provably str/list/etc., so the codegen cannot pick a typed emitter.
+  // Each helper checks the JS type and dispatches to the native operation;
+  // if the value is not a JS primitive of the expected shape, it falls back
+  // to calling the same-named method on the object so user-defined classes
+  // that implement Python-style methods still work.
+  poly: {
+    lower(s) { return typeof s === "string" ? s.toLowerCase() : s.lower(); },
+    upper(s) { return typeof s === "string" ? s.toUpperCase() : s.upper(); },
+    strip(s, chars) {
+      if (typeof s === "string") {
+        if (chars === undefined) return s.trim();
+        let i = 0, j = s.length;
+        while (i < j && chars.indexOf(s[i]) !== -1) i++;
+        while (j > i && chars.indexOf(s[j - 1]) !== -1) j--;
+        return s.slice(i, j);
+      }
+      return chars === undefined ? s.strip() : s.strip(chars);
+    },
+    lstrip(s, chars) {
+      if (typeof s === "string") {
+        if (chars === undefined) return s.replace(/^\s+/, "");
+        let i = 0;
+        while (i < s.length && chars.indexOf(s[i]) !== -1) i++;
+        return s.slice(i);
+      }
+      return chars === undefined ? s.lstrip() : s.lstrip(chars);
+    },
+    rstrip(s, chars) {
+      if (typeof s === "string") {
+        if (chars === undefined) return s.replace(/\s+$/, "");
+        let j = s.length;
+        while (j > 0 && chars.indexOf(s[j - 1]) !== -1) j--;
+        return s.slice(0, j);
+      }
+      return chars === undefined ? s.rstrip() : s.rstrip(chars);
+    },
+    append(a, x) {
+      if (Array.isArray(a)) { a.push(x); return null; }
+      return a.append(x);
+    },
+    extend(a, b) {
+      if (Array.isArray(a)) { for (const v of b) a.push(v); return null; }
+      return a.extend(b);
+    },
+    pop(a, i) {
+      if (Array.isArray(a)) {
+        if (i === undefined) return a.pop();
+        const idx = i < 0 ? a.length + i : i;
+        return a.splice(idx, 1)[0];
+      }
+      return i === undefined ? a.pop() : a.pop(i);
+    }
+  },
+
   list: {
     remove(arr, val) {
       const i = arr.indexOf(val);

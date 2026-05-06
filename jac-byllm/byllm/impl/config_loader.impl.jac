@@ -27,7 +27,24 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
         'call_params': {'temperature': 0.7, 'max_tokens': 0},
         'litellm': {'local_cost_map': True, 'drop_params': True, 'debug': False},
         'fallback': {'strategy': 'fallback', 'num_retries': 1, 'timeout': 60.0},
-        'system_prompt': ''
+        'prompt_caching': {'enabled': True},
+        'parallel': {'enabled': False},
+        'system_prompt': '',
+        'compaction': {
+            'enabled': True,
+            'threshold_ratio': 0.80,
+            'keep_recent_iterations': 3,
+            'ctx_window': 0,
+            'compaction_model': ''
+        },
+        'local': {
+            'default_alias': 'gemma-4-e4b',
+            'n_ctx': 0,
+            'n_gpu_layers': 0,
+            'n_threads': 0,
+            'verbose': False,
+            'auto_download': False
+        }
     };
 }
 
@@ -80,6 +97,13 @@ impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, Any] 
     };
 }
 
+"""Get prompt caching configuration from jac.toml."""
+impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    pc_config = config.get('prompt_caching', {});
+    return {'enabled': bool(pc_config.get('enabled', True))};
+}
+
 """Get or create the global JacByllmConfig instance."""
 impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
     global _byllm_config_instance;
@@ -97,10 +121,52 @@ impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
     return _byllm_config_instance;
 }
 
+"""Get parallel tool-calling configuration from jac.toml."""
+impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    parallel_config = config.get('parallel', {});
+    # Also check env var BYLLM_PARALLEL_TOOL_CALLING as override
+    import os;
+    env_enabled = os.environ.get('BYLLM_PARALLEL_TOOL_CALLING', '').lower() in (
+        'true',
+        '1',
+        'yes'
+    );
+    toml_enabled = bool(parallel_config.get('enabled', False));
+    return {'enabled': env_enabled or toml_enabled};
+}
+
 """Get system prompt from jac.toml configuration."""
 impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
     config = self.load();
     return config.get('system_prompt', '');
+}
+
+"""Get compaction configuration from jac.toml."""
+impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    c = config.get('compaction', {});
+    return {
+        'enabled': bool(c.get('enabled', True)),
+        'threshold_ratio': float(c.get('threshold_ratio', 0.80)),
+        'keep_recent_iterations': int(c.get('keep_recent_iterations', 3)),
+        'ctx_window': int(c.get('ctx_window', 0)),
+        'compaction_model': str(c.get('compaction_model', ''))
+    };
+}
+
+"""Get local-runtime configuration from jac.toml."""
+impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    local_cfg = config.get('local', {});
+    return {
+        'default_alias': str(local_cfg.get('default_alias', 'gemma-4-e4b')),
+        'n_ctx': int(local_cfg.get('n_ctx', 0)),
+        'n_gpu_layers': int(local_cfg.get('n_gpu_layers', 0)),
+        'n_threads': int(local_cfg.get('n_threads', 0)),
+        'verbose': bool(local_cfg.get('verbose', False)),
+        'auto_download': bool(local_cfg.get('auto_download', False))
+    };
 }
 
 """Reset the global config instance (useful for testing)."""

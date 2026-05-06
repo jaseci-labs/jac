@@ -55,7 +55,7 @@ impl jac2py(filename: str) -> int {
 }
 
 """Convert Jac to JavaScript."""
-impl js(filename: str) -> int {
+impl jac2js(filename: str) -> int {
     import from jaclang.jac0core.program { JacProgram }
     if filename.endswith('.jac') {
         try {
@@ -84,4 +84,13 @@ impl js(filename: str) -> int {
         console.error('Not a .jac file.');
         return 1;
     }
+}
+
+"""Deprecated alias for jac2js. Emits a warning then forwards."""
+impl js(filename: str) -> int {
+    console.warning(
+        "'jac js' is deprecated and will be removed in a future release. "
+        "Use 'jac jac2js' instead."
+    );
+    return jac2js(filename);
 }

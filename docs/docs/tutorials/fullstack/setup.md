@@ -58,14 +58,14 @@ walker:pub get_todos {
 }
 
 # Frontend code (inside cl block)
-cl {
-    def:pub app() -> JsxElement {
-        has message: str = "Hello from Jac!";
+to cl:
 
-        return <div>
-            <h1>{message}</h1>
-        </div>;
-    }
+def:pub app() -> JsxElement {
+    has message: str = "Hello from Jac!";
+
+    return <div>
+        <h1>{message}</h1>
+    </div>;
 }
 ```
 
@@ -134,10 +134,10 @@ walker api_endpoint {
 }
 
 # This is frontend code (runs in browser)
-cl {
-    def:pub MyComponent() -> JsxElement {
-        return <div>I run in the browser</div>;
-    }
+to cl:
+
+def:pub MyComponent() -> JsxElement {
+    return <div>I run in the browser</div>;
 }
 ```
 
@@ -163,10 +163,10 @@ walker get_user {
 }
 
 # Frontend
-cl {
-    def:pub app() -> JsxElement {
-        return <div>App</div>;
-    }
+to cl:
+
+def:pub app() -> JsxElement {
+    return <div>App</div>;
 }
 ```
 
@@ -206,15 +206,15 @@ walker get_user {
 
 ```jac
 # main.jac
-cl {
-    import from "./components/Header.cl.jac" { Header }
+to cl:
 
-    def:pub app() -> JsxElement {
-        return <div>
-            <Header />
-            <main>Content</main>
-        </div>;
-    }
+import from "./components/Header.cl.jac" { Header }
+
+def:pub app() -> JsxElement {
+    return <div>
+        <Header />
+        <main>Content</main>
+    </div>;
 }
 ```
 
@@ -244,13 +244,13 @@ axios = "^1.6.0"
 Then use in frontend:
 
 ```jac
-cl {
-    import lodash;
+to cl:
 
-    def:pub app() -> JsxElement {
-        items = lodash.sortBy(["c", "a", "b"]);
-        return <ul>{[<li>{i}</li> for i in items]}</ul>;
-    }
+import lodash;
+
+def:pub app() -> JsxElement {
+    items = lodash.sortBy(["c", "a", "b"]);
+    return <ul>{[<li>{i}</li> for i in items]}</ul>;
 }
 ```
 
@@ -289,18 +289,18 @@ watchdog = ">=3.0.0"
 Create this minimal `main.jac`:
 
 ```jac
-cl {
-    def:pub app() -> JsxElement {
-        has count: int = 0;
+to cl:
 
-        return <div style={{"textAlign": "center", "marginTop": "50px"}}>
-            <h1>Jac Full-Stack</h1>
-            <p>Count: {count}</p>
-            <button onClick={lambda -> None { count = count + 1; }}>
-                Increment
-            </button>
-        </div>;
-    }
+def:pub app() -> JsxElement {
+    has count: int = 0;
+
+    return <div style={{"textAlign": "center", "marginTop": "50px"}}>
+        <h1>Jac Full-Stack</h1>
+        <p>Count: {count}</p>
+        <button onClick={lambda -> None { count = count + 1; }}>
+            Increment
+        </button>
+    </div>;
 }
 ```
 

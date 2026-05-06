@@ -48,6 +48,8 @@ def _get_store -> Callable[..., Any];
 
 def _get_llm -> LLMModel;
 
+def _get_archetype_alias -> Callable[..., Any];
+
 def __getattr__(name: str) -> object;
 
 def printgraph(
@@ -86,5 +88,6 @@ glob __all__ = [
          'restspec',
          'schedule',
          'ScheduleTrigger',
-         'APIProtocol'
+         'APIProtocol',
+         'archetype_alias'
      ];

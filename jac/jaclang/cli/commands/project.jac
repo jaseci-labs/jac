@@ -1,7 +1,4 @@
-"""Project commands: create, install, add, remove, script.
-
-Commands for managing Jac projects and dependencies.
-"""
+"""Commands for managing Jac projects and dependencies."""
 
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.registry { get_registry }
@@ -63,11 +60,17 @@ def create(
     list_jacpacks: bool = False
 ) -> int;
 
-"""Install all dependencies from jac.toml."""
+"""Install all dependencies from jac.toml, or install a package in editable mode."""
 @registry.command(
     name="install",
-    help="Install project dependencies",
+    help="Install project dependencies (or -e <path> for editable install)",
     args=[
+        Arg.create(
+            "editable",
+            default="",
+            help="Install the package at this path in editable mode (like pip install -e)",
+            short="e"
+        ),
         Arg.create(
             "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
         ),
@@ -78,13 +81,14 @@ def create(
     ],
     examples=[
         ("jac install", "Install all dependencies"),
+        ("jac install -e .", "Install current package in editable mode"),
+        ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         ("jac install --dev", "Include dev dependencies"),
-        ("jac install --verbose", "Show detailed progress"),
 
     ],
     group="project"
 )
-def install(dev: bool = False, verbose: bool = False) -> int;
+def install(editable: str = "", dev: bool = False, verbose: bool = False) -> int;
 
 """Add dependencies to the project."""
 @registry.command(
@@ -289,3 +293,25 @@ def clean(
     group="project"
 )
 def jacpack(action: str = "", path: str = "", output: str = "") -> int;
+
+"""Build a wheel from jac.toml into the output directory."""
+@registry.command(
+    name="bundle",
+    help="Build a .whl from jac.toml (upload separately with twine)",
+    args=[
+        Arg.create(
+            "output",
+            default="dist",
+            help="Output directory for the built .whl file",
+            short="o"
+        ),
+
+    ],
+    examples=[
+        ("jac bundle", "Build wheel into dist/"),
+        ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
+
+    ],
+    group="project"
+)
+def bundle(output: str = "dist") -> int;

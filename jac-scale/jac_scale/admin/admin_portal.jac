@@ -63,7 +63,10 @@ obj JacAPIServerAdmin {
     ) -> TransportResponse;
 
     # SSO management
-    def admin_list_sso_providers(Authorization: str | None = None) -> TransportResponse;
+    def admin_list_sso_providers(
+        Authorization: str | None = None
+    ) -> TransportResponse;
+
     def admin_get_user_sso_accounts(
         username: str, Authorization: str | None = None
     ) -> TransportResponse;

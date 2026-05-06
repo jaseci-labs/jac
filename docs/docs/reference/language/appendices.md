@@ -166,8 +166,9 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 module        : STRING? element*              # Optional module docstring
 element       : STRING? toplevel_stmt         # Optional statement docstring
 toplevel_stmt : import | archetype | ability | impl | test | entry
-              | (cl | sv | na) toplevel_stmt       # Client/server/native prefix
-              | (cl | sv | na) "{" toplevel_stmt* "}"  # Client/server/native block
+              | "to" (cl | sv | na) ":"              # Section header (preferred at module scope)
+              | (cl | sv | na) toplevel_stmt         # Single-statement prefix
+              | (cl | sv | na) "{" toplevel_stmt* "}"  # Braced block (W0064 at module scope)
 
 archetype     : async? (obj | node | edge | walker | enum) NAME inheritance? body
 inheritance   : "(" NAME ("," NAME)* ")"
@@ -314,6 +315,7 @@ def increment -> None {
 | Entry point | `if __name__ == "__main__":` | `with entry { }` |
 | Module variables | Global assignment | `glob` keyword |
 | Enums | `class Color(Enum):` | `enum Color { RED, GREEN, BLUE }` |
+| Typed enums | `class S(IntEnum):` / `class S(StrEnum):` | `enum S: int { ... }` / `enum S: str { ... }` |
 | Error handling | `try: ... except:` | `try { } except Type as e { }` |
 | Imports | `from x import y` | `import from x { y }` |
 | Pattern matching | `match x: case 1:` | `match x { case 1:` (Python-style indentation inside braces) |
@@ -434,6 +436,31 @@ enum Status {
     ACTIVE = "active"
 }
 ```
+
+For `IntEnum`/`StrEnum`, Jac offers a typed-base shorthand `enum X: T { ... }`:
+
+**Python:**
+
+```python
+from enum import IntEnum, StrEnum
+
+class HttpStatus(IntEnum):
+    OK = 200
+    NOT_FOUND = 404
+
+class Tag(StrEnum):
+    OPEN = "open"
+    CLOSE = "close"
+```
+
+**Jac:**
+
+```jac
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+```
+
+For any other base `T`, `enum X: T` desugars to the Python mixin form `class X(T, Enum)`.
 
 ### Entry Point
 

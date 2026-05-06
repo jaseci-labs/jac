@@ -92,13 +92,9 @@ cl {
                     class="feed-header"
                     style={{"padding": "20px", "borderBottom": "1px solid #e1e8ed"}}
                 >
-                    <h1 style={{"margin": "0"}}>
-                        LittleX Feed
-                    </h1>
+                    <h1 style={{"margin": "0"}}>LittleX Feed</h1>
                 </div>
-                <div class="feed-content">
-                    {[TweetCard(tweet) for tweet in tweets]}
-                </div>
+                <div class="feed-content">{[TweetCard(tweet) for tweet in tweets]}</div>
             </div>;
     }
 
@@ -116,9 +112,7 @@ cl {
                     "fontFamily": "sans-serif"
                 }}
             >
-                <h2 style={{"marginTop": "0"}}>
-                    Login to LittleX
-                </h2>
+                <h2 style={{"marginTop": "0"}}>Login to LittleX</h2>
                 <form onsubmit={handle_login}>
                     <div style={{"marginBottom": "15px"}}>
                         <label style={{"display": "block", "marginBottom": "5px"}}>
@@ -164,9 +158,7 @@ cl {
                     </button>
                 </form>
                 <div style={{"marginTop": "15px", "textAlign": "center"}}>
-                    <Link href="/signup">
-                        Don't have an account? Sign up
-                    </Link>
+                    <Link href="/signup">Don't have an account? Sign up</Link>
                 </div>
             </div>;
     }
@@ -198,9 +190,7 @@ cl {
                     "fontFamily": "sans-serif"
                 }}
             >
-                <h2 style={{"marginTop": "0"}}>
-                    Sign Up for LittleX
-                </h2>
+                <h2 style={{"marginTop": "0"}}>Sign Up for LittleX</h2>
                 <form onsubmit={handle_signup}>
                     <div style={{"marginBottom": "15px"}}>
                         <label style={{"display": "block", "marginBottom": "5px"}}>
@@ -263,9 +253,7 @@ cl {
                     </button>
                 </form>
                 <div style={{"marginTop": "15px", "textAlign": "center"}}>
-                    <Link href="/login">
-                        Already have an account? Login
-                    </Link>
+                    <Link href="/login">Already have an account? Login</Link>
                 </div>
             </div>;
     }
@@ -420,15 +408,9 @@ cl {
                     "fontFamily": "sans-serif"
                 }}
             >
-                <h1>
-                    Home Feed
-                </h1>
-                <p>
-                    Welcome to LittleX! This is the home page.
-                </p>
-                <p>
-                    The reactive router is working!
-                </p>
+                <h1>Home Feed</h1>
+                <p>Welcome to LittleX! This is the home page.</p>
+                <p>The reactive router is working!</p>
             </div>;
     }
 
@@ -449,9 +431,7 @@ cl {
                     "fontFamily": "sans-serif"
                 }}
             >
-                <h1>
-                    Profile
-                </h1>
+                <h1>Profile</h1>
                 <div
                     style={{
                         "padding": "15px",
@@ -459,9 +439,7 @@ cl {
                         "borderRadius": "8px"
                     }}
                 >
-                    <p>
-                        Profile information will be displayed here.
-                    </p>
+                    <p>Profile information will be displayed here.</p>
                 </div>
             </div>;
     }
