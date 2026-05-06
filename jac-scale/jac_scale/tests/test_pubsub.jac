@@ -54,6 +54,7 @@ obj _ExplodingBroker(MessageBroker) {
     def health -> HealthStatus {
         return HealthStatus(healthy=True);
     }
+
     def is_enabled -> bool {
         return True;
     }

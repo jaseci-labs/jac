@@ -135,7 +135,6 @@ obj NoOpBroker(MessageBroker) {
     def start { }
     def stop(drain: bool = True) { }
     def publish(topic: str, event: Event, key: str | None = None) { }
-
     def subscribe(
         topic: str,
         handler: Callable[[Event], Any],
