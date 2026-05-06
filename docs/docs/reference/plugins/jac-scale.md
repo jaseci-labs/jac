@@ -1368,12 +1368,13 @@ The `get_url()` method provides a standardized way to expose files to the intern
 - **S3Storage (Public)**: If `public_read = true`, returns a direct, permanent public URL.
 
 ```jac
-glob storage = store();
+with entry {
+    storage = store();
 
-# Generate a URL that expires in 10 minutes (600 seconds)
-# For S3, this is a pre-signed URL.
-url = storage.get_url("profile-photos/user1.jpg", expires_in=600);
-```
+    # Generate a URL that expires in 10 minutes (600 seconds)
+    # For S3, this is a pre-signed URL.
+    url = storage.get_url("profile-photos/user1.jpg", expires_in=600);
+}
 
 walker :pub download_file {
     has path: str;
@@ -1387,7 +1388,6 @@ walker :pub download_file {
         report {"content": content, "size": len(content)};
     }
 }
-
 ```
 
 ### Configuration
