@@ -15,8 +15,6 @@ import jaclang;
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse as rd_parse }
-import from jaclang.jac0core.parser.tokens { TokenKind }
-import from jaclang.jac0core.parser.lexer { Lexer }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
@@ -758,49 +756,132 @@ test "bracket filter on list" {
     assert not err , "Failed to parse list bracket filter";
 }
 
-# ── `scan_jsx_block_comment` invariants — match, miss, rewind ──
-def _jsx_lex(src: str) -> tuple[list, list] {
-    lex = Lexer(source=src, file_path="<test>");
-    return (lex.tokenize(), list(lex.comments));
+test "typed edge ref after start expr - no filter" {
+    # BUG: `[root()->:Type:->]` failed to parse because parse_list_or_compr
+    # only checked for ARROW_R/ARROW_L/ARROW_BI/ARROW_R_P1/ARROW_L_P1 after
+    # the first expression, missing the (RETURN_HINT, COLON, ...) form the
+    # lexer actually produces for `->:`. The bare-start form `[->:Type:->]`
+    # already parsed because that path went through parse_edge_ref_chain
+    # directly. (Reproduces the docs example in the Part 2 'Advanced:
+    # Custom Edges' section of the AI day planner tutorial.)
+    src = (
+        'edge Scheduled { has time: str; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(time="9:00am") :+> Task(title="Run");'
+        '    x = [root()->:Scheduled:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:->] (typed edge ref after "
+        "explicit start expression)"
+    );
 }
 
-"""Comment-only `{#* ... *#}` fuses into a single JSX_BLOCK_COMMENT
-token; anything else (expression slot, comment+expression, two
-comments, non-JSX context) rewinds to normal `{` handling and the
-inner `#* *#` becomes a free block comment."""
-test "JSX block-comment lookahead match/rewind invariants" {
-    # (source, fused?, expected free count, optional needle)
-    cases = [
-        ('<p>{#* hi *#}</p>',                  True,  0, ""),
-        ('<p>{   #* hi *#   }</p>',            True,  0, ""),
-        ('<p>{count #* trailing *#}</p>',      False, 1, "trailing"),
-        ('<p>{#* lead *# count}</p>',          False, 1, "lead"),
-        ('<p>{#* a *# #* b *#}</p>',           False, 2, "a"),
-        ('with entry { x = { #* nope *# }; }', False, 1, "nope"),
-    ];
-    for (src, fused, expected_count, needle) in cases {
-        (tokens, frees) = _jsx_lex(src);
-        kinds = [t.kind for t in tokens if t.kind != TokenKind.EOF];
-        if fused {
-            assert TokenKind.JSX_BLOCK_COMMENT in kinds , f"{src!r}: not fused";
-            assert TokenKind.LBRACE not in kinds , f"{src!r}: LBRACE leaked";
-        } else {
-            assert TokenKind.JSX_BLOCK_COMMENT not in kinds , f"{src!r}: wrongly fused";
-            assert TokenKind.LBRACE in kinds , f"{src!r}: LBRACE missing";
+test "typed edge ref after start expr - with filter condition" {
+    # Same root cause as the test above, plus continue_edge_ref_chain
+    # was using a stripped-down inline branch that did not accept the
+    # `:cond` filter clause that parse_edge_op_ref already supports.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    root() +>: Scheduled(priority=3) :+> Task(title="A");'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , (
+        "Failed to parse [root()->:Scheduled:priority>=3:->] (typed edge "
+        "ref with a filter condition after an explicit start expression)"
+    );
+}
+
+test "typed edge ref bare start with filter still parses" {
+    # Sanity check: the bare-start form (no explicit start expression)
+    # was already parsing before the fix and must keep working — the
+    # parser routes it through parse_edge_ref_chain which uses the rich
+    # parse_edge_op_ref helper.
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'walker W { can go with entry { '
+        '    visit [->:Scheduled:priority>=3:->]; '
+        '} }'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err , ("Failed to parse bare-start [->:Scheduled:priority>=3:->]");
+}
+
+test "typed edge ref produces FilterCompr with compares" {
+    # Structural check: the AST produced for the fixed form must include
+    # a FilterCompr that actually carries the filter compare conditions
+    # (otherwise downstream traversal cannot evaluate the filter).
+    src = (
+        'edge Scheduled { has priority: int = 1; }'
+        'node Task { has title: str; }'
+        'with entry {'
+        '    urgent = [root()->:Scheduled:priority>=3:->];'
+        '}'
+    );
+    (mod, err) = rd_parse(src, "");
+    assert not err;
+
+    def find_filter_compr_with_compares(nd: object) -> object {
+        if isinstance(nd, uni.FilterCompr) and nd.compares {
+            return nd;
         }
-        assert len(frees) == expected_count , f"{src!r}: frees={frees}";
-        if needle {
-            assert any(needle in c[0] for c in frees) , f"{src!r}: missing {needle!r}";
+        if hasattr(nd, "kid") {
+            for k in nd.kid {
+                if k is not None {
+                    result = find_filter_compr_with_compares(k);
+                    if result is not None {
+                        return result;
+                    }
+                }
+            }
         }
+        return None;
     }
+    fc = find_filter_compr_with_compares(mod);
+    assert fc is not None , (
+        "Typed edge ref `[root()->:Scheduled:priority>=3:->]` must produce "
+        "a FilterCompr carrying the `priority>=3` condition; an EdgeOpRef "
+        "with an empty FilterCompr means the filter clause was silently "
+        "dropped."
+    );
 }
 
-"""LBRACE position must survive a partial-lookahead rewind."""
-test "rewind preserves token position" {
-    (tokens, _) = _jsx_lex('<p>{count}</p>');
-    lb = next((t for t in tokens if t.kind == TokenKind.LBRACE), None);
-    # `{` is at byte offset 3 (`<p>{`).
-    assert lb is not None and lb.loc.pos_start == 3 , f"LBRACE drift: {lb}";
+test "decorated class in code block parses as archetype" {
+    (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
+    assert not err , "Parser reported errors for decorated declarations in code blocks";
+
+    def collect(nd: uni.UniNode) -> list {
+        results: list = [];
+        if isinstance(nd, uni.Archetype) {
+            results.append(nd);
+        }
+        for k in (nd.kid) {
+            results.extend(collect(k));
+        }
+        return results;
+    }
+
+    archetype_names = [a.name.sym_name for a in collect(mod)];
+
+    for name in [
+        "A_TopClass",
+        "A_InEntryClass",
+        "A_InEntryObj",
+        "A_StackedDec",
+        "A_InDefBodyClass",
+        "A_InDefBodyObj",
+        "A_Container",
+        "A_InMethodClass"
+    ] {
+        assert name in archetype_names , f"{name} should be Archetype but was not found";
+    }
 }
 
 with entry {

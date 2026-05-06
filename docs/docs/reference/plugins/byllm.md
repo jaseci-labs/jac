@@ -62,6 +62,29 @@ This means your Jac type system functions as the LLM's output schema. Declaring 
 pip install byllm
 ```
 
+For local inference without an API key, byLLM supports two paths -- pick the one that fits your environment (see [Built-in Local Models](#built-in-local-models) for the full discussion):
+
+=== "Ollama (recommended)"
+    ```bash
+    # Install Ollama: https://ollama.com/download
+    ollama pull gemma3:4b
+    ```
+    ```toml
+    [plugins.byllm.model]
+    default_model = "ollama/gemma3:4b"
+    ```
+    Separate daemon, automatic GPU detection (CUDA / Metal / Vulkan picked up by Ollama itself), curated quantization registry. byLLM routes through litellm's Ollama provider -- nothing extra to install on the byLLM side.
+
+=== "In-process `local:*` (opt-in extra)"
+    ```bash
+    pip install 'byllm[local]'
+    ```
+    ```toml
+    [plugins.byllm.model]
+    default_model = "local:gemma-4-e4b"
+    ```
+    No daemon, single `pip install`, fully in-process. Adds `llama-cpp-python` and `huggingface_hub` as dependencies. See [Built-in Local Models](#built-in-local-models) for bundled aliases, GPU build flags, and the `jac model` cache CLI.
+
 For video support, install with the `video` extra:
 
 ```bash
@@ -72,29 +95,56 @@ pip install byllm[video]
 
 ## Model Configuration
 
-### Default (Zero-Config)
+`llm` is **ambient** in Jac -- it's a built-in name, you never import it or pass it as an argument. The model that *powers* `llm` is configured project-wide via `jac.toml` (typical), with an optional per-module override (`glob llm = Model(...)`) when one file needs something different from the rest of the project.
 
-`llm` is a **built-in name** in Jac -- just use `by llm()` directly with no imports:
+### Project-wide default (typical: `jac.toml`)
+
+```toml
+# jac.toml
+[plugins.byllm.model]
+default_model = "gpt-4o-mini"
+```
 
 ```jac
-def summarize(text: str) -> str by llm();
+# any file in the project
+def summarize(text: str) -> str by llm();   # uses jac.toml's default
 
 with entry {
     print(summarize("Jac is a programming language..."));
 }
 ```
 
-The default model is `gpt-4o-mini`. Configure it via `jac.toml` (see [Default Model Configuration](#default-model-configuration) below).
+Most projects do this and nothing else: set the default once, and every `by llm()` in the project picks it up. See [Default Model Configuration](#default-model-configuration) for the full schema (api_key, base_url, proxy, verbose, etc.) and [Supported Providers](#supported-providers) for provider name formats.
 
-### Custom Model (Override)
+### Per-module override
 
-For per-file customization, override the builtin with an explicit `Model`:
+When a single file needs a different model -- most often when composing a [`ModelPool`](#modelpool), calling a fine-tuned endpoint, or pinning a specific provider for that module -- redeclare `llm` as a module-level glob:
 
 ```jac
 import from byllm.lib { Model }
 
 glob llm = Model(model_name="gpt-4o");
+
+def summarize(text: str) -> str by llm();   # uses gpt-4o here only
 ```
+
+The glob shadows the project default **for this module only**. Other files keep using whatever `jac.toml` says unless they declare their own `glob llm`.
+
+The name `llm` is just convention -- `by <name>()` accepts any module-level glob whose value is a `Model` (or `ModelPool`). Use whatever name reads best at the call site, especially when one file talks to multiple models:
+
+```jac
+import from byllm.lib { Model }
+
+glob fast_model    = Model(model_name="gpt-4o-mini");
+glob smart_model   = Model(model_name="gpt-4o");
+glob summarizer    = Model(model_name="claude-sonnet-4-6");
+
+def quick_label(text: str) -> str by fast_model();
+def deep_analyze(text: str) -> dict by smart_model();
+def tldr(article: str) -> str by summarizer();
+```
+
+`by llm()` only refers to the ambient builtin when no `glob llm` shadows it. Once you define a glob with the name `llm`, that glob takes over for the module; any other named globs (`fast_model`, `smart_model`, ...) coexist alongside it and are selected explicitly per call.
 
 ### Model Constructor Parameters
 
@@ -166,6 +216,13 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
     ```
     No API key needed - runs locally. See [Ollama](https://ollama.ai/).
 
+=== "Built-in Local (`local:*`)"
+    ```toml
+    [plugins.byllm.model]
+    default_model = "local:gemma-4-e4b"
+    ```
+    No API key, no daemon. byLLM downloads a Q4_K_M GGUF on first use and runs `llama.cpp` in-process. See [Built-in Local Models](#built-in-local-models) below.
+
 === "HuggingFace"
     ```toml
     [plugins.byllm.model]
@@ -175,7 +232,7 @@ byLLM uses [LiteLLM](https://docs.litellm.ai/docs/providers) for model integrati
     export HUGGINGFACE_API_KEY="hf_..."
     ```
 
-You can also override per-file with `glob llm = Model(...)` (see [Custom Model (Override)](#custom-model-override)).
+You can also override per-file with `glob llm = Model(...)` (see [Per-module override](#per-module-override)).
 
 **Provider Model Name Formats:**
 
@@ -185,10 +242,145 @@ You can also override per-file with `glob llm = Model(...)` (see [Custom Model (
 | Anthropic | `claude-*` | `claude-sonnet-4-6` |
 | Google | `gemini/*` | `gemini/gemini-2.0-flash` |
 | Ollama | `ollama/*` | `ollama/llama3:70b` |
+| Built-in Local | `local:<alias>` | `local:gemma-4-e4b`, `local:gemma-4-e2b`, `local:qwen3.5-4b` |
 | HuggingFace | `huggingface/*` | `huggingface/meta-llama/Llama-3.3-70B-Instruct` |
 
 ??? tip "Full Provider List"
     For the complete list of supported providers and model name formats, see the [LiteLLM providers documentation](https://docs.litellm.ai/docs/providers).
+
+---
+
+## Built-in Local Models
+
+!!! tip "Most users want Ollama, not this."
+    Ollama is the recommended local-first path: native installer, automatic GPU detection across CUDA/Metal/Vulkan, curated registry of quantized models, and full byLLM compatibility through litellm (`default_model = "ollama/<model>"`). It works without anything from this section. The `local:*` route below is for users who specifically don't want a separate daemon -- everything stays inside the Python process and a single `pip install`.
+
+Any model name prefixed with `local:` runs in-process via `llama.cpp`, with weights pulled from HuggingFace on first use and cached under `~/.cache/jac/models/<alias>/`. No API key, no separate daemon, and no proxy server -- the GGUF is loaded directly into the Jac process. Activate by installing the `[local]` extra:
+
+```bash
+pip install 'byllm[local]' \
+  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+```
+
+The `--extra-index-url` flag points pip at `llama-cpp-python`'s prebuilt wheel index. Without it, pip falls back to the PyPI source tarball and runs a 30-60 second C++ build (`llama-cpp-python` does not publish wheels on PyPI). Use `/cu124`, `/metal`, `/vulkan` etc. for the matching GPU build (see [GPU Acceleration](#gpu-acceleration) below).
+
+The `local:*` route bypasses LiteLLM and replicates what cloud providers do server-side: it flattens multimodal content blocks for `llama.cpp`'s chat templates, rewrites OpenAI-style `json_schema` response formats into the GBNF grammar shape `llama.cpp` understands, and injects schema descriptions (e.g. `1=WORK, 2=PERSONAL, ...`) into the prompt so small open-weight models see the same constraints frontier models receive natively.
+
+### Quick Start
+
+```jac
+def categorize(title: str) -> Category by llm();
+```
+
+```toml
+# jac.toml
+[plugins.byllm.model]
+default_model = "local:gemma-4-e4b"
+```
+
+After `pip install 'byllm[local]'` (see [Installation](#installation)), the first `by llm()` call downloads the GGUF (interactive TTY prompts; non-TTY contexts require `BYLLM_AUTO_DOWNLOAD=1` or a prior `jac model pull`).
+
+### Bundled Aliases
+
+| Alias | Repo | Q4_K_M Size | Notes |
+|-------|------|-------------|-------|
+| `gemma-4-e4b` | `unsloth/gemma-4-E4B-it-GGUF` | ~5.0 GB | Default. Google Gemma 4 E4B (instruction-tuned). |
+| `gemma-4-e2b` | `unsloth/gemma-4-E2B-it-GGUF` | ~2.5 GB | Smaller / faster Gemma 4 variant. |
+| `qwen3.5-4b` | `unsloth/Qwen3.5-4B-GGUF` | ~2.8 GB | Alibaba Qwen 3.5 4B (instruction-tuned). |
+
+Run `jac model list` to see download status. Run `jac model pull <alias>` to fetch weights ahead of time (e.g. in a Dockerfile) or `jac model rm <alias>` to free disk.
+
+### First-Run Download Flow
+
+| Context | Behavior |
+|---------|----------|
+| Interactive TTY | Prompts once with the alias, repo, file size, and target path. The answer is cached as a sidecar marker in the alias directory; subsequent runs do not prompt. |
+| Non-interactive (CI, Docker, daemon) | Refuses to download. Surface message: `Local model 'X' is not downloaded and auto-download is disabled in this context. Run: jac model pull X` |
+| `BYLLM_AUTO_DOWNLOAD=1` | Skips the prompt and downloads silently. |
+| `[plugins.byllm.local].auto_download = true` | Same as the env override, but project-scoped. |
+
+### GPU Acceleration
+
+The default install uses the CPU-only wheel index. To enable CUDA (or Metal on Apple Silicon), reinstall `llama-cpp-python` from the matching prebuilt-wheel index:
+
+=== "CUDA 12.4"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cu124
+    ```
+
+=== "Metal (Apple Silicon)"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/metal
+    ```
+
+=== "Vulkan"
+    ```bash
+    pip install --force-reinstall --upgrade llama-cpp-python \
+      --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/vulkan
+    ```
+
+If your platform isn't covered by a prebuilt wheel, you can compile from source instead:
+
+```bash
+CMAKE_ARGS="-DGGML_CUDA=on" pip install --no-cache-dir --force-reinstall --upgrade llama-cpp-python
+```
+
+(Replace `GGML_CUDA` with `GGML_METAL` / `GGML_VULKAN` / `GGML_HIP` etc. for other backends.)
+
+Then offload layers via `jac.toml`:
+
+```toml
+[plugins.byllm.local]
+n_gpu_layers = -1   # -1 = all layers; positive int = that many; 0 = CPU only
+```
+
+`llama_cpp.llama_supports_gpu_offload()` reports whether the installed wheel was built with GPU support.
+
+### `[plugins.byllm.local]` Configuration
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_alias` | str | `"gemma-4-e4b"` | Bundled alias used when `default_model` is unset and no provider API key is detected. |
+| `n_ctx` | int | `0` | Override context window in tokens. `0` uses the alias's bundled default (typically 8192). |
+| `n_gpu_layers` | int | `0` | Layers to offload to GPU. `-1` for all, `0` for CPU only. Requires a GPU-enabled `llama-cpp-python` build. |
+| `n_threads` | int | `0` | CPU thread count. `0` lets `llama.cpp` choose. |
+| `verbose` | bool | `false` | Enable `llama.cpp`'s verbose logging. |
+| `auto_download` | bool | `false` | Skip the first-run prompt and download silently. Equivalent to `BYLLM_AUTO_DOWNLOAD=1`. |
+
+### Environment Overrides
+
+| Variable | Effect |
+|----------|--------|
+| `BYLLM_DEFAULT_MODEL` | Overrides `[plugins.byllm.model].default_model` for the current shell. Useful for ad-hoc switches like `BYLLM_DEFAULT_MODEL=local:gemma-4-e4b jac run app.jac`. |
+| `BYLLM_AUTO_DOWNLOAD` | `1` to skip the TTY prompt; `0` to refuse silently. |
+| `JAC_MODELS_DIR` | Override the on-disk cache root. Defaults to `~/.cache/jac/models`. |
+
+### Default Model Resolution
+
+When no model is explicitly set, byLLM picks one in this order:
+
+1. `BYLLM_DEFAULT_MODEL` environment variable
+2. `[plugins.byllm.model].default_model` in `jac.toml`
+3. **Auto-detect** -- if any provider API key is present (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `MISTRAL_API_KEY`, `GROQ_API_KEY`, `TOGETHER_API_KEY`, `DEEPSEEK_API_KEY`), falls through to `gpt-4o-mini`
+4. Otherwise, falls back to `local:<default_alias>` if the `[local]` extra is installed -- the bundled in-process runtime takes over so `by llm()` works offline out of the box. If `[local]` isn't installed and no key is set, byLLM raises a `ConfigurationError` listing the three concrete fixes (set an API key, configure `default_model` explicitly with an Ollama or other model, or `pip install 'byllm[local]'`).
+
+### Managing the Cache
+
+The `jac model` CLI command manages the local model cache. See [jac model](../cli/index.md#jac-model) for the full reference.
+
+```bash
+jac model                        # list bundled aliases + download status
+jac model pull gemma-4-e4b       # fetch weights ahead of time
+jac model rm gemma-4-e4b         # delete cached weights for an alias
+```
+
+### Limitations
+
+- `local:*` does not currently support the streaming response path used by some `ModelPool` strategies; use a regular `Model` for streaming.
+- Tool-calling capability depends on the underlying GGUF; not all bundled aliases handle `by llm(tools=[...])` reliably. Frontier cloud models remain the safe default for agentic flows.
+- Multimodal inputs (images, audio) require a `llama-cpp-python` build that ships an `mmproj` handler. The bundled aliases include text-only inference.
 
 ---
 
@@ -311,6 +503,13 @@ enabled = false                   # Parallel tool execution (concurrent dispatch
 
 [plugins.byllm.prompt_caching]
 enabled = true                    # Anthropic prompt caching (auto for Claude models)
+
+[plugins.byllm.compaction]
+enabled                = true     # Auto-compact long ReAct loops before hitting the context limit
+threshold_ratio        = 0.80     # Compact when prompt_tokens / ctx_window >= 80 %
+keep_recent_iterations = 3        # Preserve the last N tool-call rounds verbatim
+ctx_window             = 0        # 0 = auto-detect via LiteLLM; set >0 for self-hosted models
+compaction_model       = ""       # Empty = copy of the active model; set to use a cheaper one
 ```
 
 **`[plugins.byllm.model]` options:**
@@ -349,6 +548,16 @@ enabled = true                    # Anthropic prompt caching (auto for Claude mo
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `enabled` | bool | `true` | Automatically add Anthropic `cache_control` markers to the system prompt and tool schemas. Caches the static prefix across ReAct iterations for up to 90% input token savings. Only applies to Claude models; no effect on other providers |
+
+**`[plugins.byllm.compaction]` options:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `true` | Enable automatic message compaction when the ReAct loop approaches the context window limit |
+| `threshold_ratio` | float | `0.80` | Fraction of `ctx_window` at which compaction triggers (e.g. `0.80` = compact when 80 % full) |
+| `keep_recent_iterations` | int | `3` | Number of most-recent tool-call rounds to keep verbatim; earlier rounds are replaced with a summary |
+| `ctx_window` | int | `0` | Global context window override in tokens. `0` = auto-detect via LiteLLM model registry. Set explicitly for self-hosted or unknown models |
+| `compaction_model` | str | `""` | Model used for the summarisation call. Empty string = copy of the currently active model, inheriting its `api_key` and `base_url`. Set to a cheaper model (e.g. `"ollama/llama3.2:1b"`) to reduce compaction cost |
 
 **Minimal setup** -- just set your API key and go:
 
@@ -489,6 +698,19 @@ sem Personality.AMBIVERT = "Comfortable in both social and solitary settings";
 def classify_personality(bio: str) -> Personality by llm();
 ```
 
+#### Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are `T` instances. This lets a `by llm()` return type flow directly into APIs that expect `int` or `str` without calling `.value`:
+
+```jac
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404, SERVER_ERROR = 500 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
+def get_status(description: str) -> HttpStatus by llm();
+```
+
+`: int` desugars to `IntEnum`, `: str` to `StrEnum`, and any other base `T` to the mixin form `class X(T, Enum)`.
+
 ### Object Types
 
 ```jac
@@ -530,8 +752,15 @@ Parameters passed to `by llm()` at call time:
 | `logging` | bool | When combined with `stream=True`, yields `StreamEvent` objects instead of raw tokens. Shows intermediate steps (tool calls, results, thoughts). Default: `False` |
 | `max_react_iterations` | int | Maximum ReAct iterations before forcing final answer |
 | `on_iteration` | callable | Callback fired between ReAct iterations. Receives `IterationContext`, returns `IterationAction` (`CONTINUE`, `ABORT`, `ABORT_WITH_SUMMARY`). Enables external loop control (stop buttons, token budgets, doom-loop detection) |
+| `conversation` | list | Caller-owned list bound as conversation history. byLLM reads it as prior context, runs the ReAct loop, and writes the persistable turn (user, assistant `tool_calls`, tool results, final answer) back into the same list. Input may be `Message` instances or dicts; byLLM always writes back as plain dicts so the list is JSON-serialisable. Use this for multi-turn `by llm()` calls without managing the message list manually |
 | `parallelize` | bool | Enable parallel tool execution for this call. Overrides global `[plugins.byllm.parallel]` config. Default: inherits global setting |
 | `max_tool_result_length` | int | Maximum characters for tool results in `StreamEvent` data (full result stays in LLM context). Default: 500 |
+| `compaction_enabled` | bool | Enable/disable auto-compaction for this call. Overrides `[plugins.byllm.compaction] enabled`. Default: `True` |
+| `threshold_ratio` | float | Fraction of the context window at which compaction triggers. Default: `0.80` |
+| `keep_recent_iterations` | int | Number of most-recent tool-call rounds to preserve verbatim; older rounds are summarised. Default: `3` |
+| `ctx_window` | int | Context window size override in tokens. Highest priority - overrides `Model.ctx_window`, `jac.toml`, and LiteLLM auto-detect. `0` = use lower-priority source |
+| `compaction_model` | str | Model name to use for the summarisation call. Empty string / omitted = copy of the active model |
+| `on_compaction` | callable | Hook called instead of built-in summarisation. Signature: `(messages: list, keep_recent: int) -> list`. Must return the compacted message list |
 
 !!! warning "Deprecated: `method` parameter"
     The `method` parameter (`"ReAct"`, `"Reason"`, `"Chain-of-Thoughts"`) is deprecated and was never functional. The ReAct tool-calling loop is automatically enabled when `tools=[...]` is provided. Simply pass `tools` directly instead of `method="ReAct"`.
@@ -562,7 +791,27 @@ def generate_essay(topic: str) -> str by llm(stream=True);
 def smart_answer(question: str) -> str by llm(
     tools=[search_db], stream=True, logging=True
 );
+
+# Multi-turn - bind a caller-owned list as conversation history
+glob history: list = [];
+def chat(message: str) -> str by llm(
+    tools=[search_db],
+    conversation=history
+);
 ```
+
+#### What's in the conversation list
+
+After each call byLLM appends the turn to your list **in place** as plain dicts. Iterate it like any list of message dicts:
+
+```python
+{"role": "user",      "content": "How is Paris?"}
+{"role": "assistant", "content": "Let me check.", "tool_calls": [...]}
+{"role": "tool",      "content": "sunny in Paris", "tool_call_id": "...", "name": "get_weather"}
+{"role": "assistant", "content": "It's sunny in Paris."}
+```
+
+The auto-generated SYSTEM prompt and `finish_tool` calls are excluded from the list - byLLM regenerates them each turn. The list is safe to JSON-serialise and replay across sessions.
 
 ---
 
@@ -840,6 +1089,96 @@ BYLLM_LOG_LEVEL=INFO jac run my_agent.jac
 ```
 
 Look for `byllm.parallel` log lines: `dispatch=parallel` confirms concurrent execution, `wall_ms` shows wall-clock time (e.g. ~1000ms for 3 tools that each take 1s proves they ran in parallel)
+
+---
+
+## Auto-Compaction
+
+When a ReAct loop runs many tool-calling iterations the message history grows until it hits the model's context window limit. Auto-compaction monitors token usage after each iteration and automatically summarises old tool-call rounds before the limit is reached, letting agents run indefinitely long tasks without interruption.
+
+### How it works
+
+After every LLM response byLLM compares `prompt_tokens / ctx_window` against a threshold (default 80 %). When the threshold is exceeded:
+
+1. The oldest tool-call rounds are serialised and sent to a summarisation LLM call.
+2. The summary replaces those rounds with a single user message tagged `[Compacted context summary]`.
+3. The system message and original user task (`messages[0]` and `messages[1]`) are always preserved verbatim.
+4. The most-recent `keep_recent_iterations` tool-call rounds are also kept verbatim for immediate context.
+
+The summarisation call goes through the full byLLM stack - it inherits telemetry, prompt caching, and proxy configuration from the active model.
+
+A `ContextWindowExceededError` raised by the provider is also caught as an emergency fallback: byLLM compacts immediately and retries the failed call once before giving up.
+
+### Context window resolution
+
+byLLM resolves the effective context window for each model in priority order:
+
+1. `ctx_window` passed in `by llm(ctx_window=N)` call params *(highest)*
+2. `ctx_window` field on the `Model` object
+3. `[plugins.byllm.compaction] ctx_window` in `jac.toml`
+4. LiteLLM model registry (`litellm.get_model_info()`) - covers 100+ providers automatically
+5. `0` - unknown; threshold check is disabled, only the emergency exception path remains *(lowest)*
+
+For **`ModelPool`**, when no explicit override is set, the effective window is `min(ctx_window for each member)` - the most conservative value in the pool.
+
+### Per-call and per-object override
+
+```jac
+# Per-call - highest priority
+def my_agent(query: str) -> str by llm(
+    tools=[search, compute],
+    ctx_window=128000,
+    threshold_ratio=0.75,
+    keep_recent_iterations=5,
+    compaction_model="ollama/llama3.2:1b",
+    compaction_enabled=True,
+    on_compaction=my_hook
+);
+
+# Per-object - applied to every call on this model instance
+glob llm = Model(model_name="gpt-4o", ctx_window=128000);
+```
+
+### Custom compaction hook (`on_compaction`)
+
+Replace the built-in summarisation with your own logic by passing `on_compaction`. The hook receives the full serialised message list and `keep_recent`, and must return the compacted list:
+
+```jac
+def my_compactor(messages: list, keep_recent: int) -> list {
+    # messages[0] = system, messages[1] = original user task - always preserve
+    # messages[2:] = tool-call history to summarise
+    summary = my_domain_summariser(messages[2:]);
+    summary_msg = {"role": "user", "content": f"[Summary] {summary}"};
+    return [messages[0], messages[1], summary_msg] + messages[-keep_recent * 2:];
+}
+
+def my_agent(query: str) -> str by llm(
+    tools=[search],
+    on_compaction=my_compactor
+);
+```
+
+When `on_compaction` is set the built-in summarisation call is skipped entirely - the hook's return value becomes the new message history.
+
+### Using a separate model for compaction
+
+By default byLLM reuses a copy of the active model for the summarisation call, inheriting its `api_key` and `base_url`. Set `compaction_model` to use a cheaper or faster model instead:
+
+```jac
+# In jac.toml - applies globally
+# [plugins.byllm.compaction]
+# compaction_model = "ollama/llama3.2:1b"
+
+# Per-call
+def my_agent(query: str) -> str by llm(
+    tools=[search],
+    compaction_model="ollama/llama3.2:1b"
+);
+```
+
+### `CompactionNotEffectiveError`
+
+If the threshold fires on two consecutive iterations with a compaction between them - meaning the summarisation produced no meaningful reduction - byLLM raises `CompactionNotEffectiveError` rather than looping forever. See [Error Handling](#error-handling) for how to catch it.
 
 ---
 
@@ -1315,13 +1654,14 @@ byLLM raises typed exceptions that all inherit from `ByLLMError`. Catching the b
 
 ```
 ByLLMError (base)
-├── AuthenticationError   - API key missing, expired, or rejected
-├── RateLimitError        - Rate limit or quota exceeded
-├── ModelNotFoundError    - Model name does not exist or is unavailable
-├── OutputConversionError - LLM response cannot be parsed / converted to the declared return type
-├── UnknownToolError      - LLM called a tool name that was not registered
-├── FinishToolError       - finish_tool output failed validation against the declared return type
-└── ConfigurationError    - Invalid byLLM usage (e.g. streaming with a non-str return type)
+├── AuthenticationError          - API key missing, expired, or rejected
+├── RateLimitError               - Rate limit or quota exceeded
+├── ModelNotFoundError           - Model name does not exist or is unavailable
+├── OutputConversionError        - LLM response cannot be parsed / converted to the declared return type
+├── UnknownToolError             - LLM called a tool name that was not registered
+├── FinishToolError              - finish_tool output failed validation against the declared return type
+├── ConfigurationError           - Invalid byLLM usage (e.g. streaming with a non-str return type)
+└── CompactionNotEffectiveError  - Compaction triggered twice consecutively with no reduction in context size
 ```
 
 All exceptions are importable from `byllm.lib`.
@@ -1337,6 +1677,7 @@ All exceptions are importable from `byllm.lib`.
 | `UnknownToolError` | The LLM tried to call a tool function that was not in the registered tool list |
 | `FinishToolError` | The `finish_tool` output failed validation against the function's declared return type |
 | `ConfigurationError` | `by llm()` was used in an unsupported way, such as `stream=True` with a non-`str` return type |
+| `CompactionNotEffectiveError` | Auto-compaction triggered on two back-to-back iterations without reducing context size. Provide a custom `on_compaction` hook, increase `ctx_window`, or switch to a model with a larger context window |
 
 ### Importing Exceptions
 
@@ -1349,7 +1690,8 @@ All exceptions are importable from `byllm.lib`.
         ModelNotFoundError,
         OutputConversionError,
         UnknownToolError,
-        ConfigurationError
+        ConfigurationError,
+        CompactionNotEffectiveError
     }
     ```
 
@@ -1363,6 +1705,7 @@ All exceptions are importable from `byllm.lib`.
         OutputConversionError,
         UnknownToolError,
         ConfigurationError,
+        CompactionNotEffectiveError,
     )
     ```
 
@@ -1431,6 +1774,27 @@ with entry {
 }
 ```
 
+### `CompactionNotEffectiveError`
+
+Raised when auto-compaction fires on two consecutive iterations without reducing the context size. This prevents an infinite compaction loop:
+
+```jac
+import from byllm.lib { CompactionNotEffectiveError }
+
+with entry {
+    try {
+        result = my_long_running_agent(query);
+    } except CompactionNotEffectiveError as e {
+        print(f"Context could not be compacted: {e}");
+        # Recovery options:
+        # 1. Provide a more aggressive on_compaction hook
+        # 2. Increase ctx_window if the model supports it
+        # 3. Switch to a model with a larger context window
+        # 4. Reduce keep_recent_iterations to discard more history
+    }
+}
+```
+
 ### `ConfigurationError`
 
 Raised immediately (before any API call) when `by llm()` is used in a way that byLLM cannot support:
@@ -1478,6 +1842,30 @@ test "summarize returns second mock" {
 - Unit testing LLM-powered functions without API costs
 - Deterministic assertions on function behavior
 - CI/CD pipelines where API keys aren't available
+
+#### Injecting usage metadata (for compaction tests)
+
+Each entry in `outputs` may be a `(payload, usage_dict)` tuple to inject token-usage metadata. This lets you test threshold-based auto-compaction without a real model:
+
+```jac
+import from byllm.lib { MockLLM, MockToolCall }
+
+def step_a -> str { return "a"; }
+def finish_tool(final_output: str) -> str { return final_output; }
+
+glob llm = MockLLM(
+    model_name="mockllm",
+    ctx_window=1000,
+    config={"outputs": [
+        # (tool_call, usage) - triggers compaction at 85 % of 1000 tokens
+        (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850, "total_tokens": 950}),
+        # plain entry - no usage injection, loop exits via finish_tool
+        MockToolCall(tool=finish_tool, args={"final_output": "done"})
+    ]}
+);
+```
+
+Non-tuple entries behave exactly as before - usage defaults to `{}`.
 
 ---
 

@@ -367,7 +367,9 @@ impl UnparsePass.exit_enum(nd: uni.Enum) -> None {
         parts.append(nd.access.gen.jac);
     }
     parts.append(nd.name.gen.jac);
-    if nd.base_classes {
+    if nd.value_type {
+        parts.append(": " + nd.value_type.gen.jac);
+    } elif nd.base_classes {
         parts.append("(" + self._comma_sep(nd.base_classes) + ")");
     }
     if nd.body {
@@ -1154,11 +1156,6 @@ impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
-}
-
-"""JsxComment: `{ comment }`."""
-impl UnparsePass.exit_jsx_comment(nd: uni.JsxComment) -> None {
-    nd.gen.jac = "{ " + nd.comment.value + " }";
     # ── Match / Switch ───────────────────────────────────────────────────
 }
 

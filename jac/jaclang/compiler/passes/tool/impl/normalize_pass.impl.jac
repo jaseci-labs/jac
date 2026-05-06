@@ -487,7 +487,10 @@ impl NormalizePass.enter_enum(nd: uni.Enum) -> None {
         new_kid.append(nd.access);
     }
     new_kid.append(nd.name);
-    if nd.base_classes {
+    if nd.value_type {
+        new_kid.append(nd.gen_token(Tok.COLON));
+        new_kid.append(nd.value_type);
+    } elif nd.base_classes {
         new_kid.append(nd.gen_token(Tok.LPAREN));
         for idx in range(len(nd.base_classes)) {
             new_kid.append(nd.base_classes[idx]);
@@ -1690,12 +1693,6 @@ impl NormalizePass.enter_jsx_expression(nd: uni.JsxExpression) -> None {
     ];
     nd.set_kids(nodes=new_kid);
 }
-
-"""JsxComment: parser already provides a single source-spanning kid
-(the JSX_BLOCK_COMMENT slot token) with real positions.  Normalizing
-to synthetic LBRACE/RBRACE here would only erase those positions —
-keep the parser-built kid as-is."""
-impl NormalizePass.enter_jsx_comment(nd: uni.JsxComment) -> None { }
 
 """Normalize MatchStmt kid list."""
 impl NormalizePass.enter_match_stmt(nd: uni.MatchStmt) -> None {

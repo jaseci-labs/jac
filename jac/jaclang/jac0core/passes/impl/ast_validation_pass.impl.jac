@@ -155,9 +155,9 @@ impl ASTValidationPass.enter_switch_stmt(
 impl ASTValidationPass.enter_assignment(
     self: ASTValidationPass, nd: uni.Assignment
 ) -> None {
-    # super compiles to a function call which cannot appear on the left
-    # side of an assignment in Python.
-    non_assignable = {Tok.KW_SUPER};
+    # root and super compile to function calls (e.g. Jac.root()) which
+    # cannot appear on the left side of an assignment in Python.
+    non_assignable = {Tok.KW_ROOT,Tok.KW_SUPER};
     for target in nd.target {
         ref_node: (uni.SpecialVarRef | None) = None;
         if isinstance(target, uni.SpecialVarRef) {

@@ -88,6 +88,7 @@ import from jaclang.jac0core.diagnostics {
     E1104,
     E1110,
     E1111,
+    W0062,
     W1050,
     W1051,
     W1100,
@@ -404,6 +405,7 @@ obj TypeEvaluator {
     def _get_enclosing_class(nd: uni.UniNode) -> uni.Archetype | None;
     def _get_type_of_self(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_super(node_: uni.SpecialVarRef) -> TypeBase;
+    def _get_type_of_root(node_: uni.SpecialVarRef) -> TypeBase;
     def _get_type_of_lhs_assignment(expr: uni.Name) -> TypeBase | None;
     def _extract_tuple_element_type(tuple_type: TypeBase, idx: int) -> TypeBase | None;
     def _extract_tuple_element_type_path(

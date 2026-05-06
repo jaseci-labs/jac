@@ -59,6 +59,7 @@ impl Lexer.prev_is_value -> bool {
         TokenKind.KW_SELF,
         TokenKind.KW_SUPER,
         TokenKind.KW_HERE,
+        TokenKind.KW_ROOT,
         TokenKind.F_DQ_END,
         TokenKind.F_SQ_END,
         TokenKind.F_TDQ_END,
@@ -247,66 +248,6 @@ impl Lexer.skip_block_comment -> bool {
         "Unterminated block comment", start_line, start_col, start_pos, code_str="E0101"
     );
     return False;
-}
-
-"""Pure peek: does the upcoming input match `{ \\s* #* ... *# \\s* }`?
-Returns True/False without mutating lexer state.  Caller must be in
-JSX_CONTENT mode and on `{`."""
-impl Lexer.is_at_jsx_block_comment -> bool {
-    if self.current() != "{" {
-        return False;
-    }
-    src = self.source;
-    n = self._source_len;
-    i = self.pos + 1;
-    while i < n and self.is_whitespace(src[i]) {
-        i += 1;
-    }
-    if (i + 1) >= n or src[i] != "#" or src[i + 1] != "*" {
-        return False;
-    }
-    i += 2;
-    while (i + 1) < n {
-        if src[i] == "*" and src[i + 1] == "#" {
-            i += 2;
-            while i < n and self.is_whitespace(src[i]) {
-                i += 1;
-            }
-            return i < n and src[i] == "}";
-        }
-        i += 1;
-    }
-    return False;
-}
-
-"""Consume `{ \\s* #* ... *# \\s* }` and emit a JSX_BLOCK_COMMENT token.
-Caller must verify `is_at_jsx_block_comment()` first; this scan
-trusts the pattern matches and walks through it unconditionally."""
-impl Lexer.scan_jsx_block_comment(
-    start_line: int, start_col: int, start_pos: int
-) -> Token {
-    self.advance();  # {
-    while not self.at_end() and self.is_whitespace(self.current()) {
-        self.advance();
-    }
-    self.advance();  # #
-    self.advance();  # *
-    while not self.at_end() and not (self.current() == "*" and self.peek() == "#") {
-        self.advance();
-    }
-    self.advance();  # *
-    self.advance();  # #
-    while not self.at_end() and self.is_whitespace(self.current()) {
-        self.advance();
-    }
-    self.advance();  # }
-    return self.make_token(
-        TokenKind.JSX_BLOCK_COMMENT,
-        self.source[start_pos:self.pos],
-        start_line,
-        start_col,
-        start_pos
-    );
 }
 
 impl Lexer.skip_whitespace_and_comments{
@@ -780,7 +721,6 @@ impl Lexer.get_fstring_text_kind(mode: LexerMode) -> TokenKind {
         default:
             return TokenKind.F_TEXT_DQ;  # Fallback
 
-
     }
 }
 
@@ -801,7 +741,6 @@ impl Lexer.get_fstring_end_kind(mode: LexerMode) -> TokenKind {
         default:
             return TokenKind.F_DQ_END;  # Fallback
 
-
     }
 }
 
@@ -815,9 +754,7 @@ impl Lexer.scan_fstring_expr_token -> Token {
     if ch == "{" {
         self.fstring_brace_depth += 1;
         self.advance();
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     if ch == "}" {
         self.fstring_brace_depth -= 1;
@@ -830,9 +767,7 @@ impl Lexer.scan_fstring_expr_token -> Token {
                 self.fstring_brace_depth = self.fstring_brace_depth_stack.pop();
             }
         }
-        return self.make_token(
-            TokenKind.RBRACE, "}", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
     }
     # Check for conversion specifier !s, !r, !a
     if ch == "!" and self.peek() in ["s", "r", "a", "S", "R", "A"] {
@@ -904,9 +839,7 @@ impl Lexer.scan_jsx_tag_token -> Token {
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     # Attribute name (JSX identifiers can contain hyphens)
     if self.is_alpha(ch) {
@@ -1010,18 +943,11 @@ impl Lexer.scan_jsx_content -> Token {
     }
     # Opening brace for expression: {expr}
     if ch == "{" {
-        # JSX block-comment fast path: fuse `{ #* ... *# }` into one
-        # JSX_BLOCK_COMMENT token if the upcoming input matches.
-        if self.is_at_jsx_block_comment() {
-            return self.scan_jsx_block_comment(start_line, start_col, start_pos);
-        }
         self.advance();
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     # Text content - collect until we hit a meaningful JSX delimiter or end.
     # Only break on `<` when it starts a valid JSX construct (tag, closing
@@ -1077,9 +1003,7 @@ impl Lexer.scan_jsx_expr_token -> Token {
     if ch == "{" {
         self.jsx_brace_depth += 1;
         self.advance();
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     if ch == "}" {
         self.jsx_brace_depth -= 1;
@@ -1092,9 +1016,7 @@ impl Lexer.scan_jsx_expr_token -> Token {
                 self.jsx_brace_depth = self.jsx_brace_depth_stack.pop();
             }
         }
-        return self.make_token(
-            TokenKind.RBRACE, "}", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
     }
     return self.scan_regular_token();
 }
@@ -1251,6 +1173,17 @@ impl Lexer.scan_operator -> Token {
     if self.match_string(":->") {
         return self.make_token(
             TokenKind.ARROW_R_P2, ":->", start_line, start_col, start_pos
+        );
+    }
+    # `->:` MUST be matched before `->` (which lives in the 2-char block
+    # below). Without this, the right-arrow typed-edge opener `->:` would
+    # be split into RETURN_HINT (`->`) + COLON, breaking `[a->:Type:->]`.
+    # All other typed-edge tokens (`<-:`, `:->`, `:<-`, `+>:`, `:+>`,
+    # `<+:`, `:<+`) already lex as single tokens because they're in
+    # earlier blocks or have no shorter prefix to compete with.
+    if self.match_string("->:") {
+        return self.make_token(
+            TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
         );
     }
     if self.match_string("<+:") {
@@ -1414,9 +1347,7 @@ impl Lexer.scan_operator -> Token {
         );
     }
     if self.match_string("||") {
-        return self.make_token(
-            TokenKind.KW_OR, "||", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.KW_OR, "||", start_line, start_col, start_pos);
     }
     if self.match_string("&=") {
         return self.make_token(
@@ -1438,11 +1369,7 @@ impl Lexer.scan_operator -> Token {
             TokenKind.MATMUL_EQ, "@=", start_line, start_col, start_pos
         );
     }
-    if self.match_string("->:") {
-        return self.make_token(
-            TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
-        );
-    }
+    # `->:` is matched in the 3-char block above so it wins over `->`.
     if self.match_string(":<-") {
         return self.make_token(
             TokenKind.ARROW_L_P2, ":<-", start_line, start_col, start_pos
@@ -1605,19 +1532,13 @@ impl Lexer.scan_operator -> Token {
             );
 
         case "<":
-            return self.make_token(
-                TokenKind.LT, "<", start_line, start_col, start_pos
-            );
+            return self.make_token(TokenKind.LT, "<", start_line, start_col, start_pos);
 
         case ">":
-            return self.make_token(
-                TokenKind.GT, ">", start_line, start_col, start_pos
-            );
+            return self.make_token(TokenKind.GT, ">", start_line, start_col, start_pos);
 
         case "=":
-            return self.make_token(
-                TokenKind.EQ, "=", start_line, start_col, start_pos
-            );
+            return self.make_token(TokenKind.EQ, "=", start_line, start_col, start_pos);
 
         case "@":
             return self.make_token(

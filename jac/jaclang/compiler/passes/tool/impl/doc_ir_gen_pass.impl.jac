@@ -13,14 +13,6 @@ impl DocIRGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     nd.gen.doc_ir = doc.Text(nd.get_normalized_text(), source_token=source_tok);
 }
 
-"""DocIR for `{#* ... *#}`: render `{ comment }` inline.  The
-CommentToken lives on the node, not in source.comments, so
-CommentInjectionPass never sees it.  `source_token=nd.comment` keeps
-source-map entries pointing at the actual comment text."""
-impl DocIRGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
-    nd.gen.doc_ir = doc.Text("{ " + nd.comment.value + " }", source_token=nd.comment);
-}
-
 """Generate DocIR for JSX normal attributes."""
 impl DocIRGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
     parts: list[doc.DocType] = [];
@@ -112,7 +104,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
                 child_parts.append(self.hard_line());
             }
             self.trim_trailing_line(child_parts);
-            inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
+            inline_child_types = (uni.JsxText, uni.JsxExpression);
             all_inline_children = (
                 nd.children
                 and all(isinstance(child, inline_child_types) for child in nd.children)
@@ -187,7 +179,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         child_parts.append(self.hard_line());
     }
     self.trim_trailing_line(child_parts);
-    inline_child_types = (uni.JsxText, uni.JsxExpression, uni.JsxComment);
+    inline_child_types = (uni.JsxText, uni.JsxExpression);
     all_inline_children = (
         nd.children
         and all(isinstance(child, inline_child_types) for child in nd.children)
@@ -236,7 +228,7 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         );
     }
     parts.append(closing_doc);
-    nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
+    nd.gen.doc_ir = self.group(self.concat(parts), ast_node=nd);
 }
 
 """Generate DocIR for ellipsis."""
@@ -1317,6 +1309,23 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
     # jammed output like `}timer = setTimeout(...)`.
     body_stmts = list(nd.body) if isinstance(nd.body, Sequence) else [];
     has_multi_stmt_body = len(body_stmts) > 1;
+    # Single-stmt body: add space before `}` only when the statement ends with `;`
+    # not `}` (e.g. if/while/try-except blocks already close with `}`, no extra
+    # space needed). Walk last-kid chain iteratively since nodes like TryStmt have
+    # a non-Token last kid (ExceptClause) that itself ends with RBRACE.
+    _sbrace = len(body_stmts) == 0;
+    if len(body_stmts) == 1 and body_stmts[0].kid {
+        _cur = body_stmts[0];
+        while _cur.kid {
+            _last = _cur.kid[-1];
+            if isinstance(_last, uni.Token) {
+                _sbrace = _last.name == Tok.RBRACE;
+                break;
+            }
+            _cur = _last;
+        }
+    }
+    single_body_ends_with_brace = _sbrace;
     body_parts: list[doc.DocType] = [];
     in_body = False;
     for i in nd.kid {
@@ -1351,7 +1360,9 @@ impl DocIRGenPass.exit_lambda_expr(nd: uni.LambdaExpr) -> None {
             continue;
         }
         if (isinstance(i, uni.Token) and (i.name == Tok.RBRACE)) {
-            # Don't add trailing space after closing brace of code block lambda
+            if not single_body_ends_with_brace {
+                parts.append(self.space());
+            }
             parts.append(i.gen.doc_ir);
         } elif isinstance(i, uni.Token) {
             parts.append(i.gen.doc_ir);
@@ -1883,6 +1894,7 @@ impl DocIRGenPass.exit_return_stmt(nd: uni.ReturnStmt) -> None {
         }
         parts.append(self.space());
     }
+    parts.pop();
     nd.gen.doc_ir = self.group(self.concat(parts, ast_node=nd), ast_node=nd);
 }
 
@@ -1967,6 +1979,7 @@ impl DocIRGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     # break onto their own lines, matching idiomatic Jac style.
     flat_capable = (
         isinstance(nd.parent, uni.LambdaExpr)
+        and not (isinstance(nd.parent.body, Sequence) and len(list(nd.parent.body)) > 1)
         and (nd.else_body is None)
         and (len(nd.body) == 1)
         and not self.has_gap(nd, nd.body[0])
