@@ -840,12 +840,15 @@ test "GET /user/me returns MeResponse shape without credentials" {
     }
 }
 
-test "GET /user/me rejects missing or invalid token with 401" {
+test "/user/me rejects missing or invalid token with 401" {
     client = make_client();
     try {
         assert client.get("/user/me").status_code == 401;
         assert client.get(
             "/user/me", headers={"Authorization": "Bearer not-a-real-token"}
+        ).status_code == 401;
+        assert client.raw_client.patch(
+            "/user/me", json={"profile": {"firstname": "Alice"}}
         ).status_code == 401;
     } finally {
         client.close();
@@ -933,18 +936,6 @@ test "PATCH /user/me rejects reserved sso key and bad value type with 422" {
             json={"profile": {"tags": ["a", "b"]}}
         );
         assert bad_value.status_code == 422;
-    } finally {
-        client.close();
-    }
-}
-
-test "PATCH /user/me rejects missing token with 401" {
-    client = make_client();
-    try {
-        response = client.raw_client.patch(
-            "/user/me", json={"profile": {"firstname": "Alice"}}
-        );
-        assert response.status_code == 401;
     } finally {
         client.close();
     }
