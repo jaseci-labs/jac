@@ -12,6 +12,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      ),
      EDGE_CASES_FILE = os.path.join(FIXTURES, "console_edge_cases.jac"),
      FSTRING_ENCODING_FILE = os.path.join(FIXTURES, "fstring_encoding.jac"),
+     CHECK_W0062_BRACKETS = os.path.join(FIXTURES, "check_diag_brackets_w0062.jac"),
+     CHECK_E1001_BRACKETS = os.path.join(FIXTURES, "check_diag_brackets_e1001.jac"),
      ESC = '\x1b[';
 
 """Run jac and return (stdout, stderr) tuple."""
@@ -105,6 +107,26 @@ test "Windows console encoding handles unencodable Unicode" {
     # At minimum, the ASCII parts should always be present
     assert 'world' in stdout , "ASCII content missing from output";
     assert 'ESC_NEWLINE' in stdout , "Label missing - possible encoding crash";
+}
+
+# =============================================================================
+# Regression: jac check diagnostic snippets must preserve user source verbatim
+# (Rich markup parsing was eating bracketed text like `[root()-->]` and list
+# comprehensions, leaving misleading snippets like `x = [?:Task];` or
+# `tasks = ;` underneath the carets.)
+# =============================================================================
+test "jac check W0062 snippet preserves bracketed traversal" {
+    (stdout, stderr) = run_jac(['check', CHECK_W0062_BRACKETS]);
+    combined = stdout + stderr;
+    assert 'W0062' in combined , f"W0062 not emitted: {combined!r}";
+    assert '[root()-->][?:Task]' in combined , f"Bracketed traversal stripped from snippet: {combined!r}";
+}
+
+test "jac check E1001 snippet preserves list comprehension RHS" {
+    (stdout, stderr) = run_jac(['check', CHECK_E1001_BRACKETS]);
+    combined = stdout + stderr;
+    assert 'E1001' in combined , f"E1001 not emitted: {combined!r}";
+    assert '[updated if t.title == "x" else t for t in tasks]' in combined , f"List comprehension stripped from snippet: {combined!r}";
 }
 
 test "all edge case patterns preserved" {

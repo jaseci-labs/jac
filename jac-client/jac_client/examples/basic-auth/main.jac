@@ -47,12 +47,19 @@ cl {
             }
             loading = True;
             result = await jacSignup(username, password);
-            loading = False;
             if result["success"] {
-                isLoggedIn = True;
-                username = "";
-                password = "";
+                # /user/register does not return a token, sign in to start a session
+                logged_in = await jacLogin(username, password);
+                loading = False;
+                if logged_in {
+                    isLoggedIn = True;
+                    username = "";
+                    password = "";
+                } else {
+                    error = "Account created but login failed";
+                }
             } else {
+                loading = False;
                 error = result["error"] if result["error"] else "Signup failed";
             }
         }
@@ -228,7 +235,7 @@ cl {
                             <input
                                 type="text"
                                 value={username}
-                                onChange={lambda e: Any { username = e.target.value;}}
+                                onChange={lambda e: Any { username = e.target.value; }}
                                 placeholder="Enter your username"
                                 style={{
                                     "width": "100%",
@@ -257,7 +264,7 @@ cl {
                             <input
                                 type="password"
                                 value={password}
-                                onChange={lambda e: Any { password = e.target.value;}}
+                                onChange={lambda e: Any { password = e.target.value; }}
                                 placeholder="Enter your password"
                                 style={{
                                     "width": "100%",

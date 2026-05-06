@@ -123,7 +123,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0024",
          Category.SYNTAX,
          "Cannot assign to '{name}' -- it is a built-in reference, not a variable",
-         help="Use a different variable name, or use backtick escaping (e.g. `super) to create a local variable with the same name."
+         help="Use a different variable name, or use backtick escaping (e.g. `root) to create a local variable with the same name."
+     ),
+     E0025 = _err(
+         "E0025",
+         Category.SYNTAX,
+         "JavaScript arrow function syntax ('=>') is not supported in Jac",
+         help="Use Jac lambda syntax instead: 'lambda e: ChangeEvent { ... }' or 'lambda x: int : x + 1'."
      ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
@@ -211,8 +217,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      W0062 = _warn(
          "W0062",
          Category.SYNTAX,
-         "Bare 'root' is deprecated. Use 'root()' instead.",
-         "'root' is now a builtin function — call it explicitly as 'root()'"
+         "'root()' is deprecated. Use bare 'root' instead.",
+         "'root' is a reserved keyword that resolves to the graph anchor — drop the parentheses."
      ),
      W0063 = _warn(
          "W0063",
@@ -471,7 +477,10 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
-         "W1051", Category.TYPE, "Expression type could not be resolved (Unknown)"
+         "W1051",
+         Category.TYPE,
+         "Expression type could not be resolved (Unknown)",
+         "Often fixed by adding a more specific type annotation to the relevant declaration (e.g., 'list[Task]' instead of bare 'list', or annotating an unannotated parameter or attribute). Can also indicate an unresolved import, a forward reference the checker cannot bind, or fallout from an upstream error."
      ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
@@ -719,6 +728,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Filter comparison '{name} == {name}' is always true — "
          "both sides resolve to the same node field [filter-compare-tautology]"
      ),
+     W3041 = _warn(
+         "W3041",
+         Category.LINT,
+         "Reactive `has` field '{name}' is read after being assigned in the same "
+         "`can with entry` block; the read returns the closure-captured pre-update "
+         "value, not the just-assigned one [stale-has-read]",
+         help="The has-field assignment lowers to a React useState setter call, "
+         "which is scheduled for the next render. To branch on the new value "
+         "in the same block, capture it in a local first: "
+         "`local = expr; <field> = local; if local { ... }`."
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -745,7 +765,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "mutable-default": "W3036",
          "unnecessary-none-return": "W3037",
          "getattr-to-null-ok": "W3039",
-         "filter-compare-tautology": "W3040"
+         "filter-compare-tautology": "W3040",
+         "stale-has-read": "W3041"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)
@@ -800,6 +821,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5014",
          Category.CODEGEN,
          "Walker spawn has more positional arguments than fields."
+     ),
+     W5015 = _warn(
+         "W5015",
+         Category.CODEGEN,
+         "Component '{component}' takes a single 'props' bundle — JSX call sites are not type-checked per prop.",
+         help="Prefer direct named params (e.g. `def {component}(name: str, age: int)`); suppress with `# jac:ignore[W5015]` only when intentionally forwarding the bundle."
      ),
      # Native compile
      E5020 = _err("E5020", Category.CODEGEN, "Native compilation failed: {error}"),

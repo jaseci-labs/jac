@@ -73,11 +73,23 @@ impl NaIRGenPass._emit_dict_helpers(
     malloc_fn = self._get_or_declare_extern("malloc", i8_ptr, [i64]);
     free_fn = self._get_or_declare_extern("free", ir.VoidType(), [i8_ptr]);
     memcpy_fn = self._get_or_declare_extern("memcpy", i8_ptr, [i8_ptr, i8_ptr, i64]);
+    # --- Forward-declare __rc_release_dict_K_V so new_fn can store its address as dtor_fn_ptr.
+    _rel_fn_name_d = f"__rc_release_dict_{dict_key.replace(':', '_')}";
+    _rel_fnty_d = ir.FunctionType(ir.VoidType(), [dict_ptr_type]);
+    try {
+        _rel_fn_decl_d = self.llvm_module.get_global(_rel_fn_name_d);
+    } except KeyError {
+        _rel_fn_decl_d = ir.Function(
+            self.llvm_module, _rel_fnty_d, name=_rel_fn_name_d
+        );
+        _rel_fn_decl_d.linkage = "private";
+    }
     # --- __dict_new: create an empty dict with capacity 8 ---
     new_fn = self._emit_container_new_fn(
         f"__dict_new_{key_type_name}_{val_type_name}",
         dict_ptr_type,
-        [key_type, val_type]
+        [key_type, val_type],
+        dtor_fn=_rel_fn_decl_d
     );
     # --- __dict_set: set key=value (linear search, grow if needed) ---
     set_fnty = ir.FunctionType(ir.VoidType(), [dict_ptr_type, key_type, val_type]);
@@ -108,7 +120,21 @@ impl NaIRGenPass._emit_dict_helpers(
     # Found: update existing value
     idx_found = found_b.load(idx_alloca, name="idx.found");
     val_ptr_found = found_b.gep(vals_arr, [idx_found], name="val.ptr.found");
-    found_b.store(v_arg, val_ptr_found);
+    # retain-new, release-old for pointer value types
+    if isinstance(val_type, ir.PointerType) {
+        if self.rc_retain_fn is None {
+            self._emit_rc_helpers();
+        }
+        _i8pd = ir.IntType(8).as_pointer();
+        _new_vcast_d = found_b.bitcast(v_arg, _i8pd, name="dset_retain_cast");
+        found_b.call(self.rc_retain_fn, [_new_vcast_d]);
+        _old_vval_d = found_b.load(val_ptr_found, name="dset_old_val");
+        found_b.store(v_arg, val_ptr_found);
+        _old_vcast_d = found_b.bitcast(_old_vval_d, _i8pd, name="dset_old_cast");
+        found_b.call(self.rc_release_simple_fn, [_old_vcast_d]);
+    } else {
+        found_b.store(v_arg, val_ptr_found);
+    }
     found_b.ret_void();
     # Not found: check capacity and append
     grow_bb = set_fn.append_basic_block("grow");
@@ -143,6 +169,22 @@ impl NaIRGenPass._emit_dict_helpers(
     cur_len_app = b.load(len_p2, name="len.app");
     key_slot = b.gep(keys_arr_app, [cur_len_app], name="key.slot");
     val_slot = b.gep(vals_arr_app, [cur_len_app], name="val.slot");
+    # retain key and val before storing (new dict entry)
+    _i8pd2 = ir.IntType(8).as_pointer();
+    if isinstance(key_type, ir.PointerType) {
+        if self.rc_retain_fn is None {
+            self._emit_rc_helpers();
+        }
+        _k_cast_d = b.bitcast(k_arg, _i8pd2, name="dapp_kret_cast");
+        b.call(self.rc_retain_fn, [_k_cast_d]);
+    }
+    if isinstance(val_type, ir.PointerType) {
+        if self.rc_retain_fn is None {
+            self._emit_rc_helpers();
+        }
+        _v_cast_d = b.bitcast(v_arg, _i8pd2, name="dapp_vret_cast");
+        b.call(self.rc_retain_fn, [_v_cast_d]);
+    }
     b.store(k_arg, key_slot);
     b.store(v_arg, val_slot);
     new_len = b.add(cur_len_app, ir.Constant(i64, 1), name="new.len");
@@ -367,25 +409,60 @@ impl NaIRGenPass._codegen_dict_val(nd: uni.DictVal) -> (ir.Value | None) {
     self._emit_dict_helpers(key_type_name, val_type_name, key_type, val_type, key_size);
     helpers = self.dict_helpers[dict_key];
     # Create new dict
-    dict_val = self.builder.call(helpers["new"], [], name="dict.new");
+    _dict_new_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
+    dict_val = self._rc_call_with_ctx(
+        helpers["new"], [], op="new", loc=_dict_new_loc, name="dict.new"
+    );
+    # RC: fresh dict allocation — caller owns it; skip RETAIN on assign.
+    self._mark_owned(dict_val);
+    _dinit_loc = f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+        if nd.loc
+        else 0}";
     # Add first pair (box if needed)
     first_store_val = self._box_to_jacval(first_val) if use_jacval else first_val;
-    self.builder.call(helpers["set"], [dict_val, first_key, first_store_val]);
+    self._rc_call_with_ctx(
+        helpers["set"],
+        [dict_val, first_key, first_store_val],
+        op="dict_init",
+        loc=_dinit_loc
+    );
+    # release owned refs (fresh allocs/fn-call results) after set retained them
+    if isinstance(first_key.type, ir.PointerType) and self._is_owned(first_key) {
+        self._emit_rc_release_simple(first_key, op="dict_init", loc=_dinit_loc);
+    }
+    if isinstance(first_val.type, ir.PointerType) and self._is_owned(first_val) {
+        self._emit_rc_release_simple(first_val, op="dict_init", loc=_dinit_loc);
+    }
     # Add remaining pairs
     for i in range(1, len(nd.kv_pairs)) {
         pair = nd.kv_pairs[i];
         k = self._codegen_expr(pair.key);
         v = self._codegen_expr(pair.value);
         if k is not None and v is not None {
+            _orig_k = k;
+            _orig_v = v;
             k = self._coerce_type(k, key_type);
             if use_jacval {
                 v = self._box_to_jacval(v);
             } else {
                 v = self._coerce_type(v, val_type);
             }
-            self.builder.call(helpers["set"], [dict_val, k, v]);
+            self._rc_call_with_ctx(
+                helpers["set"], [dict_val, k, v], op="dict_init", loc=_dinit_loc
+            );
+            # release owned refs after set retained them
+            if isinstance(_orig_k.type, ir.PointerType) and self._is_owned(_orig_k) {
+                self._emit_rc_release_simple(_orig_k, op="dict_init", loc=_dinit_loc);
+            }
+            if isinstance(_orig_v.type, ir.PointerType) and self._is_owned(_orig_v) {
+                self._emit_rc_release_simple(_orig_v, op="dict_init", loc=_dinit_loc);
+            }
         }
     }
+    # Dict literal is a fresh allocation — mark as owned.
+    self._mark_owned(dict_val);
     return dict_val;
 }
 
@@ -424,7 +501,20 @@ impl NaIRGenPass._codegen_dict_set(
     }
     key_type = helpers["key_type"];
     val_type = helpers["val_type"];
+    _orig_value = value;  # Save BEFORE potential coerce
     key_val = self._coerce_type(key_val, key_type);
     value = self._coerce_type(value, val_type);
-    self.builder.call(helpers["set"], [target_val, key_val, value]);
+    _dset_ctx_loc = getattr(
+        _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
+    );
+    self._rc_call_with_ctx(
+        helpers["set"], [target_val, key_val, value], op="dict_set", loc=_dset_ctx_loc
+    );
+    # release owned value ref after __dict_set_KV retained it
+    if isinstance(val_type, ir.PointerType) and self._is_owned(_orig_value) {
+        _dset_loc = getattr(
+            _orig_value, 'jac_loc', f"{os.path.basename(self.ir_in.loc.mod_path)}:0"
+        );
+        self._emit_rc_release_simple(_orig_value, op="dict_set", loc=_dset_loc);
+    }
 }

@@ -890,9 +890,9 @@ test "root_type" {
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 1;
     expected_error = """
-            root() ++> c;
-            x: str = root();  # <- error: cannot assign Root to str
-            ^^^^^^^^^^^^^^^^
+            root ++> c;
+            x: str = root;  # <- error
+            ^^^^^^^^^^^^^^
             """;
     assert_error_pretty_found(expected_error, program.errors_had[0].pretty_print());
 }
@@ -1291,6 +1291,31 @@ test "union_type_annotation" {
     """,
         program.errors_had[0].pretty_print()
     );
+}
+
+"""Regression: `Callable[..., Any]` is accepted as a `|` union arm."""
+test "union_callable_member" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_callable_member.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
+"""Regression: `Never` / `NoReturn` are accepted as `|` union arms."""
+test "union_never_arm" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_never_arm.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 }
 
 """Test member access on union types."""
@@ -2000,6 +2025,32 @@ test "callable_type_annotation" {
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[7].pretty_print()
+    );
+}
+
+"""Shorter callables are assignable to longer ones (TS-style param drop).
+
+A function with fewer parameters is a valid value for a callable type expecting
+more — the extras are simply dropped at the call site. This unblocks the React
+idiom `onClick={handler}` where `handler` takes no MouseEvent arg.
+"""
+test "callable_param_drop" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_callable_param_drop.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    # The lone error is the long-to-short direction, which must still be rejected.
+    assert_error_pretty_found(
+        """
+        bad: Callable[[], None] = two_ints;  # Error: extra src params have no defaults
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
     );
 }
 
@@ -2831,6 +2882,31 @@ test "enum_static_method" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+"""Typed-base enum syntax: members of `enum X: int` are int instances.
+
+`enum X: int { ... }` desugars to `class X(IntEnum)` and members satisfy
+`list[int]`/int positions without `.value`. `enum X: str` mirrors that
+with str. Custom `enum X: T` uses Python's mixin pattern. Plain
+`enum X { ... }` keeps the prior behavior — members are NOT int.
+"""
+test "enum_typed_base" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_enum_typed_base.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Exactly one error expected: `bad: list[int] = [Plain.A, Plain.B]`
+    # (plain Enum members are not int instances).
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+    err_text = program.errors_had[0].pretty_print();
+    assert "Plain" in err_text and "int" in err_text , (
+        "Expected the single error to flag the Plain.A/Plain.B → list[int] "
+        f"assignment; got: {err_text}"
+    );
+}
+
 """Self member assignments with TypeVar annotations propagate through inheritance."""
 test "generic_self_member_type_propagation" {
     program = JacProgram();
@@ -3570,6 +3646,36 @@ test "bare_generic_iteration_yields_any" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
 
+test "bare_generic_in_signatures_emits_w1036" {
+    # Bare generics in function/method return types and parameter types should
+    # also produce W1036 — same as in `has` fields and assignments.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_signatures.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    bare_generic_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1036" in w.pretty_print()
+    ];
+    # Expected sites (8 total):
+    #   1. `-> list`              return type
+    #   2. `x: dict`               param type
+    #   3. `-> list | None`        union branch in return type
+    #   4. `x: list`, `y: dict`,   two params + return type on `both_bare`
+    #      `-> set`
+    #   5. `-> tuple`              decl method return type
+    #   6. `items: frozenset`      decl method param type
+    # Properly-parameterized signatures and impl-side annotations (deduped
+    # against the decl) should NOT warn.
+    assert len(bare_generic_warnings) == 8 , f"Expected 8 W1036 warnings (signatures), got {len(
+        bare_generic_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
+}
+
 """Test callable() type narrowing - validates narrowing unions by callability."""
 test "callable_narrowing" {
     program = JacProgram();
@@ -3882,9 +3988,9 @@ test "component_impl_scope_resolves_has_vars" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
 }
 
-test "root_call_returns_root_type" {
-    # root() should be recognized as a builtin returning Root, so that
-    # root() spawn Walker() resolves the walker type and .reports is accessible.
+test "root_special_var_returns_root_type" {
+    # Bare `root` should resolve as a SpecialVarRef returning Root, so that
+    # `root spawn Walker()` resolves the walker type and `.reports` is accessible.
     path = os.path.join(CHECKER_FIXTURES, "checker_root_call_type.jac");
     program = JacProgram();
     mod = program.compile(path, options=NO_TC);
@@ -3897,7 +4003,7 @@ test "root_call_returns_root_type" {
         for w in program.warnings_had
         if w.code.code == "W1051"
     ];
-    assert len(w1051) == 0 , f"Expected no W1051 warnings for root() call, got {len(
+    assert len(w1051) == 0 , f"Expected no W1051 warnings for bare `root`, got {len(
         w1051
     )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
 }

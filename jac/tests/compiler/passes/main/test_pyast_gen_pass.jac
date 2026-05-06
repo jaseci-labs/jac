@@ -40,7 +40,11 @@ def ast_to_list(`node: ast3.AST) -> list[ast3.AST] {
 
 
 test "hodge podge" {
-    (out := JacProgram()).compile(os.path.join(EXAMPLES, "micro", "hodge_podge.jac"));
+    (out := JacProgram()).compile(
+        os.path.join(
+            JAC_ROOT, "tests", "compiler", "fixtures", "micro", "hodge_podge.jac"
+        )
+    );
     assert not out.errors_had;
 }
 

@@ -33,12 +33,12 @@ def:pub add_todo(title: str) -> Todo {
         category = "other (setup AI key)";
     }
     todo = Todo(title=title, category=category, priority=priority_score(title));
-    root() ++> todo;
+    root ++> todo;
     return todo;
 }
 
 def:pub get_todos -> list[Todo] {
-    return [root()-->][?:Todo];
+    return [root-->][?:Todo];
 }
 
 cl def:pub app -> JsxElement {
@@ -61,11 +61,11 @@ cl def:pub app -> JsxElement {
         <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent { text = e.target.value;}}
+                onChange={lambda e: ChangeEvent { text = e.target.value; }}
                 onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}}
                 placeholder="Add a todo..."
             />
-            <button onClick={lambda e: MouseEvent { add();}}>Add</button>
+            <button onClick={lambda e: MouseEvent { add(); }}>Add</button>
             {[
                 <p key={jid(t)}>[{t.priority}]{t.title} ({t.category})</p>
                 for t in todos

@@ -8,7 +8,7 @@
 - [Walkers](#walkers) - Walker declaration, visit, report, disengage
 - [Graph Construction](#graph-construction) - Creating and connecting nodes
 - [Graph Traversal](#graph-traversal) - Filtered traversal, entry/exit events
-- [Data Spatial Queries](#data-spatial-queries) - Edge references, attribute filtering
+- [Object Spatial Queries](#object-spatial-queries) - Edge references, attribute filtering
 - [Typed Context Blocks](#typed-context-blocks) - Type-based dispatch
 
 ---
@@ -422,7 +422,7 @@ walker DataCollector {
 }
 ```
 
-If omitted, `reports` defaults to `list[Any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
+If omitted, `reports` defaults to `list[any]`. See [Walker Response Patterns](walker-responses.md#typing-your-reports) for details.
 
 ### 5 The `disengage` Statement
 
@@ -519,9 +519,12 @@ walker list_todos {
 }
 ```
 
+!!! note
+    `main.jac` is the default entry point. If your file has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
+
 ```bash
 # Run as API server
-jac start app.jac
+jac start
 
 # Call via HTTP
 curl -X POST http://localhost:8000/walker/add_todo \
@@ -861,7 +864,7 @@ node Room {
 
 ---
 
-## Data Spatial Queries
+## Object Spatial Queries
 
 ### 1 Edge Reference Syntax
 

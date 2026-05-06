@@ -44,12 +44,7 @@ factor ::= ("~" | "-" | "+") factor | connect
 
 connect ::= atomic_pipe (connect_op atomic_pipe)*
 
-edge_op_ref_inline ::=
-    "-->"
-    | "<--"
-    | "<-->"
-    | "->:" ((NAME | KWESC_NAME) atom)? ":->"?
-    | "<-:" ((NAME | KWESC_NAME) atom)? ":<-"?
+edge_op_ref_inline ::= edge_op_ref
 
 connect_op ::=
     "del" edge_op_ref_inline
@@ -135,6 +130,7 @@ special_ref ::=
     "self"
     | "super"
     | "here"
+    | "root"
     | "visitor"
     | "props"
     | "init"
@@ -177,12 +173,14 @@ fstring ::= ("{{" | "}}" | "{" expression CONV? (":" ("{" expression CONV? "}")*
 list_or_compr ::= "]" | expression (comprehension_clauses "]" | ("," expression)* "]")
 
 edge_ref_chain ::=
-    "async"? ("edge" | "node")?
-    ((NAME | KWESC_NAME | "self" | "here" | "super" | "visitor" | "[") atomic_chain)? (
+    "async"? ("edge" | "node")? (
+        (NAME | KWESC_NAME | "root" | "self" | "here" | "super" | "visitor" | "[")
+        atomic_chain
+    )? (
         edge_op_ref (
             "[" filter_compr_bracket
             | "(" (filter_compr_inner | expression ")")
-            | (NAME | KWESC_NAME | "self" | "here" | "super") atomic_chain
+            | (NAME | KWESC_NAME | "self" | "root" | "here" | "super") atomic_chain
         )?
     )* "]"
 
@@ -190,9 +188,8 @@ edge_op_ref ::=
     "-->"
     | "<--"
     | "<-->"
-    | "->" atom? (":" (compare ("," compare)*)?)? ":->"
+    | "->:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":->"
     | "<-:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":<-"
-    | "->:" ((NAME | KWESC_NAME) atom)? ":->"
 
 dict_or_set ::=
     "}"
@@ -221,7 +218,8 @@ lambda_expr ::=
 lambda_params ::= ("*" | "/" | lambda_param)*
 
 lambda_param ::=
-    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "super" | "here" | "visitor")
+    ("*" | "**")?
+    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 jsx_element ::=
@@ -459,12 +457,13 @@ func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 func_params ::= ("*" | "/" | param_var)*
 
 param_var ::=
-    ("*" | "**")? (NAME | KWESC_NAME | "self" | "props" | "super" | "here" | "visitor")
+    ("*" | "**")?
+    (NAME | KWESC_NAME | "self" | "props" | "super" | "root" | "here" | "visitor")
     (":" pipe)? ("=" expression)?
 
 enum ::=
     ("@" atomic_chain)* "enum" access_tag (NAME | KWESC_NAME)
-    ("(" (atomic_chain ("," atomic_chain)*)? ")")?
+    (":" atomic_chain | ("(" (atomic_chain ("," atomic_chain)*)? ")")?)
     ("{" (enum_member ","? | PYNLINE | module_code)* "}" | ";")
 
 enum_member ::= (NAME | KWESC_NAME) ("=" expression)?

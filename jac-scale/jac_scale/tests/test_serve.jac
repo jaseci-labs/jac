@@ -381,7 +381,7 @@ test "static and schema endpoints" {
 }
 
 # =============================================================================
-# GROUP 2: USER AUTHENTICATION TESTS (Register, Login, Token Refresh)
+# GROUP 2: USER AUTH & PROFILE (Register, Login, Token Refresh, /user/me)
 # =============================================================================
 test "user registration and login" {
     client = make_client();
@@ -767,6 +767,194 @@ test "integration auth flow" {
         assert token1 != token2;
         assert token2 != token3;
         assert token1 != token3;
+    } finally {
+        client.close();
+    }
+}
+
+"""Register a user (optionally with a profile) and return (user_id, token).
+Used by the /user/me tests below."""
+def _me_register_and_login(
+    client: ScaleTestClient,
+    username: str,
+    password: str = "pw12345",
+    profile: dict[str, Any] | None = None
+) -> tuple[str, str] {
+    body: dict[str, Any] = {
+        "identities": [{"type": "username", "value": username}],
+        "credential": {"type": "password", "password": password}
+    };
+    if profile is not None {
+        body["profile"] = profile;
+    }
+    register = client.post("/user/register", json=body);
+    assert register.status_code == 201, f"register failed: {register.json()}";
+    user_id = extract_data(register.json())["user_id"];
+
+    login = client.post(
+        "/user/login",
+        json={
+            "identity": {"type": "username", "value": username},
+            "credential": {"type": "password", "password": password}
+        }
+    );
+    assert login.status_code == 200, f"login failed: {login.json()}";
+    return (user_id, extract_data(login.json())["token"]);
+}
+
+test "GET /user/me returns MeResponse shape without credentials" {
+    client = make_client();
+    try {
+        profile = {"firstname": "Alice", "city": "NYC", "age": 30};
+        username = f"me_get_{uuid.uuid4().hex[:8]}";
+        (user_id, token) = _me_register_and_login(
+            client, username, profile=profile
+        );
+
+        response = client.get(
+            "/user/me", headers={"Authorization": f"Bearer {token}"}
+        );
+        assert response.status_code == 200;
+        data = extract_data(response.json());
+
+        assert data["user_id"] == user_id, f"user_id: {data}";
+        assert data["role"] == "user", f"role: {data}";
+        assert data["status"] == "active", f"status: {data}";
+        assert data["profile"] == profile, f"profile: {data}";
+
+        assert len(data["identities"]) == 1, f"identities: {data['identities']}";
+        ident = data["identities"][0];
+        assert ident["type"] == "username", f"identity: {ident}";
+        assert ident["value"] == username, f"identity value: {ident}";
+        assert isinstance(ident["verified"], bool), f"verified: {ident}";
+        assert ident["is_recovery"] is False, f"is_recovery: {ident}";
+        # Internal storage fields must not leak.
+        assert "value_normalized" not in ident, f"leaked: {ident}";
+        assert "external_id" not in ident, f"leaked: {ident}";
+
+        for forbidden in ["credentials", "password", "password_hash"] {
+            assert forbidden not in data, f"leaked {forbidden}: {data}";
+        }
+    } finally {
+        client.close();
+    }
+}
+
+test "/user/me rejects missing or invalid token with 401" {
+    client = make_client();
+    try {
+        assert client.get("/user/me").status_code == 401;
+        assert client.get(
+            "/user/me", headers={"Authorization": "Bearer not-a-real-token"}
+        ).status_code == 401;
+        assert client.raw_client.patch(
+            "/user/me", json={"profile": {"firstname": "Alice"}}
+        ).status_code == 401;
+    } finally {
+        client.close();
+    }
+}
+
+test "PATCH /user/me merges new keys with existing profile" {
+    client = make_client();
+    try {
+        username = f"me_merge_{uuid.uuid4().hex[:8]}";
+        (_, token) = _me_register_and_login(
+            client, username, profile={"firstname": "Alice", "city": "NYC"}
+        );
+
+        response = client.raw_client.patch(
+            "/user/me",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"profile": {"city": "Boston", "phone": "555-1234"}}
+        );
+        assert response.status_code == 200;
+        data = extract_data(response.json());
+        assert data["message"] == "Profile updated";
+        merged = {"firstname": "Alice", "city": "Boston", "phone": "555-1234"};
+        assert data["profile"] == merged, f"merged: {data}";
+
+        # Verify the merge persisted via GET /user/me.
+        me = client.get("/user/me", headers={"Authorization": f"Bearer {token}"});
+        assert extract_data(me.json())["profile"] == merged;
+    } finally {
+        client.close();
+    }
+}
+
+test "PATCH /user/me preserves server-managed profile.sso" {
+    client = make_client();
+    try {
+        username = f"me_sso_{uuid.uuid4().hex[:8]}";
+        (user_id, token) = _me_register_and_login(
+            client, username, profile={"firstname": "Alice"}
+        );
+        # Seed profile.sso via the internal helper (bypasses validator,
+        # mimicking what the SSO callback does).
+        sso_seed = {
+            "sso": {
+                "google": {
+                    "display_name": "Alice G",
+                    "first_name": "Alice",
+                    "last_name": "G",
+                    "picture": "https://example.invalid/p.png"
+                }
+            }
+        };
+        client.server.user_manager.update_profile(user_id, sso_seed);
+
+        response = client.raw_client.patch(
+            "/user/me",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"profile": {"firstname": "Bob"}}
+        );
+        assert response.status_code == 200;
+        merged = extract_data(response.json())["profile"];
+        assert merged["firstname"] == "Bob";
+        assert merged["sso"] == sso_seed["sso"], f"sso lost: {merged}";
+    } finally {
+        client.close();
+    }
+}
+
+test "PATCH /user/me rejects reserved sso key and bad value type with 422" {
+    client = make_client();
+    try {
+        username = f"me_422_{uuid.uuid4().hex[:8]}";
+        (_, token) = _me_register_and_login(client, username);
+
+        reserved = client.raw_client.patch(
+            "/user/me",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"profile": {"sso": {"google": {"display_name": "x"}}}}
+        );
+        assert reserved.status_code == 422;
+
+        bad_value = client.raw_client.patch(
+            "/user/me",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"profile": {"tags": ["a", "b"]}}
+        );
+        assert bad_value.status_code == 422;
+    } finally {
+        client.close();
+    }
+}
+
+test "POST /user/register applies AfterValidator to reject reserved sso key" {
+    client = make_client();
+    try {
+        response = client.post(
+            "/user/register",
+            json={
+                "identities": [
+                    {"type": "username", "value": f"reg_{uuid.uuid4().hex[:8]}"}
+                ],
+                "credential": {"type": "password", "password": "pw12345"},
+                "profile": {"sso": {"google": {"display_name": "x"}}}
+            }
+        );
+        assert response.status_code == 422;
     } finally {
         client.close();
     }
@@ -2115,12 +2303,21 @@ test "jwt middleware: per-user isolation and token rejection" {
         r = client.post("/walker/CreateTask", json={"title": "x"});
         assert r.status_code == 401 , f"no token on auth endpoint: expected 401, got {r.status_code}";
 
+        # Bad tokens on public (pub) endpoints must be ignored — the request
+        # should succeed as guest rather than returning 401.
         for (hdrs, label) in bad_token_cases {
             r = client.post("/walker/PublicInfo", json={}, headers=hdrs);
-            assert r.status_code == 401 , f"{label} on public endpoint: expected 401, got {r.status_code}";
+            assert r.status_code == 200 , f"{label} on pub walker: expected 200 (guest), got {r.status_code}";
         }
         # No token on a public endpoint must still work (anonymous access).
-        assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "public endpoint broken for anonymous requests";
+        assert client.post("/walker/PublicInfo", json={}).status_code == 200 , "pub walker broken for anonymous requests";
+
+        # Same check for pub functions — bad tokens must be ignored.
+        for (hdrs, label) in bad_token_cases {
+            r = client.post("/function/public_status", json={}, headers=hdrs);
+            assert r.status_code == 200 , f"{label} on pub function: expected 200 (guest), got {r.status_code}";
+        }
+        assert client.post("/function/public_status", json={}).status_code == 200 , "pub function broken for anonymous requests";
     } finally {
         client.close();
     }

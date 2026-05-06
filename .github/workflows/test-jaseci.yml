@@ -98,6 +98,11 @@ jobs:
     - name: Run all client tests (including E2E in parallel)
       run: pytest -x jac-client -n auto
 
+    - name: Re-run auth roundtrip e2e against jac-scale backend
+      run: |
+        pip install -e jac-scale
+        pytest -x -vv jac-client/jac_client/tests/test_e2e.jac -k "jacSignup"
+
   test-packages-and-docs:
     runs-on: ubuntu-latest
     steps:
@@ -269,23 +274,25 @@ jobs:
           pip install pytest-xdist
           pip install pytest-asyncio
 
-      - name: Install MicroK8s
+      - name: Write kind config
         run: |
-          set +e
-          sudo snap install microk8s --classic
-          sleep 20
-          set -e
+          cat <<EOF > /tmp/kind-config.yaml
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          nodes:
+          - role: control-plane
+            extraPortMappings:
+            - containerPort: 30080
+              hostPort: 30080
+              protocol: TCP
+          EOF
 
-      - name: Initialize MicroK8s
-        run: |
-          sudo microk8s status --wait-ready
-          sudo microk8s enable dns storage
-
-      - name: Configure kubectl
-        run: |
-          mkdir -p ~/.kube
-          sudo microk8s config > ~/.kube/config
-
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: jaseci-test
+          wait: 120s
+          config: /tmp/kind-config.yaml
 
       - name: Run K8 tests
         run: |

@@ -10,7 +10,7 @@ The language spec covers all core Jac constructs:
 
 - **[Foundation](language/foundation.md)** - Syntax, types, literals, variables, scoping, operators, control flow, pattern matching
 - **[Functions & Objects](language/functions-objects.md)** - Function declarations, `can` vs `def`, OOP, inheritance, enums, access modifiers, impl blocks
-- **[Object-Spatial Programming](language/osp.md)** - Nodes, edges, walkers, `visit`, `report`, `disengage`, graph construction, data spatial queries, common patterns
+- **[Object-Spatial Programming](language/osp.md)** - Nodes, edges, walkers, `visit`, `report`, `disengage`, graph construction, object spatial queries, common patterns
 - **[Concurrency](language/concurrency.md)** - Async/await, `flow`/`wait` concurrent expressions, parallel operations
 - **[Comprehensions & Filters](language/advanced.md)** - Filter/assign comprehensions, typed filters
 
@@ -54,8 +54,11 @@ pip install jaseci
 jac create myapp --use client
 
 # 3. Run
-jac start main.jac
+jac start
 ```
+
+!!! note
+    `main.jac` is the default entry point. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
 
 ---
 
@@ -196,7 +199,7 @@ port = 5173
 _authToken = "${NODE_AUTH_TOKEN}"
 
 [scripts]
-dev = "jac start main.jac --dev"
+dev = "jac start --dev"
 test = "jac test"
 build = "jac build"
 

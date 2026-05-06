@@ -1,3 +1,18 @@
+"""Determine if a given by-llm call should use parallel tool execution."""
+
+def _should_parallelize(mt_run: MTRuntime) -> bool {
+    per_call = mt_run.call_params.get("parallelize");
+    if per_call is True {
+        return True;
+    }
+    if per_call is False {
+        return False;
+    }
+    # Not specified → follow global config (read fresh so runtime changes are picked up)
+    return get_byllm_config().get_parallel_config().get("enabled", False);
+}
+
+
 """Check if the model is eligible for Anthropic prompt caching."""
 def _is_prompt_caching_eligible(model_name: str) -> bool {
     pc_config = _byllm_config.get_prompt_caching_config();
@@ -45,6 +60,256 @@ def _apply_prompt_caching(messages: list, tools: list | None) {
 }
 
 
+"""Resolve the effective context window size for a model name via LiteLLM registry."""
+def _litellm_ctx_window(model_name: str) -> int {
+    try {
+        info = litellm.get_model_info(model_name);
+        return int(info.get("max_input_tokens") or info.get("max_tokens") or 0);
+    } except Exception {
+        return 0;
+    }
+}
+
+
+"""Shallow copy of model for compaction - resets call_params and _usage_history
+so the summarisation call cannot recurse or inflate the outer loop's token totals.
+Works for both Model and ModelPool (shares the already-built _router at zero cost).
+"""
+def _copy_for_compaction(model: BaseLLM) -> BaseLLM {
+    import copy;
+    m = copy.copy(model);
+    m.call_params = {"compaction_enabled": False};
+    # Shallow copy shares the list object - give the compaction call its own
+    # history so its token usage does not inflate the outer ReAct loop totals.
+    m._usage_history = [];
+    return m;
+}
+
+
+"""Summarise old ReAct tool-call rounds into one compact message.
+
+Always keeps messages[0] (system) and messages[1] (user task) verbatim. Preserves
+the last `keep_recent` complete assistant+tool_result rounds verbatim as immediate
+context. Everything between index 2 and the kept tail is replaced with a single
+summary user message tagged [Compacted context summary].
+
+Assistant messages are serialised with their tool_calls (name+args) since content
+is None when a tool is called - without this the summary LLM loses the action.
+"""
+def _default_compact(messages: list, keep_recent: int, model: BaseLLM) -> list {
+    # Need at least: system + user + 1 assistant + something to compact
+    if len(messages) < 4 {
+        return messages;
+    }
+    # Walk backwards counting assistant turns to find the keep boundary
+    kept_tail: list = [];
+    assistant_rounds = 0;
+    i = len(messages) - 1;
+    while i >= 2 and assistant_rounds < keep_recent {
+        msg = messages[i];
+        role = msg.get("role") if isinstance(msg, dict) else msg?.role;
+        if str(role) == "assistant" {
+            assistant_rounds += 1;
+        }
+        kept_tail.insert(0, msg);
+        i -= 1;
+    }
+    # The slice to compact is messages[2 .. i+1]
+    compact_slice = messages[2:i + 1];
+    if not compact_slice {
+        return messages;
+    }
+    # Serialise the slice for the summarisation call.
+    # Assistant messages have content=None when they only contain tool_calls,
+    # so we serialise the tool names+args explicitly - otherwise the summary
+    # LLM would see "[assistant] " with no content and lose the action context.
+    lines: list = [];
+    for msg in compact_slice {
+        if isinstance(msg, dict) {
+            role = msg.get("role", "");
+            content = msg.get("content") or "";
+            if isinstance(content, list) {
+                content = " ".join(
+                    p.get("text", "") if isinstance(p, dict) else str(p)
+                    for p in content
+                );
+            }
+            if str(role) == "assistant" and not content {
+                tool_calls = msg.get("tool_calls") or [];
+                if tool_calls {
+                    descs: list = [];
+                    for tc in tool_calls {
+                        fn = tc.get("function", {})
+                            if isinstance(tc, dict)
+                            else (tc?.function or {});
+                        name = (
+                            fn.get("name", "?") if isinstance(fn, dict) else fn?.name
+                        )
+                        or "?";
+                        args = (
+                            fn.get("arguments", "")
+                                if isinstance(fn, dict)
+                                else fn?.arguments
+                        )
+                        or "";
+                        descs.append(f"{name}({args})");
+                    }
+                    content = "called: " + "; ".join(descs);
+                }
+            }
+            lines.append(f"[{role}] {content}");
+        } else {
+            lines.append(str(msg));
+        }
+    }
+    history_text = "\n".join(lines);
+    summary_prompt = (
+        "Summarise the following agent tool-call history concisely. "
+        "Preserve key findings, decisions, and intermediate results that "
+        "may be needed to complete the ongoing task. Output plain text only.\n\n" + history_text
+    );
+    comp_mt_run = MTRuntime(
+        messages=[
+            Message(role=MessageRole.SYSTEM, content="You are a concise summariser."),
+            Message(role=MessageRole.USER, content=summary_prompt)
+        ],
+        tools=[],
+        resp_type=str,
+        stream=False,
+        call_params={"compaction_enabled": False},
+        mtir=None
+    );
+    summary = str(model.invoke(comp_mt_run));
+    summary_msg = {
+        "role": "user",
+        "content": f"[Compacted context summary]\n{summary}"
+    };
+    return [messages[0], messages[1], summary_msg] + kept_tail;
+}
+
+
+"""Resolve the effective context window for this model instance.
+
+Priority: call_params["ctx_window"] > self.ctx_window > jac.toml compaction.ctx_window
+          > litellm.get_model_info() > 0 (unknown - disable threshold check).
+"""
+impl BaseLLM._get_ctx_window(call_params: dict) -> int {
+    override = int(
+        call_params.get("ctx_window")
+        or self.ctx_window
+        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+        or 0
+    );
+    if override > 0 {
+        return override;
+    }
+    return _litellm_ctx_window(self.model_name);
+}
+
+
+"""Resolve compaction config for one invocation (call_params > self.call_params > jac.toml).
+Returns dict with keys: enabled, threshold, keep_recent, model, ctx_window.
+"""
+impl BaseLLM._resolve_compaction_params(mt_run: MTRuntime) -> dict {
+    comp_cfg = get_byllm_config().get_compaction_config();
+    enabled = bool(
+        mt_run.call_params.get("compaction_enabled")
+            if mt_run.call_params.get("compaction_enabled") is not None
+            else comp_cfg.get("enabled", True)
+    );
+    _raw_threshold = (
+        mt_run.call_params.get("threshold_ratio")
+            if mt_run.call_params.get("threshold_ratio") is not None
+            else self.call_params.get("threshold_ratio")
+                if self.call_params.get("threshold_ratio") is not None
+                else None
+    );
+    threshold = float(str(_raw_threshold))
+        if _raw_threshold is not None
+        else float(comp_cfg.get("threshold_ratio", 0.80));
+    _raw_keep_recent = (
+        mt_run.call_params.get("keep_recent_iterations")
+            if mt_run.call_params.get("keep_recent_iterations") is not None
+            else self.call_params.get("keep_recent_iterations")
+                if self.call_params.get("keep_recent_iterations") is not None
+                else None
+    );
+    keep_recent = int(str(_raw_keep_recent))
+        if _raw_keep_recent is not None
+        else int(comp_cfg.get("keep_recent_iterations", 3));
+    _raw_model = (
+        mt_run.call_params.get("compaction_model")
+        or self.call_params.get("compaction_model")
+        or comp_cfg.get("compaction_model")
+    );
+    model: str | None = str(_raw_model) if _raw_model else None;
+    return {
+        "enabled": enabled,
+        "threshold": threshold,
+        "keep_recent": keep_recent,
+        "model": model,
+        "ctx_window": self._get_ctx_window(mt_run.call_params)
+    };
+}
+
+
+"""Compact mt_run.messages in-place.
+
+Resolves the `on_compaction` hook: if the caller supplied one (via call_params
+or model.call_params) it is called instead of the built-in default. Either way
+the compacted list is written back to mt_run.messages.
+"""
+impl BaseLLM._compact_messages(
+    mt_run: MTRuntime, keep_recent: int, comp_model: str | None
+) -> None {
+    on_compaction = (
+        mt_run.call_params.get("on_compaction") or self.call_params.get("on_compaction")
+    );
+    original_len = len(mt_run.messages);
+    msg_dicts = mt_run.get_msg_list();
+    if on_compaction {
+        compacted = on_compaction(msg_dicts, keep_recent);
+        if not isinstance(compacted, list) or len(compacted) < 2 {
+            got_type = type(compacted).__name__;
+            got_len = len(compacted) if isinstance(compacted, list) else "N/A";
+            raise ConfigurationError(
+                "on_compaction hook must return a list with at least 2 messages "
+                f"(system + user task). Got: {got_type} of length {got_len}."
+            );
+        }
+    } else {
+        if comp_model {
+            # Named model - inherit api_key and config so proxy routing still works.
+            model_for_compaction = Model(
+                model_name=comp_model,
+                api_key=self.api_key,
+                config=self.config,
+                call_params={"compaction_enabled": False}
+            );
+        } else {
+            model_for_compaction = _copy_for_compaction(self);
+        }
+        compacted = _default_compact(msg_dicts, keep_recent, model_for_compaction);
+    }
+    removed = original_len - len(compacted);
+    if removed == 0 and original_len >= 4 {
+        # _default_compact returned unchanged (compact_slice was non-empty but
+        # summarisation produced nothing new) or hook returned same length.
+        raise CompactionNotEffectiveError(
+            "Compaction produced no reduction in message history - "
+            "check on_compaction hook or compaction model."
+        );
+    }
+    mt_run.messages = compacted;
+    logger.info(
+        f"byLLM compaction: reduced message list from {original_len} to {len(
+            compacted
+        )} "
+        f"({removed} messages replaced with summary)"
+    );
+}
+
+
 """Construct the call parameters and return self (factory pattern).
 
 Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
@@ -68,6 +333,37 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     if mt_run.stream and len(mt_run.tools) == 0 {
         return self.dispatch_streaming(mt_run);
     }
+    # Streaming ReAct: defer write_back until the inner generator exhausts,
+    # otherwise the streamed assistant message is missed.
+    if mt_run.stream {
+        return self._invoke_react_loop_streaming(mt_run);
+    }
+    try {
+        return self._invoke_react_loop(mt_run);
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+impl BaseLLM._invoke_react_loop_streaming(
+    mt_run: MTRuntime
+) -> Generator[object, None, None] {
+    import types as _types_mod;
+    try {
+        result = self._invoke_react_loop(mt_run);
+        if isinstance(result, _types_mod.GeneratorType) {
+            yield from result;
+        } elif result is not None {
+            yield result;
+        }
+    } finally {
+        mt_run.write_back_conversation();
+    }
+}
+
+
+impl BaseLLM._invoke_react_loop(mt_run: MTRuntime) -> object {
     max_iters = (
         mt_run.call_params.get("max_react_iterations")
         or self.call_params.get("max_react_iterations")
@@ -77,10 +373,17 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
     on_iteration = (
         mt_run.call_params.get("on_iteration") or self.call_params.get("on_iteration")
     );
+    _cp = self._resolve_compaction_params(mt_run);
+    comp_enabled = bool(_cp["enabled"]);
+    comp_threshold = float(_cp["threshold"]);
+    comp_keep_recent = int(_cp["keep_recent"]);
+    comp_model: str | None = _cp["model"];
+    ctx_window = int(_cp["ctx_window"]);
     iter_count = 0;
     last_tool = "";
     last_result = "";
     total_tokens = 0;
+    just_compacted = False;
     while True {
         iter_count += 1;
         if on_iteration and iter_count > 1 {
@@ -111,8 +414,27 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
         }
         try {
             resp = self.dispatch_no_streaming(mt_run);
+        } except litellm.exceptions.ContextWindowExceededError {
+            # Context window exceeded - compact and retry once before giving up.
+            # Honour the opt-out: if compaction is disabled, re-raise immediately.
+            if not comp_enabled {
+                raise;
+            }
+            if just_compacted {
+                raise CompactionNotEffectiveError(
+                    "Context window exceeded again after emergency compaction - "
+                    "provide a custom on_compaction hook, increase ctx_window, "
+                    "or switch to a model with a larger context window."
+                );
+            }
+            logger.warning(
+                "byLLM compaction: context window exceeded, triggering emergency compaction."
+            );
+            self._compact_messages(mt_run, comp_keep_recent, comp_model);
+            just_compacted = True;
+            resp = self.dispatch_no_streaming(mt_run);
         } except OutputConversionError {
-            # gpt-4o returned plain text that can't be parsed — attempt recovery.
+            # gpt-4o returned plain text that can't be parsed - attempt recovery.
             recovery_resp = self._attempt_recovery(mt_run);
             if recovery_resp is None {
                 raise;
@@ -133,27 +455,84 @@ impl BaseLLM.invoke(mt_run: MTRuntime) -> object {
                 if isinstance(usage, dict)
                 else getattr(usage, "total_tokens", 0)
         );
-        if resp.tool_calls {
-            for tool_call in resp.tool_calls {
-                if tool_call.is_finish_call() {
-                    # If streaming is enabled, make a new streaming call
-                    mt_run.add_message(tool_call());
-                    # to generate the final answer based on all context
-                    if mt_run.stream {
-                        return self._stream_final_answer(mt_run);
-                    }
-                    return tool_call.get_output();
-                } else {
-                    result_msg = tool_call();
-                    last_tool = tool_call.tool.get_name();
-                    last_result = str(result_msg.content)[:500];
-                    mt_run.add_message(result_msg);
+        # Threshold-based proactive compaction: check current input size against the
+        # context window and compact before the next iteration crosses the limit.
+        if comp_enabled and ctx_window > 0 {
+            prompt_tokens = int(
+                usage.get("prompt_tokens", 0)
+                    if isinstance(usage, dict)
+                    else usage?.prompt_tokens or 0
+            );
+            if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
+                if just_compacted {
+                    raise CompactionNotEffectiveError(
+                        f"{prompt_tokens}/{ctx_window} tokens "
+                        f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
+                        f"{comp_threshold:.0%} after compaction - provide a custom "
+                        "on_compaction hook, increase ctx_window, or switch to a model "
+                        "with a larger context window."
+                    );
                 }
+                logger.info(
+                    f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
+                    f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
+                    "Compacting message history."
+                );
+                self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                just_compacted = True;
+            } else {
+                just_compacted = False;
+            }
+        }
+        if resp.tool_calls {
+            # Split at first finish_tool - anything after it is discarded.
+            # This normalizes history regardless of parallel/sequential mode:
+            # both modes see the same tool calls and produce the same mt_run.messages.
+            non_finish_calls: list = [];
+            finish_tc = None;
+            for tc in resp.tool_calls {
+                if tc.is_finish_call() {
+                    finish_tc = tc;
+                    break;
+                }
+                non_finish_calls.append(tc);
+            }
+
+            # Always route through dispatch_batch - one code path for both modes.
+            # Parallel: full batch (concurrent). Sequential: one-at-a-time (inline, no pool overhead).
+            if non_finish_calls {
+                batches = (
+                    [non_finish_calls]
+                        if _should_parallelize(mt_run)
+                        else [[tc] for tc in non_finish_calls]
+                );
+                for batch in batches {
+                    raw_results: list = list(dispatch_batch(batch));
+                    ordered: dict = {};
+                    for r in raw_results {
+                        idx = _index_by_identity(batch, r[0]);
+                        ordered[idx] = r;
+                    }
+                    for i in range(len(batch)) {
+                        (btc, result_msg, _ms) = ordered[i];
+                        last_tool = btc.tool.get_name();
+                        last_result = str(result_msg.content)[:500];
+                        mt_run.add_message(result_msg);
+                    }
+                }
+            }
+
+            if finish_tc {
+                mt_run.add_message(finish_tc());
+                if mt_run.stream {
+                    return self._stream_final_answer(mt_run);
+                }
+                return finish_tc.get_output();
             }
         } else {
             # LLM returned plain text without calling any tool.
             # If finish_tool is available and a structured return type was expected,
-            # the model skipped the expected workflow — attempt recovery.
+            # the model skipped the expected workflow - attempt recovery.
             # (This also handles subclasses like MockLLM that bypass parse_response
             # and thus don't trigger OutputConversionError.)
             recovery_resp = self._attempt_recovery(mt_run);
@@ -200,6 +579,77 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     messages = mt_run.get_msg_list();
     tools = mt_run.get_tool_list() or None;
 
+    # Intelligent parallel scheduling: when parallel is active for this call,
+    # annotate tool descriptions and inject scheduling rules into the system prompt
+    # so the LLM can intelligently decide which tools to batch vs sequence.
+    if _should_parallelize(mt_run)
+    and tools
+    and mt_run.call_params.get("parallel_hint", True)
+    and messages
+    and len(messages) > 0 {
+        # --- Annotate each tool's description with scheduling metadata ---
+        # The description field is the primary channel LLMs read when deciding
+        # tool calls.  Placing the constraint here is more reliable than a
+        # system-prompt list the LLM must cross-reference.
+        annotated: list = [];
+        serial_names: list = [];
+        for (i, schema) in enumerate(tools) {
+            tool_obj = mt_run.tools[i] if i < len(mt_run.tools) else None;
+            is_serial = tool_obj.serialize if tool_obj else False;
+            is_finish = tool_obj.is_finish_tool() if tool_obj else False;
+            if is_finish {
+                annotated.append(schema);
+            } else {
+                fn = schema.get("function", {});
+                desc = fn.get("description", "");
+                if is_serial {
+                    serial_names.append(fn.get("name", "unknown"));
+                    tag = " [SEQUENTIAL: has side-effects - must be called alone, never batch with other tools]";
+                } else {
+                    tag = " [PARALLEL-SAFE: can be batched with other independent tools in one response]";
+                }
+                annotated.append(
+                    {** schema, "function": {** fn, "description": desc + tag}}
+                );
+            }
+        }
+        tools = annotated;
+
+        # --- Inject intelligent scheduling hint into system prompt ---
+        first_msg = messages[0];
+        if isinstance(first_msg, dict) and first_msg.get("role") == "system" {
+            content = first_msg.get("content", "");
+            if isinstance(content, str) and _PARALLEL_TOOL_HINT not in content {
+                hint = _PARALLEL_TOOL_HINT;
+
+                # Semantic rules for implicit dependency detection
+                hint += (
+                    "\n\n**Intelligent tool scheduling rules:**"
+                    "\nBATCH in one response (parallel) when:"
+                    "\n - You already know ALL required arguments for every tool"
+                    "\n - No tool in the group needs another tool's output as input"
+                    "\n - No two tools in the group modify the same resource"
+                    "\nSEPARATE into different responses (sequential) when:"
+                    "\n - A tool's argument depends on another tool's return value"
+                    "\n - Two tools write to the same file or shared state"
+                    "\n - A tool is labeled [SEQUENTIAL] in its description"
+                    "\n\nKEY TEST: For each tool ask - 'Can I fill in ALL of this tool's arguments RIGHT NOW"
+                    " without waiting for any other tool's result?' YES for all → batch. NO for any → separate it."
+                );
+
+                # Explicit serialize list (if any)
+                if serial_names {
+                    hint += (
+                        f"\n\nTools that must ALWAYS run alone (never batch): {serial_names}"
+                    );
+                }
+
+                messages = list(messages);
+                messages[0] = {** first_msg, "content": content + hint};
+            }
+        }
+    }
+
     if _is_prompt_caching_eligible(self.model_name) {
         _apply_prompt_caching(messages, tools);
     }
@@ -225,6 +675,14 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     if "tool_choice" in mt_run.call_params {
         params["tool_choice"] = mt_run.call_params["tool_choice"];
     }
+    # Inject the response_format schema's enum hint (e.g. "1=WORK, 2=PERSONAL,
+    # ...") into the last user message so every backend sees the constraint
+    # the same way frontier providers' server-side prompt builders do for
+    # cloud routes. Local-style backends (Ollama, vLLM, in-process llama.cpp)
+    # use response_format only as a grammar constraint and would otherwise
+    # default to the first allowed enum value for every input. No-op when
+    # response_format has no enum-typed properties.
+    params = inject_schema_hint(params);
     return params;
 }
 
@@ -388,7 +846,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         role=MessageRole.USER,
         content="Based on the tool calls and their results above, provide only your final answer.",
     );
-    mt_run.add_message(final_instruction);
+    mt_run.add_scaffolding_message(final_instruction);
     original_tools = mt_run.tools;
     finish_tool_obj = mt_run.get_tool("finish_tool");
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
@@ -397,7 +855,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         if final_resp.tool_calls {
             for tool_call in final_resp.tool_calls {
                 if tool_call.is_finish_call() {
-                    mt_run.add_message(tool_call());
+                    mt_run.add_scaffolding_message(tool_call());
                     return tool_call.get_output();
                 }
             }
@@ -407,6 +865,7 @@ impl BaseLLM._force_final_answer(mt_run: MTRuntime) -> object {
         mt_run.tools = original_tools;
     }
 }
+
 
 """Stream the final answer after ReAct tool calls complete.
 
@@ -423,26 +882,37 @@ impl BaseLLM._stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, Non
         content="Based on the tool calls and their results above, provide your final answer. "
         "Be comprehensive and synthesize all the information gathered.",
     );
-    mt_run.add_message(final_instruction);
+    mt_run.add_scaffolding_message(final_instruction);
     # Keep only finish_tool so Anthropic sees a valid tools= param
     # (conversation history may already contain tool_use blocks)
     original_tools = mt_run.tools;
     finish_tool_obj = mt_run.get_tool("finish_tool");
     mt_run.tools = [finish_tool_obj] if finish_tool_obj else [];
-    # Force text generation — tool_choice="none" tells the LLM
+    # Force text generation - tool_choice="none" tells the LLM
     # "tools are defined but do NOT call any, just produce text"
     # Save caller's original tool_choice (if any) so we can restore it after.
     original_tool_choice = mt_run.call_params.pop("tool_choice", None);
     mt_run.call_params["tool_choice"] = "none";
+    accumulated: str = "";
     try {
         # Make the actual streaming call - this is REAL streaming from the LLM!
-        yield from self.dispatch_streaming(mt_run);
+        for token in self.dispatch_streaming(mt_run) {
+            accumulated += token;
+            yield token;
+        }
     } finally {
         # Restore tools and original tool_choice
         mt_run.tools = original_tools;
         mt_run.call_params.pop("tool_choice", None);
         if original_tool_choice is not None {
             mt_run.call_params["tool_choice"] = original_tool_choice;
+        }
+        # dispatch_streaming yields tokens but doesn't append to messages;
+        # persist the final answer so write_back_conversation includes it.
+        if accumulated {
+            mt_run.add_message(
+                Message(role=MessageRole.ASSISTANT, content=accumulated)
+            );
         }
     }
 }
@@ -466,7 +936,7 @@ impl BaseLLM._attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None {
         role=MessageRole.USER,
         content="You must use finish_tool to return your response. Call finish_tool now.",
     );
-    mt_run.add_message(recovery_msg);
+    mt_run.add_scaffolding_message(recovery_msg);
     original_tools = mt_run.tools;
     mt_run.tools = [finish_tool_obj];
     try {
@@ -541,10 +1011,17 @@ impl BaseLLM._invoke_streaming(
             mt_run.call_params.get("on_iteration")
             or self.call_params.get("on_iteration")
         );
+        _cp = self._resolve_compaction_params(mt_run);
+        comp_enabled = bool(_cp["enabled"]);
+        comp_threshold = float(_cp["threshold"]);
+        comp_keep_recent = int(_cp["keep_recent"]);
+        comp_model: str | None = _cp["model"];
+        ctx_window = int(_cp["ctx_window"]);
         iter_count = 0;
         last_tool = "";
         last_result = "";
         total_tokens = 0;
+        just_compacted = False;
         while True {
             iter_count += 1;
 
@@ -601,10 +1078,29 @@ impl BaseLLM._invoke_streaming(
                 break;
             }
 
+            import time as _time;
+            _llm_t0 = _time.time();
             try {
                 resp = self.dispatch_no_streaming(mt_run);
+            } except litellm.exceptions.ContextWindowExceededError {
+                if not comp_enabled {
+                    raise;
+                }
+                if just_compacted {
+                    raise CompactionNotEffectiveError(
+                        "Context window exceeded again after emergency compaction - "
+                        "provide a custom on_compaction hook, increase ctx_window, "
+                        "or switch to a model with a larger context window."
+                    );
+                }
+                logger.warning(
+                    "byLLM compaction: context window exceeded, triggering emergency compaction."
+                );
+                self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                just_compacted = True;
+                resp = self.dispatch_no_streaming(mt_run);
             } except OutputConversionError {
-                # gpt-4o returned plain text that can't be parsed — attempt recovery.
+                # gpt-4o returned plain text that can't be parsed - attempt recovery.
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
                     raise;
@@ -614,6 +1110,7 @@ impl BaseLLM._invoke_streaming(
                 );
                 break;
             }
+            _llm_ms = int((_time.time() - _llm_t0) * 1000);
             self._usage_history.append(resp.usage);
 
             usage = resp.usage or {};
@@ -621,6 +1118,40 @@ impl BaseLLM._invoke_streaming(
                 usage.get("total_tokens", 0)
                     if isinstance(usage, dict)
                     else getattr(usage, "total_tokens", 0)
+            );
+            # Threshold-based proactive compaction - identical logic to invoke().
+            if comp_enabled and ctx_window > 0 {
+                prompt_tokens = int(
+                    usage.get("prompt_tokens", 0)
+                        if isinstance(usage, dict)
+                        else usage?.prompt_tokens or 0
+                );
+                if prompt_tokens > 0 and prompt_tokens / ctx_window >= comp_threshold {
+                    if just_compacted {
+                        raise CompactionNotEffectiveError(
+                            f"{prompt_tokens}/{ctx_window} tokens "
+                            f"({prompt_tokens / ctx_window:.0%}) still at or above threshold "
+                            f"{comp_threshold:.0%} after compaction - provide a custom "
+                            "on_compaction hook, increase ctx_window, or switch to a model "
+                            "with a larger context window."
+                        );
+                    }
+                    logger.info(
+                        f"byLLM compaction: {prompt_tokens}/{ctx_window} tokens "
+                        f"({prompt_tokens / ctx_window:.0%}) >= threshold {comp_threshold:.0%}. "
+                        "Compacting message history."
+                    );
+                    self._compact_messages(mt_run, comp_keep_recent, comp_model);
+                    just_compacted = True;
+                } else {
+                    just_compacted = False;
+                }
+            }
+
+            # Metrics: emit LLM call duration for this iteration
+            yield StreamEvent(
+                event_type="llm_timing",
+                data={"duration_ms": _llm_ms, "iteration": iter_count}
             );
 
             # Yield thought if the LLM produced reasoning text
@@ -632,67 +1163,106 @@ impl BaseLLM._invoke_streaming(
             }
 
             if resp.tool_calls {
-                for tool_call in resp.tool_calls {
-                    if tool_call.is_finish_call() {
-                        mt_run.add_message(tool_call());
-                        yield StreamEvent(
-                            event_type="steps_done", data={"iterations": iter_count}
-                        );
-                        for token in self._stream_final_answer(mt_run) {
-                            if token {
-                                yield StreamEvent(
-                                    event_type="chunk", data={"content": token}
-                                );
-                            }
-                        }
+                # Split at first finish_tool - normalizes history for both modes.
+                non_finish_calls: list = [];
+                finish_tc = None;
+                for tc in resp.tool_calls {
+                    if tc.is_finish_call() {
+                        finish_tc = tc;
                         break;
-                    } else {
-                        # Yield tool_call event before execution
-                        yield StreamEvent(
-                            event_type="tool_call",
-                            data={
-                                "tool": tool_call.tool.get_name(),
-                                "args": tool_call.args,
-                                "call_id": tool_call.call_id,
-                                "iteration": iter_count
-                            }
-                        );
-                        # Execute the tool
-                        result_msg = tool_call();
-                        last_tool = tool_call.tool.get_name();
-                        # Truncate result for the event stream (full result stays in mt_run messages).
-                        # Configurable via call_params["max_tool_result_length"], default 500.
-                        max_result_len = int(
-                            mt_run.call_params.get("max_tool_result_length")
-                            or self.call_params.get("max_tool_result_length")
-                            or _call_params_config.get("max_tool_result_length")
-                            or 500
-                        );
-                        truncated_result = result_msg.content[:max_result_len];
-                        last_result = truncated_result;
-                        yield StreamEvent(
-                            event_type="tool_result",
-                            data={
-                                "tool": tool_call.tool.get_name(),
-                                "result": truncated_result,
-                                "call_id": tool_call.call_id,
-                                "iteration": iter_count
-                            }
-                        );
-                        mt_run.add_message(result_msg);
+                    }
+                    non_finish_calls.append(tc);
+                }
+
+                if non_finish_calls {
+                    max_result_len = int(
+                        mt_run.call_params.get("max_tool_result_length")
+                        or self.call_params.get("max_tool_result_length")
+                        or _call_params_config.get("max_tool_result_length")
+                        or 500
+                    );
+
+                    # Parallel: full batch. Sequential: one-at-a-time via dispatch_batch.
+                    batches = (
+                        [non_finish_calls]
+                            if _should_parallelize(mt_run)
+                            else [[tc] for tc in non_finish_calls]
+                    );
+
+                    for batch in batches {
+                        # Announce tool calls before execution
+                        for btc in batch {
+                            yield StreamEvent(
+                                event_type="tool_call",
+                                data={
+                                    "tool": btc.tool.get_name(),
+                                    "args": btc.args,
+                                    "call_id": btc.call_id,
+                                    "iteration": iter_count
+                                }
+                            );
+                        }
+
+                        # Execute via dispatch_batch, emit results as they complete
+                        raw_results: list = [];
+                        for (btc, result_msg, tool_ms) in dispatch_batch(batch) {
+                            truncated_result = result_msg.content[:max_result_len];
+                            last_tool = btc.tool.get_name();
+                            last_result = truncated_result;
+                            yield StreamEvent(
+                                event_type="tool_result",
+                                data={
+                                    "tool": btc.tool.get_name(),
+                                    "result": truncated_result,
+                                    "call_id": btc.call_id,
+                                    "iteration": iter_count
+                                }
+                            );
+                            yield StreamEvent(
+                                event_type="tool_timing",
+                                data={
+                                    "tool": btc.tool.get_name(),
+                                    "duration_ms": tool_ms,
+                                    "call_id": btc.call_id,
+                                    "iteration": iter_count
+                                }
+                            );
+                            raw_results.append((btc, result_msg, tool_ms));
+                        }
+
+                        # Add messages in input order for deterministic history
+                        ordered: dict = {};
+                        for r in raw_results {
+                            idx = _index_by_identity(batch, r[0]);
+                            ordered[idx] = r;
+                        }
+                        for i in range(len(batch)) {
+                            mt_run.add_message(ordered[i][1]);
+                        }
                     }
                 }
-                # If we broke out of the for loop due to finish_tool, break the while loop too
-                if tool_call.is_finish_call() {
+
+                if finish_tc {
+                    mt_run.add_message(finish_tc());
+                    yield StreamEvent(
+                        event_type="steps_done", data={"iterations": iter_count}
+                    );
+                    for token in self._stream_final_answer(mt_run) {
+                        if token {
+                            yield StreamEvent(
+                                event_type="chunk", data={"content": token}
+                            );
+                        }
+                    }
                     break;
                 }
             } else {
-                # No tool calls — check if recovery is needed.
+                # No tool calls - check if recovery is needed.
                 # (OutputConversionError catch above handles real Model;
                 # this branch handles MockLLM which bypasses parse_response.)
                 recovery_resp = self._attempt_recovery(mt_run);
                 if recovery_resp is None {
-                    # Plain string return or no finish_tool — yield and exit
+                    # Plain string return or no finish_tool - yield and exit
                     yield StreamEvent(
                         event_type="steps_done", data={"iterations": iter_count}
                     );
@@ -731,4 +1301,8 @@ impl BaseLLM._invoke_streaming(
         );
         self._usage_history = [];
     }
+    # If `by llm(conversation=<list>)` was set, mutate the caller's list
+    # in place with the persistable conversation. Runs once when the
+    # generator is fully consumed.
+    mt_run.write_back_conversation();
 }

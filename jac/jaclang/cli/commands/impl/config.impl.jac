@@ -879,7 +879,6 @@ def _format_value(value: object) -> str {
 def _to_toml_value(value: object) -> str {
     if value is None {
         return '""';  # TOML doesn't have null, use empty string
-
     } elif isinstance(value, bool) {
         return "true" if value else "false";
     } elif isinstance(value, int) {
@@ -1221,7 +1220,6 @@ def _save_config_without_setting(
 
     if not config.toml_path.exists() {
         return;  # Nothing to remove
-
     }
 
     # Load existing file content

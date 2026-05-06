@@ -543,9 +543,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -569,9 +567,7 @@ impl JFastApiServer._create_endpoint_function(
                         }
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -590,9 +586,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = await callback(**{'request': __jac_request__});
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -606,9 +600,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = await callback();
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -627,9 +619,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = callback(**{'request': __jac_request__});
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -643,9 +633,7 @@ impl JFastApiServer._create_endpoint_function(
                         result = callback();
                         # Automatically convert TransportResponse to JSONResponse (like HTTPTransport.send)
                         if isinstance(result, TransportResponse) {
-                            return _convert_transport_response_to_json_response(
-                                result
-                            );
+                            return _convert_transport_response_to_json_response(result);
                         }
                         return result;
                     } except Exception as e {
@@ -1089,18 +1077,14 @@ impl JFastApiServer.init(
     self.__server_created = False;
 
     async def jwt_validation_middleware(request: Request, call_next: Callable) {
-        import from fastapi.responses { JSONResponse }
         authorization = request.headers.get('Authorization');
-        token: (str | None) = None;
         username: (str | None) = None;
         user_root_id: (str | None) = None;
-        token_attempted: bool = False;
 
         if authorization
         and isinstance(authorization, str)
         and authorization.startswith('Bearer ') {
             token = authorization[7:];
-            token_attempted = True;
 
             if self._user_manager {
                 username = self._user_manager.validate_jwt_token(token);
@@ -1109,16 +1093,6 @@ impl JFastApiServer.init(
                     user_root_id = self._user_manager.get_root_id(username);
                 }
             }
-        }
-
-        if token_attempted and not username {
-            return JSONResponse(
-                status_code=401,
-                content={
-                    'ok': False,
-                    'error': {'code': 'UNAUTHORIZED', 'message': 'Unauthorized'}
-                }
-            );
         }
 
         setattr(request.state, 'user_root_id', user_root_id);
