@@ -1642,6 +1642,121 @@ with entry {
 
 ---
 
+## Pub/Sub Message Broker
+
+Optional publish/subscribe layer for emitting and consuming events between jac code and external systems. Off by default. The default backend is Redis Streams; the abstraction (`MessageBroker`) makes it possible to add other backends in the future without changing call sites.
+
+### Overview
+
+- Topics are arbitrary strings; payloads are arbitrary `dict` data carried inside an `Event` envelope.
+- Push delivery via `@subscribe(topic)` runs handlers from a daemon consumer thread.
+- Pull delivery via `consume()` + `ack()` for synchronous, batch, or admin-style reads.
+- At-least-once delivery, configurable retry, automatic dead-letter queue per topic.
+- When disabled, both `publish()` and `@subscribe` are zero-overhead no-ops.
+
+### Enabling
+
+Add the section to `jac.toml`. Master switch is `enabled`; everything else has working defaults.
+
+```toml
+[plugins.scale.pubsub]
+enabled = true
+backend = "redis_streams"
+url = "redis://localhost:6379/0"
+consumer_group = "jac-scale"
+serializer = "json"
+
+[plugins.scale.pubsub.retry]
+max_attempts = 3
+backoff_seconds = [1, 5, 30]
+dead_letter_suffix = ".dlq"
+```
+
+The Redis Streams backend requires the `[data]` extras: `pip install jac-scale[data]`. If `redis` is not installed, the factory falls back to `NoOpBroker` automatically.
+
+### Publishing
+
+```jac
+import from jac_scale.events.publisher { publish }
+import from jac_scale.abstractions.pubsub { Event }
+
+publish("orders.placed", Event(
+    event_type="orders.placed",
+    data={"order_id": 42, "amount": 99.5},
+    trace_id="trace-1"
+));
+```
+
+`publish()` is fire-and-forget. Errors from the backend are logged and swallowed so emit sites do not have to wrap calls in try/except.
+
+### Subscribing (push)
+
+```jac
+import from jac_scale.events.subscriber { subscribe }
+import from jac_scale.abstractions.pubsub { Event }
+
+@subscribe("orders.placed")
+def on_order_placed(event: Event) -> None {
+    print(event.event_type, event.data);
+}
+```
+
+Handlers register at import time. At server startup, `_setup_pubsub` walks the registry and wires each into the active broker. A daemon consumer thread is spawned per subscription. Successful return auto-acks; raised exceptions trigger retry per the policy below.
+
+`@subscribe` accepts optional `group=` and `retry=` arguments to override the defaults from `jac.toml`.
+
+### Consuming (pull)
+
+```jac
+import from jac_scale.events.publisher { publish }
+import from jac_scale.abstractions.pubsub { Event }
+
+# Inside a walker / function that has access to the broker:
+batch = broker.consume("orders.placed", max_messages=10, timeout_seconds=2.0);
+for ev in batch {
+    # ... process ev ...
+    broker.ack(ev);
+}
+```
+
+`consume()` blocks for up to `timeout_seconds` waiting for at least one message, then returns whatever has arrived (up to `max_messages`). Each event must be acked individually via `ack(event)` or the broker will redeliver it after its visibility timeout.
+
+### Configuration reference
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Master switch. When `false`, all pub/sub calls are no-ops. |
+| `backend` | `redis_streams` | Backend identifier: `redis_streams` or `noop`. |
+| `url` | `redis://localhost:6379/0` | Connection URL for the broker. |
+| `consumer_group` | `jac-scale` | Default consumer group name when `@subscribe` does not specify one. |
+| `serializer` | `json` | Wire format. JSON today, MessagePack later. |
+| `retry.max_attempts` | `3` | Number of delivery attempts before sending to DLQ. |
+| `retry.backoff_seconds` | `[1, 5, 30]` | Backoff delays per attempt index, clamped to the last value. |
+| `retry.dead_letter_suffix` | `.dlq` | Suffix appended to a topic name to form its dead-letter topic. |
+
+### Reliability semantics
+
+- **At-least-once delivery.** Handlers may run more than once for the same event. Make handlers idempotent, or dedupe on `event.id`.
+- **Retry.** A failing handler is retried `retry.max_attempts` times with delays from `retry.backoff_seconds`. The thread sleeps responsively to the broker stop event so shutdowns are not blocked by long backoffs.
+- **Dead-letter queue.** After retry exhaustion, the event is published to `<topic><retry.dead_letter_suffix>` and the original is acked so it is not redelivered indefinitely. The DLQ is a regular Redis stream you can `consume()` like any other.
+- **Drain on shutdown.** `_setup_pubsub` registers `atexit.register(broker.stop)`. On process exit, the broker sets its stop event and joins consumer threads (10s timeout per thread).
+
+### Backends
+
+| Backend | When | Requires |
+|---------|------|----------|
+| `noop` | Disabled, or fallback when `redis` is missing. Zero overhead. | nothing |
+| `redis_streams` | Default when enabled. Maps to `XADD` / `XREADGROUP` / `XACK` / DLQ via separate stream. | `pip install jac-scale[data]` (Redis 5+ runtime) |
+
+### Operational notes
+
+- Each subscription spawns one daemon thread named `jac-scale-broker-<topic>-<group>`. Inspect via standard threading tools.
+- Delivery metadata (Redis stream id, topic, group) is stashed in `event.headers` under reserved keys (`_jac_scale_delivery_id` etc.) so `ack(event)` does not need a separate handle. Treat headers prefixed with `_jac_scale_` as broker-managed.
+- Startup logs `Pub/sub broker enabled (backend=..., subscriptions=N)` so it is easy to confirm wiring at a glance.
+- The wire format is CloudEvents-compatible (`type`, `data`, `id`, `source`, `time`, `trace_id`, `headers`), so external Kafka or Redis CLI consumers see standard fields.
+
+---
+
 ## Database and Dashboards
 
 ### Auto-Provisioning

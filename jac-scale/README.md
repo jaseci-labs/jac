@@ -32,6 +32,13 @@ Whether you're developing locally with `jac start` or deploying to production wi
 - **Secure Authentication**: Integrated with JWT for secure session management
 - **User Management**: Automatic account creation and linking
 
+### 5. Pub/Sub Message Broker (Optional)
+
+- **Module-level API**: Call `publish("topic", event)` from any walker, function, or scheduled task; register handlers with `@subscribe("topic")`
+- **At-least-once delivery**: Configurable retry with automatic dead-letter queue per topic
+- **Pluggable backends**: Redis Streams ships in-tree; the abstraction allows other backends without changing call sites
+- **Off by default**: Enable via `[plugins.scale.pubsub]` in `jac.toml`. See the [Pub/Sub Message Broker reference](../docs/docs/reference/plugins/jac-scale.md#pubsub-message-broker) for full details.
+
 ## Prerequisites
 
 - kubenetes(K8s) installed
