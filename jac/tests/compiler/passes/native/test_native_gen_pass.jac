@@ -2568,16 +2568,6 @@ test "cross module glob init: pushed values are readable" {
     assert get_second() == 99 , f"Expected 99, got {get_second()}";
 }
 
-test "transitive import: compiles without errors" {
-    # fix_transitive_entry imports fix_transitive_mid which imports fix_transitive_leaf.
-    # All three modules must be linked for compilation to succeed.
-    prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_transitive_entry.na.jac")));
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
-}
-
 test "transitive import: function call through two import hops returns correct value" {
     # run_transitive_test() → get_mid() → get_leaf() → 99
     # All three functions must be linked for this to work.
