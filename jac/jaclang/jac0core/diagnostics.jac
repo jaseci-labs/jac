@@ -559,6 +559,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E2083 = _err(
          "E2083", Category.SEMANTIC, "'disengage' is only valid inside a walker ability"
      ),
+     E2084 = _err(
+         "E2084",
+         Category.SEMANTIC,
+         "'root' is a value reference, not a type — use 'Root' to bind a walker ability to the root node type",
+         help="Change `with root entry` to `with Root entry`"
+     ),
      # Def-impl match errors
      E2009 = _err(
          "E2009",
@@ -803,6 +809,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Binary operator {op} not supported in bootstrap Jac"
      ),
      E5008 = _err("E5008", Category.CODEGEN, "Invalid attribute access"),
+     E5009 = _err(
+         "E5009",
+         Category.CODEGEN,
+         "'root' is a value reference, not a type — use 'Root' to bind a walker ability to the root node type",
+         help="Change `with root entry` to `with Root entry`"
+     ),
      E5010 = _err(
          "E5010",
          Category.CODEGEN,

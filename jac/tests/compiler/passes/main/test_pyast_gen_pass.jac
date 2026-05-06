@@ -277,6 +277,23 @@ test "iife fixture executes" {
     }
 }
 
+test "E5009: root value used as type in walker event signature" {
+    code = """
+walker ListTodos {
+    can collect with root entry {
+        print("I am here");
+    }
+}
+""";
+    prog = JacProgram();
+    prog.compile(file_path="test.jac", use_str=code);
+    assert prog.errors_had;
+    error_messages = [str(e) for e in prog.errors_had];
+    assert any("'root' is a value reference" in msg for msg in error_messages) , (
+        f"Expected E5009 error about root value reference, got: {error_messages}"
+    );
+}
+
 test "string literal import requires cl" {
     code = """import from "react-dom" { render }""";
     prog = JacProgram();

@@ -21,7 +21,8 @@ import from jaclang.jac0core.diagnostics {
     W2074,
     W2075,
     E2055,
-    E2083
+    E2083,
+    E2084
 }
 
 """Static analysis pass for JacLang.

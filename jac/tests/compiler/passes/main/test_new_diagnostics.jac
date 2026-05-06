@@ -619,6 +619,11 @@ test "E2083: disengage outside walker" {
     assert has_diagnostic_code(prog, "E2083");
 }
 
+test "E2084: root value used as type in walker event signature" {
+    (prog, _) = compile_and_check("context_E2084_root_in_event_sig.jac");
+    assert has_diagnostic_code(prog, "E2084");
+}
+
 # --- Jac-Specific ---
 test "W2085: walker has no visit statements" {
     pytest.skip("W2085 not yet implemented");

@@ -381,7 +381,16 @@ impl ObjectSpatialFunction.trigger -> (
     if (len(parameters) >= 2) {
         second_param = `list(parameters.values())[1];
         ty = second_param.annotation;
-        return ty if (ty != _empty) else None;
+        if ty == _empty {
+            return None;
+        }
+        if not isinstance(ty, (type, UnionType, tuple)) {
+            raise TypeError(
+                f"Walker ability '{self.name}' has annotation '{ty!r}' which is not a "
+                "type. Did you mean 'Root' instead of 'root'?"
+            );
+        }
+        return ty;
     }
     return None;
 }

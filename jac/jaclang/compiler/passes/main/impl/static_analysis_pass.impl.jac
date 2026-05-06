@@ -245,6 +245,16 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
         }
     }
 
+    # E2084: 'root' (value) used where 'Root' (type) is required in event signature
+    for nd in mod.get_all_sub_nodes(typ=uni.EventSignature, brute_force=True) {
+        if isinstance(nd.arch_tag_info, uni.SpecialVarRef) {
+            import from jaclang.jac0core.constant { Tokens as Tok }
+            if nd.arch_tag_info.name == Tok.KW_ROOT {
+                self.emit(E2084, node_override=nd.arch_tag_info);
+            }
+        }
+    }
+
     # E2083: disengage outside walker
     for nd in mod.get_all_sub_nodes(typ=uni.DisengageStmt, brute_force=True) {
         # Walk up to find if we're inside a walker ability

@@ -1459,6 +1459,12 @@ impl PyastGenPass.exit_func_signature(nd: uni.FuncSignature) -> None {
 
 impl PyastGenPass.exit_event_signature(nd: uni.EventSignature) -> None {
     arch_kw = Con.HERE.value if nd.from_walker else Con.VISITOR.value;
+    if (
+        isinstance(nd.arch_tag_info, uni.SpecialVarRef)
+        and nd.arch_tag_info.name == Tok.KW_ROOT
+    ) {
+        self.emit(E5009, node_override=nd.arch_tag_info);
+    }
     annotation = None;
     if nd.arch_tag_info {
         py_ast = cast(ast3.expr, self.py_ast_val(nd.arch_tag_info));
