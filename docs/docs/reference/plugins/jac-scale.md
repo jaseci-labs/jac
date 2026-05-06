@@ -46,6 +46,7 @@ jac plugins enable scale
 |-------|-------------|-----------------|
 | _(core)_ | FastAPI, uvicorn, JWT auth, CLI | Always included |
 | `[data]` | pymongo, redis | Using MongoDB/Redis for storage (`jac start` with database config) |
+| `[aws]` | boto3 | Using S3-compatible cloud storage |
 | `[monitoring]` | prometheus-client | Prometheus `/metrics` endpoint |
 | `[scheduler]` | apscheduler | `@schedule(trigger=...)` on walkers/functions |
 | `[deploy]` | kubernetes, docker | `jac start --scale` or `jac start --build` |
@@ -1280,6 +1281,7 @@ All storage instances provide these methods:
 | `get_metadata` | `get_metadata(path) -> dict` | Get file metadata (size, modified, created, is_dir, name) |
 | `copy` | `copy(source, destination) -> bool` | Copy a file within storage |
 | `move` | `move(source, destination) -> bool` | Move a file within storage |
+| `get_url` | `get_url(path, expires_in=3600) -> str` | Get a public or pre-signed URL for a file |
 
 ### Usage Example
 
@@ -1328,6 +1330,50 @@ walker :pub list_files {
         report {"files": files};
     }
 }
+```
+
+### S3-Compatible Cloud Storage
+
+`jac-scale` enables seamless integration with S3-compatible object storage. When configured, the `store()` builtin returns an `S3Storage` instance instead of the default local one.
+
+#### Configuration
+
+Storage is configured in `jac.toml` under the `[plugins.scale.storage]` section or via environment variables.
+
+| `jac.toml` key | Env Variable | Description | Default |
+|----------------|--------------|-------------|---------|
+| `type` | `JAC_STORAGE_TYPE` | Storage backend: `local` or `s3` | `local` |
+| `bucket` | `JAC_STORAGE_S3_BUCKET` | S3 bucket name | None |
+| `region` | `JAC_STORAGE_S3_REGION` | S3 region | `us-east-1` |
+| `prefix` | `JAC_STORAGE_S3_PREFIX` | Optional prefix (directory) for all keys | `""` |
+| `endpoint_url`| `JAC_STORAGE_S3_ENDPOINT_URL` | Custom endpoint for non-AWS providers | None |
+| `public_read` | `JAC_STORAGE_S3_PUBLIC_READ` | If `true`, returns direct public URLs | `false` |
+
+**Example `jac.toml`:**
+
+```toml
+[plugins.scale.storage]
+type = "s3"
+bucket = "my-app-uploads"
+region = "us-east-1"
+public_read = false
+```
+
+### Generating URLs
+
+The `get_url()` method provides a standardized way to expose files to the internet or internal services.
+
+- **LocalStorage**: Returns a `file://` URI to the absolute path of the file.
+- **S3Storage (Private)**: Returns a secure **pre-signed URL** that expires after the specified time (default: 1 hour).
+- **S3Storage (Public)**: If `public_read = true`, returns a direct, permanent public URL.
+
+```jac
+glob storage = store();
+
+# Generate a URL that expires in 10 minutes (600 seconds)
+# For S3, this is a pre-signed URL.
+url = storage.get_url("profile-photos/user1.jpg", expires_in=600);
+```
 
 walker :pub download_file {
     has path: str;
@@ -1341,6 +1387,7 @@ walker :pub download_file {
         report {"content": content, "size": len(content)};
     }
 }
+
 ```
 
 ### Configuration
