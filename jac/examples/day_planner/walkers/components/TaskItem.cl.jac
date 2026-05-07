@@ -2,7 +2,9 @@
 
 sv import from ..main { Task }
 
-def:pub TaskItem(task: Task, onToggle: Any, onDelete: Any) -> JsxElement {
+def:pub TaskItem(
+    task: Task, onToggle: Callable[[], None], onDelete: Callable[[], None]
+) -> JsxElement {
     return
         <div class="task-item">
             <input type="checkbox" checked={task.done} onChange={onToggle}/>

@@ -217,6 +217,15 @@ obj TypeEvaluator {
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
+        _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
+        # Names made ambient by typing_ambient.pyi's __all__, keyed by the
+        # source module the stub re-exports them from (typing /
+        # collections.abc). Built once in postinit by parsing the stub's
+        # `from <module> import (...)` blocks and intersecting with __all__,
+        # so this stays in lockstep with the merged builtins and the
+        # PyastGenPass codegen preamble. Lint passes (e.g.
+        # StaticAnalysisPass) consume this to detect redundant imports.
+        ambient_typing_names_by_module: dict[str, set[str]] = {},
         _ENUM_STUB_FILE_PATH: str by postinit,
         _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
             "Union",

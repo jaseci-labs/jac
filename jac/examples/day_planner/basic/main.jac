@@ -111,7 +111,9 @@ to cl:
 import "./styles.css";
 
 """Single task row -- presentational; toggle and delete are passed in."""
-def:pub TaskItem(task: Task, onToggle: Any, onDelete: Any) -> JsxElement {
+def:pub TaskItem(
+    task: Task, onToggle: Callable[[], None], onDelete: Callable[[], None]
+) -> JsxElement {
     return
         <div class="task-item">
             <input type="checkbox" checked={task.done} onChange={onToggle}/>

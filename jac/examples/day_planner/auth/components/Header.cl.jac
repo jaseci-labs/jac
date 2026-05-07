@@ -1,6 +1,6 @@
 """App header with title, subtitle, and sign-out button."""
 
-def:pub Header(onLogout: Any) -> JsxElement {
+def:pub Header(onLogout: Callable[[], None]) -> JsxElement {
     return
         <div class="header">
             <div>
