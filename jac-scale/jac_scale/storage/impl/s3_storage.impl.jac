@@ -2,6 +2,7 @@
 import boto3;
 import from botocore.exceptions { ClientError }
 import from botocore.config { Config }
+import from botocore { UNSIGNED }
 import from io { BytesIO }
 
 impl S3Storage.init(
@@ -24,6 +25,14 @@ impl S3Storage.init(
         region_name=self.region,
         endpoint_url=self.endpoint_url,
         config=Config(signature_version="s3v4")
+    );
+
+    # Unsigned client for generating public, correctly-encoded URLs
+    self._public_client = boto3.client(
+        "s3",
+        region_name=self.region,
+        endpoint_url=self.endpoint_url,
+        config=Config(signature_version=UNSIGNED)
     );
 }
 
@@ -161,14 +170,13 @@ impl S3Storage.get_url(
     self: S3Storage, path: str, expires_in: (int | None) = 3600
 ) -> str {
     key = self._resolve_key(path);
-    if self.public_read {
-        if self.endpoint_url {
-            return f"{self.endpoint_url.rstrip('/')}/{self.bucket}/{key}";
-        }
-        return f"https://{self.bucket}.s3.{self.region}.amazonaws.com/{key}";
-    }
 
-    return self._client.generate_presigned_url(
+    # Use the appropriate client based on public/private access
+    # Boto3's generate_presigned_url handles URL encoding (spaces, +, etc.)
+    # and "dot in bucket name" issues automatically.
+    client = self._public_client if self.public_read else self._client;
+
+    return client.generate_presigned_url(
         "get_object", Params={"Bucket": self.bucket, "Key": key}, ExpiresIn=expires_in
     );
 }

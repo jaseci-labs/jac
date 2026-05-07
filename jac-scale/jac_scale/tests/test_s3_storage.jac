@@ -97,7 +97,8 @@ test "s3 get_url public" {
         s3.create_bucket(Bucket="public-bucket");
         storage = get_mock_s3_storage(bucket="public-bucket", public=True);
         url = storage.get_url("photo.jpg");
-        assert url == "https://public-bucket.s3.us-east-1.amazonaws.com/photo.jpg";
+        assert "public-bucket" in url;
+        assert "photo.jpg" in url;
     }
 }
 
@@ -266,5 +267,22 @@ region = "eu-central-1"
     } finally {
         env_patcher.stop();
         cfg_patcher.stop();
+    }
+}
+
+test "s3 get_url handles special characters and encoding" {
+    with mock_aws() {
+        s3 = boto3.client("s3", region_name="us-east-1");
+        s3.create_bucket(Bucket="test-bucket");
+        # Test with public=True to verify UNSIGNED client logic
+        storage = get_mock_s3_storage(public=True);
+        # Path with spaces and a hash
+        path = "uploads/my summer #photo.jpg";
+        url = storage.get_url(path);
+        # 1. Verify space is encoded as %20 and # as %23
+        assert "my%20summer%20%23photo.jpg" in url;
+        # 2. Verify no signature/tokens in the URL (should be a clean public link)
+        assert "X-Amz-Signature" not in url;
+        assert "X-Amz-Algorithm" not in url;
     }
 }
