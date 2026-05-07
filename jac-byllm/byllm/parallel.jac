@@ -25,7 +25,11 @@ import logging;
 import os;
 import time;
 
-import from concurrent.futures { ThreadPoolExecutor, as_completed }
+import from concurrent.futures {
+    ThreadPoolExecutor,
+    TimeoutError as _FuturesTimeout,
+    as_completed
+}
 import from byllm.types { ToolCallResultMsg }
 
 glob _plog = logging.getLogger("byllm.parallel"),
@@ -95,31 +99,30 @@ def _index_by_identity(seq: list, item: Any) -> int {
 }
 
 
-"""Call a synchronous tool, optionally wrapping in a thread with timeout."""
+"""Call a synchronous tool, optionally wrapping with timeout.
+
+Uses a one-shot ThreadPoolExecutor so Future.result(timeout=...) handles
+both timeout and exception propagation natively. shutdown(wait=False)
+preserves the prior daemon-leak semantics: on timeout, the in-flight tool
+keeps running in the background; the outer pool worker is freed immediately.
+"""
 def _call_sync(tc: Any, timeout: Any) -> Any {
     if timeout is None {
         return tc();
     }
-    import threading;
-    result_box: list = [None];
-    error_box: list = [None];
-    def _worker {
+    pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="byllm-tool-timeout");
+    try {
+        f = pool.submit(tc);
         try {
-            result_box[0] = tc();
-        } except Exception as e {
-            error_box[0] = e;
+            return f.result(timeout=timeout);
+        } except _FuturesTimeout {
+            raise TimeoutError(
+                f"Tool '{tc.tool.get_name()}' timed out after {timeout}s"
+            );
         }
+    } finally {
+        pool.shutdown(wait=False);
     }
-    t = threading.Thread(target=_worker, daemon=True);
-    t.start();
-    t.join(timeout=timeout);
-    if t.is_alive() {
-        raise TimeoutError(f"Tool '{tc.tool.get_name()}' timed out after {timeout}s");
-    }
-    if error_box[0] is not None {
-        raise error_box[0];
-    }
-    return result_box[0];
 }
 
 
