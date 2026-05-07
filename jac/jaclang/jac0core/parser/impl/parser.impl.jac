@@ -927,7 +927,7 @@ impl Parser._is_ternary_question_mark -> bool {
         TokenKind.NAME, TokenKind.KWESC_NAME,
         TokenKind.LPAREN, TokenKind.LBRACE,
         TokenKind.MINUS, TokenKind.PLUS, TokenKind.KW_NOT,
-        TokenKind.KW_TRUE, TokenKind.KW_FALSE, TokenKind.KW_NONE
+        TokenKind.BOOL, TokenKind.NULL
     ) {
         return True;
     }
