@@ -124,6 +124,28 @@ impl JacScaleUserManager.update_password(
     );
 }
 
+impl JacScaleUserManager.update_profile(
+    user_id: str, profile_updates: dict[str, Any]
+) -> dict[str, Any] {
+    user = self.get_user(user_id);
+    if not user {
+        return {'error': 'User not found'};
+    }
+    raw_profile = user.get('profile');
+    current_profile: dict[str, Any] = (
+        raw_profile if isinstance(raw_profile, dict) else {}
+    );
+    merged = dict(current_profile);
+    for (key, value) in profile_updates.items() {
+        merged[key] = value;
+    }
+    success = self._identity_storage.update_user_fields(user_id, {'profile': merged});
+    if not success {
+        return {'error': 'Profile update failed'};
+    }
+    return {'profile': merged};
+}
+
 impl JacScaleUserManager.validate_token(token: str) -> str | None {
     return self.validate_jwt_token(token);
 }
@@ -318,8 +340,17 @@ impl JacScaleUserManager.sso_callback(
             # display_name/picture stay current. Only the SSO namespace is
             # touched — developer-set profile fields are untouched.
             if sso_fields {
-                current_profile = (existing.get('profile') or {}) if existing else {};
-                current_sso = current_profile.get('sso') or {};
+                raw_profile = existing.get('profile') if existing else None;
+                current_profile: dict[str, Any] = (
+                    raw_profile if isinstance(raw_profile, dict) else {}
+                );
+                # Defensive: legacy users from before reserved-key enforcement
+                # may have a non-dict at profile.sso. Treat as empty rather
+                # than crashing on dict-style assignment below.
+                raw_sso = current_profile.get('sso');
+                current_sso: dict[str, Any] = (
+                    raw_sso if isinstance(raw_sso, dict) else {}
+                );
                 current_sso[platform] = sso_fields;
                 current_profile['sso'] = current_sso;
                 self._identity_storage.update_user_fields(

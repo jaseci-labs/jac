@@ -584,6 +584,7 @@ impl SqliteMemory.get(id: UUID) -> (Anchor | None) {
             return None;
         }
         self.__mem__[id] = cast(Anchor, anchor);
+        _sqlite_snapshot_field_hashes(cast(Anchor, anchor));
         return cast(Anchor, anchor);
     }
 }
@@ -706,6 +707,55 @@ def _canonical_json(val: object) -> str {
         sort_keys=True,
         default=lambda v: str : str(v)
     );
+}
+
+"""Stable hash of a single serialized field value — used for per-field dirty detection."""
+def _sqlite_field_hash(val: object) -> int {
+    try {
+        return hash(json.dumps(val, sort_keys=True, default=str));
+    } except Exception {
+        return hash(str(val));
+    }
+}
+
+"""Snapshot per-field hashes onto the archetype after a successful DB load or sync write."""
+def _sqlite_snapshot_field_hashes(anchor: Anchor) -> None {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return;
+    }
+    arch = anchor.archetype;
+    known = Serializer._get_field_types(type(arch)).keys();
+    _seen: tuple[set, set] = (set(), set());
+    hashes: dict[str, int] = {};
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        hashes[name] = _sqlite_field_hash(serialized);
+    }
+    object.__setattr__(arch, '__jac_field_hashes__', hashes);
+}
+
+"""Derive dirty fields by comparing current field values against the stored hash snapshot."""
+def _sqlite_derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
+    if not anchor.is_populated() or anchor.archetype is None {
+        return set();
+    }
+    arch = anchor.archetype;
+    stored: dict[str, int] = arch.__dict__.get('__jac_field_hashes__', {});
+    if not stored {
+        return set();
+    }
+    known = Serializer._get_field_types(type(arch)).keys();
+    dirty: set[str] = set();
+    _seen: tuple[set, set] = (set(), set());
+    for name in known {
+        val = getattr(arch, name, None);
+        serialized = Serializer._serialize_value(val, include_type=True, _seen=_seen);
+        if _sqlite_field_hash(serialized) != stored.get(name) {
+            dirty.add(name);
+        }
+    }
+    return dirty;
 }
 
 """Sync memory to database with access control checks.
@@ -832,18 +882,40 @@ impl SqliteMemory.sync -> None {
                     access_changed = _canonical_json(stored_anchor.access) != _canonical_json(
                         anchor.access
                     );
-                    archetype_changed = _canonical_json(stored_anchor.archetype) != _canonical_json(
-                        anchor.archetype
-                    );
-                    if (access_changed or archetype_changed)
+                    arch = anchor.archetype;
+                    setattr_dirty: set[str] = set(
+                        arch.__dict__.get('__jac_dirty_fields__') or set()
+                    )
+                        if arch is not None
+                        else set();
+                    hash_dirty: set[str] = _sqlite_derive_dirty_from_field_hashes(
+                        anchor
+                    )
+                        if arch is not None
+                        else set();
+                    dirty = setattr_dirty | hash_dirty;
+                    if (access_changed or dirty)
                     and Jac.check_write_access(anchor, op_hint="field_write") {
                         if access_changed {
                             stored_anchor.access = anchor.access;
+                            changed = True;
                         }
-                        if archetype_changed {
-                            stored_anchor.archetype = anchor.archetype;
+                        if dirty
+                        and stored_anchor.archetype is not None
+                        and arch is not None {
+                            for field in dirty {
+                                try {
+                                    setattr(
+                                        stored_anchor.archetype,
+                                        field,
+                                        getattr(arch, field)
+                                    );
+                                } except AttributeError {
+                                    continue;
+                                }
+                            }
+                            changed = True;
                         }
-                        changed = True;
                     }
                     # Only write to database if something actually changed
                     if changed {
@@ -857,6 +929,10 @@ impl SqliteMemory.sync -> None {
                             """,
                             (key, ) + merged_row
                         );
+                        if anchor.archetype is not None {
+                            anchor.archetype.__dict__.pop('__jac_dirty_fields__', None);
+                            _sqlite_snapshot_field_hashes(anchor);
+                        }
                     }
                 } else {
                     # No stored or stored is a stub - save anchor if valid

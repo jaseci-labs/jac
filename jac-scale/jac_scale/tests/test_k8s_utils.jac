@@ -15,6 +15,8 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     load_env_variables,
     parse_cpu_quantity,
     parse_memory_quantity,
+    parse_storage_quantity,
+    resize_pvc_if_needed,
     sync_code_to_pvc,
     validate_resource_limits
 }
@@ -376,4 +378,94 @@ test "check pods restarted selector and return values" {
     }
 
     assert result_stabilised is False , "pod that restarted once but is now running should not be flagged as crashed";
+}
+
+# --- resize_pvc_if_needed ---
+test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
+    # Helper that returns a fake PVC whose storage request is `size`.
+    def make_pvc(size: str) -> object {
+        pvc = unittest.mock.MagicMock();
+        pvc.spec.resources.requests = {"storage": size};
+        return pvc;
+    }
+
+    # Case 1 — increase: patch must be called with the larger size.
+    core_v1 = unittest.mock.MagicMock();
+    core_v1.read_namespaced_persistent_volume_claim.return_value = make_pvc("1Gi");
+    resize_pvc_if_needed(core_v1, "ns", "mongo-pvc", "10Gi");
+    core_v1.patch_namespaced_persistent_volume_claim.assert_called_once_with(
+        "mongo-pvc", "ns", {"spec": {"resources": {"requests": {"storage": "10Gi"}}}}
+    );
+
+    # Case 2 — same size: patch must NOT be called.
+    core_v1_noop = unittest.mock.MagicMock();
+    core_v1_noop.read_namespaced_persistent_volume_claim.return_value = make_pvc("10Gi");
+    resize_pvc_if_needed(core_v1_noop, "ns", "mongo-pvc", "10Gi");
+    core_v1_noop.patch_namespaced_persistent_volume_claim.assert_not_called();
+
+    # Case 3 — decrease: must raise ValueError.
+    core_v1_shrink = unittest.mock.MagicMock();
+    core_v1_shrink.read_namespaced_persistent_volume_claim.return_value = make_pvc(
+        "10Gi"
+    );
+    raised = False;
+    try {
+        resize_pvc_if_needed(core_v1_shrink, "ns", "mongo-pvc", "1Gi");
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , "Expected ValueError when trying to shrink PVC";
+
+    # Case 4 — PVC not yet provisioned (first deploy): 404 must return silently.
+    core_v1_new = unittest.mock.MagicMock();
+    core_v1_new.read_namespaced_persistent_volume_claim.side_effect = ApiException(
+        status=404
+    );
+    resize_pvc_if_needed(core_v1_new, "ns", "mongo-pvc", "10Gi");
+    core_v1_new.patch_namespaced_persistent_volume_claim.assert_not_called();
+}
+
+# --- parse_storage_quantity valid ---
+def _test_parse_storage_valid(pair: tuple) {
+    raw = pair[0];
+    expected = pair[1];
+    result = parse_storage_quantity(raw);
+    assert result == expected , f"parse_storage_quantity({raw!r}) = {result}, expected {expected}";
+}
+
+with entry {
+    parametrize(
+        "parse storage quantity valid",
+        [
+            ("1Ki", 1024),
+            ("1Mi", 1024 ** 2),
+            ("1Gi", 1024 ** 3),
+            ("2Ti", 2 * 1024 ** 4),
+            ("500", 500),
+            ("1k", 1000),
+            ("1M", 1000 ** 2),
+            ("1G", 1000 ** 3),
+            (" 4Gi ", 4 * 1024 ** 3)
+        ],
+        _test_parse_storage_valid
+    );
+}
+
+# --- parse_storage_quantity invalid ---
+def _test_parse_storage_invalid(raw: str) {
+    raised = False;
+    try {
+        parse_storage_quantity(raw);
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , f"Expected ValueError for parse_storage_quantity({raw!r})";
+}
+
+with entry {
+    parametrize(
+        "parse storage quantity invalid",
+        ["", "abc", "Gi", "10X", "10gi", "10GI"],
+        _test_parse_storage_invalid
+    );
 }

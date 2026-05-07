@@ -334,6 +334,32 @@ if typing.TYPE_CHECKING:
 
 If you later add runtime usage like `MyClass()`, the compiler automatically promotes it back to a regular import. No manual `if TYPE_CHECKING` blocks are needed in Jac.
 
+#### Ambient Typing Names
+
+A curated set of annotation-only names from `typing` resolves in user code without an explicit import:
+
+`Callable`, `Protocol`, `TypeVar`, `Generic`, `Literal`, `ClassVar`, `Annotated`, `Iterable`, `Iterator`, `AsyncIterable`, `AsyncIterator`, `Mapping`, `MutableMapping`, `Sequence`, `MutableSequence`, `Awaitable`, `Coroutine`.
+
+```jac
+def:pub apply(func: Callable[[int, int], int], x: int, y: int) -> int {
+    return func(x, y);
+}
+```
+
+The Python codegen still emits `from typing import Callable` to the generated module preamble, so runtime introspection (`typing.get_type_hints`, pydantic, FastAPI) keeps working. The JS codegen strips annotations from function signatures, so no `typing` import lands in the bundle.
+
+Names skipped on purpose:
+
+| Don't write | Use instead |
+|-------------|-------------|
+| `Any` | the `any` keyword |
+| `Optional[X]` | `X \| None` |
+| `Union[X, Y]` | `X \| Y` |
+| `List[X]`, `Dict[K, V]`, `Set[X]`, `FrozenSet[X]`, `Tuple[X, ...]`, `Type[X]` | the lowercase built-ins (PEP 585) |
+| `DefaultDict`, `OrderedDict`, `Counter`, `Deque` | the `collections` equivalents |
+
+Runtime values like `cast`, `overload`, `runtime_checkable`, `TYPE_CHECKING`, `get_type_hints`, `get_args`, `get_origin`, and `no_type_check` are not ambient -- import them explicitly when needed.
+
 ### 3 Generic Types
 
 Jac will support generic type parameters using Python-style syntax (coming soon):
