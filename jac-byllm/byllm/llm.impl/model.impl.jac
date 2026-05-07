@@ -104,7 +104,9 @@ impl Model.invoke(mt_run: MTRuntime) -> object {
                     _current_invocation_id.reset(ctx_token);
                 }
             }
-            return _wrap_generator(result, mt_run, self.model_name, _start, _ctx_token);
+            return _wrap_generator(
+                result, mt_run, self.model_name, _start, _ctx_token
+            );
         }
 
         _emit_agent_telemetry(

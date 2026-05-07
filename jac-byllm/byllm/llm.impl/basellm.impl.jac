@@ -713,7 +713,9 @@ impl BaseLLM.format_prompt(params: dict) -> str {
         }
     }
     def _msg_content(m: object) -> object {
-        if isinstance(m, dict) { return m.get("content"); }
+        if isinstance(m, dict) {
+            return m.get("content");
+        }
         return getattr(m, "content", None);
     }
     msgs = log_params["messages"];
@@ -722,13 +724,9 @@ impl BaseLLM.format_prompt(params: dict) -> str {
     {MAGENTA}[SYSTEM]{RESET}
     {_msg_content(msgs[0])}
     {MAGENTA}[USER]{RESET}
-    {user_content[0]['text']
-        if isinstance(user_content, list)
-        else user_content}
+    {user_content[0]['text'] if isinstance(user_content, list) else user_content}
     {MAGENTA}[TOOL]{RESET}
-    {_msg_content(msgs[3])
-        if len(msgs) > 3
-        else "No tools provided."}
+    {_msg_content(msgs[3]) if len(msgs) > 3 else "No tools provided."}
     {" "}
     {MAGENTA}[TOOLS]{RESET}
     {json.dumps(log_params.get("tools"), indent=2, ensure_ascii=False)
