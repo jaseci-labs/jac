@@ -3727,7 +3727,6 @@ impl TypeEvaluator._get_type_from_flow_node(
                         (isinstance(t, uni.Name) and t.value == key)
                         or (
                             isinstance(t, uni.AtomTrailer)
-                            and t.is_attr
                             and self.create_key_for_reference(t) == key
                         )
                     ) {

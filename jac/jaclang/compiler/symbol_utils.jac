@@ -334,7 +334,7 @@ def collect_assignment_target_keys(target: uni.UniNode) -> set[str] {
     keys: set[str] = set();
     if isinstance(target, uni.Name) {
         keys.add(target.value);
-    } elif isinstance(target, uni.AtomTrailer) and target.is_attr {
+    } elif isinstance(target, uni.AtomTrailer) {
         if key := get_expr_key(target) {
             keys.add(key);
         }

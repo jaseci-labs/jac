@@ -40,3 +40,18 @@ def first_start(items: list[Segment]) -> int {
     }
     return -1;
 }
+
+def post_assign_int_rhs(items: list[Item | Other]) -> int {
+    items[0] = Other();
+    return items[0].code;  # ok: items[0] narrowed to Other (RHS type), .code exists
+}
+
+def post_assign_neg_rhs(items: list[Item | Other]) -> int {
+    items[-1] = Other();
+    return items[-1].code;  # ok: items[-1] narrowed to Other (RHS type)
+}
+
+def post_assign_str_rhs(config: dict[str, Item | Other]) -> int {
+    config["host"] = Other();
+    return config["host"].code;  # ok: config["host"] narrowed to Other (RHS type)
+}
