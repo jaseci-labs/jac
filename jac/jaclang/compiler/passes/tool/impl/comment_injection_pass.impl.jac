@@ -349,6 +349,18 @@ impl CommentInjectionPass._make_standalone_comment(
 ) -> doc.DocType {
     text = comment.value;
     if (in_jsx and text.startswith("#*")) {
+        lines = text.splitlines();
+        if len(lines) > 1 {
+            parts: list[doc.DocType] = [doc.Text("{" + lines[0])];
+            for line in lines[1:-1] {
+                parts.append(doc.Line(hard=True));
+                parts.append(doc.Text("    " + line.lstrip()));
+            }
+            parts.append(doc.Line(hard=True));
+            parts.append(doc.Text(lines[-1].lstrip() + "}"));
+            parts.append(doc.Line(hard=True));
+            return doc.Concat(parts);
+        }
         text = "{" + text + "}";
     }
     return doc.Concat([doc.Text(text), doc.Line(hard=True)]);
