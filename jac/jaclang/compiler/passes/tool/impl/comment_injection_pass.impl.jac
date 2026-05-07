@@ -582,17 +582,24 @@ impl CommentInjectionPass._handle_body_comments(
         }
     }
     if ((body_start is None) and isinstance(nd, uni.JsxElement)) {
-        body_start = nd.get_body_start_line();
-        body_end = nd.get_body_end_line();
-        # get_body_end_line() can return None when the closing-tag token name
-        # doesn't match Tok.JSX_CLOSE_START (token stores the literal string '</'
-        # rather than the canonical constant). Fall back to the closing JsxElement's
-        # own location so the empty-body comment-injection path still runs.
-        if (body_end is None and nd.kid) {
-            closing_kid = nd.kid[-1];
-            if (isinstance(closing_kid, uni.JsxElement) and closing_kid.loc) {
-                body_end = closing_kid.loc.first_line;
-            }
+        opening_kid = nd.kid[0] if nd.kid else None;
+        if isinstance(opening_kid, uni.JsxElement) {
+            body_start = next(
+                (
+                    (k.loc.last_line + 1)
+                    for k in opening_kid.kid
+                    if (
+                        isinstance(k, uni.Token)
+                        and (k.name == Tok.JSX_TAG_END)
+                        and k.loc
+                    )
+                ),
+                None
+            );
+        }
+        closing_kid = nd.kid[-1] if nd.kid else None;
+        if (isinstance(closing_kid, uni.JsxElement) and closing_kid.loc) {
+            body_end = closing_kid.loc.first_line;
         }
     }
     if ((body_start is None) and isinstance(nd, (uni.ArchHas, uni.GlobalVars))) {
