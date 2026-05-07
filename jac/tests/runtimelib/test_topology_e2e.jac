@@ -326,7 +326,7 @@ test "parent-type filter returns all subtype instances" {
     # parent-type queries silently dropped every subtype instance.
     #
     # The fix indexes each target under every ancestor in its MRO at
-    # edge-creation time. This test pins the e2e behavior so a regression 
+    # edge-creation time. This test pins the e2e behavior so a regression
     # in the MRO fan-out path can't silently return empty sets again.
     cfg = JacConfig();
     cfg.run.topology_index = True;
