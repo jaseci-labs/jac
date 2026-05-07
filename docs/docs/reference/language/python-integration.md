@@ -438,6 +438,9 @@ project/
 
 Jac imports Python modules using standard import mechanisms without requiring configuration.
 
+!!! note "Typing across the boundary"
+    Untyped Python return values arrive in Jac as `any`. Jac's gradual-typing rules apply strictly inside `.jac` source: an `any` value cannot be silently assigned into a declared non-`any` destination. Two ways to handle this at a boundary -- ship a `.pyi` stub alongside the Python utility (the import stays strongly typed and downstream Jac code is unchanged), or annotate the receiving local as `any` and narrow with `isinstance` or `cast` before use. See [The `any` Type and Gradual Typing](foundation.md#the-any-type-and-gradual-typing) for the full rule and migration patterns.
+
 ---
 
 #### **Pattern 4: Mostly Python**
