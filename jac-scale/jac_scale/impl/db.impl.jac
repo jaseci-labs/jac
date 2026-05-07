@@ -299,6 +299,49 @@ impl Db.expire(key: str, seconds: int, col_name: str = 'default') -> bool {
     return self.client.expire(self._get_redis_key(col_name, key), seconds);
 }
 
+# Lua script kept at module scope so redis-py can cache its SHA after the first
+# EVAL; subsequent calls send EVALSHA, avoiding round-trips of the script body.
+glob _DELETE_IF_EQUALS_LUA: str = '''
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    return redis.call('DEL', KEYS[1])
+else
+    return 0
+end
+''';
+
+impl Db.set_nx_with_ttl(
+    key: str, value: dict, ttl: int, col_name: str = 'default'
+) -> bool {
+    if self.db_type == DatabaseType.MONGODB {
+        raise NotImplementedError(
+            "set_nx_with_ttl() is not supported for MongoDB. "
+            "Use Redis for distributed-lock semantics."
+        );
+    }
+    _validate_not_read_only(col_name);
+    # redis-py SET with nx=True returns True on success, None on contention.
+    result = self.client.set(
+        self._get_redis_key(col_name, key), json.dumps(value), nx=True, ex=ttl
+    );
+    return bool(result);
+}
+
+impl Db.delete_if_equals(
+    key: str, expected_value: dict, col_name: str = 'default'
+) -> bool {
+    if self.db_type == DatabaseType.MONGODB {
+        raise NotImplementedError("delete_if_equals() is not supported for MongoDB.");
+    }
+    _validate_not_read_only(col_name);
+    result = self.client.eval(
+        _DELETE_IF_EQUALS_LUA,
+        1,
+        self._get_redis_key(col_name, key),
+        json.dumps(expected_value)
+    );
+    return int(result) == 1;
+}
+
 impl Db.scan_keys(pattern: str, col_name: str = 'default') -> list[str] {
     if self.db_type == DatabaseType.MONGODB {
         raise NotImplementedError(

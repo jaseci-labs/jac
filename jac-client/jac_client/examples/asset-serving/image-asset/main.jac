@@ -33,7 +33,7 @@ cl {
                     times!
                 </p>
                 <button
-                    onClick={lambda e: Any { count = count + 1;}}
+                    onClick={lambda e: Any { count = count + 1; }}
                     style={{
                         padding: "10px 20px",
                         fontSize: "16px",

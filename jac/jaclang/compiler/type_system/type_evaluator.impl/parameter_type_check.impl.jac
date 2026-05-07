@@ -147,13 +147,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 if isinstance(first_arg, uni.KWPair)
                 else first_arg;
             cast_target_type = self.get_type_of_expression(first_arg_expr);
-            if isinstance(cast_target_type, types.ClassType)
-            and cast_target_type.is_instantiable_class() {
-                return cast_target_type.clone_as_instance();
-            }
-            # For non-class types (e.g. cast(str, x)), return the type directly
             if not isinstance(cast_target_type, types.UnknownType) {
-                return cast_target_type;
+                return self._convert_to_instance(cast_target_type);
             }
         }
     }
@@ -470,7 +465,6 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
             and caller_type.shared == self.prefetch.any_class.shared
         ) {
             return caller_type;  # Any() -> Any
-
         }
         magic_call_ret = self.get_type_of_magic_method_call(
             caller_type, "__call__", expr.params, expr

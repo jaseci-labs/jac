@@ -708,6 +708,80 @@ test "separated defpub generates rpc stubs" {
     assert_balanced_syntax(js_code, fixture);
 }
 
+test "sv import kwargs preserve names in jac call function" {
+    # Regression for issue #5852.  Calling an sv-imported def:pub function
+    # with kwargs syntax (e.g. ``greet(name=x)``) must compile to the same
+    # ``__jacCallFunction("greet", {"name": x})`` shape that the positional
+    # form produces.  Previously the kwargs were silently dropped, emitting
+    # ``__jacCallFunction("greet", {})`` and causing a server 422.
+    fixture = "sv_import_kwargs_client.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # Pure-kwargs single arg: ``greet(name=input_text)``
+    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+        "Single-kwarg call must propagate the name into the args object;\n" + "got:\n" + js_code
+    );
+
+    # Pure-kwargs out-of-order: ``add_pair(b=2, a=1)`` — both keys must be
+    # present in the args object regardless of source order.
+    assert (
+        '__jacCallFunction("add_pair", {"b": 2, "a": 1})' in js_code
+        or '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code
+    ) , (
+        "Kwargs-only call must include all kwarg keys in the args object;\n" + "got:\n" + js_code
+    );
+
+    # Mixed positional + kwarg: ``add_pair(1, b=2)`` — first param mapped
+    # by position to its server-side name, second carried by kwarg key.
+    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code , (
+        "Mixed positional/kwarg call must merge both into the args object;\n" + "got:\n" + js_code
+    );
+
+    # ``**dict`` spread: ``add_pair(**kw)`` — keys aren't known at compile
+    # time, so the args object must carry an ObjectExpression spread.
+    assert '__jacCallFunction("add_pair", {...kw})' in js_code , (
+        "**dict spread must compile to ObjectExpression spread element;\n" + "got:\n" + js_code
+    );
+
+    # Sanity: the obvious bug-shape — empty args object — must not appear
+    # for any of these named calls.
+    assert '__jacCallFunction("greet", {})' not in js_code , (
+        "Bug regression: kwargs were dropped, emitting empty args object."
+    );
+    assert '__jacCallFunction("add_pair", {})' not in js_code , (
+        "Bug regression: kwargs were dropped, emitting empty args object."
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "sv import duplicate kwarg is a compile error" {
+    # Calling ``greet(input_text, name=other)`` gives the ``name`` parameter
+    # twice — once positionally and once by keyword.  This mirrors Python's
+    # ``TypeError: got multiple values for argument 'name'`` and must be
+    # reported as a compile-time error so the build fails fast rather than
+    # silently emitting a JS object with a duplicated key.
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+
+    fixture = os.path.join(FIXTURES, "sv_import_kwargs_dup.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True, type_check=True);
+    EsastGenPass(ir_in=ir, prog=prog);
+
+    dup_errs = [
+        e
+        for e in prog.errors_had
+        if "given both positionally and by keyword" in str(e)
+    ];
+    assert len(dup_errs) == 1 , (
+        "Expected exactly one E5080 collision diagnostic, got " + str(
+            [str(e) for e in prog.errors_had]
+        )
+    );
+    assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
+}
+
 test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
     # When a .cl.jac file has a separate .impl.jac file, both the main pass
     # and the child pass for the impl module may independently inject

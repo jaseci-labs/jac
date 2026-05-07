@@ -1464,7 +1464,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                 if isinstance(base_type, types.ClassType) {
                     if base_type.is_builtin("str") {
                         return base_type;  # str[n] returns str
-
                     }
                     if base_type.is_builtin("bytes") {
                         if self.prefetch and self.prefetch.int_class {
@@ -2839,7 +2838,6 @@ impl TypeEvaluator.assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool 
         if src_type.is_literal_type() and not dest_type.is_literal_type() {
             if src_type.shared == dest_type.shared {
                 return True;  # Literal[value] is assignable to its base type
-
             }
         }
 
@@ -3187,9 +3185,7 @@ impl TypeEvaluator._prefetch_types{
         return as_class_type(self._get_type_from_module(self.types_module, type_name));
     }
     def get_typing_class(type_name: str) -> types.ClassType | None {
-        return as_class_type(
-            self._get_type_from_module(self.typing_module, type_name)
-        );
+        return as_class_type(self._get_type_from_module(self.typing_module, type_name));
     }
     def get_builtin_class(type_name: str) -> types.ClassType | None {
         return as_class_type(
@@ -3323,6 +3319,9 @@ impl TypeEvaluator.postinit -> None {
     self._DOM_TYPES_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "dom_types.pyi"
     );
+    self._TYPING_AMBIENT_STUB_FILE_PATH = os.path.join(
+        os.path.dirname(__file__), "typing_ambient.pyi"
+    );
     self._ENUM_STUB_FILE_PATH = os.path.join(
         os.path.dirname(__file__), "../../vendor/typeshed/stdlib/enum.pyi"
     );
@@ -3396,6 +3395,61 @@ impl TypeEvaluator.postinit -> None {
         existing = self.builtins_module.names_in_scope.get(name);
         if existing is None or existing.imported {
             self.builtins_module.names_in_scope[name] = sym;
+        }
+    }
+    # Merge curated typing constructs into builtins. The set of names is
+    # owned by typing_ambient.pyi's __all__ -- that file is the single source
+    # of truth for both the type checker (this merge), PyastGenPass
+    # (auto-emits `from typing import <names>` when references appear), and
+    # the redundant-import lint (W1103/W1104). The stub itself groups names
+    # by their real source module via two `from <module> import (...)`
+    # blocks; we preserve that grouping so the lint can flag a redundant
+    # `from collections.abc import Callable` only when 'Callable' is
+    # actually re-exported from collections.abc, not by coincidence.
+    def read_ambient_imports_by_module(path: str) -> dict[str, set[str]] {
+        out: dict[str, set[str]] = {};
+        try {
+            allowed = read_dunder_all(path);
+            if allowed is None {
+                return out;
+            }
+            py_tree = py_ast.parse(read_file_with_encoding(path));
+            for node in py_tree.body {
+                if (isinstance(node, py_ast.ImportFrom) and node.module is not None) {
+                    public = {
+                        (alias.asname or alias.name) for alias in node.names
+                    } & allowed;
+                    if public {
+                        out[node.module] = out.get(node.module, set()) | public;
+                    }
+                }
+            }
+        } except Exception {
+            return {};
+        }
+        return out;
+    }
+    raw_groups = read_ambient_imports_by_module(self._TYPING_AMBIENT_STUB_FILE_PATH);
+    typing_ambient_flat: set[str] = set();
+    for names in raw_groups.values() {
+        typing_ambient_flat = typing_ambient_flat | names;
+    }
+    # Each ambient name is *also* available via `typing` (typing re-exports
+    # everything in collections.abc that we expose). So for the redundant-
+    # import lint, importing any ambient name from `typing` is redundant --
+    # not just the names whose canonical source is `typing`. Override the
+    # `typing` entry with the full union so the lint flags both
+    # `from typing import Callable` and `from collections.abc import Callable`.
+    self.ambient_typing_names_by_module = raw_groups;
+    self.ambient_typing_names_by_module["typing"] = typing_ambient_flat;
+    for typing_name in typing_ambient_flat {
+        typing_sym = self.typing_module.names_in_scope.get(typing_name);
+        if typing_sym is None {
+            continue;
+        }
+        existing_typing = self.builtins_module.names_in_scope.get(typing_name);
+        if existing_typing is None or existing_typing.imported {
+            self.builtins_module.names_in_scope[typing_name] = typing_sym;
         }
     }
     self._prefetch_types();
@@ -3901,9 +3955,7 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
             if op_name == Tok.KW_IS {
                 return ConditionInfo(kind=NarrowingKind.NONE_IS, key=narrowing_key);
             } elif op_name == Tok.KW_ISN {
-                return ConditionInfo(
-                    kind=NarrowingKind.NONE_IS_NOT, key=narrowing_key
-                );
+                return ConditionInfo(kind=NarrowingKind.NONE_IS_NOT, key=narrowing_key);
             }
         }
     }
@@ -4026,7 +4078,6 @@ impl TypeEvaluator._find_predicate_for(
                 ];
                 if not positive_preds {
                     return all_preds[0];  # All inverted, return first
-
                 }
                 # Find most specific (subclass) among positive predicates.
                 most_specific = positive_preds[0];
