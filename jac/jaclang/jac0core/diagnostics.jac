@@ -131,6 +131,24 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "JavaScript arrow function syntax ('=>') is not supported in Jac",
          help="Use Jac lambda syntax instead: 'lambda e: ChangeEvent { ... }' or 'lambda x: int : x + 1'."
      ),
+     E0026 = _err(
+         "E0026",
+         Category.SYNTAX,
+         "C/JavaScript ternary operator '?' is not supported in Jac",
+         help="Use Python-style conditional expression instead: 'value_if_true if condition else value_if_false'."
+     ),
+     E0027 = _err(
+         "E0027",
+         Category.SYNTAX,
+         "Invalid import syntax 'import:{lang}'",
+         help="Jac uses 'import from <module> {{ <names> }}' or 'import <module>' syntax. For Python interop, use 'import:py' inside inline Python blocks or 'import from <module> {{ <name> }}'."
+     ),
+     E0028 = _err(
+         "E0028",
+         Category.SYNTAX,
+         "'has' field '{name}' is missing a type annotation",
+         help="All 'has' fields require a type annotation. Use 'has name: str;' or 'has name: str = \"default\";'."
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
