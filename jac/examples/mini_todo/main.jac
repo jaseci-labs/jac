@@ -61,11 +61,11 @@ cl def:pub app -> JsxElement {
         <div>
             <input
                 value={text}
-                onChange={lambda e: ChangeEvent { text = e.target.value;}}
+                onChange={lambda e: ChangeEvent { text = e.target.value; }}
                 onKeyPress={lambda e: KeyboardEvent { if e.key == "Enter" { add(); }}}
                 placeholder="Add a todo..."
             />
-            <button onClick={lambda e: MouseEvent { add();}}>Add</button>
+            <button onClick={lambda e: MouseEvent { add(); }}>Add</button>
             {[
                 <p key={jid(t)}>[{t.priority}]{t.title} ({t.category})</p>
                 for t in todos

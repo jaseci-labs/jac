@@ -49,6 +49,7 @@ import from jaclang.jac0core.constructs {
     JsxElement,
     NodeAnchor,
     NodeArchetype,
+    PermissionDenied,
     WalkerAnchor,
     WalkerArchetype
 }
@@ -123,11 +124,22 @@ class JacAccessValidation {
     """Read Access Validation."""
     static def check_read_access(`to: Anchor) -> bool;
 
-    """Connect Access Validation."""
-    static def check_connect_access(`to: Anchor) -> bool;
+    """Connect Access Validation.
 
-    """Write Access Validation."""
-    static def check_write_access(`to: Anchor) -> bool;
+    `op_hint` is the user-facing operation label that flows into a
+    PermissionDenied diagnostic on failure (e.g. "edge_write" for
+    cross-user edge creation, "edge_delete" for disconnect). Defaults to
+    the generic "connect" — overrides should be specific.
+    """
+    static def check_connect_access(`to: Anchor, op_hint: str = "connect") -> bool;
+
+    """Write Access Validation.
+
+    `op_hint` is the user-facing operation label (e.g. "delete" for
+    `del node`, "field_write" for the persist-time drop of a foreign
+    field mutation). Defaults to the generic "write".
+    """
+    static def check_write_access(`to: Anchor, op_hint: str = "write") -> bool;
 
     """Access validation."""
     static def check_access_level(`to: Anchor, no_custom: bool = False) -> AccessLevel;
@@ -1035,6 +1047,14 @@ class JacRuntime(JacRuntimeInterface) {
         pool: ThreadPoolExecutor = ThreadPoolExecutor();
         exec_ctx: (ExecutionContext | None) = None;
         loaded_modules: dict[(str, types.ModuleType)] = {};
+        # When True, permission-denied write-class operations raise
+        # PermissionError instead of silently no-opping. Defaults to the
+        # JAC_STRICT_PERMISSIONS env var (truthy values: "1", "true",
+        # "yes", "on" — case-insensitive). Tests and embedders may set
+        # this attribute directly.
+        strict_permissions: bool = os.environ.get(
+            "JAC_STRICT_PERMISSIONS", ""
+        ).strip().lower() in ("1", "true", "yes", "on");
     }
 
     """Get or create the JacCompiler singleton.

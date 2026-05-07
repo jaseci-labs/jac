@@ -530,6 +530,11 @@ export default defineConfig({{
         target: "http://localhost:{api_port}",
         changeOrigin: true,
       }},
+      // Backend serves project assets/ dir in dev; Vite owns /assets/* only at build time.
+      "/assets": {{
+        target: "http://localhost:{api_port}",
+        changeOrigin: true,
+      }},
     }},
 {server_config_str}
   }},

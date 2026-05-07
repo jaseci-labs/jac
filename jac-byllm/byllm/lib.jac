@@ -2,7 +2,18 @@
 import from byllm.llm { MockLLM, Model, ModelPool }
 import from byllm.mtir { MTIR, MTRuntime }
 import from byllm.plugin { JacRuntime }
-import from byllm.types { Image, MockToolCall, StreamEvent, Video }
+import from byllm.types {
+    Image,
+    IterationAction,
+    IterationContext,
+    Message,
+    MessageRole,
+    MockToolCall,
+    StreamEvent,
+    Tool,
+    ToolCallResultMsg,
+    Video
+}
 import from byllm.exceptions {
     ByLLMError,
     AuthenticationError,
@@ -33,6 +44,10 @@ glob by = JacRuntime.by ,
          'McpClient',
          'McpTool',
          'Image',
+         'IterationAction',
+         'IterationContext',
+         'Message',
+         'MessageRole',
          'MockLLM',
          'MockToolCall',
          'Model',
@@ -40,6 +55,8 @@ glob by = JacRuntime.by ,
          'MTIR',
          'MTRuntime',
          'StreamEvent',
+         'Tool',
+         'ToolCallResultMsg',
          'Video',
          'register_agent_callback',
          'dispatch_batch',

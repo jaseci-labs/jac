@@ -14,11 +14,57 @@ impl PyastGenPass._get_builtin_names(cls: Any) -> set[str] {
     return cls._builtin_names;
 }
 
+"""Read __all__ from typing_ambient.pyi, cached after first access."""
+@classmethod
+impl PyastGenPass._get_ambient_typing_names(cls: Any) -> set[str] {
+    if (cls._ambient_typing_names is not None) {
+        return cls._ambient_typing_names;
+    }
+    import os;
+    import ast as py_ast;
+    stub_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "compiler",
+        "type_system",
+        "typing_ambient.pyi"
+    );
+    try {
+        with open(stub_path, encoding="utf-8") as f {
+            tree = py_ast.parse(f.read());
+        }
+        for node in tree.body {
+            if (
+                isinstance(node, py_ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], py_ast.Name)
+                and node.targets[0].id == "__all__"
+                and isinstance(node.value, (py_ast.List, py_ast.Tuple))
+            ) {
+                names: set[str] = `set();
+                for elt in node.value.elts {
+                    if (
+                        isinstance(elt, py_ast.Constant) and isinstance(elt.value, str)
+                    ) {
+                        names.add(elt.value);
+                    }
+                }
+                cls._ambient_typing_names = names;
+                return names;
+            }
+        }
+    } except (OSError, SyntaxError) {
+        pass;
+    }
+    cls._ambient_typing_names = `set();
+    return cls._ambient_typing_names;
+}
+
 impl PyastGenPass.postinit -> None {
     # Initialize by-postinit fields
     self.debuginfo = {'jac_mods': []};
     self.jaclib_imports = `set();
     self.builtin_imports = `set();
+    self.typing_imports = `set();
     self.child_passes = self._init_child_passes(PyastGenPass);
     self.preamble = [
         self.sync(
@@ -292,7 +338,7 @@ needs_enum)
         and should not be added to builtin_imports.
         """
 impl PyastGenPass.builtin_name(name: str) -> ast3.Name {
-    if (name not in ['Enum']) {
+    if (name not in ['Enum', 'IntEnum', 'StrEnum']) {
         self.builtin_imports.add(name);
     }
     return self.sync(ast3.Name(id=name, ctx=ast3.Load()));
@@ -315,14 +361,28 @@ impl PyastGenPass.needs_typing -> None {
     );
 }
 
-"""Ensure Enum utilities are imported only once."""
+"""Ensure plain `Enum` and `auto` are imported (compat shim for callers
+predating typed-base enums; new callers should use needs_enum_kind)."""
 impl PyastGenPass.needs_enum -> None {
+    self.needs_enum_kind("Enum");
+}
+
+"""Ensure a specific enum kind (Enum, IntEnum, StrEnum, ...) is imported once.
+
+Each kind is imported under its own dedup key so a module that uses both
+`enum X { ... }` and `enum Y: int { ... }` ends up with two import lines
+(`from enum import Enum, auto` and `from enum import IntEnum`) rather than
+a fragile combined one. `auto` is always imported alongside the requested
+kind because enum bodies may reference `auto()` regardless of which Enum
+flavor wraps them.
+"""
+impl PyastGenPass.needs_enum_kind(kind: str) -> None {
     self._add_preamble_once(
-        self.needs_enum.__name__,
+        f"needs_enum_kind:{kind}",
         ast3.ImportFrom(
             module='enum',
             names=[
-                self.sync(ast3.alias(name='Enum', asname=None)),
+                self.sync(ast3.alias(name=kind, asname=None)),
                 self.sync(ast3.alias(name='auto', asname=None))
             ],
             level=0
@@ -680,6 +740,7 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
     for child_pass in self.child_passes {
         self.jaclib_imports.update(child_pass.jaclib_imports);
         self.builtin_imports.update(child_pass.builtin_imports);
+        self.typing_imports.update(child_pass.typing_imports);
     }
     is_builtin_module = (
         nd.loc.mod_path.endswith(('builtin.jac', 'builtin.py'))
@@ -693,6 +754,21 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
                     names=[
                         self.sync(ast3.alias(name=name, asname=None))
                         for name in sorted(self.builtin_imports)
+                    ],
+                    level=0
+                ),
+                jac_node=self.ir_out
+            )
+        );
+    }
+    if self.typing_imports {
+        self.preamble.append(
+            self.sync(
+                ast3.ImportFrom(
+                    module='typing',
+                    names=[
+                        self.sync(ast3.alias(name=name, asname=None))
+                        for name in sorted(self.typing_imports)
                     ],
                     level=0
                 ),
@@ -1101,7 +1177,6 @@ impl PyastGenPass.enter_enum(nd: uni.Enum) -> None {
 }
 
 impl PyastGenPass.exit_enum(nd: uni.Enum) -> None {
-    self.needs_enum();
     inner: Sequence[uni.CodeBlockStmt] | Sequence[uni.EnumBlockStmt] | None = None;
     if isinstance(nd.body, uni.ImplDef) {
         inner = nd.body.body if not isinstance(nd.body.body, uni.Expr) else None;
@@ -1115,8 +1190,26 @@ impl PyastGenPass.exit_enum(nd: uni.Enum) -> None {
     if (sem_decorator := self._get_sem_decorator(nd)) {
         decorators.append(sem_decorator);
     }
-    base_classes = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.base_classes];
-    base_classes.append(self.builtin_name('Enum'));
+    # Resolve typed-base shorthand `enum X: T`. `int` and `str` map to the
+    # idiomatic `IntEnum` / `StrEnum` shortcut classes; anything else uses
+    # the Python mixin pattern `class X(T, Enum)` so members are instances
+    # of T (no `.value` needed at call sites).
+    trailing_kind: str = "Enum";
+    extra_bases: list = [];
+    if nd.value_type {
+        if isinstance(nd.value_type, uni.Name) and nd.value_type.value == "int" {
+            trailing_kind = "IntEnum";
+        } elif isinstance(nd.value_type, uni.Name) and nd.value_type.value == "str" {
+            trailing_kind = "StrEnum";
+        } else {
+            extra_bases.append(self.py_ast_val(nd.value_type));
+        }
+    }
+    self.needs_enum_kind(trailing_kind);
+    base_classes = extra_bases + [
+        cast(ast3.expr, self.py_ast_val(i)) for i in nd.base_classes
+    ];
+    base_classes.append(self.builtin_name(trailing_kind));
     class_def = self.sync(
         ast3.ClassDef(
             name=nd.name.sym_name,
@@ -3030,12 +3123,12 @@ impl PyastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     } else {
         # Deprecated `root()` form: bare `root` already lowers to Jac.root() in
         # exit_special_var_ref, so wrapping it in another call would produce
-        # `Jac.root()()` (a Root instance called as a function). Emit W0062
-        # and reuse the inner lowering directly.
+        # `Jac.root()()` (a Root instance called as a function). The W0062
+        # diagnostic for this is emitted by the type evaluator; here we just
+        # reuse the inner lowering so codegen stays correct.
         if isinstance(nd.target, uni.SpecialVarRef)
         and nd.target.name == Tok.KW_ROOT
         and (nd.params is None or len(nd.params) == 0) {
-            self.emit(W0062, node_override=nd);
             nd.gen.py_ast = nd.target.gen.py_ast;
             return;
         }
@@ -3522,6 +3615,9 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
     }
     if (name in self._get_builtin_names()) {
         self.builtin_imports.add(name);
+    }
+    if (name in self._get_ambient_typing_names()) {
+        self.typing_imports.add(name);
     }
     nd.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=nd.py_ctx_func()))];
 }

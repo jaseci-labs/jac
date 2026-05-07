@@ -284,6 +284,36 @@ impl EsastGenPass.exit_f_string(nd: uni.FString) -> None {
 impl EsastGenPass.exit_formatted_value(nd: uni.FormattedValue) -> None {
     expr = nd.format_part.gen.es_ast
     or self.sync_loc(es.Literal(value=''), jac_node=nd.format_part);
+    if nd.format_spec is not None {
+        spec_es = nd.format_spec.gen.es_ast
+        or self.sync_loc(es.Literal(value=''), jac_node=nd.format_spec);
+        format_callee = self.sync_loc(
+            es.MemberExpression(
+                object=self.sync_loc(
+                    es.MemberExpression(
+                        object=self.sync_loc(es.Identifier(name='_jac'), jac_node=nd),
+                        property=self.sync_loc(
+                            es.Identifier(name='builtin'), jac_node=nd
+                        ),
+                        computed=False
+                    ),
+                    jac_node=nd
+                ),
+                property=self.sync_loc(es.Identifier(name='format'), jac_node=nd),
+                computed=False
+            ),
+            jac_node=nd
+        );
+        self.needs_jac_runtime = True;
+        nd.gen.es_ast = self.sync_loc(
+            es.CallExpression(
+                callee=cast(es.Expression, format_callee),
+                arguments=[cast(es.Expression, expr), cast(es.Expression, spec_es)]
+            ),
+            jac_node=nd
+        );
+        return;
+    }
     nd.gen.es_ast = expr;
 }
 
@@ -890,30 +920,35 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     props: list[(es.Property | es.SpreadElement)] = [];
     for param in nd.params {
         if isinstance(param, uni.KWPair) {
-            key_expr = cast(
-                es.Expression,
-                param.key.gen.es_ast
-                    if (param.key and param.key.gen.es_ast)
-                    else self.sync_loc(es.Identifier(name='key'), jac_node=param)
-            );
             value_expr = cast(
                 es.Expression,
                 param.value.gen.es_ast
                     if (param.value and param.value.gen.es_ast)
                     else self.sync_loc(es.Literal(value=None), jac_node=param)
             );
-            prop = self.sync_loc(
-                es.Property(
-                    key=key_expr,
-                    value=value_expr,
-                    kind='init',
-                    method=False,
-                    shorthand=False,
-                    computed=False
-                ),
-                jac_node=param
+            # ``**dict`` spread: PyastBuildPass.proc_keyword emits a KWPair
+            # with key=None for double-star args.  Render as a SpreadElement
+            # so the merged ObjectExpression actually spreads the dict.
+            if (not param.key) or (not param.key.gen.es_ast) {
+                props.append(
+                    self.sync_loc(es.SpreadElement(argument=value_expr), jac_node=param)
+                );
+                continue;
+            }
+            key_expr = cast(es.Expression, param.key.gen.es_ast);
+            props.append(
+                self.sync_loc(
+                    es.Property(
+                        key=key_expr,
+                        value=value_expr,
+                        kind='init',
+                        method=False,
+                        shorthand=False,
+                        computed=False
+                    ),
+                    jac_node=param
+                )
             );
-            props.append(prop);
             continue;
         }
         if param.gen.es_ast {
@@ -982,45 +1017,113 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
                     inline_boundary = self.ir_in.gen.interop_manifest.boundary_types
                         if self.ir_in.gen.interop_manifest
                         else {};
-                    props = [];
+                    # ─── Unified call-site argument resolution ─────────────
+                    # Map every call-site argument — positional and kwarg —
+                    # onto the server function's parameter list, producing a
+                    # single ordered ``(name, expr)`` list that drives one
+                    # emission loop below.  This collapses what used to be
+                    # two parallel rebuild passes (issue #5852) and lets us
+                    # detect duplicate-argument collisions cleanly.
+                    #
+                    # Slot semantics:
+                    #   * (name, expr)  — named param; ``__to_wire()`` may
+                    #                      wrap ``expr`` in the emit loop.
+                    #   * (None, spread) — ``*lst`` or ``**d`` spread that
+                    #                       must be preserved in source order
+                    #                       and passed through verbatim.
+                    kwarg_props_unresolved = props;
+                    resolved:
+                        list[tuple[(str | None), (es.Expression | es.SpreadElement)]] = [];
+                    seen_names: set[str] = set();
                     for (i, arg) in enumerate(args) {
                         if isinstance(arg, es.SpreadElement) {
-                            props.append(arg);
-                        } elif (i < len(param_names)) {
-                            key = self.sync_loc(
-                                es.Literal(value=param_names[i]), jac_node=nd
-                            );
-                            arg_value = arg;
-                            # Wrap typed args with __to_wire()
-                            ptype = inline_param_type_map.get(param_names[i], '');
-                            if ptype in inline_boundary
-                            and inline_boundary[ptype].kind != "enum" {
-                                arg_value = self.sync_loc(
-                                    es.CallExpression(
-                                        callee=es.MemberExpression(
-                                            object=arg,
-                                            property=es.Identifier(name='__to_wire'),
-                                            computed=False
-                                        ),
-                                        arguments=[]
-                                    ),
-                                    jac_node=nd
-                                );
-                            }
-                            props.append(
-                                self.sync_loc(
-                                    es.Property(
-                                        key=key,
-                                        value=arg_value,
-                                        kind='init',
-                                        method=False,
-                                        shorthand=False,
-                                        computed=False
-                                    ),
-                                    jac_node=nd
+                            resolved.append((None, arg));
+                            continue;
+                        }
+                        if i < len(param_names) {
+                            seen_names.add(param_names[i]);
+                            resolved.append((param_names[i], arg));
+                        }
+                        # Excess positional args are silently dropped here;
+                        # arity is validated by the type-checker pass.
+                    }
+                    for kw in kwarg_props_unresolved {
+                        if isinstance(kw, es.SpreadElement) {
+                            resolved.append((None, kw));
+                            continue;
+                        }
+                        kw_name = '';
+                        if isinstance(kw.key, es.Identifier) {
+                            kw_name = kw.key.name;
+                        } elif isinstance(kw.key, es.Literal) {
+                            kw_name = str(kw.key.value);
+                        }
+                        if not kw_name {
+                            # Defensive: unrecognised key shape — preserve
+                            # the value as a spread rather than drop it.
+                            resolved.append(
+                                (
+                                    None,
+                                    self.sync_loc(
+                                        es.SpreadElement(argument=kw.value), jac_node=nd
+                                    )
                                 )
                             );
+                            continue;
                         }
+                        if kw_name in seen_names {
+                            self.emit(
+                                E5080, node_override=nd, name=kw_name, func=func_name
+                            );
+                            # Last-write-wins so the emitted JS is at least
+                            # internally consistent; the diagnostic stops
+                            # the build at ``jac check`` time.
+                        }
+                        seen_names.add(kw_name);
+                        resolved.append((kw_name, kw.value));
+                    }
+
+                    # ─── Single emission loop ──────────────────────────────
+                    # Apply boundary ``__to_wire()`` wrapping where required
+                    # and build the ObjectExpression that becomes the second
+                    # argument to ``__jacCallFunction``.
+                    props = [];
+                    for (slot_name, slot_expr) in resolved {
+                        if slot_name is None {
+                            props.append(slot_expr);
+                            continue;
+                        }
+                        named_value = cast(es.Expression, slot_expr);
+                        ptype = inline_param_type_map.get(slot_name, '');
+                        if ptype in inline_boundary
+                        and inline_boundary[ptype].kind != "enum" {
+                            named_value = self.sync_loc(
+                                es.CallExpression(
+                                    callee=es.MemberExpression(
+                                        object=named_value,
+                                        property=es.Identifier(name='__to_wire'),
+                                        computed=False
+                                    ),
+                                    arguments=[]
+                                ),
+                                jac_node=nd
+                            );
+                        }
+                        props.append(
+                            self.sync_loc(
+                                es.Property(
+                                    key=self.sync_loc(
+                                        es.Literal(value=slot_name), jac_node=nd
+                                    ),
+                                    value=named_value,
+                                    kind='init',
+                                    method=False,
+                                    shorthand=False,
+                                    computed=False
+                                ),
+                                jac_node=nd
+                            )
+                        );
                     }
                     args_obj = self.sync_loc(
                         es.ObjectExpression(properties=props), jac_node=nd
@@ -2818,6 +2921,24 @@ impl EsastGenPass.exit_ability(nd: uni.Ability) -> None {
                 )
             ];
         } else {
+            # Single-`props` JSX component: the param is passed through verbatim
+            # rather than destructured, which means JSX call sites cannot be
+            # validated per-prop by the type-checker (the param_map keys on
+            # parameter name, so `<MyComp title="..." />` would E1101 against
+            # any single-`props` signature). Surface W5015 so the author picks
+            # direct named params explicitly — or suppresses with
+            # `# jac:ignore[W5015]` for legitimate forwarding/HOC cases.
+            if (
+                is_jsx_in_return
+                and len(nd.signature.params) == 1
+                and nd.signature.params[0].name.sym_name == 'props'
+            ) {
+                self.emit(
+                    W5015,
+                    node_override=nd.signature.params[0],
+                    component=nd.name_ref.sym_name
+                );
+            }
             for param in nd.signature.params {
                 if param.gen.es_ast {
                     params.append(cast(es.Pattern, param.gen.es_ast));

@@ -1,8 +1,4 @@
-"""Jac project configuration module.
-
-This module provides the JacConfig class and related types for managing
-project configuration from jac.toml files.
-"""
+"""JacConfig and related types for jac.toml project configuration."""
 
 import os;
 import re;
@@ -22,6 +18,33 @@ obj ProjectConfig {
         jac_version: str = "",
         entry_point: str = "main.jac",
         urls: dict[str, str] = {};
+}
+
+"""Author or maintainer contact info for [package] section."""
+obj PersonConfig {
+    has name: str = "",
+        email: str = "";
+}
+
+"""File inclusion rules from [package.include]."""
+obj PackageIncludeConfig {
+    has packages: list[str] = [],
+        data: dict[str, list[str]] = {};
+}
+
+"""PyPI-publishable package metadata from [package] section."""
+obj PackageConfig {
+    has name: str = "",
+        version: str = "",
+        description: str = "",
+        authors: list[PersonConfig] = [],
+        maintainers: list[PersonConfig] = [],
+        license: str = "",
+        readme: str = "README.md",
+        keywords: list[str] = [],
+        requires_python: str = "",
+        urls: dict[str, str] = {},
+        include: PackageIncludeConfig = PackageIncludeConfig();
 }
 
 """Run command defaults from [run] section."""
@@ -133,6 +156,19 @@ obj EnvironmentConfig {
     has default_profile: str = "";
 }
 
+"""Client error reporting settings from [client_errors] section.
+
+Tunes the behavior of the /cl/__error__ endpoint and the source-mapped
+stack traces it logs.
+"""
+obj ClientErrorsConfig {
+    # When False (default), source-mapped stack frames whose resolved file is
+    # a build artifact (a `.js` under `.jac/`) are dropped from the log; the
+    # frames are auto-generated and not user-actionable. Set True to keep
+    # them, e.g. when diagnosing a broken or stale per-file source map.
+    has verbose: bool = False;
+}
+
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
@@ -165,6 +201,7 @@ obj JacConfig {
         storage: StorageConfig = StorageConfig(),
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
+        client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},
@@ -177,7 +214,12 @@ obj JacConfig {
         toml_path: Path | None = None,
         config_files: list[Path] | None = None,
         active_profile: str = "",
-        _raw_data: dict[str, Any] = {};
+        _raw_data: dict[str, Any] = {},
+        # Publishing fields — populated when [package], [entrypoints],
+        # or [optional-dependencies] are present in jac.toml.
+        package: PackageConfig | None = None,
+        entrypoints: dict[str, dict[str, str]] = {},
+        optional_dependencies: dict[str, dict[str, str]] = {};
 
     static def discover(
         start_path: Path | None = None, profile: str | None = None

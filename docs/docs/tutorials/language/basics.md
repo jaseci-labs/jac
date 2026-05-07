@@ -317,6 +317,21 @@ with entry {
 }
 ```
 
+### Typed-Base Enums
+
+`enum X: T { ... }` declares an enum whose members are instances of `T`. `: int` desugars to Python's `IntEnum`, `: str` to `StrEnum`, and any other base `T` to the mixin form `class X(T, Enum)`:
+
+```jac
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
+with entry {
+    print(HttpStatus.OK == 200);          # True -- compare directly
+    print(isinstance(Tag.OPEN, str));     # True
+    print(HttpStatus.OK + 1);             # 201 -- arithmetic works
+}
+```
+
 ---
 
 ## Error Handling
@@ -361,7 +376,6 @@ with entry {
 
 ```jac
 import from collections { Counter, defaultdict }
-import from typing { Optional, List }
 
 with entry {
     counts = Counter(["a", "b", "a", "c", "a"]);

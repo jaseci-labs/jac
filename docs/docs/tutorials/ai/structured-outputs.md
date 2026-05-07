@@ -77,6 +77,29 @@ enum HttpStatus {
 def get_status(response_description: str) -> HttpStatus by llm();
 ```
 
+### Typed-Base Enums
+
+When you want enum members to behave as their underlying type (so callers can compare against ints or strings without `.value`), use the typed-base shorthand `enum X: T { ... }`:
+
+```jac
+enum HttpStatus: int {
+    OK = 200,
+    NOT_FOUND = 404,
+    SERVER_ERROR = 500
+}
+
+def get_status(response_description: str) -> HttpStatus by llm();
+
+with entry {
+    status = get_status("page missing");
+    if status == 404 {                 # direct int comparison
+        print("not found");
+    }
+}
+```
+
+`: int` desugars to Python's `IntEnum`, `: str` to `StrEnum`. Pass an LLM-typed result straight into a typed API expecting `int` or `str` without converting.
+
 ---
 
 ## Objects (Dataclasses)
@@ -190,12 +213,10 @@ Found 4 tasks:
 ## Optional Fields
 
 ```jac
-import from typing { Optional }
-
 obj Contact {
     has name: str;
     has email: str;
-    has phone: Optional[str] = None;  # May not be present
+    has phone: str | None = None;  # May not be present
 }
 
 def extract_contact(text: str) -> Contact by llm();
@@ -217,8 +238,6 @@ with entry {
 ## Complex Example: Resume Parser
 
 ```jac
-import from typing { Optional }
-
 obj Education {
     has degree: str;
     has institution: str;
@@ -235,7 +254,7 @@ obj Experience {
 obj Resume {
     has name: str;
     has email: str;
-    has phone: Optional[str];
+    has phone: str | None;
     has skills: list[str];
     has education: list[Education];
     has experience: list[Experience];
@@ -376,7 +395,7 @@ If the LLM returns invalid types, byLLM will:
 | `Enum` | One of fixed choices |
 | `obj` | Structured data |
 | `list[T]` | Multiple items |
-| `Optional[T]` | May be missing |
+| `T \| None` | May be missing |
 | Nested objects | Complex hierarchies |
 
 ---

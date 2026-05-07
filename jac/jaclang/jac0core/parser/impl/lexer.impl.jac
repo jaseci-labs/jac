@@ -721,7 +721,6 @@ impl Lexer.get_fstring_text_kind(mode: LexerMode) -> TokenKind {
         default:
             return TokenKind.F_TEXT_DQ;  # Fallback
 
-
     }
 }
 
@@ -742,7 +741,6 @@ impl Lexer.get_fstring_end_kind(mode: LexerMode) -> TokenKind {
         default:
             return TokenKind.F_DQ_END;  # Fallback
 
-
     }
 }
 
@@ -756,9 +754,7 @@ impl Lexer.scan_fstring_expr_token -> Token {
     if ch == "{" {
         self.fstring_brace_depth += 1;
         self.advance();
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     if ch == "}" {
         self.fstring_brace_depth -= 1;
@@ -771,9 +767,7 @@ impl Lexer.scan_fstring_expr_token -> Token {
                 self.fstring_brace_depth = self.fstring_brace_depth_stack.pop();
             }
         }
-        return self.make_token(
-            TokenKind.RBRACE, "}", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
     }
     # Check for conversion specifier !s, !r, !a
     if ch == "!" and self.peek() in ["s", "r", "a", "S", "R", "A"] {
@@ -845,9 +839,7 @@ impl Lexer.scan_jsx_tag_token -> Token {
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     # Attribute name (JSX identifiers can contain hyphens)
     if self.is_alpha(ch) {
@@ -955,9 +947,7 @@ impl Lexer.scan_jsx_content -> Token {
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     # Text content - collect until we hit a meaningful JSX delimiter or end.
     # Only break on `<` when it starts a valid JSX construct (tag, closing
@@ -1013,9 +1003,7 @@ impl Lexer.scan_jsx_expr_token -> Token {
     if ch == "{" {
         self.jsx_brace_depth += 1;
         self.advance();
-        return self.make_token(
-            TokenKind.LBRACE, "{", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     if ch == "}" {
         self.jsx_brace_depth -= 1;
@@ -1028,9 +1016,7 @@ impl Lexer.scan_jsx_expr_token -> Token {
                 self.jsx_brace_depth = self.jsx_brace_depth_stack.pop();
             }
         }
-        return self.make_token(
-            TokenKind.RBRACE, "}", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.RBRACE, "}", start_line, start_col, start_pos);
     }
     return self.scan_regular_token();
 }
@@ -1187,6 +1173,17 @@ impl Lexer.scan_operator -> Token {
     if self.match_string(":->") {
         return self.make_token(
             TokenKind.ARROW_R_P2, ":->", start_line, start_col, start_pos
+        );
+    }
+    # `->:` MUST be matched before `->` (which lives in the 2-char block
+    # below). Without this, the right-arrow typed-edge opener `->:` would
+    # be split into RETURN_HINT (`->`) + COLON, breaking `[a->:Type:->]`.
+    # All other typed-edge tokens (`<-:`, `:->`, `:<-`, `+>:`, `:+>`,
+    # `<+:`, `:<+`) already lex as single tokens because they're in
+    # earlier blocks or have no shorter prefix to compete with.
+    if self.match_string("->:") {
+        return self.make_token(
+            TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
         );
     }
     if self.match_string("<+:") {
@@ -1350,9 +1347,7 @@ impl Lexer.scan_operator -> Token {
         );
     }
     if self.match_string("||") {
-        return self.make_token(
-            TokenKind.KW_OR, "||", start_line, start_col, start_pos
-        );
+        return self.make_token(TokenKind.KW_OR, "||", start_line, start_col, start_pos);
     }
     if self.match_string("&=") {
         return self.make_token(
@@ -1374,11 +1369,7 @@ impl Lexer.scan_operator -> Token {
             TokenKind.MATMUL_EQ, "@=", start_line, start_col, start_pos
         );
     }
-    if self.match_string("->:") {
-        return self.make_token(
-            TokenKind.ARROW_R_P1, "->:", start_line, start_col, start_pos
-        );
-    }
+    # `->:` is matched in the 3-char block above so it wins over `->`.
     if self.match_string(":<-") {
         return self.make_token(
             TokenKind.ARROW_L_P2, ":<-", start_line, start_col, start_pos
@@ -1541,19 +1532,13 @@ impl Lexer.scan_operator -> Token {
             );
 
         case "<":
-            return self.make_token(
-                TokenKind.LT, "<", start_line, start_col, start_pos
-            );
+            return self.make_token(TokenKind.LT, "<", start_line, start_col, start_pos);
 
         case ">":
-            return self.make_token(
-                TokenKind.GT, ">", start_line, start_col, start_pos
-            );
+            return self.make_token(TokenKind.GT, ">", start_line, start_col, start_pos);
 
         case "=":
-            return self.make_token(
-                TokenKind.EQ, "=", start_line, start_col, start_pos
-            );
+            return self.make_token(TokenKind.EQ, "=", start_line, start_col, start_pos);
 
         case "@":
             return self.make_token(

@@ -39,9 +39,11 @@ impl JacScaleUserManager.postinit -> None {
 # ============================================================================
 """Create a user with identity-based model."""
 impl JacScaleUserManager.create_user(
-    identities: list[dict[str, Any]], credential: dict[str, Any]
+    identities: list[dict[str, Any]],
+    credential: dict[str, Any],
+    profile: dict[str, Any] | None = None
 ) -> dict[str, Any] {
-    return self._identity_storage.create_user(identities, credential);
+    return self._identity_storage.create_user(identities, credential, profile);
 }
 
 """Convenience method for creating internal users (guest, system, admin)."""
@@ -120,6 +122,28 @@ impl JacScaleUserManager.update_password(
     return self._identity_storage.update_password(
         user_id, current_password, new_password
     );
+}
+
+impl JacScaleUserManager.update_profile(
+    user_id: str, profile_updates: dict[str, Any]
+) -> dict[str, Any] {
+    user = self.get_user(user_id);
+    if not user {
+        return {'error': 'User not found'};
+    }
+    raw_profile = user.get('profile');
+    current_profile: dict[str, Any] = (
+        raw_profile if isinstance(raw_profile, dict) else {}
+    );
+    merged = dict(current_profile);
+    for (key, value) in profile_updates.items() {
+        merged[key] = value;
+    }
+    success = self._identity_storage.update_user_fields(user_id, {'profile': merged});
+    if not success {
+        return {'error': 'Profile update failed'};
+    }
+    return {'profile': merged};
 }
 
 impl JacScaleUserManager.validate_token(token: str) -> str | None {
@@ -306,11 +330,33 @@ impl JacScaleUserManager.sso_callback(
             );
         }
         external_id = user_info.external_id;
+        sso_fields = user_info.profile_fields();
         existing = self.find_user_by_identity(email);
         if existing {
             user_id = existing.get('user_id', '');
             # Link SSO identity if not already linked
             self.link_sso_account(user_id, platform, external_id);
+            # Refresh profile.sso.<platform> from the latest provider data so
+            # display_name/picture stay current. Only the SSO namespace is
+            # touched — developer-set profile fields are untouched.
+            if sso_fields {
+                raw_profile = existing.get('profile') if existing else None;
+                current_profile: dict[str, Any] = (
+                    raw_profile if isinstance(raw_profile, dict) else {}
+                );
+                # Defensive: legacy users from before reserved-key enforcement
+                # may have a non-dict at profile.sso. Treat as empty rather
+                # than crashing on dict-style assignment below.
+                raw_sso = current_profile.get('sso');
+                current_sso: dict[str, Any] = (
+                    raw_sso if isinstance(raw_sso, dict) else {}
+                );
+                current_sso[platform] = sso_fields;
+                current_profile['sso'] = current_sso;
+                self._identity_storage.update_user_fields(
+                    user_id, {'profile': current_profile}
+                );
+            }
             token = self.create_jwt_token(user_id);
             return TransportResponse.success(
                 data={
@@ -324,9 +370,11 @@ impl JacScaleUserManager.sso_callback(
             );
         }
         # Create user with verified email identity (provider already verified it)
+        sso_profile = {'sso': {platform: sso_fields}} if sso_fields else None;
         result = self.create_user(
             identities=[{'type': 'email', 'value': email, 'verified': True}],
-            credential={'type': 'password', 'password': generate_random_password()}
+            credential={'type': 'password', 'password': generate_random_password()},
+            profile=sso_profile
         );
         if 'error' in result {
             return TransportResponse.fail(

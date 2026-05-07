@@ -669,9 +669,17 @@ obj SemDef(ElementStmt, AstSymbolNode, UniScopeNode) {
     def create_sem_name_node -> Name;
 }
 
-"""Enum node type for Jac Ast."""
+"""Enum node type for Jac Ast.
+
+`value_type` holds the typed-base shorthand `: T` from `enum X: T { ... }`
+(desugars to `class X(IntEnum)` for int, `class X(StrEnum)` for str, and the
+mixin pattern `class X(T, Enum)` for everything else). `base_classes` holds
+the parenthesized form `enum X(B1, B2) { ... }`. The two are mutually
+exclusive at the grammar level — the parser never populates both.
+"""
 obj Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
     has name: Name,
+        value_type: (Expr | None),
         base_classes: (Sequence[Expr] | None);
 
     def postinit -> None;

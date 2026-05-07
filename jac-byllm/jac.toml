@@ -1,0 +1,44 @@
+[package]
+name = "byllm"
+version = "0.6.4"
+description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
+authors = [
+    { name = "Jason Mars", email = "jason@mars.ninja" }
+]
+maintainers = [
+    { name = "Jason Mars", email = "jason@mars.ninja" }
+]
+license = "MIT"
+readme = "README.md"
+keywords = ["llm", "jaclang", "jaseci", "byLLM"]
+requires-python = ">=3.11"
+
+[package.urls]
+repository = "https://github.com/Jaseci-Labs/jaseci"
+homepage = "https://jaseci.org"
+documentation = "https://jac-lang.org"
+
+[package.include]
+packages = ["byllm*"]
+
+[dependencies]
+jaclang = ">=0.14.0"
+litellm = ">=1.70.0,<=1.82.6"
+loguru = ">=0.7.2,<0.8.0"
+pillow = ">=12.0.0,<13.0.0"
+
+[dev-dependencies]
+pytest = ">=8.3.2"
+
+[optional-dependencies.tools]
+wikipedia = "*"
+
+[optional-dependencies.video]
+"opencv-python-headless" = "*"
+
+[optional-dependencies.mcp]
+mcp = ">=1.0.0"
+
+[entrypoints.jac]
+byllm = "byllm.plugin:JacRuntime"
+byllm_plugin_config = "byllm.plugin_config:JacByllmPluginConfig"

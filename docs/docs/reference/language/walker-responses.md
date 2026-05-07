@@ -36,7 +36,7 @@ with entry {
 
 ### Typing Your Reports
 
-By default every walker has `reports: list[Any]` -- it accepts any value. You can declare the type explicitly with `has reports` to get compile-time checking on your `report` statements:
+By default every walker has `reports: list[any]` -- it accepts any value. Declaring `has reports: list[T]` is a single-source-of-truth contract: `report X` on the write side and `(spawn W).reports[i]` on the read side both type-check against the same `T`.
 
 ```jac
 node Task {
@@ -58,9 +58,12 @@ with entry {
 }
 ```
 
-When `has reports` is declared, the type checker verifies that every `report` statement in the walker produces a value compatible with the element type of the list. If you `report "oops"` inside `ListTasks` above, the checker flags it as a type error.
+When `has reports` is declared, the type checker enforces two rules:
 
-If you omit the declaration, the walker behaves exactly as before -- `reports` is `list[Any]` and any value can be reported.
+1. The declaration itself must be a list type. `has reports: int = 0;` is rejected -- `reports` is the walker's report channel, not arbitrary state, so it must be `list[T]` for some `T`.
+2. Every `report` statement in the walker body must produce a value compatible with the element type `T`. If you `report "oops"` inside `ListTasks` above, the checker flags it as a type error.
+
+If you omit the declaration, the walker behaves exactly as before -- `reports` is `list[any]` and any value can be reported.
 
 ## Common Patterns
 

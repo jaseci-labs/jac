@@ -79,9 +79,9 @@ impl useIsStandalone -> bool {
         lambda -> Any {
             # Listen for display-mode changes
             mediaQuery = window.matchMedia("(display-mode: standalone)");
-            handler = lambda e: Any { setStandalone(e.matches);};
+            handler = lambda e: Any { setStandalone(e.matches); };
             mediaQuery.addEventListener("change", handler);
-            return lambda { mediaQuery.removeEventListener("change", handler);};
+            return lambda { mediaQuery.removeEventListener("change", handler); };
         },
         []
     );
@@ -348,7 +348,7 @@ impl usePwaInstall -> dict {
             window.addEventListener("jac:pwa:promptready", handler);
             return lambda { window.removeEventListener(
                 "jac:pwa:promptready", handler
-            );};
+            ); };
         },
         []
     );
@@ -362,7 +362,7 @@ impl usePwaInstall -> dict {
                 setShowBanner(False);
             };
             window.addEventListener("jac:pwa:installed", handler);
-            return lambda { window.removeEventListener("jac:pwa:installed", handler);};
+            return lambda { window.removeEventListener("jac:pwa:installed", handler); };
         },
         []
     );
@@ -701,9 +701,11 @@ impl PwaInstallBanner(props: dict) -> JsxElement {
     # Show after delay
     reactUseEffect(
         lambda -> Any {
-            if not pwa.shouldShowBanner or pwa.isInstalled { return None;  }
-            timer = setTimeout(lambda { setVisible(True);}, showAfterMs);
-            return lambda { clearTimeout(timer);};
+            if not pwa.shouldShowBanner or pwa.isInstalled {
+                return None;
+            }
+            timer = setTimeout(lambda { setVisible(True); }, showAfterMs);
+            return lambda { clearTimeout(timer); };
         },
         [pwa.shouldShowBanner, pwa.isInstalled]
     );
@@ -851,7 +853,7 @@ impl IosInstallGuide(props: dict) -> JsxElement {
             <div className="jac-pwa-ios-overlay" onClick={onClose}>
                 <div
                     className={"jac-pwa-ios-guide " + className}
-                    onClick={lambda e: Any { e.stopPropagation();}}
+                    onClick={lambda e: Any { e.stopPropagation(); }}
                 >
                     <div className="jac-pwa-ios-guide__title">{title}</div>
                     <div className="jac-pwa-ios-guide__subtitle">
