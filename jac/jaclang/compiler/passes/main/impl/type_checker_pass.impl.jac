@@ -125,7 +125,7 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
     }
 
     if not self.evaluator.assign_type(
-        returning_type, return_type, strict=self._is_jac_site(nd)
+        returning_type, return_type, strict=self.evaluator._is_strict_site(nd)
     ) {
         self.emit(
             E1002,
@@ -386,7 +386,7 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
         } elif (
             not is_unannotated_reassign
             and not self.evaluator.assign_type(
-                right_type, left_type, strict=self._is_jac_site(nd)
+                right_type, left_type, strict=self.evaluator._is_strict_site(nd)
             )
         ) {
             self.emit(E1001, actual=str(right_type), expected=str(left_type));
@@ -677,22 +677,6 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator._narrowing_cache = {};
 }
 
-"""Decide whether `assign_type` should run in Jac strict mode (Layer 2).
-
-Strict mode rejects an `Any` source assigned to a declared non-`Any`
-destination so `Any` cannot leak silently into a typed slot. Python
-modules (`.py` / `.pyi`) keep PEP 484 permissive semantics — the file
-flavor of the assignment site (not the origin of the `Any`) is the
-dispatch axis. A leak across the Python -> Jac boundary therefore
-gets caught at the Jac side, where the user is in control.
-"""
-impl TypeCheckPass._is_jac_site(self: TypeCheckPass, nd: uni.UniNode) -> bool {
-    mod = nd.find_parent_of_type(uni.Module);
-    if mod is None {
-        return False;
-    }
-    return not mod.is_raised_from_py;
-}
 
 """Set type on function/method parameters for hover info."""
 impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None {
@@ -750,7 +734,7 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
         if nd.value is not None and nd.type is not None {
             right_type = self.evaluator.get_type_of_expression(nd.value);
             if not self.evaluator.assign_type(
-                right_type, nd.type, strict=self._is_jac_site(nd)
+                right_type, nd.type, strict=self.evaluator._is_strict_site(nd)
             ) {
                 self.emit(
                     E1001,
@@ -935,7 +919,7 @@ impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> No
 
     if not nd.with_from {
         if not self.evaluator.assign_type(
-            yielded_type, expected_yield, strict=self._is_jac_site(nd)
+            yielded_type, expected_yield, strict=self.evaluator._is_strict_site(nd)
         ) {
             self.emit(
                 E1093,

@@ -2760,6 +2760,30 @@ impl TypeEvaluator.is_explicit_any(ty: TypeBase) -> bool {
     return False;
 }
 
+"""Single source of truth for "should Layer 2 strict-Any apply at this
+AST site?". Every assignment-like check (annotated assignment, has-var
+initializer, function arg, return, yield, edge-connection assign)
+should consult this helper instead of inlining the dispatch.
+
+Strict applies when the node's containing module is Jac source
+(`Module.is_raised_from_py == False`). Python source (`.py`/`.pyi`)
+keeps PEP 484. Cached per Module so the parent walk is amortized
+across all assignment checks in a file.
+"""
+impl TypeEvaluator._is_strict_site(nd: uni.UniNode) -> bool {
+    mod = nd.find_parent_of_type(uni.Module);
+    if mod is None {
+        return False;
+    }
+    cached = self._strict_site_cache.get(id(mod));
+    if cached is not None {
+        return cached;
+    }
+    result = not mod.is_raised_from_py;
+    self._strict_site_cache[id(mod)] = result;
+    return result;
+}
+
 """Match a typing special form loaded from any stdlib typing stub.
 
 Prefetch pins a single definition (e.g. typing.ParamSpec) but typeshed's

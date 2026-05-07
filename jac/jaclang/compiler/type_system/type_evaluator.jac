@@ -250,6 +250,10 @@ obj TypeEvaluator {
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
+        # Cache for `_is_strict_site` keyed by `id(module)`. Maps to True
+        # when the module is Jac source (Layer 2 strict-Any applies),
+        # False when it is Python source (PEP 484 stays permissive).
+        _strict_site_cache: dict[int, bool] = {},
         # Temporary type overrides for isinstance narrowing within AND conditions.
         # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
         # that RHS operands see the narrowed type from LHS isinstance checks.
@@ -306,6 +310,7 @@ obj TypeEvaluator {
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
     def is_explicit_any(ty: TypeBase) -> bool;
+    def _is_strict_site(nd: uni.UniNode) -> bool;
     # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
     def is_typevar_class(ty: TypeBase) -> bool;
     # Check if a type is the ParamSpec class itself (not a TypeVarType instance).
