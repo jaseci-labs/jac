@@ -1730,7 +1730,7 @@ This is the right pattern for autosave debouncing, leader-only reconciliation cy
 
 ## Pub/Sub Message Broker
 
-Optional publish/subscribe layer for emitting and consuming events between jac code and external systems. Off by default. The default broker is Redis Streams; the abstraction (`MessageBroker`) makes it possible to add other brokers in the future without changing call sites.
+Optional publish/subscribe layer for emitting and consuming events between jac code and external systems. Off by default. The default broker is Redis Streams.
 
 ### Overview
 
@@ -1794,7 +1794,7 @@ def on_order_placed(event: Event) -> None {
 }
 ```
 
-Handlers register at import time. At server startup, the framework walks the registry and wires each handler into the active broker. A daemon consumer thread is spawned per subscription. Successful return auto-acks; raised exceptions trigger retry per the policy below.
+Handlers register at import time. At server startup, the framework walks the registry and wires each handler into the active broker. A daemon consumer thread is spawned per subscription.
 
 `@subscribe` accepts optional `group=` and `retry=` arguments to override the defaults from `jac.toml`.
 
@@ -1825,7 +1825,7 @@ def drain(broker: MessageBroker) -> int {
 | `broker` | `redis_streams` | Broker identifier: `redis_streams` or `noop`. |
 | `url` | `redis://localhost:6379/0` | Connection URL for the broker. |
 | `consumer_group` | `jac-scale` | Default consumer group name when `@subscribe` does not specify one. |
-| `serializer` | `json` | Wire format. JSON today, MessagePack later. |
+| `serializer` | `json` | Wire format. JSON only. |
 | `retry.max_attempts` | `3` | Number of delivery attempts before sending to DLQ. |
 | `retry.backoff_seconds` | `[1, 5, 30]` | Backoff delays per attempt index, clamped to the last value. |
 | `retry.dead_letter_suffix` | `.dlq` | Suffix appended to a topic name to form its dead-letter topic. |
