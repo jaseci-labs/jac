@@ -724,6 +724,10 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
         if nd.type_tag and nd.type_tag.tag {
             self._check_bare_generic(nd.type_tag.tag, declared_type);
         }
+        # Walker-specific: `has reports` is the typed view of the walker's
+        # report channel. Require a list shape so `report X` (write side)
+        # and `(spawn W).reports` (read side) share a single element type.
+        self._check_walker_reports_shape(nd, declared_type);
         # If there's an initializer, check that its type is compatible
         # with the declared type (e.g., bad1: int = unknown_val;).
         if nd.value is not None and nd.type is not None {
@@ -738,6 +742,85 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
             }
         }
     }
+}
+
+"""Validate that `has reports` on a walker archetype is a list type.
+
+Untyped/inherited `reports: list[Any]` (from the builtin `Walker` class)
+is unaffected — this check only fires when the user *explicitly* shadows
+`reports` with a concrete shape on a walker archetype.
+"""
+impl TypeCheckPass._check_walker_reports_shape(
+    self: TypeCheckPass, nd: uni.HasVar, declared_type: object
+) -> None {
+    import from jaclang.compiler.type_system { types }
+    if nd.name.value != "reports" {
+        return;
+    }
+    arch = nd.parent.parent if isinstance(nd.parent, uni.ArchHas) else None;
+    if isinstance(arch, uni.ImplDef) and isinstance(arch.decl_link, uni.Archetype) {
+        arch = arch.decl_link;
+    }
+    if not isinstance(arch, uni.Archetype) {
+        return;
+    }
+    if arch.arch_type.value != "walker" {
+        return;
+    }
+    # Don't pile errors on top of upstream type-resolution failures.
+    if isinstance(declared_type, types.UnknownType) {
+        return;
+    }
+    if isinstance(declared_type, types.ClassType) {
+        if declared_type.is_any_type() or declared_type.is_builtin("list") {
+            return;
+        }
+    }
+    self.emit(E1112, node_override=nd, type=str(declared_type));
+}
+
+"""Find the element type of the enclosing walker's declared `has reports: list[T]`.
+
+Returns None when (a) there is no enclosing walker, (b) the walker doesn't
+locally declare `reports`, or (c) the declared shape isn't `list[T]` with a
+concrete element type. Inherited `list[Any]` from the builtin `Walker`
+returns None too — `Any` already permits everything via assign_type, so
+there's nothing to enforce.
+"""
+impl TypeCheckPass._enclosing_walker_report_elem_type(
+    self: TypeCheckPass, nd: uni.UniNode
+) -> object {
+    import from jaclang.compiler.type_system { types }
+    arch = nd.find_parent_of_type(uni.Archetype);
+    if arch is None {
+        impl_def = nd.find_parent_of_type(uni.ImplDef);
+        if impl_def is not None and isinstance(impl_def.decl_link, uni.Archetype) {
+            arch = impl_def.decl_link;
+        }
+    }
+    if not isinstance(arch, uni.Archetype) or arch.arch_type.value != "walker" {
+        return None;
+    }
+    for has_var in arch.get_has_vars() {
+        if has_var.name.value != "reports" {
+            continue;
+        }
+        if has_var.sym is None {
+            return None;
+        }
+        declared = self.evaluator.get_type_of_symbol(has_var.sym);
+        if (
+            isinstance(declared, types.ClassType)
+            and declared.is_builtin("list")
+            and declared.private
+            and declared.private.type_args
+            and len(declared.private.type_args) >= 1
+        ) {
+            return declared.private.type_args[0];
+        }
+        return None;
+    }
+    return None;
 }
 
 """Set type on for loop iteration variable and check iterability."""
@@ -962,9 +1045,25 @@ impl TypeCheckPass.exit_visit_stmt(self: TypeCheckPass, nd: uni.VisitStmt) -> No
     }
 }
 
-"""Type-check report statement expression."""
+"""Type-check report statement expression against the enclosing walker's
+declared `has reports: list[T]` element type.
+
+If the walker doesn't declare a typed `reports` shape, fall back to the
+inherited `list[Any]` and emit no diagnostic — `Any` already permits
+anything. The check only fires when the walker has opted in by writing
+`has reports: list[T]`.
+"""
 impl TypeCheckPass.exit_report_stmt(self: TypeCheckPass, nd: uni.ReportStmt) -> None {
-    self.evaluator.get_type_of_expression(nd.expr);
+    expr_type = self.evaluator.get_type_of_expression(nd.expr);
+    elem_type = self._enclosing_walker_report_elem_type(nd);
+    if elem_type is None {
+        return;
+    }
+    if not self.evaluator.assign_type(expr_type, elem_type) {
+        self.emit(
+            E1113, node_override=nd, actual=str(expr_type), expected=str(elem_type)
+        );
+    }
 }
 
 """Validate postinit bodies assign to all 'by postinit' fields."""

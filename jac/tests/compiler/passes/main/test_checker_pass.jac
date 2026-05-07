@@ -4216,6 +4216,41 @@ test "generator_yield_return_type_check" {
     );
 }
 
+test "walker_typed_reports_validation" {
+    # `has reports: list[T]` on a walker should:
+    #   1. Reject non-list shapes (E1112).
+    #   2. Type-check `report X` against the element type T (E1113).
+    path = os.path.join(CHECKER_FIXTURES, "checker_walker_typed_reports.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1112 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1112"
+    ];
+    e1113 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1113"
+    ];
+    assert len(e1112) == 1 , f"Expected 1 E1112 (non-list reports shape), got {len(
+        e1112
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1112);
+    assert len(e1113) == 1 , f"Expected 1 E1113 (mismatched report element), got {len(
+        e1113
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1113);
+    # No spurious errors on the GoodWalker case.
+    other = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code not in ("E1112", "E1113")
+    ];
+    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in other
+    );
+}
+
 test "isinstance_and_narrowing" {
     # isinstance(x, T) in LHS of AND should narrow x to T for RHS operands.
     path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_and_narrowing.jac");

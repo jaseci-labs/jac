@@ -475,6 +475,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Right operand of \"{op}\" must support \"__contains__\"; \"{type}\" does not"
      ),
+     # Walker reports declaration / usage
+     E1112 = _err(
+         "E1112",
+         Category.TYPE,
+         "Walker `reports` field must be a list type, got \"{type}\"",
+         "Declare it as `has reports: list[T] = [];` so that `report X` and `(spawn W).reports` are typed against `T`."
+     ),
+     E1113 = _err(
+         "E1113", Category.TYPE, "Cannot report \"{actual}\", expected \"{expected}\""
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
          "W1051",
