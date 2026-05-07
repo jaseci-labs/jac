@@ -9,6 +9,7 @@ import from unittest.mock { patch, MagicMock }
 import from jaclang.runtimelib.storage { Storage }
 import from jaclang.runtimelib.storage.local_storage { LocalStorage }
 import from jac_scale.storage.s3_storage { S3Storage }
+import from jaclang.project.config { JacConfig }
 """Helper to create a mocked S3Storage instance."""
 def get_mock_s3_storage(
     bucket: str = "test-bucket", public: bool = False
@@ -213,5 +214,57 @@ test "store builtin resolves to s3 storage when configured" {
             env_patcher.stop();
             cfg_patcher.stop();
         }
+    }
+}
+
+test "jac.toml parses all s3 storage fields" {
+    toml_content = """
+[storage]
+type = "s3"
+bucket = "test-bucket"
+region = "us-west-2"
+prefix = "my-app/"
+endpoint_url = "https://custom-s3.com"
+public_read = true
+""";
+
+    # This calls the _parse_toml_data function we just fixed in config.impl.jac
+    config = JacConfig.from_toml_str(toml_content);
+
+    assert config.storage.storage_type == "s3";
+    assert config.storage.bucket == "test-bucket";
+    assert config.storage.region == "us-west-2";
+    assert config.storage.prefix == "my-app/";
+    assert config.storage.endpoint_url == "https://custom-s3.com";
+    assert config.storage.public_read == True;
+}
+
+test "store builtin uses values from jac.toml" {
+    toml_content = """
+[storage]
+type = "s3"
+bucket = "toml-bucket"
+region = "eu-central-1"
+""";
+    # 1. Parse the TOML using the real Jaseci loader
+    config = JacConfig.from_toml_str(toml_content);
+
+    # 2. Mock get_config to return our parsed object
+    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    env_patcher = patch.dict("os.environ", {}, clear=True);
+    mock_get_cfg = cfg_patcher.start();
+    env_patcher.start();
+
+    try {
+        mock_get_cfg.return_value = config;
+
+        # 3. Call store() and verify it picks up the TOML values
+        s = store();
+        assert isinstance(s, S3Storage);
+        assert s.bucket == "toml-bucket";
+        assert s.region == "eu-central-1";
+    } finally {
+        env_patcher.stop();
+        cfg_patcher.stop();
     }
 }

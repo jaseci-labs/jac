@@ -859,11 +859,13 @@ impl _parse_toml_data(
     }
     if "storage" in data {
         storage_data = data["storage"];
-        config.storage = StorageConfig(
-            storage_type=storage_data.get("type", "local"),
-            base_path=storage_data.get("base_path", "./storage"),
-            create_dirs=storage_data.get("create_dirs", True)
-        );
+        for (key, value) in storage_data.items() {
+            if key == "type" {
+                config.storage.storage_type = value;
+            } elif hasattr(config.storage, key) {
+                setattr(config.storage, key, value);
+            }
+        }
     }
     if "plugins" in data {
         plugins_data = data["plugins"];
