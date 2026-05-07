@@ -981,7 +981,7 @@ impl get_config(
     return _config;
 }
 
-impl set_config(config: JacConfig) -> None {
+impl set_config(config: JacConfig | None) -> None {
     global _config;
     _config = config;
 }

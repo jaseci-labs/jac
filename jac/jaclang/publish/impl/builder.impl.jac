@@ -32,14 +32,16 @@ impl WheelBuilder.build -> bytes {
         );
     }
 
-    root = self.project_root;
-    if root is None {
+    proj_root = self.project_root;
+    if proj_root is None {
         raise ValueError("Cannot build wheel: project_root is not set.");
     }
 
     dist_info = dist_info_dirname(self.config);
 
-    metadata_bytes = generate_metadata(self.config, project_root=root).encode("utf-8");
+    metadata_bytes = generate_metadata(self.config, project_root=proj_root).encode(
+        "utf-8"
+    );
     wheel_bytes = generate_wheel_file(
         pure_python=self.pure_python,
         python_tag=self.python_tag,
@@ -52,7 +54,7 @@ impl WheelBuilder.build -> bytes {
     pkg_name = self.config.package.name.replace("-", "_");
     top_level_bytes = (pkg_name + "\n").encode("utf-8");
 
-    source_files = collect_source_files(self.config, project_root=root);
+    source_files = collect_source_files(self.config, project_root=proj_root);
     src_data: dict[str, bytes] = {
         sf.wheel_path: read_source_file(sf) for sf in source_files
     };
