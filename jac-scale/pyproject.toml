@@ -43,7 +43,7 @@ all = [
 ]
 test = [
     "jac-scale[all]",
-    "testcontainers[mongodb,redis,localstack]",
+    "testcontainers[mongodb,redis]",
     "requests",
     "moto[s3]>=5.0.0",
 ]
