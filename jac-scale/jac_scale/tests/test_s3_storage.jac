@@ -286,3 +286,47 @@ test "s3 get_url handles special characters and encoding" {
         assert "X-Amz-Algorithm" not in url;
     }
 }
+
+test "jac.toml parses local storage fields" {
+    toml_content = """
+[storage]
+type = "local"
+base_path = "/tmp/my-storage"
+create_dirs = false
+""";
+
+    # This verifies our fix in config.impl.jac for the local type
+    config = JacConfig.from_toml_str(toml_content);
+
+    assert config.storage.storage_type == "local";
+    assert config.storage.base_path == "/tmp/my-storage";
+    assert config.storage.create_dirs == False;
+}
+
+test "store builtin uses values from jac.toml for local storage" {
+    toml_content = """
+[storage]
+type = "local"
+base_path = "/tmp/custom-local"
+""";
+    # 1. Parse the TOML using the real Jaseci loader
+    config = JacConfig.from_toml_str(toml_content);
+
+    # 2. Mock get_config to return our parsed object
+    cfg_patcher = patch("jac_scale.factories.storage_factory.get_config");
+    env_patcher = patch.dict("os.environ", {}, clear=True);
+    mock_get_cfg = cfg_patcher.start();
+    env_patcher.start();
+
+    try {
+        mock_get_cfg.return_value = config;
+
+        # 3. Call store() and verify it picks up the TOML values
+        s = store();
+        assert isinstance(s, LocalStorage);
+        assert s.base_path == "/tmp/custom-local";
+    } finally {
+        env_patcher.stop();
+        cfg_patcher.stop();
+    }
+}
