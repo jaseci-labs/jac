@@ -1,6 +1,6 @@
 """Minimal jac-scale pub/sub example.
 
-Run a local Redis on 6379, then `jac scale start app.jac` and POST to /walker/place_order. See the README for the full curl.
+Run a local Redis on 6379, then `jac start app.jac` and POST to /walker/place_order. See the README for the full curl.
 """
 
 import logging;
@@ -14,7 +14,7 @@ glob _logger = logging.getLogger("pubsub-example");
 # A walker that publishes on completion. Note: no broker reference
 # needed at the call site; publish() finds the active broker via
 # the events.publisher facade.
-walker place_order {
+walker:pub place_order {
     has order_id: int,
         amount: float;
 
