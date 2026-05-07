@@ -239,6 +239,16 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_sub_tag(nd: uni.SubTag[uni.T]) -> None;
     def exit_import(nd: uni.Import) -> None;
     def _generate_sv_import_stubs(nd: uni.Import) -> None;
+    def _load_sv_source_module(resolved_path: str) -> (uni.Module | None);
+    def _resolve_callee_ability(target: uni.UniNode) -> (uni.Ability | None);
+    def _slot_resolve_call_args(
+        args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)],
+        param_names: list[str],
+        func_name: str,
+        jac_node: uni.UniNode
+    ) -> list[tuple[(str | None), (es.Expression | es.SpreadElement)]];
+
     def _emit_boundary_type_stubs(nd: uni.Module) -> list;
     def exit_type_alias(nd: uni.TypeAlias) -> None;
     def exit_type_param(nd: uni.TypeParam) -> None;

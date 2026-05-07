@@ -755,6 +755,122 @@ test "sv import kwargs preserve names in jac call function" {
     assert_balanced_syntax(js_code, fixture);
 }
 
+test "client side kwargs resolve to ordered positional call" {
+    # Regression for issue #5852 (comment 2) — plain Jac→JS kwargs lowering.
+    # When a client-side function with a known signature is called with
+    # kwargs syntax (or mixed positional + kwarg), the compiler must map
+    # each call-site argument onto the callee's declared parameters and
+    # emit an ordered positional JS call.  Previously every call with any
+    # kwarg collapsed to ``f({k:v, …})`` — which at runtime passes the
+    # object as the first positional and leaves the rest undefined, and
+    # in the mixed form silently drops the leading positional argument.
+    fixture = "client_kwargs_known_callee.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # Pure kwargs, written out of declaration order
+    assert "add(5, 10)" in js_code , (
+        "Pure kwargs ``add(b=10, a=5)`` must lower to positional ``add(5, 10)``;\n" + "got:\n" + js_code
+    );
+    # Mixed positional + kwarg — neither arg may be dropped or wrapped
+    assert "add(1, 2)" in js_code , (
+        "Mixed call ``add(1, b=2)`` must lower to ``add(1, 2)``, not drop the positional;\n" + "got:\n" + js_code
+    );
+    # Pure positional — unchanged shape
+    assert "add(3, 4)" in js_code , (
+        "Pure positional call must round-trip unchanged;\n" + "got:\n" + js_code
+    );
+
+    # Bug shapes that must NOT appear
+    assert "add({b: 10, a: 5})" not in js_code , (
+        "Bug regression: kwargs collapsed to object literal."
+    );
+    assert "add({b: 2})" not in js_code , (
+        "Bug regression: mixed positional+kwarg dropped the positional."
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "sv import kwargs lower correctly without type checking" {
+    # Regression for issue #5852 (comment 1) — production build path.
+    # ``jac jac2js`` runs without ``type_check=True``, but the existing
+    # regression test for sv-import kwargs forces type-check on, so the
+    # call-site rewrite that eliminates kwargs only fires in the test
+    # path and the CLI ships broken JS.  Lock in the no-type-check
+    # behavior so the production path stays correct.
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+
+    fixture = os.path.join(FIXTURES, "sv_import_kwargs_client.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True, type_check=False);
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    js_code = es_to_js(es_pass.ir_out.gen.es_ast);
+
+    # Pure-kwargs single arg: ``greet(name=input_text)``
+    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+        "Single-kwarg sv-import call must propagate the name in production path;\n" + "got:\n" + js_code
+    );
+    # Pure-kwargs out-of-order: ``add_pair(b=2, a=1)``
+    assert (
+        '__jacCallFunction("add_pair", {"b": 2, "a": 1})' in js_code
+        or '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code
+    ) , (
+        "Out-of-order sv-import kwargs must include all keys in production path;\n" + "got:\n" + js_code
+    );
+    # Mixed: ``add_pair(1, b=2)`` — first positional → ``a``
+    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code , (
+        "Mixed sv-import call must merge positional + kwarg in production path;\n" + "got:\n" + js_code
+    );
+    # ``**dict`` spread
+    assert '__jacCallFunction("add_pair", {...kw})' in js_code , (
+        "**dict spread must compile to ObjectExpression spread in production path;\n" + "got:\n" + js_code
+    );
+    # Bug shapes that must NOT appear
+    assert "await greet({name:" not in js_code , (
+        "Bug regression: sv-import call site collapsed kwargs to wrapper-positional object."
+    );
+    assert "await add_pair({b: 2})" not in js_code , (
+        "Bug regression: sv-import mixed call dropped the positional."
+    );
+}
+
+test "sv import wrapper forwards args in production path" {
+    # Regression for issue #5852 (comment 1) — the generated RPC stub.
+    # When the source server module isn't already in the program hub
+    # (the production build path doesn't pre-load it), the wrapper used
+    # to be emitted with empty params and forward an empty object,
+    # producing a server 422 even for syntactically positional calls.
+    # The wrapper must always carry the source signature.
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+    import from jaclang.compiler.passes.ecmascript.es_unparse { es_to_js }
+
+    fixture = os.path.join(FIXTURES, "sv_import_kwargs_client.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True, type_check=False);
+    es_pass = EsastGenPass(ir_in=ir, prog=prog);
+    js_code = es_to_js(es_pass.ir_out.gen.es_ast);
+
+    # The wrapper for ``greet`` must accept the declared param and
+    # forward it to __jacCallFunction with the matching key.
+    assert "async function greet(name)" in js_code , (
+        "Wrapper for greet must take its declared param;\n" + "got:\n" + js_code
+    );
+    # Two-arg case
+    assert "async function add_pair(a, b)" in js_code , (
+        "Wrapper for add_pair must declare both params;\n" + "got:\n" + js_code
+    );
+    # Bug shape: empty wrapper
+    assert "async function greet()" not in js_code , (
+        "Bug regression: wrapper emitted with empty params."
+    );
+    assert '__jacCallFunction("greet", {})' not in js_code , (
+        "Bug regression: wrapper forwards empty args object."
+    );
+}
+
 test "sv import duplicate kwarg is a compile error" {
     # Calling ``greet(input_text, name=other)`` gives the ``name`` parameter
     # twice — once positionally and once by keyword.  This mirrors Python's

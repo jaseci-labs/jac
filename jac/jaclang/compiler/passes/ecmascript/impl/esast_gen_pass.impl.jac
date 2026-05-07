@@ -957,329 +957,274 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
     }
     # Check for server function call from client context - transform to __jacCallFunction
     if (nd.in_client_context() and isinstance(nd.target, uni.Name)) {
-        # Symbol may not be linked yet, so look it up directly from the symbol table
-        target_sym = nd.target.sym;
-        if not target_sym and nd.target.sym_tab {
-            target_sym = nd.target.sym_tab.lookup(nd.target.sym_name, deep=True);
-        }
-        if (target_sym and target_sym.defn) {
-            defn_node = target_sym.defn[0];
-            if isinstance(defn_node.parent, uni.Ability) {
-                ability_node = defn_node.parent;
-                # A function is a server function if:
-                # 1. It has code_context = SERVER (or default), AND
-                # 2. It is NOT inside a client context (not nested in cl{}), AND
-                # 3. It is a PUBLIC function (def:pub) - this excludes builtins like print
-                is_server_func = (
-                    ability_node.code_context != CodeContext.CLIENT
-                    and not ability_node.in_client_context()
-                    and ability_node.access is not None
-                    and ability_node.access.tag.name == Tok.KW_PUB
+        # ``_resolve_callee_ability`` handles both the type-checked path
+        # (sym.defn[0].parent is the Ability directly) and the production
+        # path where the parent is a ModuleItem and we walk through the
+        # import to the source module.  See issue #5852 (comment 1).
+        ability_node = self._resolve_callee_ability(nd.target);
+        if ability_node {
+            # A function is a server function if:
+            # 1. It has code_context = SERVER (or default), AND
+            # 2. It is NOT inside a client context (not nested in cl{}), AND
+            # 3. It is a PUBLIC function (def:pub) - this excludes builtins like print
+            is_server_func = (
+                ability_node.code_context != CodeContext.CLIENT
+                and not ability_node.in_client_context()
+                and ability_node.access is not None
+                and ability_node.access.tag.name == Tok.KW_PUB
+            );
+            if is_server_func {
+                func_name = nd.target.sym_name;
+                # Analyze function body for auto-caching effects
+                effect_key = f"func:{func_name}";
+                if effect_key not in self.client_manifest.endpoint_effects {
+                    if ability_node.body and isinstance(ability_node.body, list) {
+                        effects = self._analyze_body_effects(ability_node.body);
+                        self.client_manifest.endpoint_effects[effect_key] = effects;
+                    }
+                }
+                param_names: list[str] = [];
+                inline_param_type_map: dict[str, str] = {};
+                inline_ret_type: str = '';
+                if isinstance(ability_node.signature, uni.FuncSignature) {
+                    sig = ability_node.signature;
+                    param_names = [p.name.sym_name for p in sig.params];
+                    for p in sig.params {
+                        if p.type_tag
+                        and p.type_tag.tag
+                        and isinstance(p.type_tag.tag, uni.Name) {
+                            inline_param_type_map[p.name.sym_name] = p.type_tag.tag.value;
+                        }
+                    }
+                    if sig.return_type {
+                        if isinstance(sig.return_type, uni.Name) {
+                            inline_ret_type = sig.return_type.value;
+                        }
+                    }
+                    # Use interop manifest for accurate return type (handles dict, list, etc.)
+                    if self.ir_in.gen.interop_manifest and not inline_ret_type {
+                        for b in self.ir_in.gen.interop_manifest.server_exports_to_client {
+                            if b.name == func_name {
+                                inline_ret_type = b.ret_type;
+                                break;
+                            }
+                        }
+                    }
+                }
+                inline_boundary = self.ir_in.gen.interop_manifest.boundary_types
+                    if self.ir_in.gen.interop_manifest
+                    else {};
+                # ─── Unified call-site argument resolution ─────────────
+                # Map every call-site argument — positional and kwarg —
+                # onto the server function's parameter list, producing a
+                # single ordered ``(name, expr)`` list that drives one
+                # emission loop below.  This collapses what used to be
+                # two parallel rebuild passes (issue #5852) and lets us
+                # detect duplicate-argument collisions cleanly.
+                #
+                # Slot semantics:
+                #   * (name, expr)  — named param; ``__to_wire()`` may
+                #                      wrap ``expr`` in the emit loop.
+                #   * (None, spread) — ``*lst`` or ``**d`` spread that
+                #                       must be preserved in source order
+                #                       and passed through verbatim.
+                resolved = self._slot_resolve_call_args(
+                    args, props, param_names, func_name, nd
                 );
-                if is_server_func {
-                    func_name = nd.target.sym_name;
-                    # Analyze function body for auto-caching effects
-                    effect_key = f"func:{func_name}";
-                    if effect_key not in self.client_manifest.endpoint_effects {
-                        if ability_node.body and isinstance(ability_node.body, list) {
-                            effects = self._analyze_body_effects(ability_node.body);
-                            self.client_manifest.endpoint_effects[effect_key] = effects;
-                        }
-                    }
-                    param_names: list[str] = [];
-                    inline_param_type_map: dict[str, str] = {};
-                    inline_ret_type: str = '';
-                    if isinstance(ability_node.signature, uni.FuncSignature) {
-                        sig = ability_node.signature;
-                        param_names = [p.name.sym_name for p in sig.params];
-                        for p in sig.params {
-                            if p.type_tag
-                            and p.type_tag.tag
-                            and isinstance(p.type_tag.tag, uni.Name) {
-                                inline_param_type_map[p.name.sym_name] = p.type_tag.tag.value;
-                            }
-                        }
-                        if sig.return_type {
-                            if isinstance(sig.return_type, uni.Name) {
-                                inline_ret_type = sig.return_type.value;
-                            }
-                        }
-                        # Use interop manifest for accurate return type (handles dict, list, etc.)
-                        if self.ir_in.gen.interop_manifest and not inline_ret_type {
-                            for b in self.ir_in.gen.interop_manifest.server_exports_to_client {
-                                if b.name == func_name {
-                                    inline_ret_type = b.ret_type;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                    inline_boundary = self.ir_in.gen.interop_manifest.boundary_types
-                        if self.ir_in.gen.interop_manifest
-                        else {};
-                    # ─── Unified call-site argument resolution ─────────────
-                    # Map every call-site argument — positional and kwarg —
-                    # onto the server function's parameter list, producing a
-                    # single ordered ``(name, expr)`` list that drives one
-                    # emission loop below.  This collapses what used to be
-                    # two parallel rebuild passes (issue #5852) and lets us
-                    # detect duplicate-argument collisions cleanly.
-                    #
-                    # Slot semantics:
-                    #   * (name, expr)  — named param; ``__to_wire()`` may
-                    #                      wrap ``expr`` in the emit loop.
-                    #   * (None, spread) — ``*lst`` or ``**d`` spread that
-                    #                       must be preserved in source order
-                    #                       and passed through verbatim.
-                    kwarg_props_unresolved = props;
-                    resolved:
-                        list[tuple[(str | None), (es.Expression | es.SpreadElement)]] = [];
-                    seen_names: set[str] = set();
-                    for (i, arg) in enumerate(args) {
-                        if isinstance(arg, es.SpreadElement) {
-                            resolved.append((None, arg));
-                            continue;
-                        }
-                        if i < len(param_names) {
-                            seen_names.add(param_names[i]);
-                            resolved.append((param_names[i], arg));
-                        }
-                        # Excess positional args are silently dropped here;
-                        # arity is validated by the type-checker pass.
-                    }
-                    for kw in kwarg_props_unresolved {
-                        if isinstance(kw, es.SpreadElement) {
-                            resolved.append((None, kw));
-                            continue;
-                        }
-                        kw_name = '';
-                        if isinstance(kw.key, es.Identifier) {
-                            kw_name = kw.key.name;
-                        } elif isinstance(kw.key, es.Literal) {
-                            kw_name = str(kw.key.value);
-                        }
-                        if not kw_name {
-                            # Defensive: unrecognised key shape — preserve
-                            # the value as a spread rather than drop it.
-                            resolved.append(
-                                (
-                                    None,
-                                    self.sync_loc(
-                                        es.SpreadElement(argument=kw.value), jac_node=nd
-                                    )
-                                )
-                            );
-                            continue;
-                        }
-                        if kw_name in seen_names {
-                            self.emit(
-                                E5080, node_override=nd, name=kw_name, func=func_name
-                            );
-                            # Last-write-wins so the emitted JS is at least
-                            # internally consistent; the diagnostic stops
-                            # the build at ``jac check`` time.
-                        }
-                        seen_names.add(kw_name);
-                        resolved.append((kw_name, kw.value));
-                    }
 
-                    # ─── Single emission loop ──────────────────────────────
-                    # Apply boundary ``__to_wire()`` wrapping where required
-                    # and build the ObjectExpression that becomes the second
-                    # argument to ``__jacCallFunction``.
-                    props = [];
-                    for (slot_name, slot_expr) in resolved {
-                        if slot_name is None {
-                            props.append(slot_expr);
-                            continue;
-                        }
-                        named_value = cast(es.Expression, slot_expr);
-                        ptype = inline_param_type_map.get(slot_name, '');
-                        if ptype in inline_boundary
-                        and inline_boundary[ptype].kind != "enum" {
-                            named_value = self.sync_loc(
-                                es.CallExpression(
-                                    callee=es.MemberExpression(
-                                        object=named_value,
-                                        property=es.Identifier(name='__to_wire'),
-                                        computed=False
-                                    ),
-                                    arguments=[]
-                                ),
-                                jac_node=nd
-                            );
-                        }
-                        props.append(
-                            self.sync_loc(
-                                es.Property(
-                                    key=self.sync_loc(
-                                        es.Literal(value=slot_name), jac_node=nd
-                                    ),
-                                    value=named_value,
-                                    kind='init',
-                                    method=False,
-                                    shorthand=False,
+                # ─── Single emission loop ──────────────────────────────
+                # Apply boundary ``__to_wire()`` wrapping where required
+                # and build the ObjectExpression that becomes the second
+                # argument to ``__jacCallFunction``.
+                props = [];
+                for (slot_name, slot_expr) in resolved {
+                    if slot_name is None {
+                        props.append(slot_expr);
+                        continue;
+                    }
+                    named_value = cast(es.Expression, slot_expr);
+                    ptype = inline_param_type_map.get(slot_name, '');
+                    if ptype in inline_boundary
+                    and inline_boundary[ptype].kind != "enum" {
+                        named_value = self.sync_loc(
+                            es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=named_value,
+                                    property=es.Identifier(name='__to_wire'),
                                     computed=False
                                 ),
-                                jac_node=nd
-                            )
+                                arguments=[]
+                            ),
+                            jac_node=nd
                         );
                     }
-                    args_obj = self.sync_loc(
-                        es.ObjectExpression(properties=props), jac_node=nd
-                    );
-                    # Generate CallExpression without await - the outer AwaitExpr handles that
-                    result_expr: es.Expression = self.sync_loc(
-                        es.CallExpression(
-                            callee=self.sync_loc(
-                                es.Identifier(name='__jacCallFunction'), jac_node=nd
+                    props.append(
+                        self.sync_loc(
+                            es.Property(
+                                key=self.sync_loc(
+                                    es.Literal(value=slot_name), jac_node=nd
+                                ),
+                                value=named_value,
+                                kind='init',
+                                method=False,
+                                shorthand=False,
+                                computed=False
                             ),
-                            arguments=[
-                                self.sync_loc(es.Literal(value=func_name), jac_node=nd),
-                                args_obj
-                            ]
+                            jac_node=nd
+                        )
+                    );
+                }
+                args_obj = self.sync_loc(
+                    es.ObjectExpression(properties=props), jac_node=nd
+                );
+                # Generate CallExpression without await - the outer AwaitExpr handles that
+                result_expr: es.Expression = self.sync_loc(
+                    es.CallExpression(
+                        callee=self.sync_loc(
+                            es.Identifier(name='__jacCallFunction'), jac_node=nd
+                        ),
+                        arguments=[
+                            self.sync_loc(es.Literal(value=func_name), jac_node=nd),
+                            args_obj
+                        ]
+                    ),
+                    jac_node=nd
+                );
+                # Wrap return with __from_wire if return type is a boundary type.
+                # We must await the call BEFORE wrapping with __from_wire
+                # so __from_wire receives the resolved value, not a Promise.
+                if inline_ret_type in inline_boundary
+                and inline_boundary[inline_ret_type].kind != "enum" {
+                    result_expr = self.sync_loc(
+                        es.AwaitExpression(argument=result_expr), jac_node=nd
+                    );
+                    result_expr = self.sync_loc(
+                        es.CallExpression(
+                            callee=es.MemberExpression(
+                                object=es.Identifier(name=inline_ret_type),
+                                property=es.Identifier(name='__from_wire'),
+                                computed=False
+                            ),
+                            arguments=[result_expr]
                         ),
                         jac_node=nd
                     );
-                    # Wrap return with __from_wire if return type is a boundary type.
-                    # We must await the call BEFORE wrapping with __from_wire
-                    # so __from_wire receives the resolved value, not a Promise.
-                    if inline_ret_type in inline_boundary
-                    and inline_boundary[inline_ret_type].kind != "enum" {
+                } elif inline_ret_type.startswith("list[")
+                and inline_ret_type.endswith("]") {
+                    inner = inline_ret_type[5:-1];
+                    if inner in inline_boundary
+                    and inline_boundary[inner].kind != "enum" {
+                        # Wrap in AwaitExpression BEFORE chaining .map()
+                        # so the resolved array (not the Promise) gets mapped.
+                        # The outer exit_await_expr will see this is already
+                        # awaited and produce (await call()).map(...).
                         result_expr = self.sync_loc(
                             es.AwaitExpression(argument=result_expr), jac_node=nd
                         );
                         result_expr = self.sync_loc(
                             es.CallExpression(
                                 callee=es.MemberExpression(
-                                    object=es.Identifier(name=inline_ret_type),
-                                    property=es.Identifier(name='__from_wire'),
+                                    object=result_expr,
+                                    property=es.Identifier(name='map'),
                                     computed=False
                                 ),
-                                arguments=[result_expr]
+                                arguments=[
+                                    es.ArrowFunctionExpression(
+                                        params=[es.Identifier(name='x')],
+                                        body=es.CallExpression(
+                                            callee=es.MemberExpression(
+                                                object=es.Identifier(name=inner),
+                                                property=es.Identifier(
+                                                    name='__from_wire'
+                                                ),
+                                                computed=False
+                                            ),
+                                            arguments=[es.Identifier(name='x')]
+                                        ),
+                                        expression=True,
+                                        async_=False
+                                    )
+                                ]
                             ),
                             jac_node=nd
                         );
-                    } elif inline_ret_type.startswith("list[")
-                    and inline_ret_type.endswith("]") {
-                        inner = inline_ret_type[5:-1];
-                        if inner in inline_boundary
-                        and inline_boundary[inner].kind != "enum" {
-                            # Wrap in AwaitExpression BEFORE chaining .map()
-                            # so the resolved array (not the Promise) gets mapped.
-                            # The outer exit_await_expr will see this is already
-                            # awaited and produce (await call()).map(...).
+                    }
+                } elif inline_ret_type.startswith("dict[")
+                and inline_ret_type.endswith("]") {
+                    dict_params = inline_ret_type[5:-1];
+                    comma_pos = dict_params.find(', ');
+                    if comma_pos >= 0 {
+                        val_type = dict_params[comma_pos + 2:].strip();
+                        if val_type in inline_boundary
+                        and inline_boundary[val_type].kind != "enum" {
+                            # Await before dict hydration
                             result_expr = self.sync_loc(
                                 es.AwaitExpression(argument=result_expr), jac_node=nd
+                            );
+                            entries_call = es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=es.Identifier(name='Object'),
+                                    property=es.Identifier(name='entries'),
+                                    computed=False
+                                ),
+                                arguments=[result_expr]
+                            );
+                            map_call = es.CallExpression(
+                                callee=es.MemberExpression(
+                                    object=entries_call,
+                                    property=es.Identifier(name='map'),
+                                    computed=False
+                                ),
+                                arguments=[
+                                    es.ArrowFunctionExpression(
+                                        params=[
+                                            es.ArrayPattern(
+                                                elements=[
+                                                    es.Identifier(name='k'),
+                                                    es.Identifier(name='v')
+                                                ]
+                                            )
+                                        ],
+                                        body=es.ArrayExpression(
+                                            elements=[
+                                                es.Identifier(name='k'),
+                                                es.CallExpression(
+                                                    callee=es.MemberExpression(
+                                                        object=es.Identifier(
+                                                            name=val_type
+                                                        ),
+                                                        property=es.Identifier(
+                                                            name='__from_wire'
+                                                        ),
+                                                        computed=False
+                                                    ),
+                                                    arguments=[es.Identifier(name='v')]
+                                                )
+                                            ]
+                                        ),
+                                        expression=True,
+                                        async_=False
+                                    )
+                                ]
                             );
                             result_expr = self.sync_loc(
                                 es.CallExpression(
                                     callee=es.MemberExpression(
-                                        object=result_expr,
-                                        property=es.Identifier(name='map'),
+                                        object=es.Identifier(name='Object'),
+                                        property=es.Identifier(name='fromEntries'),
                                         computed=False
                                     ),
-                                    arguments=[
-                                        es.ArrowFunctionExpression(
-                                            params=[es.Identifier(name='x')],
-                                            body=es.CallExpression(
-                                                callee=es.MemberExpression(
-                                                    object=es.Identifier(name=inner),
-                                                    property=es.Identifier(
-                                                        name='__from_wire'
-                                                    ),
-                                                    computed=False
-                                                ),
-                                                arguments=[es.Identifier(name='x')]
-                                            ),
-                                            expression=True,
-                                            async_=False
-                                        )
-                                    ]
+                                    arguments=[map_call]
                                 ),
                                 jac_node=nd
                             );
                         }
-                    } elif inline_ret_type.startswith("dict[")
-                    and inline_ret_type.endswith("]") {
-                        dict_params = inline_ret_type[5:-1];
-                        comma_pos = dict_params.find(', ');
-                        if comma_pos >= 0 {
-                            val_type = dict_params[comma_pos + 2:].strip();
-                            if val_type in inline_boundary
-                            and inline_boundary[val_type].kind != "enum" {
-                                # Await before dict hydration
-                                result_expr = self.sync_loc(
-                                    es.AwaitExpression(argument=result_expr),
-                                    jac_node=nd
-                                );
-                                entries_call = es.CallExpression(
-                                    callee=es.MemberExpression(
-                                        object=es.Identifier(name='Object'),
-                                        property=es.Identifier(name='entries'),
-                                        computed=False
-                                    ),
-                                    arguments=[result_expr]
-                                );
-                                map_call = es.CallExpression(
-                                    callee=es.MemberExpression(
-                                        object=entries_call,
-                                        property=es.Identifier(name='map'),
-                                        computed=False
-                                    ),
-                                    arguments=[
-                                        es.ArrowFunctionExpression(
-                                            params=[
-                                                es.ArrayPattern(
-                                                    elements=[
-                                                        es.Identifier(name='k'),
-                                                        es.Identifier(name='v')
-                                                    ]
-                                                )
-                                            ],
-                                            body=es.ArrayExpression(
-                                                elements=[
-                                                    es.Identifier(name='k'),
-                                                    es.CallExpression(
-                                                        callee=es.MemberExpression(
-                                                            object=es.Identifier(
-                                                                name=val_type
-                                                            ),
-                                                            property=es.Identifier(
-                                                                name='__from_wire'
-                                                            ),
-                                                            computed=False
-                                                        ),
-                                                        arguments=[
-                                                            es.Identifier(name='v')
-                                                        ]
-                                                    )
-                                                ]
-                                            ),
-                                            expression=True,
-                                            async_=False
-                                        )
-                                    ]
-                                );
-                                result_expr = self.sync_loc(
-                                    es.CallExpression(
-                                        callee=es.MemberExpression(
-                                            object=es.Identifier(name='Object'),
-                                            property=es.Identifier(name='fromEntries'),
-                                            computed=False
-                                        ),
-                                        arguments=[map_call]
-                                    ),
-                                    jac_node=nd
-                                );
-                            }
-                        }
                     }
-                    # Auto-inject __jacCallFunction import if not already done
-                    self._inject_runtime_import('__jacCallFunction', nd);
-                    nd.gen.es_ast = result_expr;
-                    return;
                 }
+                # Auto-inject __jacCallFunction import if not already done
+                self._inject_runtime_import('__jacCallFunction', nd);
+                nd.gen.es_ast = result_expr;
+                return;
             }
         }
     }
@@ -1413,9 +1358,84 @@ impl EsastGenPass.exit_func_call(nd: uni.FuncCall) -> None {
             callee_type = None;
         }
     }
-    args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
     callee_expr = cast(es.Expression, callee);
-    call_args: list[(es.Expression | es.SpreadElement)] = [args_obj] if props else args;
+    # ─── Kwargs slot resolution for known callees ─────────────────────
+    # When the callee's signature is statically resolvable, map each
+    # call-site arg (positional + kwarg + ``*spread``) onto its slot in
+    # the declared parameter list and emit a single ordered positional
+    # call.  Without this, ``add(b=10, a=5)`` collapsed to
+    # ``add({b:10, a:5})`` and ``add(1, b=2)`` silently dropped the
+    # leading positional argument — see issue #5852 (comment 2).
+    #
+    # Skipped for unknown callees, ``**dict`` spreads (no compile-time
+    # key info), and call sites where any kwarg key isn't a plain
+    # identifier — those keep the legacy ``[args_obj] if props else args``
+    # fallback.
+    call_args: list[(es.Expression | es.SpreadElement)] = [];
+    resolved_via_slots = False;
+    if isinstance(nd.target, uni.Name) and props {
+        callee_ability = self._resolve_callee_ability(nd.target);
+        if callee_ability and isinstance(callee_ability.signature, uni.FuncSignature) {
+            sig = callee_ability.signature;
+            param_names = [p.name.sym_name for p in sig.params];
+            # Bail out if any kwarg uses ``**dict`` spread or a non-identifier
+            # key — those cases need runtime dispatch we don't model here.
+            slottable = True;
+            for p in props {
+                if isinstance(p, es.SpreadElement) {
+                    slottable = False;
+                    break;
+                }
+                if not (
+                    isinstance(p.key, es.Identifier) or isinstance(p.key, es.Literal)
+                ) {
+                    slottable = False;
+                    break;
+                }
+            }
+            if slottable {
+                resolved = self._slot_resolve_call_args(
+                    args, props, param_names, nd.target.sym_name, nd
+                );
+                # Build positional args in declaration order, then append
+                # any leftover anonymous slots (excess positional or
+                # unrecognised-key spreads).  ``param_names`` order is the
+                # source of truth — kwargs that match a declared param go
+                # in their slot; the rest preserve source order at the end.
+                by_name: dict[str, (es.Expression | es.SpreadElement)] = {};
+                trailing: list[(es.Expression | es.SpreadElement)] = [];
+                for (slot_name, slot_expr) in resolved {
+                    if slot_name is None {
+                        trailing.append(slot_expr);
+                    } else {
+                        by_name[slot_name] = slot_expr;
+                    }
+                }
+                missing = False;
+                for pname in param_names {
+                    if pname in by_name {
+                        call_args.append(by_name[pname]);
+                    } else {
+                        # Param not bound at the call site — let the legacy
+                        # path emit it (covers default-valued params and
+                        # other under-arity calls we don't validate here).
+                        missing = True;
+                        break;
+                    }
+                }
+                if missing {
+                    call_args = [];
+                } else {
+                    call_args.extend(trailing);
+                    resolved_via_slots = True;
+                }
+            }
+        }
+    }
+    if not resolved_via_slots {
+        args_obj = self.sync_loc(es.ObjectExpression(properties=props), jac_node=nd);
+        call_args = [args_obj] if props else args;
+    }
     if (
         isinstance(callee_type, jtypes.ClassType)
         and callee_type.is_instantiable()
@@ -3323,6 +3343,168 @@ impl EsastGenPass.exit_import(nd: uni.Import) -> None {
     nd.gen.es_ast = None;
 }
 
+"""Lazy-load a Jac source module so its symbol table is populated.
+
+The default compile pipeline only loads the entry module's symbol
+table; cross-module signatures (notably the ones an ``sv import``
+client needs) are pulled in on demand by the type evaluator.  When
+the type checker is off — the default for ``jac jac2js`` and the
+production build path — that demand never fires, so ``prog.mod.hub``
+doesn't have the source.  This helper compiles the source on demand
+with ``symtab_ir_only=True`` (the same flag the type evaluator uses
+to avoid running codegen on dependencies), keeping the cost
+proportional to the small number of sv imports rather than every
+import in the project.
+"""
+impl EsastGenPass._load_sv_source_module(resolved_path: str) -> (uni.Module | None) {
+    if not resolved_path {
+        return None;
+    }
+    import from pathlib { Path }
+    norm_path = str(Path(resolved_path).resolve());
+    mod = self.prog.mod.hub.get(norm_path) or self.prog.mod.hub.get(resolved_path);
+    if mod is not None {
+        return mod;
+    }
+    try {
+        mod = self.prog.compile(
+            file_path=resolved_path, no_cgen=True, type_check=False, symtab_ir_only=True
+        );
+    } except Exception {
+        return None;
+    }
+    if mod is not None {
+        self.prog.mod.hub[norm_path] = mod;
+    }
+    return mod;
+}
+
+"""Walk a call-site target to its declaring ``Ability``, even across imports.
+
+In ``type_check=True`` builds the type evaluator pre-loads source
+modules and re-links ``target.sym.defn[0].parent`` straight to the
+source ``Ability``.  In ``type_check=False`` builds the parent is
+the ``ModuleItem`` from the import statement, so we walk
+``ModuleItem → Import.from_loc → source module hub`` to reach the
+real ``Ability``.  Returns ``None`` for callees we can't resolve to
+an ``Ability`` (e.g. class instantiation, dynamic callable) so
+consumers fall back to dynamic emission.
+
+This helper is scoped to the EsastGenPass — it only fires when the
+codegen pass needs cross-module signature info (sv-import call sites
+and stubs).  The corresponding "fix this for every import in every
+module" change at the symbol-table layer was rejected because it
+forces a full compile of every transitively-imported module during
+symbol-table build, blowing up compile times on the compiler's own
+heavily-imported source tree.
+"""
+impl EsastGenPass._resolve_callee_ability(target: uni.UniNode) -> (uni.Ability | None) {
+    if not isinstance(target, uni.Name) {
+        return None;
+    }
+    sym_name = target.sym_name;
+    target_sym = target.sym;
+    if not target_sym and target.sym_tab {
+        target_sym = target.sym_tab.lookup(sym_name, deep=True);
+    }
+    if not target_sym or not target_sym.defn {
+        return None;
+    }
+    defn_node = target_sym.defn[0];
+    parent = defn_node.parent;
+    if isinstance(parent, uni.Ability) {
+        return parent;
+    }
+    if not isinstance(parent, uni.ModuleItem) {
+        return None;
+    }
+    item = cast(uni.ModuleItem, parent);
+    try {
+        source_path = item.from_mod_path.resolve_relative_path();
+    } except Exception {
+        return None;
+    }
+    source_mod = self._load_sv_source_module(source_path);
+    if source_mod is None {
+        return None;
+    }
+    src_sym = source_mod.lookup(sym_name);
+    if not src_sym or not src_sym.defn {
+        return None;
+    }
+    src_defn = src_sym.defn[0];
+    if isinstance(src_defn, uni.Ability) {
+        return src_defn;
+    }
+    if src_defn.parent and isinstance(src_defn.parent, uni.Ability) {
+        return src_defn.parent;
+    }
+    return None;
+}
+
+"""Map call-site arguments onto a callee's declared parameter list.
+
+Both the sv-import RPC branch and the default codegen path need the
+same shape — a single ordered list of ``(slot_name, expr_or_spread)``
+tuples that's robust to mixed positional + kwarg + ``**`` spread input.
+``slot_name`` is ``None`` for spreads (they're carried through in
+source order) and the parameter name otherwise.  Emits ``E5080`` if
+the same param is bound twice (positionally and by keyword).
+"""
+impl EsastGenPass._slot_resolve_call_args(
+    args: list[(es.Expression | es.SpreadElement)],
+    props: list[(es.Property | es.SpreadElement)],
+    param_names: list[str],
+    func_name: str,
+    jac_node: uni.UniNode
+) -> list[tuple[(str | None), (es.Expression | es.SpreadElement)]] {
+    resolved: list[tuple[(str | None), (es.Expression | es.SpreadElement)]] = [];
+    seen_names: set[str] = set();
+    for (i, arg) in enumerate(args) {
+        if isinstance(arg, es.SpreadElement) {
+            resolved.append((None, arg));
+            continue;
+        }
+        if i < len(param_names) {
+            seen_names.add(param_names[i]);
+            resolved.append((param_names[i], arg));
+            continue;
+        }
+        # Excess positional: keep as anonymous slot — arity is checked
+        # by the type-checker pass elsewhere.
+        resolved.append((None, arg));
+    }
+    for kw in props {
+        if isinstance(kw, es.SpreadElement) {
+            resolved.append((None, kw));
+            continue;
+        }
+        kw_name = '';
+        if isinstance(kw.key, es.Identifier) {
+            kw_name = kw.key.name;
+        } elif isinstance(kw.key, es.Literal) {
+            kw_name = str(kw.key.value);
+        }
+        if not kw_name {
+            resolved.append(
+                (
+                    None,
+                    self.sync_loc(
+                        es.SpreadElement(argument=kw.value), jac_node=jac_node
+                    )
+                )
+            );
+            continue;
+        }
+        if kw_name in seen_names {
+            self.emit(E5080, node_override=jac_node, name=kw_name, func=func_name);
+        }
+        seen_names.add(kw_name);
+        resolved.append((kw_name, kw.value));
+    }
+    return resolved;
+}
+
 """Generate JS function stubs for def:pub functions imported via sv import.
 
 When a .cl.jac file has `sv import from .module { func1, func2 }`, and those
@@ -3330,11 +3512,15 @@ functions are def:pub (public HTTP endpoints), we generate async JS function
 stubs that call __jacCallFunction() to invoke the server over HTTP.
 """
 impl EsastGenPass._generate_sv_import_stubs(nd: uni.Import) -> None {
-    # Resolve the source module to look up function signatures
+    # Resolve (lazy-load if needed) the source module so we can read
+    # function signatures.  In production builds the source isn't
+    # pre-loaded by the type evaluator, so without this the wrapper
+    # would emit empty params and forward an empty args object,
+    # producing a server 422.  See issue #5852 (comment 1).
     source_mod: uni.Module | None = None;
     if nd.from_loc {
         resolved_path = nd.from_loc.resolve_relative_path();
-        source_mod = self.prog.mod.hub.get(resolved_path);
+        source_mod = self._load_sv_source_module(resolved_path);
     }
     stubs: list[es.Statement] = [];
     for item in nd.items {
