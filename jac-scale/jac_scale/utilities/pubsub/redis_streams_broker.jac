@@ -29,10 +29,9 @@ def _to_str(value: Any) -> str {
     return str(value);
 }
 
-glob _logger = logging.getLogger(__name__);
-
 # Reserved header keys used to carry delivery metadata back to ack().
-glob DELIVERY_ID_HEADER = "_jac_scale_delivery_id",
+glob _logger = logging.getLogger(__name__),
+     DELIVERY_ID_HEADER = "_jac_scale_delivery_id",
      DELIVERY_TOPIC_HEADER = "_jac_scale_delivery_topic",
      DELIVERY_GROUP_HEADER = "_jac_scale_delivery_group";
 
