@@ -77,12 +77,8 @@ impl S3Storage.download(
 
 impl S3Storage.delete(self: S3Storage, path: str) -> bool {
     key = self._resolve_key(path);
-    try {
-        self._client.delete_object(Bucket=self.bucket, Key=key);
-        return True;
-    } except Exception {
-        return False;
-    }
+    self._client.delete_object(Bucket=self.bucket, Key=key);
+    return True;
 }
 
 impl S3Storage.exists(self: S3Storage, path: str) -> bool {
@@ -146,8 +142,11 @@ impl S3Storage.copy(self: S3Storage, source: str, destination: str) -> bool {
     try {
         self._client.copy(copy_source, self.bucket, dest_key);
         return True;
-    } except Exception {
-        return False;
+    } except ClientError as e {
+        if e.response["Error"]["Code"] in ["404", "NoSuchKey"] {
+            return False;
+        }
+        raise e;
     }
 }
 
