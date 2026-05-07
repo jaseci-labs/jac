@@ -470,31 +470,36 @@ test "ModelPool ctx_window override beats min of members" {
 # So compaction firing means an override won.
 test "LocalLLM ctx_window propagation drives compaction end-to-end" {
     reset_byllm_config();
-
     OVERRIDE = 1000;
-    PROMPT_TOKENS = 850;
 
     def step_a -> str { return "stepped"; }
     def finish_tool(final_output: str) -> str { return final_output; }
 
+    # format_prompt subscripts messages[3] assuming get_msg_list() converted
+    # ToolCallResultMsg via to_dict(). On CI this isinstance check evaluates
+    # differently and the subscript raises. Bypass it - logging-only helper.
+    def noop_format(p: dict) -> str { return ""; }
+
     def make_fake_dispatch() -> object {
-        step_tc = types.SimpleNamespace(
-            id="call_step",
-            function=types.SimpleNamespace(name="step_a", arguments="{}")
-        );
         step_resp: dict = {
-            "choices": [{"message": {"content": None, "tool_calls": [step_tc]}}],
-            "usage": {"prompt_tokens": PROMPT_TOKENS},
+            "choices": [{"message": {"content": None, "tool_calls": [
+                types.SimpleNamespace(
+                    id="call_step",
+                    function=types.SimpleNamespace(name="step_a", arguments="{}")
+                )
+            ]}}],
+            "usage": {"prompt_tokens": 850},
             "model": "local:gemma-4-e4b"
         };
-        finish_tc = types.SimpleNamespace(
-            id="call_finish",
-            function=types.SimpleNamespace(
-                name="finish_tool", arguments='{"final_output": "ok"}'
-            )
-        );
         finish_resp: dict = {
-            "choices": [{"message": {"content": None, "tool_calls": [finish_tc]}}],
+            "choices": [{"message": {"content": None, "tool_calls": [
+                types.SimpleNamespace(
+                    id="call_finish",
+                    function=types.SimpleNamespace(
+                        name="finish_tool", arguments='{"final_output": "ok"}'
+                    )
+                )
+            ]}}],
             "usage": {},
             "model": "local:gemma-4-e4b"
         };
@@ -506,79 +511,56 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
         return fake;
     }
 
-    # Baseline: spec only, must NOT fire (proves the test discriminates).
-    llm_spec = LocalLLM(model_name="local:gemma-4-e4b");
-    fired_spec = [False];
-    def hook_spec(msgs: list, keep_recent: int) -> list {
-        fired_spec[0] = True;
-        return msgs[:2];
+    # Drive `by target(...)` with the given call_params; report whether
+    # compaction fired. patch_target is the LLM whose dispatch should be
+    # intercepted (same as target for LocalLLM, _local_delegate for Model).
+    def fires_compaction(
+        target: object, patch_target: object, ctx_window_in_call: int
+    ) -> bool {
+        fired = [False];
+        def hook(msgs: list, keep_recent: int) -> list {
+            fired[0] = True;
+            return msgs[:2];
+        }
+        def task(q: str) -> str by target(
+            tools=[step_a],
+            ctx_window=ctx_window_in_call,
+            threshold_ratio=0.80,
+            on_compaction=hook
+        );
+        with mock.patch.object(patch_target, "format_prompt", noop_format) {
+            with mock.patch.object(
+                patch_target, "model_call_no_stream", make_fake_dispatch()
+            ) {
+                task("test");
+            }
+        }
+        return fired[0];
     }
-    def task_spec(q: str) -> str by llm_spec(
-        tools=[step_a], threshold_ratio=0.80, on_compaction=hook_spec
-    );
-    with mock.patch.object(llm_spec, "model_call_no_stream", make_fake_dispatch()) {
-        task_spec("test");
-    }
-    assert not fired_spec[0] , "Baseline (no override) must not fire compaction";
 
-    llm_cfg = LocalLLM(model_name="local:gemma-4-e4b", config={"n_ctx": OVERRIDE});
-    fired_cfg = [False];
-    def hook_cfg(msgs: list, keep_recent: int) -> list {
-        fired_cfg[0] = True;
-        return msgs[:2];
-    }
-    def task_cfg(q: str) -> str by llm_cfg(
-        tools=[step_a], threshold_ratio=0.80, on_compaction=hook_cfg
-    );
-    with mock.patch.object(llm_cfg, "model_call_no_stream", make_fake_dispatch()) {
-        task_cfg("test");
-    }
-    assert fired_cfg[0] , "config['n_ctx'] override must reach compaction";
+    # Baseline: no override anywhere - 850/8192 = 10% must NOT fire.
+    spec = LocalLLM(model_name="local:gemma-4-e4b");
+    assert not fires_compaction(spec, spec, 0) ,
+        "Baseline (no override) must not fire - test cannot discriminate otherwise";
 
-    llm_self = LocalLLM(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
-    fired_self = [False];
-    def hook_self(msgs: list, keep_recent: int) -> list {
-        fired_self[0] = True;
-        return msgs[:2];
-    }
-    def task_self(q: str) -> str by llm_self(
-        tools=[step_a], threshold_ratio=0.80, on_compaction=hook_self
-    );
-    with mock.patch.object(llm_self, "model_call_no_stream", make_fake_dispatch()) {
-        task_self("test");
-    }
-    assert fired_self[0] , "self.ctx_window override must reach compaction";
+    # config["n_ctx"] rung: same value the engine is built with.
+    cfg = LocalLLM(model_name="local:gemma-4-e4b", config={"n_ctx": OVERRIDE});
+    assert fires_compaction(cfg, cfg, 0) ,
+        "config['n_ctx'] override must reach compaction";
 
-    llm_call = LocalLLM(model_name="local:gemma-4-e4b");
-    fired_call = [False];
-    def hook_call(msgs: list, keep_recent: int) -> list {
-        fired_call[0] = True;
-        return msgs[:2];
-    }
-    def task_call(q: str) -> str by llm_call(
-        tools=[step_a], ctx_window=OVERRIDE, threshold_ratio=0.80,
-        on_compaction=hook_call
-    );
-    with mock.patch.object(llm_call, "model_call_no_stream", make_fake_dispatch()) {
-        task_call("test");
-    }
-    assert fired_call[0] , "by llm(ctx_window=...) must reach compaction";
+    # self.ctx_window rung.
+    own = LocalLLM(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
+    assert fires_compaction(own, own, 0) ,
+        "self.ctx_window override must reach compaction";
 
+    # call_params rung (highest priority).
+    direct = LocalLLM(model_name="local:gemma-4-e4b");
+    assert fires_compaction(direct, direct, OVERRIDE) ,
+        "by llm(ctx_window=...) must reach compaction";
+
+    # Model wrapper must forward ctx_window to _local_delegate.
     m = Model(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
     assert m._local_delegate is not None;
-    fired_wrapper = [False];
-    def hook_wrapper(msgs: list, keep_recent: int) -> list {
-        fired_wrapper[0] = True;
-        return msgs[:2];
-    }
-    def task_wrapper(q: str) -> str by m(
-        tools=[step_a], threshold_ratio=0.80, on_compaction=hook_wrapper
-    );
-    with mock.patch.object(
-        m._local_delegate, "model_call_no_stream", make_fake_dispatch()
-    ) {
-        task_wrapper("test");
-    }
-    assert fired_wrapper[0] ,
+    assert fires_compaction(m, m._local_delegate, 0) ,
         "Model('local:...', ctx_window=N) must forward to _local_delegate";
 }

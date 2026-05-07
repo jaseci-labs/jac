@@ -704,16 +704,22 @@ impl BaseLLM.format_prompt(params: dict) -> str {
             log_params["api_key"] = "*" * (len(key) - 4) + key[-4:];
         }
     }
+    def _msg_content(m: object) -> object {
+        if isinstance(m, dict) { return m.get("content"); }
+        return getattr(m, "content", None);
+    }
+    msgs = log_params["messages"];
+    user_content = _msg_content(msgs[1]);
     log = f"""
     {MAGENTA}[SYSTEM]{RESET}
-    {log_params["messages"][0]["content"]}
+    {_msg_content(msgs[0])}
     {MAGENTA}[USER]{RESET}
-    {log_params["messages"][1]["content"][0]['text']
-        if isinstance(log_params["messages"][1]["content"], list)
-        else log_params["messages"][1]["content"]}
+    {user_content[0]['text']
+        if isinstance(user_content, list)
+        else user_content}
     {MAGENTA}[TOOL]{RESET}
-    {log_params["messages"][3]["content"]
-        if len(log_params["messages"]) > 3
+    {_msg_content(msgs[3])
+        if len(msgs) > 3
         else "No tools provided."}
     {" "}
     {MAGENTA}[TOOLS]{RESET}
