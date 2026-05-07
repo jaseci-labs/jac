@@ -1396,14 +1396,14 @@ Configure storage in `jac.toml`:
 
 ```toml
 [storage]
-storage_type = "local"       # Storage backend type
-base_path = "./storage"      # Base directory for files
-create_dirs = true           # Auto-create directories
+type = "local"           # Storage backend type
+base_path = "./storage"  # Base directory for files
+create_dirs = true       # Auto-create directories
 ```
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `storage_type` | string | `"local"` | Storage backend (`local`) |
+| `type` | string | `"local"` | Storage backend (`local`, `s3`) |
 | `base_path` | string | `"./storage"` | Base path for file storage |
 | `create_dirs` | boolean | `true` | Automatically create directories |
 
