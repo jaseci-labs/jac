@@ -716,7 +716,7 @@ impl BaseLLM.format_prompt(params: dict) -> str {
         if isinstance(m, dict) {
             return m.get("content");
         }
-        return getattr(m, "content", None);
+        return m?.content;
     }
     msgs = log_params["messages"];
     user_content = _msg_content(msgs[1]);
