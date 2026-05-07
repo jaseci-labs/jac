@@ -261,7 +261,13 @@ cl {
             }
             result = await jacSignup(username, password);
             if result["success"] {
-                navigate("/todos");
+                # /user/register does not return a token, sign in to start a session
+                logged_in = await jacLogin(username, password);
+                if logged_in {
+                    navigate("/todos");
+                } else {
+                    error = "Account created but login failed";
+                }
             } else {
                 error = result["error"] if result["error"] else "Signup failed";
             }
@@ -375,7 +381,7 @@ cl {
                 <input
                     type="text"
                     value={input}
-                    onChange={lambda e: Any { setInput(e.target.value);}}
+                    onChange={lambda e: Any { setInput(e.target.value); }}
                     onKeyPress={lambda e: Any { if e.key == "Enter" { addTodo(); }}}
                     placeholder="What needs to be done?"
                     style={{
@@ -410,7 +416,7 @@ cl {
         return
             <div style={{"display": "flex", "gap": "8px", "marginBottom": "16px"}}>
                 <button
-                    onClick={lambda { setFilter("all");}}
+                    onClick={lambda { setFilter("all"); }}
                     style={{
                         "padding": "6px 12px",
                         "background": ("#3b82f6" if filter == "all" else "#e5e7eb"),
@@ -424,7 +430,7 @@ cl {
                     All
                 </button>
                 <button
-                    onClick={lambda { setFilter("active");}}
+                    onClick={lambda { setFilter("active"); }}
                     style={{
                         "padding": "6px 12px",
                         "background": ("#3b82f6" if filter == "active" else "#e5e7eb"),
@@ -438,7 +444,7 @@ cl {
                     Active
                 </button>
                 <button
-                    onClick={lambda { setFilter("completed");}}
+                    onClick={lambda { setFilter("completed"); }}
                     style={{
                         "padding": "6px 12px",
                         "background": (
@@ -476,7 +482,7 @@ cl {
                 <input
                     type="checkbox"
                     checked={todo.done}
-                    onChange={lambda { toggleTodo(todo._jac_id);}}
+                    onChange={lambda { toggleTodo(todo._jac_id); }}
                     style={{"cursor": "pointer"}}
                 />
                 <span
@@ -489,7 +495,7 @@ cl {
                     {todo.text}
                 </span>
                 <button
-                    onClick={lambda { deleteTodo(todo._jac_id);}}
+                    onClick={lambda { deleteTodo(todo._jac_id); }}
                     style={{
                         "padding": "4px 8px",
                         "background": "#ef4444",
@@ -626,12 +632,12 @@ cl {
                 <h1 style={{"marginBottom": "20px"}}>My Todos</h1>
                 <TodoInput
                     input={input}
-                    setInput={lambda val: str -> str { input = val;}}
+                    setInput={lambda val: str -> str { input = val; }}
                     addTodo={addTodo}
                 />
                 <TodoFilters
                     filter={filter}
-                    setFilter={lambda val: str -> str { filter = val;}}
+                    setFilter={lambda val: str -> str { filter = val; }}
                 />
                 <TodoList
                     filteredTodos={filteredTodos}

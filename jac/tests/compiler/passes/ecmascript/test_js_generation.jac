@@ -708,6 +708,80 @@ test "separated defpub generates rpc stubs" {
     assert_balanced_syntax(js_code, fixture);
 }
 
+test "sv import kwargs preserve names in jac call function" {
+    # Regression for issue #5852.  Calling an sv-imported def:pub function
+    # with kwargs syntax (e.g. ``greet(name=x)``) must compile to the same
+    # ``__jacCallFunction("greet", {"name": x})`` shape that the positional
+    # form produces.  Previously the kwargs were silently dropped, emitting
+    # ``__jacCallFunction("greet", {})`` and causing a server 422.
+    fixture = "sv_import_kwargs_client.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # Pure-kwargs single arg: ``greet(name=input_text)``
+    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+        "Single-kwarg call must propagate the name into the args object;\n" + "got:\n" + js_code
+    );
+
+    # Pure-kwargs out-of-order: ``add_pair(b=2, a=1)`` — both keys must be
+    # present in the args object regardless of source order.
+    assert (
+        '__jacCallFunction("add_pair", {"b": 2, "a": 1})' in js_code
+        or '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code
+    ) , (
+        "Kwargs-only call must include all kwarg keys in the args object;\n" + "got:\n" + js_code
+    );
+
+    # Mixed positional + kwarg: ``add_pair(1, b=2)`` — first param mapped
+    # by position to its server-side name, second carried by kwarg key.
+    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code , (
+        "Mixed positional/kwarg call must merge both into the args object;\n" + "got:\n" + js_code
+    );
+
+    # ``**dict`` spread: ``add_pair(**kw)`` — keys aren't known at compile
+    # time, so the args object must carry an ObjectExpression spread.
+    assert '__jacCallFunction("add_pair", {...kw})' in js_code , (
+        "**dict spread must compile to ObjectExpression spread element;\n" + "got:\n" + js_code
+    );
+
+    # Sanity: the obvious bug-shape — empty args object — must not appear
+    # for any of these named calls.
+    assert '__jacCallFunction("greet", {})' not in js_code , (
+        "Bug regression: kwargs were dropped, emitting empty args object."
+    );
+    assert '__jacCallFunction("add_pair", {})' not in js_code , (
+        "Bug regression: kwargs were dropped, emitting empty args object."
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "sv import duplicate kwarg is a compile error" {
+    # Calling ``greet(input_text, name=other)`` gives the ``name`` parameter
+    # twice — once positionally and once by keyword.  This mirrors Python's
+    # ``TypeError: got multiple values for argument 'name'`` and must be
+    # reported as a compile-time error so the build fails fast rather than
+    # silently emitting a JS object with a duplicated key.
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+
+    fixture = os.path.join(FIXTURES, "sv_import_kwargs_dup.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True, type_check=True);
+    EsastGenPass(ir_in=ir, prog=prog);
+
+    dup_errs = [
+        e
+        for e in prog.errors_had
+        if "given both positionally and by keyword" in str(e)
+    ];
+    assert len(dup_errs) == 1 , (
+        "Expected exactly one E5080 collision diagnostic, got " + str(
+            [str(e) for e in prog.errors_had]
+        )
+    );
+    assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
+}
+
 test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
     # When a .cl.jac file has a separate .impl.jac file, both the main pass
     # and the child pass for the impl module may independently inject
@@ -976,7 +1050,9 @@ test "compr set basic" {
     js_code = compile_fixture_to_js("comprehensions.cl.jac", FIXTURES);
 
     # set_compr_basic: {x * 2 for x in items} → new Set(items.map(x => (x * 2)))
-    assert "new Set(" in js_code , ("Set comprehension should wrap result in new Set()");
+    assert "new Set(" in js_code , (
+        "Set comprehension should wrap result in new Set()"
+    );
     assert "new Set(items.map(" in js_code , (
         "Set comprehension should be new Set(items.map(...))"
     );
@@ -1181,4 +1257,95 @@ test "private identifier generates hash prefix" {
         f"PrivateIdentifier should emit '#secret', got: {js_code}"
     );
     assert "class Foo" in js_code;
+}
+
+test "jsx preserves single-space whitespace between adjacent expression children" {
+    # BUG: The parser dropped any whitespace-only JSX_TEXT token, including
+    # an intentional single space between two `{expr}` children on the same
+    # line.  As a result `<div>{count} {("task" ...)} remaining</div>`
+    # emitted children `[count, (cond), " remaining"]` instead of
+    # `[count, " ", (cond), " remaining"]`, so the rendered DOM showed
+    # "3tasks remaining" instead of "3 tasks remaining" (and "1.5lb"
+    # instead of "1.5 lb" in the shopping-list code from the AI day
+    # planner tutorial).
+    #
+    # Whitespace that crosses a newline (indent between `}` and the next
+    # `{` on a new line) is structural and must still be dropped, matching
+    # Babel's JSX text normalization.
+    fixture = "jsx_adjacent_expressions_spaces.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # First span: same-line `{count} {("task" if ... else "tasks")} remaining`.
+    # Children must include a literal " " separator between count and the
+    # conditional, AND between the conditional and "remaining".
+    assert (
+        "[count, \" \", ((count === 1) ? \"task\" : \"tasks\"), \" remaining\"]" in js_code
+    ) , (
+        "Same-line `{a} {b}` must emit a `\" \"` child between adjacent "
+        f"expressions, got:\n{js_code}"
+    );
+
+    # Second span: `{amount} {unit}` — two adjacent expressions only.
+    assert "[amount, \" \", unit]" in js_code , (
+        f"Same-line adjacent `{{amount}} {{unit}}` must emit a `\" \"` "
+        f"separator child, got:\n{js_code}"
+    );
+
+    # Third span: newline-separated `{count}\n{unit}` — structural
+    # whitespace MUST be dropped, no `" "` child.
+    assert "__jacJsx(\"p\", {}, [count, unit])" in js_code , (
+        "Newline-separated `{a}\\n{b}` must NOT emit a whitespace child "
+        f"(structural whitespace is dropped per Babel rules), got:\n{js_code}"
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "is and is not emit identity comparison operators" {
+    # BUG: ES_COMPARISON_OPS had no entries for Tok.KW_IS / Tok.KW_ISN, so
+    # both `is` and `is not` fell through to the `===` default. `is None`
+    # was accidentally correct; `is not None` silently inverted to `===`,
+    # causing branches like `if x is not None { ... }` to run only when x
+    # *was* None.
+    jac_code = "\"\"\"Test is/is not codegen.\"\"\"\n\ncl def check(x: int | None) -> int {\n    if x is None {\n        return 1;\n    }\n    if x is not None {\n        return 2;\n    }\n    return 3;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "x === null" in js_code , (
+            f"`is None` must emit `=== null`, got:\n{js_code}"
+        );
+        assert "x !== null" in js_code , (
+            f"`is not None` must emit `!== null`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "fstring format spec invokes runtime format helper" {
+    # BUG: exit_formatted_value ignored nd.format_spec, so format mini-language
+    # specs like `:.2f` were dropped — `f"{x:.2f}"` rendered "8" instead of
+    # "8.00". The fix routes formatted values with a spec through the
+    # _jac.builtin.format runtime helper, which honors precision, width,
+    # alignment, and type specifiers.
+    jac_code = "\"\"\"Test f-string format spec.\"\"\"\n\ncl def fmt_price(x: float) -> str {\n    return f\"${x:.2f}\";\n}\n\ncl def fmt_plain(x: float) -> str {\n    return f\"${x}\";\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        assert "_jac.builtin.format(x, \".2f\")" in js_code , (
+            "`f\"{x:.2f}\"` must compile to a runtime format() call, "
+            f"got:\n{js_code}"
+        );
+        # Bare `f"{x}"` (no spec) must still emit a plain template
+        # interpolation — the runtime call is reserved for spec'd values.
+        assert "${x}" in js_code , (
+            f"Bare `f\"{{x}}\"` should still use plain `${{x}}`, got:\n{js_code}"
+        );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
 }

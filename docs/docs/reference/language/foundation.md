@@ -233,6 +233,9 @@ obj Example {
 }
 ```
 
+!!! note "The `any` Special Case"
+    Because `any` is a built-in type in Jac, the backtick escape is used as a convention to refer to the Python/Jac built-in **`any()` function**. Always use `` `any `` when you want to call the function and `any` (without a backtick) when referring to the type.
+
 !!! danger
     Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
@@ -331,6 +334,32 @@ if typing.TYPE_CHECKING:
 
 If you later add runtime usage like `MyClass()`, the compiler automatically promotes it back to a regular import. No manual `if TYPE_CHECKING` blocks are needed in Jac.
 
+#### Ambient Typing Names
+
+A curated set of annotation-only names from `typing` resolves in user code without an explicit import:
+
+`Callable`, `Protocol`, `TypeVar`, `Generic`, `Literal`, `ClassVar`, `Annotated`, `Iterable`, `Iterator`, `AsyncIterable`, `AsyncIterator`, `Mapping`, `MutableMapping`, `Sequence`, `MutableSequence`, `Awaitable`, `Coroutine`.
+
+```jac
+def:pub apply(func: Callable[[int, int], int], x: int, y: int) -> int {
+    return func(x, y);
+}
+```
+
+The Python codegen still emits `from typing import Callable` to the generated module preamble, so runtime introspection (`typing.get_type_hints`, pydantic, FastAPI) keeps working. The JS codegen strips annotations from function signatures, so no `typing` import lands in the bundle.
+
+Names skipped on purpose:
+
+| Don't write | Use instead |
+|-------------|-------------|
+| `Any` | the `any` keyword |
+| `Optional[X]` | `X \| None` |
+| `Union[X, Y]` | `X \| Y` |
+| `List[X]`, `Dict[K, V]`, `Set[X]`, `FrozenSet[X]`, `Tuple[X, ...]`, `Type[X]` | the lowercase built-ins (PEP 585) |
+| `DefaultDict`, `OrderedDict`, `Counter`, `Deque` | the `collections` equivalents |
+
+Runtime values like `cast`, `overload`, `runtime_checkable`, `TYPE_CHECKING`, `get_type_hints`, `get_args`, `get_origin`, and `no_type_check` are not ambient -- import them explicitly when needed.
+
 ### 3 Generic Types
 
 Jac will support generic type parameters using Python-style syntax (coming soon):
@@ -355,6 +384,10 @@ obj Container {
     has value: any;
 }
 ```
+
+!!! tip "Remember the backtick"
+    If you need to use the built-in function to check if any item is truthy, use `` `any ``:
+    ``if `any([True, False]) { ... }``
 
 ### 4 The `Self` Type
 

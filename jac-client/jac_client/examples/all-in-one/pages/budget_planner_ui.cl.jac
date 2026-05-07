@@ -52,7 +52,7 @@ cl def:pub BudgetPlanner -> JsxElement {
                     <TransactionForm/>
                     <CategoryFilter
                         selectedCategory={filter}
-                        onSelect={lambda val: str { filter = val;}}
+                        onSelect={lambda val: str { filter = val; }}
                     />
                     <TransactionList
                         transactions={sorted}

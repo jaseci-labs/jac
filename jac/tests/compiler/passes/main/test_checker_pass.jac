@@ -647,6 +647,21 @@ test "checker_jac_runtime_alias" {
     ]}";
 }
 
+test "checker_react_router_props" {
+    # Regression for #5847: `@jac/runtime` exposes a React Router v6-shaped
+    # surface (`<Route element=...>`, `<Link to=...>`, `Routes`, `Navigate`,
+    # `Outlet`, `useNavigate` / `useLocation` / `useParams`) in both runtimes —
+    # bare-serve implements it natively, jac-client wraps React Router. The
+    # type checker validates JSX props against bare-serve's declarations.
+    path = os.path.join(CHECKER_FIXTURES, "checker_react_router_props.cl.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "cyclic_symbol" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cyclic_symbol.jac");
     program = JacProgram();
@@ -1291,6 +1306,31 @@ test "union_type_annotation" {
     """,
         program.errors_had[0].pretty_print()
     );
+}
+
+"""Regression: `Callable[..., Any]` is accepted as a `|` union arm."""
+test "union_callable_member" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_callable_member.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+}
+
+"""Regression: `Never` / `NoReturn` are accepted as `|` union arms."""
+test "union_never_arm" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_union_never_arm.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"Expected 0 errors, got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
 }
 
 """Test member access on union types."""
@@ -2000,6 +2040,32 @@ test "callable_type_annotation" {
         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
     """,
         program.errors_had[7].pretty_print()
+    );
+}
+
+"""Shorter callables are assignable to longer ones (TS-style param drop).
+
+A function with fewer parameters is a valid value for a callable type expecting
+more — the extras are simply dropped at the call site. This unblocks the React
+idiom `onClick={handler}` where `handler` takes no MouseEvent arg.
+"""
+test "callable_param_drop" {
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_callable_param_drop.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+
+    # The lone error is the long-to-short direction, which must still be rejected.
+    assert_error_pretty_found(
+        """
+        bad: Callable[[], None] = two_ints;  # Error: extra src params have no defaults
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    """,
+        program.errors_had[0].pretty_print()
     );
 }
 
@@ -2831,6 +2897,31 @@ test "enum_static_method" {
     )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
 }
 
+"""Typed-base enum syntax: members of `enum X: int` are int instances.
+
+`enum X: int { ... }` desugars to `class X(IntEnum)` and members satisfy
+`list[int]`/int positions without `.value`. `enum X: str` mirrors that
+with str. Custom `enum X: T` uses Python's mixin pattern. Plain
+`enum X { ... }` keeps the prior behavior — members are NOT int.
+"""
+test "enum_typed_base" {
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_enum_typed_base.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    # Exactly one error expected: `bad: list[int] = [Plain.A, Plain.B]`
+    # (plain Enum members are not int instances).
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, got {len(
+        program.errors_had
+    )}:\n" + "\n".join(e.pretty_print() for e in program.errors_had);
+    err_text = program.errors_had[0].pretty_print();
+    assert "Plain" in err_text and "int" in err_text , (
+        "Expected the single error to flag the Plain.A/Plain.B → list[int] "
+        f"assignment; got: {err_text}"
+    );
+}
+
 """Self member assignments with TypeVar annotations propagate through inheritance."""
 test "generic_self_member_type_propagation" {
     program = JacProgram();
@@ -3570,6 +3661,36 @@ test "bare_generic_iteration_yields_any" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
 
+test "bare_generic_in_signatures_emits_w1036" {
+    # Bare generics in function/method return types and parameter types should
+    # also produce W1036 — same as in `has` fields and assignments.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_bare_generic_signatures.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    bare_generic_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1036" in w.pretty_print()
+    ];
+    # Expected sites (8 total):
+    #   1. `-> list`              return type
+    #   2. `x: dict`               param type
+    #   3. `-> list | None`        union branch in return type
+    #   4. `x: list`, `y: dict`,   two params + return type on `both_bare`
+    #      `-> set`
+    #   5. `-> tuple`              decl method return type
+    #   6. `items: frozenset`      decl method param type
+    # Properly-parameterized signatures and impl-side annotations (deduped
+    # against the decl) should NOT warn.
+    assert len(bare_generic_warnings) == 8 , f"Expected 8 W1036 warnings (signatures), got {len(
+        bare_generic_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
+}
+
 """Test callable() type narrowing - validates narrowing unions by callability."""
 test "callable_narrowing" {
     program = JacProgram();
@@ -4092,6 +4213,41 @@ test "generator_yield_return_type_check" {
         ^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print()
+    );
+}
+
+test "walker_typed_reports_validation" {
+    # `has reports: list[T]` on a walker should:
+    #   1. Reject non-list shapes (E1112).
+    #   2. Type-check `report X` against the element type T (E1113).
+    path = os.path.join(CHECKER_FIXTURES, "checker_walker_typed_reports.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1112 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1112"
+    ];
+    e1113 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1113"
+    ];
+    assert len(e1112) == 1 , f"Expected 1 E1112 (non-list reports shape), got {len(
+        e1112
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1112);
+    assert len(e1113) == 1 , f"Expected 1 E1113 (mismatched report element), got {len(
+        e1113
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1113);
+    # No spurious errors on the GoodWalker case.
+    other = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code not in ("E1112", "E1113")
+    ];
+    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in other
     );
 }
 

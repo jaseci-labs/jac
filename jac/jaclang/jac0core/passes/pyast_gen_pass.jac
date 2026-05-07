@@ -9,7 +9,7 @@ equivalents:
    - Control flow statements (if/else, loops, try/except)
    - Data structures (lists, dictionaries, sets)
    - Special Jac features (walkers, abilities, archetypes)
-   - Data spatial operations (node/edge connections)
+   - Object spatial operations (node/edge connections)
 
 3. Managing imports and dependencies between modules
 4. Preserving source location information for error reporting
@@ -39,8 +39,7 @@ import from jaclang.jac0core.diagnostics {
     E5005,
     E5006,
     E5007,
-    E5008,
-    W0062
+    E5008
 }
 
 glob T = TypeVar('T', bound=ast3.AST),
@@ -100,6 +99,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
         already_added: list[str] = [],
         jaclib_imports: set[str] by postinit,
         builtin_imports: set[str] by postinit,
+        typing_imports: set[str] by postinit,
         _temp_name_counter: int = 0,
         _hoisted_funcs: list[ast3.FunctionDef | ast3.AsyncFunctionDef] = [],
         child_passes: list[PyastGenPass] by postinit,
@@ -108,11 +108,21 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
 
     with entry {
         _builtin_names: ClassVar[(set[str] | None)] = None;
+        _ambient_typing_names: ClassVar[(set[str] | None)] = None;
     }
 
     """Get the set of builtin names, cached after first successful access."""
     @classmethod
     def _get_builtin_names(cls: Any) -> set[str];
+
+    """Get the curated ambient typing names. Single source of truth is
+    `compiler/type_system/typing_ambient.pyi` — the same file TypeEvaluator
+    uses to drive its merge into `builtins_module`. Parsing the stub's
+    __all__ here lets codegen auto-emit `from typing import <names>` when
+    a reference appears, keeping `typing.get_type_hints` / pydantic /
+    FastAPI annotation introspection working at runtime."""
+    @classmethod
+    def _get_ambient_typing_names(cls: Any) -> set[str];
 
     def postinit -> None;
     """Enter node."""
@@ -174,6 +184,9 @@ needs_enum)
 
     """Ensure Enum utilities are imported only once."""
     def needs_enum -> None;
+
+    """Ensure a specific enum kind (IntEnum, StrEnum, ...) is imported once."""
+    def needs_enum_kind(kind: str) -> None;
 
     """Ensure concurrent Future is imported only once."""
     def needs_future -> None;

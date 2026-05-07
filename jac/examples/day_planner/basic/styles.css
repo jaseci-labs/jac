@@ -1,0 +1,27 @@
+.container { max-width: 900px; margin: 40px auto; font-family: system-ui; padding: 20px; }
+h1 { text-align: center; margin-bottom: 24px; color: #333; }
+h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
+.two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+@media (max-width: 700px) { .two-column { grid-template-columns: 1fr; } }
+.input-row { display: flex; gap: 8px; margin-bottom: 16px; }
+.input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
+.btn-add { padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
+.btn-generate { padding: 10px 16px; background: #2196F3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap; }
+.btn-generate:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn-delete { background: #e53e3e; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85rem; }
+.btn-clear { background: #888; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 0.85rem; }
+.task-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; gap: 10px; }
+.task-title { flex: 1; }
+.task-done { text-decoration: line-through; color: #888; }
+.category { padding: 2px 8px; background: #e8f5e9; border-radius: 12px; font-size: 0.75rem; color: #2e7d32; margin-right: 8px; }
+.count { text-align: center; color: #888; margin-top: 12px; font-size: 0.9rem; }
+.ingredient-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+.ing-info { display: flex; flex-direction: column; gap: 2px; }
+.ing-name { font-weight: 500; }
+.ing-qty { color: #666; font-size: 0.85rem; }
+.ing-meta { display: flex; align-items: center; gap: 8px; }
+.ing-cost { color: #2196F3; font-weight: 600; }
+.carb-badge { padding: 2px 6px; background: #fff3e0; border-radius: 12px; font-size: 0.7rem; color: #e65100; }
+.shopping-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; margin-top: 8px; border-top: 1px solid #ddd; }
+.total { font-weight: 700; color: #2196F3; }
+.generating-msg { text-align: center; padding: 20px; color: #666; }

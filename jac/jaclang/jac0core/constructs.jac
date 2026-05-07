@@ -11,6 +11,7 @@ import from jaclang.jac0core.archetype {
     NodeAnchor,
     NodeArchetype,
     ObjectSpatialFunction,
+    PermissionDenied,
     Root,
     WalkerAnchor,
     WalkerArchetype
@@ -29,6 +30,7 @@ glob __all__ = [
          'WalkerArchetype',
          'GenericEdge',
          'JsxElement',
+         'PermissionDenied',
          'Root',
          'MTIR',
          'MTRuntime',

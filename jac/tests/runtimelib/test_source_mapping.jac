@@ -166,7 +166,7 @@ test "resolve stack trace to jac files" {
     }
 }
 
-test "node modules not resolved" {
+test "stack passes through unchanged when no source map is loaded" {
     mapper = SourceMapper();
     stack = "    at React.createElement (node_modules/react/index.js:1:0)";
     assert mapper.resolve_stack_trace(stack) == stack;
@@ -176,6 +176,76 @@ test "no source map returns original stack" {
     mapper = SourceMapper();
     stack = "    at foo (client.js:1:0)";
     assert mapper.resolve_stack_trace(stack) == stack;
+}
+
+"""SourceMapper whose bundle map covers three frames: a user .jac source,
+a stray compiled .js with no `/* Source: */` header, and a node_modules
+file. Used to exercise the verbose filter against every non-source case
+the unified rule has to handle."""
+def _create_mapper_with_artifact_and_node_modules(tmpdir: str) -> SourceMapper {
+    compiled_dir = Path(tmpdir) / ".jac" / "client" / "compiled";
+    dist_dir = Path(tmpdir) / ".jac" / "client" / "dist";
+    nm_dir = Path(tmpdir) / ".jac" / "client" / "node_modules" / "react" / "cjs";
+    compiled_dir.mkdir(parents=True);
+    dist_dir.mkdir(parents=True);
+    nm_dir.mkdir(parents=True);
+    (compiled_dir / "main.js").write_text("/* Source: /project/main.jac */\n");
+    # No /* Source: */ header — _resolve_to_jac falls through.
+    (compiled_dir / "stray.js").write_text("// generated, not from .jac\n");
+    (nm_dir / "react.production.min.js").write_text("// react\n");
+    source_map = {
+        "version": 3,
+        "file": "client.js",
+        "sources": [
+            "../compiled/main.js",
+            "../compiled/stray.js",
+            "../node_modules/react/cjs/react.production.min.js"
+        ],
+        "names": [],
+        # Three lines, one frame each, advancing the source index.
+        "mappings": "AAAA;ACAA;ACAA"
+    };
+    (dist_dir / "client.hash.js.map").write_text(json.dumps(source_map));
+    return SourceMapper.from_bundle(tmpdir);
+}
+
+test "non-source frames are dropped by default, .jac frames kept" {
+    with TemporaryDirectory() as tmpdir {
+        mapper = _create_mapper_with_artifact_and_node_modules(tmpdir);
+        stack = "    at foo (http://x/client.js:1:0)\n" + "    at bar (http://x/client.js:2:0)\n" + "    at baz (http://x/client.js:3:0)";
+        resolved = mapper.resolve_stack_trace(stack);
+        # Only the .jac-resolving frame survives; stray artifact and
+        # node_modules are both inside .jac/ and get filtered.
+        assert "main.jac" in resolved;
+        assert "foo" in resolved;
+        assert "stray.js" not in resolved;
+        assert "node_modules" not in resolved;
+        assert "bar" not in resolved;
+        assert "baz" not in resolved;
+    }
+}
+
+test "verbose mode keeps all resolved frames" {
+    with TemporaryDirectory() as tmpdir {
+        mapper = _create_mapper_with_artifact_and_node_modules(tmpdir);
+        stack = "    at foo (http://x/client.js:1:0)\n" + "    at bar (http://x/client.js:2:0)\n" + "    at baz (http://x/client.js:3:0)";
+        resolved = mapper.resolve_stack_trace(stack, verbose=True);
+        assert "main.jac" in resolved;
+        assert "stray.js" in resolved;
+        # node_modules path is shortened to 'node_modules/...' for readability.
+        assert "node_modules/react/cjs/react.production.min.js" in resolved;
+    }
+}
+
+test "unresolvable frames pass through unchanged in default mode" {
+    with TemporaryDirectory() as tmpdir {
+        mapper = _create_mapper_with_artifact_and_node_modules(tmpdir);
+        # Line 9999 has no mapping, so resolve() returns None and the line
+        # is preserved (signals the mapper failed rather than silently
+        # dropping diagnostic information).
+        stack = "    at unknown (http://x/client.js:9999:0)";
+        assert mapper.resolve_stack_trace(stack) == stack;
+    }
 }
 
 # =============================================================================

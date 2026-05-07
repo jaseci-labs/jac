@@ -121,22 +121,88 @@ class JacRuntime {
         );
     }
 
-    """Return a configured Model from jac.toml for the builtin llm."""
+    """Return a configured Model from jac.toml for the builtin llm.
+
+    Resolution order for the model name:
+      1. [plugins.byllm.model].default_model in jac.toml (explicit user choice)
+      2. $BYLLM_DEFAULT_MODEL env override
+      3. Auto: the bundled `local:<alias>` if no provider API key is detected
+      4. Last resort: openai/gpt-4o-mini (will only work if OPENAI_API_KEY is set)
+    """
     @hookimpl
     static def default_llm -> LLMModel {
+        import os;
         _cache = JacRuntime?._cached_default_llm;
         if (_cache is not None) {
             return _cache;
         }
         import from byllm.llm { Model }
         import from byllm.config_loader { get_byllm_config }
+        import from byllm.exceptions { ConfigurationError }
         config = get_byllm_config();
         model_config = config.get_model_config();
         call_params_config = config.get_call_params_config();
+        local_config = config.get_local_config();
+
+        configured = model_config.get("default_model", "");
+        env_override = os.environ.get("BYLLM_DEFAULT_MODEL", "");
+        chosen = env_override or configured;
+        if not chosen {
+            # No explicit choice — pick the cheapest path that will actually work:
+            # if the user has any common provider key set, fall through to a
+            # cloud default; otherwise route to the bundled local model.
+            has_cloud_key = any(
+                bool(os.environ.get(k))
+                for k in (
+                    "OPENAI_API_KEY",
+                    "ANTHROPIC_API_KEY",
+                    "GEMINI_API_KEY",
+                    "GOOGLE_API_KEY",
+                    "MISTRAL_API_KEY",
+                    "GROQ_API_KEY",
+                    "TOGETHER_API_KEY",
+                    "DEEPSEEK_API_KEY"
+                )
+            );
+            if has_cloud_key {
+                chosen = "openai/gpt-4o-mini";
+            } else {
+                # No provider key and nothing configured -- fall back to the
+                # bundled local runtime if `[local]` is installed; otherwise
+                # tell the user how to fix it. Importing llama_cpp here is
+                # the cheapest "is the [local] extra installed" probe.
+                try {
+                    import llama_cpp;
+                    local_alias = local_config.get("default_alias", "gemma-4-e4b");
+                    chosen = f"local:{local_alias}";
+                } except ImportError {
+                    raise ConfigurationError(
+                        "byLLM has no model configured and no provider API key "
+                        "is set. Pick one of:\n"
+                        "  - Set OPENAI_API_KEY / ANTHROPIC_API_KEY / GEMINI_API_KEY / etc.\n"
+                        "  - Run a local model via Ollama (recommended for "
+                        "local-first deployments): install Ollama, then set "
+                        "[plugins.byllm.model].default_model = \"ollama/<model>\" "
+                        "in jac.toml.\n"
+                        "  - Use byLLM's bundled in-process runtime: "
+                        "pip install 'byllm[local]'  then "
+                        "default_model = \"local:gemma-4-e4b\"."
+                    );
+                }
+            }
+        }
+
+        # Layer the [local] config on top of [model] config when going local
+        # so users can put runtime knobs in one place.
+        merged_config: dict = dict(model_config);
+        if chosen.startswith("local:") {
+            for (k, v) in local_config.items() {
+                merged_config[k] = v;
+            }
+        }
+
         instance = Model(
-            model_name=model_config.get('default_model', 'openai/gpt-4o-mini'),
-            config=model_config,
-            call_params=call_params_config
+            model_name=chosen, config=merged_config, call_params=call_params_config
         );
         JacRuntime._cached_default_llm = instance;
         return instance;

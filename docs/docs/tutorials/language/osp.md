@@ -560,9 +560,12 @@ walker list_todos {
 }
 ```
 
+!!! note
+    `main.jac` is the default entry point. If your file has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
+
 ```bash
 # Run as API server
-jac start app.jac
+jac start
 
 # Call via HTTP
 curl -X POST http://localhost:8000/walker/add_todo \

@@ -475,9 +475,22 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Right operand of \"{op}\" must support \"__contains__\"; \"{type}\" does not"
      ),
+     # Walker reports declaration / usage
+     E1112 = _err(
+         "E1112",
+         Category.TYPE,
+         "Walker `reports` field must be a list type, got \"{type}\"",
+         "Declare it as `has reports: list[T] = [];` so that `report X` and `(spawn W).reports` are typed against `T`."
+     ),
+     E1113 = _err(
+         "E1113", Category.TYPE, "Cannot report \"{actual}\", expected \"{expected}\""
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
-         "W1051", Category.TYPE, "Expression type could not be resolved (Unknown)"
+         "W1051",
+         Category.TYPE,
+         "Expression type could not be resolved (Unknown)",
+         "Often fixed by adding a more specific type annotation to the relevant declaration (e.g., 'list[Task]' instead of bare 'list', or annotating an unannotated parameter or attribute). Can also indicate an unresolved import, a forward reference the checker cannot bind, or fallout from an upstream error."
      ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
@@ -488,6 +501,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W1102",
          Category.IMPORT,
          "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+     ),
+     W1103 = _warn(
+         "W1103",
+         Category.IMPORT,
+         "'{name}' is ambient and does not need to be imported from '{module}'"
+     ),
+     W1104 = _warn(
+         "W1104",
+         Category.IMPORT,
+         "Use the lowercase 'any' keyword instead of importing 'Any' from typing"
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Semantic errors/warnings (E2xxx/W2xxx)
@@ -725,6 +748,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Filter comparison '{name} == {name}' is always true — "
          "both sides resolve to the same node field [filter-compare-tautology]"
      ),
+     W3041 = _warn(
+         "W3041",
+         Category.LINT,
+         "Reactive `has` field '{name}' is read after being assigned in the same "
+         "`can with entry` block; the read returns the closure-captured pre-update "
+         "value, not the just-assigned one [stale-has-read]",
+         help="The has-field assignment lowers to a React useState setter call, "
+         "which is scheduled for the next render. To branch on the new value "
+         "in the same block, capture it in a local first: "
+         "`local = expr; <field> = local; if local { ... }`."
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -751,7 +785,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "mutable-default": "W3036",
          "unnecessary-none-return": "W3037",
          "getattr-to-null-ok": "W3039",
-         "filter-compare-tautology": "W3040"
+         "filter-compare-tautology": "W3040",
+         "stale-has-read": "W3041"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)
@@ -806,6 +841,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5014",
          Category.CODEGEN,
          "Walker spawn has more positional arguments than fields."
+     ),
+     W5015 = _warn(
+         "W5015",
+         Category.CODEGEN,
+         "Component '{component}' takes a single 'props' bundle — JSX call sites are not type-checked per prop.",
+         help="Prefer direct named params (e.g. `def {component}(name: str, age: int)`); suppress with `# jac:ignore[W5015]` only when intentionally forwarding the bundle."
      ),
      # Native compile
      E5020 = _err("E5020", Category.CODEGEN, "Native compilation failed: {error}"),
@@ -865,6 +906,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5072",
          Category.CODEGEN,
          "Attribute error when accessing node attributes: {error}"
+     ),
+     # JS / RPC codegen
+     E5080 = _err(
+         "E5080",
+         Category.CODEGEN,
+         "Argument '{name}' for server function '{func}' is given both positionally and by keyword"
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Portability warnings (W6xxx) — JS-idiomatic usage that breaks cross-codespace portability
