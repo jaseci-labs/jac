@@ -1,3 +1,20 @@
+# Keys consumed internally by byLLM — never forwarded to litellm.completion.
+# Add new internal keys here; they'll be excluded from the LiteLLM passthrough.
+glob _BYLLM_RESERVED: set = {
+    "compaction_enabled",
+    "threshold_ratio",
+    "keep_recent_iterations",
+    "compaction_model",
+    "on_compaction",
+    "max_react_iterations",
+    "on_iteration",
+    "parallel_hint",
+    "parallelize",
+    "logging",
+    "ctx_window",
+};
+
+
 """Determine if a given by-llm call should use parallel tool execution."""
 
 def _should_parallelize(mt_run: MTRuntime) -> bool {
@@ -675,6 +692,23 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     if "tool_choice" in mt_run.call_params {
         params["tool_choice"] = mt_run.call_params["tool_choice"];
     }
+    # Pass through arbitrary LiteLLM kwargs from all call_params surfaces.
+    # Resolution order (lowest → highest priority): config defaults, model
+    # instance call_params, per-call mt_run.call_params. The explicit curated
+    # dict above takes final priority (merged last so its keys always win).
+    _curated_keys: set = {"temperature", "max_tokens", "tool_choice"};
+    passthrough: dict = {
+        k: v
+        for (k, v) in {
+            **(_call_params_config or {}),
+            **(self.call_params or {}),
+            **(mt_run.call_params or {}),
+        }.items()
+        if k not in _BYLLM_RESERVED
+        and k not in _curated_keys
+        and v is not None
+    };
+    params = {**passthrough, **params};
     return params;
 }
 

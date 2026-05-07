@@ -62,7 +62,8 @@ class JacByllmPluginConfig {
                 "call_params": {
                     "type": "dict",
                     "default": {},
-                    "description": "Default call parameters for LLM invocations",
+                    "description": "Default call parameters for LLM invocations. temperature and max_tokens are documented defaults; any other key is forwarded verbatim to litellm.completion (e.g. top_p, seed, timeout, extra_headers, reasoning_effort). byLLM-internal keys (compaction_enabled, max_react_iterations, etc.) are never forwarded.",
+                    "allow_extra": True,
                     "nested": {
                         "temperature": {
                             "type": "float",
