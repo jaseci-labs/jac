@@ -601,7 +601,7 @@ test "parallel-safe and sequential tags added to tool descriptions" {
 
     model = Model(model_name="mockllm");
     mt_run = _MockMTRun(
-        call_params={"parallelize": True},
+        call_params={"parallelize": True, "parallel_hint": True},
         tools=[tool_a, tool_b, ft],
         messages=[{"role": "system", "content": "You are helpful."}]
     );
@@ -665,7 +665,7 @@ test "scheduling hint injected when parallel plus tools plus parallel_hint" {
 
     model = Model(model_name="mockllm");
     mt_run = _MockMTRun(
-        call_params={"parallelize": True},
+        call_params={"parallelize": True, "parallel_hint": True},
         tools=[tool_a, ft],
         messages=[{"role": "system", "content": "You are helpful."}]
     );
@@ -673,7 +673,7 @@ test "scheduling hint injected when parallel plus tools plus parallel_hint" {
     params = model.make_model_params(mt_run);
     sys_content = params["messages"][0]["content"];
     assert "Intelligent tool scheduling rules" in sys_content, (
-        "Scheduling hint should be injected when parallel is active"
+        "Scheduling hint should be injected when parallel_hint=True"
     );
     assert "BATCH in one response" in sys_content;
     assert "SEPARATE into different responses" in sys_content;
@@ -757,7 +757,7 @@ test "serialize tool names listed in system prompt hint" {
 
     model = Model(model_name="mockllm");
     mt_run = _MockMTRun(
-        call_params={"parallelize": True},
+        call_params={"parallelize": True, "parallel_hint": True},
         tools=[tool_a, tool_b, ft],
         messages=[{"role": "system", "content": "You are helpful."}]
     );

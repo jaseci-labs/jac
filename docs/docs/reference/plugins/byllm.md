@@ -1029,12 +1029,14 @@ When parallel mode is active, `dispatch_batch` checks each batch:
 !!! note
     `mark_serialize` applies to the function globally. All `by llm()` calls that include the marked tool will respect the constraint.
 
-### Intelligent Scheduling
+### Scheduling Hints (opt-in)
 
-When parallel is active, byLLM automatically helps the LLM make smart batching decisions:
+Pass `parallel_hint=True` in `by llm()` to add prompt-level guidance on top of the runtime dispatch:
 
 - **Tool annotations** -- each tool's description gets a `[PARALLEL-SAFE]` or `[SEQUENTIAL]` tag
-- **Scheduling hints** -- rules injected into the system prompt guiding the LLM to batch when all arguments are known upfront and sequence when one tool depends on another's output
+- **Scheduling rules** -- a rule block is injected into the system prompt explaining when to batch and when to sequence
+
+Off by default. The runtime still serializes tools marked with `mark_serialize` regardless of this flag - the hint only changes how the LLM is asked to plan.
 
 ### Example
 
@@ -1067,7 +1069,6 @@ with entry {
 
     # LLM emits 3 get_weather calls in parallel (~1s instead of ~3s)
     # save_log is serialized -- any batch containing it runs sequentially.
-    # Intelligent LLMs won't mix [PARALLEL-SAFE] and [SEQUENTIAL] tools in the same batch
     result = weather_agent(
         "What's the weather in Tokyo, Paris, and New York?"
     );
@@ -1080,7 +1081,7 @@ with entry {
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `BYLLM_TOOL_WORKERS` | `min(32, cpu_count * 5)` | Max threads in the shared pool (env var) |
-| `parallel_hint` | `True` | Pass `parallel_hint=False` in `by llm()` to disable scheduling hints while keeping parallel execution |
+| `parallel_hint` | `False` | Pass `parallel_hint=True` in `by llm()` to inject `[PARALLEL-SAFE]`/`[SEQUENTIAL]` tags on tool descriptions plus a scheduling-rules block in the system prompt. Off by default - modern LLMs already batch independent tool calls without the extra prompt tokens. |
 
 ### Verifying Parallel Execution
 
