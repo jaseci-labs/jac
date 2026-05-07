@@ -77,4 +77,6 @@ class TypeCheckPass(UniPass) {
     def _check_bare_generic(
         self: TypeCheckPass, ann_node: uni.UniNode, ty: object
     ) -> None;
+
+    def _is_jac_site(self: TypeCheckPass, nd: uni.UniNode) -> bool;
 }

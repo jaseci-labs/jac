@@ -17,7 +17,13 @@ impl TypeEvaluator.validate_arg_types(
             arg_type = self.get_type_of_expression(arg, expected_type=param.param_type);
         }
 
-        if not self.assign_type(arg_type, param.param_type) {
+        # Layer 2 strict-Any dispatch: the call site's containing module
+        # decides strictness, not where the function or its `Any` came
+        # from. A leak across a Python -> Jac boundary therefore gets
+        # caught at the Jac call site, where the user is in control.
+        arg_mod = arg.find_parent_of_type(uni.Module);
+        is_strict = arg_mod is not None and not arg_mod.is_raised_from_py;
+        if not self.assign_type(arg_type, param.param_type, is_strict) {
             has_errors = True;
             if not checking_overload {
                 self.emit_diag(

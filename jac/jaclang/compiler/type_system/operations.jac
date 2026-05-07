@@ -455,7 +455,16 @@ def get_type_of_binary_operation(
                                 src_type = evaluator.get_type_of_expression(
                                     assign.value
                                 );
-                                if not evaluator.assign_type(src_type, dest_type) {
+                                # Edge connection assigns target a declared
+                                # field; apply Layer 2 strict-Any when the
+                                # assign site is in a Jac module.
+                                a_mod = assign.value.find_parent_of_type(uni.Module);
+                                a_strict = (
+                                    a_mod is not None and not a_mod.is_raised_from_py
+                                );
+                                if not evaluator.assign_type(
+                                    src_type, dest_type, a_strict
+                                ) {
                                     evaluator.emit_diag(
                                         E1035,
                                         assign.value,

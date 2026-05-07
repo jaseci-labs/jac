@@ -305,6 +305,7 @@ obj TypeEvaluator {
     ) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
+    def is_explicit_any(ty: TypeBase) -> bool;
     # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
     def is_typevar_class(ty: TypeBase) -> bool;
     # Check if a type is the ParamSpec class itself (not a TypeVarType instance).
@@ -322,7 +323,9 @@ obj TypeEvaluator {
     # // and added to the map.
     #
     # dest_type = src_type;
-    def assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool;
+    def assign_type(
+        src_type: TypeBase, dest_type: TypeBase, strict: bool = False
+    ) -> bool;
     # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
         obj_type: TypeBase,
@@ -334,7 +337,9 @@ obj TypeEvaluator {
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
     # --- Callable assignment compatibility ---
     def _assign_callable(
-        src_func: types.FunctionType, dest_func: types.FunctionType
+        src_func: types.FunctionType,
+        dest_func: types.FunctionType,
+        strict: bool = False
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
@@ -353,7 +358,9 @@ obj TypeEvaluator {
         symbol: uni.Symbol, prop_name: str
     ) -> (TypeBase | None);
 
-    def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
+    def _assign_class(
+        src_type: types.ClassType, dest_type: types.ClassType, strict: bool = False
+    ) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol
     #  - getTypeForDeclaration
