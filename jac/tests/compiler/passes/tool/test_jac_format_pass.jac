@@ -627,26 +627,6 @@ test "jsx body comment between siblings stays in position" {
     );
 }
 
-test "jsx body comment as only child preserves parent element" {
-    source = (
-        'cl def:pub comp -> JsxElement {\n'
-        '    return <div>{#* only *#}</div>;\n'
-        '}\n'
-    );
-    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
-    assert not prog.errors_had , f"Formatter errored on JSX body comment: {prog.errors_had}";
-    formatted = prog.mod.main.gen.jac;
-    assert "<div>" in formatted or "<div" in formatted , (
-        "Parent <div> was dropped from formatted output:\n" + formatted
-    );
-    assert "</div>" in formatted , (
-        "Closing </div> was dropped from formatted output:\n" + formatted
-    );
-    assert "#* only *#" in formatted , (
-        "Block comment was dropped from formatted output:\n" + formatted
-    );
-}
-
 test "jsx body comment formatting is idempotent" {
     source = (
         'cl def:pub comp -> JsxElement {\n'
@@ -727,6 +707,94 @@ test "jsx block comment only child multi-line element is idempotent" {
     second = prog2.mod.main.gen.jac;
     assert first == second , (
         "JSX only-child comment is not idempotent.\nFirst:\n" + first + "\nSecond:\n" + second
+    );
+}
+
+test "jsx multiline block comment content is fully preserved" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            {#*\n'
+        '                line one\n'
+        '                line two\n'
+        '            *#}\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on multiline block comment: {prog.errors_had}";
+    formatted = prog.mod.main.gen.jac;
+    assert "line one" in formatted , (
+        "First line of multiline block comment was dropped:\n" + formatted
+    );
+    assert "line two" in formatted , (
+        "Second line of multiline block comment was dropped:\n" + formatted
+    );
+}
+
+test "jsx multiline block comment between siblings is idempotent" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            <span/>\n'
+        '            {#*\n'
+        '                multiline\n'
+        '                between\n'
+        '            *#}\n'
+        '            <span/>\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on first pass: {prog.errors_had}";
+    first = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=first, file_path="<test>.jac");
+    assert not prog2.errors_had , f"Formatter errored on second pass: {prog2.errors_had}";
+    second = prog2.mod.main.gen.jac;
+    assert first == second , (
+        "Multiline JSX comment between siblings is not idempotent.\nFirst:\n" + first + "\nSecond:\n" + second
+    );
+}
+
+test "jsx multiline block comment as only child is idempotent" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return\n'
+        '        <div>\n'
+        '            {#*\n'
+        '                only\n'
+        '                child\n'
+        '            *#}\n'
+        '        </div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on first pass: {prog.errors_had}";
+    first = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=first, file_path="<test>.jac");
+    assert not prog2.errors_had , f"Formatter errored on second pass: {prog2.errors_had}";
+    second = prog2.mod.main.gen.jac;
+    assert first == second , (
+        "Multiline JSX only-child comment is not idempotent.\nFirst:\n" + first + "\nSecond:\n" + second
+    );
+}
+
+test "jsx block comment with closing brace in text round-trips" {
+    source = (
+        'cl def:pub comp -> JsxElement {\n'
+        '    return <div>{#* has } inside *#}</div>;\n'
+        '}\n'
+    );
+    prog = JacProgram.jac_str_formatter(source_str=source, file_path="<test>.jac");
+    assert not prog.errors_had , f"Formatter errored on comment with }} in text: {prog.errors_had}";
+    first = prog.mod.main.gen.jac;
+    prog2 = JacProgram.jac_str_formatter(source_str=first, file_path="<test>.jac");
+    assert not prog2.errors_had , f"Formatter errored on second pass: {prog2.errors_had}";
+    second = prog2.mod.main.gen.jac;
+    assert first == second , (
+        "Block comment with }} in text is not idempotent.\nFirst:\n" + first + "\nSecond:\n" + second
     );
 }
 

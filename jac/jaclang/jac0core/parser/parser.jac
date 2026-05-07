@@ -404,8 +404,7 @@ obj Parser {
         file_path: str = "<input>",
         source_code: str = "",
         source: Source | None = None,
-        prog: object | None = None,
-        _jsx_comment_slot_positions: list[int] = [];
+        prog: object | None = None;
 
     def current -> Token;
     def peek(offset: int = 1) -> Token;

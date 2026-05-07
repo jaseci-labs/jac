@@ -897,28 +897,30 @@ test "jsx body block comment as only child parses" {
     assert not had_error , "Block comment as only JSX child caused parse error";
 }
 
-test "jsx body block comment with internal whitespace parses" {
-    source = 'with entry { x = <div>{ #* spaced *# }</div>; }';
+test "jsx body block comment multiline parses" {
+    source = (
+        'with entry { x = <div>{#*\n' '    line one\n' '    line two\n' '*#}</div>; }'
+    );
     (module, had_error) = rd_parse(source, "test.jac");
-    assert not had_error , "Spaced block comment in JSX body caused parse error";
+    assert not had_error , "Multiline block comment in JSX body caused parse error";
 }
 
-test "jsx bare empty braces still error" {
-    source = 'with entry { x = <div>{}</div>; }';
+test "jsx body block comment in fragment parses" {
+    source = 'with entry { x = <>{#* fragment comment *#}</>; }';
     (module, had_error) = rd_parse(source, "test.jac");
-    assert had_error , "Bare {} in JSX body must remain a parse error";
+    assert not had_error , "Block comment inside JSX fragment caused parse error";
 }
 
-test "jsx whitespace-only braces still error" {
-    source = 'with entry { x = <div>{   }</div>; }';
+test "jsx block comment as attribute value errors" {
+    source = 'with entry { x = <div class={#* comment *#}/>; }';
     (module, had_error) = rd_parse(source, "test.jac");
-    assert had_error , "Whitespace-only {} in JSX body must remain a parse error";
+    assert had_error , "Block comment used as attribute value must be a parse error";
 }
 
-test "jsx line comment in braces still errors" {
-    source = 'with entry { x = <div>{# not a block comment\n}</div>; }';
+test "jsx block comment in attribute position errors" {
+    source = 'with entry { x = <div {#* comment *#}/>; }';
     (module, had_error) = rd_parse(source, "test.jac");
-    assert had_error , "Line comment inside JSX braces must not be accepted";
+    assert had_error , "Block comment in JSX attribute position must be a parse error";
 }
 
 with entry {
