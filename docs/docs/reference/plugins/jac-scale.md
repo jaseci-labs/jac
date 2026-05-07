@@ -1415,7 +1415,7 @@ create_dirs = true       # Auto-create directories
 | `JAC_STORAGE_PATH` | Base directory (overrides jac.toml) |
 | `JAC_STORAGE_CREATE_DIRS` | Auto-create directories (`"true"`/`"false"`) |
 
-Configuration priority: `jac.toml` > environment variables > defaults.
+Configuration priority: environment variables > `jac.toml` > defaults.
 
 ### StorageFactory (Advanced)
 
@@ -2644,7 +2644,7 @@ warm_pool_size = 0               # Pre-initialized pods for instant startup (K8s
 | `JAC_SANDBOX_NAMESPACE` | Kubernetes namespace |
 | `JAC_SANDBOX_DOMAIN` | Domain template |
 
-Configuration priority: `jac.toml` > environment variables > defaults.
+Configuration priority: environment variables > `jac.toml` > defaults.
 
 ---
 
