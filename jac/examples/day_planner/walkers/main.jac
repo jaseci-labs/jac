@@ -51,7 +51,8 @@ node ShoppingItem {
 
 # --- Task Walkers ---
 walker:priv AddTask {
-    has title: str;
+    has title: str,
+        reports: list[Task] = [];
 
     can create with Root entry {
         category = str(categorize(self.title)).split(".")[-1].lower();
@@ -61,7 +62,8 @@ walker:priv AddTask {
 }
 
 walker:priv ListTasks {
-    has results: list[Task] = [];
+    has results: list[Task] = [],
+        reports: list[list[Task]] = [];
 
     can start with Root entry {
         visit [-->];
@@ -111,7 +113,8 @@ walker:priv DeleteTask {
 
 # --- Shopping List Walkers ---
 walker:priv GenerateShoppingList {
-    has meal_description: str;
+    has meal_description: str,
+        reports: list[list[ShoppingItem]] = [];
 
     can generate with Root entry {
         visit [-->];
@@ -134,7 +137,8 @@ walker:priv GenerateShoppingList {
 }
 
 walker:priv GetShoppingList {
-    has items: list[ShoppingItem] = [];
+    has items: list[ShoppingItem] = [],
+        reports: list[list[ShoppingItem]] = [];
 
     can collect with Root entry {
         visit [-->];

@@ -279,8 +279,26 @@ obj TypeEvaluator {
     def get_type_of_symbol(symbol: uni.Symbol) -> TypeBase;
     # NOTE: This function doesn't exists in pyright, however it exists as a helper function
     # for the following functions.
-    def _import_module_from_path(path: str) -> uni.Module;
+    def _import_module_from_path(
+        path: str, importer_path: (str | None) = None
+    ) -> uni.Module;
+
+    """Resolve the file path of the Module that contains the given AST
+    node, if any. Used by the import resolver to record reverse-dependency
+    edges (importer -> target). Returns None when no parent Module is
+    reachable or its source carries no file path (e.g. anonymous stub
+    modules)."""
+    def _resolve_importer_path(ast_node: uni.UniNode) -> (str | None);
+
     def _try_read_jir_cache(resolved_path: str) -> (uni.Module | None);
+    """Drop per-module entries from the evaluator's caches.
+
+    Called by `JacProgram.invalidate_module` so the evaluator does not
+    keep returning stale `ModuleType` objects (or stale cached attribute
+    types pinned to the old module's symbol table) after the underlying
+    file changes."""
+    def forget_module(resolved_path: str) -> None;
+
     def _reattach_impl_modules(mod: uni.Module, source_path: str) -> None;
     def _resolve_from_path(from_mod: uni.ModulePath) -> Path;
     def _is_fstring_all_literal(fstring: uni.FString) -> bool;
