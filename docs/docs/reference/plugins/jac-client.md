@@ -65,7 +65,6 @@ import sys, json;
 import datetime as dt;
 
 # From import
-import from typing { List, Dict, Optional }
 import from math { sqrt, pi, log as logarithm }
 
 # Relative imports

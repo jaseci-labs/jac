@@ -75,7 +75,7 @@ def _generate_webhook_signature(payload: bytes, secret: str) -> str {
 }
 
 """Delete SQLite database files and legacy shelf files."""
-def _cleanup_db_files(fixtures_dir: Path) -> None {
+def _cleanup_db_files(fixtures_dir: Path) {
     for pattern in [
         "*.db",
         "*.db-wal",
@@ -175,7 +175,7 @@ def _start_server(
 }
 
 """Stop the server process."""
-def _stop_server(server_process: subprocess.Popen | None) -> None {
+def _stop_server(server_process: subprocess.Popen | None) {
     if server_process {
         server_process.terminate();
         try {
@@ -215,7 +215,7 @@ def _register_and_login(base_url: str, username: str, password: str) -> str {
 }
 
 """Verify webhook endpoints are registered for walkers with webhook protocol."""
-def run_webhook_endpoint_exists_test(base_url: str) -> None {
+def run_webhook_endpoint_exists_test(base_url: str) {
     # Hit endpoints directly — non-404 means the route is registered
     resp = requests.post(f"{base_url}/webhook/PaymentReceived", json={}, timeout=5);
     assert resp.status_code != 404 , (
@@ -228,7 +228,7 @@ def run_webhook_endpoint_exists_test(base_url: str) -> None {
 }
 
 """Verify normal walkers are NOT in /webhook/."""
-def run_normal_walker_not_in_webhook_test(base_url: str) -> None {
+def run_normal_walker_not_in_webhook_test(base_url: str) {
     # NormalPayment should be rejected by webhook endpoint
     # Static mode: 404, Dynamic mode: 400 or 405 depending on routing
     resp = requests.post(f"{base_url}/webhook/NormalPayment", json={}, timeout=5);
@@ -243,7 +243,7 @@ def run_normal_walker_not_in_webhook_test(base_url: str) -> None {
 }
 
 """Verify NormalPayment works via /walker/ endpoint."""
-def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
+def run_normal_walker_accessible_via_walker_test(base_url: str) {
     username = f"normal_walker_user_{uuid.uuid4().hex[:8]}";
     register_response = requests.post(
         f"{base_url}/user/register",
@@ -291,7 +291,7 @@ def run_normal_walker_accessible_via_walker_test(base_url: str) -> None {
 }
 
 """Test that webhook endpoints require API key authentication."""
-def run_webhook_requires_api_key_test(base_url: str) -> None {
+def run_webhook_requires_api_key_test(base_url: str) {
     payload = json.dumps({});
 
     response = requests.post(
@@ -307,7 +307,7 @@ def run_webhook_requires_api_key_test(base_url: str) -> None {
 }
 
 """Test that webhook endpoints reject invalid API keys."""
-def run_webhook_invalid_api_key_test(base_url: str) -> None {
+def run_webhook_invalid_api_key_test(base_url: str) {
     payload = json.dumps({});
 
     response = requests.post(
@@ -323,7 +323,7 @@ def run_webhook_invalid_api_key_test(base_url: str) -> None {
 }
 
 """MinimalWebhook works with valid API key."""
-def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
+def run_minimal_webhook_with_valid_api_key_test(base_url: str) {
     username = f"minimal_webhook_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 
@@ -365,7 +365,7 @@ def run_minimal_webhook_with_valid_api_key_test(base_url: str) -> None {
 }
 
 """PaymentReceived webhook walker with multiple fields."""
-def run_webhook_payment_received_test(base_url: str) -> None {
+def run_webhook_payment_received_test(base_url: str) {
     username = f"payment_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 
@@ -417,7 +417,7 @@ def run_webhook_payment_received_test(base_url: str) -> None {
 }
 
 """Webhook walkers are NOT accessible via /walker/."""
-def run_webhook_not_accessible_via_walker_test(base_url: str) -> None {
+def run_webhook_not_accessible_via_walker_test(base_url: str) {
     username = f"webhook_path_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 
@@ -434,7 +434,7 @@ def run_webhook_not_accessible_via_walker_test(base_url: str) -> None {
 }
 
 """Test that revoked API keys are rejected."""
-def run_webhook_revoked_api_key_test(base_url: str) -> None {
+def run_webhook_revoked_api_key_test(base_url: str) {
     username = f"webhook_revoke_user_{uuid.uuid4().hex[:8]}";
     token = _register_and_login(base_url, username, "password123");
 

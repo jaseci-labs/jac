@@ -176,9 +176,7 @@ test "record_agent_completion creates trace when no prior LLM calls (MockLLM pat
     # No record_llm_event first — simulates MockLLM or proxy
     store.record_agent_completion(
         make_agent_record(
-            inv_id="inv-mock",
-            caller_name="mock_caller",
-            agent_response="mocked answer"
+            inv_id="inv-mock", caller_name="mock_caller", agent_response="mocked answer"
         )
     );
 
@@ -598,8 +596,7 @@ test "REST summary returns correct shape on empty store" {
     try {
         token = client.admin_login();
         response = client.get(
-            "/admin/llm/telemetry/summary",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/telemetry/summary", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         body = response.json();
@@ -642,8 +639,7 @@ test "REST filters returns correct shape on empty store" {
     try {
         token = client.admin_login();
         response = client.get(
-            "/admin/llm/telemetry/filters",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/telemetry/filters", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         body = response.json();
@@ -682,7 +678,7 @@ def get_telemetry_store -> TelemetryStore | None {
     import sys;
     mod = sys.modules.get("jac_scale.admin.llm_telemetry");
     if mod is not None {
-        return getattr(mod, "_telemetry_store", None);
+        return mod?._telemetry_store;
     }
     return None;
 }
@@ -710,8 +706,7 @@ test "REST summary returns populated data after telemetry events" {
         );
 
         response = client.get(
-            "/admin/llm/telemetry/summary",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/telemetry/summary", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         data = response.json()["data"];
@@ -807,17 +802,14 @@ test "REST filters returns populated filter values" {
             make_llm_event(inv_id="rest-f2", model="claude-3", caller_name="agent_y")
         );
         store.record_agent_completion(
-            make_agent_record(
-                inv_id="rest-f1", caller_name="agent_x", status="success"
-            )
+            make_agent_record(inv_id="rest-f1", caller_name="agent_x", status="success")
         );
         store.record_agent_completion(
             make_agent_record(inv_id="rest-f2", caller_name="agent_y", status="error")
         );
 
         response = client.get(
-            "/admin/llm/telemetry/filters",
-            headers={"Authorization": f"Bearer {token}"}
+            "/admin/llm/telemetry/filters", headers={"Authorization": f"Bearer {token}"}
         );
         assert response.status_code == 200;
         data = response.json()["data"];
@@ -833,7 +825,6 @@ test "REST filters returns populated filter values" {
 }
 
 # --- Trace Hierarchy Tests ---
-
 test "parent_invocation_id stored from llm_event metadata" {
     store = TelemetryStore();
     event = make_llm_event(inv_id="child-001", caller_name="inner_agent");
@@ -888,7 +879,9 @@ test "get_traces root_only filter returns only root traces" {
     # Root trace
     root_event = make_llm_event(inv_id="root-r1", caller_name="root_agent");
     store.record_llm_event(root_event);
-    store.record_agent_completion(make_agent_record(inv_id="root-r1", caller_name="root_agent"));
+    store.record_agent_completion(
+        make_agent_record(inv_id="root-r1", caller_name="root_agent")
+    );
 
     # Child trace
     child_event = make_llm_event(inv_id="child-r1", caller_name="inner_agent");
@@ -912,7 +905,9 @@ test "get_traces root_only filter returns only root traces" {
 test "get_trace returns child_traces for parent" {
     store = TelemetryStore();
     # Root trace
-    store.record_llm_event(make_llm_event(inv_id="parent-det", caller_name="parent_agent"));
+    store.record_llm_event(
+        make_llm_event(inv_id="parent-det", caller_name="parent_agent")
+    );
     store.record_agent_completion(
         make_agent_record(inv_id="parent-det", caller_name="parent_agent")
     );
@@ -1004,7 +999,6 @@ test "child trace detail includes full llm_calls and conversation_history" {
 }
 
 #  --- Aggregated cost/token roll-up tests ---
-
 test "get_trace aggregates tokens and cost from child traces" {
     store = TelemetryStore();
     # Parent: 150 tokens, cost 0.0001

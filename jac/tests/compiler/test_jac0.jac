@@ -6,8 +6,8 @@ import jaclang;
 import from jaclang.jac0 { compile_jac }
 
 glob FIXTURES = os.path.join(
-    str(Path(jaclang.__file__).parent.parent), "tests", "compiler", "fixtures"
-);
+         str(Path(jaclang.__file__).parent.parent), "tests", "compiler", "fixtures"
+     );
 
 """Helper to compile a fixture with its impl file."""
 def compile_fixture(name: str) -> str {

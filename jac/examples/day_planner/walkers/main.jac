@@ -77,7 +77,8 @@ walker:priv ListTasks {
 }
 
 walker:priv ToggleTask {
-    has task_id: str;
+    has task_id: str,
+        reports: list[Task] = [];
 
     can search with Root entry {
         visit [-->];

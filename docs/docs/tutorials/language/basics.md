@@ -376,7 +376,6 @@ with entry {
 
 ```jac
 import from collections { Counter, defaultdict }
-import from typing { Optional, List }
 
 with entry {
     counts = Counter(["a", "b", "a", "c", "a"]);

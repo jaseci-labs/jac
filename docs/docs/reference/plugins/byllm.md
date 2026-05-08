@@ -1876,8 +1876,6 @@ byLLM validates that responses match the declared return type, coercing when pos
 ??? example "Resume Parser"
 
     ```jac
-    import from typing { Optional }
-
     obj Education {
         has degree: str;
         has institution: str;
@@ -1894,7 +1892,7 @@ byLLM validates that responses match the declared return type, coercing when pos
     obj Resume {
         has name: str;
         has email: str;
-        has phone: Optional[str];
+        has phone: str | None;
         has skills: list[str];
         has education: list[Education];
         has experience: list[Experience];

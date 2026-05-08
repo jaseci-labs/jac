@@ -71,6 +71,12 @@ with entry {
     # `any` vs `` `any ``: use `any` for the built-in type (placeholder for
     # any type) and `` `any `` for the built-in Python function.
 
+    # Gradual typing: `any` cannot silently flow into a typed destination
+    # in .jac source. `x: int = py_call()` errors if py_call() returns any --
+    # either type the source (e.g. via .pyi stub) or accept it explicitly:
+    #   raw: any = py_call();   # opt in to permissive flow
+    #   raw = py_call();        # inferred -- raw becomes any, no error
+
     # Union types
     maybe: str | None = None;
 
