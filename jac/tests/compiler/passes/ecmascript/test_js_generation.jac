@@ -5,6 +5,7 @@ Migrated from test_js_generation.py to native Jac test format.
 
 import os;
 import subprocess;
+import sys;
 import tempfile;
 import from pathlib { Path }
 import jaclang;
@@ -67,6 +68,23 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     result = es_to_js(es_ast);
     _js_compile_cache[cache_key] = result;
     return result;
+}
+
+"""Compile a fixture through the normal production codegen path."""
+def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -> str {
+    fixture_path = fixture_name;
+    if not Path(fixture_path).exists() and fixture_dir {
+        fixture_path = os.path.join(fixture_dir, fixture_name);
+    }
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path);
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
+    );
+    assert ir.gen.js and ir.gen.js.strip() , (
+        f"Production JS codegen produced no output for {fixture_name}"
+    );
+    return ir.gen.js;
 }
 
 """Ensure generated JavaScript has balanced delimiters."""
@@ -263,7 +281,7 @@ test "cli js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        ["python3", "-m", "jaclang.cli.cli", "js", fixture_file_path],
+        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path],
         capture_output=True,
         text=True,
         env=env,
@@ -283,7 +301,7 @@ test "cl only js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        ["python3", "-m", "jaclang.cli.cli", "js", fixture_file_path, ],
+        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path, ],
         capture_output=True,
         text=True,
         env=env,
@@ -293,7 +311,7 @@ test "cl only js command outputs js" {
         f"CLI failed to compile cl only file: {result.stderr}"
     );
     assert len(result.stdout) > 0;
-    assert "function greet(name) {" in result.stdout;
+    assert 'function greet(name = "World") {' in result.stdout;
 }
 
 test "empty file generates minimal js" {
@@ -737,10 +755,10 @@ test "sv import kwargs preserve names in jac call function" {
         "Mixed positional/kwarg call must merge both into the args object;\n" + "got:\n" + js_code
     );
 
-    # ``**dict`` spread: ``add_pair(**kw)`` — keys aren't known at compile
-    # time, so the args object must carry an ObjectExpression spread.
-    assert '__jacCallFunction("add_pair", {...kw})' in js_code , (
-        "**dict spread must compile to ObjectExpression spread element;\n" + "got:\n" + js_code
+    # ``**dict`` spread against a known signature can lower to declared
+    # parameter-key reads, avoiding the old single-object positional shape.
+    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]})' in js_code , (
+        "**dict spread against known signature must compile to keyed parameter reads;\n" + "got:\n" + js_code
     );
 
     # Sanity: the obvious bug-shape — empty args object — must not appear
@@ -753,6 +771,101 @@ test "sv import kwargs preserve names in jac call function" {
     );
 
     assert_balanced_syntax(js_code, fixture);
+}
+
+test "sv import kwargs preserve names in production jac2js path" {
+    fixture = "sv_import_kwargs_client.cl.jac";
+    js_code = compile_fixture_to_js_production(fixture, FIXTURES);
+
+    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+        "Production jac2js path must lower sv-import kwargs directly into the RPC args object;\n" + "got:\n" + js_code
+    );
+    assert "await greet({name: input_text})" not in js_code , (
+        "Production jac2js path must not pass kwargs object into the generated RPC wrapper;\n" + "got:\n" + js_code
+    );
+    assert '__jacCallFunction("greet", {})' not in js_code , (
+        "Production jac2js path must not emit an empty RPC args object for kwargs calls."
+    );
+}
+
+test "sv import wrapper covers posonly and kwonly params" {
+    # Regression for the latent stub-generation bug: ``_generate_sv_import_stubs``
+    # used to walk only ``sig.params`` (regular non-posonly non-kwonly), so
+    # posonly/kwonly params silently disappeared from the generated wrapper —
+    # both from its JS function signature and from the ``__jacCallFunction``
+    # args object.  After unifying on ``_param_names_from_ability``, all three
+    # buckets are walked and the wrapper's shape matches the source ability.
+    fixture = "sv_import_posonly_kwonly_client.cl.jac";
+    js_code = compile_fixture_to_js_production(fixture, FIXTURES);
+    compact_js = js_code.replace("\n", "").replace(" ", "");
+
+    # Wrapper signature must list params in declared order — filter (posonly),
+    # query (regular), scope (kwonly).
+    assert "asyncfunctionquery(filter,query,scope)" in compact_js , (
+        "sv-import wrapper must include posonly + kwonly params in its JS " + "signature, not silently drop them;\ngot:\n" + js_code
+    );
+    # All three params must appear in the RPC args object the wrapper posts.
+    assert (
+        '__jacCallFunction("query",{"filter":filter,"query":query,"scope":scope})' in compact_js
+    ) , (
+        "sv-import wrapper must forward posonly + kwonly params in the RPC " + "args object;\ngot:\n" + js_code
+    );
+    # Pre-fix bug shape: a one-arg wrapper that posts only the regular param.
+    assert "asyncfunctionquery(query)" not in compact_js , (
+        "Wrapper must not regress to walking only sig.params (which would drop " + "posonly + kwonly);\ngot:\n" + js_code
+    );
+}
+
+test "plain client kwargs lower to ordered js arguments" {
+    fixture = "plain_kwargs_client.cl.jac";
+    js_code = compile_fixture_to_js_production(fixture, FIXTURES);
+    compact_js = js_code.replace("\n", "").replace(" ", "");
+
+    assert "setTotal(add(5, 10));" in js_code , (
+        "Known Jac function kwargs must lower to ordered JS positional args;\n" + "got:\n" + js_code
+    );
+    assert "setMixed(add(1, 2));" in js_code , (
+        "Mixed positional/kwarg call must preserve positional args and order kwargs by signature;\n" + "got:\n" + js_code
+    );
+    assert "function add_defaults(a = 1, b = 2)" in js_code , (
+        "Jac default parameter values must be preserved in emitted JS function signatures;\n" + "got:\n" + js_code
+    );
+    assert "setDefaulted(add_defaults(undefined, 99));" in js_code , (
+        "Skipping an earlier defaulted param must emit an undefined placeholder, not collapse positions;\n" + "got:\n" + js_code
+    );
+    assert 'setSpread_total(add(kw["a"], kw["b"]));' in js_code , (
+        "Known **kwargs calls must lower to declared-parameter property reads;\n" + "got:\n" + js_code
+    );
+    assert compact_js.count(")(get_kw()))") == 1 , (
+        "Complex **kwargs source must be evaluated exactly once;\n" + "got:\n" + js_code
+    );
+    assert (
+        'setSpread_call_total((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))(get_kw()));' in compact_js
+    ) , (
+        "Known **function_call() spread must lower through a single-evaluation temp IIFE;\n" + "got:\n" + js_code
+    );
+    assert (
+        'setSpread_merge_total((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))({...kw1,...kw2}));' in compact_js
+    ) , (
+        "Multiple **kwargs spreads must merge earlier and later sources before keyed reads;\n" + "got:\n" + js_code
+    );
+    assert (
+        'setSpread_override_total((__jac_kwargs=>add3(__jac_kwargs["a"],99,__jac_kwargs["c"]))({...kw1,...kw2}));' in compact_js
+    ) , (
+        "Explicit kwargs must override **spread values while preserving other merged keys;\n" + "got:\n" + js_code
+    );
+    assert "setMethod_total(counter.bump(5, 3));" in js_code , (
+        "Known method kwargs must lower to ordered JS positional args;\n" + "got:\n" + js_code
+    );
+    assert "add({b: 10, a: 5})" not in js_code , (
+        "Plain kwargs must not be passed as one positional object argument;\n" + "got:\n" + js_code
+    );
+    assert "add_defaults(99)" not in js_code , (
+        "Defaulted kwargs must not collapse missing earlier params;\n" + "got:\n" + js_code
+    );
+    assert "counter.bump({amount: 5, mul: 3})" not in js_code , (
+        "Method kwargs must not be passed as one positional object argument;\n" + "got:\n" + js_code
+    );
 }
 
 test "sv import duplicate kwarg is a compile error" {

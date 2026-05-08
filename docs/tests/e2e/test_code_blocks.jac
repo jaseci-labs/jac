@@ -130,7 +130,7 @@ def _start_server -> tuple {
     return (server, f"http://127.0.0.1:{port}");
 }
 
-def _stop_server(server: Any) -> None {
+def _stop_server(server: Any) {
     server.terminate();
     try {
         server.wait(timeout=5);
@@ -143,7 +143,7 @@ def _stop_server(server: Any) -> None {
 }
 
 """Start server, launch browser, navigate to test page, run callback(page, resp)."""
-def _with_page(callback: Any, wait_until: str = "networkidle") -> None {
+def _with_page(callback: Any, wait_until: str = "networkidle") {
     (server, base_url) = _start_server();
     try {
         with sync_playwright() as p {
@@ -161,18 +161,18 @@ def _with_page(callback: Any, wait_until: str = "networkidle") -> None {
     }
 }
 
-def _scroll_to(page: Any, block_id: str) -> None {
+def _scroll_to(page: Any, block_id: str) {
     page.evaluate(f"document.querySelector('{block_id}').scrollIntoView()");
 }
 
-def _click_run(page: Any, block_id: str) -> None {
+def _click_run(page: Any, block_id: str) {
     _scroll_to(page, block_id);
     selector = f"{block_id} .jcb-btn--run";
     page.wait_for_selector(selector, state="visible", timeout=MONACO_TIMEOUT);
     page.locator(selector).click();
 }
 
-def _click_graph(page: Any, block_id: str) -> None {
+def _click_graph(page: Any, block_id: str) {
     _scroll_to(page, block_id);
     selector = f"{block_id} .jcb-btn--graph";
     page.wait_for_selector(selector, state="visible", timeout=MONACO_TIMEOUT);
@@ -182,7 +182,7 @@ def _click_graph(page: Any, block_id: str) -> None {
 # -- Rendering tests (fast, no Pyodide) ----------------------------------------
 """Plain block should show run button only, no graph button."""
 test "rendering: plain block buttons" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         _scroll_to(page, "#block-plain");
         page.wait_for_selector(
             "#block-plain .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
@@ -194,7 +194,7 @@ test "rendering: plain block buttons" {
 
 """Run-dot block should show both run and graph buttons."""
 test "rendering: run-dot block buttons" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         _scroll_to(page, "#block-run-dot");
         page.wait_for_selector(
             "#block-run-dot .jcb-btn--run", state="visible", timeout=MONACO_TIMEOUT
@@ -206,7 +206,7 @@ test "rendering: run-dot block buttons" {
 
 """Monaco editor should load and contain the source code."""
 test "rendering: monaco editor with code" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         _scroll_to(page, "#block-plain");
         page.wait_for_selector(
             "#block-plain .monaco-editor", state="visible", timeout=MONACO_TIMEOUT
@@ -224,7 +224,7 @@ test "rendering: monaco editor with code" {
 # -- Header tests (SharedArrayBuffer) -----------------------------------------
 """Server must send COOP/COEP headers for SharedArrayBuffer support."""
 test "headers: cross-origin isolation" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         assert resp.headers.get("cross-origin-opener-policy") == "same-origin";
         assert resp.headers.get("cross-origin-embedder-policy") == "require-corp";
         assert page.evaluate("typeof SharedArrayBuffer !== 'undefined'");
@@ -235,7 +235,7 @@ test "headers: cross-origin isolation" {
 # -- Execution tests (slow, needs Pyodide CDN) --------------------------------
 """Clicking run should execute code and show correct output."""
 test "execution: run produces output" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         _click_run(page, "#block-plain");
         page.wait_for_selector(
             "#block-plain .jcb-output-wrap", state="visible", timeout=PYODIDE_TIMEOUT
@@ -252,7 +252,7 @@ test "execution: run produces output" {
 
 """Run button should be disabled while code is executing."""
 test "execution: button disabled during run" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         _click_run(page, "#block-plain");
         page.wait_for_function(
             "document.querySelector('#block-plain .jcb-btn--run')?.disabled === true",
@@ -264,7 +264,7 @@ test "execution: button disabled during run" {
 
 """Invalid code should produce an error message in output."""
 test "execution: syntax error shows error" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         _click_run(page, "#block-error");
         page.wait_for_function(
             "document.querySelector('#block-error .code-output')?.textContent?.trim().length > 0",
@@ -278,7 +278,7 @@ test "execution: syntax error shows error" {
 
 """Graph button should render an SVG visualization."""
 test "execution: graph renders svg" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         _click_graph(page, "#block-run-dot");
         page.wait_for_selector(
             "#block-run-dot .graph-container", state="visible", timeout=PYODIDE_TIMEOUT
@@ -294,7 +294,7 @@ test "execution: graph renders svg" {
 
 """Graph output should contain valid DOT with expected node data."""
 test "execution: graph dot format" {
-    def check(page: Any, resp: Any) -> None {
+    def check(page: Any, resp: Any) {
         page.evaluate(
             "document.addEventListener('jacDotOutput', e => "
             "{ window.__capturedDot = e.detail.dot; })"

@@ -119,7 +119,9 @@ obj ScaleTestClient {
         self._server.register_static_file_endpoint();
         self._server.register_page_endpoint();
         self._server.register_client_js_endpoint();
-        self._server.user_manager.create_internal_user(Con.GUEST.value, '__no_password__');
+        self._server.user_manager.create_internal_user(
+            Con.GUEST.value, '__no_password__'
+        );
 
         # Execute endpoint registration (compiles JEndPoints into FastAPI routes)
         self._server.server.create_server();
@@ -138,10 +140,7 @@ obj ScaleTestClient {
         allow_redirects: bool = True
     ) -> Any {
         return self._client.get(
-            path,
-            headers=headers or {},
-            params=params,
-            follow_redirects=allow_redirects
+            path, headers=headers or {}, params=params, follow_redirects=allow_redirects
         );
     }
 
@@ -196,7 +195,10 @@ obj ScaleTestClient {
         );
         data = response.json();
         if data.get("ok") and data.get("data") {
-            return (data["data"].get("user_id", username), data["data"].get("message", ""));
+            return (
+                data["data"].get("user_id", username),
+                data["data"].get("message", "")
+            );
         }
         # If user already exists, treat as success
         error = data.get("error", {});
