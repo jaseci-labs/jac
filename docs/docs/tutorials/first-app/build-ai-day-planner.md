@@ -597,8 +597,12 @@ task_data["done"] = True;   # Update a value
 
 Even without a frontend, you can start the server and interact with your API right away. This is a good practice for verifying your backend logic works correctly before adding UI complexity:
 
+!!! note
+    `main.jac` is the default entry point. Since this project uses `main.jac`, you can omit the filename entirely. Both forms below are equivalent.
+
 ```bash
 jac start main.jac
+# or: jac start
 ```
 
 The server starts on port 8000 by default. Use `--port 3000` to pick a different port.
@@ -1013,7 +1017,7 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
     ```
 
 ```bash
-jac start main.jac
+jac start main.jac  # or: jac start
 ```
 
 Open [http://localhost:8000](http://localhost:8000). You should see a clean day planner with an input field and an "Add" button. Try it:
@@ -1689,7 +1693,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
 
 ```bash
 export ANTHROPIC_API_KEY="your-key"
-jac start main.jac
+jac start main.jac  # or: jac start
 ```
 
 !!! warning "Common issue"
@@ -2430,7 +2434,7 @@ All the complete files are in the collapsible sections below. Create each file, 
 
 ```bash
 export ANTHROPIC_API_KEY="your-key"
-jac start main.jac
+jac start main.jac  # or: jac start
 ```
 
 Open [http://localhost:8000](http://localhost:8000). You should see a login screen.
@@ -3402,7 +3406,7 @@ All the complete files are in the collapsible sections below. Create each file, 
 
 ```bash
 export ANTHROPIC_API_KEY="your-key"
-jac start main.jac
+jac start main.jac  # or: jac start
 ```
 
 Open [http://localhost:8000](http://localhost:8000). You should see a login screen -- that's authentication working with `walker:priv`.

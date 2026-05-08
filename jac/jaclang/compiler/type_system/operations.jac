@@ -455,7 +455,14 @@ def get_type_of_binary_operation(
                                 src_type = evaluator.get_type_of_expression(
                                     assign.value
                                 );
-                                if not evaluator.assign_type(src_type, dest_type) {
+                                # Edge connection assigns target a declared
+                                # field; apply Layer 2 strict-Any via the
+                                # centralized site helper.
+                                if not evaluator.assign_type(
+                                    src_type,
+                                    dest_type,
+                                    strict=evaluator._is_strict_site(assign.value)
+                                ) {
                                     evaluator.emit_diag(
                                         E1035,
                                         assign.value,

@@ -62,6 +62,10 @@ obj JacScaleUserManager(UserManager) {
         user_id: str, current_password: str, new_password: str
     ) -> dict[str, str];
 
+    def update_profile(
+        user_id: str, profile_updates: dict[str, Any]
+    ) -> dict[str, Any];
+
     def close -> None;
     # JWT methods (use user_id as claim)
     def create_jwt_token(user_id: str, include_role: bool = True) -> str;
