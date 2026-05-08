@@ -988,6 +988,24 @@ impl ModuleIntrospector.introspect_walker(
     } except Exception {
         return {'fields': {}};
     }
+    # Walkers compile to dataclasses; mutable defaults like `has results: list = []`
+    # become `field(default_factory=...)`, which makes `inspect.signature` report
+    # the parameter default as `dataclasses._HAS_DEFAULT_FACTORY` -- a sentinel
+    # that crashes Pydantic if it leaks into request-body schema generation.
+    # Pre-resolve those by calling the factory once.
+    factory_defaults: dict[str, Any] = {};
+    if dataclasses.is_dataclass(walker_cls) {
+        for dc_field in dataclasses.fields(walker_cls) {
+            if dc_field.default_factory is dataclasses.MISSING {
+                continue;
+            }
+            try {
+                factory_defaults[dc_field.name] = dc_field.default_factory();
+            } except Exception {
+                factory_defaults[dc_field.name] = None;
+            }
+        }
+    }
     fields: dict[str, dict[str, Any]] = {};
     for (name, param) in sig.parameters.items() {
         if (name in ('self', 'args', 'kwargs')) {
@@ -1006,12 +1024,18 @@ impl ModuleIntrospector.introspect_walker(
                 type_name = 'Any';
             }
         }
+        is_required = param.default == inspect.Parameter.empty;
+        if is_required {
+            default_val = None;
+        } elif name in factory_defaults {
+            default_val = factory_defaults[name];
+        } else {
+            default_val = param.default;
+        }
         fields[name] = {
             'type': type_name,
-            'required': (param.default == inspect.Parameter.empty),
-            'default': None
-                if (param.default == inspect.Parameter.empty)
-                else param.default
+            'required': is_required,
+            'default': default_val
         };
     }
     fields['_jac_spawn_node'] = {

@@ -9,10 +9,12 @@ import from jaclang.runtimelib.auth_models {
 
 
 test "LoginRequest accepts a valid payload" {
-    req = LoginRequest.from_dict({
-        "identity": {"type": "username", "value": "alice"},
-        "credential": {"type": "password", "password": "s3cret"}
-    });
+    req = LoginRequest.from_dict(
+        {
+            "identity": {"type": "username", "value": "alice"},
+            "credential": {"type": "password", "password": "s3cret"}
+        }
+    );
     assert req.identity.type == "username";
     assert req.identity.value == "alice";
     assert req.credential.type == "password";
@@ -20,10 +22,12 @@ test "LoginRequest accepts a valid payload" {
 }
 
 test "RegisterRequest accepts a valid payload" {
-    req = RegisterRequest.from_dict({
-        "identities": [{"type": "username", "value": "alice"}],
-        "credential": {"type": "password", "password": "s3cret"}
-    });
+    req = RegisterRequest.from_dict(
+        {
+            "identities": [{"type": "username", "value": "alice"}],
+            "credential": {"type": "password", "password": "s3cret"}
+        }
+    );
     assert len(req.identities) == 1;
     assert req.identities[0].value == "alice";
     assert req.credential.password == "s3cret";
@@ -32,9 +36,9 @@ test "RegisterRequest accepts a valid payload" {
 test "LoginRequest rejects missing identity" {
     raised = False;
     try {
-        LoginRequest.from_dict({
-            "credential": {"type": "password", "password": "s3cret"}
-        });
+        LoginRequest.from_dict(
+            {"credential": {"type": "password", "password": "s3cret"}}
+        );
     } except ValueError as e {
         assert "identity is required" in str(e);
         raised = True;
@@ -45,9 +49,7 @@ test "LoginRequest rejects missing identity" {
 test "LoginRequest rejects missing credential" {
     raised = False;
     try {
-        LoginRequest.from_dict({
-            "identity": {"type": "username", "value": "alice"}
-        });
+        LoginRequest.from_dict({"identity": {"type": "username", "value": "alice"}});
     } except ValueError as e {
         assert "credential is required" in str(e);
         raised = True;
@@ -58,10 +60,9 @@ test "LoginRequest rejects missing credential" {
 test "RegisterRequest rejects empty identities list" {
     raised = False;
     try {
-        RegisterRequest.from_dict({
-            "identities": [],
-            "credential": {"type": "password", "password": "s3cret"}
-        });
+        RegisterRequest.from_dict(
+            {"identities": [], "credential": {"type": "password", "password": "s3cret"}}
+        );
     } except ValueError as e {
         assert "identities must be a non-empty list" in str(e);
         raised = True;

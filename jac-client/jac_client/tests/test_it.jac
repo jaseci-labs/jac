@@ -245,7 +245,9 @@ test "all in one app endpoints" {
 
                 # "/" - server up
                 try {
-                    print("[DEBUG] Sending GET request to root endpoint / (with retry)");
+                    print(
+                        "[DEBUG] Sending GET request to root endpoint / (with retry)"
+                    );
                     root_bytes = _wait_for_endpoint(
                         f"http://127.0.0.1:{server_port}",
                         timeout=120.0,
@@ -363,8 +365,7 @@ test "all in one app endpoints" {
                         "Worker JS should not be empty"
                     );
                     assert (
-                        "postMessage" in worker_js_body
-                        or "onmessage" in worker_js_body
+                        "postMessage" in worker_js_body or "onmessage" in worker_js_body
                     ) , "Worker JS should contain a message handler";
                 } except (
                     URLError,
@@ -443,12 +444,9 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/register endpoint");
                     register_payload = {
-                        "identities": [
-                            {"type": "username", "value": test_username}
-                        ],
-                        "credential": {
-                            "type": "password", "password": test_password
-                        },
+                        "identities": [{"type": "username", "value": test_username}],
+                        "credential": {"type": "password", "password": test_password},
+
                     };
                     req_register = Request(
                         f"http://127.0.0.1:{server_port}/user/register",
@@ -467,7 +465,9 @@ test "all in one app endpoints" {
                         );
                         assert resp_register.status == 201;
                         register_response = json.loads(register_body);
-                        register_data = register_response.get("data", register_response);
+                        register_data = register_response.get(
+                            "data", register_response
+                        );
                         assert "username" in register_data;
                         assert "token" in register_data;
                         assert "root_id" in register_data;
@@ -489,12 +489,9 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/login endpoint");
                     login_payload = {
-                        "identity": {
-                            "type": "username", "value": test_username
-                        },
-                        "credential": {
-                            "type": "password", "password": test_password
-                        },
+                        "identity": {"type": "username", "value": test_username},
+                        "credential": {"type": "password", "password": test_password},
+
                     };
                     req_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",
@@ -530,12 +527,12 @@ test "all in one app endpoints" {
                         "[DEBUG] Sending POST request to /user/login with invalid credentials"
                     );
                     invalid_login_payload = {
-                        "identity": {
-                            "type": "username", "value": "nonexistent_user"
-                        },
+                        "identity": {"type": "username", "value": "nonexistent_user"},
                         "credential": {
-                            "type": "password", "password": "wrong_password"
+                            "type": "password",
+                            "password": "wrong_password"
                         },
+
                     };
                     req_invalid_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",
@@ -593,7 +590,9 @@ test "all in one app endpoints" {
                         "__jac_init__ script tag should be present in served HTML"
                     );
                     init_data = json.loads(init_match.group(1));
-                    print(f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}");
+                    print(
+                        f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}"
+                    );
 
                     # 1. Verify endpointEffects is present
                     assert "endpointEffects" in init_data , (
@@ -923,7 +922,9 @@ test "default client app renders" {
                             ) , "JS bundle should contain React createElement or jsx";
                             print(
                                 f"[DEBUG] JS bundle fetched successfully "
-                                f"({len(js_body)} bytes), contains expected runtime code"
+                                f"({len(
+                                    js_body
+                                )} bytes), contains expected runtime code"
                             );
                         }
                     } else {

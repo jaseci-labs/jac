@@ -475,9 +475,22 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Right operand of \"{op}\" must support \"__contains__\"; \"{type}\" does not"
      ),
+     # Walker reports declaration / usage
+     E1112 = _err(
+         "E1112",
+         Category.TYPE,
+         "Walker `reports` field must be a list type, got \"{type}\"",
+         "Declare it as `has reports: list[T] = [];` so that `report X` and `(spawn W).reports` are typed against `T`."
+     ),
+     E1113 = _err(
+         "E1113", Category.TYPE, "Cannot report \"{actual}\", expected \"{expected}\""
+     ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
-         "W1051", Category.TYPE, "Expression type could not be resolved (Unknown)"
+         "W1051",
+         Category.TYPE,
+         "Expression type could not be resolved (Unknown)",
+         "Often fixed by adding a more specific type annotation to the relevant declaration (e.g., 'list[Task]' instead of bare 'list', or annotating an unannotated parameter or attribute). Can also indicate an unresolved import, a forward reference the checker cannot bind, or fallout from an upstream error."
      ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
@@ -488,6 +501,16 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W1102",
          Category.IMPORT,
          "Imported name '{name}' from foreign-source module '{module}' typed as Any"
+     ),
+     W1103 = _warn(
+         "W1103",
+         Category.IMPORT,
+         "'{name}' is ambient and does not need to be imported from '{module}'"
+     ),
+     W1104 = _warn(
+         "W1104",
+         Category.IMPORT,
+         "Use the lowercase 'any' keyword instead of importing 'Any' from typing"
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Semantic errors/warnings (E2xxx/W2xxx)
@@ -736,6 +759,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "in the same block, capture it in a local first: "
          "`local = expr; <field> = local; if local { ... }`."
      ),
+     W3042 = _warn(
+         "W3042",
+         Category.LINT,
+         "'.map(lambda {name} -> any {{ return <jsx>; }})' can be replaced with "
+         "'[<jsx> for {name} in collection]' comprehension syntax [map-lambda-to-comprehension]"
+     ),
      # Old kebab-case name -> code mapping for jac.toml backward compat
      LINT_ALIASES: dict[str, str] = {
          "staticmethod-to-static": "W3001",
@@ -763,7 +792,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "unnecessary-none-return": "W3037",
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",
-         "stale-has-read": "W3041"
+         "stale-has-read": "W3041",
+         "map-lambda-to-comprehension": "W3042"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)
@@ -883,6 +913,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5072",
          Category.CODEGEN,
          "Attribute error when accessing node attributes: {error}"
+     ),
+     # JS / RPC codegen
+     E5080 = _err(
+         "E5080",
+         Category.CODEGEN,
+         "Argument '{name}' for server function '{func}' is given both positionally and by keyword"
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Portability warnings (W6xxx) — JS-idiomatic usage that breaks cross-codespace portability

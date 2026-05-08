@@ -1,7 +1,4 @@
-"""Implementation of project commands.
-
-Direct implementations - no delegation.
-"""
+"""Direct implementations of project CLI commands."""
 
 import subprocess;
 import shlex;
@@ -343,16 +340,65 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 }
 
 """Install all dependencies from jac.toml."""
-impl install(dev: bool = False, verbose: bool = False) -> int {
+impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> int {
+    import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
     import from jaclang.project.dep_registry { get_dependency_registry }
+
     config = get_config();
     if config is None {
-        console.error(
-            "No jac.toml found", hint="Run 'jac create' to create a project."
-        );
+        hint = "Clone the library repo and run 'jac install -e .' inside it."
+            if editable
+            else "Run 'jac create' to create a project first.";
+        console.error("No jac.toml found", hint=hint);
         return 1;
+    }
+
+    # ── Editable install ──────────────────────────────────────────────────────
+    if editable {
+        import sys;
+        import site;
+        import subprocess;
+        import from jaclang.publish.builder { WheelBuilder }
+
+        src_dir: Path = Path(editable).resolve();
+        console.print(
+            f"\n📦 Editable install: [cyan]{config.package.name}[/cyan] "
+            f"from [dim]{src_dir}[/dim]",
+            style="bold"
+        );
+
+        all_deps: dict[str, str] = dict(config.dependencies);
+        if dev {
+            all_deps.update(config.dev_dependencies);
+        }
+        if all_deps {
+            dep_specs: list[str] = [];
+            for (name, ver) in all_deps.items() {
+                dep_specs.append(f"{name}{ver}" if ver and ver != "*" else name);
+            }
+            console.print(
+                f"  Installing {len(dep_specs)} dependencies...", style="muted"
+            );
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install"] + dep_specs,
+                capture_output=not verbose,
+                text=True,
+            );
+            if result.returncode != 0 {
+                console.error(
+                    f"Dependency install failed:\n{result.stderr or result.stdout}"
+                );
+                return 1;
+            }
+        }
+
+        site_pkgs = Path(site.getsitepackages()[0]);
+        WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
+        console.print(f"  ✔ Linked {src_dir}", style="success");
+        console.print("  ✔ Editable install complete.", style="success");
+        return 0;
     }
     console.print(
         f"\n📦 Installing dependencies for [cyan]{config.project.name}[/cyan]",
@@ -943,4 +989,50 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     console.error(f"Unknown action: {action}");
     console.print("Available actions: list, pack, info");
     return 1;
+}
+
+impl bundle(output: str = "dist") -> int {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.publish.builder { WheelBuilder }
+    import from jaclang.publish.wheel_meta { wheel_filename }
+
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
+        return 1;
+    }
+    if config.package is None {
+        console.error(
+            "No [package] section in jac.toml",
+            hint="Add [package] with name and version to use jac bundle."
+        );
+        return 1;
+    }
+
+    console.print(
+        f"\n📦 Publishing [cyan]{config.package.name}[/cyan] "
+        f"v{config.package.version}",
+        style="bold"
+    );
+
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    console.print("\n  Pre-compiling .jac → .jir + building wheel...", style="muted");
+    try {
+        builder = WheelBuilder(config=config, project_root=config.project_root);
+        whl_path = builder.build_to(out_dir);
+    } except Exception as e {
+        console.error(f"Build failed: {e}");
+        return 1;
+    }
+    console.print(
+        f"  ✔ Built [bold]{whl_path.name}[/bold] "
+        f"({whl_path.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(f"\n  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
+    return 0;
 }

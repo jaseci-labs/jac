@@ -1,5 +1,6 @@
 """REST API Server for Jac Programs."""
 import asyncio;
+import dataclasses;
 import hashlib;
 import html;
 import inspect;

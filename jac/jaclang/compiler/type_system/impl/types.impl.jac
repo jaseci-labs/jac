@@ -398,7 +398,6 @@ impl ClassType.is_special_form(name: str | None = None) -> bool {
     }
     if name is None {
         return True;  # Any special form
-
     }
     return self.private.alias_name == name;
 }
