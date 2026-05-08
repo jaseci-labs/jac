@@ -5554,7 +5554,12 @@ impl Parser.parse_archetype_member{
             ];
             kid.extend(body);
             kid.append(rb_uni);
-            return ModuleCode(name=None, body=body, kid=kid, doc=None);
+            module_code = ModuleCode(name=None, body=body, kid=kid, doc=None);
+            if doc {
+                module_code.doc = doc;
+                module_code.add_kids_left([doc]);
+            }
+            return module_code;
         }
     }
     # Parse bare names (e.g. 'pass') as expression statements so
