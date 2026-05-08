@@ -124,6 +124,9 @@ impl JacAPIServerEndpoints.create_walker_callback(
         );
         if not _has_var_kw {
             _filter_walker_kwargs = True;
+            # walker_cls.init is an unbound class method, so inspect.signature
+            # includes 'self'; free functions (used in create_function_callback)
+            # do not, hence the asymmetry between the two filters.
             _walker_allowed_keys = {
                 name
                 for (name, p) in _wsig.parameters.items()
@@ -154,6 +157,9 @@ impl JacAPIServerEndpoints.create_walker_callback(
         # Drop unknown query params injected by jfast_api's extra_query_params_code.
         # Skipped when introspection failed (permissive) or walker declares **kwargs.
         if _filter_walker_kwargs {
+            # _jac_spawn_node is synthetic: ModuleIntrospector.introspect_walker
+            # injects it after iterating __init__ params, so it is never in
+            # _walker_allowed_keys. The guard here is load-bearing, not redundant.
             kwargs = {
                 k: v
                 for (k, v) in kwargs.items()
