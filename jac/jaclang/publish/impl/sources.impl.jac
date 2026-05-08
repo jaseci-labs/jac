@@ -91,13 +91,13 @@ impl collect_source_files(
         );
     }
 
-    if config.package is None {
+    if not config.project.name {
         raise ValueError(
-            "Cannot collect source files: [package] section is missing in jac.toml."
+            "Cannot collect source files: [project] name is missing in jac.toml."
         );
     }
 
-    pkg_include = config.package.include;
+    pkg_include = config.project.include;
     data_map = pkg_include.data;
 
     # Global patterns: "*" key overrides defaults; if absent, defaults apply.
@@ -111,8 +111,8 @@ impl collect_source_files(
 
     # When no explicit packages list is given, fall back to a directory whose
     # name matches the package name (normalized: hyphens → underscores).
-    if not package_patterns and config.package.name {
-        package_patterns = [config.package.name.replace("-", "_")];
+    if not package_patterns and config.project.name {
+        package_patterns = [config.project.name.replace("-", "_")];
     }
 
     candidates = sorted(
