@@ -150,6 +150,7 @@ import from jaclang.jac0core.diagnostics {
     E0045,
     E0046,
     E0047,
+    E0079,
     W0060,
     W0061,
     W0063
@@ -3837,11 +3838,13 @@ impl Parser.parse_code_block_stmts -> list {
         before = self.pos;
         stmt = self.parse_statement();
         if stmt is not None {
-            # Reject Python-style docstrings as first statement in code block.
-            # In Jac, semstrings go before the declaration, not inside.
+            # Detect string literals without a semicolon in a code block - these
+            # look like misplaced docstrings. Strings with a semicolon ("hello";)
+            # are valid no-op expressions and are left alone.
             is_docstring = False;
+            has_semi = any(isinstance(k, Semi) for k in stmt.kid) if isinstance(stmt, ExprStmt) else False;
             if (
-                not checked_first and isinstance(stmt, ExprStmt) and not stmt.in_fstring
+                isinstance(stmt, ExprStmt) and not stmt.in_fstring and not has_semi
             ) {
                 if isinstance(stmt.expr, String) {
                     is_docstring = True;
@@ -3853,7 +3856,7 @@ impl Parser.parse_code_block_stmts -> list {
                 }
             }
             if is_docstring {
-                self.emit_warn(W0060, loc=self.tokens[before].loc);
+                self.emit_diag(E0079, loc=self.tokens[before].loc);
             }
             if not isinstance(stmt, Semi) {
                 checked_first = True;
@@ -4089,7 +4092,16 @@ impl Parser.parse_statement{
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
     } else {
-        self.emit_diag(E0002, token=";");
+        # String literals without a semicolon are likely misplaced docstrings.
+        # parse_code_block_stmts will emit W0060 for those - suppress the
+        # misleading E0002 so only the helpful warning is shown.
+        is_string_lit = isinstance(expr, String) or (
+            isinstance(expr, MultiString)
+            and all(isinstance(s, String) for s in expr.strings)
+        );
+        if not is_string_lit {
+            self.emit_diag(E0002, token=";");
+        }
     }
     return ExprStmt(expr=expr, in_fstring=False, kid=expr_kid);
 }

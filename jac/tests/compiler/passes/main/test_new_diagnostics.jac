@@ -355,6 +355,28 @@ test "E0077: empty f-string expression" {
     assert has_err;
 }
 
+test "E0079: docstring inside function body is an error" {
+    (has_err, prog) = parse_and_validate(
+        'def foo() -> None { """bad doc""" return None; }'
+    );
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0079"));
+}
+
+test "E0079: docstring at first statement in ability body is an error" {
+    (has_err, prog) = parse_and_validate('def bar() -> None { """doc""" x = 1; }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0079"));
+}
+
+test "E0079: string with semicolon is not flagged" {
+    (has_err, _) = parse_and_validate('with entry { "hello"; }');
+    assert not has_err;
+}
+
+test "E0079: docstring before function declaration is valid" {
+    (has_err, _) = parse_and_validate('"""Module doc"""\ndef foo() -> None { }');
+    assert not has_err;
+}
+
 test "E0062: nonlocal at module level" {
     (has_err, prog) = parse_and_validate('with entry { nonlocal x; }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
@@ -828,7 +850,8 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0062_nonlocal_module": "with entry { nonlocal x; }",
          "E0071_bare_except_first": "with entry { try { x=1; } except { } except ValueError as e { } }",
          "E0075_dup_base": "obj A { }\nobj B(A, A) { }",
-         "E0077_empty_fstring": 'with entry { x = f"{}"; }'
+         "E0077_empty_fstring": 'with entry { x = f"{}"; }',
+         "E0079_docstring_in_body": 'def foo() -> None { """bad doc""" return None; }'
      },
      MUST_VALIDATE_NEW: dict[str, str] = {
          "E0055_yield_in_entry": "with entry { yield 5; }",
@@ -836,7 +859,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0058_continue_no_loop": "with entry { continue; }"
      };
 
-glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
+glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base","E0079_docstring_in_body"},
      IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
 
 def reject_test(name_snippet: tuple) {
