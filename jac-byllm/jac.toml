@@ -1,4 +1,4 @@
-[package]
+[project]
 name = "byllm"
 version = "0.6.4"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
@@ -13,12 +13,12 @@ readme = "README.md"
 keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 requires-python = ">=3.11"
 
-[package.urls]
+[project.urls]
 repository = "https://github.com/Jaseci-Labs/jaseci"
 homepage = "https://jaseci.org"
 documentation = "https://jac-lang.org"
 
-[package.include]
+[project.include]
 packages = ["byllm*"]
 
 [dependencies]

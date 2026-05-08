@@ -1217,6 +1217,8 @@ The `sv import` keyword has two flavors depending on where the importer and the 
 
 In the sv-to-sv flavor, `order_service.jac` doing `sv import from inventory_service { check_stock }` does not load `inventory_service` into the consumer's process. Calling `check_stock(sku)` issues a `POST /function/check_stock` against the inventory service's URL and returns the result. The same source runs unchanged whether `inventory_service` is a separate microservice, a sibling process started by the same `jac start` command, or (when `sv import` is absent) a normal in-process import.
 
+Both `def:pub` functions and `walker:pub` archetypes can cross the boundary. Function imports POST to `/function/<name>` and return the function's value. Walker imports POST to `/walker/<name>` and return the rehydrated walker instance with its `has` fields populated and `reports` attached, so call sites read the result the same way they would after a local spawn. See [Walker Imports](#walker-imports) for the wire shape and ergonomics.
+
 For a step-by-step walkthrough that covers project setup, running both services, and watching the round-trip, see the [Microservices tutorial](../../tutorials/production/microservices.md). The rest of this section is a reference for the discovery rules, wire contract, and plugin override surface.
 
 ### Requirements
@@ -1238,13 +1240,59 @@ What works:
 - **`enum` types** -- serialized by name.
 - **Primitives** -- `int`, `float`, `str`, `bool`, `None`, `list[T]`, `dict[K, V]`.
 - **Bidirectional** -- typed function arguments are wrapped on the way out and unwrapped on the way in.
+- **`walker:pub` archetypes** -- when imported by name. The consumer-side stub mirrors the provider's `has` fields, and the round-trip rehydrates the walker into a real instance with `reports` populated. See [Walker Imports](#walker-imports).
 
 What doesn't:
 
-- **Walkers, anchors, closures** -- not wire-friendly. Pass identifiers (e.g. `jid`) and re-resolve on the other side.
+- **Anchors, closures** -- not wire-friendly. Pass identifiers (e.g. `jid`) and re-resolve on the other side.
 - **Live database handles, file handles** -- service-local resources only.
 
-Failures (network errors, missing service, error envelope from the provider) raise `RuntimeError` with a message of the form `sv-to-sv RPC '{module}.{func}' failed: {msg}`.
+Failures (network errors, missing service, error envelope from the provider) raise `RuntimeError`. The message form depends on which kind of symbol was being called:
+
+- Function: `sv-to-sv RPC '{module}.{func}' failed: {msg}`
+- Walker: `sv-to-sv walker spawn '{module}.{walker}' failed: {msg}`
+
+### Walker Imports
+
+A consumer can `sv import` a `walker:pub` archetype the same way it imports a function. The compiler generates a stub class on the consumer side whose name and `has` field shape mirror the provider's walker, so type identity is preserved and the call site reads like a local construction.
+
+```jac
+# notify_service.jac (provider)
+walker:pub Greet {
+    has name: str;
+    can greet with Root entry {
+        report f"hello, {self.name}";
+    }
+}
+
+# dispatcher_service.jac (consumer)
+sv import from notify_service { Greet }
+
+walker:pub TriggerGreet {
+    has who: str;
+    can run with Root entry {
+        rg = Greet(name=self.who);   # POST /walker/Greet on the provider
+        report rg.reports[0];        # "hello, <who>"
+    }
+}
+```
+
+What happens when the consumer evaluates `Greet(name=self.who)`:
+
+1. The stub class collects the keyword arguments into a JSON dict (boundary-typed values are serialized via `_to_wire` first).
+2. The runtime POSTs that dict to `/walker/Greet` on the resolved provider URL using the same dispatch chain as function calls (test client → registry → `JAC_SV_<MOD>_URL` → automatic spawn).
+3. The provider spawns and runs the walker, then returns a `TransportResponse` envelope whose `data.result` is the executed walker as a dict and whose `data.reports` is the list of values it emitted via `report`.
+4. The consumer rehydrates `data.result` into an instance of the local stub class, attaches `data.reports` as the instance's `reports` attribute, and returns it.
+
+The result is a normal walker instance on the consumer: `rg.name`, `rg.reports[0]`, and `isinstance(rg, Greet)` all work. Boundary-typed values inside the walker's `has` fields and inside the `reports` list are unwrapped recursively, so a walker that emits an `obj` type comes back as that type, not as a raw dict.
+
+A few notes:
+
+- **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary, instantiating a sv-imported walker is **spawn-and-execute** -- there is no useful concept of an unexecuted remote walker. The consumer-side class accepts only the `has` fields as keyword arguments and always returns a post-execution instance.
+- **`walker:pub` only.** Private walkers are not exposed as endpoints, so calls into them return 404. Boundary types from a walker's signature (used in `has` fields or referenced in `report` arguments) need to be `sv import`ed alongside the walker.
+- **Same retry, breaker, auth, and tracing as functions.** The plugin override surface is `sv_walker_call`, not `sv_service_call`, but they share the per-provider circuit breaker and `rpc_timeout` config -- a tripped breaker protects either RPC kind. See [Plugin Override: Custom Service Spawning](#plugin-override-custom-service-spawning).
+
+This applies to **sv-to-sv** imports. Walker imports across the **cl-to-sv** boundary (browser calling a server walker) are not currently generated; for cl-to-sv use a `def:pub` wrapper that spawns the walker server-side.
 
 ### Automatic Startup
 
@@ -1358,6 +1406,19 @@ Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over f
 The hook is called during automatic startup, once per provider, in parallel up to 8 at a time. Overrides must be idempotent and safe to run concurrently. Both properties were already true of the pre-existing lazy contract (concurrent first-call requests could race into the same hook), so a plugin written against any prior version continues to work without modification.
 
 The default jac-scale implementation at a high level: pick a free loopback port in `18000-18999`, start an HTTP listener on a daemon thread serving the module's `def:pub` endpoints, wait until the listener responds to an HTTP probe, then register the URL. Consult the jac-scale source if you need the exact details; the contract plugin authors should rely on is the `ensure_sv_service` signature and the requirement to call `sv_client.register` before returning.
+
+### Plugin Override: RPC Transport
+
+Two parallel hooks let a plugin own the wire-level transport for sv-to-sv calls:
+
+| Hook | Used by | Default transport |
+|---|---|---|
+| `JacAPIServer.sv_service_call(module_name, func_name, args)` | sv-imported `def:pub` functions | `POST /function/<name>` |
+| `JacAPIServer.sv_walker_call(module_name, walker_name, args, stub_cls)` | sv-imported `walker:pub` archetypes | `POST /walker/<name>` + `stub_cls._from_wire` rehydration |
+
+Plugins typically override both with the same auth-forwarding, tracing, retry, and circuit-breaker policy. The jac-scale plugin does exactly that: walker calls share the per-provider circuit breaker with function calls (both express provider liveness, so a tripped breaker should protect either kind), forward the inbound `Authorization` header, propagate `X-Trace-Id` across the hop, retry transport-level failures with exponential backoff, and respect the per-service `rpc_timeout` config.
+
+Overrides for `sv_walker_call` must end by returning the rehydrated walker instance: call `stub_cls._from_wire(envelope.data.result)` and attach `envelope.data.reports` to the resulting instance's `reports` attribute. The default implementation is a useful reference and reusing `_unwrap_sv_envelope` / `_hydrate_walker_envelope` from the jac-scale source keeps error semantics consistent with the function path.
 
 ## Storage
 

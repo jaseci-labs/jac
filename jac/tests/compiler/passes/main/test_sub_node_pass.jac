@@ -6,7 +6,9 @@ import jaclang;
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes { UniPass }
 
-glob EXAMPLES = os.path.join(str(Path(jaclang.__file__).parent.parent), "examples");
+glob EXAMPLES = os.path.join(
+         str(Path(jaclang.__file__).parent.parent), "examples"
+     );
 
 test "sub node pass" {
     out = JacProgram();

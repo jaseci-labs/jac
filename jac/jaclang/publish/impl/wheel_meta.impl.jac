@@ -7,7 +7,7 @@ import from importlib.metadata { version as _pkg_version }
 glob _JAC_VERSION: str = _pkg_version("jaclang");
 
 def _pkg_norm_name(config: JacConfig) -> str {
-    return normalize_package_name(config.package.name).replace("-", "_");
+    return normalize_package_name(config.project.name).replace("-", "_");
 }
 
 impl generate_wheel_file(
@@ -58,19 +58,19 @@ impl wheel_filename(
     abi_tag: str = "none",
     platform_tag: str = "any",
 ) -> str {
-    if config.package is None {
+    if not config.project.name {
         raise ValueError(
-            "Cannot build wheel filename: [package] section is missing in jac.toml"
+            "Cannot build wheel filename: [project] name is missing in jac.toml"
         );
     }
-    return f"{_pkg_norm_name(config)}-{config.package.version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
+    return f"{_pkg_norm_name(config)}-{config.project.version}-{python_tag}-{abi_tag}-{platform_tag}.whl";
 }
 
 impl dist_info_dirname(config: JacConfig) -> str {
-    if config.package is None {
+    if not config.project.name {
         raise ValueError(
-            "Cannot build dist-info name: [package] section is missing in jac.toml"
+            "Cannot build dist-info name: [project] name is missing in jac.toml"
         );
     }
-    return f"{_pkg_norm_name(config)}-{config.package.version}.dist-info";
+    return f"{_pkg_norm_name(config)}-{config.project.version}.dist-info";
 }

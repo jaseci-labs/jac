@@ -167,7 +167,12 @@ obj InteropBinding {
         param_names: list[str] = [],
         ast_node: Any = None,
         route: list[InteropContext] = [],
-        source_module: (str | None) = None;
+        source_module: (str | None) = None,
+        # Kind of provider symbol this binding stubs out: 'function' for
+        # `def:pub` functions (POST /function/<name>), 'walker' for
+        # `walker:pub` archetypes (POST /walker/<name>). Drives stub
+        # codegen and runtime dispatch for sv-to-sv imports.
+        kind: str = 'function';
 
     @property
     def is_direct -> bool;

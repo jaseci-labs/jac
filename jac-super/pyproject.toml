@@ -21,9 +21,12 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Jaseci-Labs/jaseci"
+Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://jac-lang.org"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jac-super"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community/release_notes/jac-super.md"
 
 [project.entry-points."jac"]
 console = "jac_super.plugin.console:JacSuperPlugin"

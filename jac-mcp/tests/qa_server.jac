@@ -13,7 +13,7 @@ glob PASS: int = 0,
      FAIL: int = 0,
      RESULTS: list = [];
 
-def check(name: str, condition: bool, detail: str = "") -> None {
+def check(name: str, condition: bool, detail: str = "") {
     global PASS,FAIL;
     if condition {
         PASS += 1;

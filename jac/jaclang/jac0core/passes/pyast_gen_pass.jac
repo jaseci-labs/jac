@@ -162,6 +162,23 @@ ctypes.
         boundary_types: dict[str, BoundaryTypeInfo]
     ) -> str;
 
+    """Build a Python source string for an sv-to-sv walker stub.
+
+    A walker stub is a class whose constructor performs a remote spawn:
+    instantiating `Greet(name="x")` on the consumer issues a POST to
+    `/walker/Greet` on the provider, deserialises the response, and
+    returns an instance with `has` fields and a `reports` attribute
+    populated. The consumer-side class shape mirrors the provider's
+    walker so type identity and boundary-typed fields survive the trip.
+    """
+    def _gen_py_sv_walker_stub(
+        local_name: str,
+        walker_name: str,
+        module_name: str,
+        binding: InteropBinding,
+        boundary_types: dict[str, BoundaryTypeInfo]
+    ) -> str;
+
     """Build a Python source string for a boundary type stub class."""
     def _gen_py_boundary_stub_class(class_name: str, info: BoundaryTypeInfo) -> str;
 
