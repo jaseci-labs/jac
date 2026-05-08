@@ -3846,16 +3846,20 @@ impl Parser.parse_code_block_stmts -> list {
             is_docstring = False;
             has_semi = any(isinstance(k, Semi) for k in stmt.kid) if isinstance(stmt, ExprStmt) else False;
             on_own_line = before == 0 or self.tokens[before - 1].loc.end_line < self.tokens[before].loc.line;
-            if (
-                isinstance(stmt, ExprStmt) and not stmt.in_fstring and not has_semi and on_own_line
-            ) {
-                if isinstance(stmt.expr, String) {
-                    is_docstring = True;
-                } elif (
+            if isinstance(stmt, ExprStmt) and not stmt.in_fstring and not has_semi {
+                is_string_expr = isinstance(stmt.expr, String) or (
                     isinstance(stmt.expr, MultiString)
                     and all(isinstance(s, String) for s in stmt.expr.strings)
-                ) {
-                    is_docstring = True;
+                );
+                if is_string_expr {
+                    if on_own_line {
+                        is_docstring = True;
+                    } else {
+                        # String on the same line as a prior token (e.g. `print "foo"`)
+                        # is not a docstring - E0002 was suppressed in parse_statement,
+                        # so re-emit it here.
+                        self.emit_diag(E0002, token=";");
+                    }
                 }
             }
             if is_docstring {
