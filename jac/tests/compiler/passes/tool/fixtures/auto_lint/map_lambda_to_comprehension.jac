@@ -1,4 +1,4 @@
-"""Fixture for W3041 auto-fix: map(lambda -> JSX) to list comprehension.
+"""Fixture for W3042 auto-fix: map(lambda -> JSX) to list comprehension.
 
 Covers both the convertible single-param case (HourGrid) and a multi-param
 lambda that must be left alone (MultiParamMap), since list comprehensions

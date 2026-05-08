@@ -142,6 +142,9 @@ glob PIECE_VALUES: dict[PieceKind, int] = {
 
 **Native features:** enums, global variables, hex/binary literals, dict literals with enum keys.
 
+!!! tip "Typed-base enum shorthand"
+    Plain `enum Color { WHITE = 0, BLACK = 1 }` works here because the members are used as dictionary keys -- their identity matters more than their numeric value. If you wanted `Color.WHITE` to also act as a real `int` (for arithmetic, indexing, or interop with `int`-typed APIs), use the typed-base form: `enum Color: int { WHITE = 0, BLACK = 1 }`. `: int` desugars to Python's `IntEnum`, `: str` to `StrEnum`.
+
 ### Forward Declarations and Function Signatures
 
 Forward declarations let types reference each other before they are fully defined:

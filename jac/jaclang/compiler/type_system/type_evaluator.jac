@@ -88,6 +88,7 @@ import from jaclang.jac0core.diagnostics {
     E1104,
     E1110,
     E1111,
+    W0062,
     W1050,
     W1051,
     W1100,
@@ -216,6 +217,15 @@ obj TypeEvaluator {
         _TYPES_STUB_FILE_PATH: str by postinit,
         _JAC_BUILTINS_STUB_FILE_PATH: str by postinit,
         _DOM_TYPES_STUB_FILE_PATH: str by postinit,
+        _TYPING_AMBIENT_STUB_FILE_PATH: str by postinit,
+        # Names made ambient by typing_ambient.pyi's __all__, keyed by the
+        # source module the stub re-exports them from (typing /
+        # collections.abc). Built once in postinit by parsing the stub's
+        # `from <module> import (...)` blocks and intersecting with __all__,
+        # so this stays in lockstep with the merged builtins and the
+        # PyastGenPass codegen preamble. Lint passes (e.g.
+        # StaticAnalysisPass) consume this to detect redundant imports.
+        ambient_typing_names_by_module: dict[str, set[str]] = {},
         _ENUM_STUB_FILE_PATH: str by postinit,
         _SPECIAL_FORM_CLASS_NAMES: tuple[(str, ...)] = (
             "Union",
@@ -240,6 +250,10 @@ obj TypeEvaluator {
         _flow_pending_symbols: set[int] by postinit,
         _flow_pending_keys: set[str] by postinit,
         _module_type_cache: dict[str, types.ModuleType] = {},
+        # Cache for `_is_strict_site` keyed by `id(module)`. Maps to True
+        # when the module is Jac source (Layer 2 strict-Any applies),
+        # False when it is Python source (PEP 484 stays permissive).
+        _strict_site_cache: dict[int, bool] = {},
         # Temporary type overrides for isinstance narrowing within AND conditions.
         # Maps symbol id → narrowed type. Set during BoolExpr(and) evaluation so
         # that RHS operands see the narrowed type from LHS isinstance checks.
@@ -295,6 +309,8 @@ obj TypeEvaluator {
     ) -> TypeBase;
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
+    def is_explicit_any(ty: TypeBase) -> bool;
+    def _is_strict_site(nd: uni.UniNode) -> bool;
     # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
     def is_typevar_class(ty: TypeBase) -> bool;
     # Check if a type is the ParamSpec class itself (not a TypeVarType instance).
@@ -312,7 +328,9 @@ obj TypeEvaluator {
     # // and added to the map.
     #
     # dest_type = src_type;
-    def assign_type(src_type: TypeBase, dest_type: TypeBase) -> bool;
+    def assign_type(
+        src_type: TypeBase, dest_type: TypeBase, strict: bool = False
+    ) -> bool;
     # TODO: This should take an argument list as parameter.
     def get_type_of_magic_method_call(
         obj_type: TypeBase,
@@ -324,7 +342,9 @@ obj TypeEvaluator {
     def is_sub_class(super_cls: types.ClassType, sub_cls: types.ClassType) -> bool;
     # --- Callable assignment compatibility ---
     def _assign_callable(
-        src_func: types.FunctionType, dest_func: types.FunctionType
+        src_func: types.FunctionType,
+        dest_func: types.FunctionType,
+        strict: bool = False
     ) -> bool;
 
     def _is_ability_classmethod(node_: uni.Ability) -> bool;
@@ -343,7 +363,9 @@ obj TypeEvaluator {
         symbol: uni.Symbol, prop_name: str
     ) -> (TypeBase | None);
 
-    def _assign_class(src_type: types.ClassType, dest_type: types.ClassType) -> bool;
+    def _assign_class(
+        src_type: types.ClassType, dest_type: types.ClassType, strict: bool = False
+    ) -> bool;
     # This function is a combination of the bellow pyright functions.
     #  - getDeclaredTypeOfSymbol
     #  - getTypeForDeclaration

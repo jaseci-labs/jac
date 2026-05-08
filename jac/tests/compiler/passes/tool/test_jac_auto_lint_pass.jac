@@ -1273,8 +1273,8 @@ test "W3038 does not remove import when useState call is not a destructure assig
     assert "useState" in formatted;
 }
 
-# ── W3041: map(lambda → JSX) to list comprehension ──────────────────────────
-test "W3041 converts map lambda to list comprehension" {
+# ── W3042: map(lambda → JSX) to list comprehension ──────────────────────────
+test "W3042 converts map lambda to list comprehension" {
     input_path = auto_lint_fixture_path("map_lambda_to_comprehension.jac");
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
     formatted = prog.mod.main.gen.jac;
@@ -1292,7 +1292,7 @@ test "W3041 converts map lambda to list comprehension" {
     assert "for a, b in items" not in formatted;
 }
 
-test "W3041 filter-map chain converts to filtered comprehension" {
+test "W3042 filter-map chain converts to filtered comprehension" {
     input_path = auto_lint_fixture_path("filter_map_lambda_to_comprehension.jac");
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
     formatted = prog.mod.main.gen.jac;

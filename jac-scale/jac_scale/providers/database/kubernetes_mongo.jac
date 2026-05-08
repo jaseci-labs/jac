@@ -26,6 +26,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
         k8s_config = scale_config.get_kubernetes_config();
         mongodb_username = k8s_config.get('mongodb_root_username', 'admin');
         mongodb_password = k8s_config.get('mongodb_root_password', 'password');
+        mongodb_storage_size = k8s_config.get('mongodb_storage_size', '1Gi');
         connection_string = f"mongodb://{mongodb_username}:{mongodb_password}@{mongodb_service_name}:{mongodb_port}";
 
         mongodb_secret = {
@@ -118,7 +119,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
                         'metadata': {'name': mongodb_volume_name},
                         'spec': {
                             'accessModes': ['ReadWriteOnce'],
-                            'resources': {'requests': {'storage': '1Gi'}}
+                            'resources': {'requests': {'storage': mongodb_storage_size}}
                         }
                     }
                 ]

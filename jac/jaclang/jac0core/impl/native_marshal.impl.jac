@@ -176,9 +176,7 @@ impl NativeListView.__iter__ -> Any {
 
 impl NativeListView.__eq__(other: Any) -> Any {
     if isinstance(other, list) {
-        return (
-            len(self) == len(other) and all(a == b for (a, b) in zip(self, other))
-        );
+        return (len(self) == len(other) and all(a == b for (a, b) in zip(self, other)));
     }
     return NotImplemented;
 }

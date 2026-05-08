@@ -27,7 +27,7 @@ test "inverted isinstance guard narrows type" {
 
 test "compile hodge podge" {
     out = JacProgram();
-    out.compile(os.path.join(EXAMPLES, "micro", "hodge_podge.jac"));
+    out.compile(os.path.join(COMPILER_FIXTURES, "micro", "hodge_podge.jac"));
     assert len(out.errors_had) == 0;
 }
 

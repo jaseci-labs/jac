@@ -1,4 +1,4 @@
-"""Fixture for W3041 auto-fix: filter-map lambda chain to filtered list comprehension."""
+"""Fixture for W3042 auto-fix: filter-map lambda chain to filtered list comprehension."""
 
 def:pub ActiveItems(items: list) -> JsxElement {
     activeRows = items.filter(

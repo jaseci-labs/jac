@@ -110,7 +110,14 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'system_user_password': 'system_secret',
             'collection': 'scheduled_jobs'
         },
-        'telemetry': {'max_traces': 1000}
+        'telemetry': {'max_traces': 1000},
+        'microservices': {
+            'enabled': False,
+            'gateway_port': 8000,
+            'gateway_host': '0.0.0.0',
+            'routes': {},
+            'client': {'entry': '', 'dist_dir': '.jac/client/dist', 'base_route': '/'}
+        }
     };
 }
 
@@ -318,6 +325,57 @@ impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, Any]
         'system_user_password': os.environ.get('SYSTEM_USER_PASSWORD')
         or scheduler_config.get('system_user_password', 'system_secret'),
         'collection': scheduler_config.get('collection', 'scheduled_jobs')
+    };
+}
+
+"""Get microservices configuration from jac.toml.
+
+Schema: `routes: {module_name: prefix}` - services are discovered via
+`sv import`; the routes table only controls public URL routing on the
+gateway.
+"""
+impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, Any] {
+    config = self.load();
+    ms_config = config.get('microservices', {});
+    client_config = ms_config.get('client', {});
+    cors_config = ms_config.get('cors', {});
+    rl_config = ms_config.get('rate_limit', {});
+
+    return {
+        'enabled': ms_config.get('enabled', False),
+        'gateway_port': int(ms_config.get('gateway_port', 8000)),
+        'gateway_host': ms_config.get('gateway_host', '0.0.0.0'),
+        'drain_timeout_seconds': float(ms_config.get('drain_timeout_seconds', 10)),
+        'http_forward_timeout': float(ms_config.get('http_forward_timeout', 30)),
+        'routes': dict(ms_config.get('routes', {})),
+        'services': dict(ms_config.get('services', {})),
+        'rate_limit': {
+            'enabled': bool(rl_config.get('enabled', False)),
+            'per_ip_rpm': int(rl_config.get('per_ip_rpm', 60)),
+            'per_user_rpm': int(rl_config.get('per_user_rpm', 0)),
+            'burst_multiplier': float(rl_config.get('burst_multiplier', 2.0)),
+            'exempt_paths': list(
+                rl_config.get('exempt_paths', ["/health", "/healthz", "/metrics"])
+            )
+        },
+        'cors': {
+            # Open-by-default so local dev (SPA on :5173 etc.) works
+            # out of the box. `allow_credentials=True` with `*` origin
+            # is spec-forbidden, hence the safe default of False; tight
+            # deployments override allow_origins to a concrete list
+            # and set allow_credentials=True.
+            'allow_origins': list(cors_config.get('allow_origins', ["*"])),
+            'allow_methods': list(cors_config.get('allow_methods', ["*"])),
+            'allow_headers': list(cors_config.get('allow_headers', ["*"])),
+            'allow_credentials': bool(cors_config.get('allow_credentials', False)),
+            'expose_headers': list(cors_config.get('expose_headers', [])),
+            'max_age': int(cors_config.get('max_age', 600))
+        },
+        'client': {
+            'entry': client_config.get('entry', ''),
+            'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
+            'base_route': client_config.get('base_route', '/')
+        }
     };
 }
 

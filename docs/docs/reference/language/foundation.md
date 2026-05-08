@@ -233,6 +233,9 @@ obj Example {
 }
 ```
 
+!!! note "The `any` Special Case"
+    Because `any` is a built-in type in Jac, the backtick escape is used as a convention to refer to the Python/Jac built-in **`any()` function**. Always use `` `any `` when you want to call the function and `any` (without a backtick) when referring to the type.
+
 !!! danger
     Backtick-escaped keywords in `has` declarations **do not work** -- they cause a `SyntaxError` in Python's dataclass machinery at runtime. Choose a non-keyword identifier instead (e.g., `has cls: str;` or `has kind: str;`).
 
@@ -331,6 +334,88 @@ if typing.TYPE_CHECKING:
 
 If you later add runtime usage like `MyClass()`, the compiler automatically promotes it back to a regular import. No manual `if TYPE_CHECKING` blocks are needed in Jac.
 
+#### Ambient Typing Names
+
+A curated set of annotation-only names from `typing` resolves in user code without an explicit import:
+
+`Callable`, `Protocol`, `TypeVar`, `Generic`, `Literal`, `ClassVar`, `Annotated`, `Iterable`, `Iterator`, `AsyncIterable`, `AsyncIterator`, `Mapping`, `MutableMapping`, `Sequence`, `MutableSequence`, `Awaitable`, `Coroutine`.
+
+```jac
+def:pub apply(func: Callable[[int, int], int], x: int, y: int) -> int {
+    return func(x, y);
+}
+```
+
+The Python codegen still emits `from typing import Callable` to the generated module preamble, so runtime introspection (`typing.get_type_hints`, pydantic, FastAPI) keeps working. The JS codegen strips annotations from function signatures, so no `typing` import lands in the bundle.
+
+Names skipped on purpose:
+
+| Don't write | Use instead |
+|-------------|-------------|
+| `Any` | the `any` keyword |
+| `Optional[X]` | `X \| None` |
+| `Union[X, Y]` | `X \| Y` |
+| `List[X]`, `Dict[K, V]`, `Set[X]`, `FrozenSet[X]`, `Tuple[X, ...]`, `Type[X]` | the lowercase built-ins (PEP 585) |
+| `DefaultDict`, `OrderedDict`, `Counter`, `Deque` | the `collections` equivalents |
+
+Runtime values like `cast`, `overload`, `runtime_checkable`, `TYPE_CHECKING`, `get_type_hints`, `get_args`, `get_origin`, and `no_type_check` are not ambient -- import them explicitly when needed.
+
+#### The `any` Type and Gradual Typing
+
+`any` is Jac's gradual-typing escape valve. A value typed as `any` can hold anything, and reading from it produces `any`. Jac applies a strict rule about where `any` is allowed to flow inside `.jac` files: it must not silently widen into a declared non-`any` destination.
+
+**The rule.** A value of type `any` cannot be silently assigned to a destination with a declared non-`any`, non-`object` type. The check fires at every site where the destination has a declared type:
+
+- annotated assignment (`x: T = src;`)
+- `has`-var initializer (`has x: T = src;`)
+- function argument (`f(src)` against a declared `param: T`)
+- return statement (`return src` from `def f -> T`)
+- yield expression in a typed generator
+- edge-connection assignment
+
+The check recurses element-wise into containers, so `list[any] -> list[Task]` is rejected the same way `any -> Task` is.
+
+**Two destinations stay permissive:**
+
+1. **Inferred locals.** A binding without an annotation accepts `any` and itself becomes `any`. `x = py_call();` is fine.
+2. **Explicit `any` annotation.** Annotating the destination as `any` opts into permissive flow. `x: any = py_call();` is fine.
+
+`any -> object` and `any -> T` (where `T` is a `TypeVar`) are also permissive, so `print(x)` and generic-bound calls work without ceremony.
+
+!!! note "`.py` and `.pyi` files keep PEP 484 semantics"
+    `Any` propagates freely inside Python modules. The strict rule only fires at the `.jac` consumption site. A typed `.pyi` stub for a Python utility removes the `any` return type at the boundary, so the strict rule never engages downstream.
+
+**Migration patterns.** Two ways to clear a strict-`any` error at a boundary:
+
+| Approach | When to use |
+|----------|-------------|
+| Type the source | The function has a stable signature. Add a `.pyi` stub for a Python utility, a return annotation on a `def`, or a typed [`has reports: list[T]`](walker-responses.md#typing-your-reports) declaration on a walker. The boundary becomes strongly typed and downstream `.jac` code stays clean. |
+| Accept `any` at the boundary | The source is intentionally untyped. Annotate the receiving local as `any`, then narrow with `isinstance` or `cast` before flowing into typed destinations. |
+
+```jac
+import json;
+
+def parse(text: str) -> any {
+    return json.loads(text);
+}
+
+obj Task { has title: str = ""; }
+
+with entry {
+    # Inferred destination -- `raw` becomes `any`, no error.
+    raw = parse('{"title": "ship"}');
+
+    # Narrow before flowing into a declared type.
+    if isinstance(raw, dict) {
+        title = raw.get("title", "");
+        if isinstance(title, str) {
+            t = Task(title=title);
+            print(t.title);
+        }
+    }
+}
+```
+
 ### 3 Generic Types
 
 Jac will support generic type parameters using Python-style syntax (coming soon):
@@ -355,6 +440,10 @@ obj Container {
     has value: any;
 }
 ```
+
+!!! tip "Remember the backtick"
+    If you need to use the built-in function to check if any item is truthy, use `` `any ``:
+    ``if `any([True, False]) { ... }``
 
 ### 4 The `Self` Type
 

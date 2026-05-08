@@ -1,6 +1,6 @@
 [project]
 name = "byllm"
-version = "0.6.4"
+version = "0.6.5"
 description = "byLLM Provides Easy to use APIs for different LLM Providers to be used with Jaseci's Jaclang Programming Language."
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 requires-python = ">=3.11"
 dependencies = [
-    "jaclang>=0.14.0",
+    "jaclang>=0.14.1",
     "litellm>=1.70.0,<=1.82.6",  # SECURITY: v1.82.7+ was compromised and yanked from PyPI
     "loguru>=0.7.2,<0.8.0",
     "pillow>=12.0.0,<13.0.0",
@@ -23,6 +23,7 @@ Documentation = "https://jac-lang.org"
 [project.entry-points."jac"]
 byllm = "byllm.plugin:JacRuntime"
 byllm_plugin_config = "byllm.plugin_config:JacByllmPluginConfig"
+byllm_cli = "byllm.cli:JacCmd"
 
 [project.optional-dependencies]
 dev = [
@@ -31,6 +32,20 @@ dev = [
 tools = ["wikipedia"]
 video = ["opencv-python-headless"]
 mcp = ["mcp>=1.0.0"]
+# In-process local-model runtime (Gemma 4, Qwen 3.5, ... via GGUF / llama.cpp).
+# Opt-in extra. byLLM also supports Ollama out of the box via litellm
+# (`default_model = "ollama/<model>"`) which is the recommended local-first
+# path for most users; `[local]` is for the in-process alternative when a
+# separate daemon isn't desirable. NOTE: llama-cpp-python ships only a
+# source tarball on PyPI -- install with the project's prebuilt wheel
+# index to skip the C++ source build:
+#   pip install 'byllm[local]' \
+#     --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+# (swap `/cpu` for `/cu124`, `/metal`, `/vulkan` for GPU variants).
+local = [
+    "llama-cpp-python>=0.2.90",
+    "huggingface_hub>=0.24.0",
+]
 
 [tool.setuptools.packages.find]
 include = ["byllm*"]

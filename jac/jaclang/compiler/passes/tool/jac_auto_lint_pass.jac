@@ -51,6 +51,7 @@ import from jaclang.jac0core.diagnostics {
     W3039,
     W3040,
     W3041,
+    W3042
 }
 
 """Auto linting pass that applies code style corrections to Jac AST."""
@@ -170,7 +171,16 @@ obj JacAutoLintPass(UniPass) {
     def _strip_usestate_imports(nd: uni.Module) -> None;
     def exit_expr_stmt(nd: uni.ExprStmt) -> None;
     def exit_module(nd: uni.Module) -> None;
-    # map-lambda-to-comprehension conversion (W3041)
+    # Stale-`has`-read detection (W3041)
+    def _check_stale_has_read(ability_node: uni.Ability) -> None;
+    def _collect_reactive_has_names(ability_node: uni.Ability) -> set[str];
+    def _walk_for_has_uses(
+        nd: uni.UniNode,
+        reactive: set[str],
+        writes: list[tuple[int, int, str]],
+        reads: list[tuple[int, int, str, uni.Name]]
+    ) -> None;
+    # map-lambda-to-comprehension conversion (W3042)
     def _make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name;
     def _detect_map_lambda_jsx(
         nd: uni.FuncCall

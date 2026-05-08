@@ -68,6 +68,14 @@ with entry {
 
     # Jac has the same built-in types as Python:
     # int, float, str, bool, list, tuple, set, dict, bytes, any
+    # `any` vs `` `any ``: use `any` for the built-in type (placeholder for
+    # any type) and `` `any `` for the built-in Python function.
+
+    # Gradual typing: `any` cannot silently flow into a typed destination
+    # in .jac source. `x: int = py_call()` errors if py_call() returns any --
+    # either type the source (e.g. via .pyi stub) or accept it explicitly:
+    #   raw: any = py_call();   # opt in to permissive flow
+    #   raw = py_call();        # inferred -- raw becomes any, no error
 
     # Union types
     maybe: str | None = None;
@@ -395,9 +403,16 @@ enum Color {
 # Auto-valued enum members
 enum Status { PENDING, ACTIVE, DONE }
 
+# Typed-base shorthand: members ARE instances of T
+# `: int` -> IntEnum, `: str` -> StrEnum, `: T` -> mixin (T, Enum)
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
 with entry {
-    print(Color.RED.value);      # "red"
-    print(Status.ACTIVE.value);  # 2
+    print(Color.RED.value);             # "red"
+    print(Status.ACTIVE.value);         # 2
+    print(HttpStatus.OK == 200);        # True (no .value needed)
+    print(isinstance(Tag.OPEN, str));   # True
 }
 
 
