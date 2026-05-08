@@ -996,11 +996,12 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
     # Only triggered when the user explicitly wrote `sv import from ...`
     # (we detect this via the sv token, not code_context which defaults
     # to SERVER for all nodes).
+    src_token = nd._source_context_token();
     if (
         nd.from_loc
         and nd.items
-        and nd._source_context_token() is not None
-        and nd._source_context_token().name == Tok.KW_SERVER
+        and src_token is not None
+        and src_token.name == Tok.KW_SERVER
         and self._generate_sv_to_sv_stubs(nd)
     ) {
         return;

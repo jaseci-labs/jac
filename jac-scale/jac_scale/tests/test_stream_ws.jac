@@ -58,7 +58,11 @@ test "handshake headers keep auth + trace + xff and drop the rest" {
 
 
 test "handshake headers are case-insensitive on the filter" {
-    inbound = {"authorization": "Bearer x", "X-TRACE-ID": "t1", "sec-websocket-key": "k"};
+    inbound = {
+        "authorization": "Bearer x",
+        "X-TRACE-ID": "t1",
+        "sec-websocket-key": "k"
+    };
     out = _select_handshake_headers(inbound);
     assert out["authorization"] == "Bearer x";
     assert out["X-TRACE-ID"] == "t1";
@@ -79,8 +83,7 @@ async def _spawn_upstream -> tuple[object, object, str] {
 
     async def sse(request: object) -> object {
         resp = web.StreamResponse(
-            status=200,
-            headers={"Content-Type": "text/event-stream"}
+            status=200, headers={"Content-Type": "text/event-stream"}
         );
         await resp.prepare(request);
         for i in range(3) {
@@ -178,7 +181,9 @@ test "stream_forward streams chunked large body without buffering" {
             total: int = 0;
             async for chunk in sr.body_iterator {
                 chunk_count += 1;
-                total += len(chunk) if isinstance(chunk, bytes) else len(chunk.encode());
+                total += len(chunk)
+                    if isinstance(chunk, bytes)
+                    else len(chunk.encode());
             }
             return {"status": fr.status, "count": chunk_count, "total": total};
         } finally {
@@ -237,9 +242,7 @@ test "raw_forward still buffers for the passthrough path" {
 
 
 test "ws route closes with 1008 when no registry prefix matches" {
-    import from jac_scale.microservices.service_registry {
-        ServiceRegistry
-    }
+    import from jac_scale.microservices.service_registry { ServiceRegistry }
     import from jac_scale.microservices.gateway { MicroserviceGateway }
     import from fastapi.testclient { TestClient }
     import from starlette.websockets { WebSocketDisconnect }
@@ -267,21 +270,26 @@ test "ws route closes with 1008 when no registry prefix matches" {
 
 test "ws route rejects with 1012 during drain" {
     import from jac_scale.microservices.service_registry {
-        ServiceRegistry, ServiceEntry, ServiceStatus
+        ServiceRegistry,
+        ServiceEntry,
+        ServiceStatus
     }
     import from jac_scale.microservices.gateway { MicroserviceGateway }
-    import from jac_scale.microservices._drain {
-        reset_drain, start_drain
-    }
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
     import from fastapi.testclient { TestClient }
 
     reset_drain();
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001",
-        status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 

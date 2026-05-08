@@ -429,7 +429,6 @@ test "invoke CompactionNotEffectiveError on consecutive threshold triggers" {
 
     def my_hook(msgs: list, keep_recent: int) -> list {
         return msgs;  # no-op - compaction produces no reduction
-
     }
 
     # Two identical high-usage entries: iter 1 compact fires, iter 2 fires again → error
@@ -771,7 +770,6 @@ test "_compact_messages hook returning None raises ConfigurationError" {
 test "_compact_messages hook returning empty list raises ConfigurationError" {
     def bad_hook(msgs: list, keep_recent: int) -> list {
         return [];  # intentionally too short
-
     }
 
     mt_run = _make_mt_run(

@@ -4,12 +4,7 @@ import from jac_scale.microservices.orchestrator { build_registry }
 import from jac_scale.microservices.service_registry { ServiceStatus }
 
 test "build_registry creates entries from routes map" {
-    ms_config = {
-        "routes": {
-            "orders_app": "/api/orders",
-            "cart_app": "/api/cart"
-        }
-    };
+    ms_config = {"routes": {"orders_app": "/api/orders", "cart_app": "/api/cart"}};
 
     registry = build_registry(ms_config);
 
@@ -35,12 +30,7 @@ test "build_registry route entries have port 0" {
 }
 
 test "build_registry routes work after build" {
-    ms_config = {
-        "routes": {
-            "orders_app": "/api/orders",
-            "cart_app": "/api/cart"
-        }
-    };
+    ms_config = {"routes": {"orders_app": "/api/orders", "cart_app": "/api/cart"}};
 
     registry = build_registry(ms_config);
     assert registry.match_route("/api/orders/function/create_order").name == "orders_app";

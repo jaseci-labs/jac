@@ -163,7 +163,9 @@ test "sv-to-sv: typed objects serialize across boundary" {
     try {
         prov = make_server("math_service", tmp);
         cons = make_server("calculator_service", tmp);
-        r = xd(cons.post("/function/safe_divide", json={"a": 10.0, "b": 0.0}))["result"];
+        r = xd(cons.post("/function/safe_divide", json={"a": 10.0, "b": 0.0}))[
+            "result"
+        ];
         assert r["error"] == "division by zero";
         assert r["result"] is None;
         calc_mod = Jac.loaded_modules["calculator_service"];

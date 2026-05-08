@@ -606,6 +606,26 @@ test "bug_while_loop_narrowing" {
     );
 }
 
+test "bug_subscript_index_narrowing" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "items[0], items[-1], config[\"host\"] should all narrow inside isinstance guard. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_subscript_index_narrowing_negative" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
+
+    assert len(program.errors_had) >= 5 , (
+        "Variable index, range slice, and post-narrow subscript writes "
+        "(items[0]=, items[-1]=, config[\"host\"]=) must all error. "
+        "Expected at least 5 E1099 errors but got "
+        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+        );
+}
+
 test "bug_cast_union_instance" {
     program = compile_and_check("checker_bug_cast_union_instance.jac");
 
