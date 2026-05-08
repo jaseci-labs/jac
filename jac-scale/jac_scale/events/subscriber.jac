@@ -1,9 +1,9 @@
 """@subscribe decorator and global handler registry.
 
-Decorator records entries at import time; _setup_pubsub wires each into the broker at server startup.
+Decorator records entries at import time; _setup_events wires each into the broker at server startup.
 """
 import from typing { Any, Callable }
-import from jac_scale.abstractions.pubsub { Event, RetryPolicy }
+import from jac_scale.events.broker { Event, RetryPolicy }
 
 obj _SubscriptionEntry {
     has topic: str,
@@ -40,7 +40,7 @@ def subscribe(
     return _decorator;
 }
 
-"""Return all registered subscriptions. Called by _setup_pubsub at startup."""
+"""Return all registered subscriptions. Called by _setup_events at startup."""
 def get_subscriptions -> list[_SubscriptionEntry] {
     return _registry;
 }

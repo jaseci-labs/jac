@@ -1,6 +1,6 @@
-"""Pub/Sub abstraction for jac_scale.
+"""Event-streaming broker abstraction for jac_scale.
 
-Defines MessageBroker, Event, and NoOpBroker; concrete impls live in utilities/pubsub.
+Defines EventStreamBroker, Event, RetryPolicy, Subscription, HealthStatus. Concrete impls live in events/brokers.
 """
 import from typing { Any, Callable }
 import from datetime { datetime, UTC }
@@ -24,7 +24,7 @@ obj RetryPolicy {
         dead_letter_suffix: str = ".dlq";
 }
 
-"""Handle returned by MessageBroker.subscribe()."""
+"""Handle returned by EventStreamBroker.subscribe()."""
 obj Subscription {
     has topic: str,
         group: str | None = None;
@@ -33,22 +33,22 @@ obj Subscription {
 """Result of a health probe."""
 obj HealthStatus {
     has healthy: bool,
-        broker: str = "noop",
+        broker: str = "local",
         details: dict[str, Any] = {};
 }
 
-"""Abstract base for a pub/sub message broker.
+"""Abstract base for an event-streaming broker.
 
-Implementations guarantee at-least-once delivery, auto-ack on handler success, DLQ on retry exhaustion.
+Implementations guarantee at-least-once delivery, auto-ack on handler success, replayable offsets via start_from, and DLQ on retry exhaustion. The semantics are streaming (durable log, consumer groups, offsets) even though the API verbs are pub/sub-shaped.
 """
-obj MessageBroker {
+obj EventStreamBroker {
     """Start background consumer threads / connections. Idempotent."""
     def start -> None;
 
     """Stop the broker. With drain=True, wait for in-flight handlers to finish."""
     def stop(drain: bool = True) -> None;
 
-    """Publish an event. `key` partitions on Kafka; ignored on Redis Streams."""
+    """Publish an event. `key` partitions on Kafka; ignored on simple brokers."""
     def publish(topic: str, event: Event, key: str | None = None) -> None;
 
     """Register a handler for a topic (push delivery).
@@ -78,42 +78,4 @@ obj MessageBroker {
 
     """Probe broker health (connection state, consumer lag, etc.)."""
     def health -> HealthStatus;
-
-    """Whether this broker is a real implementation or a no-op."""
-    def is_enabled -> bool;
-}
-
-"""No-op broker used when pub/sub is disabled. All methods are safe but do nothing."""
-obj NoOpBroker(MessageBroker) {
-    def start { }
-    def stop(drain: bool = True) { }
-    def publish(topic: str, event: Event, key: str | None = None) { }
-    def subscribe(
-        topic: str,
-        handler: Callable[[Event], Any],
-        group: str | None = None,
-        retry: RetryPolicy | None = None,
-        start_from: str = "latest"
-    ) -> Subscription {
-        return Subscription(topic=topic, group=group);
-    }
-
-    def consume(
-        topic: str,
-        group: str | None = None,
-        max_messages: int = 1,
-        timeout_seconds: float = 5.0,
-        start_from: str = "latest"
-    ) -> list[Event] {
-        return [];
-    }
-
-    def ack(event: Event) { }
-    def health -> HealthStatus {
-        return HealthStatus(healthy=True, broker="noop");
-    }
-
-    def is_enabled -> bool {
-        return False;
-    }
 }

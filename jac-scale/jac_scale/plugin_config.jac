@@ -323,25 +323,20 @@ class JacScalePluginConfig {
                         }
                     }
                 },
-                "pubsub": {
+                "events": {
                     "type": "dict",
                     "default": {},
-                    "description": "Pub/sub message broker configuration. Off by default. When enabled, jac-scale exposes publish() / @subscribe and emits walker lifecycle events through the configured broker.",
+                    "description": "Event-streaming broker configuration. Off by default. When enabled, jac-scale exposes publish() / @subscribe via the active broker (RedisBroker if a redis URL resolves, otherwise LocalBroker in-memory).",
                     "nested": {
                         "enabled": {
                             "type": "bool",
                             "default": False,
-                            "description": "Enable the message broker. When false, all publish() calls become no-ops."
-                        },
-                        "broker": {
-                            "type": "string",
-                            "default": "redis_streams",
-                            "description": "Broker identifier. Built-in: 'redis_streams', 'noop'."
+                            "description": "Enable the event-streaming broker. When false, all publish() calls become no-ops."
                         },
                         "url": {
                             "type": "string",
-                            "default": "redis://localhost:6379/0",
-                            "description": "Connection URL for the broker (e.g. redis://host:6379/0)."
+                            "default": None,
+                            "description": "Redis connection URL. If unset, falls back to [plugins.scale.database].redis_url. If neither is set or `redis` extra is missing, LocalBroker (in-memory) is used."
                         },
                         "consumer_group": {
                             "type": "string",

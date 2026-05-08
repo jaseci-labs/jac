@@ -261,7 +261,7 @@ obj MockScaleConfig {
         return {"enabled": False};
     }
 
-    def get_pubsub_config -> dict {
+    def get_events_config -> dict {
         return {"enabled": False};
     }
 }

@@ -1,14 +1,14 @@
-"""Minimal jac-scale pub/sub example.
+"""Minimal jac-scale event-streaming example.
 
-Run a local Redis on 6379, then `jac start app.jac` and POST to /walker/place_order. See the README for the full curl.
+`jac start app.jac` and POST to /walker/place_order. With no Redis URL set, this runs on the in-memory LocalBroker; configure `[plugins.scale.events].url` (or `[plugins.scale.database].redis_url`) to use Redis Streams instead. See the README for the full curl.
 """
 
 import logging;
 import from jac_scale.events.publisher { publish }
 import from jac_scale.events.subscriber { subscribe }
-import from jac_scale.abstractions.pubsub { Event }
+import from jac_scale.events.broker { Event }
 
-glob _logger = logging.getLogger("pubsub-example");
+glob _logger = logging.getLogger("events-example");
 
 
 # A walker that publishes on completion. Note: no broker reference

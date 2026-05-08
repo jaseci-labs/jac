@@ -1,20 +1,20 @@
 """Module-level publish facade.
 
-Hides the broker reference so call sites just `publish('topic', event)`. Wired at startup by _setup_pubsub.
+Hides the broker reference so call sites just `publish('topic', event)`. Wired at startup by _setup_events.
 """
-import from jac_scale.abstractions.pubsub { MessageBroker, Event }
+import from jac_scale.events.broker { EventStreamBroker, Event }
 import logging;
 
-glob _broker: MessageBroker | None = None,
+glob _broker: EventStreamBroker | None = None,
      _logger = logging.getLogger(__name__);
 
-"""Wire the active broker. Called once at startup by _setup_pubsub."""
-def set_broker(broker: MessageBroker) {
+"""Wire the active broker. Called once at startup by _setup_events."""
+def set_broker(broker: EventStreamBroker | None) {
     global _broker;
     _broker = broker;
 }
 
-"""Publish an event. No-op when pub/sub is disabled; broker errors are logged but not re-raised."""
+"""Publish an event. No-op when events are disabled; broker errors are logged but not re-raised."""
 def publish(topic: str, event: Event, key: str | None = None) -> None {
     if _broker is None {
         return;

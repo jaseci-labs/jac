@@ -1,11 +1,11 @@
-"""Redis Streams implementation of MessageBroker.
+"""Redis Streams implementation of EventStreamBroker.
 
 Maps publish/subscribe/consume/ack to XADD/XREADGROUP/XACK; routes to <topic><dead_letter_suffix> on retry exhaustion.
 """
 import from typing { Any, Callable }
 import from threading { Thread, Event as _ThreadStop }
-import from jac_scale.abstractions.pubsub {
-    MessageBroker,
+import from jac_scale.events.broker {
+    EventStreamBroker,
     Event,
     RetryPolicy,
     Subscription,
@@ -36,7 +36,7 @@ glob _logger = logging.getLogger(__name__),
      DELIVERY_GROUP_HEADER = "_jac_scale_delivery_group";
 
 """Redis Streams broker. subscribe() spawns a daemon thread; stop(drain=True) joins all threads."""
-obj RedisStreamsBroker(MessageBroker) {
+obj RedisBroker(EventStreamBroker) {
     has config: dict[str, Any] = {},
         _client: Redis | None = None,
         _consumer_name: str = "",
@@ -337,7 +337,7 @@ obj RedisStreamsBroker(MessageBroker) {
             ok = bool(self._get_client().ping());
             return HealthStatus(
                 healthy=ok,
-                broker="redis_streams",
+                broker="redis",
                 details={
                     "consumer_name": self._consumer_name,
                     "threads": len(self._threads)
@@ -345,7 +345,7 @@ obj RedisStreamsBroker(MessageBroker) {
             );
         } except Exception as e {
             return HealthStatus(
-                healthy=False, broker="redis_streams", details={"error": str(e)}
+                healthy=False, broker="redis", details={"error": str(e)}
             );
         }
     }

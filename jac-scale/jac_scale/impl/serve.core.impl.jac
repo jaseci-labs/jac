@@ -150,22 +150,52 @@ impl JacAPIServerCore.postinit -> None {
         );
         logger.info(f"Prometheus metrics enabled at {metrics_endpoint} (admin-only)");
     }
-    self._setup_pubsub();
+    self._setup_events();
 }
 
-"""Initialize the pub/sub broker.
+"""Initialize the event-streaming broker.
 
-Build via factory, wire publisher facade, start, register @subscribe handlers, atexit drain. NoOpBroker when disabled.
+Pick implementation by what's available: RedisBroker if a redis URL resolves and the redis extra is installed, otherwise LocalBroker (in-memory). When events.enabled is false, leave the broker unset and publish() / @subscribe become no-ops via the publisher facade.
 """
-impl JacAPIServerCore._setup_pubsub -> None {
-    import from jac_scale.factories.utility_factory { UtilityFactory }
+impl JacAPIServerCore._setup_events -> None {
     import from jac_scale.events.publisher { set_broker }
     import from jac_scale.events.subscriber { get_subscriptions }
+    import from jac_scale._optdeps.optional_deps { is_optional_available }
     import atexit;
 
-    pubsub_config = get_scale_config().get_pubsub_config();
-    broker_name = pubsub_config.get('broker', 'redis_streams');
-    self._broker = UtilityFactory.create_broker(broker_name, pubsub_config);
+    cfg = get_scale_config().get_events_config();
+    if not cfg.get('enabled', False) {
+        return;
+    }
+
+    # Resolve the redis URL: events.url first, then fall back to database.redis_url
+    # so apps don't have to repeat the same URL twice.
+    db_cfg = get_scale_config().get_database_config();
+    url = cfg.get('url') or db_cfg.get('redis_url');
+
+    if url and is_optional_available('redis') {
+        import from jac_scale.events.brokers.redis { RedisBroker }
+        broker_cfg = dict(cfg);
+        broker_cfg['url'] = url;
+        self._broker = RedisBroker(config=broker_cfg);
+        broker_kind = "redis";
+    } else {
+        import from jac_scale.events.brokers.local { LocalBroker }
+        self._broker = LocalBroker(config=cfg);
+        broker_kind = "local";
+        if url is None {
+            logger.warning(
+                "events enabled with no redis url; using LocalBroker "
+                "(in-memory, single-pod). Set events.url or database.redis_url "
+                "for cross-pod streaming via Redis."
+            );
+        } else {
+            logger.warning(
+                "events enabled and url set, but `redis` extra is not installed; "
+                "using LocalBroker. Run `pip install jac-scale[data]` to use Redis."
+            );
+        }
+    }
 
     set_broker(self._broker);
     self._broker.start();
@@ -185,13 +215,10 @@ impl JacAPIServerCore._setup_pubsub -> None {
         }
     }
 
-    if self._broker.is_enabled() {
-        atexit.register(self._broker.stop);
-        logger.info(
-            f"Pub/sub broker enabled "
-            f"(broker={broker_name}, subscriptions={len(subs)})"
-        );
-    }
+    atexit.register(self._broker.stop);
+    logger.info(
+        f"Events broker enabled " f"(kind={broker_kind}, subscriptions={len(subs)})"
+    );
 }
 
 impl JacAPIServerCore.start(

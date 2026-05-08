@@ -1728,16 +1728,23 @@ This is the right pattern for autosave debouncing, leader-only reconciliation cy
 
 ---
 
-## Pub/Sub Message Broker
+## Event Streaming
 
-Optional publish/subscribe layer for emitting and consuming events between jac code and external systems. Off by default. The default broker is Redis Streams.
+Optional event-streaming broker for emitting and consuming events between jac code and external systems. Off by default. The user-facing API uses pub/sub-style verbs (`publish()` / `@subscribe`) but the underlying semantics are streaming: durable log, consumer groups, replayable offsets via `start_from`, and at-least-once delivery with retries and a DLQ.
+
+Two implementations ship in-tree:
+
+- **`LocalBroker`** (in-memory): single-process, no persistence. Used automatically when no Redis URL is configured. Right for dev workstations, tests, and single-pod deployments.
+- **`RedisBroker`** (Redis Streams): durable, cross-pod. Used automatically when a Redis URL resolves and the `[data]` extra is installed.
+
+You don't pick the broker; selection happens at startup based on what's available.
 
 ### Overview
 
 - Topics are arbitrary strings; payloads are arbitrary `dict` data carried inside an `Event` envelope.
 - Push delivery via `@subscribe(topic)` runs handlers from a daemon consumer thread.
 - Pull delivery via `consume()` + `ack()` for synchronous, batch, or admin-style reads.
-- At-least-once delivery, configurable retry, automatic dead-letter queue per topic.
+- At-least-once delivery, configurable retry, automatic dead-letter topic per topic.
 - When disabled, both `publish()` and `@subscribe` are zero-overhead no-ops.
 
 ### Enabling
@@ -1745,26 +1752,27 @@ Optional publish/subscribe layer for emitting and consuming events between jac c
 Add the section to `jac.toml`. Master switch is `enabled`; everything else has working defaults.
 
 ```toml
-[plugins.scale.pubsub]
+[plugins.scale.events]
 enabled = true
-broker = "redis_streams"
+# Optional. If unset, falls back to [plugins.scale.database].redis_url; if neither
+# resolves, the in-memory LocalBroker is used.
 url = "redis://localhost:6379/0"
 consumer_group = "jac-scale"
 serializer = "json"
 
-[plugins.scale.pubsub.retry]
+[plugins.scale.events.retry]
 max_attempts = 3
 backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
 ```
 
-The Redis Streams broker requires the `[data]` extras: `pip install jac-scale[data]`. If `redis` is not installed, the factory falls back to `NoOpBroker` automatically.
+To use Redis Streams you need the `[data]` extra: `pip install jac-scale[data]`. Without it, jac-scale silently uses `LocalBroker` and logs a warning at startup.
 
 ### Publishing
 
 ```jac
 import from jac_scale.events.publisher { publish }
-import from jac_scale.abstractions.pubsub { Event }
+import from jac_scale.events.broker { Event }
 
 walker place_order {
     has order_id: int;
@@ -1786,7 +1794,7 @@ walker place_order {
 
 ```jac
 import from jac_scale.events.subscriber { subscribe }
-import from jac_scale.abstractions.pubsub { Event }
+import from jac_scale.events.broker { Event }
 
 @subscribe("orders.placed")
 def on_order_placed(event: Event) -> None {
@@ -1796,7 +1804,7 @@ def on_order_placed(event: Event) -> None {
 
 Handlers register at import time. At server startup, the framework walks the registry and wires each handler into the active broker. A daemon consumer thread is spawned per subscription.
 
-`@subscribe` accepts optional `group=` and `retry=` arguments to override the defaults from `jac.toml`, plus `start_from=` to control where a brand-new consumer group begins reading. Default is `"latest"` (only messages produced after the group is created); pass `"earliest"` to replay everything still retained in the stream, or a broker-specific position token (e.g. a Redis stream id like `"1700000000000-0"`) to resume from a specific offset. `start_from` is a one-time bookmark: existing groups always resume from their stored position and ignore this argument.
+`@subscribe` accepts optional `group=` and `retry=` arguments to override the defaults from `jac.toml`, plus `start_from=` to control where a brand-new consumer group begins reading. Default is `"latest"` (only events produced after the group is created); pass `"earliest"` to replay everything still retained, or a broker-specific position token (e.g. a Redis stream id like `"1700000000000-0"`) to resume from a specific offset. `start_from` is a one-time bookmark: existing groups always resume from their stored position and ignore this argument.
 
 ```jac
 @subscribe("orders.placed", start_from="earliest")
@@ -1808,9 +1816,9 @@ def replay_all(event: Event) -> None {
 ### Consuming (pull)
 
 ```jac
-import from jac_scale.abstractions.pubsub { MessageBroker }
+import from jac_scale.events.broker { EventStreamBroker }
 
-def drain(broker: MessageBroker) -> int {
+def drain(broker: EventStreamBroker) -> int {
     batch = broker.consume(
         "orders.placed", max_messages=10, timeout_seconds=2.0
     );
@@ -1822,18 +1830,17 @@ def drain(broker: MessageBroker) -> int {
 }
 ```
 
-`consume()` blocks for up to `timeout_seconds` waiting for at least one message, then returns whatever has arrived (up to `max_messages`). Each event must be acked individually via `ack(event)` or the broker will redeliver it after its visibility timeout. `consume()` accepts the same `start_from=` argument as `subscribe()`; it only affects the first call that creates the consumer group, subsequent calls resume from the stored position.
+`consume()` blocks for up to `timeout_seconds` waiting for at least one event, then returns whatever has arrived (up to `max_messages`). Each event must be acked individually via `ack(event)` or the broker will redeliver it after its visibility timeout. `consume()` accepts the same `start_from=` argument as `subscribe()`; it only affects the first call that creates the consumer group, subsequent calls resume from the stored position.
 
 ### Configuration reference
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `enabled` | `false` | Master switch. When `false`, all pub/sub calls are no-ops. |
-| `broker` | `redis_streams` | Broker identifier: `redis_streams` or `noop`. |
-| `url` | `redis://localhost:6379/0` | Connection URL for the broker. |
+| `enabled` | `false` | Master switch. When `false`, all event-streaming calls are no-ops. |
+| `url` | `null` | Redis URL. If unset, falls back to `[plugins.scale.database].redis_url`. If neither is set or the `redis` extra is missing, `LocalBroker` (in-memory) is used. |
 | `consumer_group` | `jac-scale` | Default consumer group name when `@subscribe` does not specify one. |
 | `serializer` | `json` | Wire format. JSON only. |
-| `retry.max_attempts` | `3` | Number of delivery attempts before sending to DLQ. |
+| `retry.max_attempts` | `3` | Number of delivery attempts before sending to the DLQ topic. |
 | `retry.backoff_seconds` | `[1, 5, 30]` | Backoff delays per attempt index, clamped to the last value. |
 | `retry.dead_letter_suffix` | `.dlq` | Suffix appended to a topic name to form its dead-letter topic. |
 
@@ -1841,21 +1848,21 @@ def drain(broker: MessageBroker) -> int {
 
 - **At-least-once delivery.** Handlers may run more than once for the same event. Make handlers idempotent, or dedupe on `event.id`.
 - **Retry.** A failing handler is retried `retry.max_attempts` times with delays from `retry.backoff_seconds`. The thread sleeps responsively to the broker stop event so shutdowns are not blocked by long backoffs.
-- **Dead-letter queue.** After retry exhaustion, the event is published to `<topic><retry.dead_letter_suffix>` and the original is acked so it is not redelivered indefinitely. The DLQ is a regular Redis stream you can `consume()` like any other.
+- **Dead-letter topic.** After retry exhaustion, the event is published to `<topic><retry.dead_letter_suffix>` and the original is acked so it is not redelivered indefinitely. The DLQ is a regular topic you can `consume()` like any other.
 - **Drain on shutdown.** On process exit, the framework signals all consumer threads to stop and waits for them to finish under a single 10-second deadline (so total wait stays bounded regardless of subscription count). Long retry backoffs are interrupted in <=1-second polling chunks so SIGTERM is responsive.
 
 ### Brokers
 
 | Broker | When | Requires |
 |--------|------|----------|
-| `noop` | Disabled, or fallback when `redis` is missing. Zero overhead. | nothing |
-| `redis_streams` | Default when enabled. Maps to `XADD` / `XREADGROUP` / `XACK` / DLQ via separate stream. | `pip install jac-scale[data]` (Redis 5+ runtime) |
+| `LocalBroker` | events.enabled and no Redis URL resolves, or `redis` extra missing. In-memory, single-pod, no persistence. | nothing |
+| `RedisBroker` | events.enabled and `events.url` (or `database.redis_url`) resolves and `redis` is installed. Maps to `XADD` / `XREADGROUP` / `XACK` / DLQ via separate stream. | `pip install jac-scale[data]` (Redis 5+ runtime) |
 
 ### Operational notes
 
-- Each subscription spawns one daemon thread named `jac-scale-broker-<topic>-<group>`. Inspect via standard threading tools.
+- Each subscription spawns one daemon thread named `jac-scale-broker-<topic>-<group>` (Redis) or `jac-scale-local-<topic>-<group>` (Local). Inspect via standard threading tools.
 - Delivery metadata (Redis stream id, topic, group) is stashed in `event.headers` under reserved keys (`_jac_scale_delivery_id` etc.) so `ack(event)` does not need a separate handle. Treat headers prefixed with `_jac_scale_` as broker-managed: producers cannot set them through `publish()` because the broker strips that prefix before writing to the wire.
-- Startup logs `Pub/sub broker enabled (broker=..., subscriptions=N)` so it is easy to confirm wiring at a glance.
+- Startup logs `Events broker enabled (kind={local|redis}, subscriptions=N)` so it is easy to confirm wiring at a glance.
 - The wire format is CloudEvents-compatible (`type`, `data`, `id`, `source`, `time`, `trace_id`, `headers`), so external Kafka or Redis CLI consumers see standard fields.
 
 ---

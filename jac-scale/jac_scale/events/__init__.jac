@@ -1,2 +1,2 @@
 
-# Pub/sub developer API for jac-scale (publish helper + @subscribe decorator)
+# Event-streaming API for jac-scale: broker abstraction + publish helper + @subscribe decorator.

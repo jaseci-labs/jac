@@ -1,16 +1,17 @@
 [project]
-name = "pubsub-example"
+name = "events-example"
 version = "1.0.0"
-description = "Minimal pub/sub example for jac-scale"
+description = "Minimal event-streaming example for jac-scale"
 entry-point = "app.jac"
 
-[plugins.scale.pubsub]
+[plugins.scale.events]
 enabled = true
-broker = "redis_streams"
+# Omit `url` to use the in-memory LocalBroker. Set it (or [plugins.scale.database].redis_url)
+# to switch to RedisBroker without code changes.
 url = "redis://localhost:6379/0"
-consumer_group = "pubsub-example"
+consumer_group = "events-example"
 
-[plugins.scale.pubsub.retry]
+[plugins.scale.events.retry]
 max_attempts = 3
 backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"

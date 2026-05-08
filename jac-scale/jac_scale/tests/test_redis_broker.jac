@@ -1,4 +1,4 @@
-"""Integration tests for RedisStreamsBroker against a real Redis (testcontainers).
+"""Integration tests for RedisBroker against a real Redis (testcontainers).
 
 Covers roundtrip, ack semantics, push delivery, retry-to-DLQ, and health probe. Mirrors test_direct_db.jac for fixture style.
 """
@@ -8,8 +8,8 @@ import time;
 import threading;
 import from testcontainers.redis { RedisContainer }
 import from jac_scale.db { close_all_db_connections, get_redis_client }
-import from jac_scale.abstractions.pubsub { Event, RetryPolicy }
-import from jac_scale.utilities.pubsub.redis_streams_broker { RedisStreamsBroker }
+import from jac_scale.events.broker { Event, RetryPolicy }
+import from jac_scale.events.brokers.redis { RedisBroker }
 
 
 def cleanup_connections {
@@ -33,9 +33,7 @@ glob REDIS_URI = (
      );
 
 
-def _make_broker(
-    group: str = "test_group", retry: dict | None = None
-) -> RedisStreamsBroker {
+def _make_broker(group: str = "test_group", retry: dict | None = None) -> RedisBroker {
     cfg: dict = {
         "url": REDIS_URI,
         "consumer_group": group,
@@ -46,7 +44,7 @@ def _make_broker(
             "dead_letter_suffix": ".dlq"
         }
     };
-    b = RedisStreamsBroker(config=cfg);
+    b = RedisBroker(config=cfg);
     b.start();
     return b;
 }
@@ -251,11 +249,11 @@ test "start_from latest skips messages published before group existed" {
 
 
 # --- health probe ---
-test "health returns healthy redis_streams" {
+test "health returns healthy redis broker" {
     b = _make_broker(group="t_health");
     h = b.health();
     assert h.healthy is True;
-    assert h.broker == "redis_streams";
+    assert h.broker == "redis";
     assert "consumer_name" in h.details;
     b.stop(drain=False);
     cleanup_connections();

@@ -293,20 +293,22 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
     };
 }
 
-"""Get pub/sub configuration from jac.toml. Returns flat dict with defaults; `enabled` is the master switch."""
-impl JacScaleConfig.get_pubsub_config(self: JacScaleConfig) -> dict[str, Any] {
-    import from jac_scale.abstractions.pubsub { RetryPolicy }
+"""Get event-streaming configuration from jac.toml. Returns flat dict with defaults; `enabled` is the master switch.
+
+Reads `[plugins.scale.events]`. `url` defaults to `None` so the caller can fall back to `database.redis_url`.
+"""
+impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, Any] {
+    import from jac_scale.events.broker { RetryPolicy }
     config = self.load();
-    pubsub_config = config.get('pubsub', {});
-    retry_config = pubsub_config.get('retry', {});
+    events_config = config.get('events', {});
+    retry_config = events_config.get('retry', {});
     retry_defaults = RetryPolicy();
     return {
-        'enabled': pubsub_config.get('enabled', False),
-        'broker': pubsub_config.get('broker', 'redis_streams'),
-        'url': pubsub_config.get('url', 'redis://localhost:6379/0'),
-        'consumer_group': pubsub_config.get('consumer_group', 'jac-scale'),
-        'emit_system_events': pubsub_config.get('emit_system_events', True),
-        'serializer': pubsub_config.get('serializer', 'json'),
+        'enabled': events_config.get('enabled', False),
+        'url': events_config.get('url'),
+        'consumer_group': events_config.get('consumer_group', 'jac-scale'),
+        'emit_system_events': events_config.get('emit_system_events', True),
+        'serializer': events_config.get('serializer', 'json'),
         'retry': {
             'max_attempts': retry_config.get(
                 'max_attempts', retry_defaults.max_attempts

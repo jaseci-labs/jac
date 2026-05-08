@@ -1,24 +1,22 @@
-"""Contract tests for the pub/sub abstraction.
+"""Contract tests for the event-streaming abstraction.
 
-Covers Event, NoOpBroker, factory, publisher facade, and @subscribe registry. Redis-specific behavior is in test_redis_streams_broker.jac.
+Covers Event, the publisher facade, and @subscribe registry. LocalBroker behavior is in test_local_broker.jac; Redis-specific behavior is in test_redis_broker.jac.
 """
 
-import from jac_scale.abstractions.pubsub {
-    NoOpBroker,
+import from jac_scale.events.broker {
+    EventStreamBroker,
     Event,
     RetryPolicy,
     Subscription,
     HealthStatus
 }
 import from typing { Any, Callable }
-import from jac_scale.abstractions.pubsub { MessageBroker }
-import from jac_scale.factories.utility_factory { UtilityFactory }
 import from jac_scale.events.publisher { publish, set_broker }
 import from jac_scale.events.subscriber { subscribe, get_subscriptions }
 
 
-"""Broker stub that raises on publish; used to verify the facade swallows errors."""
-obj _ExplodingBroker(MessageBroker) {
+"""Broker stub that raises on publish; verifies the facade swallows errors."""
+obj _ExplodingBroker(EventStreamBroker) {
     def start { }
     def stop(drain: bool = True) { }
     def publish(topic: str, event: Event, key: str | None = None) {
@@ -48,10 +46,6 @@ obj _ExplodingBroker(MessageBroker) {
     def ack(event: Event) { }
     def health -> HealthStatus {
         return HealthStatus(healthy=True);
-    }
-
-    def is_enabled -> bool {
-        return True;
     }
 }
 
@@ -86,92 +80,9 @@ test "event default headers and data are independent" {
 }
 
 
-# --- NoOpBroker contract ---
-test "noop broker is_enabled returns false" {
-    b = NoOpBroker();
-    assert b.is_enabled() is False;
-}
-
-test "noop broker start and stop are safe" {
-    b = NoOpBroker();
-    b.start();
-    b.stop();
-    b.stop(drain=False);
-}
-
-test "noop broker publish does nothing" {
-    b = NoOpBroker();
-    b.publish("any.topic", Event(event_type="x", data={"k": 1}));
-}
-
-test "noop broker subscribe returns subscription" {
-    b = NoOpBroker();
-    def _handler(ev: Event) { }
-    sub = b.subscribe("my.topic", _handler, group="my.group");
-    assert isinstance(sub, Subscription);
-    assert sub.topic == "my.topic";
-    assert sub.group == "my.group";
-}
-
-test "noop broker subscribe accepts start_from" {
-    b = NoOpBroker();
-    def _h(ev: Event) { }
-    sub = b.subscribe("my.topic", _h, start_from="earliest");
-    assert isinstance(sub, Subscription);
-}
-
-test "noop broker consume returns empty list" {
-    b = NoOpBroker();
-    out = b.consume("my.topic", max_messages=10, timeout_seconds=0.01);
-    assert out == [];
-}
-
-test "noop broker ack does not raise" {
-    b = NoOpBroker();
-    b.ack(Event(event_type="x"));
-}
-
-test "noop broker health is healthy noop" {
-    b = NoOpBroker();
-    h = b.health();
-    assert isinstance(h, HealthStatus);
-    assert h.healthy is True;
-    assert h.broker == "noop";
-}
-
-
-# --- UtilityFactory.create_broker selection ---
-test "factory returns noop when config is None" {
-    b = UtilityFactory.create_broker("redis_streams", None);
-    assert b.is_enabled() is False;
-    assert isinstance(b, NoOpBroker);
-}
-
-test "factory returns noop when config disabled" {
-    b = UtilityFactory.create_broker("redis_streams", {"enabled": False});
-    assert b.is_enabled() is False;
-    assert isinstance(b, NoOpBroker);
-}
-
-test "factory returns noop when explicitly requested" {
-    b = UtilityFactory.create_broker("noop", {"enabled": True});
-    assert isinstance(b, NoOpBroker);
-}
-
-test "factory raises on unsupported broker type" {
-    raised = False;
-    try {
-        UtilityFactory.create_broker("kafka", {"enabled": True});
-    } except ValueError {
-        raised = True;
-    }
-    assert raised , "expected ValueError for unsupported broker type";
-}
-
-
 # --- Publisher facade ---
-test "publish via facade with noop is a safe noop" {
-    set_broker(NoOpBroker());
+test "publish with no broker wired is a safe no-op" {
+    set_broker(None);
     publish("topic.x", Event(event_type="topic.x", data={"k": 1}));
 }
 
@@ -185,7 +96,7 @@ test "publish swallows broker errors" {
     } except Exception {
         raised_inside = True;
     }
-    set_broker(NoOpBroker());
+    set_broker(None);
     assert raised_inside is False;
 }
 

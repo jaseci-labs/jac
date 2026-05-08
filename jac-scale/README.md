@@ -32,12 +32,12 @@ Whether you're developing locally with `jac start` or deploying to production wi
 - **Secure Authentication**: Integrated with JWT for secure session management
 - **User Management**: Automatic account creation and linking
 
-### 5. Pub/Sub Message Broker (Optional)
+### 5. Event Streaming (Optional)
 
 - **Module-level API**: Call `publish("topic", event)` from any walker, function, or scheduled task; register handlers with `@subscribe("topic")`
-- **At-least-once delivery**: Configurable retry with automatic dead-letter queue per topic
-- **Pluggable brokers**: Redis Streams ships in-tree; the abstraction allows other brokers without changing call sites
-- **Off by default**: Enable via `[plugins.scale.pubsub]` in `jac.toml`. See the [Pub/Sub Message Broker reference](../docs/docs/reference/plugins/jac-scale.md#pubsub-message-broker) for full details.
+- **Two implementations**: `LocalBroker` (in-memory, no setup required) and `RedisBroker` (Redis Streams, durable, cross-pod). Picked automatically based on whether a Redis URL resolves.
+- **At-least-once delivery**: Configurable retry with automatic dead-letter topic per topic, replayable offsets via `start_from`.
+- **Off by default**: Enable via `[plugins.scale.events]` in `jac.toml`. See the [Event Streaming reference](../docs/docs/reference/plugins/jac-scale.md#event-streaming) for full details.
 
 ## Prerequisites
 

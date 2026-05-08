@@ -1076,7 +1076,7 @@ obj _FakeScaleConfig {
         return {"namespace": "jac_scale", "histogram_buckets": None};
     }
 
-    def get_pubsub_config -> dict {
+    def get_events_config -> dict {
         return {"enabled": False};
     }
 }
