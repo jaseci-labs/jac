@@ -276,4 +276,4 @@ def get_config(
 ) -> JacConfig | None;
 
 # Set the global configuration
-def set_config(config: JacConfig | None) -> None;
+def set_config(config: JacConfig) -> None;
