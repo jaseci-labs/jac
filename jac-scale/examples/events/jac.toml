@@ -15,4 +15,3 @@ consumer_group = "events-example"
 max_attempts = 3
 backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
-
