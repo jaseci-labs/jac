@@ -355,7 +355,9 @@ test "E0077: glob inside a function is rejected" {
 }
 
 test "E0077: glob inside an object body is rejected" {
-    (has_err, prog) = parse_and_validate('obj MyObj { with entry { glob y: str = "hi"; } }');
+    (has_err, prog) = parse_and_validate(
+        'obj MyObj { with entry { glob y: str = "hi"; } }'
+    );
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0077"));
 }
 
@@ -375,7 +377,9 @@ test "E0078: glob inside a function is rejected" {
 }
 
 test "E0078: glob inside an object body is rejected" {
-    (has_err, prog) = parse_and_validate('obj MyObj { with entry { glob y: str = "hi"; } }');
+    (has_err, prog) = parse_and_validate(
+        'obj MyObj { with entry { glob y: str = "hi"; } }'
+    );
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0078"));
 }
 
