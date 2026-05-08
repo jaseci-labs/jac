@@ -19,3 +19,10 @@ def test_func() -> None {
         }
     }
 }
+
+obj MyResult {
+    '''docstring for with entry'''
+    with entry {
+        has value: str = "";
+    }
+}
