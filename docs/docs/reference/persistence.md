@@ -103,9 +103,9 @@ Handled by the **coercion table**. `Serializer.coerce(value, target_type)` runs 
 | `str` | `UUID` | `UUID(value)` |
 | value | `Enum` | by value, falls back to by-name lookup |
 | `list` ↔ `tuple` | each other | shallow conversion |
-| `None` | `Optional[T]` | passes through; non-`None` coerces against `T` |
+| `None` | `T \| None` | passes through; non-`None` coerces against `T` |
 
-If a field declared as `Union[A, B, C]`, the coercer tries each variant in order and accepts the first that succeeds.
+If a field is declared as `A \| B \| C`, the coercer tries each variant in order and accepts the first that succeeds.
 
 When coercion **fails** (e.g. `str("abc")` → `int`), the raw stored value is kept, a debug-level log is emitted, and the anchor still loads. Downstream code that uses the field will see the wrong type and may fail at use site -- but no data is lost. (This bias toward "load with bad value" over "block load" is deliberate; you can always inspect the row with `jac db quarantine show` if you've forced it into quarantine via stricter validation, but the default is to keep the data alive.)
 

@@ -203,7 +203,9 @@ test "fixture loading registration and api exclusion" {
     assert len(sched._tasks) >= 4;
 
     # Scheduled items excluded from API endpoints
-    introspector = ModuleIntrospector(module_name="scheduled_tasks", base_path=FIXTURES);
+    introspector = ModuleIntrospector(
+        module_name="scheduled_tasks", base_path=FIXTURES
+    );
     introspector._walkers = {
         "DateWalker": module.DateWalker,
         "IntervalWalker": module.IntervalWalker,
@@ -232,10 +234,7 @@ test "scheduler executes walkers and functions correctly" {
         "IntervalWalker", module.IntervalWalker, ScheduleSpec(interval=0.2), True
     );
     sched.register(
-        "interval_function",
-        module.interval_function,
-        ScheduleSpec(interval=0.2),
-        False
+        "interval_function", module.interval_function, ScheduleSpec(interval=0.2), False
     );
 
     # Bad function to verify error recovery

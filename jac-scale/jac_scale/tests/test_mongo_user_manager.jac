@@ -341,7 +341,9 @@ test "legacy user migration and progressive rehashing" {
                 auth = um.authenticate('olduser1', old_password);
                 assert auth is not None;
                 # Verify rehashed to bcrypt
-                cred = db.users.find_one({'user_id': auth['user_id']})['credentials'][0];
+                cred = db.users.find_one({'user_id': auth['user_id']})['credentials'][
+                    0
+                ];
                 assert cred['password_hash'].startswith('$2b$');
                 assert 'algorithm' not in cred;
                 # Second login uses bcrypt directly

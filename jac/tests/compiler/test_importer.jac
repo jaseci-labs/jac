@@ -46,7 +46,9 @@ test "modules correct" {
     JacRuntimeInterface.attach_program(JacProgram());
     Jac.jac_import("fixtures.hello_world", base_path=TEST_DIR);
     assert "module 'fixtures.hello_world'" in str(Jac.loaded_modules);
-    assert "/tests/compiler/fixtures/hello_world.jac" in str(Jac.loaded_modules).replace(
+    assert "/tests/compiler/fixtures/hello_world.jac" in str(
+        Jac.loaded_modules
+    ).replace(
         "\\\\", "/"
     );
 }
