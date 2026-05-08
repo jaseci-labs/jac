@@ -389,7 +389,7 @@ The check recurses element-wise into containers, so `list[any] -> list[Task]` is
 
 | Approach | When to use |
 |----------|-------------|
-| Type the source | The function has a stable signature. Add a `.pyi` stub for a Python utility, a return annotation on a `def`, or a typed `has reports` declaration on a walker. The boundary becomes strongly typed and downstream `.jac` code stays clean. |
+| Type the source | The function has a stable signature. Add a `.pyi` stub for a Python utility, a return annotation on a `def`, or a typed [`has reports: list[T]`](walker-responses.md#typing-your-reports) declaration on a walker. The boundary becomes strongly typed and downstream `.jac` code stays clean. |
 | Accept `any` at the boundary | The source is intentionally untyped. Annotate the receiving local as `any`, then narrow with `isinstance` or `cast` before flowing into typed destinations. |
 
 ```jac

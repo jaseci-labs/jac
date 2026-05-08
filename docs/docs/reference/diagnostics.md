@@ -139,6 +139,9 @@ Emitted by the type checker and type evaluator.
 | `E1003` | Return type annotation required when function returns a value |
 | `E1004` | Function '{name}' declared return type {ret_type} but may implicitly return None |
 
+!!! tip "`E1001`/`E1002` with `any` on the right-hand side"
+    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Three ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), or annotate `any` explicitly (`x: any = src()`) and narrow before downstream use. See [The `any` Type and Gradual Typing](language/foundation.md#the-any-type-and-gradual-typing).
+
 ### Operator Errors
 
 | Code | Message |
