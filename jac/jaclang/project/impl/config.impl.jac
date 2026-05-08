@@ -337,7 +337,7 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
                 self.project.authors = _parse_persons(value);
             } elif attr == "maintainers" {
                 self.project.maintainers = _parse_persons(value);
-            } elif attr == "include" and isinstance(value, dict) {
+            } elif attr == "include" {
                 self.project.include = _parse_include(value);
             } elif hasattr(self.project, attr) {
                 setattr(self.project, attr, value);

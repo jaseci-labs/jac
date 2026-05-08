@@ -1004,7 +1004,7 @@ impl bundle(output: str = "dist") -> int {
         );
         return 1;
     }
-    if config.project is None {
+    if config.project.name is None {
         console.error(
             "No project name in jac.toml",
             hint="Add 'name' under [project] to use jac bundle."

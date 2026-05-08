@@ -255,10 +255,10 @@ def discover_config_files(
 def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
 
 # Parse a raw list of author/maintainer entries (dicts or strings) into PersonConfig objects.
-def _parse_persons(raw: list[Any]) -> list[PersonConfig];
+def _parse_persons(raw: list[any]) -> list[PersonConfig];
 
 # Parse a raw include dict into a PackageIncludeConfig.
-def _parse_include(raw: dict[str, Any]) -> PackageIncludeConfig;
+def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
 # Recursively apply environment variable interpolation
 def _interpolate_recursive(`obj: Any) -> Any;
