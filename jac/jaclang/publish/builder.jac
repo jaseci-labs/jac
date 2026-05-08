@@ -17,7 +17,7 @@ obj WheelBuilder {
         platform_tag: str = "any";
 
     def postinit -> None;
-    """Build the wheel in memory and return its raw bytes; raises ValueError when config.package is None."""
+    """Build the wheel in memory and return its raw bytes; raises ValueError when project name is missing."""
     def build -> bytes;
 
     """Build the wheel and write it to output_dir/<name>.whl; returns the Path written."""

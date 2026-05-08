@@ -110,13 +110,13 @@ def readme_content_type(ext: str) -> str {
 }
 
 impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> str {
-    if config.package is None {
+    if not config.project.name {
         raise ValueError(
-            "Cannot generate METADATA: [package] section is missing in jac.toml"
+            "Cannot generate METADATA: [project] name is missing in jac.toml"
         );
     }
 
-    pkg = config.package;
+    pkg = config.project;
     proj_root = project_root or config.project_root;
     lines: list[str] = [];
 
