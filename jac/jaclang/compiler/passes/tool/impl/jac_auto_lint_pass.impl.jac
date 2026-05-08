@@ -986,11 +986,11 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
         return;
     }
     self._check_no_print(nd);
-    # W3041: convert arr.map(lambda item -> any { return <jsx>; }) to comprehension
-    if self._convert_map_to_comprehension(nd) {
+    if self.report_only {
         return;
     }
-    if self.report_only {
+    # W3041: convert arr.map(lambda item -> any { return <jsx>; }) to comprehension
+    if self._convert_map_to_comprehension(nd) {
         return;
     }
     if not self._is_suppressed(W3039) {
@@ -2683,12 +2683,15 @@ impl JacAutoLintPass._extract_filter_cond(
     return (filter_stmts[0].expr, ft.target);
 }
 
-"""W3041: Replace arr.map(lambda -> JSX) with a list comprehension."""
+"""W3041: Replace arr.map(lambda -> JSX) with a list comprehension.
+
+Detect-and-validate first, emit second, mutate last — so a warning is never
+reported for a case the auto-fix can't actually rewrite.
+"""
 impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
-    if self.report_only or self._is_suppressed(W3041) {
+    if self._is_suppressed(W3041) {
         return False;
     }
-
     detected = self._detect_map_lambda_jsx(nd);
     if detected is None {
         return False;
@@ -2699,6 +2702,20 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
     filter_cond: (uni.Expr | None) = None;
     if filter_result is not None {
         (filter_cond, collection) = filter_result;
+    }
+
+    # Verify the parent slot we'd write into supports the rewrite *before*
+    # emitting, so we never warn without fixing.
+    parent = nd.parent;
+    if parent is None {
+        return False;
+    }
+    if not (
+        isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr))
+        or (isinstance(parent, uni.Assignment) and parent.value is nd)
+        or (isinstance(parent, uni.ReturnStmt) and parent.expr is nd)
+    ) {
+        return False;
     }
 
     if not self.emit(W3041, node_override=nd, name=item_name) {
@@ -2741,19 +2758,14 @@ impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
         filter_cond.parent = inner_compr;
     }
 
-    parent = nd.parent;
-    if parent is None {
-        return False;
-    }
     list_compr.parent = parent;
     if isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr)) {
         parent.expr = list_compr;
-    } elif isinstance(parent, uni.Assignment) and parent.value is nd {
+    } elif isinstance(parent, uni.Assignment) {
         parent.value = list_compr;
-    } elif isinstance(parent, uni.ReturnStmt) and parent.expr is nd {
-        parent.expr = list_compr;
     } else {
-        return False;
+        # uni.ReturnStmt — only reachable case left
+        parent.expr = list_compr;
     }
     parent.kid = [list_compr if k is nd else k for k in parent.kid];
     return True;

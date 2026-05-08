@@ -758,8 +758,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "unnecessary-none-return": "W3037",
          "getattr-to-null-ok": "W3039",
          "filter-compare-tautology": "W3040",
-         "map-lambda-to-comprehension": "W3041",
-
+         "map-lambda-to-comprehension": "W3041"
      },
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Codegen errors (E5xxx/W5xxx)

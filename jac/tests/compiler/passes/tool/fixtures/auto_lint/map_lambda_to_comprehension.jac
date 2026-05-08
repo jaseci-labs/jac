@@ -1,4 +1,9 @@
-"""Fixture for W3041 auto-fix: map(lambda -> JSX) to list comprehension."""
+"""Fixture for W3041 auto-fix: map(lambda -> JSX) to list comprehension.
+
+Covers both the convertible single-param case (HourGrid) and a multi-param
+lambda that must be left alone (MultiParamMap), since list comprehensions
+only bind a single iteration variable per `for` clause.
+"""
 
 def:pub HourGrid(hours: list, items: list) -> JsxElement {
     hourLabels = hours.map(
@@ -13,4 +18,13 @@ def:pub HourGrid(hours: list, items: list) -> JsxElement {
             <ul>{itemRows}</ul>
         </div>
     );
+}
+
+def:pub MultiParamMap(items: list) -> JsxElement {
+    rendered = items.map(
+        lambda a: any, b: any -> any {
+            return <li>{a + b}</li>;
+        }
+    );
+    return <ul>{rendered}</ul>;
 }

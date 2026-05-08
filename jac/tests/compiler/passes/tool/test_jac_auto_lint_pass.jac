@@ -1273,18 +1273,26 @@ test "W3038 does not remove import when useState call is not a destructure assig
     assert "useState" in formatted;
 }
 
-# ── W3039: map(lambda → JSX) to list comprehension ──────────────────────────
-test "W3039 converts map lambda to list comprehension" {
+# ── W3041: map(lambda → JSX) to list comprehension ──────────────────────────
+test "W3041 converts map lambda to list comprehension" {
     input_path = auto_lint_fixture_path("map_lambda_to_comprehension.jac");
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
     formatted = prog.mod.main.gen.jac;
 
-    assert ".map(" not in formatted;
+    # Single-param case: HourGrid is converted.
     assert "for hour in hours" in formatted;
     assert "[<div className=\"text-xs text-center\">{hour}</div> for hour in hours]" in formatted;
+
+    # Multi-param case: MultiParamMap must be left untouched — list
+    # comprehensions only bind one iteration variable per `for` clause.
+    assert "items.map(" in formatted;
+    assert "lambda a: any" in formatted;
+    assert "b: any" in formatted;
+    assert "for a in items" not in formatted;
+    assert "for a, b in items" not in formatted;
 }
 
-test "W3039 filter-map chain converts to filtered comprehension" {
+test "W3041 filter-map chain converts to filtered comprehension" {
     input_path = auto_lint_fixture_path("filter_map_lambda_to_comprehension.jac");
     prog = JacProgram.jac_file_formatter(input_path, auto_lint=True);
     formatted = prog.mod.main.gen.jac;
