@@ -3841,10 +3841,13 @@ impl Parser.parse_code_block_stmts -> list {
             # Detect string literals without a semicolon in a code block - these
             # look like misplaced docstrings. Strings with a semicolon ("hello";)
             # are valid no-op expressions and are left alone.
+            # Strings on the same line as the previous token (e.g. `print "foo"`)
+            # are not docstrings - only flag strings that start on their own line.
             is_docstring = False;
             has_semi = any(isinstance(k, Semi) for k in stmt.kid) if isinstance(stmt, ExprStmt) else False;
+            on_own_line = before == 0 or self.tokens[before - 1].loc.end_line < self.tokens[before].loc.line;
             if (
-                isinstance(stmt, ExprStmt) and not stmt.in_fstring and not has_semi
+                isinstance(stmt, ExprStmt) and not stmt.in_fstring and not has_semi and on_own_line
             ) {
                 if isinstance(stmt.expr, String) {
                     is_docstring = True;
