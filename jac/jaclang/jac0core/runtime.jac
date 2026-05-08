@@ -614,6 +614,24 @@ class JacAPIServer {
         """
     static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any;
 
+    """Execute an sv-to-sv walker spawn over HTTP.
+
+        Called by sv_client.spawn_walker() when a consumer-side stub for
+        an sv-imported `walker:pub` archetype is instantiated. Mirrors
+        sv_service_call but POSTs to `/walker/<name>` and rehydrates the
+        response into an instance of the consumer-side stub class via
+        `stub_cls._from_wire`. The returned object exposes the walker's
+        `has` fields as attributes and a `reports` list populated from
+        the `data.reports` envelope.
+
+        Plugins (e.g. jac-scale) override this for auth forwarding,
+        retries, circuit breaking, and tracing - mirroring the same
+        contract as sv_service_call.
+        """
+    static def sv_walker_call(
+        module_name: str, walker_name: str, args: dict, stub_cls: Any
+    ) -> Any;
+
     """Return the current sv-service registry as a {module_name: base_url} dict.
 
         Public accessor for the sv-service URL table. Callers (e.g. a
