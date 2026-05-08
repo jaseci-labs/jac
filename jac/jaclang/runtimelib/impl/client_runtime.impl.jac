@@ -261,83 +261,182 @@ impl __jacRerenderComponent(componentId: Any) -> None {
     }
 }
 
-impl createRouter(routes: list, defaultRoute: str = "/") -> dict {
-    # Get initial path from URL pathname or use default
-    initialPath = __jacGetPath();
-    if not initialPath or initialPath == "/" {
-        initialPath = defaultRoute;
+# ---- Routing -----------------------------------------------------------------
+# Bare-serve implements a React Router v6-shaped surface natively. The router
+# state lives in `__jacReactiveContext.router` and is created lazily on first
+# access; `_ensureRouter` is the choke point that installs the popstate listener
+# and the path signal, which `<Routes>` and the `useNavigate`/`useLocation`/
+# `useParams` hooks subscribe to.
+impl _ensureRouter -> dict {
+    existing = __jacReactiveContext.router;
+    if existing {
+        return existing;
     }
-    # Create reactive signal for current path
+    initialPath = __jacGetPath();
     [currentPath, setCurrentPath] = createSignal(initialPath);
-    # Listen to popstate (back/forward buttons and pushState navigation)
     window.addEventListener(
         "popstate",
         lambda event: Any {
             newPath = __jacGetPath();
-            if not newPath {
-                newPath = defaultRoute;
-            }
-            setCurrentPath(newPath);
+            setCurrentPath(newPath or "/");
         }
     );
-    # Render method - returns component for current route
-    def render -> JsxElement {
-        path = currentPath();  # Track dependency!
-
-        # Find matching route
-        for route in routes {
-            if route.path == path {
-                # Check guard if present
-                if route.guard and not route.guard() {
-                    return
-                        <div>Access Denied</div>;
-                }
-                return route.component();
-            }
-        }
-
-        # No match - show 404
-        return
-            <div>404 - Route not found:{path}</div>;
-    }
-    # Navigate method
-    def navigateTo(path: str) {
-        window.history.pushState({}, "", path);
-        setCurrentPath(path);
-    }
-    # Store router in global context
-    router = {"path": currentPath, "render": render, "navigate": navigateTo};
+    router = {"path": currentPath, "setPath": setCurrentPath, "params": {}};
     __jacReactiveContext.router = router;
     return router;
 }
 
-impl Route(path: str, component: Any, guard: Any = None) -> dict {
-    return {"path": path, "component": component, "guard": guard};
+# Match a Route's `path` pattern against the current URL pathname. Returns
+# the extracted `:param` map on match, or `None` on miss. Bare-serve's matcher
+# is intentionally tiny: segment-count equality + per-segment string compare,
+# with `:name` segments captured into the params dict.
+impl _matchRoutePath(pattern: str, path: str) -> Any {
+    pattern_segs = pattern.split("/");
+    path_segs = path.split("/");
+    if len(pattern_segs) != len(path_segs) {
+        return None;
+    }
+    params = {};
+    i = 0;
+    while i < len(pattern_segs) {
+        ps = pattern_segs[i];
+        if ps and ps[0] == ":" {
+            params[ps[1:]] = path_segs[i];
+        } elif ps != path_segs[i] {
+            return None;
+        }
+        i = i + 1;
+    }
+    return params;
 }
 
-impl Link(props: dict) -> JsxElement {
-    href = props["href"] if "href" in props else "/";
-    children = props["children"] if "children" in props else [];
+impl Router(children: Any = None) -> JsxElement {
+    # Identity provider — bare-serve's routing state is global; jac-client's
+    # Router (= ReactRouterBrowserRouter) pushes a real React context. Both
+    # render their children, so the same `<Router>...</Router>` JSX works in
+    # either runtime.
+    return children;
+}
+
+impl Routes(children: Any = None) -> JsxElement {
+    router = _ensureRouter();
+    current_path = router.path();  # subscribe to path signal
+    children_list = [];
+    if children == None {
+        children_list = [];
+    } elif Array.isArray(children) {
+        children_list = children;
+    } else {
+        children_list = [children];
+    }
+    for child in children_list {
+        if not __isObject(child) {
+            continue;
+        }
+        if child.tag != Route {
+            continue;
+        }
+        child_props = child.props;
+        path_pat = child_props.path if __jacHasOwn(child_props, "path") else "";
+        params = _matchRoutePath(path_pat, current_path);
+        if params != None {
+            router.params = params;
+            return child_props.element if __jacHasOwn(child_props, "element") else None;
+        }
+    }
+    router.params = {};
+    return None;
+}
+
+impl Route(
+    path: str = "",
+    element: Any = None,
+    index: bool = False,
+    caseSensitive: bool = False,
+    children: Any = None
+) -> JsxElement {
+    # Config-only component. `<Routes>` introspects path/element from the JSX
+    # tree directly; rendering a Route outside Routes is a no-op.
+    return None;
+}
+
+impl Link(
+    `to: str,
+    replace: bool = False,
+    state: Any = None,
+    className: str = "",
+    style: dict = {},
+    children: Any = None
+) -> JsxElement {
+    target = `to;
     def handleClick(event: Any) {
         event.preventDefault();
-        navigate(href);
+        navigate(target);
     }
-    # Return JSX node manually to properly spread children
-    return __jacJsx("a", {"href": href, "onclick": handleClick}, children);
+    attrs = {"href": target, "onclick": handleClick};
+    if className {
+        attrs["className"] = className;
+    }
+    if style and len(__objectKeys(style)) > 0 {
+        attrs["style"] = style;
+    }
+    return __jacJsx("a", attrs, children);
+}
+
+impl Navigate(`to: str, replace: bool = False) -> JsxElement {
+    navigate(`to);
+    return None;
+}
+
+impl Outlet -> JsxElement {
+    # Bare-serve's router is currently flat. Declared for surface parity with
+    # jac-client (React Router) so JSX `<Outlet/>` typechecks; nested-route
+    # support is a future enhancement.
+    return None;
+}
+
+impl useNavigate -> Any {
+    return navigate;
+}
+
+impl useLocation -> dict {
+    router = _ensureRouter();
+    pathname = router.path();  # subscribe to path signal
+    return {
+        "pathname": pathname,
+        "search": window.location.search,
+        "hash": window.location.hash,
+        "state": None
+    };
+}
+
+impl useParams -> dict {
+    router = _ensureRouter();
+    return router.params or {};
 }
 
 impl navigate(path: str) -> None {
-    router = __jacReactiveContext.router;
-    if router {
-        router.navigate(path);
-    } else {
-        window.history.pushState({}, "", path);
-        window.dispatchEvent(Reflect.construct(PopStateEvent, ["popstate"]));
-    }
+    router = _ensureRouter();
+    window.history.pushState({}, "", path);
+    router.setPath(path);
 }
 
 impl useRouter -> dict {
-    return __jacReactiveContext.router;
+    router = _ensureRouter();
+    pathname = router.path();  # subscribe so consumers re-render on URL change
+    return {
+        "navigate": navigate,
+        "location": {
+            "pathname": pathname,
+            "search": window.location.search,
+            "hash": window.location.hash,
+            "state": None
+        },
+        "params": router.params or {},
+        "pathname": pathname,
+        "search": window.location.search,
+        "hash": window.location.hash
+    };
 }
 
 impl __jacGetPath -> str {
@@ -374,6 +473,13 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     payload = await response.json();
     # Handle TransportResponse envelope format
     return payload["data"] if payload["data"] else payload;
+}
+
+impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
+    # Sync caller — returns the promise from __jacSpawn so callers that don't
+    # need the resolved value can fire-and-forget. Surface parity with
+    # jac-client which exposes both `__jacSpawn` (async) and `jacSpawn` (sync).
+    return __jacSpawn(left, right, fields);
 }
 
 impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
@@ -420,7 +526,9 @@ def __normalizeCredential(x: Any) -> dict {
 }
 
 impl jacSignup(
-    identities_or_username: (str | list), credential_or_password: (str | dict)
+    identities_or_username: (str | list),
+    credential_or_password: (str | dict),
+    profile: (dict | None) = None
 ) -> dict {
     credential = __normalizeCredential(credential_or_password);
     identities = (
@@ -429,12 +537,16 @@ impl jacSignup(
             else [__normalizeIdentity(identities_or_username)]
     );
     primary_username = identities[0]["value"] if len(identities) > 0 else "";
+    body = {"identities": identities, "credential": credential};
+    if profile {
+        body["profile"] = profile;
+    }
     response = await fetch(
         "/user/register",
         {
             "method": "POST",
             "headers": {"Content-Type": "application/json"},
-            "body": JSON.stringify({"identities": identities, "credential": credential})
+            "body": JSON.stringify(body)
         }
     );
     if response.ok {

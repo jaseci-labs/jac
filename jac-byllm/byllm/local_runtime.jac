@@ -168,161 +168,16 @@ def normalize_response_format(rf: dict | None) -> dict | None {
     return rf;
 }
 
-"""Pretty-print enum-typed schema property as `1=WORK, 2=PERSONAL, ...`.
-
-Used when building prompt-side hints so small local models can pair
-each grammar-allowed integer with its human-meaningful label. Pairs
-up to the shorter of the two lists when they disagree (byllm's
-schema-gen can emit a longer name list than enum values).
-"""
-def _format_enum_hint(values: list, names: list) -> str {
-    if not values {
-        return "";
-    }
-    pairs: list[str] = [];
-    for (i, v) in enumerate(values) {
-        if i < len(names) {
-            pairs.append(f"{v}={names[i]}");
-        } else {
-            pairs.append(f"{v}");
-        }
-    }
-    return ", ".join(pairs);
-}
-
-"""Recursively pull human-readable hints out of a JSON-Schema property.
-
-Returns a list of bullet-style lines describing the constraint. Cloud
-providers' server-side prompt builders effectively do this when given
-`response_format`; llama-cpp-python doesn't, so we replicate it here.
-"""
-def _hints_from_schema(name: str, prop: dict) -> list[str] {
-    out: list[str] = [];
-    if not isinstance(prop, dict) {
-        return out;
-    }
-    desc = prop.get("description");
-    enum_vals = prop.get("enum");
-    ty = prop.get("type", "");
-    label = name or "value";
-    if isinstance(enum_vals, list) and enum_vals {
-        # If the description happens to also list names, weave them in.
-        # byllm's enum schema description encodes member names as a Python
-        # list (e.g. "the names are [WORK, PERSONAL, ...]") — pull them out.
-        names: list[str] = [];
-        if isinstance(desc, str) and "names are [" in desc {
-            chunk = desc.split("names are [", 1)[1];
-            chunk = chunk.split("]", 1)[0];
-            names = [
-                n.strip()
-                for n in chunk.split(",")
-                if n.strip()
-            ];
-        }
-        hint = _format_enum_hint(enum_vals, names);
-        if hint {
-            out.append(f"- {label} must be one of: {hint}");
-        } else {
-            out.append(f"- {label} must be one of: {enum_vals}");
-        }
-    } elif ty {
-        out.append(
-            f"- {label} ({ty}){' — ' + desc if isinstance(desc, str) and desc else ''}"
-        );
-    }
-    # Recurse into nested object properties.
-    if prop.get("type") == "object" {
-        nested = prop.get("properties");
-        if isinstance(nested, dict) {
-            for (sub, sub_prop) in nested.items() {
-                if sub != name {
-                    out.extend(_hints_from_schema(sub, sub_prop));
-                }
-            }
-        }
-    }
-    return out;
-}
-
-"""Build a human-readable hint block from a normalised response_format.
-
-Walks the schema's top-level properties and emits a few bullet lines
-explaining what each field means. Returns "" when there's nothing
-useful to say.
-"""
-def schema_to_hint_text(rf: dict | None) -> str {
-    if not isinstance(rf, dict) {
-        return "";
-    }
-    schema = rf.get("schema") if rf.get("type") == "json_object" else None;
-    if not isinstance(schema, dict) {
-        return "";
-    }
-    props = schema.get("properties");
-    if not isinstance(props, dict) {
-        return "";
-    }
-    lines: list[str] = [];
-    for (name, prop) in props.items() {
-        if isinstance(prop, dict) {
-            lines.extend(_hints_from_schema(name, prop));
-        }
-    }
-    if not lines {
-        return "";
-    }
-    return "Schema requirements:\n" + "\n".join(lines);
-}
-
-"""Append a schema-derived hint to the last user message.
-
-In-place rewrite of the messages list. We append rather than prepend
-so the request itself stays the visual lead and the constraint reads
-as a postscript — same flow cloud providers' server-side builders use.
-"""
-def attach_schema_hint(messages: list, rf: dict | None) -> list {
-    hint: str = schema_to_hint_text(rf);
-    if not hint or not messages {
-        return messages;
-    }
-    last_user_idx: int = -1;
-    for (i, m) in enumerate(messages) {
-        if isinstance(m, dict) {
-            mdict: dict = m;
-            if mdict.get("role") == "user" {
-                last_user_idx = i;
-            }
-        }
-    }
-    if last_user_idx < 0 {
-        return messages;
-    }
-    out: list = list(messages);
-    target_raw = out[last_user_idx];
-    if not isinstance(target_raw, dict) {
-        return messages;
-    }
-    target: dict = dict(target_raw);
-    body = target.get("content", "");
-    if isinstance(body, str) {
-        body_str: str = body;
-        target["content"] = body_str.rstrip() + "\n\n" + hint;
-    } else {
-        # If the message still has multimodal list-content, the
-        # caller will have flattened it via normalize_messages first;
-        # treat anything else as a no-op.
-        return messages;
-    }
-    out[last_user_idx] = target;
-    return out;
-}
-
 """Subset of llama-cpp parameters byllm should forward.
 
 LiteLLM passes a wide param surface; llama-cpp rejects unknown kwargs,
 so filter to the intersection. Sentinel zeros (max_tokens=0) are
-dropped so the model uses its own default. Messages are also
-flattened from the OpenAI multimodal list shape.
+dropped so the model uses its own default. Messages are flattened
+from the OpenAI multimodal list shape (llama.cpp's chat templates
+don't understand it). The schema-derived prompt-side hint that small
+local models need is injected by `BaseLLM.make_model_params`
+(via `byllm.schema.inject_schema_hint`) for *every* backend, not
+just this one, so it does not need to be re-applied here.
 """
 def filter_params(params: dict) -> dict {
     accepted: set[str] = {"messages","tools","tool_choice","response_format","stop","max_tokens","temperature","top_p","top_k","presence_penalty","frequency_penalty","repeat_penalty","seed"};
@@ -343,16 +198,6 @@ def filter_params(params: dict) -> dict {
     }
     if "response_format" in out {
         out["response_format"] = normalize_response_format(out["response_format"]);
-        # Inject the schema's human-readable hints into the prompt itself.
-        # llama-cpp's GBNF only constrains output structure, so without
-        # this step a small local model never sees the enum names or
-        # property descriptions cloud providers' server-side prompt
-        # builders inject for free.
-        if "messages" in out and isinstance(out["messages"], list) {
-            out["messages"] = attach_schema_hint(
-                out["messages"], out["response_format"]
-            );
-        }
     }
     return out;
 }

@@ -110,6 +110,22 @@ test "mongodb rejects redis methods" {
     }
     assert raised , "Expected NotImplementedError for scan_keys on mongodb";
 
+    raised = False;
+    try {
+        db.set_nx_with_ttl("lock", {"v": 1}, ttl=10);
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for set_nx_with_ttl on mongodb";
+
+    raised = False;
+    try {
+        db.delete_if_equals("lock", {"v": 1});
+    } except NotImplementedError {
+        raised = True;
+    }
+    assert raised , "Expected NotImplementedError for delete_if_equals on mongodb";
+
     cleanup_connections();
 }
 
@@ -141,6 +157,40 @@ test "redis kv operations" {
     db.set("config:app", {"theme": "dark"});
     assert len(db.scan_keys("session:*")) == 2;
     assert len(db.scan_keys("config:*")) == 1;
+
+    cleanup_connections();
+}
+
+test "redis distlock primitives" {
+    db = kvstore(db_name="cache", db_type="redis", uri=REDIS_URI);
+
+    fence_a = {"holder": "pod-a", "id": "abc123"};
+    fence_b = {"holder": "pod-b", "id": "def456"};
+
+    # First acquire wins, contender loses while the key exists.
+    assert db.set_nx_with_ttl("lock:repo", fence_a, ttl=30) is True;
+    assert db.set_nx_with_ttl("lock:repo", fence_b, ttl=30) is False;
+
+    # Wrong fence cannot release someone else's lock.
+    assert db.delete_if_equals("lock:repo", fence_b) is False;
+    assert db.exists("lock:repo") is True;
+
+    # Matching fence releases. After release, a new acquirer can take it.
+    assert db.delete_if_equals("lock:repo", fence_a) is True;
+    assert db.exists("lock:repo") is False;
+    assert db.set_nx_with_ttl("lock:repo", fence_b, ttl=30) is True;
+
+    # Releasing an absent key is a no-op (False, no exception).
+    assert db.delete_if_equals("lock:repo", fence_b) is True;
+    assert db.delete_if_equals("lock:repo", fence_b) is False;
+
+    # TTL is honored: a 1s lock expires and the next acquirer succeeds.
+    import time;
+    assert db.set_nx_with_ttl("lock:short", fence_a, ttl=1) is True;
+    assert db.set_nx_with_ttl("lock:short", fence_b, ttl=1) is False;
+    time.sleep(1.5);
+    assert db.set_nx_with_ttl("lock:short", fence_b, ttl=30) is True;
+    db.delete_if_equals("lock:short", fence_b);
 
     cleanup_connections();
 }

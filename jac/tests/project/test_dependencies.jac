@@ -1464,7 +1464,11 @@ test "remove dev dep without flag" {
             ) as _ev, patch(
                 "jaclang.project.dependencies.DependencyInstaller._run_pip"
             ) as mock_pip {
-                mock_pip.return_value = (0, "Successfully uninstalled pytest-8.0.0", "");
+                mock_pip.return_value = (
+                    0,
+                    "Successfully uninstalled pytest-8.0.0",
+                    ""
+                );
                 result = proj_cmds.remove(packages=["pytest"]);
             }
             assert result == 0;

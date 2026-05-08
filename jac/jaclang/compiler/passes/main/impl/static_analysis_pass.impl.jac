@@ -11,10 +11,12 @@ impl StaticAnalysisPass.transform(ir_in: uni.Module) -> uni.Module {
     self._check_undefined_names(self.ir_in);
     self._check_unreachable_code(self.ir_in);
     self._check_semantic_patterns(self.ir_in);
+    self._check_redundant_imports(self.ir_in);
     for annex_mod in self.ir_in.impl_mod + self.ir_in.test_mod + self.ir_in.variant_mod {
         self._check_undefined_names(annex_mod);
         self._check_unreachable_code(annex_mod);
         self._check_semantic_patterns(annex_mod);
+        self._check_redundant_imports(annex_mod);
     }
     return ir_in;
 }
@@ -263,6 +265,63 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
         }
         if not in_walker {
             self.emit(E2083, node_override=nd);
+        }
+    }
+}
+
+"""Flag imports of names that are now ambient or have a Jac builtin equivalent.
+
+W1103: name is re-exported into builtins by typing_ambient.pyi (its __all__
+       is the source of truth). The import is redundant -- drop it.
+W1104: 'Any' has a lowercase Jac BuiltinType keyword 'any'; replace usages
+       and drop the import.
+
+Source-module match is exact (typing / collections.abc) and only fires when
+the stub actually re-exports the name from that module, so growing the
+ambient set never produces a coincidentally-correct flag from the wrong
+source module. Aliased items and `*` are skipped -- the user expressed
+intent we should respect.
+"""
+impl StaticAnalysisPass._check_redundant_imports(mod: uni.Module) -> None {
+    if not self.prog.type_evaluator {
+        # Schedules that skip type checking don't populate the registry.
+        # The lint depends on it, so silently no-op rather than guess.
+        return;
+    }
+    registry = self.prog.type_evaluator.ambient_typing_names_by_module;
+    if not registry {
+        return;
+    }
+    for nd in mod.get_all_sub_nodes(typ=uni.Import, brute_force=True) {
+        if nd.from_loc is None {
+            continue;
+        }
+        from_mod_name = nd.from_loc.dot_path_str;
+        ambient = registry.get(from_mod_name);
+        is_typing = from_mod_name == "typing";
+        if ambient is None and not is_typing {
+            continue;
+        }
+        for item in nd.items {
+            if not isinstance(item, uni.ModuleItem) {
+                continue;
+            }
+            if not isinstance(item.name, uni.Name) {
+                # Star or default-import tokens -- user intent is broader
+                # than per-name; skip.
+                continue;
+            }
+            if item.alias is not None {
+                continue;
+            }
+            nm = item.name.value;
+            if is_typing and nm == "Any" {
+                self.emit(W1104, node_override=item.name);
+            } elif ambient is not None and nm in ambient {
+                self.emit(
+                    W1103, node_override=item.name, name=nm, module=from_mod_name
+                );
+            }
         }
     }
 }

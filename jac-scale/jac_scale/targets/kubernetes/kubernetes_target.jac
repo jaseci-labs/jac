@@ -22,7 +22,8 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     get_cluster_provider,
     load_env_variables,
     validate_resource_limits,
-    sync_code_to_pvc
+    sync_code_to_pvc,
+    resize_pvc_if_needed
 }
 import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
@@ -581,6 +582,14 @@ obj KubernetesTarget(DeploymentTarget) {
                     raise;
                 }
             }
+            mongodb_volume_name = f"{app_name}-mongo-data";
+            mongodb_pvc_name = f"{mongodb_volume_name}-{mongodb_name}-0";
+            resize_pvc_if_needed(
+                core_v1,
+                namespace,
+                mongodb_pvc_name,
+                self.k8s_config.mongodb_storage_size
+            );
             try {
                 core_v1.read_namespaced_service(
                     name=mongodb_service_name, namespace=namespace
