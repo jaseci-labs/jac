@@ -142,7 +142,6 @@ test "jac call function sends params directly" {
 
     if not runtime_path.exists() {
         return;  # skip if jac-client not found
-
     }
 
     content = runtime_path.read_text();

@@ -18,7 +18,7 @@ def make_temp_storage -> tuple[str, LocalStorage] {
 }
 
 """Clean up a temporary directory."""
-def cleanup_temp(temp_dir: str) -> None {
+def cleanup_temp(temp_dir: str) {
     if os.path.exists(temp_dir) {
         shutil.rmtree(temp_dir);
     }

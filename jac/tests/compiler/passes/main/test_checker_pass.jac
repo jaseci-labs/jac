@@ -647,6 +647,21 @@ test "checker_jac_runtime_alias" {
     ]}";
 }
 
+test "checker_react_router_props" {
+    # Regression for #5847: `@jac/runtime` exposes a React Router v6-shaped
+    # surface (`<Route element=...>`, `<Link to=...>`, `Routes`, `Navigate`,
+    # `Outlet`, `useNavigate` / `useLocation` / `useParams`) in both runtimes —
+    # bare-serve implements it natively, jac-client wraps React Router. The
+    # type checker validates JSX props against bare-serve's declarations.
+    path = os.path.join(CHECKER_FIXTURES, "checker_react_router_props.cl.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "cyclic_symbol" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cyclic_symbol.jac");
     program = JacProgram();
@@ -4198,6 +4213,82 @@ test "generator_yield_return_type_check" {
         ^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print()
+    );
+}
+
+test "strict_any_in_jac_modules" {
+    # Layer 2: in `.jac` files, `Any` can no longer be silently assigned to a
+    # declared non-Any destination. The rule applies uniformly at every
+    # "destination has a declared type" site: annotated assignments,
+    # has-var initializers, function arguments, and return statements,
+    # and recurses into containers (list[any] -> list[T] errors).
+    # Inferred destinations and explicit `any` annotations remain
+    # permissive — that is the user's escape valve.
+    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # The four expected strict-Any sites:
+    #   1. `t: Task = a;`              -- annotated assignment
+    #   2. `ts: list[Task] = xs;`      -- annotated assignment (nested any)
+    #   3. `needs_task(a);`            -- function arg
+    #   4. `return make_any();`        -- typed return
+    # Each emits one type-mismatch error (E1001/E1002/E1053). We assert
+    # the *total* count rather than the per-code split, since the
+    # specific code depends on which checker site catches the violation.
+    strict_codes = ("E1001", "E1002", "E1053");
+    strict_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in strict_codes
+    ];
+    assert len(strict_errors) == 4 , f"Expected 4 strict-Any errors (Any -> declared T at 4 sites), got {len(
+        strict_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in strict_errors);
+    # No errors should fire on the `inferred destination` or `explicit any`
+    # paths above.
+    other = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code not in strict_codes
+    ];
+    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in other
+    );
+}
+
+test "walker_typed_reports_validation" {
+    # `has reports: list[T]` on a walker should:
+    #   1. Reject non-list shapes (E1112).
+    #   2. Type-check `report X` against the element type T (E1113).
+    path = os.path.join(CHECKER_FIXTURES, "checker_walker_typed_reports.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1112 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1112"
+    ];
+    e1113 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1113"
+    ];
+    assert len(e1112) == 1 , f"Expected 1 E1112 (non-list reports shape), got {len(
+        e1112
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1112);
+    assert len(e1113) == 1 , f"Expected 1 E1113 (mismatched report element), got {len(
+        e1113
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1113);
+    # No spurious errors on the GoodWalker case.
+    other = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code not in ("E1112", "E1113")
+    ];
+    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in other
     );
 }
 
