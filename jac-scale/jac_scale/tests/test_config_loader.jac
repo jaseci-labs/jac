@@ -11,8 +11,8 @@ import from typing { Any }
 import from jac_scale.config_loader { JacScaleConfig }
 
 
-test "get_microservices_config returns ingress block (regression: K10)" {
-    # Regression: K10 added [...microservices.ingress] but the loader's
+test "get_microservices_config returns ingress block" {
+    # Regression: [...microservices.ingress] was added but the loader's
     # explicit return dict didn't include it, so even with
     # `ingress.enabled = true` in jac.toml the K8s target's
     # _build_ingress_manifest received {} and silently returned None.

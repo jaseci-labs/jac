@@ -90,8 +90,8 @@ test "_mark_all_healthy_k8s is idempotent on empty registry" {
 
 
 test "_populate_k8s_urls writes DNS map onto svc_entry.url (regression)" {
-    # Real K-track bug found during EC2 verification: handle_proxy
-    # uses K4's get_sv_registry() at request time, but
+    # Real bug found during EC2 verification: handle_proxy
+    # uses get_sv_registry() at request time, but
     # handle_builtin_passthrough (auth, walker, function fan-out)
     # reads svc_entry.url DIRECTLY and skips entries with empty url.
     # In K8s mode, build_registry constructs entries with url="" and

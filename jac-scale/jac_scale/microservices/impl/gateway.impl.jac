@@ -317,7 +317,7 @@ impl MicroserviceGateway.handle_health_live -> Response {
 Readiness gates traffic. When SIGTERM hits, our drain middleware flips
 `is_draining()` true and the readiness probe starts failing; kube-proxy
 removes the pod from Endpoints within a probe period or two so new
-requests stop arriving while in-flight ones complete. Pair with the K5
+requests stop arriving while in-flight ones complete. Pair with the
 preStop sleep (bridges the kube-proxy-propagation gap) and
 terminationGracePeriodSeconds (gives drain time to flush).
 """
@@ -520,11 +520,11 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
             }
         }
     } else {
-        # P0.23: GET / is the SPA root. Always serve dist/index.html
-        # when it exists, regardless of Accept header (curl, monitoring
-        # probes, server-side fetches, and crawlers all need to land
-        # somewhere other than 404). Browsers reach the same response
-        # via the text/html Accept fallback below; this branch makes
+        # GET / is the SPA root. Always serve dist/index.html when it
+        # exists, regardless of Accept header (curl, monitoring probes,
+        # server-side fetches, and crawlers all need to land somewhere
+        # other than 404). Browsers reach the same response via the
+        # text/html Accept fallback below; this branch makes
         # the behavior consistent across clients.
         index_resp = self.serve_spa_fallback();
         if index_resp {
@@ -599,7 +599,7 @@ impl MicroserviceGateway.setup -> FastAPI {
                 resp = gw.handle_health_ready();
             } elif path == "/health" or path == "/healthz" {
                 # Backward-compat aliases. /healthz used to be the
-                # combined probe target (K5 v1); now /healthz/live + /ready
+                # combined probe target; now /healthz/live + /ready
                 # serve K8s and /healthz keeps the registry-summary view
                 # for humans / dashboards. /health is the legacy alias.
                 svc_label = "__health__";
@@ -680,7 +680,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
 
-    # P17: rate limit between drain and CORS. Preflights bypass the
+    # rate limit between drain and CORS. Preflights bypass the
     # limiter (CORS outer handles OPTIONS short-circuit) and drain
     # inner can still 503 once the limiter allows through.
     import from jac_scale.microservices._rate_limit { build_rate_limit_middleware }
@@ -689,7 +689,7 @@ impl MicroserviceGateway.setup -> FastAPI {
         self.app.middleware("http")(rl_mw);
     }
 
-    # P16: CORS registered AFTER drain so preflights answer correctly
+    # CORS registered AFTER drain so preflights answer correctly
     # even during shutdown (clients need CORS headers to read 503s).
     # Disabled unless `allow_origins` is configured.
     cors_cfg = ms_cfg.get("cors", {});

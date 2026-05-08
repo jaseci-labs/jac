@@ -353,9 +353,9 @@ impl JacAPIServerCore._configure_openapi_security -> None {
 # ============================================================================
 # HMR (Hot Module Replacement) Support
 # ============================================================================
-"""Register health endpoints. K-track v1.1: split into /healthz/live
-(liveness, restart-gating) and /healthz/ready (readiness, traffic-gating)
-plus the legacy /healthz as a back-compat alias for /healthz/live.
+"""Register health endpoints: /healthz/live (liveness, restart-gating)
+and /healthz/ready (readiness, traffic-gating), plus the legacy /healthz
+as a back-compat alias for /healthz/live.
 
 Liveness deliberately does NOT check dependencies (DB, peer services) -
 a transient downstream blip would otherwise restart the pod, which can
@@ -377,8 +377,9 @@ impl JacAPIServerCore.register_health_endpoint -> None {
         }
         return JSONResponse(status_code=200, content={"status": "ready"});
     }
-    # Legacy alias - same shape as live (K5 v1 used a single /healthz
-    # for both probes; users hitting /healthz manually still get 200).
+    # Legacy alias - same shape as live (an earlier revision used a
+    # single /healthz for both probes; users hitting /healthz manually
+    # still get 200).
     async def health_legacy -> dict {
         return {"status": "ok"};
     }

@@ -1,4 +1,4 @@
-"""Unit tests for the auto-build / auto-distribute pipeline (P0.5)."""
+"""Unit tests for the auto-build / auto-distribute pipeline."""
 
 import os;
 import tempfile;
@@ -100,13 +100,13 @@ test "resolve_dockerfile falls back to embedded template + .jac/Dockerfile.gen" 
         contents = df.read_text();
         assert "FROM python:3.12-slim" in contents;
         # Embedded template installs the [deploy,data] extras so pymongo
-        # + redis are available in the runtime image (P0.8 unblocked
-        # Mongo/Redis auto-provisioning).
+        # + redis are available in the runtime image for Mongo/Redis
+        # auto-provisioning.
         assert "jac-scale[deploy,data]" in contents;
-        # P0.15: jac-client must be installed so the `jac install` step
+        # jac-client must be installed so the `jac install` step
         # below can resolve jac.toml [dependencies].
         assert "jac-client" in contents;
-        # P0.15: must run `jac install` so user app deps land in the image.
+        # must run `jac install` so user app deps land in the image.
         assert "jac install" in contents;
         assert ctx.resolve() == project.resolve();
         assert args == {};
@@ -115,9 +115,9 @@ test "resolve_dockerfile falls back to embedded template + .jac/Dockerfile.gen" 
 
 
 # =============================================================================
-# P0.15: shipped + dev-checkout Dockerfiles also install user pip deps
+# shipped + dev-checkout Dockerfiles also install user pip deps
 # =============================================================================
-test "P0.15: shipped Dockerfile.microservice installs jac-client + runs jac install" {
+test "Shipped Dockerfile.microservice installs jac-client + runs jac install" {
     # Apps that auto-build via the shipped (PyPI-install) variant must
     # also get their jac.toml [dependencies] resolved. Without this,
     # any real app that declares pip deps (jacBuilder declares
@@ -132,15 +132,15 @@ test "P0.15: shipped Dockerfile.microservice installs jac-client + runs jac inst
     }
     contents = shipped.read_text();
     assert "jac-client" in contents , (
-        "shipped Dockerfile.microservice missing jac-client install (P0.15)"
+        "shipped Dockerfile.microservice missing jac-client install"
     );
     assert "jac install" in contents , (
-        "shipped Dockerfile.microservice missing `jac install` step (P0.15)"
+        "shipped Dockerfile.microservice missing `jac install` step"
     );
 }
 
 
-test "P0.15: dev-checkout Dockerfile.microservice.ci installs jac-client + runs jac install" {
+test "Dev-checkout Dockerfile.microservice.ci installs jac-client + runs jac install" {
     # The CI variant (used when project_dir is inside a jaseci checkout)
     # has the same requirement - users on dev checkouts get the same
     # auto-installed deps as users on a PyPI install.
@@ -166,10 +166,10 @@ test "P0.15: dev-checkout Dockerfile.microservice.ci installs jac-client + runs 
         _shutil.copy(real_ci, ci_df);
         contents = ci_df.read_text();
         assert "jac-client" in contents , (
-            "Dockerfile.microservice.ci missing jac-client install (P0.15)"
+            "Dockerfile.microservice.ci missing jac-client install"
         );
         assert "jac install" in contents , (
-            "Dockerfile.microservice.ci missing `jac install` step (P0.15)"
+            "Dockerfile.microservice.ci missing `jac install` step"
         );
     }
 }
@@ -217,12 +217,12 @@ test "ensure_dockerignore writes the embedded template when absent" {
 
 
 test "embedded dockerignore preserves .jac/client/dist for FE serving" {
-    # Regression: P0.7 builds the FE into .jac/client/dist BEFORE the
-    # docker build. If the dockerignore had a blanket `**/.jac` rule
-    # (the original P0.5 shape), the FE bundle would silently be
-    # filtered out of the build context and the gateway pod would have
-    # nothing to serve at /. The embedded template must exclude
-    # specific .jac subdirs only - not .jac/client/.
+    # Regression: the FE bundle is built into .jac/client/dist BEFORE
+    # the docker build. If the dockerignore had a blanket `**/.jac`
+    # rule, the FE bundle would silently be filtered out of the build
+    # context and the gateway pod would have nothing to serve at /.
+    # The embedded template must exclude specific .jac subdirs only -
+    # not .jac/client/.
     with tempfile.TemporaryDirectory() as tmp {
         ctx = Path(tmp);
         ensure_dockerignore(ctx);
@@ -245,7 +245,7 @@ test "embedded dockerignore preserves .jac/client/dist for FE serving" {
 }
 
 
-test "P0.7: build_client_bundle no-ops when client_entry is empty" {
+test "Build_client_bundle no-ops when client_entry is empty" {
     # Apps without a frontend (LLM-only / API-only) shouldn't trigger
     # any subprocess work just because the auto-build runs.
     with tempfile.TemporaryDirectory() as tmp {
@@ -261,17 +261,17 @@ test "P0.7: build_client_bundle no-ops when client_entry is empty" {
 }
 
 
-test "P0.7: build_client_bundle invokes `jac build <entry>` from project_dir" {
+test "Build_client_bundle invokes `jac build <entry>` from project_dir" {
     # The orchestrator runs `jac build` for the local-mode FE bundle;
-    # the K-track auto-build needs to do the same on the host BEFORE
+    # theauto-build needs to do the same on the host BEFORE
     # docker build, so .jac/client/dist/ exists when the project gets
     # COPY'd into the image. We mock shutil.which so the test isn't
     # sensitive to whether the jac binary is on the test runner's PATH.
     with tempfile.TemporaryDirectory() as tmp {
         project = Path(tmp);
-        # Pre-create the dist artifact so P0.13's post-build assertion
-        # (added later) is satisfied - this test is about the subprocess
-        # call shape, not the artifact check.
+        # Pre-create the dist artifact so the post-build assertion is
+        # satisfied - this test is about the subprocess call shape, not
+        # the artifact check.
         dist = project / ".jac" / "client" / "dist";
         dist.mkdir(parents=True);
         (dist / "index.html").write_text("<html></html>");
@@ -291,7 +291,7 @@ test "P0.7: build_client_bundle invokes `jac build <entry>` from project_dir" {
 }
 
 
-test "P0.7: build_client_bundle raises actionable error on non-zero exit" {
+test "Build_client_bundle raises actionable error on non-zero exit" {
     # User edits a frontend .jac file that has a syntax error - we
     # surface it as a RuntimeError naming the entry + last 20 lines
     # of jac build output so they don't have to hunt through hundreds
@@ -509,9 +509,9 @@ test "auto_build_and_distribute on unknown cluster raises actionable error" {
 
 
 # =============================================================================
-# P0.11: jac-client pre-flight check
+# jac-client pre-flight check
 # =============================================================================
-test "P0.11: build_client_bundle raises if jac-client not importable" {
+test "Build_client_bundle raises if jac-client not importable" {
     # Without this guard, missing jac-client manifests as a silent FE-skip:
     # `jac build` returns exit 0 (or unhelpful stderr) and the docker image
     # ships without .jac/client/dist/. The user sees a blank gateway page
@@ -542,12 +542,12 @@ test "P0.11: build_client_bundle raises if jac-client not importable" {
 }
 
 
-test "P0.11: build_client_bundle proceeds when jac-client present" {
+test "Build_client_bundle proceeds when jac-client present" {
     # Companion to the missing-jac-client test - confirms the guard
     # doesn't fire false-positives when the package IS installed.
     with tempfile.TemporaryDirectory() as tmp {
         project = Path(tmp);
-        # Pre-create the dist file so the P0.13 post-build assertion passes.
+        # Pre-create the dist file so the post-build assertion passes.
         dist = project / ".jac" / "client" / "dist";
         dist.mkdir(parents=True);
         (dist / "index.html").write_text("<html></html>");
@@ -572,9 +572,9 @@ test "P0.11: build_client_bundle proceeds when jac-client present" {
 
 
 # =============================================================================
-# P0.13: post-build dist assertion
+# post-build dist assertion
 # =============================================================================
-test "P0.13: build_client_bundle raises when index.html absent post-build" {
+test "Build_client_bundle raises when index.html absent post-build" {
     # `jac build` can return exit 0 without producing dist/index.html
     # (cached-but-broken state, vite skip on missing entry). Without
     # this assertion the docker COPY step succeeds and the gateway pod
@@ -610,7 +610,7 @@ test "P0.13: build_client_bundle raises when index.html absent post-build" {
 }
 
 
-test "P0.13: build_client_bundle accepts dist created by jac build" {
+test "Build_client_bundle accepts dist created by jac build" {
     # If jac build does its job, no exception. Companion to the
     # absent-bundle test.
     with tempfile.TemporaryDirectory() as tmp {
@@ -634,9 +634,9 @@ test "P0.13: build_client_bundle accepts dist created by jac build" {
 
 
 # =============================================================================
-# P0.12: content-addressed image tag (force rollout on content change)
+# content-addressed image tag (force rollout on content change)
 # =============================================================================
-test "P0.12: _docker_image_id returns sha256:<hex> when inspect succeeds" {
+_docker_image_id returns sha256:<hex> when inspect succeeds" {
     fake_result = mock.MagicMock(
         returncode=0,
         stdout="sha256:abcdef0123456789aaaa\n",
@@ -649,7 +649,7 @@ test "P0.12: _docker_image_id returns sha256:<hex> when inspect succeeds" {
 }
 
 
-test "P0.12: _docker_image_id returns None on inspect failure" {
+_docker_image_id returns None on inspect failure" {
     # docker not installed, image absent, daemon unreachable - all
     # collapse to None so the caller can fall back to the base tag.
     fake_result = mock.MagicMock(returncode=1, stdout="", stderr="No such image");
@@ -660,7 +660,7 @@ test "P0.12: _docker_image_id returns None on inspect failure" {
 }
 
 
-test "P0.12: _docker_image_id passes env_overrides through to subprocess" {
+_docker_image_id passes env_overrides through to subprocess" {
     # Minikube case: docker daemon lives inside the VM; the inspect call
     # needs DOCKER_HOST/CERT_PATH overrides or it'd query the wrong
     # daemon and return None for an image that exists where it matters.
@@ -681,7 +681,7 @@ test "P0.12: _docker_image_id passes env_overrides through to subprocess" {
 }
 
 
-test "P0.12: _retag_with_content_id appends 12-char id to base tag" {
+_retag_with_content_id appends 12-char id to base tag" {
     full_id = "sha256:abcdef012345dead0000beef0000face1234";
     expected_short = "abcdef012345";  # first 12 hex chars after sha256:
     fake_tag_ok = mock.MagicMock(returncode=0, stdout="", stderr="");
@@ -696,7 +696,7 @@ test "P0.12: _retag_with_content_id appends 12-char id to base tag" {
 }
 
 
-test "P0.12: _retag_with_content_id preserves registry prefix" {
+_retag_with_content_id preserves registry prefix" {
     # Remote-cluster tags include the registry prefix; the new tag must
     # too, otherwise the push would target the wrong repo.
     full_id = "sha256:0011223344556677889900";
@@ -712,7 +712,7 @@ test "P0.12: _retag_with_content_id preserves registry prefix" {
 }
 
 
-test "P0.12: _retag_with_content_id falls back to base_tag when inspect fails" {
+_retag_with_content_id falls back to base_tag when inspect fails" {
     # If docker inspect can't read the digest (daemon down, image
     # missing, etc.), keep the deploy moving with the bare :dev tag.
     # Manual `kubectl rollout restart` is the workaround; better than
@@ -724,7 +724,7 @@ test "P0.12: _retag_with_content_id falls back to base_tag when inspect fails" {
 }
 
 
-test "P0.12: _retag_with_content_id falls back when docker tag fails" {
+_retag_with_content_id falls back when docker tag fails" {
     # docker inspect succeeded so we know the digest - but the docker
     # tag step itself failed (rare; would mean daemon hiccupped between
     # two calls). Same fallback: let the deploy continue with the base
@@ -743,7 +743,7 @@ test "P0.12: _retag_with_content_id falls back when docker tag fails" {
 }
 
 
-test "P0.12: auto_build_and_distribute on k3d imports the retagged image" {
+test "Auto_build_and_distribute on k3d imports the retagged image" {
     # End-to-end check on the K3D path: the tag flowing into
     # k3d image import (and therefore into the manifest) must be the
     # content-addressed one, not the bare `:dev`.
@@ -784,7 +784,7 @@ test "P0.12: auto_build_and_distribute on k3d imports the retagged image" {
 }
 
 
-test "P0.12: auto_build_and_distribute on remote pushes the retagged image" {
+test "Auto_build_and_distribute on remote pushes the retagged image" {
     # Equivalent check on the registry path - what gets pushed (and
     # what the manifest references on the remote cluster) must be
     # the content-addressed tag.

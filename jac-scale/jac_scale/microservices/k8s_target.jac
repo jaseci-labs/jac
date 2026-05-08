@@ -1,18 +1,15 @@
 """Kubernetes deployment target for microservice mode.
 
-K1 (done): scaffold + image build + pod-spec stubs + factory dispatch.
-K2 (done): full Deployment + ClusterIP Service manifests per service.
-K3 (done): apply / destroy lifecycle via the kubernetes Python client.
-K4 (done): runtime DNS adapter (KubernetesDeployer + get_sv_registry).
-K5 (done): rolling-deploy correctness (RollingUpdate strategy +
-readinessProbe/livenessProbe + terminationGracePeriodSeconds + preStop).
+Fans a single container image out to one Deployment + ClusterIP Service
++ HorizontalPodAutoscaler + PodDisruptionBudget per microservice, plus
+a gateway. The image build + push is delegated to the parent
+`KubernetesTarget`; this subclass adds per-service iteration over the
+project's `[plugins.scale.microservices.routes]` table, a runtime DNS
+adapter (`KubernetesDeployer`) for `sv import` peer URL resolution,
+and an optional Ingress manifest pointing at the gateway.
 
-K6 (done): HorizontalPodAutoscaler + PodDisruptionBudget per service.
-K10 (this file): optional Ingress manifest pointing at the gateway.
-
-K7 scope (this file): per-service config layering. Knobs at
-`[plugins.scale.microservices.services.NAME]` flow through the
-manifest builders:
+Per-service config layering at `[plugins.scale.microservices.services.NAME]`
+flows through the manifest builders:
 
   - `replicas` (int)             -> Deployment.spec.replicas
   - `cpu_request`, `cpu_limit`   -> container resources (e.g. "100m")
@@ -29,9 +26,7 @@ manifest builders:
   - `pdb.max_unavailable` (int)  -> PDB tolerance
 
 The gateway uses the same table keyed by GATEWAY_NAME ("__gateway__").
-All knobs are optional - omit and you get the K5/K6 defaults.
-
-K8 adds minikube e2e + CI workflow.
+All knobs are optional - omit and you get the defaults.
 """
 
 import logging;
@@ -49,6 +44,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     ensure_namespace_exists,
     create_k8s_secret
 }
+import from jac_scale.microservices._util { k8s_service_dns_url }
 
 glob logger = logging.getLogger(__name__);
 
@@ -60,6 +56,10 @@ user-defined service modules.
 """
 glob GATEWAY_NAME: str = "__gateway__";
 
+# +5s cushion lets uvicorn finish exiting AFTER our drain middleware
+# completes; without it, SIGKILL can arrive mid-drain.
+glob _UVICORN_EXIT_CUSHION_S: int = 5;
+
 
 """Map a service name to a DNS-1123-valid K8s resource name.
 
@@ -70,7 +70,7 @@ Other names are lowercased and have underscores replaced with hyphens;
 the caller is responsible for ensuring the result is short enough
 (<=63 chars) and otherwise compliant.
 
-Module-level helper (not on `KubernetesMicroserviceTarget`) so K4's
+Module-level helper (not on `KubernetesMicroserviceTarget`) so
 `KubernetesDeployer.url_for` can reuse it without re-implementing.
 The method `KubernetesMicroserviceTarget._k8s_safe_name` delegates here.
 """
@@ -100,13 +100,13 @@ Selected automatically by `_scale_pre_hook` when
 under the type name `"kubernetes-microservice"`.
 """
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
-    # P0.8: populated by _provision_databases (during deploy()) with
+    # populated by _provision_databases (during deploy()) with
     # the wait-for-Mongo / wait-for-Redis init containers. Service +
     # gateway pod-specs read this via getattr() and attach as
     # initContainers so pods don't crash-loop until the DBs are reachable.
     has _microservice_init_containers: list[dict[str, Any]] = [];
 
-    """P0.5 auto-build override: front-load the image-build decision.
+    """Auto-build override: front-load the image-build decision.
 
     Activated only when `_JAC_SCALE_AUTO_BUILD=1` is set in env (the
     `_scale_pre_hook` in plugin.jac sets this on the production
@@ -146,7 +146,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return KubernetesTarget._handle_image_registry(self, app_name, app_config);
     }
 
-    """P0.5: orchestrate the auto-build for a microservice deploy.
+    """Orchestrate the auto-build for a microservice deploy.
 
     Resolves the registry URL from raw config (avoids adding a new field
     to KubernetesConfig - users put `image_registry` directly under
@@ -190,7 +190,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return image_tag;
     }
 
-    """Generate K8s manifests AND apply them to the cluster (K3 scope).
+    """Generate K8s manifests AND apply them to the cluster.
 
     deploy() now: build image -> generate manifests -> apply via the
     kubernetes Python client. Kube config is loaded from kubeconfig
@@ -205,13 +205,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         app_name = app_config.app_name or self.k8s_config.app_name;
         if self.logger {
             self.logger.info(
-                f"Deploying microservice app '{app_name}' to Kubernetes "
-                f"(K3 apply; K5 will add rolling-deploy correctness)",
+                f"Deploying microservice app '{app_name}' to Kubernetes",
                 {"namespace": self.k8s_config.namespace}
             );
         }
 
-        # P0.8: provision MongoDB + Redis BEFORE generate_manifests so
+        # provision MongoDB + Redis BEFORE generate_manifests so
         # the env_list (with MONGODB_URI/REDIS_URL secretKeyRef entries)
         # and init_containers populate every microservice pod-spec.
         # Skipped silently in tests (no kube config / not on a real cluster);
@@ -244,15 +243,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return DeploymentResult(
             success=True,
             message=(
-                f"K3 applied: {svc_count} service Deployment+Service pair(s) "
-                f"plus 1 gateway in namespace '{self.k8s_config.namespace}'. "
-                "K5 will add rolling-deploy correctness."
+                f"Applied {svc_count} service Deployment+Service pair(s) "
+                f"plus 1 gateway in namespace '{self.k8s_config.namespace}'."
             ),
             details=bundle
         );
     }
 
-    """P0.8: provision MongoDB + Redis (when enabled in jac.toml) and
+    """Provision MongoDB + Redis (when enabled in jac.toml) and
     populate `self.env_list` + `self._microservice_init_containers` so
     every microservice pod gets the connection-string envs and waits
     for the DBs to be reachable before starting.
@@ -275,8 +273,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         self.env_list = [];
         self._microservice_init_containers = [];
 
-        # Same env-var gate as P0.5/P0.6: only fires on the production
-        # `jac start --scale` path (where _scale_pre_hook sets the env).
+        # Same env-var gate as the auto-build path: only fires on the
+        # production `jac start --scale` path (where _scale_pre_hook sets it).
         # Unit tests that exercise deploy() directly don't set the env
         # so they skip cluster-touching work entirely.
         if os.environ.get("_JAC_SCALE_AUTO_BUILD") != "1" {
@@ -337,7 +335,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     target machinery. Splitting out as a helper so apply_manifests +
     destroy can both call it without duplicating the try/except.
 
-    P1.3: when BOTH paths fail (common for new users running locally
+    When BOTH paths fail (common for new users running locally
     without minikube/kubectl set up), the kubernetes client raises a
     ConfigException whose default message is unhelpful ("Service host/port
     is not set"). Re-raise with actionable instructions so the user
@@ -372,7 +370,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Apply the K2 + K6 manifest bundle to the cluster.
+    """Apply the manifest bundle to the cluster.
 
     Order: namespace exists -> Services -> Deployments -> HPAs -> PDBs.
     Services first so DNS resolution works the moment a Deployment's
@@ -392,7 +390,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
 
-        # P1.3: probe the API server early so an unreachable cluster
+        # probe the API server early so an unreachable cluster
         # surfaces a clean error here rather than mid-apply with a
         # half-baked manifest set. `list_namespace` is the cheapest
         # cluster-scoped read (every cluster has at least kube-system),
@@ -412,7 +410,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
-        # P0.25: PVCs first so Deployments referencing them don't hit
+        # PVCs first so Deployments referencing them don't hit
         # `persistentvolumeclaim "X" not found` and back off. PVCs in
         # "Pending" state are fine - kube-scheduler waits for binding.
         for (pvc_name, pvc_manifest) in bundle.get("pvcs", {}).items() {
@@ -425,7 +423,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # P4.1: user-secret BEFORE Deployments so envFrom: secretRef
+        # user-secret BEFORE Deployments so envFrom: secretRef
         # resolves at pod startup. Reuses parent's create_k8s_secret
         # helper which handles the create-or-replace idempotency
         # (409 -> replace_namespaced_secret).
@@ -461,8 +459,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         # Deployments next - patching an existing Deployment kicks off
-        # a rolling update via K8s Deployment controller (K5
-        # RollingUpdate + readiness + grace + preStop).
+        # a rolling update via the K8s Deployment controller (using the
+        # RollingUpdate + readiness + grace + preStop config below).
         for (svc_name, dep_manifest) in bundle["deployments"].items() {
             self._apply_or_replace_deployment(apps_v1, namespace, dep_manifest);
             if self.logger {
@@ -474,7 +472,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         # HPAs - target Deployments by name; safe to apply after the
-        # Deployments exist. K6 default: min=1, max=3, cpu=70%.
+        # Deployments exist. Default: min=1, max=3, cpu=70%.
         for (svc_name, hpa_manifest) in bundle.get("hpas", {}).items() {
             self._apply_or_replace_hpa(autoscaling_v2, namespace, hpa_manifest);
             if self.logger {
@@ -486,7 +484,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         # PDBs - select pods by label, safe to apply alongside HPAs.
-        # K6 default: maxUnavailable=1.
+        # Default: maxUnavailable=1.
         for (svc_name, pdb_manifest) in bundle.get("pdbs", {}).items() {
             self._apply_or_replace_pdb(policy_v1, namespace, pdb_manifest);
             if self.logger {
@@ -497,7 +495,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # K10: Ingress, applied LAST. References gateway-service by
+        # Ingress, applied LAST. References gateway-service by
         # name; the Ingress controller (nginx, ALB, etc.) will resolve
         # the Service the moment it sees the Ingress object regardless
         # of order, but applying after gateway-service exists avoids a
@@ -533,7 +531,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """P0.25: idempotent PVC apply - create on 404, otherwise no-op.
+    """Idempotent PVC apply - create on 404, otherwise no-op.
 
     PVCs are mostly immutable (size/access_mode/storage_class can't be
     changed after binding without recreating). We deliberately do NOT
@@ -566,8 +564,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Idempotent Deployment apply - read first, patch on hit, create on 404.
 
     A patch on an existing Deployment triggers the K8s Deployment
-    controller's rolling update. K5 added the explicit
-    RollingUpdate { maxSurge: 1, maxUnavailable: 0 } config so this
+    controller's rolling update. The explicit
+    RollingUpdate { maxSurge: 1, maxUnavailable: 0 } in the manifest
     surges a new pod before terminating the old one.
     """
     def _apply_or_replace_deployment(
@@ -636,7 +634,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """K10: Idempotent Ingress apply - mirrors the deployment shape."""
+    """Idempotent Ingress apply - mirrors the deployment shape."""
     def _apply_or_replace_ingress(
         networking_v1: Any, namespace: str, manifest: dict[str, Any]
     ) {
@@ -684,10 +682,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         core_v1 = client.CoreV1Api();
         namespace: str = self.k8s_config.namespace;
 
-        # K6: also clean up HPAs and PDBs we applied.
+        # also clean up HPAs and PDBs we applied.
         autoscaling_v2 = client.AutoscalingV2Api();
         policy_v1 = client.PolicyV1Api();
-        # K10: Ingress cleanup.
+        # Ingress cleanup.
         networking_v1 = client.NetworkingV1Api();
 
         # Label selector matches anything this target has ever applied.
@@ -700,8 +698,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         # Deployments first - delete_collection_namespaced_deployment
         # is batched. Pods stop receiving traffic as the Deployment
-        # controller scales them down; K5's preStop hooks bridge the
-        # kube-proxy propagation gap.
+        # controller scales them down; the pod-spec preStop hooks
+        # bridge the kube-proxy propagation gap.
         try {
             apps_v1.delete_collection_namespaced_deployment(
                 namespace=namespace, label_selector=selector
@@ -734,7 +732,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # K10: Ingresses - batched. Same `managed=jac-scale` selector
+        # Ingresses - batched. Same `managed=jac-scale` selector
         # since the Ingress carries that label too.
         try {
             networking_v1.delete_collection_namespaced_ingress(
@@ -774,15 +772,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Lift K1 pod-specs into full Deployment + Service + HPA + PDB
+    """Lift pod-specs into full Deployment + Service + HPA + PDB
     manifests.
 
     Returns `{"deployments": {svc: manifest}, "services": {svc: manifest},
     "hpas": {svc: manifest}, "pdbs": {svc: manifest},
-    "pod_specs": {svc: spec}}`. The `pod_specs` entry is the same dict
-    K1 returned; deployments wrap each pod-spec; services emit a paired
-    ClusterIP Service for kube-proxy. K6 adds the per-service HPA
-    (autoscaling/v2) and PDB (policy/v1) entries.
+    "pod_specs": {svc: spec}}`. The `pod_specs` entry is the dict
+    `generate_service_pod_specs` returned; deployments wrap each
+    pod-spec; services emit a paired ClusterIP Service for kube-proxy.
+    Per-service HPA (autoscaling/v2) and PDB (policy/v1) entries are
+    emitted alongside.
     """
     def generate_manifests(app_config: AppConfig) -> dict[str, Any] {
         pod_specs = self.generate_service_pod_specs(app_config);
@@ -793,7 +792,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
-            # K7: HPA / PDB builders return None when the user opts out
+            # HPA / PDB builders return None when the user opts out
             # via [...services.NAME.{hpa,pdb}].enabled = false. Skip
             # those so the bundle only carries enabled entries (which
             # apply_manifests + destroy can iterate without nil checks).
@@ -807,7 +806,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # K10: Optional Ingress at [...microservices.ingress]. Default
+        # Optional Ingress at [...microservices.ingress]. Default
         # off; user opts in to get an external URL.
         bundle: dict[str, Any] = {
             "deployments": deployments,
@@ -816,13 +815,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
-        # P0.25: PVCs for any PVC-mode shared_volumes. Empty when no
+        # PVCs for any PVC-mode shared_volumes. Empty when no
         # shared_volumes configured or all entries use host_path.
         pvcs = self._build_shared_pvc_manifests();
         if pvcs {
             bundle["pvcs"] = pvcs;
         }
-        # P4.1: K8s Secret holding `[plugins.scale.secrets]` values
+        # K8s Secret holding `[plugins.scale.secrets]` values
         # (already env-interpolated by jaclang core's
         # apply_env_interpolation). pod-spec builders inject envFrom
         # referencing this Secret's name. None when the user defined
@@ -845,7 +844,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return bundle;
     }
 
-    """K5: read drain_timeout_seconds from config (defaults to 10s).
+    """Read drain_timeout_seconds from config (defaults to 10s).
 
     Used to size `terminationGracePeriodSeconds` on the pod spec so K8s
     waits at least as long as our drain middleware needs to flush
@@ -862,7 +861,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """K7: read per-service config from [...services.NAME], or {} if unset.
+    """Read per-service config from [...services.NAME], or {} if unset.
 
     Returns a defensive dict copy. Read failure (e.g. no jac.toml in
     tests) returns {} so the manifest builders fall through to defaults.
@@ -877,7 +876,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """P0.25: read shared_volumes from [[plugins.scale.microservices.shared_volumes]].
+    """Read shared_volumes from [[plugins.scale.microservices.shared_volumes]].
 
     Each entry declares a volume that gets mounted at the same path on
     every named service. Two backing modes are supported:
@@ -930,7 +929,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """P0.25: build (volumes, volumeMounts) for the named service from
+    """Build (volumes, volumeMounts) for the named service from
     shared_volumes config.
 
     Returns the additions to inject - existing volume/mount entries
@@ -993,7 +992,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return (volumes, mounts);
     }
 
-    """P0.25: build PVC manifests for every PVC-mode shared volume.
+    """Build PVC manifests for every PVC-mode shared volume.
 
     Skips hostPath entries (no PVC needed) and entries with empty
     name. Each PVC is named after the shared-volume's `name` (passed
@@ -1055,12 +1054,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return pvcs;
     }
 
-    """P4.1: K8s Secret manifest for user-defined `[plugins.scale.secrets]`.
+    """K8s Secret manifest for user-defined `[plugins.scale.secrets]`.
 
     Same shape the parent KubernetesTarget already uses for monolith
     deploys. Reuses parent's create_k8s_secret in apply_manifests; this
-    builder just produces the manifest dict so the K-track bundle can
-    own it (dry-run / inspection / destroy filtering).
+    builder just produces the manifest dict so the microservice bundle
+    can own it (dry-run / inspection / destroy filtering).
 
     `self.secrets` is populated upstream by `_scale_pre_hook` (in
     plugin.jac) which calls `scale_config.get_secrets_config()` - that
@@ -1069,8 +1068,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     expanded by the time we get here.
 
     Returns None when `self.secrets` is empty - no Secret created, no
-    `envFrom` injected. Apps with no secrets keep their pod spec
-    identical to pre-P4.1 (back-compat).
+    `envFrom` injected. Apps with no secrets get a pod spec without
+    any secret references (back-compat).
     """
     def _build_user_secret_manifest -> dict[str, Any] | None {
         if not self.secrets {
@@ -1096,7 +1095,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """P4.1: name of the Secret holding user `[plugins.scale.secrets]`.
+    """Name of the Secret holding user `[plugins.scale.secrets]`.
 
     Centralized so _build_user_secret_manifest, _build_service_pod_spec
     (envFrom), and apply_manifests all reference the same name string
@@ -1107,22 +1106,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
 
-    """P0.30: ServiceAccount name to attach to every microservice
+    """ServiceAccount name to attach to every microservice
     Deployment + the gateway Deployment. Empty string means "fall back
-    to the namespace's `default` SA" - same behavior K-track had pre-P0.30.
+    to the namespace's `default` SA".
 
     The parent (non-microservice) kubernetes target auto-creates
-    `<app_name>-sa` and binds it; K-track does not provision the SA
-    yet (P4.3). Apps that need cluster API access (sandbox-spawning,
-    operator-style controllers) point this at a pre-bound SA in the
-    target namespace.
+    `<app_name>-sa` and binds it; microservice mode does not
+    provision the SA itself. Apps that need cluster API access
+    (sandbox-spawning, operator-style controllers) point this at a
+    pre-bound SA in the target namespace.
     """
     def _service_account_name -> str {
         return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
     }
 
 
-    """P0.32: routes table from [plugins.scale.microservices.routes].
+    """Routes table from [plugins.scale.microservices.routes].
 
     Used by _build_env to inject `JAC_SV_<PEER>_URL` env vars on every
     pod, mirroring what LocalDeployer's process_manager does for
@@ -1145,7 +1144,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
 
-    """P0.32: build the in-cluster DNS URL for a peer microservice.
+    """Build the in-cluster DNS URL for a peer microservice.
 
     Mirrors LocalDeployer.url_for (loopback URL for local subprocesses)
     but in K8s we resolve via the headless Service's DNS name. The host
@@ -1155,19 +1154,20 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     `JAC_SV_{module_name.upper()}_URL` against the same raw name.
     """
     def _peer_dns_url(peer_name: str) -> str {
-        port: int = self.k8s_config.container_port;
-        ns: str = self.k8s_config.namespace;
-        host: str = k8s_safe_name(peer_name);
-        return f"http://{host}-service.{ns}.svc.cluster.local:{port}";
+        return k8s_service_dns_url(
+            k8s_safe_name(peer_name),
+            self.k8s_config.namespace,
+            self.k8s_config.container_port
+        );
     }
 
 
-    """K7: extra env vars merged with the auto-set JAC_SV_NAME.
+    """Extra env vars merged with the auto-set JAC_SV_NAME.
 
     Order:
       1. JAC_SV_NAME - sentinel that picks the service at pod startup.
          Always first, never overrideable.
-      2. Database env (MONGODB_URI, REDIS_URL) - added by P0.8's
+      2. Database env (MONGODB_URI, REDIS_URL) - added by
          `_provision_databases` during apply_manifests, stored on
          self.env_list. These use `valueFrom: secretKeyRef` so the
          connection string lives in a K8s Secret, not as plaintext.
@@ -1177,7 +1177,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, Any]] {
         env: list[dict[str, Any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
 
-        # P0.32: peer URL env vars (mirrors LocalDeployer's pattern at
+        # peer URL env vars (mirrors LocalDeployer's pattern at
         # process_manager.impl.jac:138-139). Every microservice + gateway
         # pod gets `JAC_SV_<PEER>_URL` set to the K8s DNS URL of every
         # other peer in the routes table. sv_client._ensure_available
@@ -1205,7 +1205,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             env.append({"name": key, "value": self._peer_dns_url(peer_name)});
         }
 
-        # P0.8: database env injected by _provision_databases (Mongo +
+        # database env injected by _provision_databases (Mongo +
         # Redis URIs from K8s Secrets). Empty if databases disabled
         # or _provision_databases hasn't run yet (e.g. unit tests).
         db_env: list = getattr(self, "env_list", []) or [];
@@ -1219,8 +1219,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 continue;  # protected; users can't shadow the sentinel
             }
             if k.startswith("JAC_SV_") and k.endswith("_URL") {
-                # Protected: peer-URL env vars are computed by K-track
-                # from the routes table; users can't override them via
+                # Protected: peer-URL env vars are computed from the
+                # routes table; users can't override them via
                 # `[plugins.scale.microservices.services.<name>.env]`
                 # because a stale override would silently route
                 # sv-to-sv calls to the wrong place.
@@ -1231,7 +1231,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return env;
     }
 
-    """P0.8b: container resources with sane defaults so pods are
+    """Container resources with sane defaults so pods are
     Burstable QoS, not BestEffort.
 
     Without resource requests, K8s assigns BestEffort QoS class. Under
@@ -1266,12 +1266,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
       cpu_request = ""
     """
     def _build_resources(svc_cfg: dict[str, Any]) -> dict[str, Any] {
-        # Priority chain (P0.20): per-service > [plugins.scale.kubernetes]
-        # > P0.8b floor. Previously the kubernetes-block values were
-        # silently dropped on the floor and every service got the 1Gi
-        # P0.8b floor regardless of user config - real apps (jacBuilder)
-        # OOMKilled at first import. Empty string ("") still means
-        # "opt out of any request/limit" (back to BestEffort).
+        # Priority chain: per-service > [plugins.scale.kubernetes]
+        # > Burstable-QoS floor (128Mi/1Gi/50m). Empty string ("")
+        # still means "opt out of any request/limit" (back to BestEffort).
         cfg = self.k8s_config;
 
         memory_request_val = svc_cfg.get("memory_request");
@@ -1325,7 +1322,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return out;
     }
 
-    """K7: apply per-service `image_tag` override if set.
+    """Apply per-service `image_tag` override if set.
 
     Replaces the tag part of `repo/name:tag` URLs. Careful: registry
     hostnames can have ports like `myregistry.io:5000/name:tag`, so
@@ -1349,7 +1346,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return f"{image[:idx]}:{tag}";
     }
 
-    """K5 v2: readiness probe pointing at /healthz/ready.
+    """Readiness probe pointing at /healthz/ready.
 
     Gates Endpoints membership (kube-proxy traffic). Tight cadence so
     the pod is removed from rotation within ~10s of `is_draining()`
@@ -1359,11 +1356,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     out of Endpoints, well inside our default 60s graceful window.
     """
     def _build_readiness_probe -> dict[str, Any] {
-        # P0.20: read cadences from KubernetesConfig so jac.toml's
+        # Read cadences from KubernetesConfig so jac.toml's
         # `[plugins.scale.kubernetes].readiness_initial_delay` /
         # `readiness_period` actually take effect. Default values on
-        # KubernetesConfig (5/5) match the previous K-track hardcoded
-        # values, so no behavior change for users on default config.
+        # KubernetesConfig (5/5) match the previously-hardcoded values,
+        # so no behavior change for users on default config.
         cfg = self.k8s_config;
         return {
             "httpGet": {
@@ -1377,7 +1374,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K5 v2: liveness probe pointing at /healthz/live.
+    """Liveness probe pointing at /healthz/live.
 
     Gates pod restart. Liveness is deliberately MORE lenient than
     readiness because restarting a pod is expensive and can cascade
@@ -1388,7 +1385,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     + period give cold-start traffic a chance to settle.
     """
     def _build_liveness_probe -> dict[str, Any] {
-        # P0.20: read cadences from KubernetesConfig so jac.toml's
+        # read cadences from KubernetesConfig so jac.toml's
         # `[plugins.scale.kubernetes].liveness_initial_delay` /
         # `liveness_period` / `liveness_failure_threshold` take effect.
         # Real apps with slow first-boot (jacBuilder: jac compile +
@@ -1407,7 +1404,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K5: preStop hook that sleeps before SIGTERM-induced shutdown.
+    """PreStop hook that sleeps before SIGTERM-induced shutdown.
 
     Bridges the kube-proxy endpoint-propagation gap. Kubelet sends
     SIGTERM and updates the Endpoints object simultaneously, but
@@ -1423,8 +1420,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
     Returns a dict keyed by service name (plus `GATEWAY_NAME` for the
     gateway). Each value is a partial PodSpec (container list with
-    image, env, ports). K2 will lift these into full Deployment +
-    Service manifests.
+    image, env, ports). `generate_manifests` lifts these into full
+    Deployment + Service manifests.
 
     The image build path delegates to `_handle_image_registry` from
     `KubernetesTarget`, so `app_config.build = False` short-circuits to
@@ -1437,7 +1434,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         ms_cfg = get_scale_config().get_microservices_config();
         routes: dict[str, str] = ms_cfg.get("routes", {});
 
-        # P1.3: actionable error when the user runs `jac start --scale`
+        # actionable error when the user runs `jac start --scale`
         # against a project that has microservice mode enabled but no
         # services declared. Without this check, generation succeeds with
         # only a gateway pod and the user gets a confusing "what is this
@@ -1457,7 +1454,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         image: str = self._handle_image_registry(app_name, app_config);
 
-        # P0.6: fail loud on the python_image fallback in production
+        # fail loud on the python_image fallback in production
         # (`jac start --scale`) so users don't get a confusing silent
         # CrashLoopBackOff. The guard is opt-in via the `_K8S_GUARD_FALLBACK`
         # env var so existing tests (which use build=False with the fallback
@@ -1478,16 +1475,13 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     f"  - You're running `jac start --scale` from a fixture "
                     f"dir meant for the e2e script, not direct deploy.\n\n"
                     f"Fix:\n"
-                    f"  - For testing K-track itself, use the bundled script:\n"
+                    f"  - For testing the microservice deployer itself, use the bundled script:\n"
                     f"      bash jac-scale/scripts/k8s_microservice_real_e2e.sh\n"
                     f"  - For your own app, see the 'Pods deploy but "
                     f"kubectl logs shows jac: command not found' section "
                     f"in jac-scale/jac_scale/microservices/troubleshooting.md\n"
                     f"  - Pre-set [plugins.scale.kubernetes].docker_image_name "
-                    f"in jac.toml if you've already built an image.\n"
-                    f"  - Once P0.5 + the next PyPI publish ship, `jac start "
-                    f"--scale` will auto-build for local clusters with no "
-                    f"Dockerfile required."
+                    f"in jac.toml if you've already built an image."
                 );
             }
         }
@@ -1511,20 +1505,20 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Thin delegator to module-level `k8s_safe_name`.
 
     Kept as a method so existing tests calling `target._k8s_safe_name(...)`
-    keep working without churn. The K4 `KubernetesDeployer` uses the
+    keep working without churn. `KubernetesDeployer` uses the
     module-level helper directly to avoid needing a target instance.
     """
     def _k8s_safe_name(svc_name: str) -> str {
         return k8s_safe_name(svc_name);
     }
 
-    """Build a Deployment manifest wrapping the K1 pod-spec.
+    """Build a Deployment manifest wrapping the pod-spec.
 
-    `replicas: 1` is a placeholder; K6 will source per-service replica
-    counts from `[plugins.scale.microservices.services.NAME].replicas`.
-    Labels match the convention used by `KubernetesTarget` for the
-    monolith path so existing operator dashboards / Prometheus scrapes
-    discover microservice pods the same way.
+    Replica count comes from `[plugins.scale.microservices.services.NAME].replicas`,
+    defaulting to 1. Labels match the convention used by
+    `KubernetesTarget` for the monolith path so existing operator
+    dashboards / Prometheus scrapes discover microservice pods the
+    same way.
     """
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, Any]
@@ -1536,7 +1530,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "managed": "jac-scale",
             "jac-scale.role": role
         };
-        # K7: per-service replicas override; default 1.
+        # per-service replicas override; default 1.
         svc_cfg = self._service_config(svc_name);
         replicas: int = int(svc_cfg.get("replicas", 1));
         return {
@@ -1549,7 +1543,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             },
             "spec": {
                 "replicas": replicas,
-                # K5: surge a new pod before terminating an old one,
+                # surge a new pod before terminating an old one,
                 # never go below the current replica count during
                 # rollout. With drain + preStop on the pod side, this
                 # gives no-downtime rolling updates.
@@ -1566,9 +1560,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Build a ClusterIP Service manifest paired with the Deployment.
 
     Stays ClusterIP - inter-service traffic stays inside the cluster and
-    external traffic comes through the gateway via the NGINX Ingress
-    (added in K3). Selector matches the Deployment's pod labels so
-    kube-proxy routes to ready pods only.
+    external traffic comes through the gateway via the optional Ingress.
+    Selector matches the Deployment's pod labels so kube-proxy routes
+    to ready pods only.
     """
     def _build_service_manifest(svc_name: str) -> dict[str, Any] {
         k8s_name = self._k8s_safe_name(svc_name);
@@ -1578,7 +1572,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "selector": {"app": k8s_name},
             "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
         };
-        # P0.9: gateway-only sticky sessions for WebSocket traffic.
+        # gateway-only sticky sessions for WebSocket traffic.
         # Without sessionAffinity, kube-proxy round-robins TCP
         # connections across gateway replicas, which breaks WS reconnects
         # (the new connection lands on a different pod that doesn't have
@@ -1605,7 +1599,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K6: Build an HPA targeting the Deployment. K7 layers per-service
+    """Build an HPA targeting the Deployment. Per-service
     overrides at `[...services.NAME.hpa]`.
 
     Returns None when `hpa.enabled = false` so the user can opt OUT of
@@ -1651,7 +1645,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K10: Build an Ingress manifest pointing at the gateway Service.
+    """Build an Ingress manifest pointing at the gateway Service.
 
     Returns None unless `[plugins.scale.microservices.ingress].enabled
     = true` in jac.toml (default off so existing deployments don't grow
@@ -1737,8 +1731,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K6: Build a PodDisruptionBudget matching the Deployment pods.
-    K7 layers per-service overrides at `[...services.NAME.pdb]`.
+    """Build a PodDisruptionBudget matching the Deployment pods.
+    Per-service overrides at `[...services.NAME.pdb]`.
 
     Returns None when `pdb.enabled = false`. Useful for services that
     are explicitly OK with full eviction during node maintenance, or
@@ -1767,17 +1761,17 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """K9: pod entrypoint dispatch.
+    """Pod entrypoint dispatch.
 
     Each pod runs the same image with `JAC_SV_NAME` env set; this
     container command reads the env at runtime and routes:
-      __gateway__ -> `jac scale gateway`  (K9.2; gateway-only mode)
+      __gateway__ -> `jac scale gateway`  (gateway-only mode)
       <svc_name>  -> `jac start <name>.jac`
 
     `JAC_SV_SIBLING=1` is exported BEFORE the dispatch so the
     JacScalePlugin pre-hook skips its local-mode orchestrator block
-    (which would try to spawn peers). DNS-based peer URL resolution is
-    handled by K4's get_sv_registry hookimpl + K9.1's sv_service_call
+    (which would try to spawn peers). DNS-based peer URL resolution
+    is handled by the `get_sv_registry` hookimpl + `sv_service_call`
     routing through that hookspec.
 
     Returns the K8s container `command` + `args` pair. Image must have
@@ -1799,22 +1793,27 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Per-service pod-spec.
+    """Build the pod-spec for one entry in the routes table OR the
+    gateway. The gateway differs from a regular service only in
+    `svc_name` (== GATEWAY_NAME), which fans out into different
+    `_service_config`, `_build_env`, and `_shared_volumes_for_service`
+    lookups; the rest of the spec (probes, preStop, grace period,
+    SA, init containers, secrets envFrom) is identical, so the two
+    paths share one builder.
 
-    K2 wraps in Deployment metadata. K5 adds readiness/liveness probes,
-    preStop hook, and grace period. K7 layers per-service config:
-    image_tag override, resources, extra env vars. K9 sets command/args
-    so pods actually start the right service / gateway based on
-    JAC_SV_NAME.
+    Includes readiness/liveness probes, preStop hook, grace period,
+    per-service config (image_tag override, resources, extra env vars),
+    and the entrypoint command/args that select service vs gateway
+    mode at pod startup based on JAC_SV_NAME.
     """
-    def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
+    def _build_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
         # Container name must follow DNS-1123 label rules (no underscores).
-        # Use the K8s-safe form so e.g. `orders_app` -> `orders-app`. The
-        # JAC_SV_NAME env still carries the raw name; only the K8s
-        # resource identifier is normalized.
+        # Use the K8s-safe form so e.g. `orders_app` -> `orders-app` (and
+        # GATEWAY_NAME -> "gateway"). JAC_SV_NAME env still carries the
+        # raw name; only the K8s resource identifier is normalized.
         container: dict[str, Any] = {
             "name": k8s_safe_name(svc_name),
             "image": self._resolve_image(image, svc_cfg),
@@ -1830,20 +1829,21 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if resources {
             container["resources"] = resources;
         }
-        # P0.25: shared volumes from [[microservices.shared_volumes]].
+        # shared volumes from [[microservices.shared_volumes]].
         # Apps that pass file paths between services (e.g. jacBuilder's
         # IDE workspace) need the same mount on each pod that touches
-        # the data.
+        # the data. Gateway opts in by listing GATEWAY_NAME in the
+        # volume's `services` list.
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }
-        # P4.1: inject every key from the user-secret as an env var via
-        # envFrom (single line vs N per-key entries). The Secret is
-        # created in apply_manifests; envFrom is tolerant of forward
-        # references but we apply Secret BEFORE Deployment to avoid
-        # the "secret not found" startup error. Empty self.secrets =
-        # no envFrom (back-compat with apps that don't declare any).
+        # inject every key from the user-secret as an env var via
+        # envFrom (single line vs N per-key entries). Same Secret for
+        # services and gateway - SSO client_ids, JWT signing keys, etc.
+        # land in both. The Secret is created in apply_manifests BEFORE
+        # Deployments so envFrom doesn't trip "secret not found" at pod
+        # startup. Empty self.secrets => no envFrom (back-compat).
         if self.secrets {
             container["envFrom"] = [
                 {"secretRef": {"name": self._user_secret_name()}}
@@ -1851,12 +1851,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
         spec: dict[str, Any] = {
             "containers": [container],
-            # +5s cushion lets uvicorn finish exiting AFTER our drain
-            # middleware completes; without it, SIGKILL can arrive
-            # mid-drain.
-            "terminationGracePeriodSeconds": drain_t + 5
+            "terminationGracePeriodSeconds": drain_t + _UVICORN_EXIT_CUSHION_S
         };
-        # P0.30: opt into a pre-bound ServiceAccount when configured.
+        # opt into a pre-bound ServiceAccount when configured.
+        # Gateway and services share the same SA so any cluster API
+        # calls from gateway middleware inherit the same RBAC.
         sa_name = self._service_account_name();
         if sa_name {
             spec["serviceAccountName"] = sa_name;
@@ -1864,8 +1863,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         if shared_vols {
             spec["volumes"] = shared_vols;
         }
-        # P0.8: wait-for-Mongo / wait-for-Redis init containers so
-        # service pods don't crash-loop on startup before the database
+        # wait-for-Mongo / wait-for-Redis init containers so
+        # pods don't crash-loop on startup before the database
         # StatefulSet is reachable. Only attached when the parent's DB
         # provisioning ran (apply_manifests stage).
         init_containers = getattr(self, "_microservice_init_containers", []) or [];
@@ -1875,64 +1874,22 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return spec;
     }
 
-    """Gateway pod-spec. Same image as services; entrypoint selects
-    gateway-mode based on JAC_SV_NAME = GATEWAY_NAME. K7 lets the
-    user tune the gateway via [...services.__gateway__] just like a
-    regular service.
+    """Per-service pod-spec. Thin delegator to `_build_pod_spec`.
+
+    Kept as a separate method so existing tests that exercise
+    `_build_service_pod_spec` directly keep working without churn.
+    """
+    def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
+        return self._build_pod_spec(svc_name, image);
+    }
+
+    """Gateway pod-spec. Thin delegator to `_build_pod_spec`.
+
+    Same image as services; entrypoint selects gateway-mode based on
+    `JAC_SV_NAME == GATEWAY_NAME`. The user can tune the gateway via
+    `[...services.__gateway__]` just like a regular service.
     """
     def _build_gateway_pod_spec(image: str) -> dict[str, Any] {
-        drain_t: int = self._drain_timeout();
-        svc_cfg = self._service_config(GATEWAY_NAME);
-        entry = self._pod_entrypoint();
-        container: dict[str, Any] = {
-            "name": "gateway",
-            "image": self._resolve_image(image, svc_cfg),
-            "command": entry["command"],
-            "args": entry["args"],
-            "env": self._build_env(GATEWAY_NAME, svc_cfg),
-            "ports": [{"containerPort": self.k8s_config.container_port}],
-            "readinessProbe": self._build_readiness_probe(),
-            "livenessProbe": self._build_liveness_probe(),
-            "lifecycle": {"preStop": self._build_prestop_hook()}
-        };
-        resources = self._build_resources(svc_cfg);
-        if resources {
-            container["resources"] = resources;
-        }
-        # P0.25: shared volumes - gateway opts in by listing GATEWAY_NAME
-        # ("__gateway__") in a shared_volume's `services` list. Rare but
-        # supported (e.g. gateway needs to read the same project files
-        # for static-asset proxy use cases).
-        (shared_vols, shared_mounts) = self._shared_volumes_for_service(GATEWAY_NAME);
-        if shared_mounts {
-            container["volumeMounts"] = shared_mounts;
-        }
-        # P4.1: gateway also gets envFrom so secrets like SSO client_ids,
-        # JWT signing keys, public host URL etc. land in its env. Same
-        # Secret as services - no need for a separate gateway-only one.
-        if self.secrets {
-            container["envFrom"] = [
-                {"secretRef": {"name": self._user_secret_name()}}
-            ];
-        }
-        spec: dict[str, Any] = {
-            "containers": [container],
-            "terminationGracePeriodSeconds": drain_t + 5
-        };
-        # P0.30: gateway also runs as the configured SA so any cluster
-        # API calls from middleware (e.g. subdomain preview proxy that
-        # may resolve sandbox pod IPs) inherit the same RBAC.
-        sa_name = self._service_account_name();
-        if sa_name {
-            spec["serviceAccountName"] = sa_name;
-        }
-        if shared_vols {
-            spec["volumes"] = shared_vols;
-        }
-        init_containers = getattr(self, "_microservice_init_containers", []) or [];
-        if init_containers {
-            spec["initContainers"] = list(init_containers);
-        }
-        return spec;
+        return self._build_pod_spec(GATEWAY_NAME, image);
     }
 }

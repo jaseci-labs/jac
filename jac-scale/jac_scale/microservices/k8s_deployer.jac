@@ -6,16 +6,17 @@ than a localhost loopback. Selected at runtime via the `get_sv_registry`
 @hookimpl in plugin.jac when `KUBERNETES_SERVICE_HOST` is set (which
 K8s injects into every pod).
 
-K4 scope: `url_for` returning DNS. The lifecycle methods (`deploy_service`,
-`stop_service`, `restart_service`, `scale_service`, `status`, `get_logs`,
-`destroy_all`, `deploy_all`) are admin operations that map to kubectl
-calls - they're stubbed to no-op in K4 because:
+This adapter implements `url_for` (DNS resolution) only. The lifecycle
+methods (`deploy_service`, `stop_service`, `restart_service`,
+`scale_service`, `status`, `get_logs`, `destroy_all`, `deploy_all`)
+are admin operations that map to kubectl calls — currently stubbed
+to no-op because:
   - Deploy lifecycle is owned by `KubernetesMicroserviceTarget` at
-    `jac start --scale` time (K1-K3), not by this runtime adapter.
+    `jac start --scale` time, not by this runtime adapter.
   - In-cluster admin commands (`jac scale stop orders` from inside a
-    pod) are a future K-task; the K8s controller already handles
-    most of the equivalent semantics (a Deployment scale-to-0 stops
-    the service; a rollout-restart is a restart).
+    pod) are deferred; the K8s controller already handles most of
+    the equivalent semantics (a Deployment scale-to-0 stops the
+    service; a rollout-restart is a restart).
 """
 
 import logging;
@@ -23,6 +24,10 @@ import from typing { Any }
 import from jac_scale.microservices.deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
 import from jac_scale.microservices.k8s_target { k8s_safe_name }
+import from jac_scale.microservices._util {
+    k8s_service_dns_url,
+    DEFAULT_GATEWAY_PORT
+}
 
 glob logger = logging.getLogger(__name__);
 
@@ -47,7 +52,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     has registry: ServiceRegistry,
         target: str = "kubernetes",
         namespace: str = "default",
-        port: int = 8000;
+        port: int = DEFAULT_GATEWAY_PORT;
 
     """Return the DNS-based URL for a microservice.
 
@@ -59,9 +64,8 @@ obj KubernetesDeployer(ServiceDeployer) {
     `gateway.resolve_target_url` reads from that map.
     """
     def url_for(service_entry: ServiceEntry) -> str {
-        name = k8s_safe_name(service_entry.name);
-        return (
-            f"http://{name}-service.{self.namespace}" f".svc.cluster.local:{self.port}"
+        return k8s_service_dns_url(
+            k8s_safe_name(service_entry.name), self.namespace, self.port
         );
     }
 
@@ -94,11 +98,11 @@ obj KubernetesDeployer(ServiceDeployer) {
         return False;
     }
 
-    """Admin op stub. K6 will wire this to kubectl scale + HPA bounds."""
+    """Admin op stub. Future: kubectl scale + HPA-bound clamping."""
     def scale_service(name: str, replicas: int) -> bool {
         logger.warning(
             f"KubernetesDeployer.scale_service({name}, {replicas}): "
-            "admin op not yet wired. K6 adds HPA-aware scaling."
+            "admin op not yet wired."
         );
         return False;
     }
@@ -145,7 +149,9 @@ Namespace resolution order:
 
 Port comes from `[plugins.scale.microservices.gateway_port]` in jac.toml.
 """
-def build_k8s_registry(routes: dict[str, str], port: int = 8000) -> dict[str, str] {
+def build_k8s_registry(
+    routes: dict[str, str], port: int = DEFAULT_GATEWAY_PORT
+) -> dict[str, str] {
     import os;
     namespace: str = os.environ.get("POD_NAMESPACE", "");
     if not namespace {
@@ -161,9 +167,8 @@ def build_k8s_registry(routes: dict[str, str], port: int = 8000) -> dict[str, st
 
     registry: dict[str, str] = {};
     for svc_name in routes.keys() {
-        name = k8s_safe_name(svc_name);
-        registry[svc_name] = (
-            f"http://{name}-service.{namespace}.svc.cluster.local:{port}"
+        registry[svc_name] = k8s_service_dns_url(
+            k8s_safe_name(svc_name), namespace, port
         );
     }
     return registry;

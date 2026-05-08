@@ -13,8 +13,55 @@ import from jac_scale.microservices.service_registry {
 import from jac_scale.microservices.process_manager { ServiceProcessManager }
 import from jac_scale.microservices.local_deployer { LocalDeployer }
 import from jac_scale.microservices.gateway { MicroserviceGateway }
+import from jac_scale.microservices._util {
+    DEFAULT_GATEWAY_PORT,
+    DEFAULT_GATEWAY_HOST,
+    DEFAULT_CLIENT_DIST_DIR
+}
 
 glob logger = logging.getLogger(__name__);
+
+
+"""Parse `[[microservices.client.static_mounts]]` entries into the
+{url_prefix, local_path} dicts the gateway expects. Skips malformed
+entries (non-dict, missing fields, empty strings). Used by both
+`start_microservice_mode` (local) and `start_gateway_only` (K8s).
+"""
+def _parse_static_mounts(
+    client_config: dict[str, Any]
+) -> list[dict[str, str]] {
+    out: list[dict[str, str]] = [];
+    if not client_config {
+        return out;
+    }
+    raw = dict(client_config).get("static_mounts", []);
+    if not isinstance(raw, list) {
+        return out;
+    }
+    for entry in raw {
+        ed = dict(entry) if isinstance(entry, dict) else {};
+        url_prefix = str(ed.get("url_prefix", "")).strip();
+        local_path = str(ed.get("local_path", "")).strip();
+        if url_prefix and local_path {
+            out.append({"url_prefix": url_prefix, "local_path": local_path});
+        }
+    }
+    return out;
+}
+
+
+"""Read `client.dist_dir` from microservice config, defaulting to
+`.jac/client/dist`. Centralized so the local-mode banner, build path,
+and gateway-only mode all read it the same way.
+"""
+def _client_dist_dir(client_config: dict[str, Any]) -> str {
+    if not client_config {
+        return DEFAULT_CLIENT_DIST_DIR;
+    }
+    return str(
+        dict(client_config).get("dist_dir", DEFAULT_CLIENT_DIST_DIR)
+    );
+}
 
 """Build a ServiceRegistry from a `routes` map: {module_name: prefix}.
 
@@ -59,9 +106,7 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     client_entry: str = str(dict(client_config).get("entry", ""))
         if client_config
         else "";
-    client_dist: str = str(dict(client_config).get("dist_dir", ".jac/client/dist"))
-        if client_config
-        else ".jac/client/dist";
+    client_dist: str = _client_dist_dir(client_config);
 
     if client_entry {
         import subprocess;
@@ -137,12 +182,10 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     }
 
     # 4. Print startup banner
-    gateway_port: int = int(ms_config.get("gateway_port", 8000));
-    gateway_host: str = str(ms_config.get("gateway_host", "0.0.0.0"));
+    gateway_port: int = int(ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
+    gateway_host: str = str(ms_config.get("gateway_host", DEFAULT_GATEWAY_HOST));
     client_config = ms_config.get("client", {});
-    client_dist: str = str(dict(client_config).get("dist_dir", ".jac/client/dist"))
-        if client_config
-        else ".jac/client/dist";
+    client_dist: str = _client_dist_dir(client_config);
 
     console.print();
     console.print("[bold cyan]  Jac Microservice Mode[/bold cyan]");
@@ -165,31 +208,6 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
         console.print(f"  [bold]Static:[/bold] {client_dist}");
     }
 
-    # Read static_mounts (used in step 5 below) so we can show them in the
-    # banner. We re-read here for display only; the canonical list is built
-    # again in step 5 to keep that block self-contained.
-    _banner_mounts: list[Any] = [];
-    if client_config {
-        _raw = dict(client_config).get("static_mounts", []);
-        if isinstance(_raw, list) {
-            _banner_mounts = list(_raw);
-        }
-    }
-    if _banner_mounts {
-        console.print();
-        console.print("  [bold]Static mounts[/bold]");
-        console.print(f"  [dim]{'─' * 48}[/dim]");
-        for _m in _banner_mounts {
-            _md = dict(_m) if isinstance(_m, dict) else {};
-            _u = str(_md.get("url_prefix", ""));
-            _p = str(_md.get("local_path", ""));
-            if _u and _p {
-                console.print(f"  [cyan]→[/cyan] {_u:20s} -> {_p}");
-            }
-        }
-    }
-    console.print();
-
     # 5. Build optional static_mounts list. Each entry maps a URL prefix to
     #    a local directory the gateway should serve from BEFORE falling back
     #    to client_dist_dir. Configured as:
@@ -197,25 +215,21 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     #      url_prefix = "/static/assets"
     #      local_path = "assets"
     #    Tolerates missing/empty config — defaults to no extra mounts.
-    static_mounts: list[dict[str, str]] = [];
-    if client_config {
-        raw_mounts: list[Any] = [];
-        _raw = dict(client_config).get("static_mounts", []);
-        if isinstance(_raw, list) {
-            raw_mounts = list(_raw);
-        }
-        for entry in raw_mounts {
-            ed = dict(entry) if isinstance(entry, dict) else {};
-            url_prefix = str(ed.get("url_prefix", "")).strip();
-            local_path = str(ed.get("local_path", "")).strip();
-            if url_prefix and local_path {
-                static_mounts.append(
-                    {"url_prefix": url_prefix, "local_path": local_path,}
-                );
-                logger.info(f"Static mount: {url_prefix} -> {local_path}");
-            }
+    static_mounts: list[dict[str, str]] = _parse_static_mounts(client_config);
+    if static_mounts {
+        console.print();
+        console.print("  [bold]Static mounts[/bold]");
+        console.print(f"  [dim]{'─' * 48}[/dim]");
+        for mount in static_mounts {
+            console.print(
+                f"  [cyan]→[/cyan] {mount['url_prefix']:20s} -> {mount['local_path']}"
+            );
+            logger.info(
+                f"Static mount: {mount['url_prefix']} -> {mount['local_path']}"
+            );
         }
     }
+    console.print();
 
     # 6. Start gateway (blocking)
     gateway = MicroserviceGateway(
@@ -232,7 +246,7 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
 }
 
 
-"""K9: pre-mark every registry entry HEALTHY for K8s gateway mode.
+"""Pre-mark every registry entry HEALTHY for K8s gateway mode.
 
 In local mode, `LocalDeployer.deploy_service` flips an entry from
 REGISTERED to HEALTHY after a successful spawn. K8s mode skips the
@@ -254,17 +268,16 @@ def _mark_all_healthy_k8s(registry: ServiceRegistry) {
 }
 
 
-"""K9 follow-up: populate svc_entry.url from K4's DNS resolver.
+"""Populate svc_entry.url from the runtime DNS resolver.
 
 `handle_proxy` (path-prefix routing for `/api/<svc>/*`) uses
 `resolve_target_url` which calls `JacRuntime.get_sv_registry()` -
-that's K4's hookimpl returning the K8s DNS map at request time.
-Works in K8s.
+the hookimpl returns the K8s DNS map at request time. Works in K8s.
 
 `handle_builtin_passthrough` (built-in routes like `/user/login`,
 `/walker/*`, `/function/*`) is path-agnostic: it fans out to every
 registered service looking for the first non-404 response. But it
-uses `svc_entry.url` DIRECTLY, not the K4 hookspec. In K8s mode
+uses `svc_entry.url` DIRECTLY, not the hookspec. In K8s mode
 `build_registry` constructs entries with `url=""`, so the check
 `if svc_entry.url` skips every service and the gateway returns
 "Not found on any service" for every built-in route.
@@ -300,7 +313,7 @@ def _populate_k8s_urls(registry: ServiceRegistry) {
 }
 
 
-"""K9: start ONLY the gateway, no service spawning, no orchestrator.
+"""Start ONLY the gateway, no service spawning, no orchestrator.
 
 Used by the K8s gateway pod (where K8s manages the service pod
 lifecycle independently). Skips local-mode steps 1-4 (client build,
@@ -308,7 +321,7 @@ process start, health waits) since none apply when peers are real
 K8s pods reachable via DNS.
 
 URL resolution at runtime goes through `JacRuntime.get_sv_registry()`,
-which our K4 hookimpl turns into a DNS map when KUBERNETES_SERVICE_HOST
+which the hookimpl turns into a DNS map when KUBERNETES_SERVICE_HOST
 is set. So the gateway code is unchanged - only the registry source
 differs between local and K8s.
 """
@@ -320,38 +333,19 @@ def start_gateway_only(ms_config: dict[str, Any]) -> None {
 
     registry = build_registry(ms_config);
     _mark_all_healthy_k8s(registry);
-    # handle_proxy uses K4's get_sv_registry() at request time, but
+    # handle_proxy uses get_sv_registry() at request time, but
     # handle_builtin_passthrough (auth, walker, function fan-out)
     # reads svc_entry.url directly and skips entries with empty url.
     # Populate from the same DNS map so built-in routes work in K8s.
     _populate_k8s_urls(registry);
 
-    gateway_port = int(ms_config.get("gateway_port", 8000));
-    gateway_host = ms_config.get("gateway_host", "0.0.0.0");
+    gateway_port = int(ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
+    gateway_host = ms_config.get("gateway_host", DEFAULT_GATEWAY_HOST);
 
     client_config = ms_config.get("client", {});
-    client_dist: str = str(dict(client_config).get("dist_dir", ".jac/client/dist"))
-        if client_config
-        else ".jac/client/dist";
+    client_dist: str = _client_dist_dir(client_config);
 
-    static_mounts: list[dict[str, str]] = [];
-    if client_config {
-        raw_mounts: list[Any] = [];
-        _raw = dict(client_config).get("static_mounts", []);
-        if isinstance(_raw, list) {
-            raw_mounts = list(_raw);
-        }
-        for entry in raw_mounts {
-            ed = dict(entry) if isinstance(entry, dict) else {};
-            url_prefix = str(ed.get("url_prefix", "")).strip();
-            local_path = str(ed.get("local_path", "")).strip();
-            if url_prefix and local_path {
-                static_mounts.append(
-                    {"url_prefix": url_prefix, "local_path": local_path,}
-                );
-            }
-        }
-    }
+    static_mounts: list[dict[str, str]] = _parse_static_mounts(client_config);
 
     gateway = MicroserviceGateway(
         registry=registry,

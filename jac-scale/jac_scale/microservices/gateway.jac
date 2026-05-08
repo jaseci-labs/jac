@@ -12,6 +12,11 @@ import from jac_scale.microservices.service_registry {
     ServiceStatus
 }
 import from jac_scale.microservices.impl.http_forward { raw_forward }
+import from jac_scale.microservices._util {
+    DEFAULT_GATEWAY_PORT,
+    DEFAULT_GATEWAY_HOST,
+    DEFAULT_CLIENT_DIST_DIR
+}
 import from typing { Any }
 
 glob logger = logging.getLogger(__name__),
@@ -26,9 +31,9 @@ dispatcher.
 obj MicroserviceGateway {
     has registry: ServiceRegistry,
         app: FastAPI | None = None,
-        port: int = 8000,
-        host: str = "0.0.0.0",
-        client_dist_dir: str = ".jac/client/dist",
+        port: int = DEFAULT_GATEWAY_PORT,
+        host: str = DEFAULT_GATEWAY_HOST,
+        client_dist_dir: str = DEFAULT_CLIENT_DIST_DIR,
         admin_dist_dir: str = ".jac/admin",
         # Optional declarative static mounts: each entry is
         # {"url_prefix": "/foo", "local_path": "/abs/or/rel/path"}.

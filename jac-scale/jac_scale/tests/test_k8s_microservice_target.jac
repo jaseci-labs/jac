@@ -1,14 +1,14 @@
-"""Tests for KubernetesMicroserviceTarget (K1 scope - dispatch + scaffold).
+"""Tests for KubernetesMicroserviceTarget.
 
-K1 covers:
+Covers:
   - Class instantiates and inherits from KubernetesTarget
   - DeploymentTargetFactory dispatches "kubernetes-microservice" to it
   - generate_service_pod_specs iterates configured routes + adds gateway
   - Each pod-spec carries the right image and JAC_SV_NAME env
   - deploy() returns a successful DeploymentResult with pod_specs in details
-
-K2 will add manifest-shape tests; K3 will add kubectl interaction tests;
-K5 will add rolling-deploy tests.
+  - Manifest shape (Deployment, Service, HPA, PDB, Ingress)
+  - apply_manifests + destroy lifecycle (mocked kube clients)
+  - Rolling-deploy correctness (probes + grace + preStop)
 """
 
 import from typing { Any }
@@ -47,10 +47,10 @@ import jac_scale.microservices.k8s_target as k8s_mod;
 to undo the patches. Used by deploy() / apply_manifests() / destroy()
 tests so they don't need a live cluster.
 
-K6 added AutoscalingV2Api (HPA) and PolicyV1Api (PDB) usage; they're
-mocked through the shared `mock_client` so existing K3 tests still
-work and new K6 tests can read `mock_client.AutoscalingV2Api.return_value`
-when they need to assert against HPA/PDB calls.
+AutoscalingV2Api (HPA) and PolicyV1Api (PDB) are mocked through the
+shared `mock_client` so existing apply/destroy tests still work and
+HPA/PDB-specific tests can read `mock_client.AutoscalingV2Api.return_value`
+when they need to assert against autoscaling calls.
 """
 def _install_k8s_mocks -> tuple[Any, Any, Any] {
     mock_apps_v1 = unittest.mock.MagicMock();
@@ -82,8 +82,8 @@ def _install_k8s_mocks -> tuple[Any, Any, Any] {
 }
 
 
-"""Variant that also returns the AutoscalingV2 + PolicyV1 mocks for K6 tests."""
-def _install_k8s_mocks_with_k6 -> tuple[Any, Any, Any, Any, Any] {
+"""Variant that also returns the AutoscalingV2 + PolicyV1 mocks for HPA/PDB tests."""
+def _install_k8s_mocks_with_autoscaling -> tuple[Any, Any, Any, Any, Any] {
     mock_apps_v1 = unittest.mock.MagicMock();
     mock_core_v1 = unittest.mock.MagicMock();
     mock_autoscaling_v2 = unittest.mock.MagicMock();
@@ -115,8 +115,8 @@ def _install_k8s_mocks_with_k6 -> tuple[Any, Any, Any, Any, Any] {
 }
 
 
-"""Variant that ALSO returns the NetworkingV1 mock for K10 tests."""
-def _install_k8s_mocks_with_k10 -> tuple[Any, Any, Any, Any, Any, Any] {
+"""Variant that ALSO returns the NetworkingV1 mock for Ingress tests."""
+def _install_k8s_mocks_with_ingress -> tuple[Any, Any, Any, Any, Any, Any] {
     mock_apps_v1 = unittest.mock.MagicMock();
     mock_core_v1 = unittest.mock.MagicMock();
     mock_autoscaling_v2 = unittest.mock.MagicMock();
@@ -156,7 +156,7 @@ def _install_k8s_mocks_with_k10 -> tuple[Any, Any, Any, Any, Any, Any] {
 
 
 # =============================================================================
-# Pod-spec generation (the K1 core)
+# Pod-spec generation
 # =============================================================================
 test "generate_service_pod_specs emits one entry per route + gateway" {
     import jac_scale.config_loader as cfg_mod;
@@ -243,9 +243,9 @@ test "each pod-spec carries JAC_SV_NAME and the same image" {
 
 
 # NOTE: the old "empty routes still produces a gateway pod-spec" test
-# has been superseded by the P1.3 assertion at the end of this file
-# ("empty routes produces actionable error, not silent gateway-only
-# deploy"). Silently producing a gateway-only spec was the wrong
+# has been superseded by the actionable-error assertion at the end of
+# this file ("empty routes produces actionable error, not silent
+# gateway-only deploy"). Silently producing a gateway-only spec was the wrong
 # behavior - users running `jac start --scale` against a misconfigured
 # project should get a fail-fast error pointing at the exact jac.toml
 # section to fix, not a confusing "gateway routes to nothing" deploy.
@@ -279,7 +279,7 @@ test "container port respects k8s_config.container_port override" {
 
 
 # =============================================================================
-# Inheritance + factory dispatch (the K1 wiring)
+# Inheritance + factory dispatch
 # =============================================================================
 test "KubernetesMicroserviceTarget is a KubernetesTarget" {
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -299,7 +299,8 @@ test "DeploymentTargetFactory dispatches kubernetes-microservice" {
 
 
 test "DeploymentTargetFactory still dispatches plain kubernetes (monolith)" {
-    # Verify K1 didn't accidentally hijack the monolith path.
+    # Verify the microservice dispatch didn't accidentally hijack
+    # the monolith path.
     config = {"app_name": "demo", "namespace": "default"};
     target = DeploymentTargetFactory.create("kubernetes", config);
     assert isinstance(target, KubernetesTarget);
@@ -375,7 +376,7 @@ test "deploy returns failure DeploymentResult on generation error" {
 
 
 # =============================================================================
-# K2 - manifest generation (Deployment + ClusterIP Service per service)
+# manifest generation (Deployment + ClusterIP Service per service)
 # =============================================================================
 test "_k8s_safe_name maps GATEWAY_NAME to a DNS-1123 string" {
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -412,7 +413,7 @@ test "_build_deployment_manifest wraps pod-spec in Deployment template" {
     assert dep["metadata"]["namespace"] == "prod";
     assert dep["metadata"]["labels"]["app"] == "orders";
     assert dep["metadata"]["labels"]["jac-scale.role"] == "microservice";
-    assert dep["spec"]["replicas"] == 1;  # K6 will make configurable
+    assert dep["spec"]["replicas"] == 1;  # default; per-service config overrides
     assert dep["spec"]["selector"]["matchLabels"] == {"app": "orders"};
     # The pod-spec lives at spec.template.spec - must match exactly.
     assert dep["spec"]["template"]["spec"] == pod_spec;
@@ -454,15 +455,15 @@ test "_build_service_manifest emits ClusterIP with matching selector" {
     assert port["port"] == 9090;
     assert port["targetPort"] == 9090;
     assert port["protocol"] == "TCP";
-    # P0.9: regular service pods stay round-robin (stateless wrt
+    # regular service pods stay round-robin (stateless wrt
     # connections; each request through the gateway is independent).
     # Only the gateway gets sticky sessions - see the next test.
     assert "sessionAffinity" not in svc["spec"];
 }
 
 
-test "P0.8: _provision_databases is no-op without _JAC_SCALE_AUTO_BUILD env" {
-    # Same opt-in pattern as P0.5/P0.6. Tests calling deploy() directly
+_provision_databases is no-op without _JAC_SCALE_AUTO_BUILD env" {
+    # Same opt-in pattern as the auto-build path. Tests calling deploy() directly
     # don't set the env var, so DB provisioning skips the real K8s API
     # calls (which would need a live cluster + actually create
     # StatefulSets). env_list + init_containers are reset to empty.
@@ -488,7 +489,7 @@ test "P0.8: _provision_databases is no-op without _JAC_SCALE_AUTO_BUILD env" {
 }
 
 
-test "P0.8: pod-spec has no init_containers when _provision_databases didn't run" {
+test "Pod-spec has no init_containers when _provision_databases didn't run" {
     # Tests asserting manifest shape don't run _provision_databases,
     # so pod-specs must NOT carry initContainers (K8s would 422 on an
     # empty list otherwise; ours uses getattr with default []).
@@ -500,7 +501,7 @@ test "P0.8: pod-spec has no init_containers when _provision_databases didn't run
 }
 
 
-test "P0.8: pod-spec includes init_containers when populated" {
+test "Pod-spec includes init_containers when populated" {
     # Simulates the post-_provision_databases state: the wait-for-Mongo
     # init container is set on the target, and pod-specs must include
     # it so service pods don't crash-loop before Mongo is reachable.
@@ -519,7 +520,7 @@ test "P0.8: pod-spec includes init_containers when populated" {
 }
 
 
-test "P0.8: _build_env merges database env between JAC_SV_NAME and user env" {
+_build_env merges database env between JAC_SV_NAME and user env" {
     # Order matters:
     #   1. JAC_SV_NAME (sentinel - never overrideable)
     #   2. Database env (MONGODB_URI / REDIS_URL via secretKeyRef)
@@ -569,7 +570,7 @@ test "P0.8: _build_env merges database env between JAC_SV_NAME and user env" {
 }
 
 
-test "P0.9: gateway Service has ClientIP sticky sessions for WebSocket" {
+test "Gateway Service has ClientIP sticky sessions for WebSocket" {
     # Without sessionAffinity, kube-proxy round-robins TCP connections
     # across gateway replicas. WebSocket reconnects then land on a
     # different pod that doesn't have the existing session state -
@@ -604,7 +605,7 @@ test "generate_manifests produces deployments + services per pod-spec" {
         ac = AppConfig(code_folder=".", app_name="demo", build=False);
         bundle = target.generate_manifests(ac);
 
-        # Bundle has all keyed sections (K2 + K6).
+        # Bundle has all keyed sections.
         # Use a superset assertion so additions in later K-tasks don't
         # break this test.
         for required in ("deployments", "services", "pod_specs") {
@@ -638,7 +639,7 @@ test "generate_manifests produces deployments + services per pod-spec" {
 }
 
 
-test "deploy returns K3 applied bundle in details" {
+test "deploy returns applied bundle in details" {
     import jac_scale.config_loader as cfg_mod;
 
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -656,12 +657,12 @@ test "deploy returns K3 applied bundle in details" {
         result = target.deploy(ac);
 
         assert result.success , f"deploy failed: {result.message}";
-        # K2 bundle preserved in details (K1's pod_specs is one section).
+        # Bundle preserved in details (pod_specs is one section).
         details: dict[str, Any] = result.details;
         assert "deployments" in details;
         assert "services" in details;
         assert "pod_specs" in details;
-        assert (result.message or "").startswith("K3 applied");
+        assert (result.message or "").startswith("Applied");
     } finally {
         setattr(cfg_mod, "get_scale_config", original);
         k8s_restore();
@@ -670,7 +671,7 @@ test "deploy returns K3 applied bundle in details" {
 
 
 # =============================================================================
-# K3 - apply_manifests + destroy lifecycle
+# apply_manifests + destroy lifecycle
 # =============================================================================
 test "apply_manifests creates Service then Deployment per entry" {
     target = KubernetesMicroserviceTarget(
@@ -911,7 +912,7 @@ test "deploy surfaces apply failure as DeploymentResult success=False" {
 
 
 # =============================================================================
-# K4 - runtime DNS adapter (KubernetesDeployer + get_sv_registry hookimpl)
+# runtime DNS adapter (KubernetesDeployer + get_sv_registry hookimpl)
 # =============================================================================
 import from jac_scale.microservices.deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry {
@@ -1127,7 +1128,7 @@ test "get_sv_registry hookimpl falls back gracefully when config read fails" {
 
 
 # =============================================================================
-# K5 - rolling-deploy correctness (RollingUpdate + probes + grace + preStop)
+# rolling-deploy correctness (RollingUpdate + probes + grace + preStop)
 # =============================================================================
 test "Deployment carries RollingUpdate strategy with maxSurge=1 maxUnavailable=0" {
     target = KubernetesMicroserviceTarget(
@@ -1141,14 +1142,14 @@ test "Deployment carries RollingUpdate strategy with maxSurge=1 maxUnavailable=0
     # maxSurge=1 lets one new pod come up BEFORE an old one terminates;
     # maxUnavailable=0 ensures we never go below current replicas during
     # the rollout. Together: zero-downtime deploys assuming probes +
-    # preStop are configured (which K5 also does on the pod spec).
+    # preStop are configured on the pod spec.
     assert strategy["rollingUpdate"]["maxSurge"] == 1;
     assert strategy["rollingUpdate"]["maxUnavailable"] == 0;
 }
 
 
 test "service pod-spec readinessProbe hits /healthz/ready" {
-    # K5 v2: readiness gates Endpoints membership. /healthz/ready returns
+    # readiness gates Endpoints membership. /healthz/ready returns
     # 503 during drain so kube-proxy stops routing to the pod within
     # 1-2 probe periods (gives in-flight requests time to finish).
     target = KubernetesMicroserviceTarget(
@@ -1169,7 +1170,7 @@ test "service pod-spec readinessProbe hits /healthz/ready" {
 
 
 test "service pod-spec livenessProbe hits /healthz/live (more lenient)" {
-    # K5 v2: liveness gates pod restart. Lenient (15s initial, 10s
+    # liveness gates pod restart. Lenient (15s initial, 10s
     # period) because restart is expensive and a too-strict liveness
     # can cascade. /healthz/live deliberately checks nothing other
     # than dispatcher responsiveness so transient dependency blips
@@ -1240,7 +1241,7 @@ test "pod-spec terminationGracePeriodSeconds tracks drain_timeout config overrid
 }
 
 
-test "gateway pod-spec gets the same K5 wires (probes + grace + preStop)" {
+test "gateway pod-spec gets the same wires (probes + grace + preStop)" {
     # The gateway is a pod too - it also needs rolling-deploy correctness
     # so deploys of the gateway itself don't drop user-facing requests.
     target = KubernetesMicroserviceTarget(
@@ -1281,7 +1282,7 @@ test "_drain_timeout falls back to 10s default on config read failure" {
 
 
 # =============================================================================
-# K6 - HPA + PodDisruptionBudget per service
+# HPA + PodDisruptionBudget per service
 # =============================================================================
 test "_build_hpa_manifest targets the Deployment with conservative defaults" {
     target = KubernetesMicroserviceTarget(
@@ -1300,7 +1301,7 @@ test "_build_hpa_manifest targets the Deployment with conservative defaults" {
     assert ref["name"] == "orders-deployment";
     assert ref["apiVersion"] == "apps/v1";
 
-    # K6 conservative defaults; K7 will source from per-service config.
+    # Conservative defaults; per-service config can override.
     assert hpa["spec"]["minReplicas"] == 1;
     assert hpa["spec"]["maxReplicas"] == 3;
     cpu_metric = hpa["spec"]["metrics"][0];
@@ -1322,7 +1323,7 @@ test "_build_pdb_manifest selects matching pods with maxUnavailable=1" {
     assert pdb["metadata"]["namespace"] == "prod";
     # Selector MUST match the Deployment's pod template labels.
     assert pdb["spec"]["selector"] == {"matchLabels": {"app": "orders"}};
-    # K6 conservative default: at most 1 voluntary disruption at a time.
+    # Conservative default: at most 1 voluntary disruption at a time.
     assert pdb["spec"]["maxUnavailable"] == 1;
 }
 
@@ -1376,7 +1377,7 @@ test "apply_manifests applies HPAs and PDBs after Deployments" {
         config=KubernetesConfig(app_name="demo", namespace="prod")
     );
     (apps_v1, core_v1, autoscaling_v2, policy_v1, restore) = (
-        _install_k8s_mocks_with_k6()
+        _install_k8s_mocks_with_autoscaling()
     );
 
     bundle = {
@@ -1408,7 +1409,7 @@ test "apply_manifests creates new HPA + PDB on 404" {
         config=KubernetesConfig(app_name="demo", namespace="prod")
     );
     (apps_v1, core_v1, autoscaling_v2, policy_v1, restore) = (
-        _install_k8s_mocks_with_k6()
+        _install_k8s_mocks_with_autoscaling()
     );
 
     orig_api_exc = getattr(k8s_mod, "ApiException");
@@ -1448,7 +1449,7 @@ test "destroy also tears down HPAs and PDBs by label" {
         config=KubernetesConfig(app_name="demo", namespace="prod")
     );
     (apps_v1, core_v1, autoscaling_v2, policy_v1, restore) = (
-        _install_k8s_mocks_with_k6()
+        _install_k8s_mocks_with_autoscaling()
     );
     core_v1.list_namespaced_service.return_value = unittest.mock.MagicMock(items=[]);
 
@@ -1471,7 +1472,7 @@ test "destroy also tears down HPAs and PDBs by label" {
 
 
 # =============================================================================
-# K7 - per-service config layering
+# per-service config layering
 # =============================================================================
 """Helper: stub get_scale_config to return a fixed services config.
 
@@ -1495,7 +1496,7 @@ def _with_services_config(
 }
 
 
-"""P0.25 helper: stub microservices config with shared_volumes entries.
+"""Helper: stub microservices config with shared_volumes entries.
 
 Each entry mirrors the [[plugins.scale.microservices.shared_volumes]]
 schema so tests can assert against realistic configs.
@@ -1599,8 +1600,8 @@ test "container resources reflect cpu/memory request and limit overrides" {
 }
 
 
-test "P0.8b: container has DEFAULT resources when no overrides set (Burstable QoS)" {
-    # P0.8b: Without resource requests, K8s assigns BestEffort QoS class
+test "Container has DEFAULT resources when no overrides set (Burstable QoS)" {
+    # Without resource requests, K8s assigns BestEffort QoS class
     # which is the FIRST to be evicted under memory pressure. We saw this
     # bite hard on a 7.6GB EC2 box where transient compile peaks caused
     # a ~25min eviction storm before pods stabilized. Sane defaults bump
@@ -1623,7 +1624,7 @@ test "P0.8b: container has DEFAULT resources when no overrides set (Burstable Qo
 }
 
 
-test "P0.8b: empty-string user override opts back into BestEffort" {
+test "Empty-string user override opts back into BestEffort" {
     # Escape hatch for users who explicitly want BestEffort QoS (e.g.
     # dev clusters where you don't care about resource accounting).
     # Set every field to empty string to opt out of every default.
@@ -1671,15 +1672,16 @@ test "container resources can be partial (user requests, no limits)" {
 
 
 # =============================================================================
-# P0.20: [plugins.scale.kubernetes] resource + probe values must reach the
+# [plugins.scale.kubernetes] resource + probe values must reach the
 # microservice manifest (used to be silently dropped on the floor)
 # =============================================================================
 
-test "P0.20: resources fall back to KubernetesConfig before P0.8b floor" {
+test "Resources fall back to KubernetesConfig before Burstable QoS floor" {
     # Without this, jac.toml's [plugins.scale.kubernetes].memory_limit was
-    # silently ignored - every service got the 1Gi P0.8b floor regardless
-    # of what the user configured. Real apps (jacBuilder) OOMKilled at
-    # first import. Priority: per-service > kubernetes block > P0.8b floor.
+    # silently ignored - every service got the 1Gi Burstable-QoS floor
+    # regardless of what the user configured. Real apps (jacBuilder)
+    # OOMKilled at first import. Priority: per-service > kubernetes
+    # block > Burstable-QoS floor.
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(
             app_name="demo",
@@ -1693,7 +1695,7 @@ test "P0.20: resources fall back to KubernetesConfig before P0.8b floor" {
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
         resources = spec["containers"][0]["resources"];
-        # k8s_config values should land - NOT the P0.8b floor.
+        # k8s_config values should land - NOT the Burstable-QoS floor.
         assert resources["requests"]["memory"] == "2Gi" , (
             f"expected 2Gi from k8s_config, got {resources['requests']['memory']}"
         );
@@ -1708,7 +1710,7 @@ test "P0.20: resources fall back to KubernetesConfig before P0.8b floor" {
 }
 
 
-test "P0.20: per-service overrides win over KubernetesConfig values" {
+test "Per-service overrides win over KubernetesConfig values" {
     # Per-service config is the most-specific signal - must beat
     # the project-wide kubernetes block.
     target = KubernetesMicroserviceTarget(
@@ -1733,16 +1735,16 @@ test "P0.20: per-service overrides win over KubernetesConfig values" {
 }
 
 
-test "P0.20: P0.8b floor still applies when neither per-service nor cfg set" {
+test "Burstable-QoS floor still applies when neither per-service nor cfg set" {
     # Compatibility check: existing apps with no resource config at any
-    # level should still get the Burstable QoS floor (P0.8b behavior).
+    # level should still get the Burstable-QoS floor.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     # KubernetesConfig defaults: memory_request/limit/cpu_request all None
     (_cfg, restore) = _with_services_config({});
     try {
         spec = target._build_service_pod_spec("orders", "demo:latest");
         resources = spec["containers"][0]["resources"];
-        # P0.8b defaults
+        # Burstable-QoS defaults
         assert resources["requests"]["memory"] == "128Mi";
         assert resources["requests"]["cpu"] == "50m";
         assert resources["limits"]["memory"] == "1Gi";
@@ -1752,7 +1754,7 @@ test "P0.20: P0.8b floor still applies when neither per-service nor cfg set" {
 }
 
 
-test "P0.20: empty-string per-service override still trumps KubernetesConfig" {
+test "Empty-string per-service override still trumps KubernetesConfig" {
     # The `""` opt-out should win over a non-empty kubernetes block too -
     # otherwise users who set memory_limit at the project level lose the
     # ability to opt one service back into BestEffort.
@@ -1776,7 +1778,7 @@ test "P0.20: empty-string per-service override still trumps KubernetesConfig" {
 }
 
 
-test "P0.20: readiness probe uses KubernetesConfig values" {
+test "Readiness probe uses KubernetesConfig values" {
     # Real apps with slow first boot (jac compile + heavy imports) need
     # to bump the probe windows. jac.toml's [plugins.scale.kubernetes].
     # readiness_initial_delay was previously dropped on the floor.
@@ -1802,7 +1804,7 @@ test "P0.20: readiness probe uses KubernetesConfig values" {
 }
 
 
-test "P0.20: liveness probe uses KubernetesConfig values" {
+test "Liveness probe uses KubernetesConfig values" {
     # Same story as readiness, plus failureThreshold for apps that
     # legitimately stall (LLM streaming, long-running compiles).
     target = KubernetesMicroserviceTarget(
@@ -1825,7 +1827,7 @@ test "P0.20: liveness probe uses KubernetesConfig values" {
 }
 
 
-test "P0.20: gateway pod-spec also reads probes from KubernetesConfig" {
+test "Gateway pod-spec also reads probes from KubernetesConfig" {
     # The gateway gets the same probe wires as services (it's a pod
     # too). Without honoring k8s_config, gateway boots would hit the
     # same too-aggressive default probes.
@@ -2035,7 +2037,7 @@ test "_service_config returns {} on read failure (graceful)" {
 
 
 # =============================================================================
-# K9 - pod entrypoint dispatch (command + args on container spec)
+# pod entrypoint dispatch (command + args on container spec)
 # =============================================================================
 test "service pod-spec carries command + args that exec jac start" {
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -2117,7 +2119,7 @@ test "_pod_entrypoint command/args are stable (regression guard)" {
 
 
 # =============================================================================
-# K10 - optional Ingress manifest pointing at the gateway
+# optional Ingress manifest pointing at the gateway
 # =============================================================================
 test "_build_ingress_manifest returns None when not enabled" {
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -2251,7 +2253,7 @@ test "apply_manifests applies Ingress when present" {
         config=KubernetesConfig(app_name="demo", namespace="prod")
     );
     (apps_v1, core_v1, autoscaling_v2, policy_v1, networking_v1, restore) = (
-        _install_k8s_mocks_with_k10()
+        _install_k8s_mocks_with_ingress()
     );
 
     ingress = target._build_ingress_manifest(
@@ -2284,7 +2286,7 @@ test "apply_manifests skips Ingress when bundle has none" {
         config=KubernetesConfig(app_name="demo", namespace="prod")
     );
     (apps_v1, core_v1, autoscaling_v2, policy_v1, networking_v1, restore) = (
-        _install_k8s_mocks_with_k10()
+        _install_k8s_mocks_with_ingress()
     );
 
     bundle = {
@@ -2313,7 +2315,7 @@ test "destroy also tears down Ingresses by label" {
         config=KubernetesConfig(app_name="demo", namespace="prod")
     );
     (apps_v1, core_v1, autoscaling_v2, policy_v1, networking_v1, restore) = (
-        _install_k8s_mocks_with_k10()
+        _install_k8s_mocks_with_ingress()
     );
     core_v1.list_namespaced_service.return_value = unittest.mock.MagicMock(items=[]);
 
@@ -2330,9 +2332,9 @@ test "destroy also tears down Ingresses by label" {
 
 
 # =============================================================================
-# P1.3: helpful error messages on common new-user K8s failures
+# helpful error messages on common new-user K8s failures
 # =============================================================================
-test "P0.5: _handle_image_registry override uses auto-build when env var is set" {
+_handle_image_registry override uses auto-build when env var is set" {
     # When _JAC_SCALE_AUTO_BUILD=1 is set (production path), the override
     # should hand off to auto_build_and_distribute and return its image
     # tag. When the env var is unset (test default), it should fall
@@ -2375,7 +2377,7 @@ test "P0.5: _handle_image_registry override uses auto-build when env var is set"
 }
 
 
-test "P0.5: _handle_image_registry honors pre-set docker_image_name (no rebuild)" {
+_handle_image_registry honors pre-set docker_image_name (no rebuild)" {
     # If the user explicitly set [plugins.scale.kubernetes].docker_image_name
     # to something non-default, trust they pre-built it - don't waste time
     # auto-building. Only the default `<app_name>:latest` triggers auto-
@@ -2410,7 +2412,7 @@ test "P0.5: _handle_image_registry honors pre-set docker_image_name (no rebuild)
 }
 
 
-test "P0.6: python_image fallback raises actionable error when guard env is set" {
+test "Python_image fallback raises actionable error when guard env is set" {
     # Regression: KubernetesTarget._handle_image_registry returns
     # k8s_config.python_image (typically "python:3.12-slim") when build
     # is False or the registry isn't configured. For microservice mode
@@ -2463,7 +2465,7 @@ test "P0.6: python_image fallback raises actionable error when guard env is set"
 }
 
 
-test "P0.6: fallback image does NOT raise when guard env is unset (back-compat)" {
+test "Fallback image does NOT raise when guard env is unset (back-compat)" {
     # Existing tests use build=False to assert manifest shape without
     # actually building anything; they rely on the python_image fallback
     # being silently accepted. The guard must be opt-in to keep that path
@@ -2498,7 +2500,7 @@ test "P0.6: fallback image does NOT raise when guard env is unset (back-compat)"
 }
 
 
-test "P1.3: empty routes produces actionable error, not silent gateway-only deploy" {
+test "Empty routes produces actionable error, not silent gateway-only deploy" {
     # Without this guard, the user gets a deploy with just a gateway pod
     # routing to nothing. The error message must point at the exact
     # jac.toml section so they can fix it without paging through docs.
@@ -2528,12 +2530,12 @@ test "P1.3: empty routes produces actionable error, not silent gateway-only depl
 
 
 # =============================================================================
-# P4.1: K8s Secrets injection for user [plugins.scale.secrets]
+# K8s Secrets injection for user [plugins.scale.secrets]
 # =============================================================================
 
-test "P4.1: _build_user_secret_manifest produces Opaque Secret with stringData" {
+_build_user_secret_manifest produces Opaque Secret with stringData" {
     # Mirrors what the parent KubernetesTarget already does for monolith
-    # deploys. The K-track subclass had the gap - it set self.secrets
+    # deploys. Thesubclass had the gap - it set self.secrets
     # but never created a K8s Secret nor wired envFrom into pod specs,
     # so jacBuilder's 17 secrets sat in memory and never reached pods.
     target = KubernetesMicroserviceTarget(
@@ -2563,7 +2565,7 @@ test "P4.1: _build_user_secret_manifest produces Opaque Secret with stringData" 
 }
 
 
-test "P4.1: _build_user_secret_manifest returns None when self.secrets empty" {
+_build_user_secret_manifest returns None when self.secrets empty" {
     # Apps with no [plugins.scale.secrets] block must NOT get an empty
     # Secret object created (would clutter the namespace + confuse
     # operators looking at `kubectl get secrets`).
@@ -2581,7 +2583,7 @@ test "P4.1: _build_user_secret_manifest returns None when self.secrets empty" {
 }
 
 
-test "P4.1: pod-spec injects envFrom secretRef when user secrets present" {
+test "Pod-spec injects envFrom secretRef when user secrets present" {
     # All keys of <app>-secrets become env vars in the container - one
     # envFrom entry beats N per-key env entries (smaller spec, simpler
     # to update when secret values change without redeploying pods).
@@ -2603,9 +2605,9 @@ test "P4.1: pod-spec injects envFrom secretRef when user secrets present" {
 }
 
 
-test "P4.1: pod-spec OMITS envFrom when self.secrets empty" {
-    # Back-compat: pod specs for apps without secrets stay byte-identical
-    # to the pre-P4.1 shape - no envFrom field at all.
+test "Pod-spec OMITS envFrom when self.secrets empty" {
+    # Back-compat: pod specs for apps without secrets carry no
+    # envFrom field at all.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="myapp"));
     target.secrets = {};
 
@@ -2615,7 +2617,7 @@ test "P4.1: pod-spec OMITS envFrom when self.secrets empty" {
 }
 
 
-test "P4.1: gateway pod-spec also gets envFrom (SSO/JWT/HOST need it)" {
+test "Gateway pod-spec also gets envFrom (SSO/JWT/HOST need it)" {
     # The gateway's middleware reads HOST, SSO client_ids, JWT secret,
     # etc. - all of which live in [plugins.scale.secrets]. Same Secret
     # as services; no need for a gateway-only one.
@@ -2630,7 +2632,7 @@ test "P4.1: gateway pod-spec also gets envFrom (SSO/JWT/HOST need it)" {
 }
 
 
-test "P4.1: generate_manifests bundles user_secret alongside deployments" {
+test "Generate_manifests bundles user_secret alongside deployments" {
     # apply_manifests reads bundle["user_secret"] and applies the Secret
     # BEFORE Deployments. Without the bundle entry, the apply path skips
     # the Secret and pods crash on "secret not found".
@@ -2651,7 +2653,7 @@ test "P4.1: generate_manifests bundles user_secret alongside deployments" {
 }
 
 
-test "P4.1: generate_manifests OMITS user_secret entry when self.secrets empty" {
+test "Generate_manifests OMITS user_secret entry when self.secrets empty" {
     # Same back-compat check at the bundle level - apps without secrets
     # don't get a phantom bundle["user_secret"] = None entry.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="bare"));
@@ -2670,10 +2672,10 @@ test "P4.1: generate_manifests OMITS user_secret entry when self.secrets empty" 
 
 
 # =============================================================================
-# P0.25: cross-service shared volumes
+# cross-service shared volumes
 # =============================================================================
 
-test "P0.25: PVC-mode shared volume creates PVC manifest" {
+PVC-mode shared volume creates PVC manifest" {
     # Most common case: production cloud K8s, RWX-capable storage class
     # (EFS / Filestore). Apps that share filesystem state across pods
     # (jacBuilder's IDE workspace) need the PVC pre-created so the pod
@@ -2713,7 +2715,7 @@ test "P0.25: PVC-mode shared volume creates PVC manifest" {
 }
 
 
-test "P0.25: hostPath-mode shared volume skips PVC creation" {
+test "HostPath-mode shared volume skips PVC creation" {
     # k3d / kind / minikube single-node case. hostPath uses the same
     # node directory on every pod - no PVC needed.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -2739,7 +2741,7 @@ test "P0.25: hostPath-mode shared volume skips PVC creation" {
 }
 
 
-test "P0.25: PVC defaults to ReadWriteOnce + 1Gi when not specified" {
+PVC defaults to ReadWriteOnce + 1Gi when not specified" {
     # The bare-minimum config still works - users who don't care about
     # the access_mode/size details get sane defaults that work on every
     # cluster OOTB (ReadWriteOnce is the only universally-supported mode).
@@ -2766,7 +2768,7 @@ test "P0.25: PVC defaults to ReadWriteOnce + 1Gi when not specified" {
 }
 
 
-test "P0.25: PVC name + volume name normalized to DNS-1123" {
+PVC name + volume name normalized to DNS-1123" {
     # Underscores / camelCase aren't valid DNS-1123 labels and would
     # be rejected by the K8s API server. k8s_safe_name converts them
     # to kebab-case before they hit any K8s resource name field.
@@ -2792,7 +2794,7 @@ test "P0.25: PVC name + volume name normalized to DNS-1123" {
 }
 
 
-test "P0.25: pod-spec injects volumeMount + PVC volume for matching service" {
+test "Pod-spec injects volumeMount + PVC volume for matching service" {
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(app_name="demo", container_port=8000)
     );
@@ -2829,7 +2831,7 @@ test "P0.25: pod-spec injects volumeMount + PVC volume for matching service" {
 }
 
 
-test "P0.25: pod-spec uses hostPath volume when host_path set (dev clusters)" {
+test "Pod-spec uses hostPath volume when host_path set (dev clusters)" {
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (_cfg, restore) = _with_shared_volumes(
         [
@@ -2858,7 +2860,7 @@ test "P0.25: pod-spec uses hostPath volume when host_path set (dev clusters)" {
 }
 
 
-test "P0.25: services NOT in services list get NO volumeMount" {
+test "Services NOT in services list get NO volumeMount" {
     # The whole point of `services` is to scope the mount. A service
     # that doesn't appear in any volume's services list must not get
     # an unrelated mount injected.
@@ -2887,7 +2889,7 @@ test "P0.25: services NOT in services list get NO volumeMount" {
 }
 
 
-test "P0.25: gateway can opt into shared volumes via __gateway__ in services list" {
+test "Gateway can opt into shared volumes via __gateway__ in services list" {
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (_cfg, restore) = _with_shared_volumes(
         [
@@ -2910,7 +2912,7 @@ test "P0.25: gateway can opt into shared volumes via __gateway__ in services lis
 }
 
 
-test "P0.25: multiple shared volumes per service compose correctly" {
+test "Multiple shared volumes per service compose correctly" {
     # Multi-PVC apps: e.g. one PVC for project workspace, another for
     # cached build artifacts. Both should appear on the same pod.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -2944,7 +2946,7 @@ test "P0.25: multiple shared volumes per service compose correctly" {
 }
 
 
-test "P0.25: subPath honored when set on a shared_volume entry" {
+test "SubPath honored when set on a shared_volume entry" {
     # Storage-class-backed PVCs are usually shared across many use cases
     # via subPath. Avoids one PVC per (volume, service) cross-product.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
@@ -2970,9 +2972,9 @@ test "P0.25: subPath honored when set on a shared_volume entry" {
 }
 
 
-test "P0.25: empty / missing shared_volumes config = no volumes injected" {
-    # Back-compat: existing apps with no shared_volumes block get
-    # exactly the same pod spec they got before P0.25.
+test "Empty / missing shared_volumes config = no volumes injected" {
+    # Back-compat: apps with no shared_volumes block get a pod spec
+    # without any extra volumes or mounts.
     target = KubernetesMicroserviceTarget(config=KubernetesConfig(app_name="demo"));
     (_cfg, restore) = _with_shared_volumes([]);
     try {
@@ -2987,7 +2989,7 @@ test "P0.25: empty / missing shared_volumes config = no volumes injected" {
 }
 
 
-test "P0.25: malformed shared_volumes entries are skipped, not crashy" {
+test "Malformed shared_volumes entries are skipped, not crashy" {
     # User forgot mount_path; user wrote `services` as a string instead
     # of a list. We tolerate both rather than crashing the whole deploy
     # (which would block their working services from being applied).
@@ -3019,13 +3021,13 @@ test "P0.25: malformed shared_volumes entries are skipped, not crashy" {
 
 
 # =============================================================================
-# P0.30: service_account_name config knob — let apps point microservice
+# service_account_name config knob — let apps point microservice
 # Deployments at a pre-bound ServiceAccount (sandbox-spawning apps need
 # cluster API access; the namespace `default` SA has none).
 # =============================================================================
 
-test "P0.30: empty service_account_name omits serviceAccountName from pod spec" {
-    # Back-compat: pre-P0.30 K-track pods had no serviceAccountName field
+test "Empty service_account_name omits serviceAccountName from pod spec" {
+    # Back-compat: pre-P0.30pods had no serviceAccountName field
     # (defaulted to namespace `default` SA). Apps that don't set the new
     # config knob get exactly the same pod spec shape.
     target = KubernetesMicroserviceTarget(
@@ -3040,7 +3042,7 @@ test "P0.30: empty service_account_name omits serviceAccountName from pod spec" 
 }
 
 
-test "P0.30: configured service_account_name propagates to service pod spec" {
+test "Configured service_account_name propagates to service pod spec" {
     target = KubernetesMicroserviceTarget(
         config=KubernetesConfig(
             app_name="myapp", service_account_name="myapp-sa"
@@ -3052,7 +3054,7 @@ test "P0.30: configured service_account_name propagates to service pod spec" {
 }
 
 
-test "P0.30: configured service_account_name propagates to gateway pod spec" {
+test "Configured service_account_name propagates to gateway pod spec" {
     # Gateway runs subdomain-preview proxy middleware that may resolve
     # sandbox pods, so it needs the same RBAC as the services.
     target = KubernetesMicroserviceTarget(
@@ -3066,7 +3068,7 @@ test "P0.30: configured service_account_name propagates to gateway pod spec" {
 }
 
 
-test "P0.30: whitespace-only service_account_name treated as unset" {
+test "Whitespace-only service_account_name treated as unset" {
     # Defensive: TOML parsers and shell-substitution can leave stray
     # whitespace. An accidental "  " shouldn't pin the pod to a literal
     # whitespace SA name (which would fail at admission with a
@@ -3080,7 +3082,7 @@ test "P0.30: whitespace-only service_account_name treated as unset" {
 }
 
 
-test "P0.30: KubernetesConfig.from_dict round-trips service_account_name" {
+KubernetesConfig.from_dict round-trips service_account_name" {
     # Config-loader path: jac.toml -> dict -> from_dict -> back to dict.
     # Every other field has this round-trip; service_account_name should
     # too so it shows up in the dict the microservice target receives.
@@ -3095,7 +3097,7 @@ test "P0.30: KubernetesConfig.from_dict round-trips service_account_name" {
 }
 
 
-test "P0.30: KubernetesConfig.from_dict default empty service_account_name" {
+KubernetesConfig.from_dict default empty service_account_name" {
     # Apps that don't declare the field get '' (back-compat with all
     # existing jac.toml files in the wild).
     cfg = KubernetesConfig.from_dict(
@@ -3106,7 +3108,7 @@ test "P0.30: KubernetesConfig.from_dict default empty service_account_name" {
 
 
 # =============================================================================
-# P0.32: peer URL env vars on every microservice + gateway pod.
+# peer URL env vars on every microservice + gateway pod.
 #
 # Mirrors LocalDeployer's process_manager pattern (which injects
 # `JAC_SV_<PEER>_URL=http://127.0.0.1:<port>` into every spawned
@@ -3131,7 +3133,7 @@ def _peer_env_map(spec: dict) -> dict[str, str] {
 }
 
 
-test "P0.32: pod env injects JAC_SV_<PEER>_URL for every other peer route" {
+test "Pod env injects JAC_SV_<PEER>_URL for every other peer route" {
     # Three-service mesh: orders should see env URLs for billing + auth,
     # but never JAC_SV_ORDERS_URL (no point pointing a service at itself).
     target = KubernetesMicroserviceTarget(
@@ -3161,7 +3163,7 @@ test "P0.32: pod env injects JAC_SV_<PEER>_URL for every other peer route" {
 }
 
 
-test "P0.32: gateway pod env injects JAC_SV_<PEER>_URL for every microservice" {
+test "Gateway pod env injects JAC_SV_<PEER>_URL for every microservice" {
     # The gateway also issues sv-to-sv calls (e.g. middleware that
     # forwards to a peer for auth/SSO). Same env injection applies.
     target = KubernetesMicroserviceTarget(
@@ -3182,7 +3184,7 @@ test "P0.32: gateway pod env injects JAC_SV_<PEER>_URL for every microservice" {
 }
 
 
-test "P0.32: GATEWAY_NAME never appears as a peer (it's the ingress, not an sv target)" {
+GATEWAY_NAME never appears as a peer (it's the ingress, not an sv target)" {
     # No one writes `sv import from __gateway__`. Even if the routes
     # table somehow listed it (defensive), it must not appear as a
     # JAC_SV_<...>_URL entry.
@@ -3210,7 +3212,7 @@ test "P0.32: GATEWAY_NAME never appears as a peer (it's the ingress, not an sv t
 }
 
 
-test "P0.32: hyphen-translated peer name uses k8s_safe_name in URL host" {
+test "Hyphen-translated peer name uses k8s_safe_name in URL host" {
     # jac.toml routes use jaclang module names (underscored, valid
     # Python identifiers); the K8s Service host needs DNS-1123 (hyphens
     # not underscores). The env-var key keeps the raw .upper() form
@@ -3242,7 +3244,7 @@ test "P0.32: hyphen-translated peer name uses k8s_safe_name in URL host" {
 }
 
 
-test "P0.32: empty routes table -> no peer URLs (back-compat / single-service)" {
+test "Empty routes table -> no peer URLs (back-compat / single-service)" {
     # Apps without microservice routes should produce pod specs whose
     # only JAC_SV_* entry is the sentinel JAC_SV_NAME.
     target = KubernetesMicroserviceTarget(
@@ -3263,10 +3265,10 @@ test "P0.32: empty routes table -> no peer URLs (back-compat / single-service)" 
 }
 
 
-test "P0.32: per-service env override cannot shadow JAC_SV_<PEER>_URL" {
+test "Per-service env override cannot shadow JAC_SV_<PEER>_URL" {
     # If a user (intentionally or by accident) declares
     # `[plugins.scale.microservices.services.NAME.env]` with a
-    # JAC_SV_<X>_URL entry, the K-track-injected value must win.
+    # JAC_SV_<X>_URL entry, the-injected value must win.
     # A stale override would silently route sv-to-sv calls to the wrong
     # backend; this is one of those "fail loud at deploy time" cases.
     target = KubernetesMicroserviceTarget(
@@ -3300,7 +3302,7 @@ test "P0.32: per-service env override cannot shadow JAC_SV_<PEER>_URL" {
 }
 
 
-test "P0.32: container_port flows through to peer URL" {
+test "Container_port flows through to peer URL" {
     # Apps that change container_port (e.g. user picks 9000) must have
     # peer URLs that match — the K8s Service spec uses the same port.
     target = KubernetesMicroserviceTarget(
@@ -3323,7 +3325,7 @@ test "P0.32: container_port flows through to peer URL" {
 }
 
 
-test "P0.32: namespace flows through to peer URL host" {
+test "Namespace flows through to peer URL host" {
     # Different namespaces produce different DNS hosts; the FQDN form
     # `<svc>-service.<ns>.svc.cluster.local` is what kube-dns resolves.
     target = KubernetesMicroserviceTarget(
@@ -3344,7 +3346,7 @@ test "P0.32: namespace flows through to peer URL host" {
 }
 
 
-test "P0.32: routes-config read failure -> zero peer URLs (defensive)" {
+test "Routes-config read failure -> zero peer URLs (defensive)" {
     # Mirrors the defensive try/except in _drain_timeout / _service_config.
     # If get_microservices_config blows up (corrupt jac.toml, etc.),
     # _microservice_routes returns {} and the pod still gets a complete

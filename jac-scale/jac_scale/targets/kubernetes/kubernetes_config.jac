@@ -14,8 +14,8 @@ obj KubernetesConfig(BaseConfig) {
         cpu_limit: (str | None) = None,
         memory_request: (str | None) = None,
         memory_limit: (str | None) = None,
-        # Probe defaults align with K-track microservice drain semantics
-        # (P0.20). Tight cadences let kube-proxy drop a draining pod from
+        # Probe defaults align with microservice-mode drain semantics.
+        # Tight cadences let kube-proxy drop a draining pod from
         # Endpoints inside the default 15s graceful-shutdown window;
         # lenient cadences leak 503s during rolling deploys. Users with
         # slow first-boot apps (jacBuilder: jac compile + heavy imports)
@@ -77,13 +77,12 @@ obj KubernetesConfig(BaseConfig) {
         # Domain / TLS configuration
         domain: str = "",
         cert_manager_email: str = "",
-        # P0.30: K-track microservice deployments default to the namespace
-        # `default` ServiceAccount (no RBAC). Apps that need cluster API
-        # access (e.g. sandbox-spawning apps that watch pods, create
-        # namespaces) point this at a pre-bound SA. K-track does not
-        # create the SA - it must already exist in the namespace, with
-        # whatever RoleBindings / ClusterRoleBindings the app needs.
-        # Auto-creating + binding the SA is P4.3.
+        # Microservice deployments default to the namespace `default`
+        # ServiceAccount (no RBAC). Apps that need cluster API access
+        # (e.g. sandbox-spawning apps that watch pods, create namespaces)
+        # point this at a pre-bound SA. The microservice target does
+        # not create the SA - it must already exist in the namespace,
+        # with whatever RoleBindings / ClusterRoleBindings the app needs.
         service_account_name: str = "";
 
     override def to_dict -> dict[str, Any] {
@@ -154,7 +153,6 @@ obj KubernetesConfig(BaseConfig) {
                 # Domain / TLS configuration
                 'domain': self.domain,
                 'cert_manager_email': self.cert_manager_email,
-                # P0.30
                 'service_account_name': self.service_account_name
             }
         );

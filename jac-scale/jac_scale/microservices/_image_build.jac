@@ -1,7 +1,7 @@
-"""K-track P0.5: auto-build + auto-distribute pipeline.
+"""Auto-build + auto-distribute pipeline for `jac start --scale`.
 
-This is what makes `jac start --scale` "just work" without the user
-needing to touch Docker. The flow:
+Makes `jac start --scale` "just work" without the user needing to
+touch Docker. The flow:
 
   1. Detect cluster type from kubeconfig (_cluster_detect)
   2. Pick the right Dockerfile:
@@ -18,8 +18,8 @@ needing to touch Docker. The flow:
   4. Return the resolved image tag for the manifest builder to use
 
 Failure modes are surfaced as RuntimeError with concrete next steps;
-P0.6's pre-hook turns those into a clean exit-1 + actionable console
-message instead of a cryptic stack trace.
+the plugin's pre-hook turns those into a clean exit-1 + actionable
+console message instead of a cryptic stack trace.
 """
 
 import os;
@@ -41,26 +41,38 @@ import from jac_scale.microservices._cluster_detect {
 }
 
 
+# Subprocess timeouts (seconds). Centralized so future tuning (e.g.
+# slow CI runners needing 1.5x docker build time) is a single edit.
+# `_DOCKER_BUILD_TIMEOUT_S` is the largest because first-time minikube
+# builds download apt + pip from scratch inside the cluster's daemon.
+glob _DOCKER_BUILD_TIMEOUT_S: int = 1800,
+     _DOCKER_PUSH_TIMEOUT_S: int = 600,
+     _DOCKER_PROBE_TIMEOUT_S: int = 5,
+     _DOCKER_INSPECT_TIMEOUT_S: int = 10,
+     _CLUSTER_IMAGE_LOAD_TIMEOUT_S: int = 180,
+     _JAC_BUILD_TIMEOUT_S: int = 300;
+
+
 # Embedded fallback Dockerfile. Used only when neither the
 # developer-checkout path nor the shipped Dockerfile.microservice is
-# available. Installs jac-scale from PyPI (>= 0.2.15 has the K-track).
+# available. Installs jac-scale from PyPI (>= 0.2.15 has microservice mode).
 glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "RUN apt-get update \\\n"
      "    && apt-get install -y --no-install-recommends git curl \\\n"
      "    && rm -rf /var/lib/apt/lists/*\n\n"
-     "# P0.25 + safe.directory: shared volumes (EFS, etc.) commonly land\n"
-     "# in the pod with a UID that doesn't match the running process,\n"
+     "# safe.directory: shared volumes (EFS, etc.) commonly land in\n"
+     "# the pod with a UID that doesn't match the running process,\n"
      "# tripping git's CVE-2022-24765 ownership check. No-op for apps\n"
      "# that don't run git on a shared mount.\n"
      "RUN git config --system --add safe.directory '*'\n\n"
      "RUN pip install --no-cache-dir --upgrade pip\n\n"
      "# jac-client provides the `jac install` subcommand used below to\n"
-     "# resolve jac.toml [dependencies] (P0.15).\n"
+     "# resolve jac.toml [dependencies].\n"
      "RUN pip install --no-cache-dir \"jac-scale[deploy,data]>=0.2.15\" "
      "jac-client\n\n"
      "WORKDIR /app\n"
      "COPY . /app\n\n"
-     "# P0.15: install the project's own pip deps from jac.toml.\n"
+     "# Install the project's own pip deps from jac.toml.\n"
      "# Without this, apps that declare [dependencies] crash at startup\n"
      "# with \"No module named 'X'\". `|| true` keeps projects without\n"
      "# any [dependencies] from failing the build.\n"
@@ -90,7 +102,7 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      "**/.ruff_cache\n"
      "**/.venv\n"
      "**/venv\n"
-     "# Anchored - **/dist would also drop .jac/client/dist (P0.7 FE bundle).\n"
+     "# Anchored - **/dist would also drop .jac/client/dist (FE bundle).\n"
      "/dist\n"
      "/build\n"
      "# Jac runtime artifacts: exclude caches + per-pod state but KEEP\n"
@@ -297,7 +309,7 @@ def run_docker_build(
             ["docker", "buildx", "version"],
             capture_output=True,
             text=True,
-            timeout=5,
+            timeout=_DOCKER_PROBE_TIMEOUT_S,
             env=env
         );
         buildkit_ok = probe.returncode == 0;
@@ -323,12 +335,11 @@ def run_docker_build(
     # of life. Trade-off: if the build fails, we don't have a captured
     # buffer to surface; the failure output is on the user's terminal
     # already. The exit code is still inspected.
-    timeout_s = 1800;  # 30 minutes - realistic first-time minikube build
     try {
-        result = subprocess.run(cmd, env=env, timeout=timeout_s);
+        result = subprocess.run(cmd, env=env, timeout=_DOCKER_BUILD_TIMEOUT_S);
     } except subprocess.TimeoutExpired {
         raise RuntimeError(
-            f"docker build timed out after {timeout_s}s. The build context "
+            f"docker build timed out after {_DOCKER_BUILD_TIMEOUT_S}s. The build context "
             f"({context_dir}) is likely too large or the build is "
             f"genuinely slow (e.g. first-time minikube build downloading "
             f"apt + pip from scratch).\n"
@@ -360,7 +371,9 @@ def run_k3d_image_import(image_tag: str, cluster: str) {
         );
     }
     cmd: list[str] = ["k3d", "image", "import", image_tag, "-c", cluster];
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180);
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=_CLUSTER_IMAGE_LOAD_TIMEOUT_S
+    );
     if result.returncode != 0 {
         raise RuntimeError(
             f"k3d image import failed (exit {result.returncode}): "
@@ -380,7 +393,9 @@ def run_kind_image_load(image_tag: str, cluster: str) {
         );
     }
     cmd: list[str] = ["kind", "load", "docker-image", image_tag, "--name", cluster];
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=180);
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=_CLUSTER_IMAGE_LOAD_TIMEOUT_S
+    );
     if result.returncode != 0 {
         raise RuntimeError(
             f"kind load docker-image failed (exit {result.returncode}): "
@@ -390,7 +405,7 @@ def run_kind_image_load(image_tag: str, cluster: str) {
 }
 
 
-"""P0.12: read the locally-stored image ID for a tag.
+"""Read the locally-stored image ID for a tag.
 
 Returns "sha256:..." or None on any failure (no-op fallback). Accepts
 an env override so we can talk to minikube's internal docker daemon
@@ -408,7 +423,7 @@ def _docker_image_id(
             ["docker", "inspect", "--format={{.Id}}", image_tag],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=_DOCKER_INSPECT_TIMEOUT_S,
             env=env
         );
     } except Exception {
@@ -425,7 +440,7 @@ def _docker_image_id(
 }
 
 
-"""P0.12: retag a freshly-built image with a content-derived suffix.
+"""Retag a freshly-built image with a content-derived suffix.
 
 K8s deployments roll only when the pod spec changes. With a fixed
 `<app>:dev` tag, every `jac start --scale` rebuild produces an image
@@ -470,7 +485,7 @@ def _retag_with_content_id(
             ["docker", "tag", base_tag, new_tag],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=_DOCKER_INSPECT_TIMEOUT_S,
             env=env
         );
     } except Exception {
@@ -486,7 +501,9 @@ def _retag_with_content_id(
 """Run `docker push <tag>` for remote-cluster deploys."""
 def run_docker_push(image_tag: str) {
     cmd: list[str] = ["docker", "push", image_tag];
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600);
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, timeout=_DOCKER_PUSH_TIMEOUT_S
+    );
     if result.returncode != 0 {
         tail = "\n".join((result.stdout + "\n" + result.stderr).splitlines()[-20:]);
         raise RuntimeError(
@@ -500,7 +517,7 @@ def run_docker_push(image_tag: str) {
 }
 
 
-"""P0.11 helper: detect whether jac-client is importable.
+"""Detect whether jac-client is importable.
 
 `jac build <entry>` is contributed by the jac-client package, not jac
 itself. When jac-client isn't installed, `jac build` either errors with
@@ -520,7 +537,7 @@ def _jac_client_installed -> bool {
 }
 
 
-"""P0.7: build the frontend bundle on the host BEFORE docker build.
+"""Build the frontend bundle on the host BEFORE docker build.
 
 Mirrors what `start_microservice_mode` does in local mode (orchestrator.jac):
 runs `jac build <entry>` which produces `.jac/client/dist/`. The auto-build
@@ -552,7 +569,7 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
             "entry from jac.toml."
         );
     }
-    # P0.11: explicit jac-client pre-flight. Without this, a missing
+    # explicit jac-client pre-flight. Without this, a missing
     # jac-client install becomes a silent FE-skip discovered only when
     # the gateway pod serves an empty page minutes later.
     if not _jac_client_installed() {
@@ -569,13 +586,17 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
     cmd: list[str] = ["jac", "build", client_entry];
     try {
         result = subprocess.run(
-            cmd, cwd=str(project_dir), capture_output=True, text=True, timeout=300
+            cmd,
+            cwd=str(project_dir),
+            capture_output=True,
+            text=True,
+            timeout=_JAC_BUILD_TIMEOUT_S
         );
     } except subprocess.TimeoutExpired {
         raise RuntimeError(
-            f"jac build {client_entry} timed out after 300s. The client "
-            "build is usually <30s; if it's hanging, check for a vite "
-            "watcher or infinite frontend hot-reload loop."
+            f"jac build {client_entry} timed out after {_JAC_BUILD_TIMEOUT_S}s. "
+            "The client build is usually <30s; if it's hanging, check for a "
+            "vite watcher or infinite frontend hot-reload loop."
         );
     }
     if result.returncode != 0 {
@@ -586,7 +607,7 @@ def build_client_bundle(project_dir: Path, client_entry: str) -> None {
             f"  last 20 lines:\n{tail}"
         );
     }
-    # P0.13: assert the bundle is actually where the docker COPY step
+    # assert the bundle is actually where the docker COPY step
     # expects it. `jac build` can return exit 0 without producing a
     # bundle in some failure modes (cached-but-broken state, vite skip,
     # missing entry file). Without this guard the image silently ships
@@ -652,7 +673,7 @@ def auto_build_and_distribute(
         );
     }
 
-    # P0.7: build the frontend bundle BEFORE docker build so the gateway
+    # build the frontend bundle BEFORE docker build so the gateway
     # pod's image contains .jac/client/dist/ for static serving at /.
     # Skipped silently if no client.entry in jac.toml (LLM-only / API-only
     # apps don't have a frontend).
@@ -669,7 +690,7 @@ def auto_build_and_distribute(
         image_tag = f"{app_name}:dev";
         env_overrides = get_minikube_docker_env();
         run_docker_build(context_dir, image_tag, dockerfile, build_args, env_overrides);
-        # P0.12: retag with content-derived suffix so the manifest spec
+        # retag with content-derived suffix so the manifest spec
         # changes when the image changes (forces automatic rollout).
         return _retag_with_content_id(image_tag, env_overrides);
     }
@@ -677,7 +698,7 @@ def auto_build_and_distribute(
     if cluster_type == CLUSTER_K3D {
         image_tag = f"{app_name}:dev";
         run_docker_build(context_dir, image_tag, dockerfile, build_args);
-        # P0.12: retag BEFORE importing so the new content-addressed tag
+        # retag BEFORE importing so the new content-addressed tag
         # is what k3d's containerd ends up holding (and what the manifest
         # references). Importing the bare `:dev` tag would let the cluster
         # keep yesterday's content under the same name.
@@ -710,7 +731,7 @@ def auto_build_and_distribute(
     registry_prefix = registry_url.rstrip("/");
     image_tag = f"{registry_prefix}/{app_name}:dev";
     run_docker_build(context_dir, image_tag, dockerfile, build_args);
-    # P0.12: retag with content suffix BEFORE pushing. The remote cluster
+    # retag with content suffix BEFORE pushing. The remote cluster
     # pulls by exact tag from the registry, so the registry must hold the
     # tag the manifest references.
     image_tag = _retag_with_content_id(image_tag);

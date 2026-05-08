@@ -1,4 +1,4 @@
-"""K-track P0.5: K8s cluster type detection for the auto-build pipeline.
+"""K8s cluster type detection for the auto-build pipeline.
 
 The auto-build path needs to know what kind of cluster it's deploying
 to so it can pick the right image-distribution strategy:

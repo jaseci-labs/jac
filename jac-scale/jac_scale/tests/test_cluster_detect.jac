@@ -1,4 +1,4 @@
-"""Unit tests for cluster-type detection (P0.5)."""
+"""Unit tests for cluster-type detection."""
 
 import unittest.mock as mock;
 import from typing { Any }

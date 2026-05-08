@@ -157,7 +157,7 @@ test "sv_service_call surfaces application-level error from envelope" {
 }
 
 # =============================================================================
-# Retry with exponential backoff (ROADMAP P5)
+# Retry with exponential backoff
 # =============================================================================
 
 test "sv_service_call retries on transport error and succeeds on 2nd attempt" {
@@ -219,7 +219,7 @@ test "sv_service_call gives up after max_attempts on persistent transport error"
 }
 
 # =============================================================================
-# X-Trace-Id propagation (ROADMAP P7)
+# X-Trace-Id propagation
 # =============================================================================
 
 import from jac_scale.microservices._trace_ctx {
@@ -306,7 +306,7 @@ test "sv_service_call omits X-Trace-Id when no trace context is set" {
 }
 
 # =============================================================================
-# Circuit breaker (ROADMAP P6)
+# Circuit breaker
 # =============================================================================
 
 import from jac_scale.plugin {
@@ -538,13 +538,13 @@ test "_sv_rpc_timeout returns default when config lookup fails" {
 
 
 # =============================================================================
-# K9.1: sv_service_call routes URL resolution through the get_sv_registry
+# sv_service_call routes URL resolution through the get_sv_registry
 # hookspec (so the K8s DNS map wins inside a pod where _registry is empty)
 # =============================================================================
 
 test "sv_service_call uses URL from get_sv_registry hookspec when present" {
     # Setup: NO sv_client._registry entry, NO JAC_SV_*_URL env. Without
-    # K9.1 the call would fail with "no URL for module"; with K9.1 the
+    # the hookspec the call would fail with "no URL for module"; the
     # hookspec returns a URL and the call proceeds.
     import jaclang;
 
@@ -589,7 +589,7 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
     # The local-mode default hookimpl returns dict(sv_client._registry).
     # If a module has been registered (e.g. by orchestrator subprocess
     # spawning) but isn't in the hookspec snapshot for whatever reason,
-    # the K9.1 fallback to sv_client.resolve_url should still work.
+    # the fallback to sv_client.resolve_url should still work.
     import jaclang;
 
     captured: dict = {};
@@ -622,7 +622,7 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 
 
 # =============================================================================
-# K9.2: ensure_sv_service registers DNS URLs in K8s mode instead of
+# ensure_sv_service registers DNS URLs in K8s mode instead of
 # spawning subprocesses (peer pods are managed by the K8s controller)
 # =============================================================================
 
@@ -686,8 +686,8 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
 
 test "ensure_sv_service early-returns when peer already registered" {
     # Regression guard: even in K8s mode, the existing idempotency
-    # check (registered? -> early return) must fire BEFORE the K9.2
-    # branch tries to register again.
+    # check (registered? -> early return) must fire BEFORE the K8s
+    # peer-DNS-registration branch tries to register again.
     import os;
     import from jac_scale.plugin { JacScalePlugin }
 
