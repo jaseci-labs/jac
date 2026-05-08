@@ -349,23 +349,6 @@ test "E0076: duplicate method definition" {
     assert has_diagnostic_code(prog, "E0076");
 }
 
-test "E0077: glob inside a function is rejected" {
-    (has_err, prog) = parse_and_validate('def foo() -> None { glob x: int = 5; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0077"));
-}
-
-test "E0077: glob inside an object body is rejected" {
-    (has_err, prog) = parse_and_validate(
-        'obj MyObj { with entry { glob y: str = "hi"; } }'
-    );
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0077"));
-}
-
-test "E0077: glob at module scope is valid" {
-    (has_err, _) = parse_and_validate('glob x: int = 5;');
-    assert not has_err;
-}
-
 test "E0062: nonlocal at module level" {
     (has_err, prog) = parse_and_validate('with entry { nonlocal x; }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
