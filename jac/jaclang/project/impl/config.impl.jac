@@ -333,7 +333,13 @@ impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
         proj = data["project"];
         for (key, value) in proj.items() {
             attr = key.replace("-", "_");
-            if hasattr(self.project, attr) {
+            if attr == "authors" {
+                self.project.authors = _parse_persons(value);
+            } elif attr == "maintainers" {
+                self.project.maintainers = _parse_persons(value);
+            } elif attr == "include" {
+                self.project.include = _parse_include(value);
+            } elif hasattr(self.project, attr) {
                 setattr(self.project, attr, value);
             }
         }
@@ -728,6 +734,26 @@ impl JacConfig.remove_dependency(
 # ===============================================================================
 # Helper Functions Implementation
 # ===============================================================================
+impl _parse_persons(raw: list[Any]) -> list[PersonConfig] {
+    result: list[PersonConfig] = [];
+    for item in raw {
+        if isinstance(item, dict) {
+            result.append(
+                PersonConfig(name=item.get("name", ""), email=item.get("email", ""))
+            );
+        } elif isinstance(item, str) {
+            result.append(PersonConfig(name=item, email=""));
+        }
+    }
+    return result;
+}
+
+impl _parse_include(raw: dict[str, Any]) -> PackageIncludeConfig {
+    return PackageIncludeConfig(
+        packages=raw.get("packages", []), data=raw.get("data", {})
+    );
+}
+
 impl _parse_toml_data(
     data: dict[str, Any], toml_path: Path | None = None
 ) -> JacConfig {
@@ -743,12 +769,16 @@ impl _parse_toml_data(
             name=proj.get("name", ""),
             version=proj.get("version", "0.1.0"),
             description=proj.get("description", ""),
-            authors=proj.get("authors", []),
+            authors=_parse_persons(proj.get("authors", [])),
+            maintainers=_parse_persons(proj.get("maintainers", [])),
             license=proj.get("license", ""),
             readme=proj.get("readme", "README.md"),
+            keywords=proj.get("keywords", []),
+            requires_python=proj.get("requires-python", ""),
             jac_version=proj.get("jac-version", ""),
             entry_point=proj.get("entry-point", "main.jac"),
-            urls=proj.get("urls", {})
+            urls=proj.get("urls", {}),
+            include=_parse_include(proj.get("include", {}))
         );
     }
     if "dependencies" in data {
@@ -899,42 +929,6 @@ impl _parse_toml_data(
     }
     if "scripts" in data {
         config.scripts = data["scripts"];
-    }
-    if "package" in data {
-        pkg = data["package"];
-        pkg_authors: list[PersonConfig] = [];
-        for a in pkg.get("authors", []) {
-            if isinstance(a, dict) {
-                pkg_authors.append(
-                    PersonConfig(name=a.get("name", ""), email=a.get("email", ""))
-                );
-            }
-        }
-        pkg_maintainers: list[PersonConfig] = [];
-        for m in pkg.get("maintainers", []) {
-            if isinstance(m, dict) {
-                pkg_maintainers.append(
-                    PersonConfig(name=m.get("name", ""), email=m.get("email", ""))
-                );
-            }
-        }
-        inc_raw = pkg.get("include", {});
-        pkg_include = PackageIncludeConfig(
-            packages=inc_raw.get("packages", []), data=inc_raw.get("data", {})
-        );
-        config.package = PackageConfig(
-            name=pkg.get("name", ""),
-            version=pkg.get("version", ""),
-            description=pkg.get("description", ""),
-            authors=pkg_authors,
-            maintainers=pkg_maintainers,
-            license=pkg.get("license", ""),
-            readme=pkg.get("readme", "README.md"),
-            keywords=pkg.get("keywords", []),
-            requires_python=pkg.get("requires-python", ""),
-            urls=pkg.get("urls", {}),
-            include=pkg_include
-        );
     }
     if "entrypoints" in data {
         for (group, refs) in data["entrypoints"].items() {

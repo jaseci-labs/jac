@@ -10,9 +10,9 @@ import from subprocess { run }
 """Write a minimal jac.toml and package skeleton into tmp_path."""
 def _make_project(tmp_path: str, pkg_name: str = "mypkg", version: str = "1.0.0") {
     toml = (
-        '[package]\n' 'name = "' + pkg_name + '"\n' 'version = "' + version + '"\n'
+        '[project]\n' 'name = "' + pkg_name + '"\n' 'version = "' + version + '"\n'
         'requires-python = ">=3.11"\n\n'
-        '[package.include]\n'
+        '[project.include]\n'
         'packages = ["' + pkg_name + '"]\n'
     );
     (Path(tmp_path) / "jac.toml").write_text(toml);

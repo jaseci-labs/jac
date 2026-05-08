@@ -14,7 +14,7 @@ def generate_wheel_file(
 """Generate .dist-info/entry_points.txt content from a JacConfig; returns empty string when no [entrypoints]."""
 def generate_entry_points(config: JacConfig) -> str;
 
-"""Build the canonical .whl filename (PEP 427); raises ValueError when config.package is None."""
+"""Build the canonical .whl filename (PEP 427); raises ValueError when project name is missing."""
 def wheel_filename(
     config: JacConfig,
     python_tag: str = "py3",
@@ -22,5 +22,5 @@ def wheel_filename(
     platform_tag: str = "any",
 ) -> str;
 
-"""Build the .dist-info directory name (e.g. 'byllm-0.6.4.dist-info'); raises ValueError when config.package is None."""
+"""Build the .dist-info directory name (e.g. 'byllm-0.6.4.dist-info'); raises ValueError when project name is missing."""
 def dist_info_dirname(config: JacConfig) -> str;

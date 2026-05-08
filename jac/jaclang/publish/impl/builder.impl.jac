@@ -26,10 +26,8 @@ impl WheelBuilder.postinit -> None {
 }
 
 impl WheelBuilder.build -> bytes {
-    if self.config.package is None {
-        raise ValueError(
-            "Cannot build wheel: [package] section is missing in jac.toml."
-        );
+    if not self.config.project.name {
+        raise ValueError("Cannot build wheel: [project] name is missing in jac.toml.");
     }
 
     proj_root = self.project_root;
@@ -51,7 +49,7 @@ impl WheelBuilder.build -> bytes {
         "utf-8"
     );
     ep_bytes: bytes | None = generate_entry_points(self.config).encode("utf-8") or None;
-    pkg_name = self.config.package.name.replace("-", "_");
+    pkg_name = self.config.project.name.replace("-", "_");
     top_level_bytes = (pkg_name + "\n").encode("utf-8");
 
     source_files = collect_source_files(self.config, project_root=proj_root);
@@ -111,14 +109,14 @@ impl WheelBuilder.build_to(output_dir: Path) -> Path {
 }
 
 impl WheelBuilder.install_editable(src_dir: Path, site_pkgs: Path) -> Path {
-    if self.config.package is None {
+    if not self.config.project.name {
         raise ValueError(
-            "Cannot install editable: [package] section is missing in jac.toml."
+            "Cannot install editable: [project] name is missing in jac.toml."
         );
     }
 
-    pkg_name = self.config.package.name.replace("-", "_");
-    pth_filename = f"__editable__.{pkg_name}-{self.config.package.version}.pth";
+    pkg_name = self.config.project.name.replace("-", "_");
+    pth_filename = f"__editable__.{pkg_name}-{self.config.project.version}.pth";
     pth_content: bytes = (str(src_dir) + "\n").encode("utf-8");
     pth_path = site_pkgs / pth_filename;
     pth_path.write_bytes(pth_content);
