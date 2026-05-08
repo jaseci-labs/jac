@@ -185,12 +185,21 @@ impl InteropAnalysisPass._register_sv_to_sv_import(
             }
         }
     }
-    # Build a name -> Ability map by walking the source module's AST.
-    # This works whether or not the source has had symtab built.
+    # Build name -> AST-node maps by walking the source module's AST. We
+    # keep functions and walkers separate because their wire shapes (and
+    # therefore stub-generation paths) differ: functions go through
+    # /function/<name> with a signature derived from `def` params,
+    # walkers go through /walker/<name> with params derived from `has`
+    # fields. The walker map only contains `walker:pub` archetypes since
+    # private walkers are not exposed at the HTTP boundary.
     source_abilities: dict[str, Any] = {};
+    source_walkers: dict[str, Any] = {};
     if source_mod {
         try {
             self._collect_abilities(source_mod, source_abilities);
+        } except Exception { }
+        try {
+            self._collect_pub_walkers(source_mod, source_walkers);
         } except Exception { }
     }
     manifest = self.ir_in.gen.interop_manifest;
@@ -198,11 +207,34 @@ impl InteropAnalysisPass._register_sv_to_sv_import(
         if not isinstance(item, uni.ModuleItem) {
             continue;
         }
-        func_name = getattr(item.name, 'value', str(item.name));
+        sym_name = getattr(item.name, 'value', str(item.name));
+        local_name = item.alias.sym_name if item.alias else sym_name;
+        walker_node: Any = source_walkers.get(sym_name);
+        if walker_node is not None {
+            (param_names, param_types) = self._extract_walker_has_fields(walker_node);
+            binding = InteropBinding(
+                name=sym_name,
+                source_context=InteropContext.SERVER,
+                callers={InteropContext.SERVER},
+                ret_type=sym_name,
+                param_types=param_types,
+                param_names=param_names,
+                ast_node=walker_node,
+                route=[InteropContext.SERVER, InteropContext.SERVER],
+                source_module=module_name,
+                kind='walker'
+                # The wire returns a walker instance whose Python-side
+                # type is the walker class itself, so the return type
+                # name and the symbol name are the same. Stub codegen
+                # uses this to rehydrate via `<Walker>._from_wire(...)`.
+            );
+            manifest.bindings[local_name] = binding;
+            continue;
+        }
         param_names: list = [];
         param_types: list = [];
         ret_type: str = 'Any';
-        ability_node: (uni.Ability | None) = source_abilities.get(func_name);
+        ability_node: (uni.Ability | None) = source_abilities.get(sym_name);
         if (ability_node and isinstance(ability_node.signature, uni.FuncSignature)) {
             sig = ability_node.signature;
             if sig.params {
@@ -219,9 +251,8 @@ impl InteropAnalysisPass._register_sv_to_sv_import(
                 ret_type = self._extract_type_name(sig.return_type);
             }
         }
-        local_name = item.alias.sym_name if item.alias else func_name;
         binding = InteropBinding(
-            name=func_name,
+            name=sym_name,
             source_context=InteropContext.SERVER,
             callers={InteropContext.SERVER},
             ret_type=ret_type,
@@ -229,7 +260,8 @@ impl InteropAnalysisPass._register_sv_to_sv_import(
             param_names=param_names,
             ast_node=ability_node,
             route=[InteropContext.SERVER, InteropContext.SERVER],
-            source_module=module_name
+            source_module=module_name,
+            kind='function'
         );
         manifest.bindings[local_name] = binding;
     }
@@ -247,6 +279,93 @@ impl InteropAnalysisPass._collect_abilities(
             self._collect_abilities(k, out);
         }
     }
+}
+
+"""Walk a module AST collecting public walker Archetype nodes by name."""
+impl InteropAnalysisPass._collect_pub_walkers(
+    self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+) -> None {
+    if isinstance(nd, uni.Archetype) and nd.sym_name {
+        is_walker = False;
+        try {
+            arch_type = nd.arch_type;
+            if hasattr(arch_type, 'name') {
+                is_walker = (
+                    arch_type.name == Tok.KW_WALKER or arch_type.name == 'KW_WALKER'
+                );
+            }
+        } except Exception {
+            is_walker = False;
+        }
+        is_pub = False;
+        try {
+            is_pub = bool(getattr(nd, 'public_access', False));
+        } except Exception {
+            try {
+                is_pub = nd.access is not None and nd.access.tag?.name == Tok.KW_PUB;
+            } except Exception {
+                is_pub = False;
+            }
+        }
+        if is_walker and is_pub {
+            out[nd.sym_name] = nd;
+        }
+    }
+    if nd?.kid and nd.kid {
+        for k in nd.kid {
+            self._collect_pub_walkers(k, out);
+        }
+    }
+}
+
+"""Extract `has` field (name, type-name) pairs from a walker archetype.
+
+Walks the walker's body for `ArchHas` containers and bare `HasVar`
+declarations, mirroring how `_collect_boundary_type` reads Archetype
+field shape. Type annotations are extracted with `_extract_type_name`
+so generics, unions, and boundary-typed defaults survive intact.
+"""
+impl InteropAnalysisPass._extract_walker_has_fields(
+    self: InteropAnalysisPass, walker_nd: Any
+) -> tuple[list[str], list[str]] {
+    names: list[str] = [];
+    types: list[str] = [];
+    if (not walker_nd) or (not walker_nd.body) {
+        return (names, types);
+    }
+    body_items = walker_nd.body
+        if isinstance(walker_nd.body, list)
+        else [walker_nd.body];
+    for item in body_items {
+        has_vars: list = [];
+        if isinstance(item, uni.HasVar) {
+            has_vars = [item];
+        } elif isinstance(item, uni.ArchHas) {
+            has_vars = [
+                k
+                for k in item.kid
+                if isinstance(k, uni.HasVar)
+            ];
+        }
+        for hv in has_vars {
+            try {
+                fname = getattr(hv.name, 'value', str(hv.name));
+            } except Exception {
+                continue;
+            }
+            ftype: str = 'Any';
+            try {
+                if hv?.type_tag and hv.type_tag.tag {
+                    ftype = self._extract_type_name(hv.type_tag.tag);
+                }
+            } except Exception {
+                ftype = 'Any';
+            }
+            names.append(fname);
+            types.append(ftype);
+        }
+    }
+    return (names, types);
 }
 
 """Parse a source file standalone (no semantic analysis).

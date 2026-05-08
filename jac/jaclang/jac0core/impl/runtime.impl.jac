@@ -1972,6 +1972,72 @@ impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) 
     );
 }
 
+"""Default sv-to-sv walker spawn transport.
+
+Posts the JSON-serialised `has` field dict to `/walker/<walker_name>`
+on the resolved provider, decodes the TransportResponse envelope,
+and rehydrates `data.result` into an instance of the consumer-side
+stub class via `stub_cls._from_wire`. The walker's `reports` list
+(at envelope-level `data.reports`) is attached to the rehydrated
+instance so consumer code can read `walker_inst.reports[0]` without
+plumbing through the envelope.
+
+Plugins override this method to add auth, retries, circuit breakers,
+or tracing the same way they override sv_service_call.
+"""
+impl JacAPIServer.sv_walker_call(
+    module_name: str, walker_name: str, args: dict, stub_cls: Any
+) -> Any {
+    import from jaclang.runtimelib { sv_client }
+
+    label = f"{module_name}.{walker_name}";
+
+    if module_name in sv_client._test_clients {
+        client = sv_client._test_clients[module_name];
+        resp = client.post(f"/walker/{walker_name}", json=args);
+        data = resp.json();
+    } else {
+        url = sv_client.resolve_url(module_name);
+        try {
+            import httpx;
+        } except ImportError {
+            raise RuntimeError(
+                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
+            );
+        }
+        client = httpx.Client();
+        try {
+            resp = client.post(f"{url}/walker/{walker_name}", json=args);
+            data = resp.json();
+        } finally {
+            client.close();
+        }
+    }
+
+    if isinstance(data, dict) and data.get("ok") {
+        envelope = data.get("data") or {};
+        result_dict = envelope.get("result") if isinstance(envelope, dict) else None;
+        reports = envelope.get("reports") if isinstance(envelope, dict) else None;
+        instance = stub_cls._from_wire(result_dict)
+            if (stub_cls is not None and result_dict is not None)
+            else result_dict;
+        if instance is not None and reports is not None {
+            try {
+                instance.reports = reports;
+            } except Exception {
+                pass;
+            }
+        }
+        return instance;
+    }
+
+    err = (data.get("error") if isinstance(data, dict) else None) or {};
+    msg = err.get("message") if isinstance(err, dict) else str(err);
+    raise RuntimeError(
+        f"sv-to-sv walker spawn '{label}' failed: {msg or 'unknown error'}"
+    );
+}
+
 
 """Drive consume_sse_stream against an already-entered httpx Response,
 then `__exit__` the parent context manager (and `close()` the owning

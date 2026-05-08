@@ -238,6 +238,14 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
         if binding is None {
             continue;
         }
+        if binding.kind == 'walker' {
+            parts.append(
+                self._gen_py_sv_walker_stub(
+                    local_name, item_name, module_name, binding, boundary_types
+                )
+            );
+            continue;
+        }
         parts.append(
             self._gen_py_sv_func_stub(
                 local_name, item_name, module_name, binding, boundary_types
@@ -285,6 +293,92 @@ impl PyastGenPass._gen_py_sv_func_stub(
         ret_expr = raw_call;
     }
     return 'def ' + local_name + '(' + params + '):\n    return ' + ret_expr;
+}
+
+"""Build a Python source string for an sv-to-sv walker stub class."""
+impl PyastGenPass._gen_py_sv_walker_stub(
+    local_name: str,
+    walker_name: str,
+    module_name: str,
+    binding: InteropBinding,
+    boundary_types: dict[str, BoundaryTypeInfo]
+) -> str {
+    field_names = list(binding.param_names);
+    field_types = list(binding.param_types);
+    fields_repr_pieces: list[str] = [];
+    for fname in field_names {
+        fields_repr_pieces.append("'" + fname + "'");
+    }
+    fields_repr = '[' + ', '.join(fields_repr_pieces) + ']';
+    boundary_pairs: list[str] = [];
+    for i in range(len(field_names)) {
+        ptype = field_types[i] if i < len(field_types) else '';
+        if (ptype in boundary_types and boundary_types[ptype].kind != "enum") {
+            boundary_pairs.append("'" + field_names[i] + "': " + ptype);
+        }
+    }
+    boundary_map = '{' + ', '.join(boundary_pairs) + '}';
+    args_kvs: list[str] = [];
+    for i in range(len(field_names)) {
+        pname = field_names[i];
+        ptype = field_types[i] if i < len(field_types) else '';
+        if (ptype in boundary_types and boundary_types[ptype].kind != "enum") {
+            args_kvs.append(
+                "'" + pname + "': (" + pname + "._to_wire() if hasattr(" + pname + ", '_to_wire') else " + pname + ")"
+            );
+        } else {
+            args_kvs.append("'" + pname + "': " + pname);
+        }
+    }
+    args_dict = '{' + ', '.join(args_kvs) + '}';
+    init_params = ', '.join(
+        ['cls'] + [field_names[i] + '=None' for i in range(len(field_names))]
+    );
+    lines: list[str] = [];
+    lines.append('class ' + local_name + ':');
+    lines.append('    __jac_fields__ = ' + fields_repr);
+    lines.append('    __jac_walker_name__ = ' + "'" + walker_name + "'");
+    lines.append('    __jac_provider_module__ = ' + "'" + module_name + "'");
+    lines.append('    __jac_boundary_types__ = ' + boundary_map);
+    lines.append('    def __new__(' + init_params + '):');
+    lines.append('        kwargs = ' + args_dict);
+    if field_names {
+        lines.append(
+            '        kwargs = {k: v for k, v in kwargs.items() if v is not None}'
+        );
+    }
+    # Inside a class body, identifiers with 2+ leading underscores get
+    # name-mangled to _<ClassName>__name. Look the runtime up via
+    # `globals()[...]` so the mangled spelling never bites us.
+    lines.append(
+        '        return globals()["__jac_sv_client"].spawn_walker(' + "'" + module_name + "', '" + walker_name + "', kwargs, cls)"
+    );
+    # __new__ already populated the instance via spawn_walker -> _from_wire.
+    # Python still invokes __init__ on a returned cls-instance, so we need a
+    # no-op that swallows whatever kwargs the call site passed.
+    lines.append('    def __init__(self, *args, **kwargs):');
+    lines.append('        pass');
+    lines.append('    def _to_wire(self):');
+    lines.append(
+        '        return {f: getattr(self, f, None) for f in self.__jac_fields__}'
+    );
+    lines.append('    @classmethod');
+    lines.append('    def _from_wire(cls, d):');
+    lines.append('        if d is None:');
+    lines.append('            return None');
+    lines.append('        if isinstance(d, list):');
+    lines.append('            return [cls._from_wire(i) for i in d]');
+    lines.append('        if not isinstance(d, dict):');
+    lines.append('            return d');
+    lines.append('        inst = object.__new__(cls)');
+    lines.append('        for k, v in d.items():');
+    lines.append('            if k in cls.__jac_boundary_types__ and v is not None:');
+    lines.append('                v = cls.__jac_boundary_types__[k]._from_wire(v)');
+    lines.append('            setattr(inst, k, v)');
+    lines.append('        if not hasattr(inst, "reports"):');
+    lines.append('            inst.reports = []');
+    lines.append('        return inst');
+    return '\n'.join(lines);
 }
 
 """Build a Python source string for a boundary type stub class."""
