@@ -13,19 +13,56 @@ impl JacAccessValidation._resolve_anchor(
     return (anchor, jctx);
 }
 
-"""Check if current root has at least min_level access to target anchor."""
+"""Check if current root has at least min_level access to target anchor.
+
+When the check fails for a write-class operation (anything other than
+`read`), build a typed PermissionDenied diagnostic, push it onto the
+request-scoped ExecutionContext.diagnostics list, and either raise
+PermissionError (strict mode) or log a warning. Read denials are part of
+normal traversal (you just don't see foreign nodes) and stay silent —
+emitting on every reachable foreign node would be noise.
+
+Strict-mode raise happens *after* the diagnostic is recorded, so a
+caller that catches the PermissionError still sees it on ctx.diagnostics.
+"""
 impl JacAccessValidation._check_access(
     `to: Anchor, min_level: AccessLevel, operation: str
 ) -> bool {
-    access_level = JacRuntimeInterface.check_access_level(`to).value > min_level.value;
-    if not access_level {
+    actual = JacRuntimeInterface.check_access_level(`to);
+    granted = actual.value > min_level.value;
+    if not granted {
         logger.info(
             "Current root doesn't have " + operation + " access to " + `to.__class__.__name__ + " " + `to.archetype.__class__.__name__ + "[" + str(
                 `to.id
             ) + "]"
         );
+        if operation != "read" {
+            # `min_level` is the strict-greater-than threshold (e.g.
+            # CONNECT for write_access). The user-facing "required"
+            # level is the next step up — the level they actually need
+            # to pass the check.
+            required = AccessLevel(min_level.value + 1);
+            diag = PermissionDenied(
+                operation=operation,
+                target_id=str(`to.id),
+                target_type=`to.archetype.__class__.__name__,
+                target_owner=str(`to.root) if `to.root else None,
+                required=required,
+                actual=actual
+            );
+            try {
+                ctx = JacRuntimeInterface.get_context();
+                ctx.diagnostics.append(diag);
+            } except Exception {
+                ;
+            }
+            if JacRuntime.strict_permissions {
+                raise PermissionError(diag.message());
+            }
+            logger.warning(diag.message());
+        }
     }
-    return access_level;
+    return granted;
 }
 
 """Allow all access from target root graph to current Archetype."""
@@ -89,13 +126,17 @@ impl JacAccessValidation.check_read_access(`to: Anchor) -> bool {
 }
 
 """Connect Access Validation."""
-impl JacAccessValidation.check_connect_access(`to: Anchor) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.READ, "connect");
+impl JacAccessValidation.check_connect_access(
+    `to: Anchor, op_hint: str = "connect"
+) -> bool {
+    return JacAccessValidation._check_access(`to, AccessLevel.READ, op_hint);
 }
 
 """Write Access Validation."""
-impl JacAccessValidation.check_write_access(`to: Anchor) -> bool {
-    return JacAccessValidation._check_access(`to, AccessLevel.CONNECT, "write");
+impl JacAccessValidation.check_write_access(
+    `to: Anchor, op_hint: str = "write"
+) -> bool {
+    return JacAccessValidation._check_access(`to, AccessLevel.CONNECT, op_hint);
 }
 
 """Access validation."""
@@ -1497,10 +1538,12 @@ impl JacBasics.connect(
     edges = [];
     for i in left {
         _left = i.__jac__;
-        if JacRuntimeInterface.check_connect_access(_left) {
+        if JacRuntimeInterface.check_connect_access(_left, op_hint="edge_write") {
             for j in right {
                 _right = j.__jac__;
-                if JacRuntimeInterface.check_connect_access(_right) {
+                if JacRuntimeInterface.check_connect_access(
+                    _right, op_hint="edge_write"
+                ) {
                     edges.append(
                         JacRuntimeInterface.build_edge(
                             is_undirected=undir,
@@ -1541,7 +1584,9 @@ impl JacBasics.disconnect(
                     (dir in [EdgeDir.OUT, EdgeDir.ANY])
                     and (nd == source)
                     and (target.archetype in right)
-                    and JacRuntimeInterface.check_connect_access(target)
+                    and JacRuntimeInterface.check_connect_access(
+                        target, op_hint="edge_delete"
+                    )
                 ) {
                     JacRuntimeInterface.destroy([anchor])
                         if anchor.persistent
@@ -1552,7 +1597,9 @@ impl JacBasics.disconnect(
                     (dir in [EdgeDir.IN, EdgeDir.ANY])
                     and (nd == target)
                     and (source.archetype in right)
-                    and JacRuntimeInterface.check_connect_access(source)
+                    and JacRuntimeInterface.check_connect_access(
+                        source, op_hint="edge_delete"
+                    )
                 ) {
                     JacRuntimeInterface.destroy([anchor])
                         if anchor.persistent
@@ -1672,7 +1719,7 @@ impl JacBasics.destroy(objs: Archetype | Anchor | list[(Archetype | Anchor)]) ->
             return;
         }
         anchor = `obj.__jac__ if isinstance(`obj, Archetype) else `obj;
-        if JacRuntimeInterface.check_write_access(anchor) {
+        if JacRuntimeInterface.check_write_access(anchor, op_hint="delete") {
             match anchor {
                 case NodeAnchor():
                     for `edge in anchor.edges[:] {
@@ -1922,6 +1969,72 @@ impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) 
     msg = err.get("message") if isinstance(err, dict) else str(err);
     raise RuntimeError(
         f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
+    );
+}
+
+"""Default sv-to-sv walker spawn transport.
+
+Posts the JSON-serialised `has` field dict to `/walker/<walker_name>`
+on the resolved provider, decodes the TransportResponse envelope,
+and rehydrates `data.result` into an instance of the consumer-side
+stub class via `stub_cls._from_wire`. The walker's `reports` list
+(at envelope-level `data.reports`) is attached to the rehydrated
+instance so consumer code can read `walker_inst.reports[0]` without
+plumbing through the envelope.
+
+Plugins override this method to add auth, retries, circuit breakers,
+or tracing the same way they override sv_service_call.
+"""
+impl JacAPIServer.sv_walker_call(
+    module_name: str, walker_name: str, args: dict, stub_cls: Any
+) -> Any {
+    import from jaclang.runtimelib { sv_client }
+
+    label = f"{module_name}.{walker_name}";
+
+    if module_name in sv_client._test_clients {
+        client = sv_client._test_clients[module_name];
+        resp = client.post(f"/walker/{walker_name}", json=args);
+        data = resp.json();
+    } else {
+        url = sv_client.resolve_url(module_name);
+        try {
+            import httpx;
+        } except ImportError {
+            raise RuntimeError(
+                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
+            );
+        }
+        client = httpx.Client();
+        try {
+            resp = client.post(f"{url}/walker/{walker_name}", json=args);
+            data = resp.json();
+        } finally {
+            client.close();
+        }
+    }
+
+    if isinstance(data, dict) and data.get("ok") {
+        envelope = data.get("data") or {};
+        result_dict = envelope.get("result") if isinstance(envelope, dict) else None;
+        reports = envelope.get("reports") if isinstance(envelope, dict) else None;
+        instance = stub_cls._from_wire(result_dict)
+            if (stub_cls is not None and result_dict is not None)
+            else result_dict;
+        if instance is not None and reports is not None {
+            try {
+                instance.reports = reports;
+            } except Exception {
+                pass;
+            }
+        }
+        return instance;
+    }
+
+    err = (data.get("error") if isinstance(data, dict) else None) or {};
+    msg = err.get("message") if isinstance(err, dict) else str(err);
+    raise RuntimeError(
+        f"sv-to-sv walker spawn '{label}' failed: {msg or 'unknown error'}"
     );
 }
 

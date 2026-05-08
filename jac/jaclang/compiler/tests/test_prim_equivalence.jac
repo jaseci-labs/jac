@@ -221,7 +221,7 @@ def compare_results(
 # -----------------------------------------------------------------------
 def run_with_both(
     fixture: str, py_fn: str, cl_fn: str, na_fn: str, tolerance: float = 1e-9
-) -> None {
+) {
     stem = fixture[:-4] if fixture.endswith(".jac") else fixture;
     py_result = run_py_fixture(stem, py_fn);
     label = fixture;

@@ -1,8 +1,4 @@
-"""Jac project configuration module.
-
-This module provides the JacConfig class and related types for managing
-project configuration from jac.toml files.
-"""
+"""JacConfig and related types for jac.toml project configuration."""
 
 import os;
 import re;
@@ -11,17 +7,38 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
-"""Project metadata from [project] section."""
+"""Author or maintainer contact info."""
+obj PersonConfig {
+    has name: str = "",
+        email: str = "";
+}
+
+"""File inclusion rules from [project.include]."""
+obj PackageIncludeConfig {
+    has packages: list[str] = [],
+        data: dict[str, list[str]] = {};
+}
+
+"""Project metadata from [project] section.
+
+Runtime fields (entry_point, jac_version) are used by jac run/serve.
+Publishing fields (authors, maintainers, keywords, requires_python, include)
+are used by jac bundle. All publishing fields are optional.
+"""
 obj ProjectConfig {
     has name: str = "",
         version: str = "0.1.0",
         description: str = "",
-        authors: list[str] = [],
+        authors: list[PersonConfig] = [],
+        maintainers: list[PersonConfig] = [],
         license: str = "",
         readme: str = "README.md",
+        keywords: list[str] = [],
+        requires_python: str = "",
         jac_version: str = "",
         entry_point: str = "main.jac",
-        urls: dict[str, str] = {};
+        urls: dict[str, str] = {},
+        include: PackageIncludeConfig = PackageIncludeConfig();
 }
 
 """Run command defaults from [run] section."""
@@ -133,6 +150,19 @@ obj EnvironmentConfig {
     has default_profile: str = "";
 }
 
+"""Client error reporting settings from [client_errors] section.
+
+Tunes the behavior of the /cl/__error__ endpoint and the source-mapped
+stack traces it logs.
+"""
+obj ClientErrorsConfig {
+    # When False (default), source-mapped stack frames whose resolved file is
+    # a build artifact (a `.js` under `.jac/`) are dropped from the log; the
+    # frames are auto-generated and not user-actionable. Set True to keep
+    # them, e.g. when diagnosing a broken or stale per-file source map.
+    has verbose: bool = False;
+}
+
 # Interpolate environment variables in a string value.
 # Supports ${VAR_NAME}, ${VAR_NAME:-default}, ${VAR_NAME:?error message}
 def interpolate_env_vars(value: str) -> str;
@@ -165,6 +195,7 @@ obj JacConfig {
         storage: StorageConfig = StorageConfig(),
         plugins_config: PluginsConfig = PluginsConfig(),
         environment: EnvironmentConfig = EnvironmentConfig(),
+        client_errors: ClientErrorsConfig = ClientErrorsConfig(),
         # Dependencies
         dependencies: dict[str, str] = {},
         dev_dependencies: dict[str, str] = {},
@@ -177,7 +208,9 @@ obj JacConfig {
         toml_path: Path | None = None,
         config_files: list[Path] | None = None,
         active_profile: str = "",
-        _raw_data: dict[str, Any] = {};
+        _raw_data: dict[str, Any] = {},
+        entrypoints: dict[str, dict[str, str]] = {},
+        optional_dependencies: dict[str, dict[str, str]] = {};
 
     static def discover(
         start_path: Path | None = None, profile: str | None = None
@@ -220,6 +253,12 @@ def discover_config_files(
 
 # Parse TOML data into JacConfig object
 def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
+
+# Parse a raw list of author/maintainer entries (dicts or strings) into PersonConfig objects.
+def _parse_persons(raw: list[any]) -> list[PersonConfig];
+
+# Parse a raw include dict into a PackageIncludeConfig.
+def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
 # Recursively apply environment variable interpolation
 def _interpolate_recursive(`obj: Any) -> Any;

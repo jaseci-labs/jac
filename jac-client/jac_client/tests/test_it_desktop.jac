@@ -165,8 +165,7 @@ test "desktop target files exist" {
 # =============================================================================
 test "pyinstaller spec excludes litellm bloat for windows max_path" {
     impl_path = (
-        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl"
-        / "desktop_target.impl.jac"
+        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl" / "desktop_target.impl.jac"
     );
     assert impl_path.exists() , f"impl file not found at {impl_path}";
 

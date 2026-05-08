@@ -412,10 +412,7 @@ impl CompilerBridge.jac_to_py(code: str) -> dict[str, Any] {
                 for e in prog.errors_had {
                     errors.append(str(e));
                 }
-                return {
-                    "python_code": "",
-                    "warnings": errors or ["Conversion failed"]
-                };
+                return {"python_code": "", "warnings": errors or ["Conversion failed"]};
             }
 
             py_code = ir.gen.py or "";

@@ -22,7 +22,9 @@ import from byllm.exceptions {
     OutputConversionError,
     RateLimitError,
     ModelNotFoundError,
-    UnknownToolError
+    UnknownToolError,
+    ConfigurationError,
+    CompactionNotEffectiveError
 }
 import from byllm.types {
     CompletionResult,
@@ -38,6 +40,7 @@ import from byllm.types {
 import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }
 import from byllm.parallel { dispatch_batch, _index_by_identity, _PARALLEL_TOOL_HINT }
+import from byllm.schema { inject_schema_hint }
 
 # Load configuration purely from jac.toml
 glob _byllm_config = get_byllm_config(),
@@ -69,6 +72,7 @@ obj BaseLLM {
         config: dict = {},
         api_key: str = "",
         call_params: dict[(str, object)] = {},
+        ctx_window: int = 0,
         _usage_history: list = [];
 
     def __call__(**kwargs: object) -> BaseLLM;
@@ -93,6 +97,11 @@ obj BaseLLM {
     ) -> Generator[StreamEvent, None, None];
 
     def _invoke_streaming(mt_run: MTRuntime) -> Generator[StreamEvent, None, None];
+    def _get_ctx_window(call_params: dict) -> int;
+    def _resolve_compaction_params(mt_run: MTRuntime) -> dict;
+    def _compact_messages(
+        mt_run: MTRuntime, keep_recent: int, comp_model: str | None
+    ) -> None;
 }
 
 """Mock LLM connector that simulates responses for testing.
@@ -104,6 +113,24 @@ obj MockLLM(BaseLLM) {
     def postinit -> None;
     override def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     override def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
+}
+
+"""Local LLM connector backed by llama.cpp via `llama-cpp-python`.
+
+Activated by `Model("local:<alias>")`. Weights are pulled lazily
+through `byllm.model_cache` and the in-process `Llama` instance is
+built on first call to keep plugin import cheap.
+"""
+obj LocalLLM(BaseLLM) {
+    has alias: str = "",
+        spec: dict = {},
+        _llama: object = None;
+
+    def postinit -> None;
+    def _ensure_llama -> object;
+    override def model_call_no_stream(params: dict) -> dict;
+    override def model_call_with_stream(params: dict) -> Generator[object, None, None];
+    override def _get_ctx_window(call_params: dict) -> int;
 }
 
 """Pool of LLM models with fallback and load-balancing via LiteLLM Router.
@@ -124,19 +151,22 @@ obj ModelPool(BaseLLM) {
     def postinit -> None;
     override def model_call_no_stream(params: dict) -> dict;
     override def model_call_with_stream(params: dict) -> Generator[str, None, None];
+    override def _get_ctx_window(call_params: dict) -> int;
 }
 
 """Primary LLM connector that abstracts LiteLLM functionality
 
 Provides a unified interface for interacting with various language models
 (OpenAI, Anthropic, etc.) through LiteLLM. Supports both direct API calls
-and proxy-based routing. Automatically delegates to MockLLM when model_name
-is 'mockllm'.
+and proxy-based routing. Delegates to MockLLM when model_name is
+'mockllm', and to LocalLLM (in-process llama.cpp) when model_name starts
+with 'local:'.
 """
 obj Model(BaseLLM) {
     has proxy: bool = False,
         http_client: bool = False,
-        _mock_delegate: MockLLM | None = None;
+        _mock_delegate: MockLLM | None = None,
+        _local_delegate: BaseLLM | None = None;
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> object;

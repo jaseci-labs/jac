@@ -735,9 +735,12 @@ impl UniCFGNode.get_head -> UniCFGNode {
     while (
         nd.bb_in
         and (len(nd.bb_in) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
-            nd.bb_in[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+        )
+        and not isinstance(
+            nd.bb_in[0],
+            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
         )
         and nd.bb_in[0].bb_out
         and (len(nd.bb_in[0].bb_out) == 1)
@@ -753,9 +756,12 @@ impl UniCFGNode.get_tail -> UniCFGNode {
     while (
         nd.bb_out
         and (len(nd.bb_out) == 1)
-        and not isinstance(nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode))
         and not isinstance(
-            nd.bb_out[0], (InForStmt, IterForStmt, WhileStmt, ConditionalNode)
+            nd, (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
+        )
+        and not isinstance(
+            nd.bb_out[0],
+            (InForStmt, IterForStmt, WhileStmt, ConditionalNode, InnerCompr)
         )
         and nd.bb_out[0].bb_in
         and (len(nd.bb_out[0].bb_in) == 1)
@@ -1881,6 +1887,7 @@ impl KWPair.postinit -> None {
 impl InnerCompr.postinit -> None {
     UniNode.postinit(self);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -2071,23 +2078,60 @@ impl JsxText.postinit -> None {
 
 """Normalize JSX text whitespace (single source of truth).
 
-    HTML-like rules: strip leading/trailing newline+whitespace,
-    collapse internal newline+whitespace sequences to a single space.
+    Implements Babel's JSX text-content rules so the rendered output
+    matches what React/Babel produce:
+
+      1. Split the raw text on line breaks.
+      2. Convert tabs to spaces; strip leading whitespace from every
+         line except the first, and trailing whitespace from every line
+         except the last. (i.e. only newline-crossing whitespace is
+         trimmed; same-line whitespace at the boundaries is preserved.)
+      3. Lines that are empty after step 2 are dropped entirely.
+      4. Surviving lines are joined with a single space separator.
+
+    Consequences:
+      - "{a} {b}" (single space, no newline) -> " "  (preserved)
+      - "}\n  {"  (whitespace with newline)  -> ""   (dropped)
+      - "  hello\n    world  " -> "  hello world  " (cross-line ws becomes
+        a single space; first-line leading ws and last-line trailing ws
+        are preserved.)
+
+    Returning "" tells the codegen to skip this child.
     """
 impl JsxText.get_normalized_text -> str {
     import re;
     raw = self.value.value if isinstance(self.value, Token) else str(self.value);
-    stripped = raw.strip();
-    if not stripped {
+    if not raw {
         return "";
     }
-    # Strip leading newline+whitespace, trailing whitespace
-    result = re.sub(r'^\s*\n\s*', '', raw).rstrip();
-    if not result {
-        result = stripped;
+    lines = re.split(r'\r\n|\n|\r', raw);
+    # Index of the last line that contains any non-space/tab character.
+    # Used to suppress the trailing inter-line space after the final line.
+    last_non_empty = -1;
+    for i in range(len(lines)) {
+        if re.search(r'[^ \t]', lines[i]) {
+            last_non_empty = i;
+        }
     }
-    # Collapse internal newline+whitespace to single space
-    return re.sub(r'\s*\n\s*', ' ', result);
+    result = "";
+    for i in range(len(lines)) {
+        line = lines[i].replace('\t', ' ');
+        is_first = i == 0;
+        is_last = i == len(lines) - 1;
+        if not is_first {
+            line = re.sub(r'^[ ]+', '', line);
+        }
+        if not is_last {
+            line = re.sub(r'[ ]+$', '', line);
+        }
+        if line {
+            if last_non_empty >= 0 and i != last_non_empty {
+                line += ' ';
+            }
+            result += line;
+        }
+    }
+    return result;
 }
 
 impl JsxExpression.postinit -> None {

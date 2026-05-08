@@ -11,7 +11,9 @@ import httpx;
 import from typing { Any }
 import from jaclang.runtimelib { sv_client }
 import from jac_scale.microservices._auth_ctx {
-    set_current_auth, reset_current_auth, get_current_auth
+    set_current_auth,
+    reset_current_auth,
+    get_current_auth
 }
 import from jac_scale.plugin { JacScalePlugin }
 
@@ -27,7 +29,6 @@ import from jac_scale.plugin { JacScalePlugin }
 # and .post() on the Client go through the transport, so a single helper
 # covers every existing test pattern (plain JSON, ConnectError on retry,
 # call counting, timeout capture).
-
 def _mock_client_class(handler: Any, on_init: Any = None) -> Any {
     # Returns a *factory callable* (not a class) so the plugin's
     # `httpx.Client(timeout=...)` substitution still works. Subclassing
@@ -55,7 +56,6 @@ def _mock_client_class(handler: Any, on_init: Any = None) -> Any {
 # =============================================================================
 # _auth_ctx
 # =============================================================================
-
 test "set/get/reset auth context round-trips" {
     tok = set_current_auth("Bearer abc");
     assert get_current_auth() == "Bearer abc";
@@ -72,15 +72,13 @@ test "set_current_auth None stores empty string" {
 # =============================================================================
 # Plugin sv_service_call override forwards Authorization header
 # =============================================================================
-
 test "sv_service_call forwards Authorization header when auth set" {
     captured: dict = {};
 
     def handler(request: httpx.Request) -> httpx.Response {
         captured["auth"] = request.headers.get("Authorization", "");
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "echoed"}}
+            status_code=200, json={"ok": True, "data": {"result": "echoed"}}
         );
     }
 
@@ -110,8 +108,7 @@ test "sv_service_call omits Authorization when no auth context" {
     def handler(request: httpx.Request) -> httpx.Response {
         captured["auth"] = request.headers.get("Authorization", "");
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "ok"}}
+            status_code=200, json={"ok": True, "data": {"result": "ok"}}
         );
     }
 
@@ -159,7 +156,6 @@ test "sv_service_call surfaces application-level error from envelope" {
 # =============================================================================
 # Retry with exponential backoff (ROADMAP P5)
 # =============================================================================
-
 test "sv_service_call retries on transport error and succeeds on 2nd attempt" {
     # Simulates: pod is coming up, first connect fails; second succeeds.
     # We count how many times the handler was called - should be 2.
@@ -221,9 +217,11 @@ test "sv_service_call gives up after max_attempts on persistent transport error"
 # =============================================================================
 # X-Trace-Id propagation (ROADMAP P7)
 # =============================================================================
-
 import from jac_scale.microservices._trace_ctx {
-    set_current_trace, reset_current_trace, get_current_trace, ensure_trace_id
+    set_current_trace,
+    reset_current_trace,
+    get_current_trace,
+    ensure_trace_id
 }
 
 test "trace_ctx set/get/reset round-trips" {
@@ -308,10 +306,12 @@ test "sv_service_call omits X-Trace-Id when no trace context is set" {
 # =============================================================================
 # Circuit breaker (ROADMAP P6)
 # =============================================================================
-
 import from jac_scale.plugin {
-    _breaker_reset, _breaker_record_success, _breaker_record_failure,
-    _breaker_should_skip, _BREAKER_TRIP_THRESHOLD
+    _breaker_reset,
+    _breaker_record_success,
+    _breaker_record_failure,
+    _breaker_should_skip,
+    _BREAKER_TRIP_THRESHOLD
 }
 
 test "breaker trips OPEN after N consecutive transport failures and fails fast" {
@@ -368,9 +368,7 @@ test "breaker success recorder resets failure count" {
 test "HALF_OPEN probe success closes the breaker" {
     # Simulate: breaker OPEN, cooldown elapses, probe succeeds.
     # Without waiting 30s we use _breaker_force_cooldown_elapsed.
-    import from jac_scale.plugin {
-        _breaker_peek, _breaker_force_cooldown_elapsed
-    }
+    import from jac_scale.plugin { _breaker_peek, _breaker_force_cooldown_elapsed }
 
     mod = "breaker_half_open_test";
     _breaker_reset(mod);
@@ -470,12 +468,11 @@ test "sv_service_call uses the default 10s timeout when no per-service override"
 
     def handler(request: httpx.Request) -> httpx.Response {
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "done"}}
+            status_code=200, json={"ok": True, "data": {"result": "done"}}
         );
     }
 
-    def on_init(kwargs: dict) -> None {
+    def on_init(kwargs: dict) {
         captured["timeout"] = kwargs.get("timeout");
     }
 
@@ -499,12 +496,11 @@ test "sv_service_call honors per-service rpc_timeout from config" {
 
     def handler(request: httpx.Request) -> httpx.Response {
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "done"}}
+            status_code=200, json={"ok": True, "data": {"result": "done"}}
         );
     }
 
-    def on_init(kwargs: dict) -> None {
+    def on_init(kwargs: dict) {
         captured["timeout"] = kwargs.get("timeout");
     }
 

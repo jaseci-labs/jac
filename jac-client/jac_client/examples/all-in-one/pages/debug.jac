@@ -256,7 +256,7 @@ cl {
                         Tests `root spawn ping_server()` - this is how your app calls the backend.
                     </p>
                     <button
-                        onClick={lambda { testWalkerPing();}}
+                        onClick={lambda { testWalkerPing(); }}
                         style={{
                             "padding": "10px 20px",
                             "backgroundColor": "#3b82f6",
@@ -328,7 +328,7 @@ cl {
                         }}
                     >
                         <button
-                            onClick={lambda { testDirectFetch();}}
+                            onClick={lambda { testDirectFetch(); }}
                             style={{
                                 "padding": "10px 20px",
                                 "backgroundColor": "#8b5cf6",
@@ -341,7 +341,7 @@ cl {
                             Fetch /functions
                         </button>
                         <button
-                            onClick={lambda { testRootFetch();}}
+                            onClick={lambda { testRootFetch(); }}
                             style={{
                                 "padding": "10px 20px",
                                 "backgroundColor": "#6366f1",

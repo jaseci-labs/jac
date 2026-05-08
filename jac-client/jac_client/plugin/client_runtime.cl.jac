@@ -87,8 +87,19 @@ def:pub __overlaps(list1: list, list2: list) -> bool;
 # ============================================================================
 # Client Error Reporting
 # ============================================================================
+# `componentStack` carries React's named call chain (e.g. "in App\n  in Router")
+# captured by the boundary's onError; the JS `stack` is engine frames only.
 def:pub __jacReportError(
-    message: str, stack: str = "", url: str = "", source: str = ""
+    message: str,
+    stack: str = "",
+    url: str = "",
+    source: str = "",
+    componentStack: str = ""
 ) -> None;
 
 def:pub __jacInstallErrorHandlers -> None;
+
+# onError prop for JacClientErrorBoundary. Wired by entry-script generators
+# so `info.componentStack` reaches the server (FallbackComponent's props
+# don't include `info`, so reporting from there can't see componentStack).
+def:pub __jacReactErrorHandler(error: Any, info: Any) -> None;
