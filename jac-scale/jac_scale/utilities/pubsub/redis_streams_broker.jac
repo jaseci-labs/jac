@@ -112,16 +112,31 @@ obj RedisStreamsBroker(MessageBroker) {
         );
     }
 
-    def _ensure_group(topic: str, group: str) -> None {
+    def _resolve_start_id(start_from: str) -> str {
+        # Map portable names to Redis stream ids; pass anything else through
+        # so callers can resume from a specific position token if they have one.
+        if start_from == "latest" {
+            return "$";
+        }
+        if start_from == "earliest" {
+            return "0";
+        }
+        return start_from;
+    }
+
+    def _ensure_group(topic: str, group: str, start_from: str = "latest") -> None {
         key = f"{topic}::{group}";
         if key in self._ensured_groups {
             return;
         }
         try {
-            self._get_client().xgroup_create(topic, group, id="$", mkstream=True);
+            self._get_client().xgroup_create(
+                topic, group, id=self._resolve_start_id(start_from), mkstream=True
+            );
         } except Exception as e {
             # BUSYGROUP just means the group already exists; anything
-            # else is a real error and worth surfacing.
+            # else is a real error and worth surfacing. start_from is one-shot
+            # bookmark for *new* groups, so existing groups silently keep their position.
             if "BUSYGROUP" not in str(e) {
                 _logger.warning(f"XGROUP CREATE failed for {topic}/{group}: {e}");
             }
@@ -175,10 +190,11 @@ obj RedisStreamsBroker(MessageBroker) {
         topic: str,
         group: str | None = None,
         max_messages: int = 1,
-        timeout_seconds: float = 5.0
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest"
     ) -> list[Event] {
         grp = group or self._default_group;
-        self._ensure_group(topic, grp);
+        self._ensure_group(topic, grp, start_from);
         block_ms = max(1, int(timeout_seconds * 1000));
         try {
             result = self._get_client().xreadgroup(
@@ -295,11 +311,12 @@ obj RedisStreamsBroker(MessageBroker) {
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,
-        retry: RetryPolicy | None = None
+        retry: RetryPolicy | None = None,
+        start_from: str = "latest"
     ) -> Subscription {
         grp = group or self._default_group;
         retry_policy = retry or self._default_retry;
-        self._ensure_group(topic, grp);
+        self._ensure_group(topic, grp, start_from);
 
         broker = self;
         def _loop {

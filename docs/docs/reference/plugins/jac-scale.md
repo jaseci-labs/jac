@@ -1796,7 +1796,14 @@ def on_order_placed(event: Event) -> None {
 
 Handlers register at import time. At server startup, the framework walks the registry and wires each handler into the active broker. A daemon consumer thread is spawned per subscription.
 
-`@subscribe` accepts optional `group=` and `retry=` arguments to override the defaults from `jac.toml`.
+`@subscribe` accepts optional `group=` and `retry=` arguments to override the defaults from `jac.toml`, plus `start_from=` to control where a brand-new consumer group begins reading. Default is `"latest"` (only messages produced after the group is created); pass `"earliest"` to replay everything still retained in the stream, or a broker-specific position token (e.g. a Redis stream id like `"1700000000000-0"`) to resume from a specific offset. `start_from` is a one-time bookmark: existing groups always resume from their stored position and ignore this argument.
+
+```jac
+@subscribe("orders.placed", start_from="earliest")
+def replay_all(event: Event) -> None {
+    ...
+}
+```
 
 ### Consuming (pull)
 
@@ -1815,7 +1822,7 @@ def drain(broker: MessageBroker) -> int {
 }
 ```
 
-`consume()` blocks for up to `timeout_seconds` waiting for at least one message, then returns whatever has arrived (up to `max_messages`). Each event must be acked individually via `ack(event)` or the broker will redeliver it after its visibility timeout.
+`consume()` blocks for up to `timeout_seconds` waiting for at least one message, then returns whatever has arrived (up to `max_messages`). Each event must be acked individually via `ack(event)` or the broker will redeliver it after its visibility timeout. `consume()` accepts the same `start_from=` argument as `subscribe()`; it only affects the first call that creates the consumer group, subsequent calls resume from the stored position.
 
 ### Configuration reference
 

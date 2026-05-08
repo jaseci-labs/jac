@@ -73,7 +73,13 @@ test "publish then consume roundtrips event fields" {
     );
     b.publish("orders", sent);
 
-    received = b.consume("orders", group="t_rt", max_messages=1, timeout_seconds=2.0);
+    received = b.consume(
+        "orders",
+        group="t_rt",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
     assert len(received) == 1;
     got = received[0];
     assert got.event_type == "orders.placed";
@@ -96,7 +102,13 @@ test "ack prevents redelivery in same group" {
     b = _make_broker(group="t_ack");
     b.publish("acks", Event(event_type="x", data={"n": 1}));
 
-    first = b.consume("acks", group="t_ack", max_messages=1, timeout_seconds=2.0);
+    first = b.consume(
+        "acks",
+        group="t_ack",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
     assert len(first) == 1;
     b.ack(first[0]);
 
@@ -182,11 +194,56 @@ test "retry exhaustion routes to dlq stream" {
 
     # Pull from the DLQ via a fresh group on the .dlq stream.
     dlq_msgs = b.consume(
-        "dlqtest.dlq", group="t_dlq_reader", max_messages=1, timeout_seconds=2.0
+        "dlqtest.dlq",
+        group="t_dlq_reader",
+        max_messages=1,
+        timeout_seconds=2.0,
+        start_from="earliest"
     );
     assert len(dlq_msgs) == 1;
     assert dlq_msgs[0].event_type == "boom";
     assert dlq_msgs[0].data["n"] == 1;
+
+    b.stop(drain=False);
+    cleanup_connections();
+}
+
+
+# --- start_from semantics ---
+test "start_from earliest replays messages published before group existed" {
+    _flush_redis();
+    b = _make_broker(group="t_replay");
+
+    # Publish before the consumer group is created. With default 'latest'
+    # the group would skip these; 'earliest' must surface them.
+    b.publish("replay", Event(event_type="x", data={"n": 1}));
+    b.publish("replay", Event(event_type="x", data={"n": 2}));
+
+    msgs = b.consume(
+        "replay",
+        group="t_replay",
+        max_messages=10,
+        timeout_seconds=2.0,
+        start_from="earliest"
+    );
+    assert len(msgs) == 2;
+    assert msgs[0].data["n"] == 1;
+    assert msgs[1].data["n"] == 2;
+
+    b.stop(drain=False);
+    cleanup_connections();
+}
+
+test "start_from latest skips messages published before group existed" {
+    _flush_redis();
+    b = _make_broker(group="t_skip");
+
+    b.publish("skip", Event(event_type="x", data={"n": 1}));
+
+    # Default start_from='latest' creates the group at the tail, so the
+    # pre-existing message must be invisible to it.
+    out = b.consume("skip", group="t_skip", max_messages=5, timeout_seconds=0.3);
+    assert out == [];
 
     b.stop(drain=False);
     cleanup_connections();

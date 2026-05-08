@@ -54,20 +54,23 @@ obj MessageBroker {
     """Register a handler for a topic (push delivery).
 
     `group` shares load across processes; distinct groups each see the full stream. Handler return acks; raise triggers retry.
+    `start_from` controls where a brand-new consumer group begins reading: 'latest' (only new messages), 'earliest' (replay all retained), or a broker-specific position token. Ignored for groups that already exist.
     """
     def subscribe(
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,
-        retry: RetryPolicy | None = None
+        retry: RetryPolicy | None = None,
+        start_from: str = "latest"
     ) -> Subscription;
 
-    """Pull up to `max_messages` events, blocking up to `timeout_seconds`. Caller MUST ack(event)."""
+    """Pull up to `max_messages` events, blocking up to `timeout_seconds`. Caller MUST ack(event). See subscribe() for `start_from` semantics."""
     def consume(
         topic: str,
         group: str | None = None,
         max_messages: int = 1,
-        timeout_seconds: float = 5.0
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest"
     ) -> list[Event];
 
     """Ack a consume()d event. No-op for subscribe()-delivered events (auto-acked)."""
@@ -89,7 +92,8 @@ obj NoOpBroker(MessageBroker) {
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,
-        retry: RetryPolicy | None = None
+        retry: RetryPolicy | None = None,
+        start_from: str = "latest"
     ) -> Subscription {
         return Subscription(topic=topic, group=group);
     }
@@ -98,7 +102,8 @@ obj NoOpBroker(MessageBroker) {
         topic: str,
         group: str | None = None,
         max_messages: int = 1,
-        timeout_seconds: float = 5.0
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest"
     ) -> list[Event] {
         return [];
     }

@@ -29,7 +29,8 @@ obj _ExplodingBroker(MessageBroker) {
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,
-        retry: RetryPolicy | None = None
+        retry: RetryPolicy | None = None,
+        start_from: str = "latest"
     ) -> Subscription {
         return Subscription(topic=topic);
     }
@@ -38,7 +39,8 @@ obj _ExplodingBroker(MessageBroker) {
         topic: str,
         group: str | None = None,
         max_messages: int = 1,
-        timeout_seconds: float = 5.0
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest"
     ) -> list[Event] {
         return [];
     }
@@ -109,6 +111,13 @@ test "noop broker subscribe returns subscription" {
     assert isinstance(sub, Subscription);
     assert sub.topic == "my.topic";
     assert sub.group == "my.group";
+}
+
+test "noop broker subscribe accepts start_from" {
+    b = NoOpBroker();
+    def _h(ev: Event) { }
+    sub = b.subscribe("my.topic", _h, start_from="earliest");
+    assert isinstance(sub, Subscription);
 }
 
 test "noop broker consume returns empty list" {
@@ -209,6 +218,22 @@ test "subscribe decorator preserves group and retry" {
     assert last.retry is policy;
     assert last.retry.max_attempts == 5;
     assert last.retry.dead_letter_suffix == ".dead";
+}
+
+test "subscribe decorator defaults start_from to latest" {
+    @subscribe("orders.default")
+    def _h_default(ev: Event) { }
+
+    last = get_subscriptions()[-1];
+    assert last.start_from == "latest";
+}
+
+test "subscribe decorator preserves start_from override" {
+    @subscribe("orders.replay", start_from="earliest")
+    def _h_replay(ev: Event) { }
+
+    last = get_subscriptions()[-1];
+    assert last.start_from == "earliest";
 }
 
 test "subscribe decorator returns the original function" {
