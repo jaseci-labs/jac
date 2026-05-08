@@ -447,9 +447,7 @@ impl MongoBackend.sync -> None {
         if not anchor.persistent {
             continue;
         }
-        # Check hash first — skip unchanged anchors without access check.
-        # topology_index_data is excluded from the hash, so use the explicit
-        # dirty flag as a secondary signal to avoid silently dropping index updates.
+        # Check hash first — skip unchanged anchors without access check
         current_hash = Serializer._compute_hash(anchor);
         topology_dirty = isinstance(anchor, NodeAnchor)
         and getattr(anchor, 'is_topology_dirty', False);
@@ -475,9 +473,6 @@ impl MongoBackend.sync -> None {
             # field-hash-derived fields (in-place mutations) to get the complete
             # dirty set. Both must be combined — running only one silently drops
             # the other category (e.g. direct + in-place in the same request).
-            # Skip put_partial when topology is dirty — topology_index_data lives
-            # outside data.archetype, so partial writes would miss it. Fall through
-            # to _write_to_db which serializes the full document.
             if anchor.hash != 0 and not topology_dirty {
                 arch = anchor.archetype if anchor.is_populated() else None;
                 setattr_dirty: set[str] = (
@@ -492,7 +487,6 @@ impl MongoBackend.sync -> None {
                     continue;
                 }
             }
-            # First insert (hash == 0), no field changes found, or topology is dirty.
             self._write_to_db(anchor);
         } except Exception as e {
             logger.warning(f"MongoDB sync failed for anchor {anchor.id}: {e}");

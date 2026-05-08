@@ -917,7 +917,6 @@ impl SqliteMemory.sync -> None {
                             changed = True;
                         }
                     }
-                    # Topology index is excluded from hash; use explicit dirty flag
                     if (
                         isinstance(anchor, NodeAnchor)
                         and getattr(anchor, 'is_topology_dirty', False)

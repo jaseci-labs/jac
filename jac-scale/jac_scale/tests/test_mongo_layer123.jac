@@ -197,21 +197,12 @@ test "MongoBackend inspect_summary shape matches SqliteMemory's" {
 
 
 test "MongoBackend topology-only update persisted when hash unchanged" {
-    # Regression for issue #5669: topology_index_data is excluded from the hash, so
-    # when a walker only updates topology (no edge/archetype mutations), the hash stays
-    # the same and sync would silently skip the write.
-    #
-    # MongoBackend.sync() calls check_write_access() which requires a live Jac context,
-    # so we test via _write_to_db directly — the write path sync() uses when
-    # topology_dirty=True. The routing logic (early-out bypass, put_partial skip) is
-    # covered by the SQLite regression test in test_topology_integration.jac.
     container = MongoDbContainer("mongo:latest");
     container.start();
     try {
         uri = container.get_connection_url();
         backend = MongoBackend(mongo_url=uri, db_name="jac_topo_test");
 
-        # --- Step 1: write anchor with initial topology ---
         r = Root();
         root_anchor = r.__jac__;
         root_anchor.persistent = True;
@@ -223,10 +214,7 @@ test "MongoBackend topology-only update persisted when hash unchanged" {
         root_anchor.set_topology_index(idx1);
         root_anchor.is_topology_dirty = False;
         backend._write_to_db(root_anchor);
-        # _write_to_db sets anchor.hash = Serializer._compute_hash(anchor)
-        # (topology excluded), mirroring the state after a real sync() write.
 
-        # --- Step 2: topology-only update — hash must stay the same ---
         idx2 = root_anchor.get_topology_index();
         n2 = uuid4();
         idx2.add_node(n2, "Project");
@@ -234,22 +222,18 @@ test "MongoBackend topology-only update persisted when hash unchanged" {
         root_anchor.set_topology_index(idx2);
         assert root_anchor.is_topology_dirty is True , "set_topology_index must raise flag";
 
-        # Confirm the bug scenario: hash is unchanged after topology-only update
         current_hash = Serializer._compute_hash(root_anchor);
         assert current_hash == root_anchor.hash , (
             "precondition: hash must be unchanged after topology-only update"
         );
 
-        # Confirm the guard condition: topology_dirty bypasses the early-out
         would_skip = (current_hash == root_anchor.hash)
         and not root_anchor.is_topology_dirty;
         assert not would_skip , "topology_dirty=True must prevent the hash early-out skip";
 
-        # Write via the path sync() takes when topology_dirty (falls through to _write_to_db)
         backend._write_to_db(root_anchor);
         assert root_anchor.is_topology_dirty is False , "flag must clear after _write_to_db";
 
-        # --- Step 3: verify Project type is in the persisted index ---
         final = backend.get(root_anchor.id);
         assert final is not None and isinstance(final, NodeAnchor);
         final_node: NodeAnchor = final;
@@ -266,9 +250,6 @@ test "MongoBackend topology-only update persisted when hash unchanged" {
 
 
 test "MongoBackend _put_node_atomic resets is_topology_dirty on success" {
-    # Regression for issue #5669: when sync() takes the edge-delta path
-    # (_put_node_atomic), the topology dirty flag must be cleared only on success
-    # — not unconditionally in the caller (fixes Issue 1 from code review).
     container = MongoDbContainer("mongo:latest");
     container.start();
     try {
@@ -279,23 +260,18 @@ test "MongoBackend _put_node_atomic resets is_topology_dirty on success" {
         root_anchor = r.__jac__;
         root_anchor.persistent = True;
 
-        # Write initial state so anchor exists in MongoDB
         backend._write_to_db(root_anchor);
 
-        # Set topology dirty (simulates topology update before edge-delta commit)
         idx = TopologyIndex();
         idx.add_node(root_anchor.id, "Root");
         root_anchor.set_topology_index(idx);
         assert root_anchor.is_topology_dirty is True;
 
-        # _put_node_atomic is called by sync() when edge_delta() is not None.
-        # It serializes the full anchor (including topology) and must clear the flag.
         backend._put_node_atomic(root_anchor, [], []);
         assert root_anchor.is_topology_dirty is False , (
             "is_topology_dirty must be cleared inside _put_node_atomic on success"
         );
 
-        # Verify topology was actually written
         loaded = backend.get(root_anchor.id);
         assert loaded is not None and isinstance(loaded, NodeAnchor);
         loaded_node: NodeAnchor = loaded;
