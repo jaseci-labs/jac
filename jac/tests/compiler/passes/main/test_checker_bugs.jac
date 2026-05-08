@@ -623,7 +623,7 @@ test "bug_subscript_index_narrowing_negative" {
         "(items[0]=, items[-1]=, config[\"host\"]=) must all error. "
         "Expected at least 5 E1099 errors but got "
         f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
-        );
+    );
 }
 
 test "bug_cast_union_instance" {
