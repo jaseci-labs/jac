@@ -3844,10 +3844,14 @@ impl Parser.parse_code_block_stmts -> list {
             # Strings on the same line as the previous token (e.g. `print "foo"`)
             # are not docstrings - only flag strings that start on their own line.
             is_docstring = False;
-            has_semi = any(isinstance(k, Semi) for k in stmt.kid) if isinstance(stmt, ExprStmt) else False;
-            on_own_line = before == 0 or self.tokens[before - 1].loc.end_line < self.tokens[before].loc.line;
+            has_semi = any(isinstance(k, Semi) for k in stmt.kid)
+                if isinstance(stmt, ExprStmt)
+                else False;
+            on_own_line = before == 0
+            or self.tokens[before - 1].loc.end_line < self.tokens[before].loc.line;
             if isinstance(stmt, ExprStmt) and not stmt.in_fstring and not has_semi {
-                is_string_expr = isinstance(stmt.expr, String) or (
+                is_string_expr = isinstance(stmt.expr, String)
+                or (
                     isinstance(stmt.expr, MultiString)
                     and all(isinstance(s, String) for s in stmt.expr.strings)
                 );
@@ -4102,7 +4106,8 @@ impl Parser.parse_statement{
         # String literals without a semicolon are likely misplaced docstrings.
         # parse_code_block_stmts will emit W0060 for those - suppress the
         # misleading E0002 so only the helpful warning is shown.
-        is_string_lit = isinstance(expr, String) or (
+        is_string_lit = isinstance(expr, String)
+        or (
             isinstance(expr, MultiString)
             and all(isinstance(s, String) for s in expr.strings)
         );
