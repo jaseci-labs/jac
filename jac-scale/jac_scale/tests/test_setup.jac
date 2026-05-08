@@ -16,7 +16,6 @@ import from jac_scale.microservices.setup {
 # =============================================================================
 # Utility functions
 # =============================================================================
-
 test "derive_module_name returns file stem" {
     assert derive_module_name("orders_app.jac") == "orders_app";
     assert derive_module_name("payments_app.jac") == "payments_app";
@@ -36,7 +35,6 @@ test "derive_prefix passes non-_app names through" {
 # =============================================================================
 # scan_jac_files
 # =============================================================================
-
 test "scan_jac_files finds jac files" {
     tmp = tempfile.mkdtemp();
     (Path(tmp) / "app.jac").write_text("# app");
@@ -87,7 +85,6 @@ test "scan_jac_files finds nested files" {
 # =============================================================================
 # add_service / remove_service / list_services
 # =============================================================================
-
 test "add_service creates routes table and appends entry" {
     tmp = tempfile.mkdtemp();
     toml_path = Path(tmp) / "jac.toml";
@@ -158,7 +155,9 @@ test "remove_service removes a route" {
 
 test "remove_service handles missing route" {
     tmp = tempfile.mkdtemp();
-    (Path(tmp) / "jac.toml").write_text('[plugins.scale.microservices]\nenabled = true\n');
+    (Path(tmp) / "jac.toml").write_text(
+        '[plugins.scale.microservices]\nenabled = true\n'
+    );
 
     # Should print error, not crash
     remove_service(tmp, "nonexistent");

@@ -165,8 +165,7 @@ test "desktop target files exist" {
 # =============================================================================
 test "pyinstaller spec excludes litellm bloat for windows max_path" {
     impl_path = (
-        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl"
-        / "desktop_target.impl.jac"
+        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl" / "desktop_target.impl.jac"
     );
     assert impl_path.exists() , f"impl file not found at {impl_path}";
 
@@ -557,7 +556,9 @@ test "sidecar module runs directly" {
             # Test functions endpoint
             print("[DEBUG] Testing /functions endpoint");
             try {
-                with urlopen(f"http://127.0.0.1:{port}/functions", timeout=10) as resp {
+                with urlopen(
+                    f"http://127.0.0.1:{port}/functions", timeout=10
+                ) as resp {
                     funcs_body = resp.read().decode("utf-8", errors="ignore");
                     print(f"[DEBUG] Functions response: {funcs_body[:500]}");
                     if "greet" in funcs_body or "add" in funcs_body {

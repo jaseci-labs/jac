@@ -93,6 +93,8 @@ jobs:
         run: pip install pex
 
       - name: Build standalone binary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ needs.resolve-versions.outputs.jaclang_version }}"
           ASSET="jac-${VERSION}-${{ matrix.platform }}"
@@ -179,6 +181,8 @@ jobs:
         run: pip install pex
 
       - name: Build standalone binary
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           VERSION="${{ needs.resolve-versions.outputs.jaseci_version }}"
           ASSET="jaseci-${VERSION}-${{ matrix.platform }}"

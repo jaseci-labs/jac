@@ -28,9 +28,10 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project dependencies |
+| `jac install` | Install project/project dependencies |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
+| `jac bundle` | Build a distributable `.whl` from `jac.toml` |
 | `jac jacpack` | Manage project templates (.jacpack files) |
 | `jac eject` | Compile a project to standalone Python + JavaScript (zero `.jac` files) |
 | `jac grammar` | Extract and print the Jac grammar |
@@ -1192,6 +1193,53 @@ jac purge
 
 ---
 
+### jac bundle
+
+Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`.
+
+```bash
+jac bundle [-h] [-o OUTPUT]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-o, --output` | Directory to write the `.whl` file | `dist` |
+
+**What it does:**
+
+1. Reads `[package]` from `jac.toml` and validates required fields (`name`, `version`).
+2. Discovers source files under the package directory (defaults to the directory named after the package). Includes `*.jac`, `*.py`, `*.pyi`, `*.lark`, `py.typed`, and `*.jir` by default.
+3. Generates a PEP 427-compliant `.whl` archive with a `METADATA`, `WHEEL`, `RECORD`, and optional `entry_points.txt`.
+4. Writes `<name>-<version>-py3-none-any.whl` to the output directory.
+
+**Examples:**
+
+```bash
+# Build wheel into dist/ (default)
+jac bundle
+
+# Build to a custom directory
+jac bundle -o /tmp/wheels
+
+# Upload to PyPI after building
+jac bundle && twine upload dist/*
+
+# Install locally to test before publishing
+pip install dist/mylib-1.0.0-py3-none-any.whl
+```
+
+**Requirements:**
+
+A `[package]` section must exist in `jac.toml`. At minimum:
+
+```toml
+[package]
+name = "mylib"
+version = "1.0.0"
+```
+
+---
+
 ## Template Management
 
 ### jac jacpack
@@ -1676,14 +1724,45 @@ jac test -v
 jac lint . --fix
 ```
 
+### Publishing a Package
+
+Expected project layout:
+
+```
+mylib/
+├── jac.toml          ← must contain [package] section
+├── README.md
+└── mylib/            ← source dir (matches [package] name)
+    ├── __init__.jac
+    └── utils.jac
+```
+
+```bash
+# Build wheel from jac.toml
+jac bundle
+
+# Test locally in a clean environment before uploading
+python -m venv test_env && source test_env/bin/activate
+pip install dist/mylib-1.0.0-py3-none-any.whl
+
+# Upload to TestPyPI first to verify metadata
+twine upload --repository testpypi dist/*
+
+# Then publish to PyPI
+twine upload dist/*
+```
+
 ### Production
+
+!!! note
+    `main.jac` is the default entry point for `jac start`. If your entry point differs (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
 
 ```bash
 # Start locally
 jac start -p 8000
 
 # Deploy to Kubernetes
-jac start main.jac --scale
+jac start --scale
 
 # Check deployment status
 jac status main.jac

@@ -523,6 +523,106 @@ secret = "${SECRET:?Secret is required}"   # Required with error
 
 ---
 
+### [package]
+
+PyPI-publishable package metadata. This section is required to run `jac bundle`. It is separate from `[project]` so that application-level metadata (entry point, run settings) does not pollute the distributed package manifest.
+
+```toml
+[package]
+name = "mylib"
+version = "1.0.0"
+description = "A Jac library"
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.12"
+keywords = ["jac", "ai"]
+
+[[package.authors]]
+name = "Your Name"
+email = "you@example.com"
+
+[[package.maintainers]]
+name = "Another Person"
+email = "them@example.com"
+
+[package.urls]
+homepage = "https://example.com"
+repository = "https://github.com/user/mylib"
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Package name on PyPI (required) |
+| `version` | string | Semantic version (required) |
+| `description` | string | One-line summary shown on PyPI |
+| `license` | string | SPDX license identifier (e.g. `"MIT"`) |
+| `readme` | string | Path to README file (default: `README.md`) |
+| `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
+| `keywords` | list | Search keywords on PyPI |
+| `authors` | list of `{name, email}` | Package authors |
+| `maintainers` | list of `{name, email}` | Package maintainers |
+| `urls` | table | Links shown on PyPI (homepage, repository, etc.) |
+
+> **Note:** `[project]` fields like `entry-point` and `jac-version` are for running your app. `[package]` fields are for distributing a library. A publishable project can have both.
+
+---
+
+### [package.include]
+
+Controls which files and directories are bundled into the wheel.
+
+```toml
+[package.include]
+# Explicit list of package directories to include.
+# Defaults to a directory matching the package name (hyphens replaced with underscores).
+packages = ["mylib", "mylib_utils"]
+
+[package.include.data]
+# "*" sets global file patterns for all packages.
+"*" = ["**/*.jac", "**/*.py", "**/*.pyi", "py.typed"]
+
+# Per-package overrides add extra patterns on top of globals.
+mylib = ["**/*.lark", "data/*.json", "templates/**/*"]
+```
+
+**Default included patterns** (when `[package.include.data]` is absent):
+
+| Pattern | Description |
+|---------|-------------|
+| `**/*.jac` | Jac source files |
+| `**/*.py` | Python source files |
+| `**/*.pyi` | Type stub files |
+| `**/*.lark` | Lark grammar files |
+| `**/py.typed` | PEP 561 type marker |
+| `**/*.jir` | Pre-compiled JIR bytecode |
+
+**Always excluded** (regardless of patterns):
+
+- Directories: `.jac/`, `__pycache__/`, `dist/`, `build/`, `venv/`, `.venv/`, `env/`, `.git/`, `.hg/`, `node_modules/`, `*.egg-info/`
+- File suffixes: `.pyc`
+
+---
+
+### [entrypoints]
+
+Declare console scripts and plugin entry points. Maps directly to `entry_points.txt` in the wheel's `.dist-info`.
+
+```toml
+[entrypoints.scripts]
+# Installs a "mylib" CLI command pointing to mylib.cli:main
+mylib = "mylib.cli:main"
+
+[entrypoints.jac]
+# Declare a Jac plugin; discovered via entry_points(group="jac")
+mylib = "mylib.plugin:setup"
+```
+
+The `[entrypoints.scripts]` group is written as `[console_scripts]` in `entry_points.txt`, which is the standard pip convention for installing CLI commands. After a user runs `pip install mylib`, the `mylib` command is available on their `PATH`.
+
+The `[entrypoints.jac]` group is the entry point group Jac's plugin system queries at startup (`entry_points(group="jac")`). Any package that declares an entry point here will be auto-discovered when the user has it installed.
+
+---
+
 ## CLI Override
 
 Most settings can be overridden via CLI flags:
