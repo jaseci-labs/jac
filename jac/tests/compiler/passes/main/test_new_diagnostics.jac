@@ -856,7 +856,8 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0062_nonlocal_module": "with entry { nonlocal x; }",
          "E0071_bare_except_first": "with entry { try { x=1; } except { } except ValueError as e { } }",
          "E0075_dup_base": "obj A { }\nobj B(A, A) { }",
-         "E0077_glob_in_ability": "def foo() -> None { glob x: int = 5; }"
+         "E0077_empty_fstring": 'with entry { x = f"{}"; }',
+         "E0078_glob_in_ability": "def foo() -> None { glob x: int = 5; }"
      },
      MUST_VALIDATE_NEW: dict[str, str] = {
          "E0055_yield_in_entry": "with entry { yield 5; }",
@@ -864,7 +865,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0058_continue_no_loop": "with entry { continue; }"
      };
 
-glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base","E0077_glob_in_ability"},
+glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base","E0078_glob_in_ability"},
      IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
 
 def reject_test(name_snippet: tuple) {
