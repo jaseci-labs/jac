@@ -156,8 +156,7 @@ test "admin create user with different roles" {
             assert response.status_code == 201;
 
             get_resp = client.get(
-                f"/admin/users/{username}",
-                headers={"Authorization": f"Bearer {token}"}
+                f"/admin/users/{username}", headers={"Authorization": f"Bearer {token}"}
             );
             assert get_resp.status_code == 200;
             user_data = extract_data(get_resp.json());
@@ -568,8 +567,7 @@ test "admin pagination" {
 
         for username in usernames {
             client.delete(
-                f"/admin/users/{username}",
-                headers={"Authorization": f"Bearer {token}"}
+                f"/admin/users/{username}", headers={"Authorization": f"Bearer {token}"}
             );
         }
     } finally {

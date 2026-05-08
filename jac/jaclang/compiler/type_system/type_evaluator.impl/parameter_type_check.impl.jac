@@ -17,7 +17,12 @@ impl TypeEvaluator.validate_arg_types(
             arg_type = self.get_type_of_expression(arg, expected_type=param.param_type);
         }
 
-        if not self.assign_type(arg_type, param.param_type) {
+        # Layer 2 strict-Any dispatch: the call site's containing module
+        # decides strictness (see `_is_strict_site`). A leak across a
+        # Python -> Jac boundary gets caught at the Jac call site.
+        if not self.assign_type(
+            arg_type, param.param_type, strict=self._is_strict_site(arg)
+        ) {
             has_errors = True;
             if not checking_overload {
                 self.emit_diag(
@@ -147,13 +152,8 @@ impl TypeEvaluator.validate_call_args(expr: uni.FuncCall) -> TypeBase {
                 if isinstance(first_arg, uni.KWPair)
                 else first_arg;
             cast_target_type = self.get_type_of_expression(first_arg_expr);
-            if isinstance(cast_target_type, types.ClassType)
-            and cast_target_type.is_instantiable_class() {
-                return cast_target_type.clone_as_instance();
-            }
-            # For non-class types (e.g. cast(str, x)), return the type directly
             if not isinstance(cast_target_type, types.UnknownType) {
-                return cast_target_type;
+                return self._convert_to_instance(cast_target_type);
             }
         }
     }

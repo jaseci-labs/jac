@@ -675,6 +675,14 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     if "tool_choice" in mt_run.call_params {
         params["tool_choice"] = mt_run.call_params["tool_choice"];
     }
+    # Inject the response_format schema's enum hint (e.g. "1=WORK, 2=PERSONAL,
+    # ...") into the last user message so every backend sees the constraint
+    # the same way frontier providers' server-side prompt builders do for
+    # cloud routes. Local-style backends (Ollama, vLLM, in-process llama.cpp)
+    # use response_format only as a grammar constraint and would otherwise
+    # default to the first allowed enum value for every input. No-op when
+    # response_format has no enum-typed properties.
+    params = inject_schema_hint(params);
     return params;
 }
 
