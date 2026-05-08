@@ -135,9 +135,7 @@ def _scale_pre_hook(context: HookContext) -> None {
             # checkouts, falls back to Dockerfile.microservice (PyPI)
             # only for end-user installs. Detect the developer-checkout
             # case here so the log matches reality.
-            import from jac_scale.microservices._image_build {
-                find_jaseci_repo_root
-            }
+            import from jac_scale.microservices._image_build { find_jaseci_repo_root }
             repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
             if repo is not None {
                 console.print(

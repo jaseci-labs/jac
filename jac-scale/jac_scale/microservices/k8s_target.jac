@@ -541,9 +541,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     PVCs are left as-is. Users who need to resize/rebind delete the
     PVC manually (or use `jac start --scale --destroy`).
     """
-    def _apply_or_replace_pvc(
-        core_v1: Any, namespace: str, manifest: dict[str, Any]
-    ) {
+    def _apply_or_replace_pvc(core_v1: Any, namespace: str, manifest: dict[str, Any]) {
         name: str = manifest["metadata"]["name"];
         try {
             core_v1.read_namespaced_persistent_volume_claim(
@@ -973,16 +971,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 # by _build_shared_pvc_manifests; here we just reference
                 # it by name.
                 volumes.append(
-                    {
-                        "name": vol_name,
-                        "persistentVolumeClaim": {"claimName": vol_name}
-                    }
+                    {"name": vol_name, "persistentVolumeClaim": {"claimName": vol_name}}
                 );
             }
-            mount_entry: dict[str, Any] = {
-                "name": vol_name,
-                "mountPath": mount_path
-            };
+            mount_entry: dict[str, Any] = {"name": vol_name, "mountPath": mount_path};
             sub_path = str(vol.get("sub_path", "")).strip();
             if sub_path {
                 mount_entry["subPath"] = sub_path;
@@ -1024,8 +1016,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 continue;
             }
             size = str(vol.get("size", "1Gi")).strip() or "1Gi";
-            access_mode_raw = str(vol.get("access_mode", "ReadWriteOnce")).strip();
-            access_mode = access_mode_raw if access_mode_raw else "ReadWriteOnce";
+            access_mode = str(vol.get("access_mode", "ReadWriteOnce")).strip()
+            or "ReadWriteOnce";
             storage_class = str(vol.get("storage_class", "")).strip();
             pvc_name = k8s_safe_name(name);
 
@@ -1105,7 +1097,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return f"{self.k8s_config.app_name}-secrets";
     }
 
-
     """ServiceAccount name to attach to every microservice
     Deployment + the gateway Deployment. Empty string means "fall back
     to the namespace's `default` SA".
@@ -1119,7 +1110,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     def _service_account_name -> str {
         return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
     }
-
 
     """Routes table from [plugins.scale.microservices.routes].
 
@@ -1143,7 +1133,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-
     """Build the in-cluster DNS URL for a peer microservice.
 
     Mirrors LocalDeployer.url_for (loopback URL for local subprocesses)
@@ -1160,7 +1149,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             self.k8s_config.container_port
         );
     }
-
 
     """Extra env vars merged with the auto-set JAC_SV_NAME.
 
@@ -1195,8 +1183,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
         for peer_name in routes {
-            if peer_name == svc_name { continue; }
-            if peer_name == GATEWAY_NAME { continue; }
+            if peer_name == svc_name {
+                continue;
+            }
+            if peer_name == GATEWAY_NAME {
+                continue;
+            }
             key = f"JAC_SV_{peer_name.upper()}_URL";
             if key in seen_peer_keys {
                 continue;  # defensive against duplicate route entries
@@ -1297,7 +1289,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             cpu_limit_val = cfg.cpu_limit;
         }
         # cpu_limit: still omitted by default if also unset on cfg.
-
         requests: dict[str, str] = {};
         limits: dict[str, str] = {};
         if cpu_request_val {
@@ -1363,10 +1354,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # so no behavior change for users on default config.
         cfg = self.k8s_config;
         return {
-            "httpGet": {
-                "path": "/healthz/ready",
-                "port": cfg.container_port
-            },
+            "httpGet": {"path": "/healthz/ready", "port": cfg.container_port},
             "initialDelaySeconds": cfg.readiness_initial_delay,
             "periodSeconds": cfg.readiness_period,
             "timeoutSeconds": 3,
@@ -1393,10 +1381,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # this they'd be killed before reaching Ready.
         cfg = self.k8s_config;
         return {
-            "httpGet": {
-                "path": "/healthz/live",
-                "port": cfg.container_port
-            },
+            "httpGet": {"path": "/healthz/live", "port": cfg.container_port},
             "initialDelaySeconds": cfg.liveness_initial_delay,
             "periodSeconds": cfg.liveness_period,
             "timeoutSeconds": 3,
@@ -1845,9 +1830,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # Deployments so envFrom doesn't trip "secret not found" at pod
         # startup. Empty self.secrets => no envFrom (back-compat).
         if self.secrets {
-            container["envFrom"] = [
-                {"secretRef": {"name": self._user_secret_name()}}
-            ];
+            container["envFrom"] = [{"secretRef": {"name": self._user_secret_name()}}];
         }
         spec: dict[str, Any] = {
             "containers": [container],

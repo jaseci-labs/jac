@@ -14,6 +14,7 @@ names to gateway prefixes. Services are discovered automatically via
 import os;
 import tomllib;
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 
 """Scan the project for .jac files, excluding build artifacts."""
 def scan_jac_files(project_root: str = ".") -> list[str] {
@@ -64,20 +65,20 @@ def run_setup(project_root: str = ".") -> None {
 
     jac_files = scan_jac_files(project_root);
     if not jac_files {
-        print("No .jac files found in project.");
+        console.print("No .jac files found in project.");
         return;
     }
 
-    print("\nFound .jac files:");
+    console.print("\nFound .jac files:");
     for (i, f) in enumerate(jac_files) {
-        print(f"  {i + 1}. {f}");
+        console.print(f"  {i + 1}. {f}");
     }
 
     selection = input(
         "\nSelect files to run as microservices (comma-separated numbers): "
     ).strip();
     if not selection {
-        print("No services selected. Exiting.");
+        console.print("No services selected. Exiting.");
         return;
     }
 
@@ -97,7 +98,7 @@ def run_setup(project_root: str = ".") -> None {
     }
 
     if not selected_files {
-        print("No valid files selected. Exiting.");
+        console.print("No valid files selected. Exiting.");
         return;
     }
 
@@ -247,22 +248,22 @@ def run_setup(project_root: str = ".") -> None {
 
     toml_path.write_text("\n".join(lines));
 
-    print(f"\nAdded microservice config to jac.toml:");
+    console.print(f"\nAdded microservice config to jac.toml:");
     for file_path in selected_files {
         module = derive_module_name(file_path);
-        print(f"  - {module:18s} -> {derive_prefix(module):20s} ({file_path})");
+        console.print(f"  - {module:18s} -> {derive_prefix(module):20s} ({file_path})");
     }
     if client_entry {
-        print(f"  - {'client':18s} -> {client_entry}");
+        console.print(f"  - {'client':18s} -> {client_entry}");
     }
-    print(f"\nRun `jac start main.jac` to launch locally.");
+    console.print(f"\nRun `jac start main.jac` to launch locally.");
 }
 
 """Add a single service to existing config."""
 def add_service(project_root: str, file_path: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
-        print("No jac.toml found. Run `jac setup microservice` first.");
+        console.print("No jac.toml found. Run `jac setup microservice` first.");
         return;
     }
 
@@ -275,7 +276,9 @@ def add_service(project_root: str, file_path: str) -> None {
     ms = doc.get("plugins", {}).get("scale", {}).get("microservices", {});
     routes = ms.get("routes", {});
     if module in routes {
-        print(f"Route '{module}' already exists. Remove it first with --remove.");
+        console.print(
+            f"Route '{module}' already exists. Remove it first with --remove."
+        );
         return;
     }
 
@@ -299,14 +302,14 @@ def add_service(project_root: str, file_path: str) -> None {
     }
     toml_path.write_text(content);
 
-    print(f"Added route: {module} -> {prefix} ({file_path})");
+    console.print(f"Added route: {module} -> {prefix} ({file_path})");
 }
 
 """Remove a route from config by module name."""
 def remove_service(project_root: str, module_name: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
-        print("No jac.toml found.");
+        console.print("No jac.toml found.");
         return;
     }
 
@@ -333,19 +336,19 @@ def remove_service(project_root: str, module_name: str) -> None {
     }
 
     if not found {
-        print(f"Route '{module_name}' not found in config.");
+        console.print(f"Route '{module_name}' not found in config.");
         return;
     }
 
     toml_path.write_text("\n".join(new_lines));
-    print(f"Removed route: {module_name}");
+    console.print(f"Removed route: {module_name}");
 }
 
 """List currently configured routes."""
 def list_services(project_root: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
-        print("No jac.toml found.");
+        console.print("No jac.toml found.");
         return;
     }
 
@@ -358,21 +361,21 @@ def list_services(project_root: str) -> None {
     routes = ms.get("routes", {});
     client = ms.get("client", {});
 
-    print(f"Microservice mode: {'ENABLED' if enabled else 'DISABLED'}");
-    print(
+    console.print(f"Microservice mode: {'ENABLED' if enabled else 'DISABLED'}");
+    console.print(
         f"Gateway: {ms.get('gateway_host', '0.0.0.0')}:{ms.get('gateway_port', 8000)}"
     );
 
     if routes {
-        print(f"\nRoutes ({len(routes)}):");
+        console.print(f"\nRoutes ({len(routes)}):");
         for (module, prefix) in routes.items() {
-            print(f"  {module:18s} -> {prefix}");
+            console.print(f"  {module:18s} -> {prefix}");
         }
     } else {
-        print("\nNo routes configured.");
+        console.print("\nNo routes configured.");
     }
 
     if client.get("entry") {
-        print(f"\nClient: {client['entry']}");
+        console.print(f"\nClient: {client['entry']}");
     }
 }

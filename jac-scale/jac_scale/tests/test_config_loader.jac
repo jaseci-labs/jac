@@ -25,14 +25,12 @@ test "get_microservices_config returns ingress block" {
                 "enabled": True,
                 "host": "jac-shop.local",
                 "ingress_class_name": "nginx",
-                "annotations": {
-                    "nginx.ingress.kubernetes.io/proxy-body-size": "10m"
-                }
+                "annotations": {"nginx.ingress.kubernetes.io/proxy-body-size": "10m"}
             }
         }
     };
     out = cfg.get_microservices_config();
-    assert "ingress" in out, (
+    assert "ingress" in out , (
         "get_microservices_config() must include 'ingress' so K8s "
         "target's _build_ingress_manifest sees user config"
     );
@@ -50,11 +48,7 @@ test "get_microservices_config ingress defaults to {} when section absent" {
     # {} as opt-out (returns None), so deployments that don't want
     # an Ingress don't accidentally grow one.
     cfg = JacScaleConfig();
-    cfg._config = {
-        "microservices": {
-            "enabled": True
-        }
-    };
+    cfg._config = {"microservices": {"enabled": True}};
     out = cfg.get_microservices_config();
     assert out["ingress"] == {};
 }
@@ -77,11 +71,7 @@ test "get_microservices_config preserves all other sections (no regression)" {
         }
     };
     out = cfg.get_microservices_config();
-    expected_keys: set[str] = {
-        "enabled", "gateway_port", "gateway_host",
-        "drain_timeout_seconds", "http_forward_timeout",
-        "routes", "services", "rate_limit", "cors", "client", "ingress"
-    };
+    expected_keys: set[str] = {"enabled","gateway_port","gateway_host","drain_timeout_seconds","http_forward_timeout","routes","services","rate_limit","cors","client","ingress"};
     missing = expected_keys - set(out.keys());
-    assert not missing, f"missing keys: {missing}";
+    assert not missing , f"missing keys: {missing}";
 }

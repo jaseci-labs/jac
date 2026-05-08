@@ -56,7 +56,6 @@ def resolve_jac_binary -> str {
 """Hardcoded fallback if config read fails (no jac.toml, malformed schema)."""
 glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0;
 
-
 # Microservice-mode defaults shared by gateway, orchestrator, and the K8s
 # runtime adapter. Centralizing avoids drift if the gateway's listen
 # port/host ever changes — the local-mode banner, K8s DNS map, and

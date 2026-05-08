@@ -27,9 +27,7 @@ glob logger = logging.getLogger(__name__);
 entries (non-dict, missing fields, empty strings). Used by both
 `start_microservice_mode` (local) and `start_gateway_only` (K8s).
 """
-def _parse_static_mounts(
-    client_config: dict[str, Any]
-) -> list[dict[str, str]] {
+def _parse_static_mounts(client_config: dict[str, Any]) -> list[dict[str, str]] {
     out: list[dict[str, str]] = [];
     if not client_config {
         return out;
@@ -58,9 +56,7 @@ def _client_dist_dir(client_config: dict[str, Any]) -> str {
     if not client_config {
         return DEFAULT_CLIENT_DIST_DIR;
     }
-    return str(
-        dict(client_config).get("dist_dir", DEFAULT_CLIENT_DIST_DIR)
-    );
+    return str(dict(client_config).get("dist_dir", DEFAULT_CLIENT_DIST_DIR));
 }
 
 """Build a ServiceRegistry from a `routes` map: {module_name: prefix}.

@@ -537,7 +537,6 @@ test "_sv_rpc_timeout returns default when config lookup fails" {
 # sv_service_call routes URL resolution through the get_sv_registry
 # hookspec (so the K8s DNS map wins inside a pod where _registry is empty)
 # =============================================================================
-
 test "sv_service_call uses URL from get_sv_registry hookspec when present" {
     # Setup: NO sv_client._registry entry, NO JAC_SV_*_URL env. Without
     # the hookspec the call would fail with "no URL for module"; the
@@ -558,7 +557,9 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
 
     # Stub get_sv_registry to return a DNS-like URL for our test module.
     def fake_registry -> dict[str, str] {
-        return {"k9_test_mod": "http://k9-test-mod-service.prod.svc.cluster.local:8000"};
+        return {
+            "k9_test_mod": "http://k9-test-mod-service.prod.svc.cluster.local:8000"
+        };
     }
     jaclang.JacRuntime.get_sv_registry = staticmethod(fake_registry);
 
@@ -602,7 +603,7 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 
     # Stub hookspec to return empty (no entry for our module). Force
     # the fallback branch.
-    jaclang.JacRuntime.get_sv_registry = staticmethod(lambda: {});
+    jaclang.JacRuntime.get_sv_registry = staticmethod(lambda : {});
 
     try {
         sv_client.register("k9_fallback_mod", "http://fallback.invalid:9999");
@@ -621,7 +622,6 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 # ensure_sv_service registers DNS URLs in K8s mode instead of
 # spawning subprocesses (peer pods are managed by the K8s controller)
 # =============================================================================
-
 test "ensure_sv_service registers DNS URL when in K8s mode" {
     import os;
     import jac_scale.config_loader as cfg_mod;
@@ -630,6 +630,7 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
     # Stub config so we don't need a jac.toml.
     obj _StubMsCfg {
         has data: dict[str, Any];
+
         def get_microservices_config -> dict[str, Any] {
             return self.data;
         }
@@ -641,12 +642,14 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
 
     os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";  # signal "in cluster"
     os.environ["POD_NAMESPACE"] = "prod";
-    setattr(cfg_mod, "get_scale_config", lambda: _StubMsCfg(
-        data={
-            "routes": {"k9_2_peer": "/api/peer"},
-            "gateway_port": 8000
-        }
-    ));
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(
+                data={"routes": {"k9_2_peer": "/api/peer"}, "gateway_port": 8000}
+            )
+    );
 
     # Make sure registry is empty for our module so the early-return
     # branch doesn't fire.
@@ -658,7 +661,7 @@ test "ensure_sv_service registers DNS URL when in K8s mode" {
         # No subprocess spawn; just registers DNS URL and returns.
         JacScalePlugin.ensure_sv_service("k9_2_peer", ".");
         url = sv_client._registry.get("k9_2_peer", "");
-        assert url == "http://k9-2-peer-service.prod.svc.cluster.local:8000", (
+        assert url == "http://k9-2-peer-service.prod.svc.cluster.local:8000" , (
             f"expected DNS URL, got '{url}'"
         );
     } finally {
@@ -690,10 +693,7 @@ test "ensure_sv_service early-returns when peer already registered" {
     orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
     os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
 
-    sv_client.register(
-        "k9_2_already_registered",
-        "http://prior-url.example.com:8000"
-    );
+    sv_client.register("k9_2_already_registered", "http://prior-url.example.com:8000");
 
     try {
         # Should early-return without touching the registry.

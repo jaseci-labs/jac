@@ -227,9 +227,7 @@ test "/healthz/live returns 200 always (liveness, no drain check)" {
     # blips must not cascade into kubelet restarts. Returns 200 even
     # when drain is in progress (drain affects readiness, not liveness;
     # a draining pod is still alive and shouldn't be restarted).
-    import from jac_scale.microservices._drain {
-        reset_drain, start_drain
-    }
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -246,7 +244,7 @@ test "/healthz/live returns 200 always (liveness, no drain check)" {
         # would restart the pod mid-drain (defeats the whole point).
         start_drain(10.0);
         resp2 = client.get("/healthz/live");
-        assert resp2.status_code == 200, (
+        assert resp2.status_code == 200 , (
             "liveness must remain 200 during drain - drain affects "
             "readiness only, not liveness"
         );
@@ -261,9 +259,7 @@ test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
     # is_draining() flips true, the readiness probe fails, kube-proxy
     # removes the pod from rotation - new requests stop arriving while
     # in-flight ones complete.
-    import from jac_scale.microservices._drain {
-        reset_drain, start_drain
-    }
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -277,7 +273,7 @@ test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
 
         start_drain(10.0);
         resp2 = client.get("/healthz/ready");
-        assert resp2.status_code == 503, (
+        assert resp2.status_code == 503 , (
             "readiness must 503 during drain so kube-proxy removes "
             "the pod from Endpoints"
         );
@@ -303,7 +299,7 @@ test "healthz returns 200 from gateway, not 404 from builtin passthrough" {
     import from fastapi.testclient { TestClient }
     client = TestClient(gw.app);
     resp = client.get("/healthz");
-    assert resp.status_code == 200, (
+    assert resp.status_code == 200 , (
         f"/healthz must return 200 (gateway-local) even with empty registry, "
         f"got {resp.status_code}"
     );
@@ -985,7 +981,6 @@ test "Gateway returns 404 for GET / when no index.html exists" {
     # 404 the root request so callers can detect the absence.
     tmp = tempfile.mkdtemp();
     # NOTE: deliberately no index.html in tmp.
-
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
     gw.setup();

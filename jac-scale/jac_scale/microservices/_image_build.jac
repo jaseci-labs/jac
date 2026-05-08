@@ -52,7 +52,6 @@ glob _DOCKER_BUILD_TIMEOUT_S: int = 1800,
      _CLUSTER_IMAGE_LOAD_TIMEOUT_S: int = 180,
      _JAC_BUILD_TIMEOUT_S: int = 300;
 
-
 # Embedded fallback Dockerfile. Used only when neither the
 # developer-checkout path nor the shipped Dockerfile.microservice is
 # available. Installs jac-scale from PyPI (>= 0.2.15 has microservice mode).

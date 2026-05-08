@@ -157,8 +157,7 @@ test "Dev-checkout Dockerfile.microservice.ci installs jac-client + runs jac ins
         # drift (someone removing `jac install` from the CI Dockerfile).
         import shutil as _shutil;
         real_ci = (
-            Path(ib_mod.__file__).parent.parent.parent / "scripts" /
-            "Dockerfile.microservice.ci"
+            Path(ib_mod.__file__).parent.parent.parent / "scripts" / "Dockerfile.microservice.ci"
         );
         if not real_ci.is_file() {
             return;
@@ -636,11 +635,9 @@ test "Build_client_bundle accepts dist created by jac build" {
 # =============================================================================
 # content-addressed image tag (force rollout on content change)
 # =============================================================================
-_docker_image_id returns sha256:<hex> when inspect succeeds" {
+test "_docker_image_id returns sha256:<hex> when inspect succeeds" {
     fake_result = mock.MagicMock(
-        returncode=0,
-        stdout="sha256:abcdef0123456789aaaa\n",
-        stderr=""
+        returncode=0, stdout="sha256:abcdef0123456789aaaa\n", stderr=""
     );
     with mock.patch("subprocess.run", return_value=fake_result) {
         digest = ib_mod._docker_image_id("myapp:dev");
@@ -649,7 +646,7 @@ _docker_image_id returns sha256:<hex> when inspect succeeds" {
 }
 
 
-_docker_image_id returns None on inspect failure" {
+test "_docker_image_id returns None on inspect failure" {
     # docker not installed, image absent, daemon unreachable - all
     # collapse to None so the caller can fall back to the base tag.
     fake_result = mock.MagicMock(returncode=1, stdout="", stderr="No such image");
@@ -660,7 +657,7 @@ _docker_image_id returns None on inspect failure" {
 }
 
 
-_docker_image_id passes env_overrides through to subprocess" {
+test "_docker_image_id passes env_overrides through to subprocess" {
     # Minikube case: docker daemon lives inside the VM; the inspect call
     # needs DOCKER_HOST/CERT_PATH overrides or it'd query the wrong
     # daemon and return None for an image that exists where it matters.
@@ -681,13 +678,11 @@ _docker_image_id passes env_overrides through to subprocess" {
 }
 
 
-_retag_with_content_id appends 12-char id to base tag" {
+test "_retag_with_content_id appends 12-char id to base tag" {
     full_id = "sha256:abcdef012345dead0000beef0000face1234";
     expected_short = "abcdef012345";  # first 12 hex chars after sha256:
     fake_tag_ok = mock.MagicMock(returncode=0, stdout="", stderr="");
-    with mock.patch.object(
-        ib_mod, "_docker_image_id", return_value=full_id
-    ) {
+    with mock.patch.object(ib_mod, "_docker_image_id", return_value=full_id) {
         with mock.patch("subprocess.run", return_value=fake_tag_ok) {
             new_tag = ib_mod._retag_with_content_id("myapp:dev");
         }
@@ -696,14 +691,12 @@ _retag_with_content_id appends 12-char id to base tag" {
 }
 
 
-_retag_with_content_id preserves registry prefix" {
+test "_retag_with_content_id preserves registry prefix" {
     # Remote-cluster tags include the registry prefix; the new tag must
     # too, otherwise the push would target the wrong repo.
     full_id = "sha256:0011223344556677889900";
     fake_tag_ok = mock.MagicMock(returncode=0, stdout="", stderr="");
-    with mock.patch.object(
-        ib_mod, "_docker_image_id", return_value=full_id
-    ) {
+    with mock.patch.object(ib_mod, "_docker_image_id", return_value=full_id) {
         with mock.patch("subprocess.run", return_value=fake_tag_ok) {
             new_tag = ib_mod._retag_with_content_id("ghcr.io/org/myapp:dev");
         }
@@ -712,7 +705,7 @@ _retag_with_content_id preserves registry prefix" {
 }
 
 
-_retag_with_content_id falls back to base_tag when inspect fails" {
+test "_retag_with_content_id falls back to base_tag when inspect fails" {
     # If docker inspect can't read the digest (daemon down, image
     # missing, etc.), keep the deploy moving with the bare :dev tag.
     # Manual `kubectl rollout restart` is the workaround; better than
@@ -724,14 +717,12 @@ _retag_with_content_id falls back to base_tag when inspect fails" {
 }
 
 
-_retag_with_content_id falls back when docker tag fails" {
+test "_retag_with_content_id falls back when docker tag fails" {
     # docker inspect succeeded so we know the digest - but the docker
     # tag step itself failed (rare; would mean daemon hiccupped between
     # two calls). Same fallback: let the deploy continue with the base
     # tag rather than half-committed state.
-    fake_tag_fail = mock.MagicMock(
-        returncode=1, stdout="", stderr="failed to tag"
-    );
+    fake_tag_fail = mock.MagicMock(returncode=1, stdout="", stderr="failed to tag");
     with mock.patch.object(
         ib_mod, "_docker_image_id", return_value="sha256:abc123def4567890aaaa"
     ) {
@@ -768,9 +759,7 @@ test "Auto_build_and_distribute on k3d imports the retagged image" {
                         return_value="myapp:dev-cafe12345678"
                     ) {
                         with mock.patch.object(
-                            ib_mod,
-                            "run_k3d_image_import",
-                            side_effect=fake_import
+                            ib_mod, "run_k3d_image_import", side_effect=fake_import
                         ) {
                             tag = auto_build_and_distribute("myapp", project);
                         }
