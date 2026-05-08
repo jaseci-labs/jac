@@ -2161,22 +2161,31 @@ cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
 
 ### Persistent Storage
 
-Controls the PersistentVolumeClaim (PVC) size for MongoDB and Redis StatefulSets. The same size applies to both.
+Controls the PersistentVolumeClaim (PVC) sizes for the application code volume, MongoDB, and Redis StatefulSets.
 
-**Default:**
+**Defaults:**
 
-| TOML Key  | Default | Description |
+| TOML Key | Default | Description |
 |----------|---------|-------------|
-| `pvc_size` | `5Gi` | Storage size for each database PVC |
+| `pvc_size` | `5Gi` | Storage size for the application code PVC |
+| `mongodb_storage_size` | `1Gi` | Storage size for the MongoDB data PVC |
 
 **To change in `jac.toml`:**
 
 ```toml
 [plugins.scale.kubernetes]
 pvc_size = "20Gi"
+mongodb_storage_size = "10Gi"
 ```
 
-> **Note:** PVC size cannot be reduced after creation. Increasing it requires deleting and recreating the StatefulSet (data loss). Plan accordingly.
+**MongoDB PVC resize behaviour:**
+
+- **Increase**: Applying a larger `mongodb_storage_size` on redeploy automatically patches the existing PVC. Your stored data is preserved - only the capacity request is updated.
+- **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
+- **No change**: If the value matches the current size, no action is taken.
+
+> **Note:** MongoDB PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
+> **Note:** `pvc_size` (application code PVC) cannot be changed after creation - it is created once and never resized.
 
 ---
 

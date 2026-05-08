@@ -850,7 +850,7 @@ impl JacForm(props: dict) -> JsxElement {
                 <textarea
                     placeholder={placeholder}
                     rows={rows}
-                    {...field}
+                    {**field}
                     className={inputClassName}
                     style={{
                         width: "100%",
@@ -875,7 +875,7 @@ impl JacForm(props: dict) -> JsxElement {
                         <input
                             type={"text" if isVisible else "password"}
                             placeholder={placeholder}
-                            {...field}
+                            {**field}
                             className={inputClassName}
                             style={{
                                 width: "100%",
@@ -923,7 +923,7 @@ impl JacForm(props: dict) -> JsxElement {
             <input
                 type={fieldType}
                 placeholder={placeholder}
-                {...field}
+                {**field}
                 className={inputClassName}
                 style={{
                     width: "100%",

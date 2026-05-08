@@ -14,11 +14,57 @@ impl PyastGenPass._get_builtin_names(cls: Any) -> set[str] {
     return cls._builtin_names;
 }
 
+"""Read __all__ from typing_ambient.pyi, cached after first access."""
+@classmethod
+impl PyastGenPass._get_ambient_typing_names(cls: Any) -> set[str] {
+    if (cls._ambient_typing_names is not None) {
+        return cls._ambient_typing_names;
+    }
+    import os;
+    import ast as py_ast;
+    stub_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "compiler",
+        "type_system",
+        "typing_ambient.pyi"
+    );
+    try {
+        with open(stub_path, encoding="utf-8") as f {
+            tree = py_ast.parse(f.read());
+        }
+        for node in tree.body {
+            if (
+                isinstance(node, py_ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], py_ast.Name)
+                and node.targets[0].id == "__all__"
+                and isinstance(node.value, (py_ast.List, py_ast.Tuple))
+            ) {
+                names: set[str] = `set();
+                for elt in node.value.elts {
+                    if (
+                        isinstance(elt, py_ast.Constant) and isinstance(elt.value, str)
+                    ) {
+                        names.add(elt.value);
+                    }
+                }
+                cls._ambient_typing_names = names;
+                return names;
+            }
+        }
+    } except (OSError, SyntaxError) {
+        pass;
+    }
+    cls._ambient_typing_names = `set();
+    return cls._ambient_typing_names;
+}
+
 impl PyastGenPass.postinit -> None {
     # Initialize by-postinit fields
     self.debuginfo = {'jac_mods': []};
     self.jaclib_imports = `set();
     self.builtin_imports = `set();
+    self.typing_imports = `set();
     self.child_passes = self._init_child_passes(PyastGenPass);
     self.preamble = [
         self.sync(
@@ -694,6 +740,7 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
     for child_pass in self.child_passes {
         self.jaclib_imports.update(child_pass.jaclib_imports);
         self.builtin_imports.update(child_pass.builtin_imports);
+        self.typing_imports.update(child_pass.typing_imports);
     }
     is_builtin_module = (
         nd.loc.mod_path.endswith(('builtin.jac', 'builtin.py'))
@@ -707,6 +754,21 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
                     names=[
                         self.sync(ast3.alias(name=name, asname=None))
                         for name in sorted(self.builtin_imports)
+                    ],
+                    level=0
+                ),
+                jac_node=self.ir_out
+            )
+        );
+    }
+    if self.typing_imports {
+        self.preamble.append(
+            self.sync(
+                ast3.ImportFrom(
+                    module='typing',
+                    names=[
+                        self.sync(ast3.alias(name=name, asname=None))
+                        for name in sorted(self.typing_imports)
                     ],
                     level=0
                 ),
@@ -3553,6 +3615,9 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
     }
     if (name in self._get_builtin_names()) {
         self.builtin_imports.add(name);
+    }
+    if (name in self._get_ambient_typing_names()) {
+        self.typing_imports.add(name);
     }
     nd.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=nd.py_ctx_func()))];
 }
