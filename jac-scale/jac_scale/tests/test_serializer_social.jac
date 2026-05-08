@@ -204,12 +204,10 @@ test "ref_mode: unknown $ref falls back to typed anchor stub" {
     and not stub.is_populated();
     # $type selects correct anchor class
     assert isinstance(
-        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "node"}),
-        NodeAnchor
+        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "node"}), NodeAnchor
     );
     assert isinstance(
-        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "edge"}),
-        EdgeAnchor
+        Serializer._deserialize_value({"$ref": ref_id.hex, "$type": "edge"}), EdgeAnchor
     );
     # Invalid $ref → None
     assert Serializer._deserialize_value({"$ref": "not-a-uuid"}) is None;
