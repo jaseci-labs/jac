@@ -1739,14 +1739,6 @@ Two implementations ship in-tree:
 
 You don't pick the broker; selection happens at startup based on what's available.
 
-### Overview
-
-- Topics are arbitrary strings; payloads are arbitrary `dict` data carried inside an `Event` envelope.
-- Push delivery via `@subscribe(topic)` runs handlers from a daemon consumer thread.
-- Pull delivery via `consume()` + `ack()` for synchronous, batch, or admin-style reads.
-- At-least-once delivery, configurable retry, automatic dead-letter topic per topic.
-- When disabled, both `publish()` and `@subscribe` are zero-overhead no-ops.
-
 ### Enabling
 
 Add the section to `jac.toml`. Master switch is `enabled`; everything else has working defaults.
@@ -1849,14 +1841,7 @@ def drain(broker: EventStreamBroker) -> int {
 - **At-least-once delivery.** Handlers may run more than once for the same event. Make handlers idempotent, or dedupe on `event.id`.
 - **Retry.** A failing handler is retried `retry.max_attempts` times with delays from `retry.backoff_seconds`. The thread sleeps responsively to the broker stop event so shutdowns are not blocked by long backoffs.
 - **Dead-letter topic.** After retry exhaustion, the event is published to `<topic><retry.dead_letter_suffix>` and the original is acked so it is not redelivered indefinitely. The DLQ is a regular topic you can `consume()` like any other.
-- **Drain on shutdown.** On process exit, the framework signals all consumer threads to stop and waits for them to finish under a single 10-second deadline (so total wait stays bounded regardless of subscription count). Long retry backoffs are interrupted in <=1-second polling chunks so SIGTERM is responsive.
-
-### Brokers
-
-| Broker | When | Requires |
-|--------|------|----------|
-| `LocalBroker` | events.enabled and no Redis URL resolves, or `redis` extra missing. In-memory, single-pod, no persistence. | nothing |
-| `RedisBroker` | events.enabled and `events.url` (or `database.redis_url`) resolves and `redis` is installed. Maps to `XADD` / `XREADGROUP` / `XACK` / DLQ via separate stream. | `pip install jac-scale[data]` (Redis 5+ runtime) |
+- **Drain on shutdown.** On process exit, consumer threads are signaled to stop and joined under a 10-second deadline.
 
 ### Operational notes
 
