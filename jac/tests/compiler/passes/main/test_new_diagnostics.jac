@@ -349,15 +349,39 @@ test "E0076: duplicate method definition" {
     assert has_diagnostic_code(prog, "E0076");
 }
 
-test "E0077: empty f-string expression" {
-    pytest.skip("E0077 not yet implemented");
-    (has_err, _) = parse_and_validate('with entry { x = f"hello {}"; }');
-    assert has_err;
+test "E0077: glob inside a function is rejected" {
+    (has_err, prog) = parse_and_validate('def foo() -> None { glob x: int = 5; }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0077"));
+}
+
+test "E0077: glob inside an object body is rejected" {
+    (has_err, prog) = parse_and_validate('obj MyObj { with entry { glob y: str = "hi"; } }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0077"));
+}
+
+test "E0077: glob at module scope is valid" {
+    (has_err, _) = parse_and_validate('glob x: int = 5;');
+    assert not has_err;
 }
 
 test "E0062: nonlocal at module level" {
     (has_err, prog) = parse_and_validate('with entry { nonlocal x; }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
+}
+
+test "E0078: glob inside a function is rejected" {
+    (has_err, prog) = parse_and_validate('def foo() -> None { glob x: int = 5; }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0078"));
+}
+
+test "E0078: glob inside an object body is rejected" {
+    (has_err, prog) = parse_and_validate('obj MyObj { with entry { glob y: str = "hi"; } }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0078"));
+}
+
+test "E0078: glob at module scope is valid" {
+    (has_err, _) = parse_and_validate('glob x: int = 5;');
+    assert not has_err;
 }
 
 
@@ -828,7 +852,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0062_nonlocal_module": "with entry { nonlocal x; }",
          "E0071_bare_except_first": "with entry { try { x=1; } except { } except ValueError as e { } }",
          "E0075_dup_base": "obj A { }\nobj B(A, A) { }",
-         "E0077_empty_fstring": 'with entry { x = f"{}"; }'
+         "E0077_glob_in_ability": "def foo() -> None { glob x: int = 5; }"
      },
      MUST_VALIDATE_NEW: dict[str, str] = {
          "E0055_yield_in_entry": "with entry { yield 5; }",
@@ -836,7 +860,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0058_continue_no_loop": "with entry { continue; }"
      };
 
-glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
+glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base","E0077_glob_in_ability"},
      IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
 
 def reject_test(name_snippet: tuple) {

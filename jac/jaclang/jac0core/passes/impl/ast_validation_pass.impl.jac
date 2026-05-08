@@ -232,14 +232,14 @@ impl ASTValidationPass.enter_non_local_stmt(
     }
 }
 
-"""E0077: glob declaration is only valid at module scope."""
+"""E0078: glob declaration is only valid at module scope."""
 impl ASTValidationPass.enter_global_vars(
     self: ASTValidationPass, nd: uni.GlobalVars
 ) -> None {
     if nd.find_parent_of_type(uni.Ability) is not None
     or nd.find_parent_of_type(uni.ImplDef) is not None
     or nd.find_parent_of_type(uni.Archetype) is not None {
-        self.emit(E0077, node_override=nd);
+        self.emit(E0078, node_override=nd);
     }
 }
 
