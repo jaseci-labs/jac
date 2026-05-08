@@ -349,6 +349,12 @@ test "E0076: duplicate method definition" {
     assert has_diagnostic_code(prog, "E0076");
 }
 
+test "E0077: empty f-string expression" {
+    pytest.skip("E0077 not yet implemented");
+    (has_err, _) = parse_and_validate('with entry { x = f"hello {}"; }');
+    assert has_err;
+}
+
 test "E0062: nonlocal at module level" {
     (has_err, prog) = parse_and_validate('with entry { nonlocal x; }');
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
