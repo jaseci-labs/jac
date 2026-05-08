@@ -7,18 +7,17 @@ import from jac_scale.microservices.service_registry {
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.process_manager {
-    ServiceProcessManager
-}
+import from jac_scale.microservices.process_manager { ServiceProcessManager }
 
 # =============================================================================
 # Port assignment
 # =============================================================================
-
 test "auto assigns hash-based ports in 18000-18999 range" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
-    reg.register(ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments"));
+    reg.register(
+        ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments")
+    );
 
     pm = ServiceProcessManager(registry=reg);
 
@@ -51,7 +50,9 @@ test "auto assigned port is deterministic for same service name" {
 
 test "uses explicit port when set" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=9090));
+    reg.register(
+        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=9090)
+    );
 
     pm = ServiceProcessManager(registry=reg);
     port = pm._assign_port(reg.entries["orders"]);
@@ -62,7 +63,6 @@ test "uses explicit port when set" {
 # =============================================================================
 # Start service
 # =============================================================================
-
 test "start service launches subprocess" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
@@ -74,7 +74,6 @@ test "start service launches subprocess" {
 
     with unittest.mock.patch("subprocess.Popen", return_value=mock_proc) {
         result = pm.start_service("orders");
-
         assert result;
         assert "orders" in pm.processes;
         assert reg.entries["orders"].pid == 12345;
@@ -95,7 +94,9 @@ test "start service with nonexistent name returns false" {
 test "start all launches all services" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
-    reg.register(ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments"));
+    reg.register(
+        ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments")
+    );
 
     pm = ServiceProcessManager(registry=reg);
 
@@ -111,10 +112,11 @@ test "start all launches all services" {
 # =============================================================================
 # Stop service
 # =============================================================================
-
 test "stop service terminates process" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001));
+    reg.register(
+        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001)
+    );
 
     pm = ServiceProcessManager(registry=reg);
 
@@ -136,7 +138,9 @@ test "stop service terminates process" {
 
 test "stop service force kills on timeout" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001));
+    reg.register(
+        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001)
+    );
 
     pm = ServiceProcessManager(registry=reg);
 
@@ -163,7 +167,9 @@ test "stop nonexistent service returns false" {
 test "stop all stops all running services" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
-    reg.register(ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments"));
+    reg.register(
+        ServiceEntry(name="payments", file="payments.jac", prefix="/api/payments")
+    );
 
     pm = ServiceProcessManager(registry=reg);
 
@@ -181,13 +187,11 @@ test "stop all stops all running services" {
 # =============================================================================
 # Health checks
 # =============================================================================
-
 test "check health returns false on no url" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001
-    ));
+    reg.register(
+        ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=8001)
+    );
 
     pm = ServiceProcessManager(registry=reg);
     assert not pm.check_health("orders");
@@ -195,16 +199,20 @@ test "check health returns false on no url" {
 
 test "check health returns false on network error" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001"
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001"
+        )
+    );
 
     pm = ServiceProcessManager(registry=reg);
 
     with unittest.mock.patch(
-        "urllib.request.urlopen",
-        side_effect=OSError("connection refused")
+        "urllib.request.urlopen", side_effect=OSError("connection refused")
     ) {
         assert not pm.check_health("orders");
     }
@@ -212,10 +220,15 @@ test "check health returns false on network error" {
 
 test "check all health marks service unhealthy after max failures" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001"
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001"
+        )
+    );
 
     pm = ServiceProcessManager(registry=reg, _max_failures=2);
 
@@ -223,7 +236,6 @@ test "check all health marks service unhealthy after max failures" {
     with unittest.mock.patch.object(pm, "check_health", return_value=False) {
         pm.check_all_health();
         assert reg.entries["orders"].status != ServiceStatus.UNHEALTHY;
-
         pm.check_all_health();
         assert reg.entries["orders"].status == ServiceStatus.UNHEALTHY;
     }
@@ -231,10 +243,15 @@ test "check all health marks service unhealthy after max failures" {
 
 test "check all health resets failure count on success" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001"
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001"
+        )
+    );
 
     pm = ServiceProcessManager(registry=reg, _max_failures=3);
 
@@ -255,7 +272,6 @@ test "check all health resets failure count on success" {
 # =============================================================================
 # Restart
 # =============================================================================
-
 test "restart stops then starts service" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
@@ -282,7 +298,6 @@ test "restart stops then starts service" {
 # =============================================================================
 # Pidfile-backed cross-process stop (ROADMAP P4)
 # =============================================================================
-
 test "stop_service with pidfile only kills by pid when Popen handle is absent" {
     # Simulates `jac scale stop` running in a fresh CLI process: the pm
     # was just constructed and has no Popen handle, but a pidfile from a
@@ -315,9 +330,7 @@ test "stop_service with pidfile only kills by pid when Popen handle is absent" {
         # 10s kill-timeout on a mocked process.
         with unittest.mock.patch(
             "os.kill",
-            side_effect=[
-                None, None, ProcessLookupError(), ProcessLookupError()
-            ]
+            side_effect=[None, None, ProcessLookupError(), ProcessLookupError()]
         ) {
             result = pm.stop_service("orders");
         }

@@ -100,6 +100,12 @@ def ensure_pvc_exists(
     access_mode: str = 'ReadWriteOnce'
 ) -> None;
 
+def parse_storage_quantity(quantity: str) -> int;
+
+def resize_pvc_if_needed(
+    core_v1: client.CoreV1Api, namespace: str, pvc_name: str, desired_size: str
+) -> None;
+
 def wait_for_pod_phase(
     core_v1: client.CoreV1Api,
     namespace: str,
