@@ -593,6 +593,9 @@ test "bug_dstr1_docstring_before_local_declaration" {
     assert len(program.errors_had) == 0 , (
         "Bug #DSTR-1: a docstring before a declaration inside a function body "
         "must attach to the declaration without producing W0060 or parse errors. "
+    );
+}
+
 test "bug_dloc1_decorated_class_in_function_body" {
     program = compile_and_check("checker_bug_decorated_local_class.jac");
 
