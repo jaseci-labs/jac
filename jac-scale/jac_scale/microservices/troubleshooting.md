@@ -28,7 +28,7 @@ If you're deploying from a laptop:
 kubeconfig (laptop case) or the pod doesn't have a working ServiceAccount
 (in-cluster case).
 
-**Fix — laptop**
+**Fix - laptop**
 
 ```bash
 minikube start --driver=docker
@@ -43,7 +43,7 @@ kubectl config current-context
 minikube status          # if "Stopped", `minikube start` again
 ```
 
-**Fix — remote cluster (EKS/GKE/AKS)**
+**Fix - remote cluster (EKS/GKE/AKS)**
 
 ```bash
 # AWS EKS
@@ -63,13 +63,14 @@ Verify before re-running:
 kubectl cluster-info     # must print API server URL
 ```
 
-**Fix — inside a pod**
+**Fix - inside a pod**
 
 The pod needs a ServiceAccount with cluster API permissions. The default
 `default` ServiceAccount usually has `get/list/watch` on its own namespace
 but NOT cluster-wide; for `jac start --scale` to apply manifests it
-needs at least the verbs in [P4.3 RBAC scope](#p43-rbac-deferred). Until
-P4.3 lands, run from a laptop or use a cluster-admin ServiceAccount.
+needs at least the verbs listed in the [RBAC scope (deferred)](#rbac-scope-deferred)
+section below. Until that ships, run from a laptop or use a
+cluster-admin ServiceAccount.
 
 ---
 
@@ -107,7 +108,7 @@ kubectl cluster-info            # confirms API server is responsive
 # fix: VPN / proxy / port allowlist with your sec team
 ```
 
-This error is "fail-fast" — we hit `list_namespace` once at the start of
+This error is "fail-fast" - we hit `list_namespace` once at the start of
 apply, not after applying half the manifests. If you got here, no
 manifests were applied; nothing to clean up.
 
@@ -167,19 +168,19 @@ $ kubectl describe pod <pod-name> | grep Image:
 
 **What's wrong**
 
-Image is `python:3.12-slim` — the deploy fell back to the generic Python image because the `jac start --scale` flow couldn't find a way to build/load YOUR app's image. Generic Python doesn't have `jac` or `jac-scale` installed, hence "command not found."
+Image is `python:3.12-slim` - the deploy fell back to the generic Python image because the `jac start --scale` flow couldn't find a way to build/load YOUR app's image. Generic Python doesn't have `jac` or `jac-scale` installed, hence "command not found."
 
 This happens when:
 
 1. No `Dockerfile` in the project root + no `image_registry` configured in jac.toml (auto-build doesn't know what to build/where to push).
-2. `app_config.build = False` — explicit opt-out.
+2. `app_config.build = False` - explicit opt-out.
 3. You ran `jac start --scale` from inside a fixture / test directory that wasn't designed for direct `jac start --scale` use (e.g. `jac-scale/jac_scale/tests/fixtures/k8s_e2e/` is for the e2e script, not direct deploy).
 
-P0.6 (in flight) makes this fail loud — `jac start --scale` will exit with a clear error pointing here instead of producing a silent CrashLoopBackOff. P0.5 (in flight) makes the auto-build path "just work" for local clusters so you don't hit this in the first place.
+The fallback-image guard makes this fail loud: `jac start --scale` exits with a clear error pointing here instead of producing a silent CrashLoopBackOff. The auto-build path then "just works" for local clusters so you should not hit this in the first place.
 
-**Fix — for the bundled fixture**
+**Fix - for the bundled fixture**
 
-If you're testing K-track itself (running from inside the jaseci repo), use the e2e script instead of direct `jac start --scale`:
+If you're testing the microservice deployer itself (running from inside the jaseci repo), use the e2e script instead of direct `jac start --scale`:
 
 ```bash
 cd /path/to/jaseci
@@ -188,9 +189,9 @@ bash jac-scale/scripts/k8s_microservice_real_e2e.sh
 
 That script handles image build + load correctly.
 
-**Fix — for your own app**
+**Fix - for your own app**
 
-Until P0.5 ships, the manual workflow is:
+If auto-build can't pick up your project for some reason, fall back to manual:
 
 ```bash
 # 1. Add a Dockerfile.microservice next to your jac.toml
@@ -215,7 +216,7 @@ jac start main.jac --scale
 eval $(minikube docker-env -u)
 ```
 
-Once P0.5 + PyPI publish ship, steps 1-4 go away — `jac start --scale` does it all.
+In the normal case auto-build handles steps 1-4 transparently - `jac start --scale` does it all.
 
 ---
 
@@ -244,7 +245,7 @@ The K8s nodes can't pull the container image. Three common shapes:
 
 3. **Private registry, no imagePullSecret** on the ServiceAccount.
 
-**Fix — minikube local image**
+**Fix - minikube local image**
 
 Re-run the build with minikube's docker context:
 
@@ -257,7 +258,7 @@ eval $(minikube docker-env -u)     # restore host docker context
 The bundled `k8s_microservice_real_e2e.sh` does this automatically when
 it detects minikube; only relevant for manual deploys.
 
-**Fix — remote registry**
+**Fix - remote registry**
 
 Verify the tag is what the cluster sees:
 
@@ -288,11 +289,11 @@ $ kubectl describe pod ...
 
 **What's wrong**
 
-The container started but `/healthz/ready` (K5 v2) isn't responding 200.
+The container started but `/healthz/ready` isn't responding 200.
 Either the app failed to bind the port, or it bound but isn't routing
 the probe path.
 
-**Fix — check logs**
+**Fix - check logs**
 
 ```bash
 kubectl logs <pod-name> -n <namespace>
@@ -311,9 +312,9 @@ Common shapes:
   container_port = 8080
   ```
 
-- **`/healthz/ready` returns 404** → you're running an OLD jac-scale
-  that doesn't have K5 v2 endpoints. Either update your image or hit
-  `/healthz` (the legacy alias still works).
+- **`/healthz/ready` returns 404** → you're running an old jac-scale
+  that doesn't have the split-probe endpoints. Either update your
+  image or hit `/healthz` (the legacy alias still works).
 
 ---
 
@@ -326,13 +327,13 @@ Pods are all `Ready`, gateway `/health` returns 200, but
 
 **What's wrong**
 
-This was [the K9 bug](#layered-bugs-from-k-track-iteration) —
-`start_gateway_only` skipped LocalDeployer, so registry entries stayed
-in `REGISTERED` status, and `handle_proxy` short-circuited everything to
-503.
+This was a known iteration bug (see [Historical iteration bugs](#historical-iteration-bugs)
+below) - `start_gateway_only` skipped LocalDeployer, so registry entries
+stayed in `REGISTERED` status, and `handle_proxy` short-circuited
+everything to 503.
 
-If you're on a release that has the fix (any tag with K9.x), this should
-not happen. If you ARE seeing this with a recent build:
+If you're on a release that has the fix, this should not happen. If
+you ARE seeing this with a recent build:
 
 **Fix**
 
@@ -362,15 +363,15 @@ zero-downtime check.
 
 **What's wrong**
 
-K5's four wires are misconfigured for the workload:
+The four rolling-deploy wires are misconfigured for the workload:
 
-1. **`RollingUpdate{maxSurge: 1, maxUnavailable: 0}`** — surge a new
+1. **`RollingUpdate{maxSurge: 1, maxUnavailable: 0}`** - surge a new
    pod BEFORE killing the old one. Set on the Deployment manifest.
-2. **`readinessProbe` on `/healthz/ready`** — gates Endpoints membership.
-3. **`terminationGracePeriodSeconds`** — must be > drain_timeout + 5.
-4. **`preStop: sleep 5`** — bridges kube-proxy endpoint propagation.
+2. **`readinessProbe` on `/healthz/ready`** - gates Endpoints membership.
+3. **`terminationGracePeriodSeconds`** - must be > drain_timeout + 5.
+4. **`preStop: sleep 5`** - bridges kube-proxy endpoint propagation.
 
-**Fix — diagnose which wire**
+**Fix - diagnose which wire**
 
 Print the histogram from the failed run:
 
@@ -389,7 +390,7 @@ short for your kube-proxy refresh cadence. Bump from 5 to 10 in
 `_build_prestop_hook`.
 
 If neither helps, the upstream jaclang drain middleware may not be
-flipping `is_draining()` correctly — check `kubectl logs` for the
+flipping `is_draining()` correctly - check `kubectl logs` for the
 "drain: started" log line on the terminating pod; if missing, the
 SIGTERM-handler chain isn't wired.
 
@@ -451,26 +452,26 @@ backup detail dump.
 
 ## Notes referenced above
 
-### Layered bugs from K-track iteration
+### Historical iteration bugs
 
-The CI iteration that landed K1-K10 caught three bugs that local unit
-tests didn't catch. They're documented in the release notes for
-historical context but should not recur on any release post-K9:
+The CI iteration that landed microservice mode caught three bugs that
+local unit tests didn't catch. They're documented in the release notes
+for historical context but should not recur on a current build:
 
-1. Gateway `/healthz` was in `_BUILTIN_EXACT` → 404 from passthrough
+1. Gateway `/healthz` was in `_BUILTIN_EXACT` -> 404 from passthrough
    when the registry was empty.
-2. `start_gateway_only` (K8s mode) didn't pre-mark services HEALTHY →
+2. `start_gateway_only` (K8s mode) didn't pre-mark services HEALTHY ->
    `handle_proxy` 503'd everything.
 3. `get_microservices_config` didn't pass the `ingress` block through
-   → K10 Ingress object was silently never applied.
+   -> the Ingress object was silently never applied.
 
 All three now have unit-test regression coverage; you should never see
 them on a current build.
 
-### P4.3 RBAC (deferred)
+### RBAC scope (deferred)
 
 Today, `jac start --scale` from a pod requires a cluster-admin-equivalent
-ServiceAccount. P4.3 will introduce a least-privilege RBAC manifest for
-in-cluster admin pods. Until then, if you must run admin commands from
-inside a pod, use the `cluster-admin` role bound to a dedicated SA, not
-the default one.
+ServiceAccount. A future iteration will introduce a least-privilege
+RBAC manifest for in-cluster admin pods. Until then, if you must run
+admin commands from inside a pod, use the `cluster-admin` role bound
+to a dedicated SA, not the default one.

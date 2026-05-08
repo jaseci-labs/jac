@@ -204,7 +204,7 @@ name = "workspace"
 mount_path = "/data/workspace"
 services = ["builder_sv", "build_worker"]
 
-# Cloud K8s (RWX storage class — EFS / Filestore / Azure Files):
+# Cloud K8s (RWX storage class - EFS / Filestore / Azure Files):
 size = "10Gi"
 access_mode = "ReadWriteMany"
 storage_class = "efs-sc"
@@ -213,7 +213,7 @@ storage_class = "efs-sc"
 # host_path = "/var/lib/myapp-workspace"
 ```
 
-Each entry is an array-of-tables (note the double brackets), so you can declare multiple shared volumes in the same project. K-track creates one PersistentVolumeClaim per entry and adds the corresponding `volumeMount` to every service named in `services`. PVCs and mounts come up in the right order during `apply_manifests`, so pods do not crash-loop with "PVC not found".
+Each entry is an array-of-tables (note the double brackets), so you can declare multiple shared volumes in the same project. The microservice target creates one PersistentVolumeClaim per entry and adds the corresponding `volumeMount` to every service named in `services`. PVCs and mounts come up in the right order during `apply_manifests`, so pods do not crash-loop with "PVC not found".
 
 > **Note on EFS access points.** EFS CSI access points enforce a POSIX UID on every file. The shipped image marks `*` as a [git safe.directory](https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory) so in-pod `git` commands inside the shared volume do not trip CVE-2022-24765 ownership checks when the EFS UID differs from the pod's running UID. If you bake your own image, add `RUN git config --system --add safe.directory '*'`.
 
@@ -221,7 +221,7 @@ Each entry is an array-of-tables (note the double brackets), so you can declare 
 
 ## Pre-Bound ServiceAccount
 
-By default microservice + gateway pods run as the namespace's `default` ServiceAccount, which has no RBAC. Apps that talk to the cluster API at runtime (sandbox-spawning, operator-style controllers, K8s Job / CronJob managers) need a ServiceAccount pre-bound with the right Role / ClusterRole. K-track does not create the SA -- it only references one you provide:
+By default microservice + gateway pods run as the namespace's `default` ServiceAccount, which has no RBAC. Apps that talk to the cluster API at runtime (sandbox-spawning, operator-style controllers, K8s Job / CronJob managers) need a ServiceAccount pre-bound with the right Role / ClusterRole. The microservice target does not create the SA -- it only references one you provide:
 
 ```toml
 [plugins.scale.kubernetes]

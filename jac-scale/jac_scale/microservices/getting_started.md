@@ -1,12 +1,12 @@
-# 5-minute Get Started — jac-scale microservices on Kubernetes
+# 5-minute Get Started - jac-scale microservices on Kubernetes
 
 Goal: from zero to a microservice topology running on a real Kubernetes
 cluster on your laptop, in five minutes.
 
-This is the fastest path to seeing K1-K10 in action. For the full
-beginner-to-advanced walkthrough including K8s primitives (Pods, Services,
-probes, autoscaling), see `MICROSERVICES_K8S_COURSE.md` at the repo root.
-For when things break, see [troubleshooting.md](troubleshooting.md).
+This is the fastest path to seeing microservice mode in action. For
+the full beginner-to-advanced walkthrough including K8s primitives
+(Pods, Services, probes, autoscaling), see `MICROSERVICES_K8S_COURSE.md`
+at the repo root. For when things break, see [troubleshooting.md](troubleshooting.md).
 
 ---
 
@@ -22,7 +22,7 @@ kubectl version --client
 # minikube
 minikube version
 
-# jac-scale source (until PyPI catches up — see "Install" below)
+# jac-scale source (until PyPI catches up - see "Install" below)
 ```
 
 If any of those fail, install them first. On Linux/WSL:
@@ -41,8 +41,8 @@ sudo install /tmp/minikube /usr/local/bin/minikube
 
 ## Install (until PyPI catches up)
 
-The K-track lives on the `feat/k8s-microservice-mode` branch and isn't
-on PyPI yet. Install editable from the repo:
+Microservice mode lives on the `feat/k8s-microservice-mode` branch
+and isn't on PyPI yet. Install editable from the repo:
 
 ```bash
 git clone https://github.com/Jaseci-Labs/jaseci.git
@@ -57,8 +57,8 @@ pip install -e "./jac-scale[deploy]"
 jac --version
 ```
 
-When the K-track is published to PyPI you'll be able to skip this and
-just `pip install jac-scale[deploy]`.
+When the microservice mode is published to PyPI you'll be able to skip
+this and just `pip install jac-scale[deploy]`.
 
 ---
 
@@ -84,7 +84,7 @@ You'll see (~5 min):
 3. `kubectl rollout status` waits for all pods Ready
 4. Port-forward + `curl /health` (must return 200)
 5. Per-service routing checks (each `/api/<svc>/*` reaches upstream)
-6. K10 Ingress check
+6. Ingress check
 7. **Zero-downtime rolling-restart**: hammers `/health` while
    `kubectl rollout restart deployment/gateway-deployment`, expects
    zero non-2xx responses
@@ -245,8 +245,8 @@ max_unavailable = 1                 # at most N pods down during voluntary disru
 ```
 
 Re-run `jac start --scale` to apply. K8s rolling-update controller
-handles the changes — zero downtime if K5 wires are correct (they are
-by default).
+handles the changes - zero downtime if the rolling-deploy wires
+(probes + grace + preStop) are correct (they are by default).
 
 ---
 
