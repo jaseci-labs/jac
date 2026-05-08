@@ -7,7 +7,7 @@ maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 license = "MIT"
 readme = "README.md"
 keywords = ["llm", "jaclang", "jaseci", "byLLM"]
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 dependencies = [
     "jaclang>=0.14.1",
     "litellm>=1.70.0,<=1.82.6",  # SECURITY: v1.82.7+ was compromised and yanked from PyPI
@@ -16,9 +16,12 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Jaseci-Labs/jaseci"
+Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://jac-lang.org"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community/release_notes/byllm.md"
 
 [project.entry-points."jac"]
 byllm = "byllm.plugin:JacRuntime"

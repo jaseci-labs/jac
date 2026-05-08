@@ -799,10 +799,7 @@ impl JacForm(props: dict) -> JsxElement {
                     style={{width: "100%", boxSizing: "border-box"}}
                 >
                     <option value="">{placeholder or f"Select {label}"}</option>
-                    {options.map(
-                        lambda opt: any -> JsxElement { return
-                            <option value={opt} key={opt}>{opt}</option>; }
-                    )}
+                    {[<option value={opt} key={opt}>{opt}</option> for opt in options]}
                 </select>
             );
         }
@@ -813,32 +810,30 @@ impl JacForm(props: dict) -> JsxElement {
             watchValue = form.watch(fieldName);
             return (
                 <div style={{display: "flex", flexDirection: "column", gap: "0.5rem"}}>
-                    {options.map(
-                        lambda opt: any -> JsxElement { return (
-                            <label
-                                key={opt}
-                                style={{
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "0.5rem"
-                                }}
-                            >
-                                <input
-                                    type="radio"
-                                    name={field.name}
-                                    value={opt}
-                                    ref={field.ref}
-                                    onChange={field.onChange}
-                                    onBlur={field.onBlur}
-                                    checked={watchValue == opt}
-                                    className={inputClassName}
-                                    style={{cursor: "pointer"}}
-                                />
-                                <span>{opt}</span>
-                            </label>
-                        ); }
-                    )}
+                    {[
+                        <label
+                            key={opt}
+                            style={{
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.5rem"
+                            }}
+                        >
+                            <input
+                                type="radio"
+                                name={field.name}
+                                value={opt}
+                                ref={field.ref}
+                                onChange={field.onChange}
+                                onBlur={field.onBlur}
+                                checked={watchValue == opt}
+                                className={inputClassName}
+                                style={{cursor: "pointer"}}
+                            />
+                            <span>{opt}</span>
+                        </label> for opt in options
+                    ]}
                 </div>
             );
         }

@@ -36,7 +36,7 @@ def parse_with_rd(source: str, file_path: str) -> Module | None {
 }
 
 """Verify RD parser can parse a single file without errors."""
-def rd_parser_test(filename: str) -> None {
+def rd_parser_test(filename: str) {
     source = read_file_with_encoding(filename);
     saved_test_count = JacTest.TEST_COUNT;
     rd_ast = parse_with_rd(source, filename);
@@ -52,7 +52,7 @@ def rd_parse_file_test(rel_path: str) -> None {
     rd_parser_test(filename);
 }
 
-def rd_gap_test(gap_file: str) -> None {
+def rd_gap_test(gap_file: str) {
     filepath = os.path.join(GAP_DIR, gap_file);
     assert os.path.exists(filepath) , f"Gap file missing: {filepath}";
     rd_parser_test(filepath);
@@ -222,13 +222,13 @@ def parse_and_validate(source: str, file_path: str) -> bool {
     }
 }
 
-def strictness_test(name_snippet: tuple) -> None {
+def strictness_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     rd_ast = parse_with_rd(snippet, "/tmp/strictness_test.jac");
     assert rd_ast is None , f"RD parser must reject '{name}': {snippet}";
 }
 
-def validation_strictness_test(name_snippet: tuple) -> None {
+def validation_strictness_test(name_snippet: tuple) {
     (name, snippet) = name_snippet;
     has_errors = parse_and_validate(snippet, "/tmp/strictness_test.jac");
     assert has_errors , f"Parser + ASTValidationPass must reject '{name}': {snippet}";

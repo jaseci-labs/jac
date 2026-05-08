@@ -17,7 +17,12 @@ impl TypeEvaluator.validate_arg_types(
             arg_type = self.get_type_of_expression(arg, expected_type=param.param_type);
         }
 
-        if not self.assign_type(arg_type, param.param_type) {
+        # Layer 2 strict-Any dispatch: the call site's containing module
+        # decides strictness (see `_is_strict_site`). A leak across a
+        # Python -> Jac boundary gets caught at the Jac call site.
+        if not self.assign_type(
+            arg_type, param.param_type, strict=self._is_strict_site(arg)
+        ) {
             has_errors = True;
             if not checking_overload {
                 self.emit_diag(

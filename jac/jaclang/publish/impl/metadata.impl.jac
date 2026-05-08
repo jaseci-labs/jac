@@ -110,14 +110,14 @@ def readme_content_type(ext: str) -> str {
 }
 
 impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> str {
-    if config.package is None {
+    if not config.project.name {
         raise ValueError(
-            "Cannot generate METADATA: [package] section is missing in jac.toml"
+            "Cannot generate METADATA: [project] name is missing in jac.toml"
         );
     }
 
-    pkg = config.package;
-    root = project_root or config.project_root;
+    pkg = config.project;
+    proj_root = project_root or config.project_root;
     lines: list[str] = [];
 
     def h(hdr: str, value: str) {
@@ -160,8 +160,8 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
         }
     }
 
-    if pkg.readme and root {
-        readme_path = root / pkg.readme;
+    if pkg.readme and proj_root {
+        readme_path = proj_root / pkg.readme;
         if readme_path.exists() {
             h(
                 "Description-Content-Type",
@@ -172,8 +172,8 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
 
     lines.append("");
 
-    if pkg.readme and root {
-        readme_path = root / pkg.readme;
+    if pkg.readme and proj_root {
+        readme_path = proj_root / pkg.readme;
         if readme_path.exists() {
             lines.append(readme_path.read_text(encoding="utf-8"));
         }

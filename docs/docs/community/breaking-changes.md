@@ -160,6 +160,90 @@ No code changes are required - the same APIs, configuration, and behavior apply.
 
 ---
 
+### Version 0.14.2
+
+#### 1. Strict `any` Semantics in `.jac` Modules
+
+`.jac` source no longer treats `any` as bidirectionally compatible with concrete types. A value of type `any` cannot be silently assigned to a destination with a declared non-`any`, non-`object` type. The check fires at every site where the destination has a declared type:
+
+- annotated assignment (`x: T = src;`)
+- `has`-var initializer (`has x: T = src;`)
+- function argument (`f(src)` against a declared `param: T`)
+- return statement (`return src` from `def f -> T`)
+- yield expression in a typed generator
+- edge-connection assignment (`a ++>:Edge:val=src`)
+
+The check recurses element-wise into containers, so `list[any] -> list[Task]` is rejected the same way `any -> Task` is.
+
+**Permissive cases that still work without ceremony:**
+
+- Inferred locals: `x = py_call();` keeps `x: any` (no annotation, no error).
+- Explicit `any` annotation: `x: any = py_call();` opts in to permissive flow.
+- `any -> object` and `any -> TypeVar`: needed for `print(x)` and generic-bound calls.
+
+`.py` and `.pyi` files keep PEP 484 semantics -- `Any` propagates freely inside Python modules. The strict rule only fires at the `.jac` consumption site.
+
+**Impact:** Code that flowed `any` into typed locals through a typed annotation now produces a type error. The most common trigger is the default `Walker.reports: list[Any]` channel -- `tasks: list[Task] = result.reports;` now errors.
+
+**Before:**
+
+```jac
+node Task { has title: str; }
+
+walker ListTasks {
+    can collect with Root entry {
+        report [-->][?:Task];
+    }
+}
+
+with entry {
+    result = root spawn ListTasks();
+    tasks: list[Task] = result.reports[0];   # silently widened pre-0.14.2,
+                                             # now: Cannot assign list[any] to list[Task]
+}
+```
+
+**After (preferred): type the source.** Declare `has reports: list[T]` on the walker so the report channel is typed end-to-end:
+
+```jac
+walker ListTasks {
+    has reports: list[list[Task]];   # typed at the source
+
+    can collect with Root entry {
+        report [-->][?:Task];
+    }
+}
+
+with entry {
+    result = root spawn ListTasks();
+    tasks: list[Task] = result.reports[0];   # type-safe
+}
+```
+
+For Python utilities, ship a `.pyi` stub alongside the module so the imported names arrive typed at the boundary.
+
+**After (escape valve): accept `any` explicitly.** Keep the source untyped and annotate the receiving local as `any`, then narrow before flowing into typed destinations:
+
+```jac
+with entry {
+    result = root spawn ListTasks();
+    raw: any = result.reports[0];
+    if isinstance(raw, list) {
+        tasks: list[Task] = raw;   # narrowed -- no error
+    }
+}
+```
+
+**Migration:** For each strict-`any` error, choose one of three responses:
+
+1. **Type the source** -- add `has reports: list[T]` (walkers), a `-> T` annotation (functions), or a `.pyi` stub (Python utilities). Preferred for stable APIs.
+2. **Drop the annotation** -- `x = src();` makes `x` inferred-`any` and no check fires.
+3. **Annotate `any` explicitly** -- `x: any = src();` documents the boundary.
+
+See [The `any` Type and Gradual Typing](../reference/language/foundation.md#the-any-type-and-gradual-typing) for the full rule and [Walker Response Patterns](../reference/language/walker-responses.md#typing-your-reports) for typing the walker `reports` channel.
+
+---
+
 ### Version 0.13.6
 
 #### 1. `cl { }` / `sv { }` / `na { }` Module-Level Braced Blocks Deprecated

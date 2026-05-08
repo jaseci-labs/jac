@@ -41,7 +41,7 @@ def _make_recursive(pattern: str) -> str {
 }
 
 def _collect_from_dir(
-    pkg_dir: Path, root: Path, patterns: list[str], seen: set,
+    pkg_dir: Path, proj_root: Path, patterns: list[str], seen: set,
 ) -> list[SourceFile] {
     result: list[SourceFile] = [];
 
@@ -55,7 +55,7 @@ def _collect_from_dir(
                 continue;
             }
             # Wheel-relative path uses forward slashes
-            wheel_path = str(file_path.relative_to(root)).replace("\\", "/");
+            wheel_path = str(file_path.relative_to(proj_root)).replace("\\", "/");
             if wheel_path in seen {
                 continue;
             }
@@ -83,21 +83,21 @@ impl read_source_file(sf: SourceFile) -> bytes {
 impl collect_source_files(
     config: JacConfig, project_root: Path | None = None,
 ) -> list[SourceFile] {
-    root = project_root or config.project_root;
-    if root is None {
+    proj_root = project_root or config.project_root;
+    if proj_root is None {
         raise ValueError(
             "project_root is required: pass it explicitly or ensure "
             "config.project_root is set."
         );
     }
 
-    if config.package is None {
+    if not config.project.name {
         raise ValueError(
-            "Cannot collect source files: [package] section is missing in jac.toml."
+            "Cannot collect source files: [project] name is missing in jac.toml."
         );
     }
 
-    pkg_include = config.package.include;
+    pkg_include = config.project.include;
     data_map = pkg_include.data;
 
     # Global patterns: "*" key overrides defaults; if absent, defaults apply.
@@ -111,13 +111,13 @@ impl collect_source_files(
 
     # When no explicit packages list is given, fall back to a directory whose
     # name matches the package name (normalized: hyphens → underscores).
-    if not package_patterns and config.package.name {
-        package_patterns = [config.package.name.replace("-", "_")];
+    if not package_patterns and config.project.name {
+        package_patterns = [config.project.name.replace("-", "_")];
     }
 
     candidates = sorted(
         c
-        for c in root.iterdir()
+        for c in proj_root.iterdir()
         if c.is_dir() and c.name not in EXCLUDED_DIRS
     );
 
@@ -131,7 +131,7 @@ impl collect_source_files(
             specific: list[str] = list(data_map.get(candidate.name, []));
             patterns = global_patterns + specific;
 
-            pkg_files = _collect_from_dir(candidate, root, patterns, seen);
+            pkg_files = _collect_from_dir(candidate, proj_root, patterns, seen);
             result.extend(pkg_files);
         }
     }

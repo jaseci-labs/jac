@@ -101,7 +101,7 @@ def _setup_form_project(
 }
 
 """Clean up the test project."""
-def _cleanup_form_project(temp_dir: str, original_cwd: str) -> None {
+def _cleanup_form_project(temp_dir: str, original_cwd: str) {
     os.chdir(original_cwd);
     gc.collect();
 }
