@@ -1107,7 +1107,7 @@ obj KWPair(UniNode) {
 }
 
 """InnerCompr node type for Jac Ast."""
-obj InnerCompr(AstAsyncNode, UniScopeNode) {
+obj InnerCompr(AstAsyncNode, UniScopeNode, UniCFGNode) {
     has target: Expr,
         collection: Expr,
         conditional: (list[Expr] | None);
