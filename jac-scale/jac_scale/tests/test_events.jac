@@ -45,7 +45,7 @@ obj _ExplodingBroker(EventStreamBroker) {
 
     def ack(event: Event) { }
     def health -> HealthStatus {
-        return HealthStatus(healthy=True);
+        return HealthStatus(healthy=True, broker="exploding");
     }
 }
 

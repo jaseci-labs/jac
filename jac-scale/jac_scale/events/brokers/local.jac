@@ -12,7 +12,6 @@ import from jac_scale.events.broker {
 }
 import logging;
 import time;
-import uuid;
 
 glob _logger = logging.getLogger(__name__);
 
@@ -148,16 +147,12 @@ obj LocalBroker(EventStreamBroker) {
         return;
     }
 
-    def _send_to_dlq(topic: str, event: Event, retry: RetryPolicy) -> bool {
-        # Returns True iff the DLQ append succeeded. In-memory publish basically
-        # cannot fail, but we keep the bool return for parity with RedisBroker.
-        dlq = topic + retry.dead_letter_suffix;
+    def _send_to_dlq(topic: str, event: Event, retry: RetryPolicy) {
+        # In-memory publish is effectively infallible; just log and move on.
         try {
-            self.publish(dlq, event);
-            return True;
+            self.publish(topic + retry.dead_letter_suffix, event);
         } except Exception as e {
-            _logger.error(f"DLQ publish failed for {dlq}: {e}");
-            return False;
+            _logger.error(f"DLQ publish failed for {topic}: {e}");
         }
     }
 

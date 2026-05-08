@@ -30,7 +30,7 @@ obj Subscription {
 """Result of a health probe."""
 obj HealthStatus {
     has healthy: bool,
-        broker: str = "local",
+        broker: str,
         details: dict[str, Any] = {};
 }
 

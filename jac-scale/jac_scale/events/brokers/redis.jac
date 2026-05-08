@@ -369,8 +369,4 @@ obj RedisBroker(EventStreamBroker) {
             );
         }
     }
-
-    def is_enabled -> bool {
-        return True;
-    }
 }
