@@ -3974,7 +3974,7 @@ impl Parser.parse_statement{
     if self.check(TokenKind.KW_DELETE) {
         return self.parse_delete_stmt();
     }
-    # glob declaration inside a code block - parsed permissively, flagged by ASTValidationPass (E0077)
+    # glob declaration inside a code block - parsed permissively, flagged by ASTValidationPass (E0078)
     if self.check(TokenKind.KW_GLOBAL) {
         return self.parse_global_var();
     }
