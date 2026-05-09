@@ -430,19 +430,27 @@ def get_type_of_binary_operation(
         if not is_valid_right_operand(right_type) {
             evaluator.emit_diag(E1097, expr.right);
         }
+        # Validate that a typed-edge expression resolves to an edge type.
+        # Used by both connect (`+>: T :+>`) and disconnect (`del ->:T:->`).
+        def validate_conn_type(type_expr: uni.Expr) -> jtypes.TypeBase {
+            ct = evaluator.get_type_of_expression(type_expr);
+            if (
+                not ct.is_any_type()
+                and not isinstance(ct, jtypes.UnknownType)
+                and (not isinstance(ct, jtypes.ClassType) or not ct.is_edge_type())
+            ) {
+                evaluator.emit_diag(E1098, type_expr);
+                return jtypes.UnknownType();
+            }
+            return ct;
+        }
         if isinstance(expr.op, uni.ConnectOp) {
             if expr.op.conn_type {
-                conn_type = evaluator.get_type_of_expression(expr.op.conn_type);
+                conn_type = validate_conn_type(expr.op.conn_type);
                 if (
-                    not conn_type.is_any_type()
-                    and not isinstance(conn_type, jtypes.UnknownType)
-                    and (
-                        not isinstance(conn_type, jtypes.ClassType)
-                        or not conn_type.is_edge_type()
-                    )
+                    not isinstance(conn_type, jtypes.UnknownType)
+                    and (assign_compr := expr.op.conn_assign)
                 ) {
-                    evaluator.emit_diag(E1098, expr.op.conn_type);
-                } elif (assign_compr := expr.op.conn_assign) {
                     for assign in assign_compr.assigns {
                         if (assign.key is not None) {
                             edge_inst_type = evaluator._convert_to_instance(conn_type);
@@ -493,6 +501,15 @@ def get_type_of_binary_operation(
                 }
             }
             return right_type;
+        }
+        if isinstance(expr.op, uni.DisconnectOp) {
+            # `del ->:T:->` mirrors connect's typed-edge check: T must be
+            # an edge type (or instance). The f_type lives inside the
+            # EdgeOpRef's FilterCompr.
+            fcond = expr.op.edge_spec.filter_cond;
+            if fcond is not None and fcond.f_type is not None {
+                validate_conn_type(fcond.f_type);
+            }
         }
     }
     # Spawn operator: `a spawn b` requires exactly one operand to be a

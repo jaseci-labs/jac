@@ -954,6 +954,25 @@ test "spawn_validation" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1115);
 }
 
+test "disconnect_typed" {
+    # `del a ->:T:-> b` requires T to be an edge type (or instance) — same
+    # rule as connect's `+>: T :+>`. The fixture has 2 typed-disconnect
+    # statements where T is a node (E1098). The Ok cases must not emit
+    # E1098.
+    path = os.path.join(CHECKER_FIXTURES, "checker_disconnect_typed.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1098 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1098"
+    ];
+    assert len(e1098) == 2 , f"Expected 2 E1098 (typed-disconnect not edge), got {len(
+        e1098
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1098);
+}
+
 test "ability_trigger_archetype" {
     # Walker abilities must trigger on a node/edge/Root; node/edge
     # abilities must trigger on a walker. Tuple and union triggers are
