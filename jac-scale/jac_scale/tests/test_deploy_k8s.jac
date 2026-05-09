@@ -2073,3 +2073,247 @@ test "redis ingress rule must not set host before TLS is enabled" {
     redis_rule = redis_created_body["spec"]["rules"][0];
     assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
 }
+
+test "redeploy preserves TLS state set by enable_tls (regression for #5834)" {
+    # Regression test: a `jac start --scale` run after `--enable-tls` was
+    # silently wiping spec.tls, the host on rule[0], and the cert-manager /
+    # ssl-redirect annotations because _deploy_ingress_resource issues a full
+    # PUT via replace_namespaced_ingress. Without _preserve_tls_state copying
+    # the live TLS state into the new body, HTTPS falls back to the
+    # controller's self-signed cert in production.
+    k8s_config = KubernetesConfig(
+        domain="app.example.com", cert_manager_email="user@example.com"
+    );
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    # Build a real V1Ingress that mirrors the post-enable_tls live state
+    live_ingress = client.V1Ingress(
+        metadata=client.V1ObjectMeta(
+            name="myapp-ingress",
+            namespace="default",
+            annotations={
+                "jac-scale/domain": "app.example.com",
+                "jac-scale/cert-email": "user@example.com",
+                "cert-manager.io/issuer": "letsencrypt-prod",
+                "nginx.ingress.kubernetes.io/ssl-redirect": "true",
+                "nginx.ingress.kubernetes.io/force-ssl-redirect": "true"
+            }
+        ),
+        spec=client.V1IngressSpec(
+            ingress_class_name="myapp-nginx",
+            rules=[
+                client.V1IngressRule(
+                    host="app.example.com",
+                    http=client.V1HTTPIngressRuleValue(
+                        paths=[
+                            client.V1HTTPIngressPath(
+                                path="/",
+                                path_type="Prefix",
+                                backend=client.V1IngressBackend(
+                                    service=client.V1IngressServiceBackend(
+                                        name="myapp-service",
+                                        port=client.V1ServiceBackendPort(number=8000)
+                                    )
+                                )
+                            )
+                        ]
+                    )
+                )
+            ],
+            tls=[
+                client.V1IngressTLS(hosts=["app.example.com"], secret_name="myapp-tls")
+            ]
+        )
+    );
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_networking_v1.read_namespaced_ingress.return_value = live_ingress;
+    mock_core_v1 = unittest.mock.MagicMock();
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="myapp-nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=False,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    assert mock_networking_v1.replace_namespaced_ingress.called , "replace_namespaced_ingress should be called when ingress already exists";
+    body = mock_networking_v1.replace_namespaced_ingress.call_args[1]["body"];
+
+    # TLS spec must survive the redeploy
+    tls = body["spec"].get("tls", []);
+    assert len(tls) == 1
+    and tls[0]["hosts"] == ["app.example.com"]
+    and tls[0]["secretName"] == "myapp-tls" , "spec.tls must be preserved on redeploy";
+
+    # Host on the rule must survive the redeploy so nginx routes the cert correctly
+    rule = body["spec"]["rules"][0];
+    assert rule.get("host") == "app.example.com" , "rule host must be preserved on redeploy";
+
+    # cert-manager and ssl-redirect annotations must survive the redeploy
+    ann = body["metadata"]["annotations"];
+    assert ann.get("cert-manager.io/issuer") == "letsencrypt-prod" , "cert-manager.io/issuer annotation must be preserved";
+    assert ann.get("nginx.ingress.kubernetes.io/ssl-redirect") == "true" , "ssl-redirect annotation must be preserved";
+    assert ann.get("nginx.ingress.kubernetes.io/force-ssl-redirect") == "true" , "force-ssl-redirect annotation must be preserved";
+}
+
+test "redeploy does not invent TLS when live ingress has none" {
+    # Negative case: the first-deploy invariant ("wildcard rule until
+    # enable_tls") must hold. _preserve_tls_state should bail when the live
+    # Ingress carries no spec.tls, leaving the new body with no host and no
+    # tls block. Otherwise we'd risk setting a host before the cert exists,
+    # which makes the app unreachable via the raw NLB hostname.
+    k8s_config = KubernetesConfig(
+        domain="app.example.com", cert_manager_email="user@example.com"
+    );
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    live_ingress_no_tls = client.V1Ingress(
+        metadata=client.V1ObjectMeta(
+            name="myapp-ingress",
+            namespace="default",
+            annotations={"jac-scale/domain": "app.example.com"}
+        ),
+        spec=client.V1IngressSpec(
+            ingress_class_name="myapp-nginx",
+            rules=[
+                client.V1IngressRule(
+                    http=client.V1HTTPIngressRuleValue(
+                        paths=[
+                            client.V1HTTPIngressPath(
+                                path="/",
+                                path_type="Prefix",
+                                backend=client.V1IngressBackend(
+                                    service=client.V1IngressServiceBackend(
+                                        name="myapp-service",
+                                        port=client.V1ServiceBackendPort(number=8000)
+                                    )
+                                )
+                            )
+                        ]
+                    )
+                )
+            ]
+        )
+    );
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_networking_v1.read_namespaced_ingress.return_value = live_ingress_no_tls;
+    mock_core_v1 = unittest.mock.MagicMock();
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="myapp-nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=False,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    body = mock_networking_v1.replace_namespaced_ingress.call_args[1]["body"];
+    assert "tls" not in body["spec"] , "no tls should be added when live ingress has none";
+    assert "host" not in body["spec"]["rules"][0] , "no host should be added when live ingress has no TLS";
+    ann = body["metadata"]["annotations"];
+    assert "cert-manager.io/issuer" not in ann , "cert-manager annotation should not be invented";
+}
+
+test "redeploy preserves TLS on Redis ingress" {
+    # Same regression as the main ingress, but for the RedisInsight Ingress
+    # branch (separate `replace_namespaced_ingress` site, same bug).
+    k8s_config = KubernetesConfig(
+        domain="app.example.com",
+        cert_manager_email="user@example.com",
+        redis_insight_username="admin",
+        redis_insight_password="hunter2"
+    );
+    ingress_deployer = IngressDeployer(k8s_config, None);
+
+    live_main = client.V1Ingress(
+        metadata=client.V1ObjectMeta(
+            name="myapp-ingress",
+            namespace="default",
+            annotations={
+                "cert-manager.io/issuer": "letsencrypt-prod",
+                "nginx.ingress.kubernetes.io/ssl-redirect": "true",
+                "nginx.ingress.kubernetes.io/force-ssl-redirect": "true"
+            }
+        ),
+        spec=client.V1IngressSpec(
+            ingress_class_name="myapp-nginx",
+            rules=[
+                client.V1IngressRule(
+                    host="app.example.com", http=client.V1HTTPIngressRuleValue(paths=[])
+                )
+            ],
+            tls=[
+                client.V1IngressTLS(hosts=["app.example.com"], secret_name="myapp-tls")
+            ]
+        )
+    );
+    live_redis = client.V1Ingress(
+        metadata=client.V1ObjectMeta(
+            name="myapp-redis-insight-ingress",
+            namespace="default",
+            annotations={
+                "cert-manager.io/issuer": "letsencrypt-prod",
+                "nginx.ingress.kubernetes.io/ssl-redirect": "true",
+                "nginx.ingress.kubernetes.io/force-ssl-redirect": "true"
+            }
+        ),
+        spec=client.V1IngressSpec(
+            ingress_class_name="myapp-nginx",
+            rules=[
+                client.V1IngressRule(
+                    host="app.example.com", http=client.V1HTTPIngressRuleValue(paths=[])
+                )
+            ],
+            tls=[
+                client.V1IngressTLS(hosts=["app.example.com"], secret_name="myapp-tls")
+            ]
+        )
+    );
+
+    def _read(name: str, namespace: str) -> Any {
+        if name == "myapp-redis-insight-ingress" {
+            return live_redis;
+        }
+        return live_main;
+    }
+
+    mock_networking_v1 = unittest.mock.MagicMock();
+    mock_networking_v1.read_namespaced_ingress.side_effect = _read;
+    mock_core_v1 = unittest.mock.MagicMock();
+
+    ingress_deployer._deploy_ingress_resource(
+        app_name="myapp",
+        namespace="default",
+        ingress_class="myapp-nginx",
+        service_port=8000,
+        grafana_enabled=False,
+        redis_dashboard=True,
+        mongo_dashboard=False,
+        networking_v1=mock_networking_v1,
+        core_v1=mock_core_v1
+    );
+
+    redis_call = None;
+    for call in mock_networking_v1.replace_namespaced_ingress.call_args_list {
+        if call[1]["name"] == "myapp-redis-insight-ingress" {
+            redis_call = call;
+            break;
+        }
+    }
+    assert redis_call is not None , "redis ingress should be replaced";
+    redis_body = redis_call[1]["body"];
+    redis_tls = redis_body["spec"].get("tls", []);
+    assert len(redis_tls) == 1 and redis_tls[0]["secretName"] == "myapp-tls" , "Redis ingress spec.tls must be preserved on redeploy";
+    assert redis_body["spec"]["rules"][0].get("host") == "app.example.com" , "Redis ingress host must be preserved on redeploy";
+}
