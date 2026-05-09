@@ -17,12 +17,15 @@ def _e_key(edge_type_id: int) -> str {
     return "e:" + str(edge_type_id);
 }
 
-"""Get or create the (in, out) lists for `(src_lid, col_key)` in the lookup."""
+"""Get or create the (in, out) sets for `(src_lid, col_key)` in the lookup.
+
+Backed by sets (not lists) so add/discard/membership are all O(1) â keeps
+add_edge linear-per-call even for hub nodes with thousands of outgoing
+edges. Order is not preserved, but the canonical adj_list already provides
+deterministic ordering for any caller that needs it."""
 def _get_col(
-    buckets: dict[int, dict[str, tuple[list[int], list[int]]]],
-    src_lid: int,
-    col_key: str
-) -> tuple[list[int], list[int]] {
+    buckets: dict[int, dict[str, tuple[set[int], set[int]]]], src_lid: int, col_key: str
+) -> tuple[set[int], set[int]] {
     bucket = buckets.get(src_lid);
     if bucket is None {
         bucket = {};
@@ -30,26 +33,10 @@ def _get_col(
     }
     col = bucket.get(col_key);
     if col is None {
-        col = ([], []);
+        col = (set(), set());
         bucket[col_key] = col;
     }
     return col;
-}
-
-"""Drop `lid` from a list if present."""
-def _list_drop(lst: list[int], lid: int) {
-    try {
-        lst.remove(lid);
-    } except ValueError {
-        ;
-    }
-}
-
-"""Add `lid` to `lst` if not already present (preserves insertion order)."""
-def _list_add(lst: list[int], lid: int) {
-    if lid not in lst {
-        lst.append(lid);
-    }
 }
 
 """Return type_id for type_name, registering it (and its MRO chain) if new."""
@@ -114,8 +101,8 @@ impl TopologyIndex.remove_node(node_id: UUID) -> None {
     self.buckets.pop(lid, None);
     for (_, bucket) in self.buckets.items() {
         for (_, col) in bucket.items() {
-            _list_drop(col[0], lid);
-            _list_drop(col[1], lid);
+            col[0].discard(lid);
+            col[1].discard(lid);
         }
     }
 }
@@ -139,17 +126,17 @@ impl TopologyIndex.add_edge(
 
     for anc in tgt_ancestors {
         out_col = _get_col(self.buckets, src_lid, _n_key(anc));
-        _list_add(out_col[1], tgt_lid);
+        out_col[1].add(tgt_lid);
     }
     e_out = _get_col(self.buckets, src_lid, _e_key(etid));
-    _list_add(e_out[1], tgt_lid);
+    e_out[1].add(tgt_lid);
 
     for anc in src_ancestors {
         in_col = _get_col(self.buckets, tgt_lid, _n_key(anc));
-        _list_add(in_col[0], src_lid);
+        in_col[0].add(src_lid);
     }
     e_in = _get_col(self.buckets, tgt_lid, _e_key(etid));
-    _list_add(e_in[0], src_lid);
+    e_in[0].add(src_lid);
 }
 
 """Remove a single edge between source and target. If `edge_type_name` is None,
@@ -202,7 +189,7 @@ impl TopologyIndex.remove_edge(
         if src_bucket is not None {
             e_col = src_bucket.get(e_key);
             if e_col is not None {
-                _list_drop(e_col[1], tgt_lid);
+                e_col[1].discard(tgt_lid);
                 if not e_col[0] and not e_col[1] {
                     src_bucket.pop(e_key, None);
                 }
@@ -211,7 +198,7 @@ impl TopologyIndex.remove_edge(
         if tgt_bucket is not None {
             e_col_rev = tgt_bucket.get(e_key);
             if e_col_rev is not None {
-                _list_drop(e_col_rev[0], src_lid);
+                e_col_rev[0].discard(src_lid);
                 if not e_col_rev[0] and not e_col_rev[1] {
                     tgt_bucket.pop(e_key, None);
                 }
@@ -224,7 +211,7 @@ impl TopologyIndex.remove_edge(
             empty: list[str] = [];
             for (key, col) in src_bucket.items() {
                 if key.startswith("n:") {
-                    _list_drop(col[1], tgt_lid);
+                    col[1].discard(tgt_lid);
                     if not col[0] and not col[1] {
                         empty.append(key);
                     }
@@ -238,7 +225,7 @@ impl TopologyIndex.remove_edge(
             empty_rev: list[str] = [];
             for (key, col) in tgt_bucket.items() {
                 if key.startswith("n:") {
-                    _list_drop(col[0], src_lid);
+                    col[0].discard(src_lid);
                     if not col[0] and not col[1] {
                         empty_rev.append(key);
                     }
@@ -481,16 +468,16 @@ impl TopologyIndex.decode(data: bytes) -> TopologyIndex {
         tgt_ancestors = idx.type_mro_ids[tgt_t] or [tgt_t];
         for anc in tgt_ancestors {
             out_col = _get_col(idx.buckets, src, _n_key(anc));
-            _list_add(out_col[1], tgt);
+            out_col[1].add(tgt);
         }
         e_out = _get_col(idx.buckets, src, _e_key(etid));
-        _list_add(e_out[1], tgt);
+        e_out[1].add(tgt);
         for anc in src_ancestors {
             in_col = _get_col(idx.buckets, tgt, _n_key(anc));
-            _list_add(in_col[0], src);
+            in_col[0].add(src);
         }
         e_in = _get_col(idx.buckets, tgt, _e_key(etid));
-        _list_add(e_in[0], src);
+        e_in[0].add(src);
     }
     return idx;
 }

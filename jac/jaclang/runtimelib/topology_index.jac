@@ -35,7 +35,7 @@ obj TopologyIndex {
         node_table: list[tuple[UUID, int, UUID]] = [],
         node_to_lid: dict[UUID, int] = {},
         adj_list: list[tuple[int, int, int]] = [],
-        buckets: dict[int, dict[str, tuple[list[int], list[int]]]] = {};
+        buckets: dict[int, dict[str, tuple[set[int], set[int]]]] = {};
 
     def _ensure_type(type_name: str, mro_chain: (list[str] | None) = None) -> int;
     def add_node(
