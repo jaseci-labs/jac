@@ -16,26 +16,32 @@ import from pathlib { Path }
 
 
 glob FIXTURE_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "fixtures"
-);
-glob COMPACTION_TOML_FIXTURE = os.path.join(FIXTURE_DIR, "compaction_config");
+         os.path.dirname(os.path.abspath(__file__)), "fixtures"
+     ),
+     COMPACTION_TOML_FIXTURE = os.path.join(FIXTURE_DIR, "compaction_config");
 
 
 # MockLLM.dispatch_no_streaming adds the assistant message as a string, which
 # _default_compact's role-detection cannot recognise. So pipeline tests use a
 # hook; structural correctness of _default_compact is verified separately.
 test "above threshold compacts and next iteration sees shortened messages" {
-    def step_a -> str { return "stepped"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "stepped";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm = MockLLM(
         model_name="mockllm",
         ctx_window=1000,
-        config={"outputs": [
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
-        ]}
+        config={
+            "outputs": [
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+            ]
+        }
     );
 
     hook_call_count = [0];
@@ -72,13 +78,21 @@ test "default compactor produces system user summary and kept-tail structure" {
     def make_round(idx: int) -> list {
         return [
             {
-                "role": "assistant", "content": None,
-                "tool_calls": [{
-                    "id": f"call_{idx}",
-                    "function": {"name": "search", "arguments": f'{{"q":"q{idx}"}}'}
-                }]
+                "role": "assistant",
+                "content": None,
+                "tool_calls": [
+                    {
+                        "id": f"call_{idx}",
+                        "function": {"name": "search", "arguments": f'{{"q":"q{idx}"}}'}
+                    }
+                ]
             },
-            {"role": "tool", "content": f"result_{idx}", "tool_call_id": f"call_{idx}", "name": "search"}
+            {
+                "role": "tool",
+                "content": f"result_{idx}",
+                "tool_call_id": f"call_{idx}",
+                "name": "search"
+            }
         ];
     }
 
@@ -101,16 +115,24 @@ test "default compactor produces system user summary and kept-tail structure" {
 
 
 test "below threshold does not trigger compaction" {
-    def step_a -> str { return "stepped"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "stepped";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm = MockLLM(
         model_name="mockllm",
         ctx_window=1000,
-        config={"outputs": [
-            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
-             {"prompt_tokens": 100})
-        ]}
+        config={
+            "outputs": [
+                (
+                    MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
+                    {"prompt_tokens": 100}
+                )
+            ]
+        }
     );
 
     def my_task(q: str) -> str by llm(tools=[step_a], threshold_ratio=0.80);
@@ -123,16 +145,22 @@ test "below threshold does not trigger compaction" {
 
 test "ctx_window priority - call_params beats self.ctx_window" {
     reset_byllm_config();
-    def step_a -> str { return "a"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "a";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm = MockLLM(
         model_name="mockllm",
         ctx_window=10000,
-        config={"outputs": [
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
-        ]}
+        config={
+            "outputs": [
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+                (MockToolCall(tool=finish_tool, args={"final_output": "ok"}), {})
+            ]
+        }
     );
 
     compaction_fired = [False];
@@ -184,15 +212,23 @@ test "ctx_window priority - jac.toml beats litellm" {
 
 test "ctx_window fallback - unknown model with no override disables threshold" {
     reset_byllm_config();
-    def step_a -> str { return "a"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "a";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm = MockLLM(
         model_name="definitely-not-a-real-model-zzz",
-        config={"outputs": [
-            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
-             {"prompt_tokens": 999_999})
-        ]}
+        config={
+            "outputs": [
+                (
+                    MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
+                    {"prompt_tokens": 999_999}
+                )
+            ]
+        }
     );
 
     compaction_fired = [False];
@@ -211,16 +247,24 @@ test "ctx_window fallback - unknown model with no override disables threshold" {
 
 
 test "compaction_enabled false suppresses proactive and emergency paths" {
-    def step_a -> str { return "a"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "a";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm1 = MockLLM(
         model_name="mockllm",
         ctx_window=1000,
-        config={"outputs": [
-            (MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
-             {"prompt_tokens": 950})
-        ]}
+        config={
+            "outputs": [
+                (
+                    MockToolCall(tool=finish_tool, args={"final_output": "ok"}),
+                    {"prompt_tokens": 950}
+                )
+            ]
+        }
     );
 
     proactive_fired = [False];
@@ -267,13 +311,17 @@ test "compaction_enabled false suppresses proactive and emergency paths" {
 # Hook used instead of default compactor: at first dispatch mt_run has only
 # [system, user] = 2 messages, too few for the default slice to be non-empty.
 test "ContextWindowExceededError triggers emergency compaction and retries" {
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm = MockLLM(
         model_name="mockllm",
-        config={"outputs": [
-            (MockToolCall(tool=finish_tool, args={"final_output": "recovered"}), {})
-        ]}
+        config={
+            "outputs": [
+                (MockToolCall(tool=finish_tool, args={"final_output": "recovered"}), {})
+            ]
+        }
     );
 
     hook_called = [False];
@@ -308,16 +356,22 @@ test "ContextWindowExceededError triggers emergency compaction and retries" {
 
 
 test "compaction with no reduction raises CompactionNotEffectiveError" {
-    def step_a -> str { return "a"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "a";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm = MockLLM(
         model_name="mockllm",
         ctx_window=1000,
-        config={"outputs": [
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
-        ]}
+        config={
+            "outputs": [
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 100}),
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
+            ]
+        }
     );
 
     def noop_hook(msgs: list, keep_recent: int) -> list {
@@ -340,15 +394,19 @@ test "compaction with no reduction raises CompactionNotEffectiveError" {
 
 
 test "on_compaction hook returning invalid types raises ConfigurationError" {
-    def step_a -> str { return "a"; }
+    def step_a -> str {
+        return "a";
+    }
 
     def run_with_hook(hook: object) -> object {
         llm = MockLLM(
             model_name="mockllm",
             ctx_window=1000,
-            config={"outputs": [
-                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
-            ]}
+            config={
+                "outputs": [
+                    (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 900})
+                ]
+            }
         );
 
         def my_task(q: str) -> str by llm(
@@ -388,17 +446,23 @@ test "on_compaction hook returning invalid types raises ConfigurationError" {
 
 
 test "streaming path triggers compaction and respects compaction_enabled" {
-    def step_a -> str { return "stepped"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "stepped";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     llm1 = MockLLM(
         model_name="mockllm",
         ctx_window=1000,
-        config={"outputs": [
-            (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
-            (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {}),
-            "done"
-        ]}
+        config={
+            "outputs": [
+                (MockToolCall(tool=step_a, args={}), {"prompt_tokens": 850}),
+                (MockToolCall(tool=finish_tool, args={"final_output": "done"}), {}),
+                "done"
+            ]
+        }
     );
 
     fired1 = [False];
@@ -421,11 +485,15 @@ test "streaming path triggers compaction and respects compaction_enabled" {
     llm2 = MockLLM(
         model_name="mockllm",
         ctx_window=1000,
-        config={"outputs": [
-            (MockToolCall(tool=finish_tool, args={"final_output": "done"}),
-             {"prompt_tokens": 950}),
-            "done"
-        ]}
+        config={
+            "outputs": [
+                (
+                    MockToolCall(tool=finish_tool, args={"final_output": "done"}),
+                    {"prompt_tokens": 950}
+                ),
+                "done"
+            ]
+        }
     );
 
     fired2 = [False];
@@ -472,34 +540,57 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
     reset_byllm_config();
     OVERRIDE = 1000;
 
-    def step_a -> str { return "stepped"; }
-    def finish_tool(final_output: str) -> str { return final_output; }
+    def step_a -> str {
+        return "stepped";
+    }
+    def finish_tool(final_output: str) -> str {
+        return final_output;
+    }
 
     # format_prompt subscripts messages[3] assuming get_msg_list() converted
     # ToolCallResultMsg via to_dict(). On CI this isinstance check evaluates
     # differently and the subscript raises. Bypass it - logging-only helper.
-    def noop_format(p: dict) -> str { return ""; }
+    def noop_format(p: dict) -> str {
+        return "";
+    }
 
-    def make_fake_dispatch() -> object {
+    def make_fake_dispatch -> object {
         step_resp: dict = {
-            "choices": [{"message": {"content": None, "tool_calls": [
-                types.SimpleNamespace(
-                    id="call_step",
-                    function=types.SimpleNamespace(name="step_a", arguments="{}")
-                )
-            ]}}],
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            types.SimpleNamespace(
+                                id="call_step",
+                                function=types.SimpleNamespace(
+                                    name="step_a", arguments="{}"
+                                )
+                            )
+                        ]
+                    }
+                }
+            ],
             "usage": {"prompt_tokens": 850},
             "model": "local:gemma-4-e4b"
         };
         finish_resp: dict = {
-            "choices": [{"message": {"content": None, "tool_calls": [
-                types.SimpleNamespace(
-                    id="call_finish",
-                    function=types.SimpleNamespace(
-                        name="finish_tool", arguments='{"final_output": "ok"}'
-                    )
-                )
-            ]}}],
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "tool_calls": [
+                            types.SimpleNamespace(
+                                id="call_finish",
+                                function=types.SimpleNamespace(
+                                    name="finish_tool",
+                                    arguments='{"final_output": "ok"}'
+                                )
+                            )
+                        ]
+                    }
+                }
+            ],
             "usage": {},
             "model": "local:gemma-4-e4b"
         };
@@ -540,27 +631,22 @@ test "LocalLLM ctx_window propagation drives compaction end-to-end" {
 
     # Baseline: no override anywhere - 850/8192 = 10% must NOT fire.
     spec = LocalLLM(model_name="local:gemma-4-e4b");
-    assert not fires_compaction(spec, spec, 0) ,
-        "Baseline (no override) must not fire - test cannot discriminate otherwise";
+    assert not fires_compaction(spec, spec, 0) , "Baseline (no override) must not fire - test cannot discriminate otherwise";
 
     # config["n_ctx"] rung: same value the engine is built with.
     cfg = LocalLLM(model_name="local:gemma-4-e4b", config={"n_ctx": OVERRIDE});
-    assert fires_compaction(cfg, cfg, 0) ,
-        "config['n_ctx'] override must reach compaction";
+    assert fires_compaction(cfg, cfg, 0) , "config['n_ctx'] override must reach compaction";
 
     # self.ctx_window rung.
     own = LocalLLM(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
-    assert fires_compaction(own, own, 0) ,
-        "self.ctx_window override must reach compaction";
+    assert fires_compaction(own, own, 0) , "self.ctx_window override must reach compaction";
 
     # call_params rung (highest priority).
     direct = LocalLLM(model_name="local:gemma-4-e4b");
-    assert fires_compaction(direct, direct, OVERRIDE) ,
-        "by llm(ctx_window=...) must reach compaction";
+    assert fires_compaction(direct, direct, OVERRIDE) , "by llm(ctx_window=...) must reach compaction";
 
     # Model wrapper must forward ctx_window to _local_delegate.
     m = Model(model_name="local:gemma-4-e4b", ctx_window=OVERRIDE);
     assert m._local_delegate is not None;
-    assert fires_compaction(m, m._local_delegate, 0) ,
-        "Model('local:...', ctx_window=N) must forward to _local_delegate";
+    assert fires_compaction(m, m._local_delegate, 0) , "Model('local:...', ctx_window=N) must forward to _local_delegate";
 }
