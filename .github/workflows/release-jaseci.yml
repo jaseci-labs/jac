@@ -39,10 +39,11 @@ jobs:
 
       - name: Install build tools
         run: |
-          pip install build twine
+          pip install -e ../jac
+          pip install twine
 
       - name: Build package
-        run: python -m build
+        run: jac bundle
 
       - name: Publish package to PyPI
         run: |
