@@ -57,7 +57,9 @@ def register_user(base_url: str, username: str) -> str {
     return cast(dict, extract(res.json()))["token"];
 }
 
-def call_walker(base_url: str, walker_name: str, token: str, payload: dict | None = None) -> Any {
+def call_walker(
+    base_url: str, walker_name: str, token: str, payload: dict | None = None
+) -> Any {
     res = requests.post(
         f"{base_url}/walker/{walker_name}",
         json=payload or {},
@@ -73,14 +75,20 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
     env = os.environ.copy();
     server = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, cwd=str(fixtures_dir), env=env
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(fixtures_dir),
+        env=env
     );
     base_url = f"http://localhost:{port}";
     for _ in range(30) {
         try {
             r = requests.get(f"{base_url}/healthz", timeout=1);
-            if r.status_code == 200 { return server; }
+            if r.status_code == 200 {
+                return server;
+            }
         } except Exception {
             time.sleep(1);
         }
@@ -128,7 +136,11 @@ test "concurrent writes to same root must not lose edges (race condition proof)"
         for round_n in range(ROUNDS) {
             item_name = f"item_{round_n}";
             with ThreadPoolExecutor(max_workers=CONCURRENT_TOUCHES + 1) as pool {
-                futures = [pool.submit(call_walker, base_url, "AddItem", token, {"name": item_name})];
+                futures = [
+                    pool.submit(
+                        call_walker, base_url, "AddItem", token, {"name": item_name}
+                    )
+                ];
                 for _ in range(CONCURRENT_TOUCHES) {
                     futures.append(pool.submit(call_walker, base_url, "Touch", token));
                 }
@@ -154,9 +166,11 @@ test "concurrent writes to same root must not lose edges (race condition proof)"
     } finally {
         if server {
             server.terminate();
-            with contextlib.suppress(Exception) { server.wait(timeout=2); }
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
         }
-        system_dbs = {"admin", "config", "local"};
+        system_dbs = {"admin","config","local"};
         for db_name in mongo_client.list_database_names() {
             if db_name not in system_dbs {
                 mongo_client.drop_database(db_name);
@@ -201,13 +215,21 @@ test "sqlite backend: concurrent writes to same root must not lose edges" {
         expected = 0;
         for round_n in range(ROUNDS) {
             with ThreadPoolExecutor(max_workers=CONCURRENT_TOUCHES + 1) as pool {
-                futures = [pool.submit(
-                    call_walker, base_url, "AddItem", token, {"name": f"sqlite_{round_n}"}
-                )];
+                futures = [
+                    pool.submit(
+                        call_walker,
+                        base_url,
+                        "AddItem",
+                        token,
+                        {"name": f"sqlite_{round_n}"}
+                    )
+                ];
                 for _ in range(CONCURRENT_TOUCHES) {
                     futures.append(pool.submit(call_walker, base_url, "Touch", token));
                 }
-                for f in as_completed(futures) { _ = f.result(); }
+                for f in as_completed(futures) {
+                    _ = f.result();
+                }
             }
             expected += 1;
             time.sleep(0.2);
@@ -224,7 +246,9 @@ test "sqlite backend: concurrent writes to same root must not lose edges" {
     } finally {
         if server {
             server.terminate();
-            with contextlib.suppress(Exception) { server.wait(timeout=2); }
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
         }
         time.sleep(0.3);
         gc.collect();

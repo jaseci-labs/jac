@@ -110,7 +110,7 @@ impl JacAPIServerEndpoints.create_walker_callback(
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     import from fastapi { Request }
     requires_auth = self.introspector.is_auth_required_for_walker(walker_name);
-    async def callback(
+    def callback(
         request: Request, nd: (str | None) = None, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
         username: (str | None) = request.state?.username if request?.state else None;
@@ -124,7 +124,7 @@ impl JacAPIServerEndpoints.create_walker_callback(
         if nd {
             kwargs['_jac_spawn_node'] = nd;
         }
-        result = await self.execution_manager.spawn_walker(
+        result = self.execution_manager.spawn_walker(
             self.get_walkers()[walker_name], kwargs, (username or Con.GUEST.value)
         );
         if (isgenerator(result) or isinstance(result, AsyncGenerator)) {
@@ -241,7 +241,7 @@ impl JacAPIServerEndpoints.create_function_callback(
     import from jaclang.runtimelib.transport { TransportResponse, Meta }
     import from fastapi { Request }
     requires_auth = self.introspector.is_auth_required_for_function(func_name);
-    async def callback(
+    def callback(
         request: Request, **kwargs: JsonValue
     ) -> (TransportResponse | StreamingResponse) {
         username: (str | None) = request.state?.username if request?.state else None;
@@ -253,7 +253,7 @@ impl JacAPIServerEndpoints.create_function_callback(
             );
         }
         console.print(f"Executing function '{func_name}' with params: {kwargs}");
-        result = await self.execution_manager.execute_function(
+        result = self.execution_manager.execute_function(
             self.get_functions()[func_name], kwargs, (username or Con.GUEST.value)
         );
         # Handle streaming responses (generators/async generators).
@@ -369,7 +369,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         walker_kwargs: dict[str, Any] = dict(body_data) if body_data else {};
 
         # Execute the walker
-        result = await self.execution_manager.spawn_walker(
+        result = self.execution_manager.spawn_walker(
             self.get_walkers()[walker_name], walker_kwargs, username
         );
 
@@ -514,7 +514,7 @@ impl JacAPIServerEndpoints.create_websocket_handler(walker_name: str) -> Callabl
 
                 # Spawn the walker with received fields
                 try {
-                    result = await self.execution_manager.spawn_walker(
+                    result = self.execution_manager.spawn_walker(
                         self.get_walkers()[walker_name],
                         data,
                         (username or Con.GUEST.value)

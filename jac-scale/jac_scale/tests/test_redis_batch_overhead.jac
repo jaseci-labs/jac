@@ -36,8 +36,12 @@ def get_free_port -> int {
 }
 
 def extract(resp: Any) -> Any {
-    if isinstance(resp, list) and len(resp) == 2 { resp = resp[1]; }
-    if isinstance(resp, dict) and "data" in resp { return resp["data"]; }
+    if isinstance(resp, list) and len(resp) == 2 {
+        resp = resp[1];
+    }
+    if isinstance(resp, dict) and "data" in resp {
+        return resp["data"];
+    }
     return resp;
 }
 
@@ -51,7 +55,9 @@ def register_user(base_url: str, username: str) -> str {
     return cast(dict, extract(res.json()))["token"];
 }
 
-def call_walker(base_url: str, walker_name: str, token: str, payload: dict | None = None) -> Any {
+def call_walker(
+    base_url: str, walker_name: str, token: str, payload: dict | None = None
+) -> Any {
     res = requests.post(
         f"{base_url}/walker/{walker_name}",
         json=payload or {},
@@ -67,15 +73,23 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
     env = os.environ.copy();
     server = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, cwd=str(fixtures_dir), env=env
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(fixtures_dir),
+        env=env
     );
     base_url = f"http://localhost:{port}";
     for _ in range(30) {
         try {
             r = requests.get(f"{base_url}/healthz", timeout=1);
-            if r.status_code == 200 { return server; }
-        } except Exception { time.sleep(1); }
+            if r.status_code == 200 {
+                return server;
+            }
+        } except Exception {
+            time.sleep(1);
+        }
     }
     (stdout, stderr) = server.communicate(timeout=2);
     raise RuntimeError(f"server failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
@@ -164,10 +178,14 @@ test "batch_get issues N individual Redis GET commands instead of 1 MGET" {
             f"Redis before the measurement."
         );
     } finally {
-        with contextlib.suppress(Exception) { redis_client.close(); }
+        with contextlib.suppress(Exception) {
+            redis_client.close();
+        }
         if server {
             server.terminate();
-            with contextlib.suppress(Exception) { server.wait(timeout=2); }
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
         }
         os.environ.pop("REDIS_URL", None);
         os.environ.pop("MONGODB_URI", None);
@@ -261,10 +279,14 @@ test "batch_get command count scales linearly with anchor count — evidence of 
             );
         }
     } finally {
-        with contextlib.suppress(Exception) { redis_client.close(); }
+        with contextlib.suppress(Exception) {
+            redis_client.close();
+        }
         if server {
             server.terminate();
-            with contextlib.suppress(Exception) { server.wait(timeout=2); }
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
         }
         os.environ.pop("REDIS_URL", None);
         os.environ.pop("MONGODB_URI", None);

@@ -45,7 +45,9 @@ def register_user(base_url: str, username: str) -> str {
     );
     assert res.status_code == 201;
     body = res.json();
-    if isinstance(body, list) and len(body) == 2 { body = body[1]; }
+    if isinstance(body, list) and len(body) == 2 {
+        body = body[1];
+    }
     return body["data"]["token"];
 }
 
@@ -54,15 +56,23 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     jac_executable = shutil.which("jac") or str(Path(sys.executable).parent / "jac");
     cmd = [str(jac_executable), "start", str(jac_file.name), "--port", str(port)];
     server = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        text=True, cwd=str(fixtures_dir), env=os.environ.copy()
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(fixtures_dir),
+        env=os.environ.copy()
     );
     base_url = f"http://localhost:{port}";
     for _ in range(30) {
         try {
             r = requests.get(f"{base_url}/healthz", timeout=1);
-            if r.status_code == 200 { return server; }
-        } except Exception { time.sleep(1); }
+            if r.status_code == 200 {
+                return server;
+            }
+        } except Exception {
+            time.sleep(1);
+        }
     }
     (stdout, stderr) = server.communicate(timeout=2);
     raise RuntimeError(f"server failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
@@ -94,7 +104,7 @@ test "N concurrent slow walkers must complete in ~1 SLOW_SEC (async honesty)" {
     try {
         token = register_user(base_url, "slow_tester");
 
-        def call_slow() -> float {
+        def call_slow -> float {
             t0 = time.time();
             r = requests.post(
                 f"{base_url}/walker/Slow",
@@ -131,7 +141,9 @@ test "N concurrent slow walkers must complete in ~1 SLOW_SEC (async honesty)" {
     } finally {
         if server {
             server.terminate();
-            with contextlib.suppress(Exception) { server.wait(timeout=2); }
+            with contextlib.suppress(Exception) {
+                server.wait(timeout=2);
+            }
         }
         time.sleep(0.3);
         gc.collect();
