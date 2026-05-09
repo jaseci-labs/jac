@@ -1777,16 +1777,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 type=str(filter_type)
                             );
                         }
-
-                        left_type = self.get_type_of_expression(cmp.left);
-                        right_type = self.get_type_of_expression(cmp.rights[0]);
-                        # TODO: Check if those two types are comparable.
-                        # if  not self.???(right_type, left_type) {
-                        #     self.add_diagnostic(
-                        #         cmp.right,
-                        #         f'Type "{right_type}" is not comparable to type "{left_type}"',
-                        #     );
-                        # }
+                        # Delegate to the CompareExpr case so each (left, op,
+                        # right) triple is validated against the resolved
+                        # field type — emits E1110 / E1111 for incompatible
+                        # operands. The bool result is unused.
+                        self.get_type_of_expression(cmp);
                     }
                     # Return list[FilterType] — the filter narrows elements to the given type.
                     if self.prefetch and self.prefetch.list_class {

@@ -882,6 +882,52 @@ test "connect_filter" {
     }
 }
 
+test "filter_compr_compare_types" {
+    # Filter comparisons inside edge-ref filters must validate operand
+    # types, not just field existence (issue #5885 gap 5). Matches the
+    # statement-level CompareExpr behavior — `==` / `!=` are not flagged
+    # for cross-type operands (Python returns False, not TypeError), but
+    # ordered comparisons `<`, `<=`, `>`, `>=` are flagged with E1110.
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_filter_compr_compare.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 4;
+
+    expected_errors = [
+        """
+        Operator ">=" not supported between types "int" and "Literal["x"]"
+            # for `int >= str` etc. These should be flagged with E1110.
+            [a_inst ->:MyEdge:weight>="x":-> ];              # Error: int >= str
+                              ^^^^^^^^^^^
+        """,
+        """
+        Operator "<" not supported between types "str" and "int"
+            [a_inst ->:MyEdge:weight>="x":-> ];              # Error: int >= str
+            [a_inst ->:MyEdge:label<1:-> ];                  # Error: str <  int
+                              ^^^^^^^
+        """,
+        """
+        Operator ">" not supported between types "int" and "Literal["x"]"
+            [a_inst ->:MyEdge:label<1:-> ];                  # Error: str <  int
+            [a_inst ->:MyEdge:weight>"x":-> ];               # Error: int >  str
+                              ^^^^^^^^^^
+        """,
+        """
+        Operator "<=" not supported between types "int" and "Literal["x"]"
+            [a_inst ->:MyEdge:weight>"x":-> ];               # Error: int >  str
+            a_inst del ->:MyEdge:weight<="x":-> b_inst;      # Error inside del
+                                 ^^^^^^^^^^^
+        """
+    ];
+
+    for i in range(len(expected_errors)) {
+        assert_error_pretty_found(
+            expected_errors[i], program.errors_had[i].pretty_print()
+        );
+    }
+}
+
 test "connect_any_type" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_connect_any_type.jac");
