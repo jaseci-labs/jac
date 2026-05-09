@@ -331,18 +331,95 @@ glob numbers = [1, 2, 3, 4, 5];
 glob squared = list(map(lambda x: int : x ** 2, numbers));
 glob evens = list(filter(lambda x: int : x % 2 == 0, numbers));
 
-# Lambda returning lambda
+# Lambda returning lambda (closure -- see callout below)
 glob make_adder = lambda x: int : (lambda y: int : x + y);
 glob add_five = make_adder(5);  # add_five(10) returns 15
 ```
 
-### 8 Immediately Invoked Function Expressions (IIFE)
+!!! info "Closures"
+    A lambda (or nested `def`) captures variables from its enclosing scope, producing a *closure*. Each call to the outer function creates a fresh binding, so independently configured callables don't share state:
+
+    ```jac
+    glob make_adder = lambda x: int : (lambda y: int : x + y);
+
+    with entry {
+        add_five = make_adder(5);
+        add_ten  = make_adder(10);
+        print(add_five(10));   # 15
+        print(add_ten(10));    # 20  (each closure keeps its own captured x)
+    }
+    ```
+
+    Captured values are read freely. To mutate state across calls, prefer returning a configured object (see [IIFE & Anonymous Factories](#8-iife-anonymous-factories) below) over rebinding a captured local.
+
+### 8 IIFE & Anonymous Factories
+
+An *Immediately Invoked Function Expression* defines a function and calls it in the same expression -- useful for inlining a one-shot computation, or for producing a configured value from a private scope.
+
+**Lambda IIFE** (single expression):
 
 ```jac
 with entry {
-    result = (lambda x: int -> int: x * 2)(5);  # result = 10
+    result = (lambda x: int -> int : x * 2)(5);   # result = 10
 }
 ```
+
+**`def` IIFE** (multi-statement, anonymous):
+
+```jac
+with entry {
+    config = (def () -> dict {
+        host = "localhost";
+        port = 8080;
+        return {"host": host, "port": port, "url": f"http://{host}:{port}"};
+    })();
+    print(config);
+}
+```
+
+**Anonymous factory** -- IIFE + closure to produce a configured callable. This is Jac's equivalent of the JS `x => y => x + y` factory idiom:
+
+```jac
+with entry {
+    adder = (def make_adder(x: int) {
+        return lambda y: int : x + y;
+    })(10);
+
+    print(adder(5));   # 15
+}
+```
+
+**Typed-product factory** -- when the product needs methods or a fixed shape, return an `obj` instance instead of a dict. The factory itself is an anonymous lambda that closes over its arguments:
+
+```jac
+obj Counter {
+    has count: int;
+    def inc -> None { self.count += 1; }
+    def get -> int  { return self.count; }
+}
+
+glob make_counter = lambda start: int -> Counter : Counter(count=start);
+
+with entry {
+    c = make_counter(10);
+    c.inc(); c.inc(); c.inc();
+    print(c.get());   # 13
+}
+```
+
+!!! note "Why no anonymous archetypes?"
+    Jac's `obj`, `node`, `edge`, and `walker` archetypes must be declared with a name at module scope -- there is no inline `obj { has x: int; }` expression. For one-off structural products use a `dict`; when you need methods or a stable type, declare a named `obj` once and have the factory return instances of it.
+
+!!! tip "Coming from JavaScript?"
+    | JS idiom | Jac equivalent |
+    |---|---|
+    | `x => x + 1` | `lambda x: int : x + 1` |
+    | `() => ({a: 1})` | `lambda : {"a": 1}` |
+    | `(() => 42)()` | `(def () -> int { return 42; })()` |
+    | `x => y => x + y` | `lambda x: int : (lambda y: int : x + y)` |
+    | anonymous `class { ... }` | not supported -- declare a named `obj` and return instances |
+
+    Jac lambdas require type annotations on parameters and a space before the body colon (`lambda x: int : x + 1`).
 
 ### 9 Decorators
 
