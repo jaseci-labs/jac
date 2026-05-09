@@ -7,35 +7,27 @@ import tomllib;
 import from pathlib { Path }
 import from typing { Any }
 
-"""Project metadata from [project] section."""
-obj ProjectConfig {
-    has name: str = "",
-        version: str = "0.1.0",
-        description: str = "",
-        authors: list[str] = [],
-        license: str = "",
-        readme: str = "README.md",
-        jac_version: str = "",
-        entry_point: str = "main.jac",
-        urls: dict[str, str] = {};
-}
-
-"""Author or maintainer contact info for [package] section."""
+"""Author or maintainer contact info."""
 obj PersonConfig {
     has name: str = "",
         email: str = "";
 }
 
-"""File inclusion rules from [package.include]."""
+"""File inclusion rules from [project.include]."""
 obj PackageIncludeConfig {
     has packages: list[str] = [],
         data: dict[str, list[str]] = {};
 }
 
-"""PyPI-publishable package metadata from [package] section."""
-obj PackageConfig {
+"""Project metadata from [project] section.
+
+Runtime fields (entry_point, jac_version) are used by jac run/serve.
+Publishing fields (authors, maintainers, keywords, requires_python, include)
+are used by jac bundle. All publishing fields are optional.
+"""
+obj ProjectConfig {
     has name: str = "",
-        version: str = "",
+        version: str = "0.1.0",
         description: str = "",
         authors: list[PersonConfig] = [],
         maintainers: list[PersonConfig] = [],
@@ -43,6 +35,8 @@ obj PackageConfig {
         readme: str = "README.md",
         keywords: list[str] = [],
         requires_python: str = "",
+        jac_version: str = "",
+        entry_point: str = "main.jac",
         urls: dict[str, str] = {},
         include: PackageIncludeConfig = PackageIncludeConfig();
 }
@@ -215,9 +209,6 @@ obj JacConfig {
         config_files: list[Path] | None = None,
         active_profile: str = "",
         _raw_data: dict[str, Any] = {},
-        # Publishing fields — populated when [package], [entrypoints],
-        # or [optional-dependencies] are present in jac.toml.
-        package: PackageConfig | None = None,
         entrypoints: dict[str, dict[str, str]] = {},
         optional_dependencies: dict[str, dict[str, str]] = {};
 
@@ -262,6 +253,12 @@ def discover_config_files(
 
 # Parse TOML data into JacConfig object
 def _parse_toml_data(data: dict[str, Any], toml_path: Path | None = None) -> JacConfig;
+
+# Parse a raw list of author/maintainer entries (dicts or strings) into PersonConfig objects.
+def _parse_persons(raw: list[any]) -> list[PersonConfig];
+
+# Parse a raw include dict into a PackageIncludeConfig.
+def _parse_include(raw: dict[str, any]) -> PackageIncludeConfig;
 
 # Recursively apply environment variable interpolation
 def _interpolate_recursive(`obj: Any) -> Any;

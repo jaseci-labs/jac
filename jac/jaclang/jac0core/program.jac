@@ -21,6 +21,27 @@ class JacProgram {
     def _get_compiler(self: JacProgram) -> JacCompiler;
     def get_type_evaluator(self: JacProgram) -> TypeEvaluator;
     def clear_type_system(self: JacProgram, clear_hub: bool = False) -> None;
+    # Hub cache freshness: timestamp captured when each path was inserted
+    # into `mod.hub` (or refreshed by a re-import). Compared against current
+    # source mtime + annex/variant mtimes by `is_hub_entry_fresh` so a
+    # long-lived JacProgram (e.g. the LSP server) cannot serve stale IR
+    # after a dependency changes on disk.
+    def hub_cache_stamp(self: JacProgram, resolved_path: str) -> None;
+    def is_hub_entry_fresh(self: JacProgram, resolved_path: str) -> bool;
+    # Reverse-dependency map: target_path -> set of importer_paths that
+    # resolved an import to it. Populated by the import resolver and used
+    # by long-lived clients (the LSP) to fan out re-checks when a module
+    # changes.
+    def record_dependency(
+        self: JacProgram, importer_path: str, target_path: str
+    ) -> None;
+
+    def transitive_dependents(self: JacProgram, target_path: str) -> set[str];
+    # Coordinated eviction across hub, type-cache, native cache, and the
+    # rdep stamps. Invariant: after `invalidate_module(p)`, no consumer of
+    # the program's caches references the prior IR for `p`. This is the
+    # only safe entry point for in-place cache busting.
+    def invalidate_module(self: JacProgram, resolved_path: str) -> None;
     def get_bytecode(self: JacProgram, full_target: str) -> (types.CodeType | None);
     def parse_str(
         self: JacProgram,

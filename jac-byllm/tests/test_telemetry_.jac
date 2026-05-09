@@ -48,7 +48,7 @@ test "register_agent_callback adds callback to registry" {
     original = _agent_callbacks.copy();
     _agent_callbacks.clear();
     try {
-        def cb(record: dict) -> None { }
+        def cb(record: dict) { }
         register_agent_callback(cb);
         assert len(_agent_callbacks) == 1;
         assert _agent_callbacks[0] is cb;
@@ -62,7 +62,7 @@ test "register_agent_callback deduplicates same callback" {
     original = _agent_callbacks.copy();
     _agent_callbacks.clear();
     try {
-        def cb(record: dict) -> None { }
+        def cb(record: dict) { }
         register_agent_callback(cb);
         register_agent_callback(cb);  # Register again — should be ignored
         register_agent_callback(cb);  # Third time — still ignored
@@ -79,8 +79,8 @@ test "register_agent_callback allows different callbacks" {
     original = _agent_callbacks.copy();
     _agent_callbacks.clear();
     try {
-        def cb1(record: dict) -> None { }
-        def cb2(record: dict) -> None { }
+        def cb1(record: dict) { }
+        def cb2(record: dict) { }
         register_agent_callback(cb1);
         register_agent_callback(cb2);
         assert len(_agent_callbacks) == 2;
@@ -96,7 +96,7 @@ test "emit_agent_telemetry builds record with correct fields" {
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
@@ -150,7 +150,7 @@ test "emit_agent_telemetry marks streaming results correctly" {
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
@@ -174,7 +174,7 @@ test "emit_agent_telemetry includes error string on failure" {
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
@@ -199,10 +199,10 @@ test "failing callback does not prevent other callbacks from firing" {
     _agent_callbacks.clear();
     results: list = [];
     try {
-        def bad_cb(record: dict) -> None {
+        def bad_cb(record: dict) {
             raise RuntimeError("I broke!");
         }
-        def good_cb(record: dict) -> None {
+        def good_cb(record: dict) {
             results.append(record);
         }
 
@@ -226,16 +226,16 @@ test "multiple failing callbacks do not suppress any good callbacks" {
     _agent_callbacks.clear();
     results: list = [];
     try {
-        def bad1(record: dict) -> None {
+        def bad1(record: dict) {
             raise ValueError("bad1");
         }
-        def good1(record: dict) -> None {
+        def good1(record: dict) {
             results.append("good1");
         }
-        def bad2(record: dict) -> None {
+        def bad2(record: dict) {
             raise TypeError("bad2");
         }
-        def good2(record: dict) -> None {
+        def good2(record: dict) {
             results.append("good2");
         }
 
@@ -262,7 +262,7 @@ test "emit handles missing mt_run fields gracefully" {
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
@@ -294,13 +294,12 @@ test "emit handles missing mt_run fields gracefully" {
 }
 
 #  5. parent_invocation_id — ContextVar propagation
-
 test "emit record includes parent_invocation_id when set on mt_run" {
     original = _agent_callbacks.copy();
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
@@ -324,14 +323,13 @@ test "emit record has None parent_invocation_id for root calls" {
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
 
         mt = make_fake_mt_run(invocation_id="root-inv-001");
         # No _parent_invocation_id set — simulates root call
-
         _emit_agent_telemetry(mt, "result", "gpt-4o", 100.0, "success", None);
 
         assert len(captured) == 1;
@@ -344,7 +342,6 @@ test "emit record has None parent_invocation_id for root calls" {
 }
 
 #  6. ContextVar integration — verifies get/set/reset cycle across nested invocations
-
 test "ContextVar chains correctly across simulated nested Model.invoke calls" {
     import from byllm.telemetry { _current_invocation_id }
     import uuid;
@@ -353,7 +350,7 @@ test "ContextVar chains correctly across simulated nested Model.invoke calls" {
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
@@ -393,21 +390,37 @@ test "ContextVar chains correctly across simulated nested Model.invoke calls" {
         assert _current_invocation_id.get() == "inner-id-001";  # restored
 
         # Emit inner, then unwind
-        _emit_agent_telemetry(inner_mt, "inner-result", "gpt-4o", 100.0, "success", None);
+        _emit_agent_telemetry(
+            inner_mt, "inner-result", "gpt-4o", 100.0, "success", None
+        );
         _current_invocation_id.reset(inner_token);
         assert _current_invocation_id.get() == "outer-id-001";  # restored
 
         # Emit outer, then unwind
-        _emit_agent_telemetry(outer_mt, "outer-result", "gpt-4o", 200.0, "success", None);
+        _emit_agent_telemetry(
+            outer_mt, "outer-result", "gpt-4o", 200.0, "success", None
+        );
         _current_invocation_id.reset(outer_token);
         assert _current_invocation_id.get(None) is None;  # fully restored
 
         # --- Verify the emitted records ---
         assert len(captured) == 3;
 
-        deep_rec = [r for r in captured if r["invocation_id"] == "deep-id-001"][0];
-        inner_rec = [r for r in captured if r["invocation_id"] == "inner-id-001"][0];
-        outer_rec = [r for r in captured if r["invocation_id"] == "outer-id-001"][0];
+        deep_rec = [
+            r
+            for r in captured
+            if r["invocation_id"] == "deep-id-001"
+        ][0];
+        inner_rec = [
+            r
+            for r in captured
+            if r["invocation_id"] == "inner-id-001"
+        ][0];
+        outer_rec = [
+            r
+            for r in captured
+            if r["invocation_id"] == "outer-id-001"
+        ][0];
 
         # Parent chain: deep → inner → outer → None
         assert deep_rec["parent_invocation_id"] == "inner-id-001";
@@ -428,7 +441,7 @@ test "ContextVar resets correctly even when inner invocation raises" {
     _agent_callbacks.clear();
     captured: list = [];
     try {
-        def capture_cb(record: dict) -> None {
+        def capture_cb(record: dict) {
             captured.append(record);
         }
         _agent_callbacks.append(capture_cb);
@@ -446,7 +459,9 @@ test "ContextVar resets correctly even when inner invocation raises" {
         inner_token = _current_invocation_id.set(inner_mt._invocation_id);
 
         # Simulate error path: emit with error, then reset (like finally block)
-        _emit_agent_telemetry(inner_mt, None, "gpt-4o", 30.0, "error", ValueError("boom"));
+        _emit_agent_telemetry(
+            inner_mt, None, "gpt-4o", 30.0, "error", ValueError("boom")
+        );
         _current_invocation_id.reset(inner_token);
 
         # Outer should still be active
@@ -458,8 +473,16 @@ test "ContextVar resets correctly even when inner invocation raises" {
         assert _current_invocation_id.get(None) is None;
 
         # Check records
-        inner_rec = [r for r in captured if r["invocation_id"] == "inner-err-001"][0];
-        outer_rec = [r for r in captured if r["invocation_id"] == "outer-err-001"][0];
+        inner_rec = [
+            r
+            for r in captured
+            if r["invocation_id"] == "inner-err-001"
+        ][0];
+        outer_rec = [
+            r
+            for r in captured
+            if r["invocation_id"] == "outer-err-001"
+        ][0];
 
         assert inner_rec["parent_invocation_id"] == "outer-err-001";
         assert inner_rec["status"] == "error";

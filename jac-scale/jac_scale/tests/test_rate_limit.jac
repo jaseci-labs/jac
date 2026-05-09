@@ -53,11 +53,14 @@ def _run(coro: object) -> object {
 }
 
 
-obj _URL { has path: str = "/"; }
+obj _URL {
+    has path: str = "/";
+}
 
 
 obj _Headers {
     has _d: dict[str, str] = {};
+
     def get(key: str, `default: object = None) -> object {
         v = self._d.get(key);
         if v is not None {
@@ -74,7 +77,9 @@ obj _Headers {
 }
 
 
-obj _Client { has host: str = "1.2.3.4"; }
+obj _Client {
+    has host: str = "1.2.3.4";
+}
 
 
 obj _FakeReq {
@@ -84,7 +89,9 @@ obj _FakeReq {
 }
 
 
-def _req(path: str, headers: dict[str, str] | None = None, client_host: str = "1.2.3.4") -> _FakeReq {
+def _req(
+    path: str, headers: dict[str, str] | None = None, client_host: str = "1.2.3.4"
+) -> _FakeReq {
     return _FakeReq(
         url=_URL(path=path),
         headers=_Headers(_d=headers or {}),
@@ -100,13 +107,15 @@ test "middleware returns None when disabled" {
 
 
 test "middleware 429s once the per-IP bucket is empty" {
-    mw = build_rate_limit_middleware({
-        "enabled": True,
-        "per_ip_rpm": 120,
-        "per_user_rpm": 0,
-        "burst_multiplier": 1.0,
-        "exempt_paths": []
-    });
+    mw = build_rate_limit_middleware(
+        {
+            "enabled": True,
+            "per_ip_rpm": 120,
+            "per_user_rpm": 0,
+            "burst_multiplier": 1.0,
+            "exempt_paths": []
+        }
+    );
     assert mw is not None;
 
     async def next_handler(req: object) -> object {
@@ -130,13 +139,15 @@ test "middleware 429s once the per-IP bucket is empty" {
 
 
 test "middleware exempts configured paths" {
-    mw = build_rate_limit_middleware({
-        "enabled": True,
-        "per_ip_rpm": 60,
-        "per_user_rpm": 0,
-        "burst_multiplier": 1.0,
-        "exempt_paths": ["/health"]
-    });
+    mw = build_rate_limit_middleware(
+        {
+            "enabled": True,
+            "per_ip_rpm": 60,
+            "per_user_rpm": 0,
+            "burst_multiplier": 1.0,
+            "exempt_paths": ["/health"]
+        }
+    );
     async def next_handler(req: object) -> object {
         import from fastapi.responses { JSONResponse }
         return JSONResponse({"ok": True});
@@ -156,18 +167,22 @@ test "middleware exempts configured paths" {
 
 
 test "per-user bucket applies on top of per-IP when Authorization is set" {
-    mw = build_rate_limit_middleware({
-        "enabled": True,
-        "per_ip_rpm": 600,
-        "per_user_rpm": 60,
-        "burst_multiplier": 1.0,
-        "exempt_paths": []
-    });
+    mw = build_rate_limit_middleware(
+        {
+            "enabled": True,
+            "per_ip_rpm": 600,
+            "per_user_rpm": 60,
+            "burst_multiplier": 1.0,
+            "exempt_paths": []
+        }
+    );
     async def next_handler(req: object) -> object {
         import from fastapi.responses { JSONResponse }
         return JSONResponse({"ok": True});
     }
-    r = _req(path="/api/x", headers={"Authorization": "Bearer abc"}, client_host="9.9.9.9");
+    r = _req(
+        path="/api/x", headers={"Authorization": "Bearer abc"}, client_host="9.9.9.9"
+    );
     async def run -> list {
         out = [];
         for _ in range(3) {
@@ -183,13 +198,15 @@ test "per-user bucket applies on top of per-IP when Authorization is set" {
 
 
 test "429 envelope carries RATE_LIMITED code + Retry-After header" {
-    mw = build_rate_limit_middleware({
-        "enabled": True,
-        "per_ip_rpm": 60,
-        "per_user_rpm": 0,
-        "burst_multiplier": 1.0,
-        "exempt_paths": []
-    });
+    mw = build_rate_limit_middleware(
+        {
+            "enabled": True,
+            "per_ip_rpm": 60,
+            "per_user_rpm": 0,
+            "burst_multiplier": 1.0,
+            "exempt_paths": []
+        }
+    );
     import json;
     async def next_handler(req: object) -> object {
         import from fastapi.responses { JSONResponse }
@@ -211,13 +228,15 @@ test "429 envelope carries RATE_LIMITED code + Retry-After header" {
 
 
 test "X-Forwarded-For takes precedence over client.host for bucket key" {
-    mw = build_rate_limit_middleware({
-        "enabled": True,
-        "per_ip_rpm": 60,
-        "per_user_rpm": 0,
-        "burst_multiplier": 1.0,
-        "exempt_paths": []
-    });
+    mw = build_rate_limit_middleware(
+        {
+            "enabled": True,
+            "per_ip_rpm": 60,
+            "per_user_rpm": 0,
+            "burst_multiplier": 1.0,
+            "exempt_paths": []
+        }
+    );
     async def next_handler(req: object) -> object {
         import from fastapi.responses { JSONResponse }
         return JSONResponse({"ok": True});

@@ -830,7 +830,7 @@ glob NODE_SPECS: tuple = (
              type_idx=70,
              class_name="InnerCompr",
              is_scope=True,
-             is_cfg=False,
+             is_cfg=True,
              is_name_atom=False,
              fields=(
                  FieldDesc(name="is_async", kind=2),

@@ -65,11 +65,7 @@ def _test_parse_memory_valid(pair: tuple) {
 with entry {
     parametrize(
         "parse memory quantity valid",
-        [
-            ("256Mi", float(256 * 1024 ** 2)),
-            ("1Gi", float(1024 ** 3)),
-            ("2", 2.0)
-        ],
+        [("256Mi", float(256 * 1024 ** 2)), ("1Gi", float(1024 ** 3)), ("2", 2.0)],
         _test_parse_memory_valid
     );
 }
@@ -169,7 +165,7 @@ test "ensure pvc exists creates when missing" {
 # --- cluster_type detection ---
 test "cluster type detects aws by provider" {
     class Node {
-        def init(self, provider_id: str) -> None {
+        def init(self, provider_id: str) {
             self.provider_id = provider_id;
             self.spec = SimpleNamespace(provider_id=provider_id);
             self.metadata = SimpleNamespace(labels={});
@@ -177,7 +173,7 @@ test "cluster type detects aws by provider" {
     }
 
     class Response {
-        def init(self) -> None {
+        def init(self) {
             self.items = [Node("aws://12345")];
         }
     }
@@ -399,7 +395,9 @@ test "resize pvc if needed: increase patches, no-op skips, decrease raises" {
 
     # Case 2 — same size: patch must NOT be called.
     core_v1_noop = unittest.mock.MagicMock();
-    core_v1_noop.read_namespaced_persistent_volume_claim.return_value = make_pvc("10Gi");
+    core_v1_noop.read_namespaced_persistent_volume_claim.return_value = make_pvc(
+        "10Gi"
+    );
     resize_pvc_if_needed(core_v1_noop, "ns", "mongo-pvc", "10Gi");
     core_v1_noop.patch_namespaced_persistent_volume_claim.assert_not_called();
 

@@ -58,6 +58,27 @@ linking
         self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
     ) -> None;
 
+    """Walk a module AST collecting public walker Archetype nodes by name.
+
+    Used by sv-to-sv import resolution to bind `sv import { SomeWalker }`
+    to a real walker definition on the provider side. Only `walker:pub`
+    archetypes participate -- private walkers are excluded since they
+    are not exposed at `/walker/<name>` on the HTTP boundary.
+    """
+    def _collect_pub_walkers(
+        self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+    ) -> None;
+
+    """Extract `has` field (name, type-name) pairs from a walker archetype.
+
+    Only `has` declarations participate in the wire contract; other body
+    members (abilities, can blocks, static state) stay on the provider.
+    Used by `_register_sv_to_sv_import` to derive RPC param shape.
+    """
+    def _extract_walker_has_fields(
+        self: InteropAnalysisPass, walker_nd: Any
+    ) -> tuple[list[str], list[str]];
+
     """Find an Archetype or Enum node by name via AST walk."""
     def _find_archetype(self: InteropAnalysisPass, nd: Any, target: str) -> Any;
 

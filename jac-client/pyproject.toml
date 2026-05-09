@@ -20,9 +20,12 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/Jaseci-Labs/jaseci"
+Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://jac-lang.org"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jac-client"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community/release_notes/jac-client.md"
 
 [project.entry-points."jac"]
 serve = "jac_client.plugin.client:JacClient"

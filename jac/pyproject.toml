@@ -20,9 +20,12 @@ dependencies = ["llvmlite>=0.43.0"]
 # Note: lark, pygls are vendored; pluggy replaced by jaclang/plugin.py
 
 [project.urls]
-Repository = "https://github.com/Jaseci-Labs/jaseci"
+Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://docs.jaseci.org"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jac"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community/release_notes/jaclang.md"
 
 [project.scripts]
 jac = "jaclang.jac0core.cli_boot:start_cli"
