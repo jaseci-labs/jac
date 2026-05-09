@@ -144,6 +144,9 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0026,
+    E0027,
+    E0028,
     E0030,
     E0032,
     E0034,
@@ -819,6 +822,10 @@ impl Parser.parse_expression -> Expr {
     if self._check_js_arrow_fault() {
         expr = self._recover_js_arrow_fault(expr);
     }
+    # Detect C/JS ternary operator: expr ? value : else_value
+    if self._check_ternary_fault() {
+        expr = self._recover_ternary_fault(expr);
+    }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
         condition = self.parse_expression();
@@ -874,6 +881,79 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
         TokenKind.EOF
     ) {
         self.parse_expression();
+    }
+    return left;
+}
+
+# Detect C/JavaScript ternary operator '?' in expression position.
+# The '?' token (NULL_OK) is used for null-safe access in Jac (e.g. obj?.field),
+# but when it appears after an expression and is followed by a non-dot/non-bracket
+# token, it likely indicates a C-style ternary: cond ? val : else_val.
+impl Parser._check_ternary_fault -> bool {
+    if not self.check(TokenKind.NULL_OK) {
+        return False;
+    }
+    return self._is_ternary_question_mark();
+}
+
+# Check if the current '?' (NULL_OK) token looks like a C-style ternary operator
+# rather than a null-safe access operator. Used both in parse_expression and
+# parse_atomic_chain to prevent '?' from being consumed as null-safe access.
+impl Parser._is_ternary_question_mark -> bool {
+    if not self.check(TokenKind.NULL_OK) {
+        return False;
+    }
+    nxt = self.peek();
+    # If '?' is followed by '[', it's null-safe index (obj?[0])
+    if nxt.kind == TokenKind.LSQUARE {
+        return False;
+    }
+    # If '?' is followed by '.', it's null-safe chaining (obj?.field)
+    if nxt.kind == TokenKind.DOT {
+        return False;
+    }
+    # If '?' is immediately followed (no space) by a name, it could be null-safe
+    # access without dot (rare but valid in some contexts). Check for space.
+    cur = self.current();
+    if nxt.kind in (TokenKind.NAME, TokenKind.KWESC_NAME) {
+        # If '?' and the name are byte-adjacent, it's likely null-safe access
+        if cur.loc.pos_end == nxt.loc.pos_start {
+            return False;
+        }
+    }
+    # If '?' is followed by a literal, unary op, or paren — it's a ternary
+    if nxt.kind in (
+        TokenKind.INT, TokenKind.FLOAT, TokenKind.STRING,
+        TokenKind.NAME, TokenKind.KWESC_NAME,
+        TokenKind.LPAREN, TokenKind.LBRACE,
+        TokenKind.MINUS, TokenKind.PLUS, TokenKind.KW_NOT,
+        TokenKind.BOOL, TokenKind.NULL
+    ) {
+        return True;
+    }
+    return False;
+}
+
+# Emit E0026 for the '?' token and consume the ternary body (value : else_value)
+# so the surrounding parser does not cascade errors.
+impl Parser._recover_ternary_fault(left: Expr) -> Expr {
+    q_tok = self.advance();  # consume '?'
+    self.emit_diag(E0026, loc=q_tok.loc);
+    # Try to consume the ternary body: value : else_value
+    if not self.check_any(
+        TokenKind.SEMI, TokenKind.RBRACE, TokenKind.RPAREN,
+        TokenKind.RSQUARE, TokenKind.EOF
+    ) {
+        self.parse_expression();  # consume the 'true' value
+    }
+    if self.match_tok(TokenKind.COLON) {
+        # consume the 'false' value after ':'
+        if not self.check_any(
+            TokenKind.SEMI, TokenKind.RBRACE, TokenKind.RPAREN,
+            TokenKind.RSQUARE, TokenKind.EOF
+        ) {
+            self.parse_expression();  # consume the 'false' value
+        }
     }
     return left;
 }
@@ -1367,6 +1447,7 @@ impl Parser.parse_atomic_chain -> Expr {
         or (
             self.check(TokenKind.NULL_OK)
             and not self.check_peek(TokenKind.LSQUARE)
+            and not self._is_ternary_question_mark()
             and self.match_tok(TokenKind.NULL_OK)
         )
         or self.match_tok(TokenKind.DOT_FWD)
@@ -5072,6 +5153,32 @@ impl Parser.parse_import_stmt -> Import {
         self.expect(TokenKind.KW_IMPORT);
     }
     kid: list = [self.make_uni_token(self.previous())];
+    # Detect invalid 'import:lang' syntax (e.g. import:py, import:js)
+    if self.check(TokenKind.COLON) {
+        colon_tok = self.current();
+        lang_name = "";
+        self.advance();  # consume ':'
+        if self.check_name() or self.is_keyword_token() {
+            lang_name = self.current().value;
+            self.advance();  # consume the language name
+        }
+        self.emit_diag(E0027, loc=colon_tok.loc, lang=lang_name);
+        # Skip to end of statement to prevent cascading errors
+        while not self.check_any(TokenKind.SEMI, TokenKind.EOF, TokenKind.RBRACE) {
+            self.advance();
+        }
+        if self.match_tok(TokenKind.SEMI) {
+            kid.append(self.make_semi());
+        }
+        return Import(
+            from_loc=None,
+            items=[],
+            is_absorb=is_include,
+            kid=kid,
+            doc=None,
+            clib_decls=[]
+        );
+    }
     # Check for 'import from X { Y }' syntax
     from_loc: ModulePath | None = None;
     is_clib_import = False;
@@ -5645,6 +5752,18 @@ impl Parser.parse_has_var -> HasVar {
         name = self.make_name(name_tok);
     } else {
         name = self.make_special_name(name_tok);
+    }
+    # Detect missing type annotation: 'has name;' or 'has name,' without ':'
+    if self.check_any(TokenKind.SEMI, TokenKind.COMMA, TokenKind.RBRACE) {
+        self.emit_diag(E0028, loc=name_tok.loc, name=name_tok.value);
+        # Return a HasVar without type_tag so parsing can continue cleanly
+        kid: list = [name];
+        return HasVar(
+            name=name,
+            value=None,
+            defer=False,
+            kid=kid
+        );
     }
     colon_uni = self.consume_uni(TokenKind.COLON);
     type_expr = self.parse_pipe();

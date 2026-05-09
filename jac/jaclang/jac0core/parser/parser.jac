@@ -31,6 +31,9 @@ import from jaclang.jac0core.diagnostics {
     E0022,
     E0023,
     E0025,
+    E0026,
+    E0027,
+    E0028,
     E0030,
     E0031,
     E0032,
@@ -458,6 +461,9 @@ obj Parser {
     def parse_expression -> Expr;
     def _check_js_arrow_fault -> bool;
     def _recover_js_arrow_fault(left: Expr) -> Expr;
+    def _check_ternary_fault -> bool;
+    def _recover_ternary_fault(left: Expr) -> Expr;
+    def _is_ternary_question_mark -> bool;
     def parse_concurrent_expr -> Expr;
     def parse_walrus_assign -> Expr;
     def parse_by_expr -> Expr;

@@ -241,6 +241,92 @@ test "E0025: empty body recovers without crash" {
     assert has_diagnostic_code(prog, "E0025");
 }
 
+# ── E0026: C/JS ternary operator '?' ───────────────────────────────
+test "E0026: ternary in return statement" {
+    (prog, _) = parse_with_prog('def foo(x: int) -> int {\n return x > 0 ? 1 : -1;\n}');
+    assert has_diagnostic_code(prog, "E0026");
+    assert count_diagnostic_code(prog, "E0026") == 1;
+}
+
+test "E0026: ternary in assignment" {
+    (prog, _) = parse_with_prog('with entry { x = a > b ? a : b; }');
+    assert has_diagnostic_code(prog, "E0026");
+    assert count_diagnostic_code(prog, "E0026") == 1;
+}
+
+test "E0026: null-safe access does not fire" {
+    (prog, had_err) = parse_with_prog('with entry { x = obj?.field; }');
+    assert not has_diagnostic_code(prog, "E0026");
+}
+
+test "E0026: null-safe index does not fire" {
+    (prog, had_err) = parse_with_prog('with entry { x = arr?[0]; }');
+    assert not has_diagnostic_code(prog, "E0026");
+}
+
+test "E0026: ternary recovery does not cascade" {
+    (prog, _) = parse_with_prog('def foo(x: int) -> int {\n return x > 0 ? 1 : -1;\n}');
+    # Should only have 1 error (E0026), not cascading errors
+    assert count_diagnostic_code(prog, "E0026") == 1;
+    total_errors = len(prog.errors_had);
+    assert total_errors == 1;
+}
+
+# ── E0027: Invalid import:lang syntax ──────────────────────────────
+test "E0027: import:py triggers specific error" {
+    (prog, _) = parse_with_prog('import:py os;\ndef foo() -> None {}');
+    assert has_diagnostic_code(prog, "E0027");
+}
+
+test "E0027: import:py does not cascade" {
+    (prog, _) = parse_with_prog('import:py os;\ndef foo() -> None {}');
+    assert has_diagnostic_code(prog, "E0027");
+    # Should only have 1 error, not 3 cascading errors
+    assert count_diagnostic_code(prog, "E0027") == 1;
+    total_errors = len(prog.errors_had);
+    assert total_errors == 1;
+}
+
+test "E0027: import:js triggers specific error" {
+    (prog, _) = parse_with_prog('import:js react;');
+    assert has_diagnostic_code(prog, "E0027");
+}
+
+test "E0027: normal import does not fire" {
+    (prog, had_err) = parse_with_prog('import from os { path }');
+    assert not has_diagnostic_code(prog, "E0027");
+}
+
+# ── E0028: has field missing type annotation ───────────────────────
+test "E0028: has without type annotation" {
+    (prog, _) = parse_with_prog('obj Foo {\n has name;\n}');
+    assert has_diagnostic_code(prog, "E0028");
+    assert count_diagnostic_code(prog, "E0028") == 1;
+}
+
+test "E0028: has without type does not cascade" {
+    (prog, _) = parse_with_prog('obj Foo {\n has name;\n}');
+    assert has_diagnostic_code(prog, "E0028");
+    # Should only have 1 error, not 4 cascading errors
+    total_errors = len(prog.errors_had);
+    assert total_errors == 1;
+}
+
+test "E0028: has with type is valid" {
+    (prog, had_err) = parse_with_prog('obj Foo {\n has name: str;\n}');
+    assert not has_diagnostic_code(prog, "E0028");
+}
+
+test "E0028: has with type and default is valid" {
+    (prog, had_err) = parse_with_prog('obj Foo {\n has name: str = "hello";\n}');
+    assert not has_diagnostic_code(prog, "E0028");
+}
+
+test "E0028: multiple has without type" {
+    (prog, _) = parse_with_prog('obj Foo {\n has name;\n has age;\n}');
+    assert count_diagnostic_code(prog, "E0028") == 2;
+}
+
 
 test "E0052: missing type annotation on parameter" {
     (has_err, prog) = parse_and_validate('def foo(x) { }');
