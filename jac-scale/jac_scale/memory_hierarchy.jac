@@ -35,6 +35,11 @@ glob logger = logging.getLogger(__name__),
      # Keys: 'mongo_client', 'mongo_available', 'redis_client', 'redis_available'
      _process_cache: dict[str, Any] = {};
 
+# Process-level singletons shared across all requests in a single server process.
+# A single dict so cross-module mutation works without global declarations in each package.
+# Keys: 'mongo_client', 'redis_client', 'mongo_available', 'redis_available', 'system_root'
+glob _process_cache: dict[str, Any] = {};
+
 """Get fresh database config to support dynamic env var changes (e.g., testcontainers)."""
 def _get_db_config -> dict {
     return get_scale_config().get_database_config();

@@ -188,9 +188,11 @@ impl MongoBackend.is_available -> bool {
         _process_cache['mongo_available'] = True;
         return True;
     } except ConnectionFailure {
+        _process_cache['mongo_available'] = False;
         return False;
     } except Exception as e {
         logger.debug(f"MongoDB availability check failed: {e}");
+        _process_cache['mongo_available'] = False;
         return False;
     }
 }
