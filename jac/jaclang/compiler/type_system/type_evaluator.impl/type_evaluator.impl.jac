@@ -1951,16 +1951,29 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.EdgeRefTrailer():
             # Edge traversal: [node-->], [node<--], [node->:Edge:->], etc.
-            # Returns list[NodeArchetype] (default) or list[EdgeArchetype] (edges_only).
-            # Two syntax forms place FilterCompr differently:
-            #   [root-->][?:Todo]  — FilterCompr is sibling in AtomTrailer (handled there)
-            #   [-->[?:Todo]]      — FilterCompr is in EdgeRefTrailer.chain (handled here)
+            # Result element type is determined by:
+            #   1. FilterCompr `[?:T]` directly in chain (e.g. [-->[?:Todo]])
+            #   2. EdgeOpRef typed-edge filter `->:T:->` — when edges_only,
+            #      the result element is T itself. Issue #5885 gap 6.
+            # Bare untyped traversals stay as `list[<Any>]` so visit, spawn,
+            # and other consumers retain their gradual-typing semantics.
             if self.prefetch and self.prefetch.list_class {
                 element_type: types.TypeBase = types.AnyType();
                 for chain_item in expr.chain {
                     if isinstance(chain_item, uni.FilterCompr) and chain_item.f_type {
                         ft = self.get_type_of_expression(chain_item.f_type);
                         if isinstance(ft, types.ClassType) {
+                            element_type = self._convert_to_instance(ft);
+                        }
+                    } elif (
+                        isinstance(chain_item, uni.EdgeOpRef)
+                        and expr.edges_only
+                        and chain_item.filter_cond is not None
+                        and chain_item.filter_cond.f_type is not None
+                    ) {
+                        # `[edge ... ->:T:-> ...]` resolves to list[T].
+                        ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
+                        if isinstance(ft, types.ClassType) and ft.is_edge_type() {
                             element_type = self._convert_to_instance(ft);
                         }
                     }

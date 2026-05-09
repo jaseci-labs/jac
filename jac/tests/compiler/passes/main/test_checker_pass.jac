@@ -1047,6 +1047,33 @@ test "ability_trigger_archetype" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1117);
 }
 
+test "edge_ref_typed_result" {
+    # Issue #5885 gap 6: typed `[edge ... ->:T:-> ...]` traversals must
+    # propagate `T` as the list element type instead of degrading to
+    # `list[<Any>]`. The Ok line assigns into list[MyEdge]; the Error
+    # line assigns the same expression into list[OtherEdge] so the
+    # checker can prove the propagated element type at the use site.
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_edge_ref_typed_result.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1001 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1001"
+    ];
+    assert len(e1001) == 1 , f"Expected 1 E1001 (typed edge-ref result mismatch), got {len(
+        e1001
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1001);
+    expected_error = """
+        Cannot assign list[MyEdge] to list[OtherEdge]
+            # list[MyEdge], not list[OtherEdge].
+            bad_edges: list[OtherEdge] = [edge a ->:MyEdge:-> b];         # Error
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        """;
+    assert_error_pretty_found(expected_error, e1001[0].pretty_print());
+}
+
 test "root_type" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_root_type.jac");
