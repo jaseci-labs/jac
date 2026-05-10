@@ -1,42 +1,42 @@
 """Redis CacheBackend Implementation."""
 
-"""Post-initialization: connect to Redis."""
+"""Post-initialization: connect to Redis using a process-level shared client."""
 impl RedisBackend.postinit -> None {
     if self.redis_url is None {
         self.redis_url = _get_db_config().get('redis_url');
     }
-    if self.redis_url and self.redis_client is None {
+    if not self.redis_url {
+        return;
+    }
+    if 'redis_client' not in _process_cache {
         try {
-            self.redis_client = redis.from_url(self.redis_url);
+            db_config = _get_db_config();
+            max_connections = db_config.get('redis_max_connections', 20);
+            _process_cache['redis_client'] = redis.from_url(
+                self.redis_url, max_connections=max_connections
+            );
         } except Exception as e {
             logger.warning(f"Redis connection failed: {e}");
-            self.redis_client = None;
         }
     }
+    self.redis_client = _process_cache.get('redis_client');
 }
 
 """Check if Redis is available and connected."""
 impl RedisBackend.is_available -> bool {
-    if not self.redis_url {
-        self.redis_url = _get_db_config().get('redis_url');
+    if _process_cache.get('redis_available') is True {
+        return True;
     }
-    if not self.redis_url {
+    if self.redis_client is None {
         return False;
     }
-    client = None;
     try {
-        client = redis.from_url(self.redis_url);
-        client.ping();
+        self.redis_client.ping();
+        _process_cache['redis_available'] = True;
         return True;
     } except Exception as e {
         logger.debug(f"Redis availability check failed: {e}");
         return False;
-    } finally {
-        if client {
-            try {
-                client.close();
-            } except Exception { }
-        }
     }
 }
 
@@ -97,16 +97,9 @@ impl RedisBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close Redis connection."""
+"""Close Redis connection (drops local reference; shared client stays open)."""
 impl RedisBackend.close -> None {
-    if self.redis_client {
-        try {
-            self.redis_client.close();
-        } except Exception as e {
-            logger.warning(f"Error closing Redis connection: {e}");
-        }
-        self.redis_client = None;
-    }
+    self.redis_client = None;
 }
 
 """Check if an anchor is in the cache."""
@@ -163,13 +156,30 @@ impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None {
 # No-op: cache doesn't need commit
 }
 
-"""Batch get from Redis cache. Falls back to individual gets."""
+"""Batch get from Redis cache using a single MGET pipeline call."""
 impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     result: dict[UUID, Anchor] = {};
-    for id in ids {
-        if (anchor := self.get(id)) {
-            result[id] = anchor;
+    if not ids or self.redis_client is None {
+        return result;
+    }
+    try {
+        keys = [storage_key(to_uuid(id)) for id in ids];
+        values = self.redis_client.mget(keys);
+        for id, raw in zip(ids, values) {
+            if raw {
+                try {
+                    data = json.loads(raw);
+                    anchor = Serializer.deserialize(data);
+                    if anchor {
+                        result[id] = anchor;
+                    }
+                } except Exception as e {
+                    logger.debug(f"Redis batch_get deserialize failed for {id}: {e}");
+                }
+            }
         }
+    } except Exception as e {
+        logger.debug(f"Redis batch_get failed: {e}");
     }
     return result;
 }
