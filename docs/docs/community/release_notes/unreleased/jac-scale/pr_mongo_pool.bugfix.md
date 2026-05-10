@@ -1,0 +1,2 @@
+- **Fix: Process-level MongoClient singleton**: `MongoBackend` now reuses one `MongoClient` per worker process via `_process_cache` instead of creating a new connection on every request, eliminating per-request TCP handshake and auth overhead.
+- **Fix: MongoDB availability check never caches False**: `is_available()` only caches a confirmed True result so later contexts that configure `MONGODB_URI` after earlier ones that don't are not permanently locked out of MongoDB within the same process.

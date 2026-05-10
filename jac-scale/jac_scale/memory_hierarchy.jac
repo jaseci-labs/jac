@@ -30,7 +30,10 @@ import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.config_loader { get_scale_config }
 import from jaclang { JacRuntimeInterface as Jac }
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     # Process-level singletons shared across all requests in a worker process.
+     # Keys: 'mongo_client', 'mongo_available'
+     _process_cache: dict[str, Any] = {};
 
 """Get fresh database config to support dynamic env var changes (e.g., testcontainers)."""
 def _get_db_config -> dict {
