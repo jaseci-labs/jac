@@ -165,7 +165,7 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     try {
         keys = [storage_key(to_uuid(id)) for id in ids];
         values = self.redis_client.mget(keys);
-        for id, raw in zip(ids, values) {
+        for (id, raw) in zip(ids, values) {
             if raw {
                 try {
                     data = json.loads(raw);
