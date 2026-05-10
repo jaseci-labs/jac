@@ -22,7 +22,7 @@ jobs:
       - name: Install jaclang and jac-mcp
         run: |
           pip install -e ./jac
-          pip install -e ./jac-mcp
+          cd jac-mcp && jac install -e .
       - name: Precompile bytecode
         run: jac run jac/scripts/precompile_bytecode.jac ./jac-mcp
       - name: Upload precompiled artifacts
@@ -56,7 +56,7 @@ jobs:
       - name: Install jaclang and jac-mcp
         run: |
           pip install -e ../jac
-          pip install -e .
+          jac install -e .
       - name: Bundle documentation
         run: jac run scripts/bundle_docs.jac
       - name: Install build tools

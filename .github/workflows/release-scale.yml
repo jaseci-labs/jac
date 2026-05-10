@@ -62,8 +62,8 @@ jobs:
       - name: Pre-build admin dashboard UI
         run: |
           pip install -e ../jac
-          pip install -e ../jac-client
-          pip install -e .
+          cd ../jac-client && jac install -e .
+          cd ../jac-scale && jac install -e .
           jac run scripts/build_admin_ui.jac
           pip uninstall -y jac-scale jac-client
       - name: Install build tools

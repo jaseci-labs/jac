@@ -19,6 +19,13 @@ changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 [project.include]
 packages = ["jac_scale*"]
 
+[project.include.data]
+jac_scale = [
+   "templates/**/*.html",
+   "providers/**/*.template",
+   "admin/_dist/**",
+ ]
+
 [dependencies]
 rich = ">=13.0.0"
 jaclang = ">=0.14.1"

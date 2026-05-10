@@ -22,7 +22,7 @@ jobs:
       - name: Install jaclang and byllm
         run: |
           pip install -e ./jac
-          pip install -e ./jac-byllm
+          cd jac-byllm && jac install -e .
       - name: Precompile bytecode
         run: jac run jac/scripts/precompile_bytecode.jac ./jac-byllm
       - name: Upload precompiled artifacts

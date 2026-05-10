@@ -21,7 +21,7 @@ jobs:
       - name: Install jaclang and jac-super
         run: |
           pip install -e ./jac
-          pip install -e ./jac-super
+          cd jac-super && jac install -e .
       - name: Precompile bytecode
         run: jac run jac/scripts/precompile_bytecode.jac ./jac-super
       - name: Upload precompiled artifacts
