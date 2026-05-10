@@ -139,6 +139,19 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     return result;
 }
 
+"""Async commit: uses native Motor for L3 and redis.asyncio for L2 when available."""
+impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
+    if self.l3 and hasattr(self.l3, 'acommit') {
+        try {
+            await self.l3.acommit(anchor);
+        } except Exception as e {
+            logger.warning(f"ScaleTieredMemory.acommit L3 failed: {e}");
+        }
+    } else {
+        await super.acommit(anchor);
+    }
+}
+
 """Close all backends."""
 impl ScaleTieredMemory.close -> None {
     self.commit();

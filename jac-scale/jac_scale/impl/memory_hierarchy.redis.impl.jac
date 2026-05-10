@@ -221,3 +221,58 @@ impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
 impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
 }
+
+"""Get anchor by UUID using native redis.asyncio (no asyncio.to_thread)."""
+impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
+    import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }
+    if not HAS_REDIS or AsyncRedis is None {
+        return await super.aget(id);
+    }
+    if self._async_redis is None {
+        if self.redis_url is None {
+            return await super.aget(id);
+        }
+        self._async_redis = AsyncRedis.from_url(self.redis_url);
+    }
+    key = storage_key(to_uuid(id));
+    try {
+        raw = await self._async_redis.get(key);
+        if not raw {
+            return None;
+        }
+        data = json.loads(raw);
+        return Serializer.deserialize(data);
+    } except Exception as e {
+        logger.debug(f"Redis async get failed: {e}");
+        return None;
+    }
+}
+
+"""Store anchor using native redis.asyncio (no asyncio.to_thread)."""
+impl RedisBackend.aput(anchor: Anchor) -> None {
+    import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }
+    if not HAS_REDIS or AsyncRedis is None {
+        await super.aput(anchor);
+        return;
+    }
+    if self._async_redis is None {
+        if self.redis_url is None {
+            await super.aput(anchor);
+            return;
+        }
+        self._async_redis = AsyncRedis.from_url(self.redis_url);
+    }
+    try {
+        data = Serializer.serialize(anchor, include_type=True);
+        key = storage_key(anchor.id);
+        db_config = _get_db_config();
+        ttl = db_config.get('redis_default_ttl', 0);
+        if ttl > 0 {
+            await self._async_redis.setex(key, ttl, json.dumps(data));
+        } else {
+            await self._async_redis.set(key, json.dumps(data));
+        }
+    } except Exception as e {
+        logger.debug(f"Redis async put failed: {e}");
+    }
+}

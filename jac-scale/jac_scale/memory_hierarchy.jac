@@ -51,7 +51,8 @@ Replaces LocalCacheMemory when Redis is available.
 """
 obj RedisBackend(CacheMemory) {
     has redis_url: (str | None) = None,
-        redis_client: (redis.Redis | None) = None;
+        redis_client: (Any | None) = None,
+        _async_redis: (Any | None) = None;
 
     def postinit -> None;
     def is_available -> bool;
@@ -81,6 +82,9 @@ obj RedisBackend(CacheMemory) {
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
+    # Async overrides — native redis.asyncio (no asyncio.to_thread)
+    async def aget(id: UUID) -> (Anchor | None);
+    async def aput(anchor: Anchor) -> None;
 }
 
 """
@@ -141,6 +145,10 @@ obj MongoBackend(PersistentMemory) {
     ) -> None;
 
     def _write_to_db(anchor: Anchor) -> None;
+    # Async overrides — native Motor (no asyncio.to_thread)
+    async def aget(id: UUID) -> (Anchor | None);
+    async def aput(anchor: Anchor) -> None;
+    async def acommit(anchor: (Anchor | None) = None) -> None;
 }
 
 """
@@ -170,6 +178,7 @@ obj ScaleTieredMemory(TieredMemory) {
 
     def postinit -> None;
     def commit(anchor: (Anchor | None) = None) -> None;
+    async def acommit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
 }

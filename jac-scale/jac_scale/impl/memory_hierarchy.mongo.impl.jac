@@ -912,6 +912,65 @@ impl MongoBackend.remove_alias(old_name: str) -> bool {
 }
 
 
+"""Get anchor by UUID using native Motor (no asyncio.to_thread)."""
+impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
+    import from jac_scale._optdeps.motor { AsyncIOMotorClient, HAS_MOTOR }
+    if not HAS_MOTOR or AsyncIOMotorClient is None or self.mongo_url is None {
+        return await super.aget(id);
+    }
+    motor_client = AsyncIOMotorClient(self.mongo_url);
+    coll = motor_client[self.db_name][self.collection_name];
+    try {
+        db_obj = await coll.find_one({'_id': str(to_uuid(id))});
+        if not db_obj {
+            return None;
+        }
+        return self._load_anchor(db_obj);
+    } except Exception as e {
+        logger.debug(f"Motor aget failed: {e}");
+        return None;
+    } finally {
+        motor_client.close();
+    }
+}
+
+"""Store anchor using native Motor (no asyncio.to_thread)."""
+impl MongoBackend.aput(anchor: Anchor) -> None { }
+
+"""Flush dirty anchors via Motor (no asyncio.to_thread)."""
+impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
+    import from jac_scale._optdeps.motor { AsyncIOMotorClient, HAS_MOTOR }
+    if not HAS_MOTOR or AsyncIOMotorClient is None or self.mongo_url is None {
+        await super.acommit(anchor);
+        return;
+    }
+    if self._mem_ref is None {
+        await super.acommit(anchor);
+        return;
+    }
+    motor_client = AsyncIOMotorClient(self.mongo_url);
+    coll = motor_client[self.db_name][self.collection_name];
+    dirty = [];
+    targets = [anchor] if anchor is not None else list(self._mem_ref.values());
+    for a in targets {
+        if a.persistent and Jac.check_write_access(a) {
+            dirty.append(a);
+        }
+    }
+    if dirty {
+        ops = [
+            UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
+            for a in dirty
+        ];
+        try {
+            await coll.bulk_write(ops, ordered=False);
+        } except Exception as e {
+            logger.warning(f"Motor acommit bulk_write failed: {e}");
+        }
+    }
+    motor_client.close();
+}
+
 """Load DB-resident aliases into the in-process Serializer registry."""
 impl MongoBackend._load_db_aliases -> int {
     if self.client is None {
