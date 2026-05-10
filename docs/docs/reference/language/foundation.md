@@ -454,25 +454,33 @@ obj Container {
 
 ### 4 The `Self` Type
 
-`Self` (capital S) is a special type that refers to the enclosing archetype. It is distinct from `self` (lowercase), which refers to the current instance.
+`Self` (capital S) is a special type that, in instance-method positions, refers to the enclosing archetype. It is distinct from `self` (lowercase), which refers to the current instance. `Self` is most useful for fluent/builder methods that return the receiver:
 
 ```jac
-obj Node {
-    has value: int = 0,
-        next: Self | None = None;  # Self = Node in type annotations
+obj NodeRef {
+    has value: int = 0;
 
-    class def create(v: int) -> Self {  # Self = cls in class methods
-        return Self(value=v);
-    }
-
-    def set_next(n: Self) -> Self {  # Self as parameter and return type
-        self.next = n;
+    def set_value(v: int) -> Self {  # Self as return type
+        self.value = v;
         return self;
     }
 }
 ```
 
-`Self` is polymorphic -- in a subclass, it resolves to the subclass type, not the parent. See [Class Methods and Self](functions-objects.md#6-static-methods-and-class-methods) for usage details.
+For recursive type annotations on fields and parameters, name the enclosing archetype directly:
+
+```jac
+obj LinkedNode {
+    has value: int = 0,
+        next: LinkedNode | None = None;
+
+    static def create(v: int) -> LinkedNode {
+        return LinkedNode(value=v);
+    }
+}
+```
+
+See [Class Methods and Self](functions-objects.md#6-static-methods-and-class-methods) for usage details, including the planned polymorphic `Self` enhancement for `class def` factories.
 
 ### 5 Union Types
 

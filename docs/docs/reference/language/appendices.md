@@ -266,8 +266,10 @@ obj Example {
 ### 5. Walker `visit` is Queued
 
 ```jac
+node Item { has name: str = ""; }
+
 walker Example {
-    can traverse with Node entry {
+    can traverse with Item entry {
         print("Visiting");
         visit [-->];  # Nodes queued, visited AFTER this method
         print("This prints before visiting children");
@@ -275,19 +277,24 @@ walker Example {
 }
 ```
 
+To match every node regardless of type, use the anonymous form `can traverse with entry { ... }` -- there is no built-in `Node` catch-all trigger.
+
 ### 6. `report` vs `return`
 
-<!-- jac-skip -->
 ```jac
+node Item { has value: int = 0; }
+
 walker Example {
-    can collect with Node entry -> object {
+    can collect with Item entry {
         report here.value;  # Continues execution
         visit [-->];        # Still runs
 
-        return here.value;  # Would stop here
+        return;             # Would stop the walker here
     }
 }
 ```
+
+Walker abilities don't carry an arrow-return type annotation -- `report` accumulates results on the walker's `reports` list, and `return` (with no value) ends the current ability.
 
 ### 7. Global Modification Requires Declaration
 
@@ -509,16 +516,21 @@ finally:
 
 **Jac:**
 
-<!-- jac-skip -->
 ```jac
-try {
-    result = divide(10, 0);
-} except ValueError as e {
-    print(f"Error: {e}");
-} finally {
-    print("Done");
+def divide(a: int, b: int) -> int { return a // b; }
+
+with entry {
+    try {
+        result = divide(10, 0);
+    } except ValueError as e {
+        print(f"Error: {e}");
+    } finally {
+        print("Done");
+    }
 }
 ```
+
+Module-level statements (including `try`) must live inside a `with entry { ... }` block or a function body.
 
 For a step-by-step transition guide, see [Jac Basics Tutorial](../../tutorials/language/basics.md).
 
