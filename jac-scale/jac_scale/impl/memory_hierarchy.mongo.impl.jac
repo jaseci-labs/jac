@@ -13,14 +13,18 @@ impl MongoBackend.postinit -> None {
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if self.client is None and self.mongo_url {
-        try {
-            self.client = MongoClient(self.mongo_url);
+    if self.mongo_url {
+        if 'mongo_client' not in _process_cache {
+            try {
+                _process_cache['mongo_client'] = MongoClient(self.mongo_url);
+            } except Exception as e {
+                logger.warning(f"MongoDB connection failed: {e}");
+            }
+        }
+        self.client = _process_cache.get('mongo_client');
+        if self.client {
             self.db = self.client[self.db_name];
             self.collection = self.db[self.collection_name];
-        } except Exception as e {
-            logger.warning(f"MongoDB connection failed: {e}");
-            self.client = None;
         }
     }
     if self.client is not None {
@@ -167,28 +171,27 @@ impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
 
 """Check if MongoDB is available and connected."""
 impl MongoBackend.is_available -> bool {
+    # Only cache a confirmed True — caching False would prevent later contexts
+    # (e.g. test files that configure MongoDB after others that don't) from ever
+    # reaching MongoDB in the same process.
+    if _process_cache.get('mongo_available') is True {
+        return True;
+    }
     if not self.mongo_url {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if not self.mongo_url {
+    if not self.mongo_url or self.client is None {
         return False;
     }
-    client = None;
     try {
-        client = MongoClient(self.mongo_url);
-        client.admin.command('ping', maxTimeMS=100);
+        self.client.admin.command('ping', maxTimeMS=100);
+        _process_cache['mongo_available'] = True;
         return True;
     } except ConnectionFailure {
         return False;
     } except Exception as e {
         logger.debug(f"MongoDB availability check failed: {e}");
         return False;
-    } finally {
-        if client {
-            try {
-                client.close();
-            } except Exception { }
-        }
     }
 }
 
@@ -338,22 +341,15 @@ impl MongoBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Flush pending writes and close MongoDB connection."""
+"""Flush pending writes and release local reference to the shared client."""
 impl MongoBackend.close -> None {
-    # Persist any pending L1 changes before closing
     try {
         self.sync();
     } except Exception as e {
         logger.warning(f"MongoBackend.close sync failed: {e}");
     }
-    if self.client {
-        try {
-            self.client.close();
-        } except Exception as e {
-            logger.warning(f"Error closing MongoDB connection: {e}");
-        }
-        self.client = None;
-    }
+    # Don't close the shared process-level client; just drop local reference.
+    self.client = None;
     self._mem_ref = None;
 }
 
