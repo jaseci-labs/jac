@@ -71,6 +71,7 @@ obj RedisBackend(CacheMemory) {
 
     def commit(anchor: (Anchor | None) = None) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
+    def batch_put(anchors: list[Anchor]) -> None;
     # CacheMemory-specific
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
