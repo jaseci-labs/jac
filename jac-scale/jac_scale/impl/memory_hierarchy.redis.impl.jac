@@ -174,6 +174,13 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     return result;
 }
 
+"""Batch write anchors to Redis cache."""
+impl RedisBackend.batch_put(anchors: list[Anchor]) -> None {
+    for anchor in anchors {
+        self.put(anchor);
+    }
+}
+
 # CacheMemory-specific methods
 """Check if key exists in cache."""
 impl RedisBackend.exists(id: UUID) -> bool {
