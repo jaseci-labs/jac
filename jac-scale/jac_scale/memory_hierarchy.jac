@@ -43,10 +43,13 @@ Replaces LocalCacheMemory when Redis is available.
 """
 obj RedisBackend(CacheMemory) {
     has redis_url: (str | None) = None,
-        redis_client: (redis.Redis | None) = None;
+        redis_client: (redis.Redis | None) = None,
+        fetch_count: int = 0,
+        put_count: int = 0;
 
     def postinit -> None;
     def is_available -> bool;
+    def reset_counters -> None;
     # CacheMemory interface (Memory methods + cache-specific)
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
@@ -85,11 +88,14 @@ obj MongoBackend(PersistentMemory) {
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
-        _mem_ref: (dict[UUID, Anchor] | None) = None;
+        _mem_ref: (dict[UUID, Anchor] | None) = None,
+        fetch_count: int = 0,
+        put_count: int = 0;
 
     def postinit -> None;
     def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
     def is_available -> bool;
+    def reset_counters -> None;
     # PersistentMemory interface (Memory methods + persistence-specific)
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;

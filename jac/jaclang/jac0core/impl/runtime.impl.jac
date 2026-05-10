@@ -1446,7 +1446,8 @@ impl JacBasics.log_report(expr: Any, custom: bool = False) -> None {
 """Jac's apply_dir stmt feature."""
 impl JacBasics.refs(
     path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
-    post_filter: (Callable[([Archetype], bool)] | None) = None
+    post_filter: (Callable[([Archetype], bool)] | None) = None,
+    slc: (slice | None) = None
 ) -> list[NodeArchetype] | list[EdgeArchetype] | list[(NodeArchetype | EdgeArchetype)] {
     if not isinstance(path, ObjectSpatialPath) {
         path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)]);
@@ -1463,7 +1464,21 @@ impl JacBasics.refs(
     }
     # Try topology index optimization for non-edge-only queries
     if not path.edge_only {
-        import from jaclang.runtimelib.topo_utils { plan_query, batch_load_nodes }
+        import from jaclang.runtimelib.topo_utils {
+            plan_query,
+            plan_query_ordered,
+            batch_load_nodes,
+            batch_load_nodes_by_ids
+        }
+        # Storage-layer pagination: when a slice is requested and the chain is
+        # pushdown-eligible, the planner returns the bounded ordered UUID list
+        # so we only batch_get the sliced subset.
+        if slc is not None {
+            planned_ordered = plan_query_ordered(path, slc);
+            if planned_ordered is not None {
+                return batch_load_nodes_by_ids(planned_ordered);
+            }
+        }
         planned_ids = plan_query(path);
         if planned_ids is not None {
             # Index resolved which nodes survive type filters.
@@ -1485,6 +1500,9 @@ impl JacBasics.refs(
                     ];
                 }
             }
+            if slc is not None {
+                nodes = nodes[slc];
+            }
             return nodes;
         }
     }
@@ -1497,11 +1515,19 @@ impl JacBasics.refs(
     }
     if path.edge_only {
         if path.from_visit {
-            return JacRuntimeInterface.get_edges_with_node(
+            result = JacRuntimeInterface.get_edges_with_node(
                 origin, path.destinations[-1]
             );
+        } else {
+            result = JacRuntimeInterface.get_edges(origin, path.destinations[-1]);
         }
-        return JacRuntimeInterface.get_edges(origin, path.destinations[-1]);
+        if slc is not None {
+            result = result[slc];
+        }
+        return result;
+    }
+    if slc is not None {
+        origin = origin[slc];
     }
     return origin;
 }

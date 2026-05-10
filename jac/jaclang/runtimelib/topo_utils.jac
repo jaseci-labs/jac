@@ -54,5 +54,15 @@ the type-only filters in a path chain. Returns set of target UUIDs
 if planning succeeded, or None to fall back to normal approach."""
 def plan_query(path: Any) -> (set[UUID] | None);
 
+"""Like `plan_query` but for sliced (paginated) traversals. Returns a list of
+target UUIDs in canonical edge-insertion order with the slice already applied,
+or None when pushdown is not eligible (multi-hop, predicate filters, no index,
+non-persistent origin, or topology_index disabled)."""
+def plan_query_ordered(path: Any, slc: slice) -> (list[UUID] | None);
+
 """Load nodes by UUID set, preserving edge-list order from origin nodes."""
 def batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list[Any];
+
+"""Load nodes by an ordered UUID list, preserving the input order. Used by
+the slice-pushdown fast path which has already determined the bounded set."""
+def batch_load_nodes_by_ids(node_ids: list[UUID]) -> list[Any];

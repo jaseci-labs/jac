@@ -376,3 +376,100 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
         if isinstance(a, NodeAnchor) and a.archetype
     ];
 }
+
+"""Storage-layer pagination via the topology index.
+
+Phase 1 scope: single-hop chains only. For multi-hop, the cross-hop ordering
+semantics aren't well-defined (each hop's set-intersection step loses order),
+so we fall back to the existing plan_query path which materializes everything
+and slices in Python.
+
+Returns None to signal "no pushdown" — callers fall back to the unsliced fast
+path or to the slow path."""
+impl plan_query_ordered(path: Any, slc: slice) -> (list[UUID] | None) {
+    if not _is_enabled() {
+        return None;
+    }
+    if not path.origin {
+        return None;
+    }
+    origin_anchor = path.origin[0].__jac__;
+    if not origin_anchor.persistent {
+        return None;
+    }
+    root_anchor = _get_root_anchor(origin_anchor);
+    if root_anchor is None {
+        return None;
+    }
+    destinations = path.destinations[:-1] if path.edge_only else path.destinations;
+    # Phase 1: single-hop only. Multi-hop pushdown requires defining ordering
+    # across set-intersection steps; defer until there's a concrete request.
+    if len(destinations) != 1 {
+        return None;
+    }
+    dest = destinations[0];
+    if _filter_has_predicates(dest.`edge) {
+        return None;
+    }
+    # Predicates on the final hop's node filter are tolerated by plan_query
+    # (the caller post-applies them); but post-applying *then* slicing changes
+    # the ordering invariant we're trying to provide. Restrict to type-only.
+    if _filter_has_predicates(dest.nd) {
+        return None;
+    }
+    edge_type = _extract_type_name_from_filter(dest.`edge);
+    node_type = _extract_type_name_from_filter(dest.nd);
+    if edge_type is None and node_type is None {
+        # Unfiltered single-hop slice: the natural edge-walk preserves order
+        # cheaply, but pushdown still wins because we skip the edge-anchor
+        # bulk prefetch. Plan as a wildcard chain entry.
+        ;
+    }
+    import from jaclang.runtimelib.topology_index { TopologyIndex }
+    idx = root_anchor.get_topology_index();
+    if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
+        return None;
+    }
+    origin_ids = {nd.__jac__.id for nd in path.origin};
+    return idx.resolve_chain_ordered(
+        origin_ids, edge_type, node_type, dest.direction.value, slc
+    );
+}
+
+"""Load nodes by an ordered list of UUIDs.
+
+Used by the slice-pushdown fast path: the planner has already determined the
+bounded set in canonical order, so we just batch-load and preserve order.
+This skips the edge-anchor bulk prefetch that the unsliced path needs for
+ordering — the topology index already encoded the ordering, so the storage
+layer is asked for exactly the requested subset."""
+impl batch_load_nodes_by_ids(node_ids: list[UUID]) -> list[Any] {
+    import from jaclang { JacRuntimeInterface as Jac }
+    import from jaclang.jac0core.archetype { NodeAnchor }
+    import from jaclang.runtimelib.memory { TieredMemory }
+    if not node_ids {
+        return [];
+    }
+    ctx = Jac.get_context();
+    if isinstance(ctx.mem, TieredMemory) {
+        loaded: dict = ctx.mem.batch_get(node_ids);
+    } else {
+        loaded: dict = {
+            nid: a
+            for nid in node_ids
+            if (a := ctx.mem.get(nid))
+        };
+    }
+    result: list = [];
+    for nid in node_ids {
+        anchor = loaded.get(nid);
+        if (
+            isinstance(anchor, NodeAnchor)
+            and anchor.archetype
+            and Jac.check_read_access(anchor)
+        ) {
+            result.append(anchor.archetype);
+        }
+    }
+    return result;
+}

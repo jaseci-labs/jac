@@ -5,6 +5,18 @@ import shutil;
 import from tempfile { mkdtemp }
 import from uuid { uuid4 }
 import from jaclang.runtimelib.topology_index { TopologyIndex }
+import from jaclang.jac0core.runtime { JacRuntime }
+import from jaclang.runtimelib.context { ExecutionContext }
+import from jaclang.project.config { JacConfig, set_config }
+
+
+node _SliceLead {
+    has idx: int = 0;
+}
+
+node _SliceOther {
+    has idx: int = 0;
+}
 
 test "topology index config from toml" {
     import from jaclang.project.config { JacConfig }
@@ -161,6 +173,61 @@ test "concurrent edge adds merged in sqlite sync" {
         assert len(ids) == 3 , f"Expected 3, got {len(ids)}";
         mem_c.close();
     } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+"""Slicing on edge-ref `[-->][?:T][a:b]` must push the bound down to the storage
+layer — only the sliced subset should hit SQLite, not every neighbor."""
+test "edge-ref slice bounds sqlite l3 fetches" {
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+
+        # --- Phase 1: build graph (100 leads + 20 others), persist to SQLite ---
+        ctx1 = ExecutionContext();
+        JacRuntime.set_context(ctx1);
+
+        for i in range(100) {
+            root ++> _SliceLead(idx=i);
+        }
+        for i in range(20) {
+            root ++> _SliceOther(idx=i);
+        }
+        root_id = root.__jac__.id;
+        ctx1.mem.commit();
+        ctx1.close();
+
+        # --- Phase 2: fresh ctx (cold L1), run sliced query ---
+        ctx2 = ExecutionContext();
+        JacRuntime.set_context(ctx2);
+
+        # Warm just the root so we measure traversal-only fetches.
+        root_anchor = ctx2.mem.get(root_id);
+        assert root_anchor is not None;
+        r2 = root_anchor.archetype;
+
+        ctx2.mem.reset_l3_fetch_count();
+
+        leads = [r2-->][?:_SliceLead][0:50];
+
+        fetch_count = ctx2.mem.get_l3_fetch_count();
+        assert len(leads) == 50 , f"Expected 50 leads, got {len(leads)}";
+        # Production-grade pushdown: only the 50 sliced anchors should be loaded
+        # (allow small overhead for any incidental fetches). Today this fails
+        # because all 100 leads + ~120 edges are loaded.
+        assert fetch_count <= 60 , (
+            f"Slice should bound L3 fetches; got {fetch_count} fetches for [0:50]"
+        );
+
+        ctx2.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
         shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }

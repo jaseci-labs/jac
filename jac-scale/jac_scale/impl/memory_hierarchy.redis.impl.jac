@@ -45,6 +45,7 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     if self.redis_client is None {
         return None;
     }
+    self.fetch_count += 1;
     key = storage_key(to_uuid(id));
     try {
         raw = self.redis_client.get(key);
@@ -59,11 +60,18 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     }
 }
 
+"""Reset get/put counters (for instrumentation/tests)."""
+impl RedisBackend.reset_counters -> None {
+    self.fetch_count = 0;
+    self.put_count = 0;
+}
+
 """Store anchor in Redis cache."""
 impl RedisBackend.put(anchor: Anchor) -> None {
     if self.redis_client is None {
         return;
     }
+    self.put_count += 1;
     try {
         data = Serializer.serialize(anchor, include_type=True);
         key = storage_key(anchor.id);
@@ -173,6 +181,7 @@ impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     }
     return result;
 }
+
 
 # CacheMemory-specific methods
 """Check if key exists in cache."""
