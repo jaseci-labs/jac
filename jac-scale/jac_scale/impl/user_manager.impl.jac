@@ -187,15 +187,15 @@ impl JacScaleUserManager.get_jwt_claims(token: str) -> dict | None {
     }
 }
 
-"""Validate JWT and return user_id if valid."""
+"""Validate JWT and return user_id if valid.
+
+JWT signature and expiry are verified by jwt.decode() — an extra DB round-trip
+to confirm user existence on every request is unnecessary and costly.
+"""
 impl JacScaleUserManager.validate_jwt_token(token: str) -> str | None {
     try {
         decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
-        user_id = decoded.get('user_id');
-        if not user_id {
-            return None;
-        }
-        return user_id if self.user_exists(user_id) else None;
+        return decoded.get('user_id') or None;
     } except Exception as e {
         logger.debug(f"Failed to validate JWT token: {str(e)}");
         return None;

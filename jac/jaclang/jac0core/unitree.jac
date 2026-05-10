@@ -7,7 +7,7 @@ import from copy { copy }
 import from enum { IntEnum }
 import from hashlib { md5 }
 import from types { EllipsisType }
-import from typing { TYPE_CHECKING, Any, cast }
+import from typing { Any, cast }
 import from jaclang.jac0core.bccache { discover_base_file }
 import from jaclang.jac0core.codeinfo { CodeGenTarget, CodeLocInfo }
 import from jaclang.jac0core.constant {
@@ -22,12 +22,7 @@ import from jaclang.jac0core.constant { JacSemTokenModifier as SemTokMod }
 import from jaclang.jac0core.constant { JacSemTokenType as SemTokType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.modresolver { resolve_relative_path }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.type_system.types { TypeBase }
-    }
-}
+import type from jaclang.compiler.type_system.types { TypeBase }
 
 import from jaclang.jac0core.treeprinter {
     print_ast_tree,
@@ -578,6 +573,7 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
     has from_loc: (ModulePath | None),
         items: (Sequence[ModuleItem] | Sequence[ModulePath]),
         is_absorb: bool,
+        is_typed: bool = False,
         clib_decls: (Sequence[UniNode] | None) = None,
         hint: (SubTag[Token] | None) by postinit;
 

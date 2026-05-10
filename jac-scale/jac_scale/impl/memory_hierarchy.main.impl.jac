@@ -84,24 +84,43 @@ impl ScaleTieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     }
 }
 
-"""Batch get with tiered read-through: check L1, then batch L3 misses, promote all."""
+"""Batch get with full tiered read-through: L1 → L2 MGET → L3 $in."""
 impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     result: dict[UUID, Anchor] = {};
-    missing_ids: list[UUID] = [];
+    l1_misses: list[UUID] = [];
     for id in ids {
         if (anchor := self.__mem__.get(id)) {
             result[id] = anchor;
         } else {
-            missing_ids.append(id);
+            l1_misses.append(id);
         }
     }
-    if missing_ids and self.l3 {
-        # Use batch_get if L3 supports it (MongoBackend), fall back to get() (SqliteMemory)
+    if not l1_misses {
+        return result;
+    }
+    # L2: Redis MGET for L1 misses
+    l2_misses: list[UUID] = [];
+    if self.l2 and hasattr(self.l2, 'batch_get') {
+        l2_results = self.l2.batch_get(l1_misses);
+        for id in l1_misses {
+            if id in l2_results {
+                anchor = l2_results[id];
+                self.__mem__[id] = anchor;
+                result[id] = anchor;
+            } else {
+                l2_misses.append(id);
+            }
+        }
+    } else {
+        l2_misses = l1_misses;
+    }
+    # L3: MongoDB $in (or SqliteMemory fallback) for L2 misses
+    if l2_misses and self.l3 {
         l3_results: dict[UUID, Anchor] = {};
         if hasattr(self.l3, 'batch_get') {
-            l3_results = self.l3.batch_get(missing_ids);
+            l3_results = self.l3.batch_get(l2_misses);
         } else {
-            for mid in missing_ids {
+            for mid in l2_misses {
                 if (a := self.l3.get(mid)) {
                     l3_results[mid] = a;
                 }
@@ -120,12 +139,23 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     return result;
 }
 
+"""Async commit: uses native Motor for L3 and redis.asyncio for L2 when available."""
+impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
+    if self.l3 and hasattr(self.l3, 'acommit') {
+        try {
+            await self.l3.acommit(anchor);
+        } except Exception as e {
+            logger.warning(f"ScaleTieredMemory.acommit L3 failed: {e}");
+        }
+    } else {
+        await super.acommit(anchor);
+    }
+}
+
 """Close all backends."""
 impl ScaleTieredMemory.close -> None {
     self.commit();
-    # Sync and close L3 persistence
     if self.l3 {
-        self.l3.sync();
         self.l3.close();
     }
     # Close L2 cache

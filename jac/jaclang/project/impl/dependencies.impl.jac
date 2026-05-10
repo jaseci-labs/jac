@@ -11,7 +11,9 @@ impl DependencyInstaller.postinit -> None {
         self.config = get_config();
     }
     if self.config is None {
-        raise ValueError("No jac.toml found. Run 'jac init' to create a project.");
+        raise ValueError(
+            "No jac.toml found. Run 'jac create <name>' to create a project."
+        );
     }
     self.venv_dir = self.config.get_venv_dir();
 }

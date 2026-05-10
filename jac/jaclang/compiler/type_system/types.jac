@@ -2,14 +2,9 @@
 import from abc { ABC }
 import from enum { IntEnum, auto }
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, ClassVar }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.unitree { Expr, Symbol }
-        import from jaclang.jac0core.unitree { UniScopeNode as SymbolTable }
-    }
-}
+import from typing { ClassVar }
+import type from jaclang.jac0core.unitree { Expr, Symbol }
+import type from jaclang.jac0core.unitree { UniScopeNode as SymbolTable }
 
 """Enumeration of type categories."""
 enum TypeCategory ( IntEnum ) {

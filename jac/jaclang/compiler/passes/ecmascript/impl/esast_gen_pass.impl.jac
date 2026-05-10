@@ -3640,6 +3640,11 @@ impl EsastGenPass.exit_archetype(nd: uni.Archetype) -> None {
 
 """Process import statement."""
 impl EsastGenPass.exit_import(nd: uni.Import) -> None {
+    # Type-only imports never reach JS runtime: types are erased.
+    if nd.is_typed {
+        nd.gen.es_ast = None;
+        return;
+    }
     # Server-side import (sv keyword) - generate stubs for def:pub functions
     if (
         nd.code_context != CodeContext.CLIENT

@@ -585,6 +585,80 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
             }
         }
     }
+    # Validate event-signature trigger matches the owning archetype kind:
+    # walker abilities fire on nodes/edges/Root; node and edge abilities
+    # fire on walkers. See JacWalker._execute_entries / _execute_exits.
+    if (
+        isinstance(nd.signature, uni.EventSignature)
+        and nd.signature.arch_tag_info is not None
+    ) {
+        self._check_event_trigger_archetype(nd);
+    }
+}
+
+"""Validate `can ... with X entry/exit` triggers against the owning
+archetype.
+
+The runtime contract (jac0core/runtime.jac `JacWalker._execute_entries`
+and `_execute_exits`) is:
+    walker._jac_entry_funcs_   trigger ⊆ NodeArchetype | EdgeArchetype
+    node/edge._jac_entry_funcs_  trigger ⊆ WalkerArchetype
+
+`with entry` / `with exit` (no trigger) is always valid — those handlers
+fire on every step. The trigger expression can be a single class, a
+tuple `(A, B)` (treated element-wise), or a `|` union; all elements /
+members must satisfy the rule. Any/Unknown is skipped to avoid
+duplicating W2001 / W1051 diagnostics on the same span."""
+impl TypeCheckPass._check_event_trigger_archetype(
+    self: TypeCheckPass, nd: uni.Ability
+) -> None {
+    import from jaclang.compiler.type_system { types }
+    sig = nd.signature;
+    if not isinstance(sig, uni.EventSignature) or sig.arch_tag_info is None {
+        return;
+    }
+    owner = nd.method_owner;
+    if not isinstance(owner, uni.Archetype) {
+        return;
+    }
+    owner_kind = owner.arch_type.value;
+    if owner_kind not in ("walker", "node", "edge") {
+        return;
+    }
+    walker_owner = owner_kind == "walker";
+
+    def is_valid(t: types.TypeBase) -> bool {
+        if t.is_any_type() or isinstance(t, types.UnknownType) {
+            return True;
+        }
+        if isinstance(t, types.UnionType) {
+            return all(is_valid(m) for m in t.types);
+        }
+        if isinstance(t, types.ClassType) {
+            if walker_owner {
+                return t.is_node_type() or t.is_edge_type();
+            }
+            return t.is_walker_type();
+        }
+        return False;
+    }
+
+    # Tuple form `(A, B)` desugars to a union annotation in pyast_gen —
+    # validate per element so each bad type gets its own diagnostic.
+    targets: list[uni.Expr] = (
+        list(sig.arch_tag_info.values)
+            if (
+                isinstance(sig.arch_tag_info, uni.TupleVal) and sig.arch_tag_info.values
+            )
+            else [sig.arch_tag_info]
+    );
+    err = E1116 if walker_owner else E1117;
+    for arg in targets {
+        ty = self.evaluator.get_type_of_expression(arg);
+        if not is_valid(ty) {
+            self.emit(err, node_override=arg, type=str(ty));
+        }
+    }
 }
 
 """Check if a code block always returns a value on all paths.
