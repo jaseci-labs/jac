@@ -315,6 +315,7 @@ impl JacScaleScheduler.delete_job(job_id: str) -> bool {
 impl JacScaleScheduler._execute_task(
     name: str, username: str, is_walker: bool
 ) -> None {
+    import asyncio;
     import from jaclang { JacRuntimeInterface as Jac }
     import from jaclang.jac0core.runtime { JacRuntime }
     label = 'walker' if is_walker else 'function';
@@ -367,11 +368,22 @@ impl JacScaleScheduler._execute_task(
                     logger.warning(f"Scheduled job context close failed: {ce}");
                 }
             }
-        } finally {
-            JacRuntime.clear_request_context();
+        }
+
+        try {
+            loop = asyncio.get_event_loop();
+            if loop.is_running() {
+                asyncio.ensure_future(_run());
+            } else {
+                loop.run_until_complete(_run());
+            }
+        } except RuntimeError {
+            asyncio.run(_run());
         }
     } except Exception as e {
         logger.error(f"Error executing {label} '{name}': {e}");
+    } finally {
+        JacRuntime.clear_request_context();
     }
 }
 

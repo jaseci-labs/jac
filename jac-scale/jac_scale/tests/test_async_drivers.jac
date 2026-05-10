@@ -23,6 +23,7 @@ node CounterNode {
 
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
+
 with entry {
     try {
         _mongo_container = MongoDbContainer("mongo:7");
