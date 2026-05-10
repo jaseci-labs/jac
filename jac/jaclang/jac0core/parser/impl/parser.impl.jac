@@ -144,6 +144,7 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0026,
     E0030,
     E0032,
     E0034,
@@ -1125,11 +1126,35 @@ impl Parser.parse_connect -> Expr {
         if conn_op is None {
             break;
         }
+        if self._recover_missing_connect_rhs() {
+            break;
+        }
         right = self.parse_atomic_pipe();
         kid: list = [left, conn_op, right];
         left = BinaryExpr(left=left, op=conn_op, right=right, kid=kid);
     }
     return left;
+}
+
+# Issue #5885 gap 10: surface a clear "missing RHS" diagnostic when a
+# connect/disconnect operator is followed by a statement-level terminator
+# instead of a right operand. Without this, the cascading parse failure
+# inside `parse_atomic_pipe` produces a misleading "Unexpected token in
+# expression: ';'" trail. Returns True when recovery emitted a diagnostic
+# and the caller should stop trying to parse the right-hand side.
+impl Parser._recover_missing_connect_rhs -> bool {
+    if not self.check_any(
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.EOF
+    ) {
+        return False;
+    }
+    self.emit_diag(E0026);
+    return True;
 }
 
 """Parse edge op ref inline (-->, <--, <-->, or typed variants like ->:Type:->)."""
@@ -4929,10 +4954,38 @@ impl Parser.parse_assert_stmt -> AssertStmt {
 impl Parser.parse_delete_stmt -> DeleteStmt {
     del_uni = self.consume_uni(TokenKind.KW_DELETE);
     target = self.parse_expression();
+    self._recover_misplaced_disconnect();
     kid: list = [del_uni, target];
     self.expect(TokenKind.SEMI);
     kid.append(self.make_semi());
     return DeleteStmt(target=target, kid=kid);
+}
+
+# Issue #5885 gap 10: a stray edge-op-ref (`-->`, `<--`, `<-->`, or a
+# typed-edge variant `->:T:->` / `<-:T:<-`) right after a `del <expr>`
+# target means the user wrote the non-canonical disconnect form
+# `del <lhs>--><rhs>?;` and likely forgot the right operand (or wrote it
+# with the canonical form moved). Surface E0026 about the missing RHS
+# rather than the cascade of `Missing ';'` / `Unexpected token` that the
+# default recovery would emit, then skip ahead to the next terminator so
+# the trailing `;` / `}` is consumed cleanly.
+impl Parser._recover_misplaced_disconnect -> None {
+    if not self.check_any(
+        TokenKind.ARROW_R,
+        TokenKind.ARROW_L,
+        TokenKind.ARROW_BI,
+        TokenKind.ARROW_R_P1,
+        TokenKind.ARROW_L_P1
+    ) {
+        return;
+    }
+    self.emit_diag(E0026);
+    while not self.at_end()
+    and not self.check_any(
+        TokenKind.SEMI, TokenKind.RBRACE, TokenKind.RPAREN, TokenKind.RSQUARE
+    ) {
+        self.advance();
+    }
 }
 
 impl Parser.parse_global_stmt -> GlobalStmt {

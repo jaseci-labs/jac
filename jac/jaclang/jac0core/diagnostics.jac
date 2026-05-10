@@ -131,6 +131,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "JavaScript arrow function syntax ('=>') is not supported in Jac",
          help="Use Jac lambda syntax instead: 'lambda e: ChangeEvent { ... }' or 'lambda x: int : x + 1'."
      ),
+     E0026 = _err(
+         "E0026",
+         Category.SYNTAX,
+         "Connect/disconnect operator requires a right operand",
+         help="Connect (`++>`, `+>:T:+>`) and disconnect (`del -->`, `del ->:T:->`) operators are binary -- supply the right-hand side, e.g. `a ++> b;` or `a del --> b;`."
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
