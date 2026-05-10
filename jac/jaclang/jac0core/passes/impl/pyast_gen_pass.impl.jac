@@ -1156,6 +1156,24 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
             )
         );
     }
+    if nd.is_typed {
+        self.typing_imports.add('TYPE_CHECKING');
+        body_stmts = [
+            stmt
+            for stmt in py_nodes
+            if isinstance(stmt, ast3.stmt)
+        ];
+        if body_stmts {
+            wrapped = self.sync(
+                ast3.If(
+                    test=self.sync(ast3.Name(id='TYPE_CHECKING', ctx=ast3.Load())),
+                    body=body_stmts,
+                    orelse=[]
+                )
+            );
+            py_nodes = [wrapped];
+        }
+    }
     nd.gen.py_ast = py_nodes;
 }
 

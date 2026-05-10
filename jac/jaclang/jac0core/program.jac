@@ -1,19 +1,13 @@
 """Jac Program module."""
 import types;
 import from threading { Event }
-import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.compile_options { CompileOptions }
 import from jaclang.jac0core.mtp { Info }
 import from jaclang.jac0core.passes { Alert }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
-        import from jaclang.jac0core.compiler { JacCompiler }
-        import from jaclang.jac0core.passes { Transform }
-    }
-}
+import type from jaclang.compiler.type_system.type_evaluator { TypeEvaluator }
+import type from jaclang.jac0core.compiler { JacCompiler }
+import type from jaclang.jac0core.passes { Transform }
 
 """Holds the state of a compiled Jac program."""
 class JacProgram {

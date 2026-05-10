@@ -9,7 +9,7 @@ PyrightReference:
 import ast as py_ast;
 import os;
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, cast }
+import from typing { cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { TOKEN_MAP }
 import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
@@ -17,12 +17,7 @@ import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
 import from jaclang.runtimelib.utils { read_file_with_encoding }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import type from jaclang.jac0core.program { JacProgram }
 
 # FIXME: Conver the bellow to dot import (from . import ...)
 # Currently its not possible with jac+python hybrid repos.

@@ -76,19 +76,17 @@ The compiled output demonstrates how Jac's object-oriented features map to stand
 !!! note
     The transpiler outputs `from jaclang.jac0core.jaclib import ...` internally. The public API `jaclang.lib` re-exports the same symbols and is the recommended import path for library-mode usage.
 
-#### Automatic TYPE_CHECKING Guards
+#### Type-Only Imports
 
-The Jac compiler analyzes import usage and automatically wraps imports that are **only used in type annotations** inside `if typing.TYPE_CHECKING:` guards. This is a common Python pattern to avoid circular imports and reduce runtime overhead, but in Jac you never need to write it manually -- the compiler handles it for you.
-
-For example, if `MyClass` is only used as a type annotation (parameter type, return type, or field type) and never instantiated or used at runtime, the generated Python will include:
+Prefix an import with `type` to mark it as annotation-only. The compiler lowers `import type from foo { Bar }` to:
 
 ```python
-import typing
-if typing.TYPE_CHECKING:
-    from mymodule import MyClass
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from foo import Bar
 ```
 
-This works because Jac always emits `from __future__ import annotations`, which makes all type annotations lazy strings that are never evaluated at runtime.
+Use this to break circular imports between modules that only reference each other in type signatures. Stay with a regular `import` whenever the name is constructed, instance-checked, or consumed by a decorator that resolves annotations at runtime (dataclass, Pydantic, attrs, FastAPI, SQLAlchemy). See [Type-Only Imports (`import type`)](foundation.md#type-only-imports-import-type) for the full rule of thumb.
 
 ---
 

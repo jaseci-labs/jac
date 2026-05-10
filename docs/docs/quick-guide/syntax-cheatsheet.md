@@ -110,10 +110,11 @@ include random;
 # sv import from ...main { MyWalker }       # Server import in client
 # cl import from "@jac/runtime" { Link }    # npm runtime import
 
-# Type-only imports are automatic -- the compiler detects when an import
-# is only used in type annotations and wraps it in TYPE_CHECKING for you.
-# No manual `if TYPE_CHECKING { ... }` blocks needed!
-import from mymodule { MyClass }  # auto-wrapped if only used as a type
+# Type-only import: opt-in, lowers to `if typing.TYPE_CHECKING: ...`
+# Use to break circular imports between modules that reference each other
+# only in type annotations. Don't use for archetype `has` field types or
+# names that decorators (dataclass, Pydantic, FastAPI, ...) resolve at runtime.
+import type from billing { Invoice }
 
 
 # ============================================================

@@ -288,16 +288,6 @@ def:pub Counter() -> JsxElement {
 
 ---
 
-### Version 0.12.3
-
-#### 1. Automatic `TYPE_CHECKING` Import Guards
-
-The compiler now automatically detects imports that are only used in type annotations (parameter types, return types, field types) and wraps them in `if typing.TYPE_CHECKING:` guards in the generated Python output.
-
-**Impact:** Existing `if TYPE_CHECKING { ... }` blocks in Jac source still work, but are no longer necessary. You can simplify your code by replacing them with plain imports.
-
----
-
 ### Version 0.12.4
 
 #### 1. `root` Is a Reserved Keyword Again (`SpecialVarRef`)

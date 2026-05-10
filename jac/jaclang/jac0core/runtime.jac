@@ -56,22 +56,14 @@ import from jaclang.jac0core.constructs {
 import from jaclang.jac0core.modresolver { infer_language }
 import from jaclang.jac0core.mtp { MTIR, Info, MTRuntime }
 import from jaclang.jac0core { plugin }
-
-with entry {
-    if TYPE_CHECKING {
-        import from http.server { BaseHTTPRequestHandler }
-        import from jaclang.cli.console { JacConsole as ConsoleImpl }
-        import from jaclang.jac0core.compiler { JacCompiler }
-        import from jaclang.jac0core.program { JacProgram }
-        import from jaclang.runtimelib.client_bundle {
-            ClientBundle,
-            ClientBundleBuilder
-        }
-        import from jaclang.runtimelib.context { ExecutionContext }
-        import from jaclang.runtimelib.server { JacAPIServer as JacServer }
-        import from jaclang.runtimelib.server { ModuleIntrospector, UserManager }
-    }
-}
+import type from http.server { BaseHTTPRequestHandler }
+import type from jaclang.cli.console { JacConsole as ConsoleImpl }
+import type from jaclang.jac0core.compiler { JacCompiler }
+import type from jaclang.jac0core.program { JacProgram }
+import type from jaclang.runtimelib.client_bundle { ClientBundle, ClientBundleBuilder }
+import type from jaclang.runtimelib.context { ExecutionContext }
+import type from jaclang.runtimelib.server { JacAPIServer as JacServer }
+import type from jaclang.runtimelib.server { ModuleIntrospector, UserManager }
 
 glob plugin_manager = plugin.PluginManager('jac'),
      hookspec = plugin.HookspecMarker('jac'),

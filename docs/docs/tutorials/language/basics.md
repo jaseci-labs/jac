@@ -401,18 +401,17 @@ with entry {
 
 ### Type-Only Imports
 
-In Python, you often need to wrap imports in `if TYPE_CHECKING:` blocks to avoid circular imports when a type is only used in annotations. Jac handles this automatically -- just write a normal import and the compiler detects whether it's only used in type positions:
+When two modules only reference each other in type annotations, a regular `import` creates a circular import at module load. Mark the import with `type` to tell the compiler it's annotation-only:
 
 ```jac
-import from mymodule { MyClass }
+import type from billing { Invoice }
 
-# MyClass only appears in type annotations, never instantiated here
-def process(item: MyClass) -> MyClass {
-    return item;
+def total(inv: Invoice) -> int {
+    return inv.amount;
 }
 ```
 
-The compiler automatically wraps `MyClass` in a `TYPE_CHECKING` guard in the generated Python output. If you later add runtime usage like `MyClass()`, it automatically becomes a regular import.
+The generated Python lowers this to `if TYPE_CHECKING: from billing import Invoice` (with `TYPE_CHECKING` imported from `typing`), so the import never runs at runtime and the cycle is broken. Keep `import type` to names you only use in `def` parameter/return types -- decorators like `dataclass` and `Pydantic.BaseModel` resolve annotations on archetype `has` fields at class-definition time and need their types as regular runtime imports.
 
 ---
 

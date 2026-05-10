@@ -10,7 +10,7 @@ kid/parent, scope chains, symbol tables, and CFG edges.
 import struct;
 import sys;
 import zlib;
-import from typing { Any, TYPE_CHECKING }
+import from typing { Any }
 
 import from jaclang.jac0core.jir_registry {
     FieldKind,
@@ -19,20 +19,15 @@ import from jaclang.jac0core.jir_registry {
     NodeSpec,
     get_class_mapping
 }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.unitree {
-            Module,
-            UniNode,
-            UniScopeNode,
-            UniCFGNode,
-            NameAtom,
-            Symbol,
-            Source,
-            Token
-        }
-    }
+import type from jaclang.jac0core.unitree {
+    Module,
+    UniNode,
+    UniScopeNode,
+    UniCFGNode,
+    NameAtom,
+    Symbol,
+    Source,
+    Token
 }
 
 # --- Constants ---

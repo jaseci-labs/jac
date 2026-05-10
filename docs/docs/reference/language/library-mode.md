@@ -344,7 +344,7 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 | Name | Type | Description |
 |------|------|-------------|
-| `TYPE_CHECKING` | bool | Python typing constant for type checking blocks. In Jac source, you rarely need this -- the compiler automatically wraps type-only imports in `TYPE_CHECKING` guards (see [Type Annotations](foundation.md#2-type-annotations)). In library mode Python, use it directly when needed. |
+| `TYPE_CHECKING` | bool | Python typing constant for type checking blocks. Use it in `if TYPE_CHECKING { ... }` guards to break circular imports for type-only references. |
 | `EdgeDir` | Enum | Edge direction enum (IN, OUT, ANY) |
 | `DSFunc` | Type | Object spatial function type alias |
 

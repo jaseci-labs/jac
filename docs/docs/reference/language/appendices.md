@@ -86,6 +86,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `test` | Declaration | Test block |
 | `to` | Control | For loop upper bound |
 | `try` | Control | Try block |
+| `type` | Module | Type-only import marker (`import type from ...`) |
 | `visitor` | OSP | Visiting walker (in node) |
 | `wait` | Concurrency | Wait for concurrent result |
 | `walker` | Archetype | Walker type |
@@ -179,7 +180,7 @@ has_stmt      : "has" (modifier)? NAME ":" type ("=" expr)? ";"
 ability       : async? "can" NAME params? ("->" type)? event_clause? (body | ";")
 event_clause  : "with" type_expr? (entry | exit)
 
-import        : "import" (module | "from" import_path "{" names "}")
+import        : "import" "type"? (module | "from" import_path "{" names "}")
               | "import" "from" STRING "{" extern_decl* "}"  # C library import (na)
 import_path   : (NAME ":")? dotted_name       # Optional namespace prefix (e.g., jac:module)
 entry         : "with" "entry" (":" NAME)? body

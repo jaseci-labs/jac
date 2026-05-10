@@ -312,28 +312,6 @@ obj Example {
 }
 ```
 
-#### Automatic `TYPE_CHECKING` Optimization
-
-The Jac compiler automatically detects imports that are **only used in type annotations** (parameter types, return types, field types) and wraps them in a `typing.TYPE_CHECKING` guard in the generated Python. This prevents circular imports and unnecessary runtime dependencies without any manual effort.
-
-```jac
-import from mymodule { MyClass }
-
-obj Example {
-    has ref: MyClass;  # MyClass only used as a type annotation
-}
-```
-
-The compiler sees that `MyClass` never appears in runtime code (no instantiation, no `isinstance` checks, etc.) and automatically generates:
-
-```python
-import typing
-if typing.TYPE_CHECKING:
-    from mymodule import MyClass
-```
-
-If you later add runtime usage like `MyClass()`, the compiler automatically promotes it back to a regular import. No manual `if TYPE_CHECKING` blocks are needed in Jac.
-
 #### Ambient Typing Names
 
 A curated set of annotation-only names from `typing` resolves in user code without an explicit import:
@@ -359,6 +337,35 @@ Names skipped on purpose:
 | `DefaultDict`, `OrderedDict`, `Counter`, `Deque` | the `collections` equivalents |
 
 Runtime values like `cast`, `overload`, `runtime_checkable`, `TYPE_CHECKING`, `get_type_hints`, `get_args`, `get_origin`, and `no_type_check` are not ambient -- import them explicitly when needed.
+
+#### Type-Only Imports (`import type`)
+
+Use `import type` to bring a name into scope **only for type annotations**. The import is registered with the type checker but elided from runtime by lowering to a `typing.TYPE_CHECKING` guard in the generated Python.
+
+```jac
+import type from billing { Invoice }
+
+def total(inv: Invoice) -> int {
+    return inv.amount;
+}
+```
+
+Generated Python:
+
+```python
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from billing import Invoice
+```
+
+This is the supported way to break circular imports between Jac modules whose types reference each other. Combined with `from __future__ import annotations` (always emitted), the annotation stays valid at type-check time without forcing the import to run at module load.
+
+When **not** to use `import type`:
+
+- The name is constructed at runtime (e.g. `Invoice(...)`), used in `isinstance`, or referenced by any decorator that resolves annotations through `typing.get_type_hints` (dataclass, Pydantic, attrs, FastAPI route signatures, SQLAlchemy declarative, msgspec). These libraries call into the module's globals at class-definition time and a `TYPE_CHECKING`-guarded import will not be there. Use a regular `import` for those.
+- The name is used inside an `obj`/`node`/`edge`/`walker` `has` field type. Jac archetypes are dataclass-derived, so the same rule applies: keep them on a regular `import`.
+
+`import type` is opt-in -- a regular `import` still binds the name at runtime exactly as before.
 
 #### The `any` Type and Gradual Typing
 

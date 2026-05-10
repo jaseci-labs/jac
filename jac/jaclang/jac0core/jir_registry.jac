@@ -798,6 +798,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="from_loc", kind=6),
                  FieldDesc(name="items", kind=5),
                  FieldDesc(name="is_absorb", kind=2),
+                 FieldDesc(name="is_typed", kind=2),
                  FieldDesc(name="clib_decls", kind=5)
              )
          ),

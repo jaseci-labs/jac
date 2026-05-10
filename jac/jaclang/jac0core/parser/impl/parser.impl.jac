@@ -5072,6 +5072,12 @@ impl Parser.parse_import_stmt -> Import {
         self.expect(TokenKind.KW_IMPORT);
     }
     kid: list = [self.make_uni_token(self.previous())];
+    # Check for 'import type ...' (type-only import; lowers to TYPE_CHECKING in Python)
+    is_typed = False;
+    if not is_include and self.match_tok(TokenKind.TYP_TYPE) {
+        is_typed = True;
+        kid.append(self.make_uni_token(self.previous()));
+    }
     # Check for 'import from X { Y }' syntax
     from_loc: ModulePath | None = None;
     is_clib_import = False;
@@ -5146,6 +5152,7 @@ impl Parser.parse_import_stmt -> Import {
         from_loc=from_loc,
         items=items,
         is_absorb=is_include,
+        is_typed=is_typed,
         kid=kid,
         doc=None,
         clib_decls=clib_decls
