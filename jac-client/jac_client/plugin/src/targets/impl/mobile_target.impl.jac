@@ -194,7 +194,9 @@ impl MobileTarget.build(
 
     console.success("Mobile bundle created successfully!");
     console.print(f"  Build directory: {mobile_build_dir}", style="muted");
-    console.print(f"\n💡 Next: run `expo prebuild` then your native build", style="bold");
+    console.print(
+        f"\n💡 Next: run `expo prebuild` then your native build", style="bold"
+    );
     console.print(
         f"     cd {mobile_build_dir} && npx expo prebuild --platform android",
         style="muted"

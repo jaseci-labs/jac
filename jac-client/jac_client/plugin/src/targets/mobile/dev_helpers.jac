@@ -90,14 +90,12 @@ def _write_build_config(mobile_dir: Path, project_dir: Path) {
 
     if not production_api_url {
         console.warning(
-            "  No backend URL configured.  Set [mobile.features].api_url in jac.toml "
-            + "or pass JAC_MOBILE_API_URL=... — the APK will ship with an empty "
-            + "API URL and runtime calls will fail."
+            "  No backend URL configured.  Set [mobile.features].api_url in jac.toml " + "or pass JAC_MOBILE_API_URL=... — the APK will ship with an empty " + "API URL and runtime calls will fail."
         );
     } else {
-        source = "env JAC_MOBILE_API_URL" if os.environ.get(
-            "JAC_MOBILE_API_URL", ""
-        ).strip() else "jac.toml [mobile.features].api_url";
+        source = "env JAC_MOBILE_API_URL"
+            if os.environ.get("JAC_MOBILE_API_URL", "").strip()
+            else "jac.toml [mobile.features].api_url";
         console.print(
             f"  Baking productionApiUrl = {production_api_url} (from {source})",
             style="muted"
