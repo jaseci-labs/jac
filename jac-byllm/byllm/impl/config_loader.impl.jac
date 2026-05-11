@@ -36,6 +36,14 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
             'keep_recent_iterations': 3,
             'ctx_window': 0,
             'compaction_model': ''
+        },
+        'local': {
+            'default_alias': 'gemma-4-e4b',
+            'n_ctx': 0,
+            'n_gpu_layers': 0,
+            'n_threads': 0,
+            'verbose': False,
+            'auto_download': False
         }
     };
 }
@@ -144,6 +152,20 @@ impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, Any
         'keep_recent_iterations': int(c.get('keep_recent_iterations', 3)),
         'ctx_window': int(c.get('ctx_window', 0)),
         'compaction_model': str(c.get('compaction_model', ''))
+    };
+}
+
+"""Get local-runtime configuration from jac.toml."""
+impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    local_cfg = config.get('local', {});
+    return {
+        'default_alias': str(local_cfg.get('default_alias', 'gemma-4-e4b')),
+        'n_ctx': int(local_cfg.get('n_ctx', 0)),
+        'n_gpu_layers': int(local_cfg.get('n_gpu_layers', 0)),
+        'n_threads': int(local_cfg.get('n_threads', 0)),
+        'verbose': bool(local_cfg.get('verbose', False)),
+        'auto_download': bool(local_cfg.get('auto_download', False))
     };
 }
 

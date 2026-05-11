@@ -152,7 +152,22 @@ impl _type_to_schema(
             enum_names = [];
             enum_values = [];
             for member in enum_info_to_use.members {
+                # Skip MTIR members that aren't present at runtime — they
+                # come from stale bytecode or cross-module name collisions
+                # and would otherwise unbalance enum_names vs enum_values
+                # (causing an index shift like 5=FITNESS for an enum that
+                # actually maps 5=OTHER).
+                runtime_member = None;
+                try {
+                    runtime_member = ty.__members__.get(member.name);
+                } except Exception {
+                    runtime_member = None;
+                }
+                if runtime_member is None {
+                    continue;
+                }
                 enum_names.append(member.name);
+                enum_values.append(runtime_member.value);
 
                 # Determine type from type_info (can be "int", "str", "float", "bool", or None)
                 if member.type_info {
@@ -164,17 +179,6 @@ impl _type_to_schema(
                             f"Enum {ty.__name__} has mixed types. Not supported for schema generation."
                         );
                     }
-                }
-
-                # Try to get the actual runtime value for the description
-                try {
-                    runtime_member = ty.__members__.get(member.name);
-                    if runtime_member {
-                        enum_values.append(runtime_member.value);
-                    }
-                } except Exception {
-                    # If runtime introspection fails, skip adding the value
-                    ;
                 }
             }
             # Default to int if no type was determined
@@ -209,11 +213,19 @@ impl _type_to_schema(
             }
             base_desc = enum_info_to_use.semstr or semstr or "";
             full_desc = f"{base_desc}{enum_desc}";
-            return {
+            schema_out: dict = {
                 "description": full_desc,
                 "type": "integer" if enum_type == "int" else "string",
 
             };
+            # Emit a JSON-Schema `enum` constraint so providers / GBNF grammars
+            # bind the value to the actual member set. Cloud frontier models
+            # infer the constraint from the prose description, but smaller
+            # local models (Qwen 3.5 4B, etc.) only honour `enum`.
+            if enum_values {
+                schema_out["enum"] = enum_values;
+            }
+            return schema_out;
         }
         # Fallback to runtime introspection if EnumInfo not available
         enum_type = None;
@@ -237,11 +249,15 @@ impl _type_to_schema(
                 "Only int and str enums are supported for schema generation."
             );
         }
-        return {
+        schema_fb: dict = {
             "description": semstr + enum_desc,
             "type": "integer" if enum_type is int else "string",
 
         };
+        if enum_values {
+            schema_fb["enum"] = enum_values;
+        }
+        return schema_fb;
     }
     # Handle functions
     if isinstance(ty, (FunctionType, MethodType)) {
@@ -403,4 +419,174 @@ impl json_to_instance(json_obj: dict, ty: type) -> object {
     json_obj = _unwrap_from_object(json_obj);
     json_obj = _decode_dict(json_obj);
     return TypeAdapter(ty).validate_python(json_obj);
+}
+
+# ---------------------------------------------------------------------------
+# Schema-side prompt augmentation (see byllm/schema.jac for rationale).
+# ---------------------------------------------------------------------------
+impl _format_enum_hint(values: list, names: list) -> str {
+    if not values {
+        return "";
+    }
+    pairs: list[str] = [];
+    for (i, v) in enumerate(values) {
+        if i < len(names) {
+            pairs.append(f"{v}={names[i]}");
+        } else {
+            pairs.append(f"{v}");
+        }
+    }
+    return ", ".join(pairs);
+}
+
+impl _hints_from_schema(name: str, prop: dict) -> list[str] {
+    out: list[str] = [];
+    if not isinstance(prop, dict) {
+        return out;
+    }
+    desc = prop.get("description");
+    enum_vals = prop.get("enum");
+    ty = prop.get("type", "");
+    label = name or "value";
+    if isinstance(enum_vals, list) and enum_vals {
+        # If the description happens to also list names, weave them in.
+        # byllm's enum schema description encodes member names as a Python
+        # list (e.g. "the names are [WORK, PERSONAL, ...]") -- pull them out.
+        names: list[str] = [];
+        if isinstance(desc, str) and "names are [" in desc {
+            chunk = desc.split("names are [", 1)[1];
+            chunk = chunk.split("]", 1)[0];
+            names = [
+                n.strip()
+                for n in chunk.split(",")
+                if n.strip()
+            ];
+        }
+        hint = _format_enum_hint(enum_vals, names);
+        if hint {
+            out.append(f"- {label} must be one of: {hint}");
+        } else {
+            out.append(f"- {label} must be one of: {enum_vals}");
+        }
+    } elif ty {
+        suffix = ' -- ' + desc if isinstance(desc, str) and desc else '';
+        out.append(f"- {label} ({ty}){suffix}");
+    }
+    # Recurse into nested object properties.
+    if prop.get("type") == "object" {
+        nested = prop.get("properties");
+        if isinstance(nested, dict) {
+            for (sub, sub_prop) in nested.items() {
+                if sub != name {
+                    out.extend(_hints_from_schema(sub, sub_prop));
+                }
+            }
+        }
+    }
+    return out;
+}
+
+impl schema_to_hint_text(rf: dict | None) -> str {
+    if not isinstance(rf, dict) {
+        return "";
+    }
+    # Both byllm/cloud (`json_schema`) and llama.cpp/Ollama (`json_object`)
+    # response_format shapes resolve to the same inner schema dict here.
+    schema: dict | None = None;
+    rf_type = rf.get("type");
+    if rf_type == "json_schema" {
+        js = rf.get("json_schema");
+        if isinstance(js, dict) {
+            inner = js.get("schema");
+            if isinstance(inner, dict) {
+                schema = inner;
+            }
+        }
+    } elif rf_type == "json_object" {
+        inner2 = rf.get("schema");
+        if isinstance(inner2, dict) {
+            schema = inner2;
+        }
+    }
+    if schema is None {
+        return "";
+    }
+    props = schema.get("properties");
+    if not isinstance(props, dict) {
+        return "";
+    }
+    lines: list[str] = [];
+    for (name, prop) in props.items() {
+        if isinstance(prop, dict) {
+            lines.extend(_hints_from_schema(name, prop));
+        }
+    }
+    if not lines {
+        return "";
+    }
+    return "Schema requirements:\n" + "\n".join(lines);
+}
+
+impl attach_schema_hint(messages: list, rf: dict | None) -> list {
+    hint: str = schema_to_hint_text(rf);
+    if not hint or not messages {
+        return messages;
+    }
+    last_user_idx: int = -1;
+    for (i, m) in enumerate(messages) {
+        if isinstance(m, dict) {
+            mdict: dict = m;
+            if mdict.get("role") == "user" {
+                last_user_idx = i;
+            }
+        }
+    }
+    if last_user_idx < 0 {
+        return messages;
+    }
+    out: list = list(messages);
+    target_raw = out[last_user_idx];
+    if not isinstance(target_raw, dict) {
+        return messages;
+    }
+    target: dict = dict(target_raw);
+    body = target.get("content", "");
+    if isinstance(body, str) {
+        body_str: str = body;
+        if hint in body_str {
+            return messages;  # already injected -- idempotent
+        }
+        target["content"] = body_str.rstrip() + "\n\n" + hint;
+    } elif isinstance(body, list) {
+        # OpenAI multimodal content: append the hint as a final text part
+        # so image / audio parts continue to render.
+        body_list: list = body;
+        for part in body_list {
+            if isinstance(part, dict) and part.get("type") == "text" {
+                if hint in str(part.get("text", "")) {
+                    return messages;  # already injected
+                }
+            }
+        }
+        target["content"] = body_list + [{"type": "text", "text": hint}];
+    } else {
+        return messages;
+    }
+    out[last_user_idx] = target;
+    return out;
+}
+
+impl inject_schema_hint(params: dict) -> dict {
+    rf = params.get("response_format");
+    msgs = params.get("messages");
+    if not isinstance(msgs, list) or rf is None {
+        return params;
+    }
+    new_msgs = attach_schema_hint(msgs, rf);
+    if new_msgs is msgs {
+        return params;
+    }
+    out: dict = dict(params);
+    out["messages"] = new_msgs;
+    return out;
 }

@@ -48,7 +48,7 @@ cl def:pub Login -> JsxElement {
                 <div style={{textAlign: 'center', marginTop: '1rem'}}>
                     <p>Don't have an account?</p>
                     <button
-                        onClick={lambda() { auth.handleRegister('google');}}
+                        onClick={lambda() { auth.handleRegister('google'); }}
                         style={{
                             background: 'none',
                             border: 'none',

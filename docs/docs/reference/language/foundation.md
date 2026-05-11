@@ -312,27 +312,116 @@ obj Example {
 }
 ```
 
-#### Automatic `TYPE_CHECKING` Optimization
+#### Ambient Typing Names
 
-The Jac compiler automatically detects imports that are **only used in type annotations** (parameter types, return types, field types) and wraps them in a `typing.TYPE_CHECKING` guard in the generated Python. This prevents circular imports and unnecessary runtime dependencies without any manual effort.
+A curated set of annotation-only names from `typing` resolves in user code without an explicit import:
+
+`Callable`, `Protocol`, `TypeVar`, `Generic`, `Literal`, `ClassVar`, `Annotated`, `Iterable`, `Iterator`, `AsyncIterable`, `AsyncIterator`, `Mapping`, `MutableMapping`, `Sequence`, `MutableSequence`, `Awaitable`, `Coroutine`.
 
 ```jac
-import from mymodule { MyClass }
-
-obj Example {
-    has ref: MyClass;  # MyClass only used as a type annotation
+def:pub apply(func: Callable[[int, int], int], x: int, y: int) -> int {
+    return func(x, y);
 }
 ```
 
-The compiler sees that `MyClass` never appears in runtime code (no instantiation, no `isinstance` checks, etc.) and automatically generates:
+The Python codegen still emits `from typing import Callable` to the generated module preamble, so runtime introspection (`typing.get_type_hints`, pydantic, FastAPI) keeps working. The JS codegen strips annotations from function signatures, so no `typing` import lands in the bundle.
 
-```python
-import typing
-if typing.TYPE_CHECKING:
-    from mymodule import MyClass
+Names skipped on purpose:
+
+| Don't write | Use instead |
+|-------------|-------------|
+| `Any` | the `any` keyword |
+| `Optional[X]` | `X \| None` |
+| `Union[X, Y]` | `X \| Y` |
+| `List[X]`, `Dict[K, V]`, `Set[X]`, `FrozenSet[X]`, `Tuple[X, ...]`, `Type[X]` | the lowercase built-ins (PEP 585) |
+| `DefaultDict`, `OrderedDict`, `Counter`, `Deque` | the `collections` equivalents |
+
+Runtime values like `cast`, `overload`, `runtime_checkable`, `TYPE_CHECKING`, `get_type_hints`, `get_args`, `get_origin`, and `no_type_check` are not ambient -- import them explicitly when needed.
+
+#### Type-Only Imports (`import type`)
+
+Use `import type` to bring a name into scope **only for type annotations**. The import is registered with the type checker but elided from runtime by lowering to a `typing.TYPE_CHECKING` guard in the generated Python.
+
+```jac
+import type from billing { Invoice }
+
+def total(inv: Invoice) -> int {
+    return inv.amount;
+}
 ```
 
-If you later add runtime usage like `MyClass()`, the compiler automatically promotes it back to a regular import. No manual `if TYPE_CHECKING` blocks are needed in Jac.
+Generated Python:
+
+```python
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from billing import Invoice
+```
+
+This is the supported way to break circular imports between Jac modules whose types reference each other. Combined with `from __future__ import annotations` (always emitted), the annotation stays valid at type-check time without forcing the import to run at module load.
+
+When **not** to use `import type`:
+
+- The name is constructed at runtime (e.g. `Invoice(...)`), used in `isinstance`, or referenced by any decorator that resolves annotations through `typing.get_type_hints` (dataclass, Pydantic, attrs, FastAPI route signatures, SQLAlchemy declarative, msgspec). These libraries call into the module's globals at class-definition time and a `TYPE_CHECKING`-guarded import will not be there. Use a regular `import` for those.
+- The name is used inside an `obj`/`node`/`edge`/`walker` `has` field type. Jac archetypes are dataclass-derived, so the same rule applies: keep them on a regular `import`.
+
+`import type` is opt-in -- a regular `import` still binds the name at runtime exactly as before.
+
+#### The `any` Type and Gradual Typing
+
+`any` is Jac's gradual-typing escape valve. A value typed as `any` can hold anything, and reading from it produces `any`. Jac applies a strict rule about where `any` is allowed to flow inside `.jac` files: it must not silently widen into a declared non-`any` destination.
+
+**The rule.** A value of type `any` cannot be silently assigned to a destination with a declared non-`any`, non-`object` type. The check fires at every site where the destination has a declared type:
+
+- annotated assignment (`x: T = src;`)
+- `has`-var initializer (`has x: T = src;`)
+- function argument (`f(src)` against a declared `param: T`)
+- return statement (`return src` from `def f -> T`)
+- yield expression in a typed generator
+- edge-connection assignment
+
+The check recurses element-wise into containers, so `list[any] -> list[Task]` is rejected the same way `any -> Task` is.
+
+**Two destinations stay permissive:**
+
+1. **Inferred locals.** A binding without an annotation accepts `any` and itself becomes `any`. `x = py_call();` is fine.
+2. **Explicit `any` annotation.** Annotating the destination as `any` opts into permissive flow. `x: any = py_call();` is fine.
+
+`any -> object` and `any -> T` (where `T` is a `TypeVar`) are also permissive, so `print(x)` and generic-bound calls work without ceremony.
+
+!!! note "`.py` and `.pyi` files keep PEP 484 semantics"
+    `Any` propagates freely inside Python modules. The strict rule only fires at the `.jac` consumption site. A typed `.pyi` stub for a Python utility removes the `any` return type at the boundary, so the strict rule never engages downstream.
+
+**Migration patterns.** Two ways to clear a strict-`any` error at a boundary:
+
+| Approach | When to use |
+|----------|-------------|
+| Type the source | The function has a stable signature. Add a `.pyi` stub for a Python utility, a return annotation on a `def`, or a typed [`has reports: list[T]`](walker-responses.md#typing-your-reports) declaration on a walker. The boundary becomes strongly typed and downstream `.jac` code stays clean. |
+| Accept `any` at the boundary | The source is intentionally untyped. Annotate the receiving local as `any`, then narrow with `isinstance` or `cast` before flowing into typed destinations. |
+
+```jac
+import json;
+
+def parse(text: str) -> any {
+    return json.loads(text);
+}
+
+obj Task { has title: str = ""; }
+
+with entry {
+    # Inferred destination -- `raw` becomes `any`, no error.
+    raw = parse('{"title": "ship"}');
+
+    # Narrow before flowing into a declared type.
+    if isinstance(raw, dict) {
+        title = raw.get("title", "");
+        if isinstance(title, str) {
+            t = Task(title=title);
+            print(t.title);
+        }
+    }
+}
+```
 
 ### 3 Generic Types
 
@@ -365,25 +454,33 @@ obj Container {
 
 ### 4 The `Self` Type
 
-`Self` (capital S) is a special type that refers to the enclosing archetype. It is distinct from `self` (lowercase), which refers to the current instance.
+`Self` (capital S) is a special type that, in instance-method positions, refers to the enclosing archetype. It is distinct from `self` (lowercase), which refers to the current instance. `Self` is most useful for fluent/builder methods that return the receiver:
 
 ```jac
-obj Node {
-    has value: int = 0,
-        next: Self | None = None;  # Self = Node in type annotations
+obj NodeRef {
+    has value: int = 0;
 
-    class def create(v: int) -> Self {  # Self = cls in class methods
-        return Self(value=v);
-    }
-
-    def set_next(n: Self) -> Self {  # Self as parameter and return type
-        self.next = n;
+    def set_value(v: int) -> Self {  # Self as return type
+        self.value = v;
         return self;
     }
 }
 ```
 
-`Self` is polymorphic -- in a subclass, it resolves to the subclass type, not the parent. See [Class Methods and Self](functions-objects.md#6-static-methods-and-class-methods) for usage details.
+For recursive type annotations on fields and parameters, name the enclosing archetype directly:
+
+```jac
+obj LinkedNode {
+    has value: int = 0,
+        next: LinkedNode | None = None;
+
+    static def create(v: int) -> LinkedNode {
+        return LinkedNode(value=v);
+    }
+}
+```
+
+See [Class Methods and Self](functions-objects.md#6-static-methods-and-class-methods) for usage details, including the planned polymorphic `Self` enhancement for `class def` factories.
 
 ### 5 Union Types
 

@@ -219,6 +219,25 @@ obj Db {
     """
     def scan_keys(pattern: str, col_name: str = 'default') -> list[str];
 
+    """Atomically set a value with TTL only if the key does not already exist.
+    Returns True if the key was set (caller acquired), False if another holder
+    won. Maps to Redis ``SET key value NX EX ttl``.
+    Used for distributed locks, leader election, and cross-pod debounce
+    windows where exactly one caller in the cluster must succeed."""
+    def set_nx_with_ttl(
+        key: str, value: dict, ttl: int, col_name: str = 'default'
+    ) -> bool;
+
+    """Atomically delete a key only when its current value matches
+    ``expected_value``. Returns True if deleted, False if the key was absent
+    or held a different value. Implemented with a server-side Lua script so
+    the GET/DEL pair is atomic.
+    Used for fence-token release: pairs with ``set_nx_with_ttl`` so a slow
+    holder whose TTL expired does not delete a lock another pod now owns."""
+    def delete_if_equals(
+        key: str, expected_value: dict, col_name: str = 'default'
+    ) -> bool;
+
     def find_nodes(
         node_type: str, filter: dict = {}, col_name: str = '_anchors'
     ) -> list;

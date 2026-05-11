@@ -67,7 +67,9 @@ def _check_explain_error(msg: str) {
     w = root spawn explain_error(error_message=msg);
     r = w.reports[0];
     assert not r["ok"] , f"explain_error: expected ok=false for {repr(msg)}";
-    assert r["tool"] == "explain_error" , f"Expected tool=explain_error, got {r['tool']}";
+    assert r["tool"] == "explain_error" , f"Expected tool=explain_error, got {r[
+        'tool'
+    ]}";
 }
 
 def _check_get_example(name: str) {

@@ -1,0 +1,6 @@
+[project]
+name = "byllm-compaction-test"
+version = "0.1.0"
+
+[plugins.byllm.compaction]
+ctx_window = 10000

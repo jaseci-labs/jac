@@ -117,6 +117,9 @@ def buildWsUrl(basePath: str, token: str) -> str {
 
 Jac compiles to JavaScript, and there are several patterns where you need to work with the compiled output in mind.
 
+!!! tip "Lambda, closure, IIFE, and factory analogs from JS"
+    For a side-by-side mapping of common JS function idioms (`x => x + 1`, IIFEs, closure factories) to their Jac equivalents, see [§8 IIFE & Anonymous Factories](../../reference/language/functions-objects.md#8-iife-anonymous-factories) in the language reference.
+
 ### Reflect.construct for `new` Objects
 
 Jac does not have a `new` keyword. For browser built-in constructors, use `Reflect.construct()`:

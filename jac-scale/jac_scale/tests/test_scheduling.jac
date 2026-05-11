@@ -40,7 +40,7 @@ def _err(resp: dict[str, Any]) -> dict[str, Any] | None {
     return None;
 }
 
-def _cleanup -> None {
+def _cleanup {
     for pattern in ["*.db", "*.db-wal", "*.db-shm"] {
         for f in glob.glob(str(FIXTURES_DIR / pattern)) {
             with contextlib.suppress(Exception) {
@@ -85,7 +85,7 @@ def _start_server(port: int) -> subprocess.Popen {
     raise RuntimeError("Server failed to start within 30s");
 }
 
-def _stop_server(proc: subprocess.Popen | None) -> None {
+def _stop_server(proc: subprocess.Popen | None) {
     if proc {
         proc.terminate();
         with contextlib.suppress(subprocess.TimeoutExpired) {
@@ -217,7 +217,9 @@ test "dynamic jobs - all trigger types for walker and function" {
         for (name, tpayload) in cases {
             payload = {** {"walker_or_function": name}, ** tpayload};
             body = _post_job(base_url, h, payload);
-            assert body.get("ok") , f"POST /jobs failed for {name}/{tpayload['trigger']}: {body}";
+            assert body.get("ok") , f"POST /jobs failed for {name}/{tpayload[
+                'trigger'
+            ]}: {body}";
             job = _data(body);
             assert job["name"] == name;
             assert job["trigger"] == tpayload["trigger"];
@@ -281,7 +283,9 @@ test "jobs crud lifecycle" {
         assert body.get("ok") and _data(body)["interval"] == 120;
 
         # Delete
-        body = requests.delete(f"{base_url}/jobs/{job_id}", headers=h, timeout=5).json();
+        body = requests.delete(
+            f"{base_url}/jobs/{job_id}", headers=h, timeout=5
+        ).json();
         assert body.get("ok") and _data(body).get("deleted") == True;
 
         # Verify gone

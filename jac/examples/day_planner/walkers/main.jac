@@ -11,10 +11,6 @@ def:pub app -> JsxElement {
 
 to sv:
 
-import from byllm.lib { Model }
-
-glob llm = Model(model_name="claude-sonnet-4-20250514");
-
 # --- Enums ---
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
@@ -55,7 +51,8 @@ node ShoppingItem {
 
 # --- Task Walkers ---
 walker:priv AddTask {
-    has title: str;
+    has title: str,
+        reports: list[Task] = [];
 
     can create with Root entry {
         category = str(categorize(self.title)).split(".")[-1].lower();
@@ -65,7 +62,8 @@ walker:priv AddTask {
 }
 
 walker:priv ListTasks {
-    has results: list = [];
+    has results: list[Task] = [],
+        reports: list[list[Task]] = [];
 
     can start with Root entry {
         visit [-->];
@@ -81,7 +79,8 @@ walker:priv ListTasks {
 }
 
 walker:priv ToggleTask {
-    has task_id: str;
+    has task_id: str,
+        reports: list[Task] = [];
 
     can search with Root entry {
         visit [-->];
@@ -114,7 +113,8 @@ walker:priv DeleteTask {
 
 # --- Shopping List Walkers ---
 walker:priv GenerateShoppingList {
-    has meal_description: str;
+    has meal_description: str,
+        reports: list[list[ShoppingItem]] = [];
 
     can generate with Root entry {
         visit [-->];
@@ -137,7 +137,8 @@ walker:priv GenerateShoppingList {
 }
 
 walker:priv GetShoppingList {
-    has items: list = [];
+    has items: list[ShoppingItem] = [],
+        reports: list[list[ShoppingItem]] = [];
 
     can collect with Root entry {
         visit [-->];

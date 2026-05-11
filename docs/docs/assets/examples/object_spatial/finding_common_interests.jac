@@ -16,7 +16,6 @@ walker FindCommonInterests {
     can find_common with Person entry {
         if here == self.target_person {
             return;  # Skip self
-
         }
 
         # Find shared interests

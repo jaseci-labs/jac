@@ -1,18 +1,12 @@
 """
 Implementations for enum type checking utilities.
 """
-import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.compiler.type_system { types }
 import from jaclang.jac0core.diagnostics { E1001 }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.type_system.type_evaluator {
-            TypeEvaluator,
-            PrefetchedTypes
-        }
-    }
+import type from jaclang.compiler.type_system.type_evaluator {
+    TypeEvaluator,
+    PrefetchedTypes
 }
 
 """Check if a name should be excluded from enum membership."""
