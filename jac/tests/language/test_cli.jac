@@ -142,9 +142,7 @@ test "diagnostics flag" {
         sys.stderr = sys.__stderr__;
     }
     combined = captured_out.getvalue() + captured_err.getvalue();
-    assert "'new' is not supported in Jac" in combined , (
-        "Detailed errors should appear by default"
-    );
+    assert "Missing ';'" in combined , ("Detailed errors should appear by default");
     assert result == 1 , "Should return exit code 1 on errors";
 
     # diagnostics="all": errors shown
@@ -159,7 +157,7 @@ test "diagnostics flag" {
         sys.stderr = sys.__stderr__;
     }
     combined2 = captured_out2.getvalue() + captured_err2.getvalue();
-    assert "'new' is not supported in Jac" in combined2 , (
+    assert "Missing ';'" in combined2 , (
         "Detailed errors should appear with diagnostics=all"
     );
     assert result2 == 1 , "Should return exit code 1 on errors";
@@ -176,7 +174,7 @@ test "diagnostics flag" {
         sys.stderr = sys.__stderr__;
     }
     combined3 = captured_out3.getvalue() + captured_err3.getvalue();
-    assert "'new' is not supported in Jac" not in combined3 , (
+    assert "Missing ';'" not in combined3 , (
         "Errors should not appear with diagnostics=none"
     );
     assert result3 == 0 , "Should return exit code 0 with diagnostics=none";
@@ -284,7 +282,7 @@ test "jac cli error output has no raw ansi codes" {
     }
     output = captured_output.getvalue();
     # Ensure the error was actually reported
-    assert "'new' is not supported in Jac" in output;
+    assert "Missing ';'" in output;
     # Raw ANSI escape codes (\x1b[) must not appear in error output.
     # The console layer handles styling; pretty_print should not inject raw codes.
     assert "\x1b[" not in output , f"Raw ANSI escape codes found in error output:\n{repr(
