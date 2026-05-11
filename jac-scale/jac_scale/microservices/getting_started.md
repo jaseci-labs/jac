@@ -1,8 +1,7 @@
 # Get Started - jac-scale microservices on Kubernetes
 
 Fastest path from zero to a microservice topology running on a real K8s
-cluster on your laptop. Config reference is [docs.md](docs.md); when
-things break, see [troubleshooting.md](troubleshooting.md).
+cluster on your laptop. Config reference is [docs.md](docs.md).
 
 ## Prereqs
 

@@ -35,10 +35,8 @@ base_route_app = "app"
 enabled = true
 gateway_port = 8000
 gateway_host = "0.0.0.0"
-# Diagnostic: 5-min boot windows so we can rule out "service is still
-# loading" as the cause of CI flakes vs. an actual hang. If CI goes
-# green with these values, we know the historical 20s / 30s ceilings
-# were the only thing in the way. Defaults are 60s / 90s / 10s.
+# 5-min boot windows to rule out slow-start as the cause of flakes
+# (defaults are 60s / 90s / 10s).
 boot_health_timeout = 300.0
 boot_max_wait = 300
 health_monitor_interval = 10.0

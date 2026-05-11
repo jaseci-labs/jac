@@ -476,13 +476,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent Deployment apply - read first, patch on hit, create on 404.
-
-    A patch on an existing Deployment triggers the K8s Deployment
-    controller's rolling update. The explicit
-    RollingUpdate { maxSurge: 1, maxUnavailable: 0 } in the manifest
-    surges a new pod before terminating the old one.
-    """
+    """Idempotent Deployment apply: read -> patch on hit, create on 404."""
     def _apply_or_replace_deployment(
         apps_v1: Any, namespace: str, manifest: dict[str, Any]
     ) {
@@ -741,13 +735,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return bundle;
     }
 
-    """Read drain_timeout_seconds from config (defaults to 10s).
-
-    Used to size `terminationGracePeriodSeconds` on the pod spec so K8s
-    waits at least as long as our drain middleware needs to flush
-    in-flight requests, plus a 5s cushion for uvicorn to exit AFTER
-    drain returns.
-    """
+    """Read drain_timeout_seconds (default 10s); used to size
+    terminationGracePeriodSeconds + uvicorn exit cushion."""
     def _drain_timeout -> int {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -758,11 +747,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Read per-service config from [...services.NAME], or {} if unset.
-
-    Returns a defensive dict copy. Read failure (e.g. no jac.toml in
-    tests) returns {} so the manifest builders fall through to defaults.
-    """
+    """Per-service config from [...services.NAME]; {} on read failure."""
     def _service_config(svc_name: str) -> dict[str, Any] {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -849,15 +834,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return (volumes, mounts);
     }
 
-    """Build PVC manifests for every PVC-mode shared volume.
-
-    Skips hostPath entries (no PVC needed) and entries with empty
-    name. Each PVC is named after the shared-volume's `name` (passed
-    through k8s_safe_name) so the volume references in pod specs
-    match. Default access_mode is ReadWriteOnce (works on every cluster
-    OOTB); users on multi-node clusters set ReadWriteMany when their
-    storage class supports it (NFS/EFS/Filestore).
-    """
+    """PVC manifests for PVC-mode shared volumes. Skips hostPath/empty
+    entries. PVC name = k8s_safe_name(vol.name). Default access_mode
+    ReadWriteOnce; multi-node clusters set ReadWriteMany."""
     def _build_shared_pvc_manifests -> dict[str, dict[str, Any]] {
         pvcs: dict[str, dict[str, Any]] = {};
         for vol in self._shared_volumes_config() {
@@ -948,12 +927,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Name of the Secret holding user `[plugins.scale.secrets]`.
-
-    Centralized so _build_user_secret_manifest, _build_service_pod_spec
-    (envFrom), and apply_manifests all reference the same name string
-    instead of recomputing it.
-    """
+    """Name of the Secret holding user `[plugins.scale.secrets]`."""
     def _user_secret_name -> str {
         return f"{self.k8s_config.app_name}-secrets";
     }
@@ -1111,13 +1085,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return out;
     }
 
-    """Apply per-service `image_tag` override if set.
-
-    Replaces the tag part of `repo/name:tag` URLs. Careful: registry
-    hostnames can have ports like `myregistry.io:5000/name:tag`, so
-    split on the LAST colon, then verify the part after it has no `/`
-    (that would mean it's actually a registry-port colon, not a tag).
-    """
+    """Apply per-service image_tag override (handles registry-port colons)."""
     def _resolve_image(image: str, svc_cfg: dict[str, Any]) -> str {
         tag = svc_cfg.get("image_tag");
         if not tag {
@@ -1135,21 +1103,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return f"{image[:idx]}:{tag}";
     }
 
-    """Readiness probe pointing at /healthz/ready.
-
-    Gates Endpoints membership (kube-proxy traffic). Tight cadence so
-    the pod is removed from rotation within ~10s of `is_draining()`
-    flipping true, which lets in-flight requests finish without new
-    arrivals. Tuning matches the local-mode drain_timeout_seconds
-    expectation: 5s period * 3 fails = ~15s before the pod is fully
-    out of Endpoints, well inside our default 60s graceful window.
-    """
+    """Readiness probe -> /healthz/ready; gates Endpoints. Tight cadence
+    so pod drops out of rotation within ~15s of drain start."""
     def _build_readiness_probe -> dict[str, Any] {
-        # Read cadences from KubernetesConfig so jac.toml's
-        # `[plugins.scale.kubernetes].readiness_initial_delay` /
-        # `readiness_period` actually take effect. Default values on
-        # KubernetesConfig (5/5) match the previously-hardcoded values,
-        # so no behavior change for users on default config.
+        # Cadences from [plugins.scale.kubernetes].readiness_*.
         cfg = self.k8s_config;
         return {
             "httpGet": {"path": "/healthz/ready", "port": cfg.container_port},
@@ -1160,20 +1117,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Liveness probe pointing at /healthz/live.
-
-    Gates pod restart. Liveness is deliberately MORE lenient than
-    readiness because restarting a pod is expensive and can cascade
-    (a bad release where every replica trips liveness restarts the
-    whole service mid-flight). Liveness should only fail when the
-    process is genuinely hung - which is why /healthz/live checks
-    nothing other than dispatcher responsiveness. Longer initialDelay
-    + period give cold-start traffic a chance to settle.
+    """Liveness probe -> /healthz/live; gates pod restart. More lenient
+    than readiness (restart cascades hurt; only fail on a hung process).
     """
     def _build_liveness_probe -> dict[str, Any] {
-        # read cadences from KubernetesConfig so jac.toml's
-        # `[plugins.scale.kubernetes].liveness_initial_delay` /
-        # `liveness_period` / `liveness_failure_threshold` take effect.
+        # Cadences from [plugins.scale.kubernetes].liveness_*.
         # Real apps with slow first-boot (jacBuilder: jac compile +
         # heavy imports take 60-90s) need to bump initial_delay; without
         # this they'd be killed before reaching Ready.
@@ -1187,29 +1135,15 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """PreStop hook that sleeps before SIGTERM-induced shutdown.
-
-    Bridges the kube-proxy endpoint-propagation gap. Kubelet sends
-    SIGTERM and updates the Endpoints object simultaneously, but
-    other nodes' kube-proxy tables don't reflect the removal for
-    a few seconds; without this sleep, the pod stops accepting work
-    BEFORE remote kube-proxy stops sending work, producing 503s.
-    """
+    """PreStop sleep bridges the kube-proxy endpoint-propagation gap so
+    the pod doesn't stop accepting work before remote nodes stop sending."""
     def _build_prestop_hook -> dict[str, Any] {
         return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
     }
 
-    """Build the image once and emit per-service pod-spec stubs.
-
-    Returns a dict keyed by service name (plus `GATEWAY_NAME` for the
-    gateway). Each value is a partial PodSpec (container list with
-    image, env, ports). `generate_manifests` lifts these into full
-    Deployment + Service manifests.
-
-    The image build path delegates to `_handle_image_registry` from
-    `KubernetesTarget`, so `app_config.build = False` short-circuits to
-    the configured python_image fallback (handy for tests).
-    """
+    """Build the image once, emit per-service pod-spec stubs keyed by
+    service name (+ GATEWAY_NAME). `generate_manifests` lifts these
+    into full Deployment + Service manifests."""
     def generate_service_pod_specs(app_config: AppConfig) -> dict[str, dict[str, Any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
@@ -1257,14 +1191,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                     f"auto-build path configured.\n"
                     f"  - You're running `jac start --scale` from a fixture "
                     f"dir meant for the e2e script, not direct deploy.\n\n"
-                    f"Fix:\n"
-                    f"  - For testing the microservice deployer itself, use the bundled script:\n"
-                    f"      bash jac-scale/scripts/k8s_microservice_real_e2e.sh\n"
-                    f"  - For your own app, see the 'Pods deploy but "
-                    f"kubectl logs shows jac: command not found' section "
-                    f"in jac-scale/jac_scale/microservices/troubleshooting.md\n"
-                    f"  - Pre-set [plugins.scale.kubernetes].docker_image_name "
-                    f"in jac.toml if you've already built an image."
+                    f"Fix: drop a `Dockerfile.microservice` in your project root, "
+                    f"or pre-set [plugins.scale.kubernetes].docker_image_name "
+                    f"in jac.toml if the image is already built."
                 );
             }
         }
@@ -1285,24 +1214,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return specs;
     }
 
-    """Thin delegator to module-level `k8s_safe_name`.
-
-    Kept as a method so existing tests calling `target._k8s_safe_name(...)`
-    keep working without churn. `KubernetesDeployer` uses the
-    module-level helper directly to avoid needing a target instance.
-    """
+    """Thin method delegator to module-level `k8s_safe_name` (test ergonomics)."""
     def _k8s_safe_name(svc_name: str) -> str {
         return k8s_safe_name(svc_name);
     }
 
-    """Build a Deployment manifest wrapping the pod-spec.
-
-    Replica count comes from `[plugins.scale.microservices.services.NAME].replicas`,
-    defaulting to 1. Labels match the convention used by
-    `KubernetesTarget` for the monolith path so existing operator
-    dashboards / Prometheus scrapes discover microservice pods the
-    same way.
-    """
+    """Deployment manifest wrapping the pod-spec. Replicas from
+    [...services.NAME].replicas (default 1). Labels match the monolith
+    convention so existing dashboards discover microservice pods."""
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, Any]
     ) -> dict[str, Any] {
@@ -1340,13 +1259,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Build a ClusterIP Service manifest paired with the Deployment.
-
-    Stays ClusterIP - inter-service traffic stays inside the cluster and
-    external traffic comes through the gateway via the optional Ingress.
-    Selector matches the Deployment's pod labels so kube-proxy routes
-    to ready pods only.
-    """
+    """ClusterIP Service paired with the Deployment. External traffic
+    comes through the gateway via the optional Ingress."""
     def _build_service_manifest(svc_name: str) -> dict[str, Any] {
         k8s_name = self._k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
@@ -1355,17 +1269,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             "selector": {"app": k8s_name},
             "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
         };
-        # gateway-only sticky sessions for WebSocket traffic.
-        # Without sessionAffinity, kube-proxy round-robins TCP
-        # connections across gateway replicas, which breaks WS reconnects
-        # (the new connection lands on a different pod that doesn't have
-        # session state). ClientIP-based stickiness is the standard fix
-        # and the only one that works at the Service layer; for true
-        # cookie-based stickiness users need an Ingress controller that
-        # supports it (annotation-driven, controller-specific).
-        # Service pods stay round-robin since their handlers are
-        # stateless wrt connections (each request is independent through
-        # the gateway).
+        # Gateway-only ClientIP stickiness so WS reconnects land on the
+        # same pod. Service pods stay round-robin (stateless wrt conn).
         if svc_name == GATEWAY_NAME {
             spec["sessionAffinity"] = "ClientIP";
             spec["sessionAffinityConfig"] = {"clientIP": {"timeoutSeconds": 10800}};
@@ -1382,14 +1287,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Build an HPA targeting the Deployment. Per-service
-    overrides at `[...services.NAME.hpa]`.
-
-    Returns None when `hpa.enabled = false` so the user can opt OUT of
-    autoscaling for services that need fixed replica counts (e.g. a
-    leader-only worker, or a stateful service tied to PVCs that don't
-    multiplex).
-    """
+    """HPA targeting the Deployment; overrides at [...services.NAME.hpa].
+    Returns None on `hpa.enabled=false` (opt out for leader-only/stateful)."""
     def _build_hpa_manifest(svc_name: str) -> dict[str, Any] | None {
         cfg: dict[str, Any] = self._service_config(svc_name).get("hpa", {});
         if not cfg.get("enabled", True) {
@@ -1491,14 +1390,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Build a PodDisruptionBudget matching the Deployment pods.
-    Per-service overrides at `[...services.NAME.pdb]`.
-
-    Returns None when `pdb.enabled = false`. Useful for services that
-    are explicitly OK with full eviction during node maintenance, or
-    for single-replica services where a PDB just blocks routine
-    cluster operations without giving real HA value.
-    """
+    """PDB matching the Deployment; overrides at [...services.NAME.pdb].
+    Returns None on `pdb.enabled=false`."""
     def _build_pdb_manifest(svc_name: str) -> dict[str, Any] | None {
         cfg: dict[str, Any] = self._service_config(svc_name).get("pdb", {});
         if not cfg.get("enabled", True) {
@@ -1609,21 +1502,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return spec;
     }
 
-    """Per-service pod-spec. Thin delegator to `_build_pod_spec`.
-
-    Kept as a separate method so existing tests that exercise
-    `_build_service_pod_spec` directly keep working without churn.
-    """
+    """Per-service pod-spec (thin delegator)."""
     def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
         return self._build_pod_spec(svc_name, image);
     }
 
-    """Gateway pod-spec. Thin delegator to `_build_pod_spec`.
-
-    Same image as services; entrypoint selects gateway-mode based on
-    `JAC_SV_NAME == GATEWAY_NAME`. The user can tune the gateway via
-    `[...services.__gateway__]` just like a regular service.
-    """
+    """Gateway pod-spec (same image, entrypoint selects via JAC_SV_NAME)."""
     def _build_gateway_pod_spec(image: str) -> dict[str, Any] {
         return self._build_pod_spec(GATEWAY_NAME, image);
     }

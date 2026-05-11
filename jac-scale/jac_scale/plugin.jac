@@ -123,20 +123,7 @@ def _scale_pre_hook(context: HookContext) -> None {
                 "Installing Jaseci packages from repository (experimental mode)..."
             );
         } elif target == "kubernetes-microservice" {
-            # Detect developer-checkout (uses Dockerfile.microservice.exp)
-            # vs end-user PyPI install so the log line matches reality.
-            import from jac_scale.microservices._image_build { find_jaseci_repo_root }
-            repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
-            if repo is not None {
-                console.print(
-                    f"Preparing microservice deployment "
-                    f"(jaseci local source: {repo})..."
-                );
-            } else {
-                console.print(
-                    "Preparing microservice deployment (jaseci from PyPI)..."
-                );
-            }
+            console.print("Preparing microservice deployment (jaseci from PyPI)...");
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
