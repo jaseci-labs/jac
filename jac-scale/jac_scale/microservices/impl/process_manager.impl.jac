@@ -392,9 +392,7 @@ def _health_monitor_loop(pm: Any, stop_event: Any, interval: float) -> None {
 }
 
 
-impl ServiceProcessManager.start_health_monitor(
-    interval: float | None = None
-) -> None {
+impl ServiceProcessManager.start_health_monitor(interval: float | None = None) -> None {
     if (
         self._health_monitor_thread is not None
         and self._health_monitor_thread.is_alive()

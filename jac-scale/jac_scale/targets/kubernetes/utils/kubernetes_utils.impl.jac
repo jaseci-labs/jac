@@ -620,17 +620,13 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
                             namespace=namespace, field_selector=field_sel
                         );
                         if events.items {
-                            console.print(
-                                f"--- {pod.metadata.name} events ---"
-                            );
+                            console.print(f"--- {pod.metadata.name} events ---");
                             for ev in events.items {
                                 console.print(
                                     f"  [{ev.type}] {ev.reason}: {ev.message}"
                                 );
                             }
-                            console.print(
-                                f"--- end of {pod.metadata.name} events ---"
-                            );
+                            console.print(f"--- end of {pod.metadata.name} events ---");
                         }
                     } except Exception as ev_err {
                         console.print(
