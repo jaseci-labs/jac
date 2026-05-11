@@ -41,10 +41,10 @@ obj EventStreamBroker {
     """Publish an event. `key` partitions on Kafka; ignored on simple brokers."""
     def publish(topic: str, event: Event, key: str | None = None) -> None;
 
-    """Register a handler for a topic (push delivery).
+    """Register a handler for a topic (push delivery). Internal API; user code should use the @subscribe decorator instead.
     `group` shares load; handler completion acks; raise triggers retry. `start_from` ('latest' | 'earliest' | broker-specific position token) is a one-shot bookmark applied only when the consumer group is first created.
     """
-    def subscribe(
+    def register_handler(
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,

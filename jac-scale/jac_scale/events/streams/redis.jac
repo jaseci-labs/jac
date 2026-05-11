@@ -326,7 +326,7 @@ obj RedisEventStream(EventStreamBroker) {
         }
     }
 
-    def subscribe(
+    def register_handler(
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,

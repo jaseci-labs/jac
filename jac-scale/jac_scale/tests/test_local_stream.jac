@@ -104,7 +104,7 @@ test "subscribe handler receives published events" {
         done.set();
     }
 
-    b.subscribe("subs", handler, group="t_sub");
+    b.register_handler("subs", handler, group="t_sub");
     time.sleep(0.1);
     b.publish("subs", Event(event_type="ping", data={"n": 7}));
 
@@ -139,7 +139,7 @@ test "retry exhaustion routes to dlq stream" {
         raise RuntimeError("nope");
     }
 
-    b.subscribe("dlqtest", always_fails, group="t_dlq");
+    b.register_handler("dlqtest", always_fails, group="t_dlq");
     time.sleep(0.1);
     b.publish("dlqtest", Event(event_type="boom", data={"n": 1}));
 
@@ -177,7 +177,7 @@ test "async handler triggers retry path with TypeError" {
         attempts.append(1);
     }
 
-    b.subscribe("asyncs", async_handler, group="t_async");
+    b.register_handler("asyncs", async_handler, group="t_async");
     time.sleep(0.1);
     b.publish("asyncs", Event(event_type="x"));
 

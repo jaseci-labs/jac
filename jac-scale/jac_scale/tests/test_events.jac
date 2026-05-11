@@ -22,7 +22,7 @@ obj _ExplodingBroker(EventStreamBroker) {
         raise RuntimeError("boom");
     }
 
-    def subscribe(
+    def register_handler(
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,
@@ -108,7 +108,7 @@ obj _CapturingBroker(EventStreamBroker) {
         self.last_event = event;
     }
 
-    def subscribe(
+    def register_handler(
         topic: str,
         handler: Callable[[Event], Any],
         group: str | None = None,

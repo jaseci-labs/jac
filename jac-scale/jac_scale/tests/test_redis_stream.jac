@@ -146,7 +146,7 @@ test "subscribe handler receives published events" {
         done.set();
     }
 
-    b.subscribe("subs", handler, group="t_sub");
+    b.register_handler("subs", handler, group="t_sub");
     # Give the consumer thread a beat to issue its first XREADGROUP.
     time.sleep(0.2);
     b.publish("subs", Event(event_type="ping", data={"n": 7}));
@@ -184,7 +184,7 @@ test "retry exhaustion routes to dlq stream" {
         raise RuntimeError("nope");
     }
 
-    b.subscribe("dlqtest", always_fails, group="t_dlq");
+    b.register_handler("dlqtest", always_fails, group="t_dlq");
     time.sleep(0.2);
     b.publish("dlqtest", Event(event_type="boom", data={"n": 1}));
 

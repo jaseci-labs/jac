@@ -201,7 +201,7 @@ impl JacAPIServerCore._setup_events -> None {
     subs = get_subscriptions();
     for entry in subs {
         try {
-            self._broker.subscribe(
+            self._broker.register_handler(
                 entry.topic,
                 entry.handler,
                 group=entry.group,
@@ -209,7 +209,7 @@ impl JacAPIServerCore._setup_events -> None {
                 start_from=entry.start_from
             );
         } except Exception as e {
-            logger.error(f"Failed to subscribe handler to '{entry.topic}': {e}");
+            logger.error(f"Failed to register handler for '{entry.topic}': {e}");
         }
     }
 
