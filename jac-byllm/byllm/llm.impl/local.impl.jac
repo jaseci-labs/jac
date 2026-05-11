@@ -13,6 +13,7 @@ import from byllm.local_runtime {
     filter_params
 }
 import from byllm.model_cache { ensure_model }
+import from byllm.config_loader { get_byllm_config }
 
 impl LocalLLM.postinit -> None {
     a = parse_alias(self.model_name);
@@ -107,5 +108,15 @@ impl LocalLLM.model_call_with_stream(params: dict) -> Generator[object, None, No
 }
 
 impl LocalLLM._get_ctx_window(call_params: dict) -> int {
+    override = int(
+        call_params.get("ctx_window")
+        or self.ctx_window
+        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+        or int(self.config.get("n_ctx", 0))
+        or 0
+    );
+    if override > 0 {
+        return override;
+    }
     return int(self.spec.get("n_ctx", 4096));
 }

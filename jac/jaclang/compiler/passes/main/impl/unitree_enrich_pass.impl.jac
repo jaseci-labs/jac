@@ -1,22 +1,16 @@
 """Implementation of UniTreeEnrichPass and _typebase_to_tag()."""
-import from typing { TYPE_CHECKING }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.type_system.types {
-            TypeBase,
-            ClassType,
-            NeverType,
-            UnknownType,
-            AnyType,
-            TypeVarType,
-            FunctionType,
-            ModuleType,
-            UnionType,
-            OverloadedType,
-            EnumMemberType
-        }
-    }
+import type from jaclang.compiler.type_system.types {
+    TypeBase,
+    ClassType,
+    NeverType,
+    UnknownType,
+    AnyType,
+    TypeVarType,
+    FunctionType,
+    ModuleType,
+    UnionType,
+    OverloadedType,
+    EnumMemberType
 }
 
 impl _typebase_to_tag(t: Any) -> (str | None) {

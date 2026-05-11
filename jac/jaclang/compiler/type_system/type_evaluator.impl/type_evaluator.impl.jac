@@ -1777,16 +1777,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                                 type=str(filter_type)
                             );
                         }
-
-                        left_type = self.get_type_of_expression(cmp.left);
-                        right_type = self.get_type_of_expression(cmp.rights[0]);
-                        # TODO: Check if those two types are comparable.
-                        # if  not self.???(right_type, left_type) {
-                        #     self.add_diagnostic(
-                        #         cmp.right,
-                        #         f'Type "{right_type}" is not comparable to type "{left_type}"',
-                        #     );
-                        # }
+                        # Delegate to the CompareExpr case so each (left, op,
+                        # right) triple is validated against the resolved
+                        # field type — emits E1110 / E1111 for incompatible
+                        # operands. The bool result is unused.
+                        self.get_type_of_expression(cmp);
                     }
                     # Return list[FilterType] — the filter narrows elements to the given type.
                     if self.prefetch and self.prefetch.list_class {
@@ -1956,16 +1951,29 @@ impl TypeEvaluator._get_type_of_expression_core(
 
         case uni.EdgeRefTrailer():
             # Edge traversal: [node-->], [node<--], [node->:Edge:->], etc.
-            # Returns list[NodeArchetype] (default) or list[EdgeArchetype] (edges_only).
-            # Two syntax forms place FilterCompr differently:
-            #   [root-->][?:Todo]  — FilterCompr is sibling in AtomTrailer (handled there)
-            #   [-->[?:Todo]]      — FilterCompr is in EdgeRefTrailer.chain (handled here)
+            # Result element type is determined by:
+            #   1. FilterCompr `[?:T]` directly in chain (e.g. [-->[?:Todo]])
+            #   2. EdgeOpRef typed-edge filter `->:T:->` — when edges_only,
+            #      the result element is T itself. Issue #5885 gap 6.
+            # Bare untyped traversals stay as `list[<Any>]` so visit, spawn,
+            # and other consumers retain their gradual-typing semantics.
             if self.prefetch and self.prefetch.list_class {
                 element_type: types.TypeBase = types.AnyType();
                 for chain_item in expr.chain {
                     if isinstance(chain_item, uni.FilterCompr) and chain_item.f_type {
                         ft = self.get_type_of_expression(chain_item.f_type);
                         if isinstance(ft, types.ClassType) {
+                            element_type = self._convert_to_instance(ft);
+                        }
+                    } elif (
+                        isinstance(chain_item, uni.EdgeOpRef)
+                        and expr.edges_only
+                        and chain_item.filter_cond is not None
+                        and chain_item.filter_cond.f_type is not None
+                    ) {
+                        # `[edge ... ->:T:-> ...]` resolves to list[T].
+                        ft = self.get_type_of_expression(chain_item.filter_cond.f_type);
+                        if isinstance(ft, types.ClassType) and ft.is_edge_type() {
                             element_type = self._convert_to_instance(ft);
                         }
                     }
@@ -3334,6 +3342,7 @@ impl TypeEvaluator._prefetch_types{
     self.prefetch.final_class = get_jac_builtin_class("Final");
     self.prefetch.node_class = get_jac_builtin_class("Node");
     self.prefetch.walker_class = get_jac_builtin_class("Walker");
+    self.prefetch.path_class = get_jac_builtin_class("OPath");
     self.prefetch.jsx_element_class = get_jac_builtin_class("JsxElement");
     self.prefetch.html_common_props_class = get_jac_builtin_class("_HtmlCommonProps");
     self.prefetch.jsx_intrinsic_elements_class = get_jac_builtin_class(
@@ -4030,7 +4039,11 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
     if callable_key := self._extract_callable_info(condition) {
         return ConditionInfo(kind=NarrowingKind.CALLABLE, key=callable_key,);
     }
-    # 3-4. x is None / x is not None
+    # 3-4. x is None / x is not None / x == None / x != None
+    # `==`/`!=` against `None` narrow identically to `is`/`is not None` —
+    # this matches Pyright/mypy/TypeScript and the W2058 lint already nudges
+    # users toward `is`/`is not`, so soundness must not depend on which form
+    # they use.
     if (
         isinstance(condition, uni.CompareExpr)
         and len(condition.ops) == 1
@@ -4040,9 +4053,9 @@ impl TypeEvaluator.classify_condition(condition: uni.Expr) -> ConditionInfo | No
         narrowing_key = self.create_key_for_reference(condition.left);
         if narrowing_key is not None {
             op_name = condition.ops[0].name;
-            if op_name == Tok.KW_IS {
+            if op_name == Tok.KW_IS or op_name == Tok.EE {
                 return ConditionInfo(kind=NarrowingKind.NONE_IS, key=narrowing_key);
-            } elif op_name == Tok.KW_ISN {
+            } elif op_name == Tok.KW_ISN or op_name == Tok.NE {
                 return ConditionInfo(kind=NarrowingKind.NONE_IS_NOT, key=narrowing_key);
             }
         }

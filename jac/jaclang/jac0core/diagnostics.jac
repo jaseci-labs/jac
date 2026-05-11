@@ -131,6 +131,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "JavaScript arrow function syntax ('=>') is not supported in Jac",
          help="Use Jac lambda syntax instead: 'lambda e: ChangeEvent { ... }' or 'lambda x: int : x + 1'."
      ),
+     E0026 = _err(
+         "E0026",
+         Category.SYNTAX,
+         "Connect/disconnect operator requires a right operand",
+         help="Connect (`++>`, `+>:T:+>`) and disconnect (`del -->`, `del ->:T:->`) operators are binary -- supply the right-hand side, e.g. `a ++> b;` or `a del --> b;`."
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
@@ -422,7 +428,9 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E1093 = _err("E1093", Category.TYPE, "Cannot yield {actual}, expected {expected}"),
      E1094 = _err(
-         "E1094", Category.TYPE, "Visit target must be a node type, got {type}"
+         "E1094",
+         Category.TYPE,
+         "Visit target must be a node, edge, path, or collection thereof, got {type}"
      ),
      E1095 = _err(
          "E1095",
@@ -484,6 +492,35 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      ),
      E1113 = _err(
          "E1113", Category.TYPE, "Cannot report \"{actual}\", expected \"{expected}\""
+     ),
+     # Spawn operator errors
+     E1114 = _err(
+         "E1114",
+         Category.TYPE,
+         "Spawn operator requires a walker instance on one side, got \"{left}\" spawn \"{right}\""
+     ),
+     E1115 = _err(
+         "E1115",
+         Category.TYPE,
+         "Spawn target must be a node, edge, or collection thereof, got \"{type}\""
+     ),
+     # Ability trigger archetype-kind errors
+     E1116 = _err(
+         "E1116",
+         Category.TYPE,
+         "Walker ability trigger must be a node, edge, or `Root`, got \"{type}\""
+     ),
+     E1117 = _err(
+         "E1117",
+         Category.TYPE,
+         "Node/edge ability trigger must be a walker, got \"{type}\""
+     ),
+     E1118 = _err(
+         "E1118",
+         Category.TYPE,
+         "Connection {side} operand has unparameterized collection type \"{type}\";"
+         " element types cannot be verified — use \"{type}[NodeType]\" or pass a"
+         " concrete list of nodes instead"
      ),
      W1050 = _warn("W1050", Category.TYPE, "Unknown intrinsic JSX element '<{tag}>'"),
      W1051 = _warn(
@@ -621,6 +658,11 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2017",
          Category.SEMANTIC,
          "Duplicate implementation — an earlier impl already provides the body for this method."
+     ),
+     E2018 = _err(
+         "E2018",
+         Category.SEMANTIC,
+         "Undefined name '{name}' in {position} — this position requires a defined type"
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)
