@@ -153,7 +153,7 @@ impl JacAPIServerCore.postinit -> None {
 }
 
 """Initialize the event-streaming broker.
-RedisBroker if a redis URL resolves and the redis extra is installed, else LocalBroker. When events.enabled is false the broker stays unset and publish()/@subscribe no-op via the facade.
+RedisEventStream if a redis URL resolves and the redis extra is installed, else LocalEventStream. When events.enabled is false the broker stays unset and publish()/@subscribe no-op via the facade.
 """
 impl JacAPIServerCore._setup_events -> None {
     import from jac_scale.events.publisher { set_broker }
@@ -172,25 +172,25 @@ impl JacAPIServerCore._setup_events -> None {
     url = cfg.get('url') or db_cfg.get('redis_url');
 
     if url and is_optional_available('redis') {
-        import from jac_scale.events.brokers.redis { RedisBroker }
+        import from jac_scale.events.streams.redis { RedisEventStream }
         broker_cfg = dict(cfg);
         broker_cfg['url'] = url;
-        self._broker = RedisBroker(config=broker_cfg);
+        self._broker = RedisEventStream(config=broker_cfg);
         broker_kind = "redis";
     } else {
-        import from jac_scale.events.brokers.local { LocalBroker }
-        self._broker = LocalBroker(config=cfg);
+        import from jac_scale.events.streams.local { LocalEventStream }
+        self._broker = LocalEventStream(config=cfg);
         broker_kind = "local";
         if url is None {
             logger.warning(
-                "events enabled with no redis url; using LocalBroker "
+                "events enabled with no redis url; using LocalEventStream "
                 "(in-memory, single-pod). Set events.url or database.redis_url "
                 "for cross-pod streaming via Redis."
             );
         } else {
             logger.warning(
                 "events enabled and url set, but `redis` extra is not installed; "
-                "using LocalBroker. Run `pip install jac-scale[data]` to use Redis."
+                "using LocalEventStream. Run `pip install jac-scale[data]` to use Redis."
             );
         }
     }

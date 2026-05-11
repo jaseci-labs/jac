@@ -35,7 +35,7 @@ Whether you're developing locally with `jac start` or deploying to production wi
 ### 5. Event Streaming (Optional)
 
 - **Module-level API**: Call `publish("topic", event)` from any walker, function, or scheduled task; register handlers with `@subscribe("topic")`
-- **Two implementations**: `LocalBroker` (in-memory, no setup required) and `RedisBroker` (Redis Streams, durable, cross-pod). Picked automatically based on whether a Redis URL resolves.
+- **Two implementations**: `LocalEventStream` (in-memory, no setup required) and `RedisEventStream` (Redis Streams, durable, cross-pod). Picked automatically based on whether a Redis URL resolves.
 - **At-least-once delivery**: Configurable retry with automatic dead-letter topic per topic, replayable offsets via `start_from`.
 - **Off by default**: Enable via `[plugins.scale.events]` in `jac.toml`. See the [Event Streaming reference](../docs/docs/reference/plugins/jac-scale.md#event-streaming) for full details.
 

@@ -1,6 +1,6 @@
 """Contract tests for the event-streaming abstraction.
 
-Covers Event, the publisher facade, and @subscribe registry. LocalBroker behavior is in test_local_broker.jac; Redis-specific behavior is in test_redis_broker.jac.
+Covers Event, the publisher facade, and @subscribe registry. LocalEventStream behavior is in test_local_stream.jac; Redis-specific behavior is in test_redis_stream.jac.
 """
 
 import from jac_scale.events.broker {

@@ -34,8 +34,8 @@ glob _logger = logging.getLogger(__name__),
      DELIVERY_TOPIC_HEADER = "_jac_scale_delivery_topic",
      DELIVERY_GROUP_HEADER = "_jac_scale_delivery_group";
 
-"""Redis Streams broker. subscribe() spawns a daemon thread; stop(drain=True) joins all threads."""
-obj RedisBroker(EventStreamBroker) {
+"""Redis Streams implementation. subscribe() spawns a daemon thread; stop(drain=True) joins all threads."""
+obj RedisEventStream(EventStreamBroker) {
     has config: dict[str, Any] = {},
         _client: Redis | None = None,
         _consumer_name: str = "",

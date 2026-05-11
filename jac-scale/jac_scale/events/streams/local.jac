@@ -15,8 +15,8 @@ import time;
 
 glob _logger = logging.getLogger(__name__);
 
-"""LocalBroker. In-process append-only event log keyed by topic, with per-group offsets and competing-consumer fan-in within a group."""
-obj LocalBroker(EventStreamBroker) {
+"""LocalEventStream. In-process append-only event log keyed by topic, with per-group offsets and competing-consumer fan-in within a group."""
+obj LocalEventStream(EventStreamBroker) {
     has config: dict[str, Any] = {},
         _default_group: str = "jac-scale",
         _default_retry: RetryPolicy = RetryPolicy(),

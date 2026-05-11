@@ -1,4 +1,4 @@
-"""Unit tests for LocalBroker (in-memory event-streaming broker).
+"""Unit tests for LocalEventStream (in-memory event-streaming broker).
 
 No external dependencies; runs everywhere.
 """
@@ -6,10 +6,12 @@ No external dependencies; runs everywhere.
 import time;
 import threading;
 import from jac_scale.events.broker { Event, RetryPolicy }
-import from jac_scale.events.brokers.local { LocalBroker }
+import from jac_scale.events.streams.local { LocalEventStream }
 
 
-def _make_broker(group: str = "test_group", retry: dict | None = None) -> LocalBroker {
+def _make_broker(
+    group: str = "test_group", retry: dict | None = None
+) -> LocalEventStream {
     cfg: dict = {
         "consumer_group": group,
         "retry": retry
@@ -19,7 +21,7 @@ def _make_broker(group: str = "test_group", retry: dict | None = None) -> LocalB
             "dead_letter_suffix": ".dlq"
         }
     };
-    b = LocalBroker(config=cfg);
+    b = LocalEventStream(config=cfg);
     b.start();
     return b;
 }

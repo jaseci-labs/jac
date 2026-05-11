@@ -1795,8 +1795,8 @@ Optional event-streaming broker for emitting and consuming events between jac co
 
 Two implementations ship in-tree:
 
-- **`LocalBroker`** (in-memory): single-process, no persistence. Used automatically when no Redis URL is configured. Right for dev workstations, tests, and single-pod deployments.
-- **`RedisBroker`** (Redis Streams): durable, cross-pod. Used automatically when a Redis URL resolves and the `[data]` extra is installed.
+- **`LocalEventStream`** (in-memory): single-process, no persistence. Used automatically when no Redis URL is configured. Right for dev workstations, tests, and single-pod deployments.
+- **`RedisEventStream`** (Redis Streams): durable, cross-pod. Used automatically when a Redis URL resolves and the `[data]` extra is installed.
 
 You don't pick the broker; selection happens at startup based on what's available.
 
@@ -1808,7 +1808,7 @@ Add the section to `jac.toml`. Master switch is `enabled`; everything else has w
 [plugins.scale.events]
 enabled = true
 # Optional. If unset, falls back to [plugins.scale.database].redis_url; if neither
-# resolves, the in-memory LocalBroker is used.
+# resolves, the in-memory LocalEventStream is used.
 url = "redis://localhost:6379/0"
 consumer_group = "jac-scale"
 serializer = "json"
@@ -1819,7 +1819,7 @@ backoff_seconds = [1, 5, 30]
 dead_letter_suffix = ".dlq"
 ```
 
-To use Redis Streams you need the `[data]` extra: `pip install jac-scale[data]`. Without it, jac-scale silently uses `LocalBroker` and logs a warning at startup.
+To use Redis Streams you need the `[data]` extra: `pip install jac-scale[data]`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
 
 ### Publishing
 
@@ -1890,7 +1890,7 @@ def drain(broker: EventStreamBroker) -> int {
 | Key | Default | Description |
 |-----|---------|-------------|
 | `enabled` | `false` | Master switch. When `false`, all event-streaming calls are no-ops. |
-| `url` | `null` | Redis URL. If unset, falls back to `[plugins.scale.database].redis_url`. If neither is set or the `redis` extra is missing, `LocalBroker` (in-memory) is used. |
+| `url` | `null` | Redis URL. If unset, falls back to `[plugins.scale.database].redis_url`. If neither is set or the `redis` extra is missing, `LocalEventStream` (in-memory) is used. |
 | `consumer_group` | `jac-scale` | Default consumer group name when `@subscribe` does not specify one. |
 | `serializer` | `json` | Wire format. JSON only. |
 | `retry.max_attempts` | `3` | Number of delivery attempts before sending to the DLQ topic. |

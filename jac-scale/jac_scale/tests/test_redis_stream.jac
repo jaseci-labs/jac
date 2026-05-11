@@ -1,4 +1,4 @@
-"""Integration tests for RedisBroker against a real Redis (testcontainers).
+"""Integration tests for RedisEventStream against a real Redis (testcontainers).
 
 Covers roundtrip, ack semantics, push delivery, retry-to-DLQ, and health probe. Mirrors test_direct_db.jac for fixture style.
 """
@@ -9,7 +9,7 @@ import threading;
 import from testcontainers.redis { RedisContainer }
 import from jac_scale.db { close_all_db_connections, get_redis_client }
 import from jac_scale.events.broker { Event, RetryPolicy }
-import from jac_scale.events.brokers.redis { RedisBroker }
+import from jac_scale.events.streams.redis { RedisEventStream }
 
 
 def cleanup_connections {
@@ -33,7 +33,9 @@ glob REDIS_URI = (
      );
 
 
-def _make_broker(group: str = "test_group", retry: dict | None = None) -> RedisBroker {
+def _make_broker(
+    group: str = "test_group", retry: dict | None = None
+) -> RedisEventStream {
     cfg: dict = {
         "url": REDIS_URI,
         "consumer_group": group,
@@ -44,7 +46,7 @@ def _make_broker(group: str = "test_group", retry: dict | None = None) -> RedisB
             "dead_letter_suffix": ".dlq"
         }
     };
-    b = RedisBroker(config=cfg);
+    b = RedisEventStream(config=cfg);
     b.start();
     return b;
 }
