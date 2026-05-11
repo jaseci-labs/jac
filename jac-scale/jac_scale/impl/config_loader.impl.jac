@@ -295,6 +295,34 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
     };
 }
 
+"""Get event-streaming config from jac.toml.
+Reads `[plugins.scale.events]`. `enabled` is the master switch; `url` defaults to None so the caller can fall back to `database.redis_url`.
+"""
+impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, Any] {
+    import from jac_scale.events.broker { RetryPolicy }
+    config = self.load();
+    events_config = config.get('events', {});
+    retry_config = events_config.get('retry', {});
+    retry_defaults = RetryPolicy();
+    return {
+        'enabled': events_config.get('enabled', False),
+        'url': events_config.get('url'),
+        'consumer_group': events_config.get('consumer_group', 'jac-scale'),
+        'serializer': events_config.get('serializer', 'json'),
+        'retry': {
+            'max_attempts': retry_config.get(
+                'max_attempts', retry_defaults.max_attempts
+            ),
+            'backoff_seconds': retry_config.get(
+                'backoff_seconds', retry_defaults.backoff_seconds
+            ),
+            'dead_letter_suffix': retry_config.get(
+                'dead_letter_suffix', retry_defaults.dead_letter_suffix
+            )
+        }
+    };
+}
+
 """Get or create the global JacScaleConfig instance."""
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     global _scale_config_instance;

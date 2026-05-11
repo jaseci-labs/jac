@@ -1800,6 +1800,129 @@ This is the right pattern for autosave debouncing, leader-only reconciliation cy
 
 ---
 
+## Event Streaming
+
+Optional event-streaming broker for emitting and consuming events between jac code and external systems. Off by default. Provides durable log, consumer groups, replayable offsets via `start_from`, and at-least-once delivery with retries and a DLQ.
+
+Two implementations ship in-tree:
+
+- **`LocalEventStream`** (in-memory): single-process, no persistence. Used automatically when no Redis URL is configured. Right for dev workstations, tests, and single-pod deployments.
+- **`RedisEventStream`** (Redis Streams): durable, cross-pod. Used automatically when a Redis URL resolves and the `[data]` extra is installed.
+
+You don't pick the broker; selection happens at startup based on what's available.
+
+### Enabling
+
+Add the section to `jac.toml`. Master switch is `enabled`; everything else has working defaults.
+
+```toml
+[plugins.scale.events]
+enabled = true
+# Optional. If unset, falls back to [plugins.scale.database].redis_url; if neither
+# resolves, the in-memory LocalEventStream is used.
+url = "redis://localhost:6379/0"
+consumer_group = "jac-scale"
+serializer = "json"
+
+[plugins.scale.events.retry]
+max_attempts = 3
+backoff_seconds = [1, 5, 30]
+dead_letter_suffix = ".dlq"
+```
+
+To use Redis Streams you need the `[data]` extra: `pip install jac-scale[data]`. Without it, jac-scale silently uses `LocalEventStream` and logs a warning at startup.
+
+### Publishing
+
+```jac
+import from jac_scale.events.publisher { publish }
+import from jac_scale.events.broker { Event }
+
+walker place_order {
+    has order_id: int;
+    has amount: float;
+
+    can fire with Root entry {
+        publish("orders.placed", Event(
+            data={"order_id": self.order_id, "amount": self.amount},
+            trace_id="trace-1"
+        ));
+    }
+}
+```
+
+`publish()` is fire-and-forget. Errors from the broker are logged and swallowed so emit sites do not have to wrap calls in try/except. `event.event_type` auto-defaults to the topic when left empty, so the topic string only needs to appear once at the call site (set `event_type` explicitly only when it differs from the topic).
+
+### Subscribing (push)
+
+```jac
+import from jac_scale.events.subscriber { subscribe }
+import from jac_scale.events.broker { Event }
+
+@subscribe("orders.placed")
+def on_order_placed(event: Event) -> None {
+    print(event.event_type, event.data);
+}
+```
+
+Handlers register at import time. At server startup, the framework walks the registry and wires each handler into the active broker. A daemon consumer thread is spawned per subscription.
+
+`@subscribe` accepts optional `group=` and `retry=` arguments to override the defaults from `jac.toml`, plus `start_from=` to control where a brand-new consumer group begins reading. Default is `"latest"` (only events produced after the group is created); pass `"earliest"` to replay everything still retained, or a broker-specific position token (e.g. a Redis stream id like `"1700000000000-0"`) to resume from a specific offset. `start_from` is a one-time bookmark: existing groups always resume from their stored position and ignore this argument.
+
+```jac
+@subscribe("orders.placed", start_from="earliest")
+def replay_all(event: Event) -> None {
+    print("replaying", event.id);
+}
+```
+
+### Consuming (pull)
+
+```jac
+import from jac_scale.events.broker { EventStreamBroker }
+
+def drain(broker: EventStreamBroker) -> int {
+    batch = broker.consume(
+        "orders.placed", max_messages=10, timeout_seconds=2.0
+    );
+    for ev in batch {
+        # ... process ev ...
+        broker.ack(ev);
+    }
+    return len(batch);
+}
+```
+
+`consume()` blocks for up to `timeout_seconds` waiting for at least one event, then returns whatever has arrived (up to `max_messages`). Each event must be acked individually via `ack(event)` or the broker will redeliver it after its visibility timeout. `consume()` accepts the same `start_from=` argument as `subscribe()`; it only affects the first call that creates the consumer group, subsequent calls resume from the stored position.
+
+### Configuration reference
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Master switch. When `false`, all event-streaming calls are no-ops. |
+| `url` | `null` | Redis URL. If unset, falls back to `[plugins.scale.database].redis_url`. If neither is set or the `redis` extra is missing, `LocalEventStream` (in-memory) is used. |
+| `consumer_group` | `jac-scale` | Default consumer group name when `@subscribe` does not specify one. |
+| `serializer` | `json` | Wire format. JSON only. |
+| `retry.max_attempts` | `3` | Number of delivery attempts before sending to the DLQ topic. |
+| `retry.backoff_seconds` | `[1, 5, 30]` | Backoff delays per attempt index, clamped to the last value. |
+| `retry.dead_letter_suffix` | `.dlq` | Suffix appended to a topic name to form its dead-letter topic. |
+
+### Reliability semantics
+
+- **At-least-once delivery.** Handlers may run more than once for the same event. Make handlers idempotent, or dedupe on `event.id`.
+- **Retry.** A failing handler is retried `retry.max_attempts` times with delays from `retry.backoff_seconds`. The thread sleeps responsively to the broker stop event so shutdowns are not blocked by long backoffs.
+- **Dead-letter topic.** After retry exhaustion, the event is published to `<topic><retry.dead_letter_suffix>` and the original is acked so it is not redelivered indefinitely. The DLQ is a regular topic you can `consume()` like any other.
+- **Drain on shutdown.** On process exit, consumer threads are signaled to stop and joined under a 10-second deadline.
+
+### Operational notes
+
+- Each subscription spawns one daemon thread named `jac-scale-broker-<topic>-<group>` (Redis) or `jac-scale-local-<topic>-<group>` (Local). Inspect via standard threading tools.
+- Delivery metadata is exposed as first-class fields on `Event`: `event.delivery_id`, `event.delivery_topic`, `event.delivery_group`. Handlers that need them for idempotency keys, structured logging, or dedup can read them directly without importing broker-specific constants. The fields are broker-managed: producers leave them `None`, the broker sets them on `consume()` / push delivery, and they are not serialized to the wire.
+- Startup logs `Events broker enabled (kind={local|redis}, subscriptions=N)` so it is easy to confirm wiring at a glance.
+- The wire format is CloudEvents 1.0 valid (`specversion`, `type`, `data`, `id`, `source`, `time`, plus `trace_id` and `headers` as extensions), so strict CE consumers (Argo Events, Knative Eventing, CE-aware Kafka tooling) accept it.
+
+---
+
 ## Database and Dashboards
 
 ### Auto-Provisioning

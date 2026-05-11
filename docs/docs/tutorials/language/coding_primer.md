@@ -1367,7 +1367,7 @@ obj Character {
     has health: int = 100;
     has strength: int = 10;
 
-    def attack(target: object) {
+    def attack(target: Character) {
         damage = self.strength;
         print(f"{self.name} attacks {target.name} for {damage} damage!");
         target.take_damage(damage);
@@ -1394,7 +1394,7 @@ obj Mage(Character) {
         self.strength = 15;
     }
 
-    def cast_spell(target: object) {
+    def cast_spell(target: Character) {
         damage = self.strength * 2;  # Spells do double damage
         print(f"{self.name} casts fireball at {target.name} for {damage} damage!");
         target.take_damage(damage);
@@ -1571,9 +1571,9 @@ In most languages, you'd do something like this:
 # Traditional OOP approach
 obj Person {
     has name: str;
-    has friends: list = [];  # List of other Person objects
+    has friends: list[Person] = [];  # List of other Person objects
 
-    def add_friend(person: object) {
+    def add_friend(person: Person) {
         self.friends.append(person);
         person.friends.append(self);  # Make it mutual
     }
@@ -1836,6 +1836,10 @@ with entry {
 <div class="code-block">
 
 ```jac
+node Person {
+    has name: str;
+}
+
 walker MyWalker {
     # Runs when walker spawns at root
     can start with Root entry {
@@ -1870,6 +1874,10 @@ walker MyWalker {
 <div class="code-block">
 
 ```jac
+node Person {
+    has name: str;
+}
+
 walker Explorer {
     can explore with Person entry {
         print(f"Visiting {here.name}");
@@ -2703,6 +2711,7 @@ Now that you have the foundation, here are advanced Jac features to explore:
 
 4. **Context Managers** (Resource management)
 
+   <!-- jac-skip: illustrative; uses Python `with` syntax not yet supported in Jac -->
    <div class="code-block">
 
    ```jac
@@ -2715,6 +2724,7 @@ Now that you have the foundation, here are advanced Jac features to explore:
 
 5. **Advanced Edge Filtering**
 
+   <!-- jac-skip: illustrative; `here` is only valid inside a walker ability -->
    <div class="code-block">
 
    ```jac
@@ -2731,7 +2741,7 @@ Now that you have the foundation, here are advanced Jac features to explore:
    ```jac
    import from byllm.lib { Model }
 
-   glob llm = Model(model="gpt-4");
+   glob llm = Model(model_name="gpt-4o");
 
    def generate_summary(text: str) -> str by llm();
    ```

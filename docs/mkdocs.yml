@@ -83,6 +83,8 @@ nav:
       - Codebase Guide: "community/codebase-guide.md"
       - Breaking Changes: "community/breaking-changes.md"
       - PR Leaderboard: "community/contributors.md"
+      - Jac Playground: https://playground.jaseci.org/cl/app
+      - Jac GPT: https://jac-gpt.jaseci.org
       - Release Notes:
           - Jaclang: "community/release_notes/jaclang.md"
           - byLLM: "community/release_notes/byllm.md"
@@ -90,12 +92,12 @@ nav:
           - jac-scale: "community/release_notes/jac-scale.md"
           - jac-super: "community/release_notes/jac-super.md"
           - jac-mcp: "community/release_notes/jac-mcp.md"
-      - Internals:
-          - Import Patterns: "community/internals/jac_import_patterns.md"
-          - UniIR Nodes: "community/internals/uniir_node.md"
-          - JSX Client Architecture: "community/internals/jsx_client_serv_design.md"
 
-  - Showcase: "community/showcase.md"
+  - Internals:
+      - Abstractions Inventory: "internals/abstractions.md"
+      - Import Patterns: "internals/jac_import_patterns.md"
+      - UniIR Nodes: "internals/uniir_node.md"
+      - Compiler Architecture: "internals/compiler_architecture.md"
 
 theme:
   logo: "assets/logo.png"
@@ -290,6 +292,12 @@ plugins:
         reference/language/ecosystem.md: reference/index.md
         reference/plugins/index.md: reference/index.md
         tutorials/index.md: reference/index.md
+
+        # Internals promoted to top-level tab
+        community/internals/jac_import_patterns.md: internals/jac_import_patterns.md
+        community/internals/uniir_node.md: internals/uniir_node.md
+        community/internals/jsx_client_serv_design.md: internals/compiler_architecture.md
+        internals/jsx_client_serv_design.md: internals/compiler_architecture.md
 
 hooks:
   - scripts/handle_jac_compile_data.py

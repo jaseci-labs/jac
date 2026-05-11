@@ -1075,6 +1075,10 @@ obj _FakeScaleConfig {
     def get_monitoring_config -> dict {
         return {"namespace": "jac_scale", "histogram_buckets": None};
     }
+
+    def get_events_config -> dict {
+        return {"enabled": False};
+    }
 }
 
 

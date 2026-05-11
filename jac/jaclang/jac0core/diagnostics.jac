@@ -97,7 +97,8 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0012 = _err(
          "E0012",
          Category.SYNTAX,
-         "Use `Reflect.construct(target, argumentsList)` method to create new instances"
+         "Use the `new(target, ...args)` ambient builtin to create new instances",
+         help="`new` is a portable constructor: it lowers to `Cls(*args)` on the server and to `Reflect.construct(Cls, [args])` in cl blocks."
      ),
      E0013 = _err(
          "E0013",

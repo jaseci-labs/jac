@@ -378,13 +378,9 @@ impl InteropAnalysisPass._parse_only_source_module(
     self: InteropAnalysisPass, file_path: str
 ) -> Any {
     import from jaclang.jac0core.compiler { JacCompiler }
+    import from jaclang.jac0core.helpers { read_file_with_encoding }
     try {
-        f = open(file_path, 'r');
-        try {
-            src_text = f.read();
-        } finally {
-            f.close();
-        }
+        src_text = read_file_with_encoding(file_path);
         compiler_obj = JacCompiler();
         return compiler_obj.parse_str(
             source_str=src_text, file_path=file_path, target_program=self.prog

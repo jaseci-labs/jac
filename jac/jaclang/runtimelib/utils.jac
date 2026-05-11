@@ -7,9 +7,6 @@ import from pathlib { Path }
 import from types { UnionType }
 import from uuid { UUID }
 import jaclang.jac0core.unitree as uni;
-import from jaclang.jac0core.helpers {
-    read_file_with_encoding as read_file_with_encoding
-}
 import type from jaclang.jac0core.constructs { NodeArchetype }
 
 @contextmanager
