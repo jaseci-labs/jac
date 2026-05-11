@@ -120,8 +120,67 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.find_parent_of_type(uni.ModulePath) is not None {
             continue;
         }
+        # Issue #5885 gap 7: undefined names in OSP-shape positions
+        # (connect/disconnect typed-edge, ability trigger) are
+        # structural errors, not the stylistic W2001 warning.
+        # Skip backtick-escaped names — the escape form references
+        # runtime built-ins (e.g. `root) that fail symbol-table
+        # resolution today; promoting those would regress valid code.
+        if not name_nd.is_kwesc {
+            position = self._osp_shape_position(name_nd);
+            if position is not None {
+                self.emit(
+                    E2018, node_override=name_nd, name=name_nd.value, position=position
+                );
+                continue;
+            }
+        }
         self.emit(W2001, node_override=name_nd, name=name_nd.value);
     }
+}
+
+"""Return the OSP-shape position label for an unresolved Name, or None.
+
+Walks up the parent chain through transparent containers (tuple, union,
+attr-trailer) and reports the structural position when the chain
+reaches one of:
+
+    1. ConnectOp.conn_type            -> "connect typed-edge position"
+    2. DisconnectOp's edge_spec       -> "disconnect typed-edge position"
+       FilterCompr.f_type
+    3. EventSignature.arch_tag_info   -> "ability trigger position"
+
+These positions require a defined edge or archetype type — leaving the
+name unresolved breaks the program's runtime shape, not just hygiene."""
+impl StaticAnalysisPass._osp_shape_position(name_nd: uni.Name) -> (str | None) {
+    cur = name_nd;
+    parent = cur.parent;
+    # Bound the walk so a deeply-nested unresolved name in unrelated
+    # code doesn't accidentally collide with a structural ancestor.
+    for _ in range(8) {
+        if parent is None {
+            return None;
+        }
+        if isinstance(parent, uni.ConnectOp) and parent.conn_type is cur {
+            return "connect typed-edge position";
+        }
+        if isinstance(parent, uni.EventSignature) and parent.arch_tag_info is cur {
+            return "ability trigger position";
+        }
+        if isinstance(parent, uni.FilterCompr) and parent.f_type is cur {
+            edge_ref = parent.parent;
+            if (
+                isinstance(edge_ref, uni.EdgeOpRef)
+                and isinstance(edge_ref.parent, uni.DisconnectOp)
+            ) {
+                return "disconnect typed-edge position";
+            }
+            return None;
+        }
+        cur = parent;
+        parent = cur.parent;
+    }
+    return None;
 }
 
 """Detect unreachable code by scanning code blocks for statements after return/break/continue."""

@@ -31,6 +31,8 @@ import from jaclang.jac0core.diagnostics {
     E1095,
     E1112,
     E1113,
+    E1116,
+    E1117,
     W1036,
     W2014,
     E2015
@@ -87,4 +89,6 @@ class TypeCheckPass(UniPass) {
     def _enclosing_walker_report_elem_type(
         self: TypeCheckPass, nd: uni.UniNode
     ) -> object;
+
+    def _check_event_trigger_archetype(self: TypeCheckPass, nd: uni.Ability) -> None;
 }

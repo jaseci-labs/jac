@@ -634,3 +634,23 @@ test "bug_cast_union_instance" {
         "produce false-positive E1099 errors. "
     );
 }
+
+# =========================================================================
+# Bug #NONE-EQ: `x == None` / `x != None` did not narrow `T | None`.
+#
+# `is None` / `is not None` correctly narrowed Optional unions, but the
+# operator-equality forms fell through unhandled in classify_condition,
+# leaving attribute access on the narrowed branch typed as `T | None` and
+# producing spurious E1099 errors. Pyright, mypy, and TypeScript all
+# narrow on both forms; Jac now does too.
+# =========================================================================
+test "bug_none_eq_neq_narrowing" {
+    program = compile_and_check("checker_bug_eq_none_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`x != None` (true branch) and `x == None` (fall-through) must "
+        "narrow `T | None` to `T`, matching the existing `is`/`is not None` "
+        "behavior. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}

@@ -1,13 +1,11 @@
-"""Tests for the [package], [entrypoints], and [optional-dependencies] fields
-added to JacConfig in this branch (project/config.jac, impl/config.impl.jac).
-"""
+"""Tests for publishing fields in [project], [entrypoints], and [optional-dependencies]."""
 
 import from jaclang.project.config { JacConfig }
 
-# [package] parsing -------------------------------------------------------------------------
-test "parse package section populates PackageConfig" {
+# [project] publishing fields ---------------------------------------------------------------
+test "parse project section populates publishing fields" {
     toml_str = """
-[package]
+[project]
 name = "byllm"
 version = "0.6.4"
 description = "byLLM plugin"
@@ -17,81 +15,80 @@ keywords = ["llm", "jac"]
 readme = "README.md"
 """;
     cfg = JacConfig.from_toml_str(toml_str);
-    assert cfg.package is not None;
-    assert cfg.package.name == "byllm";
-    assert cfg.package.version == "0.6.4";
-    assert cfg.package.description == "byLLM plugin";
-    assert cfg.package.requires_python == ">=3.11";
-    assert cfg.package.license == "MIT";
-    assert cfg.package.keywords == ["llm", "jac"];
-    assert cfg.package.readme == "README.md";
+    assert cfg.project.name == "byllm";
+    assert cfg.project.version == "0.6.4";
+    assert cfg.project.description == "byLLM plugin";
+    assert cfg.project.requires_python == ">=3.11";
+    assert cfg.project.license == "MIT";
+    assert cfg.project.keywords == ["llm", "jac"];
+    assert cfg.project.readme == "README.md";
 }
 
-test "package authors and maintainers parsed as PersonConfig list" {
+test "project authors and maintainers parsed as PersonConfig list" {
     toml_str = """
-[package]
+[project]
 name = "p"
 version = "1.0.0"
 
-[[package.authors]]
+[[project.authors]]
 name = "Jason Mars"
 email = "jason@mars.ninja"
 
-[[package.maintainers]]
+[[project.maintainers]]
 name = "Jane Doe"
 email = "jane@example.com"
 """;
     cfg = JacConfig.from_toml_str(toml_str);
-    assert cfg.package is not None;
-    assert len(cfg.package.authors) == 1;
-    assert cfg.package.authors[0].name == "Jason Mars";
-    assert cfg.package.authors[0].email == "jason@mars.ninja";
-    assert cfg.package.maintainers[0].name == "Jane Doe";
+    assert len(cfg.project.authors) == 1;
+    assert cfg.project.authors[0].name == "Jason Mars";
+    assert cfg.project.authors[0].email == "jason@mars.ninja";
+    assert cfg.project.maintainers[0].name == "Jane Doe";
 }
 
-test "package include packages and data parsed" {
+test "project include packages and data parsed" {
     toml_str = """
-[package]
+[project]
 name = "p"
 version = "1.0.0"
 
-[package.include]
+[project.include]
 packages = ["byllm*"]
 
-[package.include.data]
+[project.include.data]
 byllm = ["*.jir"]
 """;
     cfg = JacConfig.from_toml_str(toml_str);
-    assert cfg.package is not None;
-    assert cfg.package.include.packages == ["byllm*"];
-    assert "byllm" in cfg.package.include.data;
-    assert "*.jir" in cfg.package.include.data["byllm"];
+    assert cfg.project.include.packages == ["byllm*"];
+    assert "byllm" in cfg.project.include.data;
+    assert "*.jir" in cfg.project.include.data["byllm"];
 }
 
-test "package section absent leaves cfg.package as None" {
+test "project without publishing fields still has empty defaults" {
     cfg = JacConfig.from_toml_str("[project]\nname = \"myproj\"\n");
-    assert cfg.package is None;
+    assert cfg.project.name == "myproj";
+    assert cfg.project.requires_python == "";
+    assert cfg.project.keywords == [];
+    assert cfg.project.maintainers == [];
 }
 
-test "package urls parsed" {
-    toml_str = '[package]\nname = "p"\nversion = "1.0.0"\n\n[package.urls]\nrepository = "https://github.com/user/p"\nhomepage = "https://p.dev"\n';
+test "project urls parsed" {
+    toml_str = '[project]\nname = "p"\nversion = "1.0.0"\n\n[project.urls]\nrepository = "https://github.com/user/p"\nhomepage = "https://p.dev"\n';
     cfg = JacConfig.from_toml_str(toml_str);
-    assert cfg.package is not None;
-    assert cfg.package.urls["repository"] == "https://github.com/user/p";
-    assert cfg.package.urls["homepage"] == "https://p.dev";
+    assert cfg.project.urls["repository"] == "https://github.com/user/p";
+    assert cfg.project.urls["homepage"] == "https://p.dev";
 }
 
-# [entrypoints] parsing -------------------------------------------------------------------------
+# [entrypoints] parsing -----------------------------------------------------------------------
 test "entrypoints parsed into nested dict" {
-    toml_str = '[package]\nname = "p"\nversion = "1.0.0"\n\n[entrypoints.jac]\nbyllm = "byllm.plugin:JacRuntime"\nbyllm_config = "byllm.plugin_config:Config"\n';
+    toml_str = '[project]\nname = "p"\nversion = "1.0.0"\n\n[entrypoints.jac]\nbyllm = "byllm.plugin:JacRuntime"\nbyllm_config = "byllm.plugin_config:Config"\n';
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.entrypoints["jac"]["byllm"] == "byllm.plugin:JacRuntime";
     assert cfg.entrypoints["jac"]["byllm_config"] == "byllm.plugin_config:Config";
 }
 
-# [optional-dependencies] parsing ----------------------------------------------------------------------
+# [optional-dependencies] parsing -------------------------------------------------------------
 test "optional-dependencies parsed into nested dict" {
-    toml_str = '[package]\nname = "p"\nversion = "1.0.0"\n\n[optional-dependencies.tools]\nwikipedia = "*"\n\n[optional-dependencies.video]\nopencv-python-headless = ">=4.0"\n';
+    toml_str = '[project]\nname = "p"\nversion = "1.0.0"\n\n[optional-dependencies.tools]\nwikipedia = "*"\n\n[optional-dependencies.video]\nopencv-python-headless = ">=4.0"\n';
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.optional_dependencies["tools"]["wikipedia"] == "*";
     assert cfg.optional_dependencies["video"]["opencv-python-headless"] == ">=4.0";

@@ -14,16 +14,10 @@ Annex files are discovered from:
 This enables the separation of interface and implementation, as well as test
 code organization.
 """
-import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.bccache { discover_annex_files, discover_variant_files }
 import from jaclang.jac0core.passes.transform { Transform }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import type from jaclang.jac0core.program { JacProgram }
 
 """Handles loading and attaching of annex files (.impl.jac, .test.jac)."""
 class JacAnnexPass(Transform[uni.Module, uni.Module]) {

@@ -364,7 +364,7 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
 
         src_dir: Path = Path(editable).resolve();
         console.print(
-            f"\n📦 Editable install: [cyan]{config.package.name}[/cyan] "
+            f"\n📦 Editable install: [cyan]{config.project.name}[/cyan] "
             f"from [dim]{src_dir}[/dim]",
             style="bold"
         );
@@ -762,7 +762,9 @@ impl script(name: str = '', list_scripts: bool = False) -> int {
     import from jaclang.project.config { get_config }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found. Run 'jac create <name>' to create a project."
+        );
         return 1;
     }
     if list_scripts or not name {
@@ -819,7 +821,9 @@ impl clean(
     import from jaclang.project.config { get_config }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found. Run 'jac create <name>' to create a project."
+        );
         return 1;
     }
     # Determine which directories to clean
@@ -1004,17 +1008,17 @@ impl bundle(output: str = "dist") -> int {
         );
         return 1;
     }
-    if config.package is None {
+    if config.project.name is None {
         console.error(
-            "No [package] section in jac.toml",
-            hint="Add [package] with name and version to use jac bundle."
+            "No project name in jac.toml",
+            hint="Add 'name' under [project] to use jac bundle."
         );
         return 1;
     }
 
     console.print(
-        f"\n📦 Publishing [cyan]{config.package.name}[/cyan] "
-        f"v{config.package.version}",
+        f"\n📦 Publishing [cyan]{config.project.name}[/cyan] "
+        f"v{config.project.version}",
         style="bold"
     );
 
