@@ -302,14 +302,30 @@ else
             echo "  WARN: minikube ip returned empty; skipping Ingress request"
         else
             HOST_HEADER="${INGRESS_HOST:-localhost}"
-            INGRESS_CODE=$(curl -s -o /dev/null \
-                -w "%{http_code}" \
-                --max-time 10 \
-                -H "Host: ${HOST_HEADER}" \
-                "http://${MINIKUBE_IP}/health" || echo "000")
+            # NGINX Ingress controller reloads its upstream config
+            # asynchronously when a Service's endpoints change. The
+            # gateway pod can be Ready (and port-forward + Service
+            # routing both work) while NGINX is still serving 503 from
+            # a stale upstream cache for a few seconds. Retry the
+            # Ingress curl up to ~30s before failing, so a transient
+            # propagation lag doesn't bring CI down.
+            INGRESS_CODE="000"
+            for attempt in $(seq 1 15); do
+                INGRESS_CODE=$(curl -s -o /dev/null \
+                    -w "%{http_code}" \
+                    --max-time 10 \
+                    -H "Host: ${HOST_HEADER}" \
+                    "http://${MINIKUBE_IP}/health" || echo "000")
+                if [ "${INGRESS_CODE}" = "200" ]; then
+                    break
+                fi
+                echo "  Ingress -> /health attempt ${attempt}/15 returned ${INGRESS_CODE}, retrying in 2s..."
+                sleep 2
+            done
             if [ "${INGRESS_CODE}" != "200" ]; then
-                echo "FAIL: Ingress -> /health expected 200, got '${INGRESS_CODE}'"
+                echo "FAIL: Ingress -> /health expected 200, got '${INGRESS_CODE}' (after 15 retries)"
                 kubectl describe ingress gateway-ingress -n "${NAMESPACE}" || true
+                kubectl get endpoints gateway-service -n "${NAMESPACE}" -o yaml || true
                 kubectl logs -n ingress-nginx -l app.kubernetes.io/component=controller --tail=30 || true
                 exit 1
             fi
