@@ -564,6 +564,29 @@ impl check_pods_restarted(namespace: str, app_name: str) -> bool {
                         f"Pod {pod.metadata.name} container "
                         f"{container.name} restarted and is not running (reason: {reason})"
                     );
+                    # Dump the previous-instance logs so CI failure output
+                    # shows the actual crash cause instead of just the K8s-
+                    # level CrashLoopBackOff reason. tail_lines=200 keeps
+                    # the dump bounded; previous=True targets the crashed
+                    # instance rather than the (possibly-restarting) current one.
+                    try {
+                        prev_logs = v1.read_namespaced_pod_log(
+                            name=pod.metadata.name,
+                            namespace=namespace,
+                            container=container.name,
+                            previous=True,
+                            tail_lines=200
+                        );
+                        console.print(
+                            f"--- {pod.metadata.name}/{container.name} previous logs (last 200 lines) ---"
+                        );
+                        console.print(prev_logs);
+                        console.print(f"--- end of {pod.metadata.name} logs ---");
+                    } except Exception as log_err {
+                        console.print(
+                            f"(could not fetch previous logs for {pod.metadata.name}: {log_err})"
+                        );
+                    }
                     return True;
                 }
             }
