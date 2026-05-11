@@ -1205,16 +1205,19 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid.append(conn_assign);
             }
         }
-        if not self.check(TokenKind.CARROW_R_P2) {
+        if self.match_tok(TokenKind.CARROW_R_P2) {
+            kid.append(self.make_uni_token(self.previous()));
+            return ConnectOp(
+                conn_type=conn_type,
+                conn_assign=conn_assign,
+                edge_dir=EdgeDir.OUT,
+                kid=kid
+            );
+        } else {
             self.emit_diag(E0027);
             self.synchronize();
             return None;
         }
-        end_uni = self.consume_uni(TokenKind.CARROW_R_P2);
-        kid.append(end_uni);
-        return ConnectOp(
-            conn_type=conn_type, conn_assign=conn_assign, edge_dir=EdgeDir.OUT, kid=kid
-        );
     }
     # Connect from: <++ or <+:Type:<+
     if self.match_tok(TokenKind.CARROW_L) {
