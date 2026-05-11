@@ -9,7 +9,6 @@ to the existing inline codegen in the pass impl files. As inline codegen is
 extracted into emitter methods, they will return ir.Value results instead.
 """
 
-import from typing { TYPE_CHECKING }
 import from llvmlite { ir }
 import from jaclang.compiler.primitives {
     IntEmitter,
@@ -25,12 +24,7 @@ import from jaclang.compiler.primitives {
     RangeEmitter,
     BuiltinEmitter
 }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.passes.native.na_ir_gen_pass { NaIRGenPass }
-    }
-}
+import type from jaclang.compiler.passes.native.na_ir_gen_pass { NaIRGenPass }
 
 # --- Context ----------------------------------------------------------------
 obj NativeEmitCtx {

@@ -198,6 +198,36 @@ test "multiple syntax errors" {
     }
 }
 
+test "connect_disconnect_missing_rhs" {
+    # Issue #5885 gap 10: connect/disconnect operators that are missing the
+    # right operand previously surfaced a misleading 'Unexpected token' or
+    # 'Missing ;' chain. The fixture has 5 such positions; each should emit
+    # exactly one E0026, and all of them must point at the operator span.
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    prog = JacProgram();
+    prog.compile(os.path.join(FIXTURES, "connect_disconnect_missing_rhs.jac"));
+    sys.stdout = sys.__stdout__;
+    e0026 = [
+        e
+        for e in prog.errors_had
+        if e.code and e.code.code == "E0026"
+    ];
+    assert len(e0026) == 5 , f"Expected 5 E0026 (missing RHS), got {len(e0026)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in e0026
+    );
+    # Sanity: the misleading "Unexpected token in expression" diagnostic
+    # must no longer appear for these inputs.
+    bad = [
+        e
+        for e in prog.errors_had
+        if e.code and e.code.code == "E0004"
+    ];
+    assert len(bad) == 0 , f"E0004 leaked through after E0026 fix:\n" + "\n---\n".join(
+        e.pretty_print() for e in bad
+    );
+}
+
 test "jsx comprehensive fixture" {
     fixture_path = os.path.join(
         JAC_ROOT,

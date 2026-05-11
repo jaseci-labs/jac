@@ -73,7 +73,7 @@ The next `jac build --client desktop` will pick these up automatically -- you do
 The fastest dev loop is:
 
 ```bash
-jac start main.jac --client desktop --dev
+jac start --client desktop --dev
 ```
 
 This launches the Tauri window pointing at the Vite dev server with HMR enabled. Edit a `.cl.jac` file, save, and the window updates without restarting.

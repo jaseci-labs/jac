@@ -112,6 +112,10 @@ test "archetype" {
     compare_files(os.path.join(FIXTURES, "archetype_frmt.jac"));
 }
 
+test "lambda whitespace fmt" {
+    compare_files(os.path.join(FIXTURES, "lambda_whitespace_fmt.jac"));
+}
+
 test "fstring comment not injected" {
     path = os.path.join(FIXTURES, "fstring_comment.jac");
     prog = JacProgram.jac_file_formatter(path, auto_lint=True);

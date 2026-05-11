@@ -990,6 +990,10 @@ impl JacAutoLintPass.exit_func_call(nd: uni.FuncCall) -> None {
     if self.report_only {
         return;
     }
+    # W3042: convert arr.map(lambda item -> any { return <jsx>; }) to comprehension
+    if self._convert_map_to_comprehension(nd) {
+        return;
+    }
     if not self._is_suppressed(W3039) {
         getattr_replacement = self._convert_getattr_to_null_ok(nd);
         if getattr_replacement is not None {
@@ -2712,4 +2716,199 @@ impl JacAutoLintPass._strip_usestate_imports(nd: uni.Module) -> None {
 """W3038: drop useState from imports after all useState hooks have been converted."""
 impl JacAutoLintPass.exit_module(nd: uni.Module) -> None {
     self._strip_usestate_imports(nd);
+}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# map-lambda-to-comprehension conversion (W3042)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+"""Build a synthetic Name node anchored to ref_node's source location."""
+impl JacAutoLintPass._make_name_node(ref_node: uni.UniNode, value: str) -> uni.Name {
+    return uni.Name(
+        orig_src=ref_node.loc.orig_src,
+        name=Tok.NAME.value,
+        value=value,
+        line=ref_node.loc.first_line,
+        end_line=ref_node.loc.last_line,
+        col_start=ref_node.loc.col_start,
+        col_end=ref_node.loc.col_start + len(value),
+        pos_start=ref_node.loc.pos_start,
+        pos_end=ref_node.loc.pos_end,
+        is_kwesc=False
+    );
+}
+
+"""Match <expr>.map(lambda item -> JSX) and return (item, jsx, collection), or None."""
+impl JacAutoLintPass._detect_map_lambda_jsx(
+    nd: uni.FuncCall
+) -> (tuple[str, uni.JsxElement, uni.Expr] | None) {
+    if not isinstance(nd.target, uni.AtomTrailer) {
+        return None;
+    }
+    trailer = nd.target;
+    if not trailer.is_attr
+    or not isinstance(trailer.right, uni.Name)
+    or trailer.right.value != "map"
+    or nd.params is None
+    or len(nd.params) != 1
+    or not isinstance(nd.params[0], uni.LambdaExpr) {
+        return None;
+    }
+    lam: uni.LambdaExpr = nd.params[0];
+    if not isinstance(lam.body, list) {
+        return None;
+    }
+    real_stmts = [
+        s
+        for s in lam.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if len(real_stmts) != 1 or not isinstance(real_stmts[0], uni.ReturnStmt) {
+        return None;
+    }
+    # Unwrap `return (<jsx>)` — parentheses produce AtomUnit(value=JsxElement)
+    jsx: uni.Expr = real_stmts[0].expr;
+    if isinstance(jsx, uni.AtomUnit) and isinstance(jsx.value, uni.JsxElement) {
+        jsx = jsx.value;
+    }
+    if jsx is None or not isinstance(jsx, uni.JsxElement) {
+        return None;
+    }
+
+    sig = lam.signature;
+    if sig is None {
+        return None;
+    }
+    all_params: list[uni.ParamVar] = list(sig.posonly_params or []) + list(
+        sig.params or []
+    );
+    if len(all_params) != 1 {
+        return None;
+    }
+
+    item_name: str = all_params[0].name.value;
+    return (item_name, jsx, trailer.target);
+}
+
+"""Check whether collection is arr.filter(lambda -> bool { return <cond>; }).
+Returns (cond_expr, real_collection) when the pattern matches, else None.
+"""
+impl JacAutoLintPass._extract_filter_cond(
+    collection: uni.Expr
+) -> (tuple[uni.Expr, uni.Expr] | None) {
+    if not isinstance(collection, uni.FuncCall)
+    or not isinstance(collection.target, uni.AtomTrailer) {
+        return None;
+    }
+    ft = collection.target;
+    if not ft.is_attr
+    or not isinstance(ft.right, uni.Name)
+    or ft.right.value != "filter"
+    or collection.params is None
+    or len(collection.params) != 1
+    or not isinstance(collection.params[0], uni.LambdaExpr) {
+        return None;
+    }
+    filter_lam: uni.LambdaExpr = collection.params[0];
+    if not isinstance(filter_lam.body, list) {
+        return None;
+    }
+    filter_stmts = [
+        s
+        for s in filter_lam.body
+        if not isinstance(s, uni.Semi)
+    ];
+    if len(filter_stmts) != 1
+    or not isinstance(filter_stmts[0], uni.ReturnStmt)
+    or filter_stmts[0].expr is None {
+        return None;
+    }
+    return (filter_stmts[0].expr, ft.target);
+}
+
+"""W3042: Replace arr.map(lambda -> JSX) with a list comprehension.
+
+Detect-and-validate first, emit second, mutate last — so a warning is never
+reported for a case the auto-fix can't actually rewrite.
+"""
+impl JacAutoLintPass._convert_map_to_comprehension(nd: uni.FuncCall) -> bool {
+    if self._is_suppressed(W3042) {
+        return False;
+    }
+    detected = self._detect_map_lambda_jsx(nd);
+    if detected is None {
+        return False;
+    }
+    (item_name, jsx_expr, collection) = detected;
+
+    filter_result = self._extract_filter_cond(collection);
+    filter_cond: (uni.Expr | None) = None;
+    if filter_result is not None {
+        (filter_cond, collection) = filter_result;
+    }
+
+    # Verify the parent slot we'd write into supports the rewrite *before*
+    # emitting, so we never warn without fixing.
+    parent = nd.parent;
+    if parent is None {
+        return False;
+    }
+    if not (
+        isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr))
+        or (isinstance(parent, uni.Assignment) and parent.value is nd)
+        or (isinstance(parent, uni.ReturnStmt) and parent.expr is nd)
+    ) {
+        return False;
+    }
+
+    if not self.emit(W3042, node_override=nd, name=item_name) {
+        return False;
+    }
+
+    target_node: uni.Expr = self._make_name_node(nd, item_name);
+    compr_kid: list = [
+        nd.gen_token(Tok.KW_FOR),
+        target_node,
+        nd.gen_token(Tok.KW_IN),
+        collection
+    ];
+    if filter_cond is not None {
+        compr_kid.extend([nd.gen_token(Tok.KW_IF), filter_cond]);
+    }
+    inner_compr = uni.InnerCompr(
+        is_async=False,
+        target=target_node,
+        collection=collection,
+        conditional=[filter_cond] if filter_cond is not None else None,
+        kid=compr_kid
+    );
+    list_compr = uni.ListCompr(
+        out_expr=jsx_expr,
+        compr=[inner_compr],
+        kid=[
+            nd.gen_token(Tok.LSQUARE),
+            jsx_expr,
+            inner_compr,
+            nd.gen_token(Tok.RSQUARE)
+        ]
+    );
+
+    jsx_expr.parent = list_compr;
+    inner_compr.parent = list_compr;
+    target_node.parent = inner_compr;
+    collection.parent = inner_compr;
+    if filter_cond is not None {
+        filter_cond.parent = inner_compr;
+    }
+
+    list_compr.parent = parent;
+    if isinstance(parent, (uni.JsxExpression, uni.ExprStmt, uni.CfgExpr)) {
+        parent.expr = list_compr;
+    } elif isinstance(parent, uni.Assignment) {
+        parent.value = list_compr;
+    } else {
+        # uni.ReturnStmt — only reachable case left
+        parent.expr = list_compr;
+    }
+    parent.kid = [list_compr if k is nd else k for k in parent.kid];
+    return True;
 }

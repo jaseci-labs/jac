@@ -827,7 +827,12 @@ test "same function name different files resolve distinctly" {
 
 test "submodule MTIR keyed by import fullname" {
     # Force re-execution so our exec_module rename fires against the fresh program.
-    for name in ["scope_main", "scope_dir.module_alpha", "scope_dir.module_beta", "scope_dir"] {
+    for name in [
+        "scope_main",
+        "scope_dir.module_alpha",
+        "scope_dir.module_beta",
+        "scope_dir"
+    ] {
         sys.modules.pop(name, None);
     }
 
@@ -843,14 +848,12 @@ test "submodule MTIR keyed by import fullname" {
     assert JacRuntime.program is not None;
     mtir_map = JacRuntime.program.mtir_map;
 
-    assert "scope_dir.module_alpha.process_data" in mtir_map ,
-        f"Expected fullname-keyed MTIR entry for module_alpha. Keys: {list(
-            mtir_map.keys()
-        )}";
-    assert "scope_dir.module_beta.process_data" in mtir_map ,
-        f"Expected fullname-keyed MTIR entry for module_beta. Keys: {list(
-            mtir_map.keys()
-        )}";
+    assert "scope_dir.module_alpha.process_data" in mtir_map , f"Expected fullname-keyed MTIR entry for module_alpha. Keys: {list(
+        mtir_map.keys()
+    )}";
+    assert "scope_dir.module_beta.process_data" in mtir_map , f"Expected fullname-keyed MTIR entry for module_beta. Keys: {list(
+        mtir_map.keys()
+    )}";
 }
 
 test "runtime scope resolution matches compile time" {

@@ -57,8 +57,11 @@ jac plugins enable scale
 
 ### Basic Server
 
+!!! note
+    `main.jac` is the default entry point. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
+
 ```bash
-jac start app.jac
+jac start
 ```
 
 ### Server Options
@@ -84,19 +87,19 @@ jac start app.jac
 
 ```bash
 # Custom port
-jac start app.jac --port 3000
+jac start --port 3000
 
 # Development with HMR (requires jac-client)
-jac start app.jac --dev
+jac start --dev
 
 # API only -- skip client bundling
-jac start app.jac --dev --no_client
+jac start --dev --no_client
 
 # Preview generated API endpoints without starting
-jac start app.jac --faux
+jac start --faux
 
 # Production with profile
-jac start app.jac --port 8000 --profile prod
+jac start --port 8000 --profile prod
 ```
 
 ### Default Persistence
@@ -127,12 +130,23 @@ Set `docs_enabled = false` to disable Swagger UI, ReDoc, and the OpenAPI JSON en
 
 ### CORS Configuration
 
+In single-process `jac start` mode the FastAPI app installs a permissive
+CORS middleware (`allow_origins=['*']`, all methods/headers); there is
+no `[plugins.scale.cors]` knob to tune it.
+
+In **microservice mode** (`[plugins.scale.microservices] enabled = true`),
+the gateway exposes a configurable CORS section:
+
 ```toml
-[plugins.scale.cors]
+[plugins.scale.microservices.cors]
 allow_origins = ["https://example.com"]
 allow_methods = ["GET", "POST", "PUT", "DELETE"]
 allow_headers = ["*"]
 ```
+
+Defaults are open (`allow_origins = ["*"]`); set `allow_origins = []` to
+disable. Additional CORS keys (`allow_credentials`, `expose_headers`,
+`max_age`) are recognised under the same section.
 
 ---
 
@@ -1214,6 +1228,8 @@ The `sv import` keyword has two flavors depending on where the importer and the 
 
 In the sv-to-sv flavor, `order_service.jac` doing `sv import from inventory_service { check_stock }` does not load `inventory_service` into the consumer's process. Calling `check_stock(sku)` issues a `POST /function/check_stock` against the inventory service's URL and returns the result. The same source runs unchanged whether `inventory_service` is a separate microservice, a sibling process started by the same `jac start` command, or (when `sv import` is absent) a normal in-process import.
 
+Both `def:pub` functions and `walker:pub` archetypes can cross the boundary. Function imports POST to `/function/<name>` and return the function's value. Walker imports POST to `/walker/<name>` and return the rehydrated walker instance with its `has` fields populated and `reports` attached, so call sites read the result the same way they would after a local spawn. See [Walker Imports](#walker-imports) for the wire shape and ergonomics.
+
 For a step-by-step walkthrough that covers project setup, running both services, and watching the round-trip, see the [Microservices tutorial](../../tutorials/production/microservices.md). The rest of this section is a reference for the discovery rules, wire contract, and plugin override surface.
 
 ### Requirements
@@ -1235,13 +1251,59 @@ What works:
 - **`enum` types** -- serialized by name.
 - **Primitives** -- `int`, `float`, `str`, `bool`, `None`, `list[T]`, `dict[K, V]`.
 - **Bidirectional** -- typed function arguments are wrapped on the way out and unwrapped on the way in.
+- **`walker:pub` archetypes** -- when imported by name. The consumer-side stub mirrors the provider's `has` fields, and the round-trip rehydrates the walker into a real instance with `reports` populated. See [Walker Imports](#walker-imports).
 
 What doesn't:
 
-- **Walkers, anchors, closures** -- not wire-friendly. Pass identifiers (e.g. `jid`) and re-resolve on the other side.
+- **Anchors, closures** -- not wire-friendly. Pass identifiers (e.g. `jid`) and re-resolve on the other side.
 - **Live database handles, file handles** -- service-local resources only.
 
-Failures (network errors, missing service, error envelope from the provider) raise `RuntimeError` with a message of the form `sv-to-sv RPC '{module}.{func}' failed: {msg}`.
+Failures (network errors, missing service, error envelope from the provider) raise `RuntimeError`. The message form depends on which kind of symbol was being called:
+
+- Function: `sv-to-sv RPC '{module}.{func}' failed: {msg}`
+- Walker: `sv-to-sv walker spawn '{module}.{walker}' failed: {msg}`
+
+### Walker Imports
+
+A consumer can `sv import` a `walker:pub` archetype the same way it imports a function. The compiler generates a stub class on the consumer side whose name and `has` field shape mirror the provider's walker, so type identity is preserved and the call site reads like a local construction.
+
+```jac
+# notify_service.jac (provider)
+walker:pub Greet {
+    has name: str;
+    can greet with Root entry {
+        report f"hello, {self.name}";
+    }
+}
+
+# dispatcher_service.jac (consumer)
+sv import from notify_service { Greet }
+
+walker:pub TriggerGreet {
+    has who: str;
+    can run with Root entry {
+        rg = Greet(name=self.who);   # POST /walker/Greet on the provider
+        report rg.reports[0];        # "hello, <who>"
+    }
+}
+```
+
+What happens when the consumer evaluates `Greet(name=self.who)`:
+
+1. The stub class collects the keyword arguments into a JSON dict (boundary-typed values are serialized via `_to_wire` first).
+2. The runtime POSTs that dict to `/walker/Greet` on the resolved provider URL using the same dispatch chain as function calls (test client → registry → `JAC_SV_<MOD>_URL` → automatic spawn).
+3. The provider spawns and runs the walker, then returns a `TransportResponse` envelope whose `data.result` is the executed walker as a dict and whose `data.reports` is the list of values it emitted via `report`.
+4. The consumer rehydrates `data.result` into an instance of the local stub class, attaches `data.reports` as the instance's `reports` attribute, and returns it.
+
+The result is a normal walker instance on the consumer: `rg.name`, `rg.reports[0]`, and `isinstance(rg, Greet)` all work. Boundary-typed values inside the walker's `has` fields and inside the `reports` list are unwrapped recursively, so a walker that emits an `obj` type comes back as that type, not as a raw dict.
+
+A few notes:
+
+- **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary, instantiating a sv-imported walker is **spawn-and-execute** -- there is no useful concept of an unexecuted remote walker. The consumer-side class accepts only the `has` fields as keyword arguments and always returns a post-execution instance.
+- **`walker:pub` only.** Private walkers are not exposed as endpoints, so calls into them return 404. Boundary types from a walker's signature (used in `has` fields or referenced in `report` arguments) need to be `sv import`ed alongside the walker.
+- **Same retry, breaker, auth, and tracing as functions.** The plugin override surface is `sv_walker_call`, not `sv_service_call`, but they share the per-provider circuit breaker and `rpc_timeout` config -- a tripped breaker protects either RPC kind. See [Plugin Override: Custom Service Spawning](#plugin-override-custom-service-spawning).
+
+This applies to **sv-to-sv** imports. Walker imports across the **cl-to-sv** boundary (browser calling a server walker) are not currently generated; for cl-to-sv use a `def:pub` wrapper that spawns the walker server-side.
 
 ### Automatic Startup
 
@@ -1355,6 +1417,19 @@ Always call `sv_client.clear_test_clients()` between tests to avoid bleed-over f
 The hook is called during automatic startup, once per provider, in parallel up to 8 at a time. Overrides must be idempotent and safe to run concurrently. Both properties were already true of the pre-existing lazy contract (concurrent first-call requests could race into the same hook), so a plugin written against any prior version continues to work without modification.
 
 The default jac-scale implementation at a high level: pick a free loopback port in `18000-18999`, start an HTTP listener on a daemon thread serving the module's `def:pub` endpoints, wait until the listener responds to an HTTP probe, then register the URL. Consult the jac-scale source if you need the exact details; the contract plugin authors should rely on is the `ensure_sv_service` signature and the requirement to call `sv_client.register` before returning.
+
+### Plugin Override: RPC Transport
+
+Two parallel hooks let a plugin own the wire-level transport for sv-to-sv calls:
+
+| Hook | Used by | Default transport |
+|---|---|---|
+| `JacAPIServer.sv_service_call(module_name, func_name, args)` | sv-imported `def:pub` functions | `POST /function/<name>` |
+| `JacAPIServer.sv_walker_call(module_name, walker_name, args, stub_cls)` | sv-imported `walker:pub` archetypes | `POST /walker/<name>` + `stub_cls._from_wire` rehydration |
+
+Plugins typically override both with the same auth-forwarding, tracing, retry, and circuit-breaker policy. The jac-scale plugin does exactly that: walker calls share the per-provider circuit breaker with function calls (both express provider liveness, so a tripped breaker should protect either kind), forward the inbound `Authorization` header, propagate `X-Trace-Id` across the hop, retry transport-level failures with exponential backoff, and respect the per-service `rpc_timeout` config.
+
+Overrides for `sv_walker_call` must end by returning the rehydrated walker instance: call `stub_cls._from_wire(envelope.data.result)` and attach `envelope.data.reports` to the resulting instance's `reports` attribute. The default implementation is a useful reference and reusing `_unwrap_sv_envelope` / `_hydrate_walker_envelope` from the jac-scale source keeps error semantics consistent with the function path.
 
 ## Storage
 
@@ -1618,7 +1693,7 @@ with entry{
 ## Redis Operations
 
 **Common Methods:** `get()`, `set()`, `delete()`, `exists()`
-**Redis Methods:** `set_with_ttl()`, `expire()`, `incr()`, `scan_keys()`
+**Redis Methods:** `set_with_ttl()`, `expire()`, `incr()`, `scan_keys()`, `set_nx_with_ttl()`, `delete_if_equals()`
 
 **Example:**
 
@@ -1639,6 +1714,89 @@ with entry {
 ```
 
 **Note:** Database-specific methods raise `NotImplementedError` on wrong database type.
+
+---
+
+## Distributed Locks (Redis only)
+
+When a jac-scale app runs with multiple replicas behind a load balancer, two pods can land on the same shared resource (an EFS-backed file, an external API rate limit, a row in a downstream database) at the same instant. Python's `threading.Lock` only serializes inside one process, so it cannot prevent the race. The kvstore exposes two primitives that together build a correct cross-pod mutex on top of Redis.
+
+### Acquire: `set_nx_with_ttl(key, value, ttl)`
+
+Atomically sets the key only if it does not already exist, with an automatic expiration. Maps to Redis `SET key value NX EX ttl`. Returns `True` if the caller acquired the lock, `False` if another caller already holds it.
+
+The TTL is mandatory: if the holder crashes without releasing, Redis frees the lock automatically after `ttl` seconds, so an orphan never blocks the cluster forever.
+
+### Release: `delete_if_equals(key, expected_value)`
+
+Atomically deletes the key only when its current value matches `expected_value`. Implemented with a server-side Lua script so the GET and DEL run as one operation. Returns `True` if deleted, `False` otherwise.
+
+Pair `delete_if_equals` with `set_nx_with_ttl` and a unique fence token: a slow holder whose TTL expired during a long operation will not delete a lock another caller has since acquired, since the values no longer match.
+
+### Cross-pod mutex pattern
+
+```jac
+import os;
+import time;
+import from uuid { uuid4 }
+import from jac_scale.lib { kvstore }
+
+glob _kv = kvstore(db_name='myapp', db_type='redis');
+
+def with_repo_lock(repo_id: str, action: str) -> dict {
+    fence = str(uuid4());
+    payload = {'fence': fence, 'pod': os.environ.get('HOSTNAME', 'local')};
+
+    # Acquire: retry up to ~25s, give up if contention persists.
+    deadline = time.time() + 25.0;
+    acquired = False;
+    while time.time() < deadline {
+        if _kv.set_nx_with_ttl(f'repo_lock:{repo_id}', payload, ttl=30) {
+            acquired = True;
+            break;
+        }
+        time.sleep(0.2);
+    }
+    if not acquired {
+        return {'success': False, 'error': 'lock contention timeout'};
+    }
+
+    try {
+        return run_protected_op(repo_id, action);
+    } finally {
+        # Release: compare-and-delete. Safe even if our TTL already expired
+        # and another pod owns the key now; the value mismatch makes it a no-op.
+        _kv.delete_if_equals(f'repo_lock:{repo_id}', payload);
+    }
+}
+```
+
+### Cluster-wide debounce
+
+`set_nx_with_ttl` also collapses N pods running the same periodic task into a single execution per window. No release needed: the TTL is the window length.
+
+```jac
+def maybe_run_periodic_task(task_id: str) -> bool {
+    payload = {'pod': os.environ.get('HOSTNAME', 'local'), 'ts': time.time()};
+    if _kv.set_nx_with_ttl(f'task_dbnce:{task_id}', payload, ttl=60) {
+        run_task(task_id);
+        return True;
+    }
+    return False;  # Another pod already ran it within the last 60s.
+}
+```
+
+This is the right pattern for autosave debouncing, leader-only reconciliation cycles, and any other "exactly once per window across the cluster" requirement.
+
+### When to use which
+
+| Need | Primitive | Release |
+|---|---|---|
+| Mutual exclusion (only one caller in the cluster runs the protected block) | `set_nx_with_ttl` + retry on `False` | `delete_if_equals` with a unique fence token |
+| Debounce (throttle to one execution per window across the cluster) | `set_nx_with_ttl` once, no retry | None: let TTL expire |
+| Leader election (one pod holds a long-lived role) | `set_nx_with_ttl` with renewing TTL | `delete_if_equals` on graceful shutdown |
+
+`set_nx_with_ttl` and `delete_if_equals` raise `NotImplementedError` on MongoDB; distributed-lock semantics require Redis.
 
 ---
 
@@ -2075,22 +2233,31 @@ cpu_utilization_target = 70   # Scale out when average CPU exceeds 70%
 
 ### Persistent Storage
 
-Controls the PersistentVolumeClaim (PVC) size for MongoDB and Redis StatefulSets. The same size applies to both.
+Controls the PersistentVolumeClaim (PVC) sizes for the application code volume, MongoDB, and Redis StatefulSets.
 
-**Default:**
+**Defaults:**
 
-| TOML Key  | Default | Description |
+| TOML Key | Default | Description |
 |----------|---------|-------------|
-| `pvc_size` | `5Gi` | Storage size for each database PVC |
+| `pvc_size` | `5Gi` | Storage size for the application code PVC |
+| `mongodb_storage_size` | `1Gi` | Storage size for the MongoDB data PVC |
 
 **To change in `jac.toml`:**
 
 ```toml
 [plugins.scale.kubernetes]
 pvc_size = "20Gi"
+mongodb_storage_size = "10Gi"
 ```
 
-> **Note:** PVC size cannot be reduced after creation. Increasing it requires deleting and recreating the StatefulSet (data loss). Plan accordingly.
+**MongoDB PVC resize behaviour:**
+
+- **Increase**: Applying a larger `mongodb_storage_size` on redeploy automatically patches the existing PVC. Your stored data is preserved - only the capacity request is updated.
+- **Decrease**: Attempting to set a smaller value than the current PVC size raises an explicit error and aborts the deploy. Shrinking a PVC is not supported by Kubernetes.
+- **No change**: If the value matches the current size, no action is taken.
+
+> **Note:** MongoDB PVC resize requires the cluster's StorageClass to have `allowVolumeExpansion: true`. Most cloud providers (AWS EBS, GCE PD, Azure Disk) and MicroK8s enable this by default. Verify with `kubectl get storageclass`.
+> **Note:** `pvc_size` (application code PVC) cannot be changed after creation - it is created once and never resized.
 
 ---
 
@@ -2168,6 +2335,7 @@ jaclang = "0.1.5"      # Pin to a specific version
 jac_scale = "latest"   # Latest from PyPI (default)
 jac_client = "0.1.0"   # Specific version
 jac_byllm = "none"     # Skip installation entirely
+jac_mcp = "latest"     # Optional MCP server plugin
 ```
 
 | Package | Description |
@@ -2176,6 +2344,7 @@ jac_byllm = "none"     # Skip installation entirely
 | `jac_scale` | This scaling plugin |
 | `jac_client` | Frontend/client support |
 | `jac_byllm` | LLM integration (set to `"none"` to exclude) |
+| `jac_mcp` | MCP server plugin (set to `"none"` to exclude) |
 
 ---
 
@@ -2219,7 +2388,7 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 - kube-state-metrics (pod, deployment, replica, restart state)
 - node-exporter (CPU, memory, disk, network per node)
 
-> To collect application metrics, also enable `[plugins.scale.metrics] enabled = true` - see [Prometheus Metrics](#prometheus-metrics).
+> To collect application metrics, also enable `[plugins.scale.monitoring] enabled = true` - see [Prometheus Metrics](#prometheus-metrics).
 
 ---
 
@@ -2400,7 +2569,7 @@ jac-scale provides built-in Prometheus metrics collection for monitoring HTTP re
 Configure metrics in `jac.toml`:
 
 ```toml
-[plugins.scale.metrics]
+[plugins.scale.monitoring]
 enabled = true                  # Enable metrics collection and /metrics endpoint
 endpoint = "/metrics"           # Prometheus scrape endpoint path
 namespace = "myapp"             # Metrics namespace prefix
@@ -2859,7 +3028,7 @@ type = "local"
 **How it works:**
 
 - Allocates a port pair from a pool (base ports 5180-5200, stride of 2)
-- Runs `jac start main.jac --dev -p {port}` as a child process
+- Runs `jac start --dev -p {port}` as a child process
 - Checks for readiness by scanning process output for `"Server ready"`
 - Returns `http://localhost:{port}` as the preview URL
 
@@ -2895,7 +3064,7 @@ network_isolation = true
 
 - Creates a Docker container from `base_image`
 - Copies project files into `/app` via tarball injection
-- Runs `jac install && jac start main.jac --dev -p 8000`
+- Runs `jac install && jac start --dev -p 8000`
 - Applies resource limits (memory, CPU, storage)
 - Optionally creates an isolated Docker bridge network per sandbox
 - Polls container health via HTTP until ready (120s timeout)
@@ -2936,7 +3105,7 @@ security_context = true
 2. Provisions RBAC (ServiceAccount, Role, RoleBinding) for pod management
 3. Packages project files into a ConfigMap (text files in `data`, binary files in `binaryData` as base64)
 4. Creates a pod with an init container that unpacks the ConfigMap into `/app`
-5. Main container runs `jac install && jac start main.jac --dev -p 8000`
+5. Main container runs `jac install && jac start --dev -p 8000`
 6. Creates a Service and Ingress (unless `proxy_mode = true`)
 7. Polls pod readiness (container ready + "Server ready" in logs, 120s timeout)
 8. Returns the preview URL

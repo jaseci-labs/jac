@@ -928,6 +928,105 @@ class JacScalePlugin {
             f"sv-to-sv RPC '{module_name}.{func_name}' failed after " + f"{max_attempts} attempts: {last_err}"
         );
     }
+
+    """Override core's sv_walker_call with auth forwarding, retry, and breaker.
+
+    Mirrors `sv_service_call` for the walker-spawn flavour of sv-to-sv:
+    POST to `/walker/<name>` rather than `/function/<name>`, decode the
+    TransportResponse envelope, and rehydrate `data.result` into an
+    instance of the consumer-side stub class via `stub_cls._from_wire`.
+    The walker's `data.reports` list is attached to the rehydrated
+    instance so call sites read `walker_inst.reports[0]` directly.
+
+    Walker calls share the per-provider circuit breaker with function
+    calls — both express the same liveness signal for the provider, so
+    a breaker trip from either RPC kind protects the other. Auth and
+    trace headers are forwarded the same way. SSE streaming is not
+    plumbed for walkers (walker endpoints don't return generators); the
+    Content-Type pivot from sv_service_call is intentionally absent.
+    """
+    @hookimpl
+    static def sv_walker_call(
+        module_name: str, walker_name: str, args: dict, stub_cls: Any
+    ) -> Any {
+        import time;
+        import from jaclang.runtimelib { sv_client }
+        import from jac_scale.microservices._auth_ctx { get_current_auth }
+        import from jac_scale.microservices._trace_ctx { get_current_trace }
+
+        label = f"{module_name}.{walker_name}";
+
+        # In-process TestClient path: bypass retry + breaker, no transport.
+        if module_name in sv_client._test_clients {
+            tc = sv_client._test_clients[module_name];
+            resp = tc.post(f"/walker/{walker_name}", json=args);
+            data = resp.json();
+            return _hydrate_walker_envelope(data, module_name, walker_name, stub_cls);
+        }
+
+        if _breaker_should_skip(module_name) {
+            raise RuntimeError(
+                f"sv-to-sv walker spawn '{label}' blocked by " + f"open circuit breaker (cooldown {int(
+                    _BREAKER_COOLDOWN_SECONDS
+                )}s)"
+            );
+        }
+
+        url = sv_client.resolve_url(module_name);
+        try {
+            import httpx;
+        } except ImportError {
+            raise RuntimeError(
+                "httpx is required for sv-to-sv RPC calls. " + "Install it via `pip install httpx`."
+            );
+        }
+
+        headers: dict[str, str] = {};
+        auth = get_current_auth();
+        if auth {
+            headers["Authorization"] = auth;
+        }
+        trace = get_current_trace();
+        if trace {
+            headers["X-Trace-Id"] = trace;
+        }
+
+        max_attempts: int = 3;
+        backoff: float = 0.1;
+        last_err: Exception | None = None;
+
+        rpc_timeout: float = _sv_rpc_timeout(module_name);
+
+        for attempt in range(max_attempts) {
+            try {
+                client = httpx.Client(timeout=rpc_timeout);
+                try {
+                    resp = client.post(
+                        f"{url}/walker/{walker_name}", json=args, headers=headers
+                    );
+                    data = resp.json();
+                } finally {
+                    client.close();
+                }
+                _breaker_record_success(module_name);
+                return _hydrate_walker_envelope(
+                    data, module_name, walker_name, stub_cls
+                );
+            } except (httpx.RequestError, httpx.TimeoutException) as e {
+                last_err = e;
+                if attempt < max_attempts - 1 {
+                    time.sleep(backoff);
+                    backoff = backoff * 2.0;
+                }
+            }
+        }
+
+        _breaker_record_failure(module_name);
+
+        raise RuntimeError(
+            f"sv-to-sv walker spawn '{label}' failed after " + f"{max_attempts} attempts: {last_err}"
+        );
+    }
 }
 
 
@@ -1117,6 +1216,43 @@ def _unwrap_sv_envelope(data: Any, module_name: str, func_name: str) -> Any {
     msg = err.get("message") if isinstance(err, dict) else str(err);
     raise RuntimeError(
         f"sv-to-sv RPC '{module_name}.{func_name}' failed: {msg or 'unknown error'}"
+    );
+}
+
+"""Rehydrate a /walker/<name> response envelope into a stub instance.
+
+The wire envelope has both `data.result` (the executed walker as a
+dict with `_jac_type` / `_jac_id` / `_jac_archetype` / has-fields)
+and `data.reports` (the list of values the walker emitted via
+`report`). We hand back an instance of the consumer-side stub class
+with the has-fields populated and `reports` attached, so call sites
+can read both like a locally-spawned walker. Raises RuntimeError on
+envelope-level failure, matching `_unwrap_sv_envelope`.
+"""
+def _hydrate_walker_envelope(
+    data: Any, module_name: str, walker_name: str, stub_cls: Any
+) -> Any {
+    if isinstance(data, dict) and data.get("ok") {
+        envelope = data.get("data") or {};
+        result_dict = envelope.get("result") if isinstance(envelope, dict) else None;
+        reports = envelope.get("reports") if isinstance(envelope, dict) else None;
+        instance = stub_cls._from_wire(result_dict)
+            if (stub_cls is not None and result_dict is not None)
+            else result_dict;
+        if instance is not None and reports is not None {
+            try {
+                instance.reports = reports;
+            } except Exception {
+                ;
+            }
+        }
+        return instance;
+    }
+    err = (data.get("error") if isinstance(data, dict) else None) or {};
+    msg = err.get("message") if isinstance(err, dict) else str(err);
+    raise RuntimeError(
+        f"sv-to-sv walker spawn '{module_name}.{walker_name}' failed: {msg
+        or 'unknown error'}"
     );
 }
 

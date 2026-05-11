@@ -1,14 +1,9 @@
 """Abstract class for IR Passes for Jac."""
 import from threading { Event }
-import from typing { TYPE_CHECKING, TypeVar }
+import from typing { TypeVar }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import type from jaclang.jac0core.program { JacProgram }
 
 glob T = TypeVar('T', bound=uni.UniNode);
 """Abstract class for IR passes."""

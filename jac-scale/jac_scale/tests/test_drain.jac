@@ -77,7 +77,7 @@ test "wait_for_zero unblocks when inflight drops in another thread" {
     reset_drain();
     incr_inflight();
 
-    def dropper -> None {
+    def dropper {
         time.sleep(0.05);
         decr_inflight();
     }
@@ -173,7 +173,7 @@ test "middleware accounts inflight across concurrent in-flight requests" {
         return JSONResponse(status_code=200, content={"ok": True});
     }
 
-    async def go -> None {
+    async def go {
         await asyncio.gather(
             mw(object(), next_handler),
             mw(object(), next_handler),
@@ -211,7 +211,7 @@ test "middleware decrements inflight even when handler raises" {
 obj _FakeServer {
     has handle_exit_calls: list = [];
 
-    def handle_exit(sig: object, frame: object) -> None {
+    def handle_exit(sig: object, frame: object) {
         self.handle_exit_calls.append((sig, frame));
     }
 }

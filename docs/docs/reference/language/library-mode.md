@@ -17,6 +17,9 @@ Library mode is designed for:
 - **Understanding Jac's architecture** by exploring how its transpilation to Python works under the hood
 - **Enterprise and corporate environments** where introducing standard Python libraries is more acceptable than adopting new language syntax
 
+!!! note "`root` is a function in library mode"
+    In `.jac` source, `root` is a reserved keyword and writing `root()` emits warning **W0062** (deprecated; use bare `root`). In **library mode**, `root` is a Python function imported from `jaclang.lib`, so it **must** be called as `root()` -- the bare reference is just the function object. The same applies to other graph builtins (`spawn`, `connect`, `get_all_root`). The deprecation in [breaking-changes.md](../../community/breaking-changes.md#1-root-is-a-reserved-keyword-again-specialvarref) only governs `.jac` source.
+
 ### **Converting Jac Code to Pure Python**
 
 The `jac jac2py` command transpiles Jac source files into equivalent Python code. The generated output:
@@ -344,7 +347,7 @@ The `OPath()` class constructs traversal paths from a given node. The `edge_out(
 
 | Name | Type | Description |
 |------|------|-------------|
-| `TYPE_CHECKING` | bool | Python typing constant for type checking blocks. In Jac source, you rarely need this -- the compiler automatically wraps type-only imports in `TYPE_CHECKING` guards (see [Type Annotations](foundation.md#2-type-annotations)). In library mode Python, use it directly when needed. |
+| `TYPE_CHECKING` | bool | Python typing constant for type checking blocks. Use it in `if TYPE_CHECKING { ... }` guards to break circular imports for type-only references. |
 | `EdgeDir` | Enum | Edge direction enum (IN, OUT, ANY) |
 | `DSFunc` | Type | Object spatial function type alias |
 

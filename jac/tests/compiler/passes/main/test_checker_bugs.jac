@@ -597,14 +597,60 @@ test "bug_dloc1_decorated_class_in_function_body" {
     );
 }
 
-# =========================================================================
-# Bug: while-loop guard does not narrow the condition variable
-# =========================================================================
-test "bug_5768_while_loop_narrowing" {
+test "bug_while_loop_narrowing" {
     program = compile_and_check("checker_bug_while_narrowing.jac");
 
     assert len(program.errors_had) == 0 , (
         "`while cur` should narrow cur from Item|None to Item inside the body. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_subscript_index_narrowing" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "items[0], items[-1], config[\"host\"] should all narrow inside isinstance guard. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_subscript_index_narrowing_negative" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
+
+    assert len(program.errors_had) >= 5 , (
+        "Variable index, range slice, and post-narrow subscript writes "
+        "(items[0]=, items[-1]=, config[\"host\"]=) must all error. "
+        "Expected at least 5 E1099 errors but got "
+        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_cast_union_instance" {
+    program = compile_and_check("checker_bug_cast_union_instance.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "instance types so that attribute access on the result does not "
+        "produce false-positive E1099 errors. "
+    );
+}
+
+# =========================================================================
+# Bug #NONE-EQ: `x == None` / `x != None` did not narrow `T | None`.
+#
+# `is None` / `is not None` correctly narrowed Optional unions, but the
+# operator-equality forms fell through unhandled in classify_condition,
+# leaving attribute access on the narrowed branch typed as `T | None` and
+# producing spurious E1099 errors. Pyright, mypy, and TypeScript all
+# narrow on both forms; Jac now does too.
+# =========================================================================
+test "bug_none_eq_neq_narrowing" {
+    program = compile_and_check("checker_bug_eq_none_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`x != None` (true branch) and `x == None` (fall-through) must "
+        "narrow `T | None` to `T`, matching the existing `is`/`is not None` "
+        "behavior. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
