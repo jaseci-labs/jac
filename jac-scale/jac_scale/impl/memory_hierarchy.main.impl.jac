@@ -139,17 +139,16 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     return result;
 }
 
-"""Async commit: uses native Motor for L3 and redis.asyncio for L2 when available."""
+"""Async commit: offload to thread so delta-merge and L2 update are correct.
+
+MongoBackend.acommit uses a plain bulk_write (last-writer-wins), which
+bypasses the delta-merge _put_node_atomic path in sync(). Using
+asyncio.to_thread(self.commit) keeps the event loop free while still
+running the correct merge-aware sync() + L2 update.
+"""
 impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
-    if self.l3 and hasattr(self.l3, 'acommit') {
-        try {
-            await self.l3.acommit(anchor);
-        } except Exception as e {
-            logger.warning(f"ScaleTieredMemory.acommit L3 failed: {e}");
-        }
-    } else {
-        await super.acommit(anchor);
-    }
+    import asyncio;
+    await asyncio.to_thread(self.commit);
 }
 
 """Close all backends."""
