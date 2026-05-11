@@ -33,7 +33,6 @@ test "resolve_dockerfile priority: user override > shipped > embedded fallback" 
         assert df.resolve() == user_df.resolve();
         assert ctx.resolve() == project.resolve();
         assert args == {};
-
         # 2. Embedded fallback when no user file + no shipped Dockerfile.
         proj2 = Path(tmp) / "myapp";
         proj2.mkdir();
@@ -60,7 +59,6 @@ test "ensure_dockerignore writes template + preserves FE dist; never overwrites"
         assert "**/node_modules" in contents;
         # FE bundle must NOT be ignored.
         assert "**/.jac/client/dist" not in contents;
-
         # Never overwrites a user-provided file.
         (ctx / ".dockerignore").write_text("custom\n");
         assert ensure_dockerignore(ctx) is False;
@@ -77,8 +75,9 @@ test "build_client_bundle no-ops when client_entry is empty" {
 test "auto_build_and_distribute on remote requires registry_url, pushes when given" {
     with tempfile.TemporaryDirectory() as tmp {
         project = Path(tmp);
-
-        with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE) {
+        with mock.patch.object(
+            ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE
+        ) {
             with mock.patch.object(ib_mod, "_read_client_entry", return_value="") {
                 raised = False;
                 try {
@@ -90,17 +89,20 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
                 assert raised;
             }
         }
-
-        with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE) {
+        with mock.patch.object(
+            ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE
+        ) {
             with mock.patch.object(ib_mod, "_read_client_entry", return_value="") {
                 with mock.patch.object(
-                    ib_mod, "resolve_dockerfile",
+                    ib_mod,
+                    "resolve_dockerfile",
                     return_value=(Path("/Dockerfile.microservice"), project, {})
                 ) {
                     with mock.patch.object(ib_mod, "run_docker_build") {
                         with mock.patch.object(
-                            ib_mod, "_retag_with_content_id",
-                            side_effect=lambda tag, env=None: f"{tag}-abc123"
+                            ib_mod,
+                            "_retag_with_content_id",
+                            side_effect=lambda tag , envNone : f"{tag}-abc123"
                         ) {
                             with mock.patch.object(
                                 ib_mod, "run_docker_push"
@@ -110,8 +112,7 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
                                 );
                                 assert tag == "reg.example.com/org/myapp:dev-abc123";
                                 assert (
-                                    push_mock.call_args.args[0]
-                                    == "reg.example.com/org/myapp:dev-abc123"
+                                    push_mock.call_args.args[0] == "reg.example.com/org/myapp:dev-abc123"
                                 );
                             }
                         }
@@ -124,7 +125,9 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
 
 
 test "auto_build_and_distribute on unknown cluster raises actionable error" {
-    with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_UNKNOWN) {
+    with mock.patch.object(
+        ib_mod, "detect_cluster_type", return_value=CLUSTER_UNKNOWN
+    ) {
         raised = False;
         try {
             auto_build_and_distribute("myapp", Path("/tmp"));
