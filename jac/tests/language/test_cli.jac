@@ -2182,3 +2182,105 @@ test "jir cache preserves code context for cl jac files" {
         }
     }
 }
+
+# --- subprocess-pattern tests for jac install -e (editable install) ---
+"""Test jac install -e . installs the current project editablely."""
+test "install editable from current dir via cli" {
+    import site;
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        site_pkgs = Path(site.getsitepackages()[0]);
+        pth_file = site_pkgs / "__editable__.my_lib-0.1.0.pth";
+        try {
+            os.chdir(temp_dir);
+
+            toml_content = '[project]\nname = "my-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n';
+            with open(os.path.join(temp_dir, "jac.toml"), "w") as f {
+                f.write(toml_content);
+            }
+
+            process = subprocess.Popen(
+                ["jac", "install", "-e", "."],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            );
+            (stdout, stderr) = process.communicate();
+            result_code = process.returncode;
+
+            assert result_code == 0 , (
+                f"jac install -e . failed with exit code {result_code}.\nstdout: {stdout}\nstderr: {stderr}"
+            );
+            assert "my-lib" in stdout , (
+                f"Expected package name 'my-lib' in output, got:\n{stdout}"
+            );
+            assert ("Editable install complete" in stdout or "Linked" in stdout) , f"Expected install success message in output:\n{stdout}";
+
+            # Verify the .pth file was created in site-packages
+            # Format: __editable__.{name_with_underscores}-{version}.pth
+            assert pth_file.exists() , (f"Expected .pth file not found: {pth_file}");
+
+            # Verify the .pth file points to the project directory
+            pth_content = pth_file.read_text().strip();
+            assert pth_content == temp_dir , (
+                f"Expected .pth to contain '{temp_dir}', got '{pth_content}'"
+            );
+        } finally {
+            os.chdir(original_cwd);
+            if pth_file.exists() {
+                pth_file.unlink();
+            }
+        }
+    }
+}
+
+"""Test jac install -e <path> installs from outside the project directory."""
+test "install editable from outside project dir via cli" {
+    import site;
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        site_pkgs = Path(site.getsitepackages()[0]);
+        pth_file = site_pkgs / "__editable__.my_lib-0.1.0.pth";
+        try {
+            # Create a library package in a subdirectory
+            pkg_dir = os.path.join(temp_dir, "my-lib");
+            os.makedirs(pkg_dir);
+            toml_content = '[project]\nname = "my-lib"\nversion = "0.1.0"\ndescription = "Test lib"\nentry-point = "main.jac"\n';
+            with open(os.path.join(pkg_dir, "jac.toml"), "w") as f {
+                f.write(toml_content);
+            }
+
+            # Stay in temp_dir (outside the package) — no jac.toml here
+            os.chdir(temp_dir);
+
+            process = subprocess.Popen(
+                ["jac", "install", "-e", pkg_dir],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            );
+            (stdout, stderr) = process.communicate();
+            result_code = process.returncode;
+
+            assert result_code == 0 , (
+                f"jac install -e <path> failed with exit code {result_code}.\nstdout: {stdout}\nstderr: {stderr}"
+            );
+            assert "my-lib" in stdout , (
+                f"Expected package name 'my-lib' in output, got:\n{stdout}"
+            );
+
+            # Verify the .pth file was created pointing to pkg_dir (not temp_dir)
+            assert pth_file.exists() , (f"Expected .pth file not found: {pth_file}");
+
+            pth_content = pth_file.read_text().strip();
+            assert pth_content == str(Path(pkg_dir).resolve()) , (
+                f"Expected .pth to point to '{pkg_dir}', got '{pth_content}'"
+            );
+        } finally {
+            os.chdir(original_cwd);
+            if pth_file.exists() {
+                pth_file.unlink();
+            }
+        }
+    }
+}
