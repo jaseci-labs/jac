@@ -3,7 +3,6 @@
 import atexit;
 import contextlib;
 import concurrent.futures;
-import gc;
 import os;
 import socket;
 import subprocess;
@@ -1312,7 +1311,7 @@ test "concurrent requests do not lose edges" {
 # =============================================================================
 # In-process system root cache tests (no server subprocess needed)
 # =============================================================================
-"""Wipe process-level singletons so system-root-cache tests start cold."""
+"""Wipe process-level singletons so each test starts with a cold process cache."""
 def _reset_process_cache {
     _process_cache.clear();
     with contextlib.suppress(Exception) {
@@ -1345,28 +1344,23 @@ test "system root cache: populated with NodeAnchor after first context init" {
     import from jaclang.jac0core.archetype { NodeAnchor }
 
     _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
+
     assert "system_root" not in _process_cache;
+    _new_jscale_ctx(uri);
 
-    container = MongoDbContainer("mongo:latest");
-    container.start();
-    try {
-        _new_jscale_ctx(container.get_connection_url());
-
-        assert "system_root" in _process_cache , (
-            "_process_cache must contain 'system_root' after first context init"
-        );
-        cached = _process_cache["system_root"];
-        assert isinstance(cached, NodeAnchor) , (
-            f"Cached value must be a NodeAnchor, got {type(cached).__name__}"
-        );
-        assert cached.id == UUID(Con.SUPER_ROOT_UUID) , (
-            f"Cached anchor id {cached.id} != SUPER_ROOT_UUID"
-        );
-    } finally {
-        _reset_process_cache();
-        container.stop();
-        gc.collect();
-    }
+    assert "system_root" in _process_cache , (
+        "_process_cache must contain 'system_root' after first context init"
+    );
+    cached = _process_cache["system_root"];
+    assert isinstance(cached, NodeAnchor) , (
+        f"Cached value must be a NodeAnchor, got {type(cached).__name__}"
+    );
+    assert cached.id == UUID(Con.SUPER_ROOT_UUID) , (
+        f"Cached anchor id {cached.id} != SUPER_ROOT_UUID"
+    );
+    _reset_process_cache();
 }
 
 
@@ -1378,32 +1372,25 @@ so the count measured is per-context, not cumulative.
 """
 test "system root cache: second context init skips MongoDB fetch" {
     _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
 
-    container = MongoDbContainer("mongo:latest");
-    container.start();
-    try {
-        uri = container.get_connection_url();
+    ctx1 = _new_jscale_ctx(uri);
+    first_fetches = _ctx_l3_fetch_count(ctx1);
+    assert first_fetches >= 1 , (
+        f"First context init must fetch system root from MongoDB "
+        f"(got fetch_count={first_fetches})"
+    );
+    assert "system_root" in _process_cache , "Cache must be warm after first init";
 
-        ctx1 = _new_jscale_ctx(uri);
-        first_fetches = _ctx_l3_fetch_count(ctx1);
-        assert first_fetches >= 1 , (
-            f"First context init must fetch system root from MongoDB "
-            f"(got fetch_count={first_fetches})"
-        );
-        assert "system_root" in _process_cache , "Cache must be warm after first init";
-
-        ctx2 = _new_jscale_ctx(uri);
-        second_fetches = _ctx_l3_fetch_count(ctx2);
-        assert second_fetches == 0 , (
-            f"Second context init issued {second_fetches} MongoDB fetch(es) "
-            "for system root, expected 0. "
-            "_process_cache pre-injection into L1 is not working."
-        );
-    } finally {
-        _reset_process_cache();
-        container.stop();
-        gc.collect();
-    }
+    ctx2 = _new_jscale_ctx(uri);
+    second_fetches = _ctx_l3_fetch_count(ctx2);
+    assert second_fetches == 0 , (
+        f"Second context init issued {second_fetches} MongoDB fetch(es) "
+        "for system root, expected 0. "
+        "_process_cache pre-injection into L1 is not working."
+    );
+    _reset_process_cache();
 }
 
 
@@ -1414,27 +1401,22 @@ test "system root cache: cold cache still produces a valid system root" {
     import from jaclang.jac0core.constant { Constants as Con }
 
     _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
 
-    container = MongoDbContainer("mongo:latest");
-    container.start();
-    try {
-        ctx = _new_jscale_ctx(container.get_connection_url());
+    ctx = _new_jscale_ctx(uri);
 
-        assert ctx.system_root is not None , "system_root must not be None";
-        assert ctx.system_root.id == UUID(Con.SUPER_ROOT_UUID) , (
-            f"system_root.id {ctx.system_root.id} != SUPER_ROOT_UUID"
-        );
-        assert ctx.user_root is ctx.system_root , (
-            "user_root must default to system_root before auth"
-        );
-        assert ctx.entry_node is ctx.system_root , (
-            "entry_node must default to system_root before auth"
-        );
-    } finally {
-        _reset_process_cache();
-        container.stop();
-        gc.collect();
-    }
+    assert ctx.system_root is not None , "system_root must not be None";
+    assert ctx.system_root.id == UUID(Con.SUPER_ROOT_UUID) , (
+        f"system_root.id {ctx.system_root.id} != SUPER_ROOT_UUID"
+    );
+    assert ctx.user_root is ctx.system_root , (
+        "user_root must default to system_root before auth"
+    );
+    assert ctx.entry_node is ctx.system_root , (
+        "entry_node must default to system_root before auth"
+    );
+    _reset_process_cache();
 }
 
 
@@ -1445,27 +1427,20 @@ test "system root cache: N consecutive inits cost one MongoDB fetch total" {
     N = 10;
 
     _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
 
-    container = MongoDbContainer("mongo:latest");
-    container.start();
-    try {
-        uri = container.get_connection_url();
+    ctx_first = _new_jscale_ctx(uri);
+    first_cost = _ctx_l3_fetch_count(ctx_first);
+    assert first_cost >= 1 , "First init must fetch from MongoDB";
 
-        ctx_first = _new_jscale_ctx(uri);
-        first_cost = _ctx_l3_fetch_count(ctx_first);
-        assert first_cost >= 1 , "First init must fetch from MongoDB";
-
-        for i in range(N - 1) {
-            ctx = _new_jscale_ctx(uri);
-            extra = _ctx_l3_fetch_count(ctx);
-            assert extra == 0 , (
-                f"Context init #{i + 2} of {N} issued {extra} MongoDB fetch(es) "
-                "for system root. Expected 0 — cache should be warm."
-            );
-        }
-    } finally {
-        _reset_process_cache();
-        container.stop();
-        gc.collect();
+    for i in range(N - 1) {
+        ctx = _new_jscale_ctx(uri);
+        extra = _ctx_l3_fetch_count(ctx);
+        assert extra == 0 , (
+            f"Context init #{i + 2} of {N} issued {extra} MongoDB fetch(es) "
+            "for system root. Expected 0 — cache should be warm."
+        );
     }
+    _reset_process_cache();
 }
