@@ -1607,3 +1607,29 @@ test "get_extra_package_specs unknown group raises ValueError" {
         reset_config();
     }
 }
+
+# ===== TestMakePipSpec =====
+test "DependencyInstaller _make_pip_spec special version values" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        installer = DependencyInstaller(config=config);
+        # Empty version returns bare name (no version constraint)
+        assert installer._make_pip_spec("requests", "") == "requests";
+        # "*" is treated as unconstrained — must not produce ==*
+        assert installer._make_pip_spec("requests", "*") == "requests";
+        # "latest" is treated as unconstrained — must not produce ==latest
+        assert installer._make_pip_spec("requests", "latest") == "requests";
+        # Specifier-prefixed versions are passed through unchanged
+        assert installer._make_pip_spec("numpy", ">=1.24.0") == "numpy>=1.24.0";
+        assert installer._make_pip_spec("django", "~=4.0") == "django~=4.0";
+        assert installer._make_pip_spec("flask", "==3.0") == "flask==3.0";
+        assert installer._make_pip_spec("celery", "!=4.0") == "celery!=4.0";
+        # Bare version gets an == prefix
+        assert installer._make_pip_spec("mylib", "1.2.3") == "mylib==1.2.3";
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
