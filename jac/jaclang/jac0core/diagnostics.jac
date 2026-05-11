@@ -147,7 +147,7 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E0028",
          Category.SYNTAX,
          "Expected ':<+' or ':+>' to close backward typed connection -- did you mean '<+: <EdgeType> :<+ <node>' (backward) or '<+: <EdgeType> :+> <node>' (bidirectional)?"
-      ),
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
