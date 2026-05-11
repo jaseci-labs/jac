@@ -148,6 +148,11 @@ running the correct merge-aware sync() + L2 update.
 """
 impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
     import asyncio;
+    if self._committed {
+        return;
+    }
+    await asyncio.to_thread(self.commit);
+    self._committed = True;
     await asyncio.to_thread(self.commit, anchor);
 }
 

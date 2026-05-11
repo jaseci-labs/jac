@@ -179,7 +179,6 @@ The return type serves as the output contract -- `enum` means the LLM can only p
 
 For **agentic workflows**, Jac's graph constructs (nodes, edges, walkers) naturally model AI agents that traverse structured state spaces, make decisions with `by llm()`, and call tools:
 
-<!-- jac-skip -->
 ```jac
 def get_weather(city: str) -> str { return fetch_weather_api(city); }
 def search_web(query: str) -> list[str] { return web_search_api(query); }

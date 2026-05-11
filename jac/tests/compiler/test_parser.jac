@@ -16,7 +16,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse as rd_parse }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
@@ -134,24 +134,21 @@ test "param syntax" {
 }
 
 test "new keyword errors" {
-    # Parser emits 'Missing ;' (treats 'new' as identifier, so 'new car(...)' is
-    # two expressions). ASTValidationPass then catches 'new' as a banned keyword.
+    # JS-style `new car(...)` is not Jac syntax: `new` is now an ambient
+    # builtin (callable as `new(Cls, ...args)`), so the parser treats the
+    # bare `new` as an identifier and the adjacent `car("honda", 2018)` as
+    # a second expression, producing `Missing ';'` on each of the two
+    # offending lines. The fixture is preserved as a regression guard that
+    # JS-style `new` usage still fails.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "new_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 4;
-    expected_substrings = [
-        "Missing ';'",
-        "Missing ';'",
-        "'new' is not supported in Jac",
-        "'new' is not supported in Jac",
-
-    ];
-    for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
+    assert len(prog.errors_had) == 2;
+    for alrt in prog.errors_had {
         pretty = alrt.pretty_print();
-        assert expected in pretty;
+        assert "Missing ';'" in pretty;
     }
 }
 

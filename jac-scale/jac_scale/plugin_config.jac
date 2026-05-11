@@ -323,6 +323,55 @@ class JacScalePluginConfig {
                         }
                     }
                 },
+                "events": {
+                    "type": "dict",
+                    "default": {},
+                    "description": "Event-streaming broker configuration. Off by default. When enabled, jac-scale exposes publish() / @subscribe via the active broker (RedisBroker if a redis URL resolves, otherwise LocalBroker in-memory).",
+                    "nested": {
+                        "enabled": {
+                            "type": "bool",
+                            "default": False,
+                            "description": "Enable the event-streaming broker. When false, all publish() calls become no-ops."
+                        },
+                        "url": {
+                            "type": "string",
+                            "default": None,
+                            "description": "Redis connection URL. If unset, falls back to [plugins.scale.database].redis_url. If neither is set or `redis` extra is missing, LocalBroker (in-memory) is used."
+                        },
+                        "consumer_group": {
+                            "type": "string",
+                            "default": "jac-scale",
+                            "description": "Default consumer group name used when @subscribe does not specify one."
+                        },
+                        "serializer": {
+                            "type": "string",
+                            "default": "json",
+                            "description": "Payload serializer: 'json' (default) or 'msgpack' (requires extra)."
+                        },
+                        "retry": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Default retry policy applied when a subscription does not provide its own.",
+                            "nested": {
+                                "max_attempts": {
+                                    "type": "int",
+                                    "default": 3,
+                                    "description": "Number of delivery attempts before the message is sent to the dead-letter topic."
+                                },
+                                "backoff_seconds": {
+                                    "type": "list",
+                                    "default": [1.0, 5.0, 30.0],
+                                    "description": "Backoff delays per attempt index, clamped to the last value."
+                                },
+                                "dead_letter_suffix": {
+                                    "type": "string",
+                                    "default": ".dlq",
+                                    "description": "Suffix appended to the topic name to form its dead-letter topic."
+                                }
+                            }
+                        }
+                    }
+                },
                 "monitoring": {
                     "type": "dict",
                     "default": {},
