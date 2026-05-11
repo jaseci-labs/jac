@@ -294,36 +294,52 @@ def:pub Counter() -> JsxElement {
 
 `root` is again a reserved keyword (`KW_ROOT`) and parses as a `SpecialVarRef`, mirroring how `here` and `visitor` are bound. The type checker resolves it directly to `Root`, the binder rejects local rebinding, and codegen lowers it to `Jac.root()`. This reverses the brief window in 0.12.3 where `root` was an ambient builtin resolved through `jac_builtins.pyi`.
 
-**Impact:** Bare `root` is the canonical form and continues to work as before in walkers, graph operations, and edge expressions. However:
+**Impact:** Bare `root` is the canonical form in `.jac` source and continues to work as before in walkers, graph operations, and edge expressions. However:
 
 - **Backtick escaping is required to shadow it.** Use `` `root `` to declare a parameter, field, or local named `root`.
-- **`root()` is now deprecated.** Bare `root` is canonical; the compiler emits **W0062** when it sees `root()` and lowers it to the same `Jac.root()` call so existing code keeps working.
+- **`root()` is deprecated in `.jac` source.** Bare `root` is canonical; the compiler emits **W0062** when it sees `root()` in a `.jac` file and lowers it to the same `Jac.root()` call so existing code keeps working.
 - **AST introspection sees `SpecialVarRef` with `KW_ROOT` again.** Code that special-cased the post-0.12.3 `Name` shape needs to update.
 - **Bytecode cache must be cleared.** The AST shape for `root` changes from `Name` to `SpecialVarRef`. Run `rm -rf ~/.cache/jac/bytecode/ .jac/cache/` (or your project's configured cache dir) after upgrading.
 
-**Before (0.12.3):**
+!!! note "`.jac` source vs library mode"
+    The deprecation applies to `.jac` source only. In **library mode** (Python files using `from jaclang.lib import root, connect, spawn, ...`), `root` is a Python function and **must be called as `root()`** -- it is not a keyword in that context. See [Library Mode](../reference/language/library-mode.md) for the full Python-side surface.
+
+**Before (0.12.3 `.jac` source):**
 
 ```jac
 # root was an ambient builtin; backtick escaping not needed
 has root: str = "default";
 
 with entry {
-    r = root();              # explicit call, recommended
-    root() ++> Item();       # works, no warning
+    r = root();              # ambient-builtin call, valid in 0.12.3
+    root() ++> Item();       # valid in 0.12.3
 }
 ```
 
-**After:**
+**After (`.jac` source):**
 
 ```jac
+node Item { has name: str = ""; }
+
 # root is a keyword again; backtick to shadow as a field
-has `root: str = "default";
+obj Settings {
+    has `root: str = "default";
+}
 
 with entry {
     r = root;                # bare reference, canonical
     root ++> Item();         # works, no warning
     r2 = root();             # still works but emits W0062
 }
+```
+
+**In library mode (Python):**
+
+```python
+from jaclang.lib import root, connect
+
+# root() is the canonical call form in Python
+connect(left=root(), right=Item())
 ```
 
 ---

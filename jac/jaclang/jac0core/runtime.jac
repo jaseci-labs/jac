@@ -467,10 +467,17 @@ system,
     """Jac's report stmt feature."""
     static def log_report(expr: Any, custom: bool = False) -> None;
 
-    """Jac's apply_dir stmt feature."""
+    """Jac's apply_dir stmt feature.
+
+    `slc`, when given, requests storage-layer pagination: for single-hop
+    type-filtered traversals the topology planner returns just the bounded
+    UUID set so the persistence backend only loads that subset. The slice is
+    always applied (falls back to a Python slice over the materialized result
+    when pushdown is not eligible) so semantics match a trailing `[a:b]`."""
     static def refs(
         path: ObjectSpatialPath | NodeArchetype | list[NodeArchetype],
-        post_filter: (Callable[([Archetype], bool)] | None) = None
+        post_filter: (Callable[([Archetype], bool)] | None) = None,
+        slc: (slice | None) = None
     ) -> list[NodeArchetype] | list[EdgeArchetype] | list[
         (NodeArchetype | EdgeArchetype)
     ];

@@ -118,9 +118,7 @@ def dump_traceback(e: Exception) -> str {
                 file_source = display_source;
                 if (file_source is None) {
                     try {
-                        with open(frame.filename) as file {
-                            file_source = file.read();
-                        }
+                        file_source = read_file_with_encoding(frame.filename);
                     } except Exception {
                         file_source = '';
                     }
@@ -292,13 +290,18 @@ class Jdb(pdb.Pdb) {
 }
 
 glob debugger = Jdb();
-"""Read file with proper encoding detection.
+"""Encodings to try when reading user-authored text files."""
+glob _JAC_TEXT_ENCODINGS = [
+         'utf-8-sig',
+         'utf-8',
+         'utf-16',
+         'utf-16le',
+         'utf-16be'
+     ];
 
-    Tries multiple encodings to handle files with different encodings.
-    """
+"""Read file with proper encoding detection."""
 def read_file_with_encoding(file_path: str) -> str {
-    encodings_to_try = ['utf-8-sig', 'utf-8', 'utf-16', 'utf-16le', 'utf-16be'];
-    for encoding in encodings_to_try {
+    for encoding in _JAC_TEXT_ENCODINGS {
         try {
             with open(file_path, encoding=encoding) as f {
                 return f.read();
@@ -314,6 +317,18 @@ def read_file_with_encoding(file_path: str) -> str {
     raise OSError(
         f"Could not read file {file_path} with any encoding. Report this issue:https://github.com/jaseci-labs/jaseci/issues"
     );
+}
+
+"""Read and parse a TOML file with encoding fallback.
+
+    tomllib does strict UTF-8 decode; this routes through
+    read_file_with_encoding so non-UTF-8 files (e.g. UTF-16 with BOM) work.
+    Parse errors propagate as tomllib.TOMLDecodeError so callers can match
+    on the original exception type.
+    """
+def read_toml_with_encoding(file_path: str) -> dict {
+    import tomllib;
+    return tomllib.loads(read_file_with_encoding(file_path));
 }
 
 """Return a short, readable type name for annotations."""
@@ -429,23 +444,12 @@ def get_disabled_plugins -> list {
             if d.strip()
         ];
     }
-    try {
-        import tomllib;
-    } except ImportError {
-        try {
-            import tomli as tomllib;
-        } except ImportError {
-            return [];
-        }
-    }
     current = Path.cwd().resolve();
     while (current != current.parent) {
         toml_path = current / 'jac.toml';
         if toml_path.exists() {
             try {
-                with open(toml_path, 'rb') as f {
-                    data = tomllib.load(f);
-                }
+                data = read_toml_with_encoding(str(toml_path));
                 return data.get('plugins', {}).get('disabled', []);
             } except Exception {
                 return [];
@@ -456,9 +460,7 @@ def get_disabled_plugins -> list {
     toml_path = current / 'jac.toml';
     if toml_path.exists() {
         try {
-            with open(toml_path, 'rb') as f {
-                data = tomllib.load(f);
-            }
+            data = read_toml_with_encoding(str(toml_path));
             return data.get('plugins', {}).get('disabled', []);
         } except Exception {
             ;

@@ -330,6 +330,136 @@ impl TopologyIndex.resolve_chain(
     return {self.node_table[lid][0] for lid in current_lids};
 }
 
+"""Single-hop ordered resolution for the slice-pushdown fast path.
+
+The buckets index is set-keyed (fast type membership but order-lossy), so we
+walk the canonical adj_list (which preserves edge insertion order) and gate
+each triple by:
+  * source lid in `origin_lids`
+  * edge type id matches `edge_type` (with the special wildcard when None)
+  * target node type id matches `node_type` via MRO fan-out (or wildcard)
+  * direction: 1=IN (consider when target is the origin), 2=OUT (source is
+    the origin), 3=ANY
+
+The buckets membership lookup gives us the type-filtered "pass-set" — the
+adj_list walk recovers the order. We dedupe (a single neighbor may have
+multiple parallel edges), apply the slice, and return."""
+impl TopologyIndex.resolve_chain_ordered(
+    origin_ids: set[UUID],
+    edge_type: (str | None),
+    node_type: (str | None),
+    direction: int,
+    slc: slice
+) -> list[UUID] {
+    origin_lids: set[int] = set();
+    for uid in origin_ids {
+        lid = self.node_to_lid.get(uid);
+        if lid is not None {
+            origin_lids.add(lid);
+        }
+    }
+    if not origin_lids {
+        return [];
+    }
+
+    etid: (int | None) = self.type_to_id.get(edge_type) if edge_type else None;
+    if edge_type and etid is None {
+        # Edge type referenced doesn't exist in the index — empty result.
+        return [];
+    }
+    ntid: (int | None) = self.type_to_id.get(node_type) if node_type else None;
+    if node_type and ntid is None {
+        return [];
+    }
+
+    # Build the type-filtered candidate sets per origin lid using buckets.
+    # `cand_pairs` collects (src_lid, allowed_target_lids) so the adj_list walk
+    # can quickly check membership without re-running MRO logic per edge.
+    out_allowed: dict[int, set[int]] = {};
+    in_allowed: dict[int, set[int]] = {};
+    want_out = direction in (2, 3);
+    want_in = direction in (1, 3);
+    for src_lid in origin_lids {
+        bucket = self.buckets.get(src_lid);
+        if bucket is None {
+            continue;
+        }
+        col_keys: list[str] = [];
+        if etid is not None {
+            col_keys.append(_e_key(etid));
+        }
+        if ntid is not None {
+            col_keys.append(_n_key(ntid));
+        }
+        if not col_keys {
+            # Wildcard: union all columns for this src.
+            out_set: set[int] = set();
+            in_set: set[int] = set();
+            for (_, col) in bucket.items() {
+                if want_out {
+                    out_set |= col[1];
+                }
+                if want_in {
+                    in_set |= col[0];
+                }
+            }
+            if want_out and out_set {
+                out_allowed[src_lid] = out_set;
+            }
+            if want_in and in_set {
+                in_allowed[src_lid] = in_set;
+            }
+            continue;
+        }
+        cand_out: (set[int] | None) = None;
+        cand_in: (set[int] | None) = None;
+        for ck in col_keys {
+            col = bucket.get(ck);
+            if col is None {
+                cand_out = set();
+                cand_in = set();
+                break;
+            }
+            cand_out = set(col[1]) if cand_out is None else cand_out & col[1];
+            cand_in = set(col[0]) if cand_in is None else cand_in & col[0];
+        }
+        if want_out and cand_out {
+            out_allowed[src_lid] = cand_out;
+        }
+        if want_in and cand_in {
+            in_allowed[src_lid] = cand_in;
+        }
+    }
+
+    if not out_allowed and not in_allowed {
+        return [];
+    }
+
+    # Walk adj_list in insertion order; collect ordered target UUIDs that
+    # pass the per-origin allow-sets. Dedupe across parallel edges.
+    ordered: list[UUID] = [];
+    seen: set[int] = set();
+    for (s, _et, t) in self.adj_list {
+        # OUT: origin is the source, target is the neighbor.
+        if want_out and s in out_allowed and t in out_allowed[s] {
+            if t not in seen {
+                seen.add(t);
+                ordered.append(self.node_table[t][0]);
+            }
+            continue;
+        }
+        # IN: origin is the target, source is the neighbor.
+        if want_in and t in in_allowed and s in in_allowed[t] {
+            if s not in seen {
+                seen.add(s);
+                ordered.append(self.node_table[s][0]);
+            }
+        }
+    }
+
+    return ordered[slc];
+}
+
 """For a set of node UUIDs, return mapping of foreign_root_uuid -> {node_ids}."""
 impl TopologyIndex.get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUID]] {
     result: dict[UUID, set[UUID]] = {};

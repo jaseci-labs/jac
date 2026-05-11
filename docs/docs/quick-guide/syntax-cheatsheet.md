@@ -296,9 +296,9 @@ obj Dog {
         print(f"{self.name} says Woof!");
     }
 
-    # Class method -- Self refers to the class
-    class def create(name: str) -> Self {
-        return Self(name=name);
+    # Static method -- no self or Self; works as a named constructor
+    static def make(name: str) -> Dog {
+        return Dog(name=name);
     }
 
     # Static method -- no self or Self
@@ -427,10 +427,10 @@ type Json = JsonPrimitive | list[Json] | dict[str, Json];
 # Generic type alias
 type NumberList = list[int | float];
 
-# Self type -- refers to the enclosing archetype
+# Recursive types name the enclosing archetype directly
 obj TreeNode {
     has value: int = 0,
-        next: Self | None = None;  # Self = TreeNode here
+        next: TreeNode | None = None;
 }
 
 
@@ -521,8 +521,8 @@ with entry {
 # Decorators
 # ============================================================
 
-# Prefer `class def` for classmethods in obj (see Objects section above)
-# @classmethod decorator is supported for Python `class` compatibility
+# Prefer `static def` for named constructors and `class def` for class-bound
+# methods in `obj`. The @classmethod decorator stays for Python `class` compatibility.
 @classmethod
 def my_class_method(cls: type) -> str {
     return cls.__name__;

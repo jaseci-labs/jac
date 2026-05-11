@@ -81,7 +81,7 @@ def check_deployment_status(
     node_port: int,
     path: str = '/docs',
     interval: int = 15,
-    max_retries: int = 30,
+    max_retries: int = 48,
     nlb_url: (str | None) = None,
     namespace: str = "default",
     app_name: str = "jaseci",

@@ -438,6 +438,25 @@ impl PyastGenPass.builtin_name(name: str) -> ast3.Name {
     return self.sync(ast3.Name(id=name, ctx=ast3.Load()));
 }
 
+"""True if `target` is (or transitively wraps) an edge-ref trailer whose
+codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into.
+
+Recurses through inner AtomTrailers when the right-hand side is a FilterCompr
+(those fuse with the EdgeRefTrailer on this same pass), so chains like
+`[-->][?:Lead]` still expose the underlying refs() call to the outer slice."""
+impl PyastGenPass._is_edge_ref_target(target: uni.UniNode) -> bool {
+    if isinstance(target, uni.EdgeRefTrailer) {
+        return not target.edges_only and not target.is_async;
+    }
+    if (
+        isinstance(target, uni.AtomTrailer)
+        and isinstance(target.right, uni.FilterCompr)
+    ) {
+        return self._is_edge_ref_target(target.target);
+    }
+    return False;
+}
+
 """Append an import statement to the preamble once."""
 impl PyastGenPass._add_preamble_once(key: str, nd: ast3.AST) -> None {
     if (key in self.already_added) {
@@ -3080,6 +3099,43 @@ impl PyastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
                 )
             )
         ];
+    } elif (
+        isinstance(nd.right, uni.IndexSlice)
+        and nd.right.is_range
+        and len(nd.right.slices) == 1
+        and self._is_edge_ref_target(nd.target)
+    ) {
+        # Pushdown fusion: a slice chained on an edge-ref result becomes a
+        # `slc=slice(...)` kwarg on the Jac.refs() call so the runtime can
+        # bound the storage-layer load to the sliced subset, not all neighbors.
+        target_py = cast(ast3.Call, self.py_ast_val(nd.target));
+        slc = nd.right.slices[0];
+        start_ast = (
+            cast(ast3.expr, self.py_ast_val(slc.start))
+                if slc.start
+                else self.sync(ast3.Constant(value=None))
+        );
+        stop_ast = (
+            cast(ast3.expr, self.py_ast_val(slc.stop))
+                if slc.stop
+                else self.sync(ast3.Constant(value=None))
+        );
+        step_ast = (
+            cast(ast3.expr, self.py_ast_val(slc.step))
+                if slc.step
+                else self.sync(ast3.Constant(value=None))
+        );
+        # `slice` is a Python builtin — emit a bare Name (not via builtin_name,
+        # which would also try to add it to the builtin imports table).
+        slice_call = self.sync(
+            ast3.Call(
+                func=self.sync(ast3.Name(id='slice', ctx=ast3.Load())),
+                args=[start_ast, stop_ast, step_ast],
+                keywords=[]
+            )
+        );
+        target_py.keywords.append(self.sync(ast3.keyword(arg='slc', value=slice_call)));
+        nd.gen.py_ast = [target_py];
     } else {
         nd.gen.py_ast = [
             self.sync(

@@ -212,7 +212,7 @@ obj Calculator {
 
 ### 6 Static Methods and Class Methods
 
-Jac provides three method modifiers: `def` (instance method, receives `self`), `static def` (no receiver), and `class def` (class method, receives `Self`).
+Jac provides three method modifiers: `def` (instance method, receives `self`), `static def` (no receiver), and `class def` (class method, receives the class itself).
 
 ```jac
 obj Counter {
@@ -223,9 +223,9 @@ obj Counter {
         return Counter.count;
     }
 
-    # Class method -- Self refers to the class itself
-    class def create() -> Self {
-        return Self();
+    # Static factory -- explicit class name keeps the return type clean
+    static def make() -> Counter {
+        return Counter();
     }
 
     # Instance method -- self is the instance
@@ -238,20 +238,20 @@ obj Counter {
 | Modifier | Receiver | Use case |
 |----------|----------|----------|
 | `def` | `self` (implicit) | Instance behavior |
-| `static def` | none | Utility functions |
-| `class def` | `Self` (implicit) | Factory methods, alternative constructors |
+| `static def` | none | Utility functions, named constructors |
+| `class def` | the class (implicit) | Class-bound methods that need access to the class object |
 
-#### Class Methods and `Self`
+#### Factory Methods
 
-`class def` declares a class method. Inside it, `Self` (capital S) refers to the class itself -- equivalent to Python's `cls` parameter, but auto-injected.
+The simplest way to expose a named constructor is a `static def` that returns the enclosing type:
 
 ```jac
 obj Animal {
     has name: str,
         sound: str = "...";
 
-    class def create(name: str) -> Self {
-        return Self(name=name);
+    static def named(name: str) -> Animal {
+        return Animal(name=name);
     }
 
     def speak() -> str {
@@ -264,18 +264,16 @@ obj Dog(Animal) {
 }
 
 with entry {
-    # Self resolves to Dog, not Animal -- polymorphic!
-    d = Dog.create("Rex");
+    a = Animal.named("Rex");
+    print(a.speak());         # Rex says ...
+    d = Dog(name="Rex");
     print(d.speak());         # Rex says woof
-    print(type(d).__name__);  # Dog
 }
 ```
 
-`Self` is polymorphic: when a subclass inherits a `class def`, `Self` resolves to the subclass. This makes factory methods work correctly across inheritance hierarchies without overriding.
-
 #### `Self` as a Type Annotation
 
-`Self` also works as a type annotation in instance methods, enabling fluent/builder patterns:
+`Self` works as a type annotation in instance methods, enabling fluent/builder patterns where each method returns the receiver:
 
 ```jac
 obj QueryBuilder {
@@ -300,9 +298,10 @@ with entry {
 
 | Context | `Self` resolves to |
 |---------|-------------------|
-| `class def` body | the class (`cls` in Python) |
-| `def` body | `type(self)` -- the runtime class |
-| Type annotation | the enclosing class name |
+| Instance `def` return annotation | `type(self)` -- the runtime class, used for fluent return-self |
+
+!!! note "Polymorphic `class def` factories"
+    A `class def` that returns `Self` and constructs `Self(...)` runs correctly today -- subclass calls return subclass instances -- but the static checker does not yet bind `Self` in `class def` return positions or as a callable target. For clean `jac check` output, prefer the `static def` factory above and name the concrete class explicitly. Tracking issue: polymorphic `Self` in `class def` is a planned type-checker enhancement.
 
 ### 7 Lambda Expressions
 

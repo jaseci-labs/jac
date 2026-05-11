@@ -376,3 +376,115 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
         if isinstance(a, NodeAnchor) and a.archetype
     ];
 }
+
+"""Storage-layer pagination via the topology index.
+
+Handles single-hop and multi-hop type-only chains. For multi-hop, non-final
+hops resolve via the set-based `resolve_chain` and the final hop's edges
+drive the adj_list walk.
+
+Multi-hop ordering is global adj_list (edge-insertion) order restricted to
+final-hop edges whose source is in the prefix-resolved set. This matches
+the slow path's `edges_to_nodes` order when graphs are built with the
+natural pattern (insert each parent's children together); for interleaved
+insertion patterns the two can diverge. Strict per-source slow-path
+equivalence across multiple sources would require per-source ordered
+adjacency in the index — a future enrichment tracked alongside ordering
+DSL work.
+
+Predicates anywhere in the chain disable pushdown — post-apply-then-slice
+breaks the ordering invariant the slice is paying for.
+
+Returns None to signal "no pushdown" — callers fall back to the unsliced fast
+path or to the slow path."""
+impl plan_query_ordered(path: Any, slc: slice) -> (list[UUID] | None) {
+    if not _is_enabled() {
+        return None;
+    }
+    if not path.origin {
+        return None;
+    }
+    origin_anchor = path.origin[0].__jac__;
+    if not origin_anchor.persistent {
+        return None;
+    }
+    root_anchor = _get_root_anchor(origin_anchor);
+    if root_anchor is None {
+        return None;
+    }
+    destinations = path.destinations[:-1] if path.edge_only else path.destinations;
+    if not destinations {
+        return None;
+    }
+    # Build the chain and validate every hop is type-only. Any predicate
+    # (edge or node, intermediate or final) forces post-apply filtering which
+    # would invalidate the ordered slice. Bail and let the caller fall back.
+    chain: list[tuple[(str | None), (str | None), int]] = [];
+    for dest in destinations {
+        if _filter_has_predicates(dest.`edge) {
+            return None;
+        }
+        if _filter_has_predicates(dest.nd) {
+            return None;
+        }
+        edge_type = _extract_type_name_from_filter(dest.`edge);
+        node_type = _extract_type_name_from_filter(dest.nd);
+        chain.append((edge_type, node_type, dest.direction.value));
+    }
+    import from jaclang.runtimelib.topology_index { TopologyIndex }
+    idx = root_anchor.get_topology_index();
+    if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
+        return None;
+    }
+    origin_ids = {nd.__jac__.id for nd in path.origin};
+    # For multi-hop: resolve the non-final prefix via the set-based walker —
+    # intermediate-hop order isn't observable to the slice. The resulting set
+    # becomes the origin set for the ordered final hop.
+    if len(chain) > 1 {
+        prev_set = idx.resolve_chain(origin_ids, chain[:-1]);
+        if not prev_set {
+            return [];
+        }
+        origin_ids = prev_set;
+    }
+    final = chain[-1];
+    return idx.resolve_chain_ordered(origin_ids, final[0], final[1], final[2], slc);
+}
+
+"""Load nodes by an ordered list of UUIDs.
+
+Used by the slice-pushdown fast path: the planner has already determined the
+bounded set in canonical order, so we just batch-load and preserve order.
+This skips the edge-anchor bulk prefetch that the unsliced path needs for
+ordering — the topology index already encoded the ordering, so the storage
+layer is asked for exactly the requested subset."""
+impl batch_load_nodes_by_ids(node_ids: list[UUID]) -> list[Any] {
+    import from jaclang { JacRuntimeInterface as Jac }
+    import from jaclang.jac0core.archetype { NodeAnchor }
+    import from jaclang.runtimelib.memory { TieredMemory }
+    if not node_ids {
+        return [];
+    }
+    ctx = Jac.get_context();
+    if isinstance(ctx.mem, TieredMemory) {
+        loaded: dict = ctx.mem.batch_get(node_ids);
+    } else {
+        loaded: dict = {
+            nid: a
+            for nid in node_ids
+            if (a := ctx.mem.get(nid))
+        };
+    }
+    result: list = [];
+    for nid in node_ids {
+        anchor = loaded.get(nid);
+        if (
+            isinstance(anchor, NodeAnchor)
+            and anchor.archetype
+            and Jac.check_read_access(anchor)
+        ) {
+            result.append(anchor.archetype);
+        }
+    }
+    return result;
+}
