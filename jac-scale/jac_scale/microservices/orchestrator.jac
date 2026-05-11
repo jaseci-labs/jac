@@ -22,11 +22,8 @@ import from jac_scale.microservices._util {
 glob logger = logging.getLogger(__name__);
 
 
-"""Parse `[[microservices.client.static_mounts]]` entries into the
-{url_prefix, local_path} dicts the gateway expects. Skips malformed
-entries (non-dict, missing fields, empty strings). Used by both
-`start_microservice_mode` (local) and `start_gateway_only` (K8s).
-"""
+"""Parse static_mounts entries into {url_prefix, local_path} dicts;
+skips malformed entries."""
 def _parse_static_mounts(client_config: dict[str, Any]) -> list[dict[str, str]] {
     out: list[dict[str, str]] = [];
     if not client_config {
@@ -48,10 +45,7 @@ def _parse_static_mounts(client_config: dict[str, Any]) -> list[dict[str, str]] 
 }
 
 
-"""Read `client.dist_dir` from microservice config, defaulting to
-`.jac/client/dist`. Centralized so the local-mode banner, build path,
-and gateway-only mode all read it the same way.
-"""
+"""Read client.dist_dir; defaults to `.jac/client/dist`."""
 def _client_dist_dir(client_config: dict[str, Any]) -> str {
     if not client_config {
         return DEFAULT_CLIENT_DIST_DIR;

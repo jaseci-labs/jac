@@ -30,6 +30,15 @@ REGISTRY="${REGISTRY:-}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOCKERFILE_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice"
 DOCKERIGNORE_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/dockerignore.microservice"
+DOCKERFILE_EXP_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice.exp"
+
+# Use the experimental (local-source) Dockerfile when inside the jaseci
+# repo; PyPI lags the K-track code so PR-time CI must install from source.
+USE_LOCAL_SOURCE=0
+if [ -f "${REPO_ROOT}/jac/jaclang/__init__.py" ] \
+   && [ -f "${REPO_ROOT}/jac-scale/jac_scale/__init__.py" ]; then
+    USE_LOCAL_SOURCE=1
+fi
 
 cleanup() {
     echo "=== cleanup ==="
@@ -37,16 +46,30 @@ cleanup() {
         kill "${PORT_FORWARD_PID}" 2>/dev/null || true
     fi
     kubectl delete namespace "${NAMESPACE}" --ignore-not-found --timeout=120s || true
-    rm -f "${PROJECT_DIR}/Dockerfile" "${PROJECT_DIR}/.dockerignore" 2>/dev/null || true
+    if [ "${USE_LOCAL_SOURCE}" != "1" ]; then
+        rm -f "${PROJECT_DIR}/Dockerfile" "${PROJECT_DIR}/.dockerignore" 2>/dev/null || true
+    fi
 }
 trap cleanup EXIT
 
-echo "=== copy Dockerfile + .dockerignore into ${PROJECT_DIR} ==="
-cp "${DOCKERFILE_TEMPLATE}" "${PROJECT_DIR}/Dockerfile"
-cp "${DOCKERIGNORE_TEMPLATE}" "${PROJECT_DIR}/.dockerignore"
-BUILD_CWD="${PROJECT_DIR}"
-BUILD_FILE="${PROJECT_DIR}/Dockerfile"
-BUILD_ARGS=""
+if [ "${USE_LOCAL_SOURCE}" = "1" ]; then
+    echo "=== local-source build (Dockerfile.microservice.exp) ==="
+    PROJECT_REL="${PROJECT_DIR#${REPO_ROOT}/}"
+    if [ "${PROJECT_REL}" = "${PROJECT_DIR}" ]; then
+        echo "FAIL: PROJECT_DIR (${PROJECT_DIR}) is not under REPO_ROOT (${REPO_ROOT})" >&2
+        exit 1
+    fi
+    BUILD_CWD="${REPO_ROOT}"
+    BUILD_FILE="${DOCKERFILE_EXP_TEMPLATE}"
+    BUILD_ARGS="--build-arg PROJECT_PATH=${PROJECT_REL}"
+else
+    echo "=== copy Dockerfile + .dockerignore into ${PROJECT_DIR} ==="
+    cp "${DOCKERFILE_TEMPLATE}" "${PROJECT_DIR}/Dockerfile"
+    cp "${DOCKERIGNORE_TEMPLATE}" "${PROJECT_DIR}/.dockerignore"
+    BUILD_CWD="${PROJECT_DIR}"
+    BUILD_FILE="${PROJECT_DIR}/Dockerfile"
+    BUILD_ARGS=""
+fi
 
 if [ "${USE_MINIKUBE}" = "1" ]; then
     echo "=== build inside minikube's docker daemon ==="

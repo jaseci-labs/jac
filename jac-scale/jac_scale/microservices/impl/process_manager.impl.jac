@@ -305,9 +305,7 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
 
 """Stop all running services."""
 impl ServiceProcessManager.stop_all -> None {
-    # Stop the health monitor first so it doesn't race with stop_service
-    # and flip a just-terminated service back to UNHEALTHY (which would
-    # also make the lifecycle log noisier than it needs to be).
+    # Stop the monitor first so it doesn't race with stop_service.
     self.stop_health_monitor();
     names = list(self.processes.keys());
     for name in names {
@@ -367,14 +365,9 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
 }
 
 
-"""Background loop that keeps re-checking service health forever.
-
-Hoisted to module scope (rather than a nested def inside
-start_health_monitor) so the thread target is picklable and the
-captured `self` reference is explicit. Exits cleanly when the
-stop_event is set; swallows per-iteration exceptions so a transient
-DNS / socket error doesn't kill the recovery loop.
-"""
+"""Background recovery loop; module-scope so the thread target is
+picklable. Swallows per-iteration exceptions so a transient socket
+error doesn't kill the loop."""
 def _health_monitor_loop(pm: Any, stop_event: Any, interval: float) -> None {
     while not stop_event.is_set() {
         try {
@@ -382,9 +375,6 @@ def _health_monitor_loop(pm: Any, stop_event: Any, interval: float) -> None {
         } except Exception as e {
             logger.warning(f"health monitor iteration failed: {e}");
         }
-        # Event.wait returns True when set (so we exit immediately on
-        # stop) and False on timeout (so we loop again). This is the
-        # standard Python pattern for cancellable periodic work.
         if stop_event.wait(interval) {
             return;
         }

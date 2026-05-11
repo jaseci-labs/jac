@@ -82,6 +82,23 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
      ".env.*\n";
 
 
+"""Walk up looking for jac/ + jac-scale/ siblings (developer checkout
+detection). Returns the repo root or None."""
+def find_jaseci_repo_root(start: Path, max_levels: int = 8) -> Path | None {
+    current = start.resolve();
+    for _ in range(max_levels) {
+        if (current / "jac").is_dir() and (current / "jac-scale").is_dir() {
+            return current;
+        }
+        if current.parent == current {
+            return None;
+        }
+        current = current.parent;
+    }
+    return None;
+}
+
+
 """Locate the shipped Dockerfile.microservice (PyPI install path).
 Returns Path or None. Extracted so tests can mock it."""
 def find_shipped_dockerfile -> Path | None {
@@ -104,13 +121,32 @@ def find_shipped_dockerfile -> Path | None {
 
 
 """Pick (dockerfile, context, build_args) in priority order:
-  1. <project>/Dockerfile.microservice (user override - jacBuilder pattern)
-  2. Shipped <pkg>/scripts/Dockerfile.microservice (PyPI install)
-  3. Embedded fallback written to <project>/.jac/Dockerfile.gen"""
+  1. <project>/Dockerfile.microservice (user override)
+  2. Developer-checkout -> repo-root Dockerfile.microservice.exp (PR testing)
+  3. Shipped <pkg>/scripts/Dockerfile.microservice (PyPI install)
+  4. Embedded fallback at <project>/.jac/Dockerfile.gen"""
 def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
     user_dockerfile = project_dir / "Dockerfile.microservice";
     if user_dockerfile.is_file() {
         return (user_dockerfile, project_dir, {});
+    }
+
+    repo_root = find_jaseci_repo_root(project_dir);
+    if repo_root {
+        exp_df = repo_root / "jac-scale" / "scripts" / "Dockerfile.microservice.exp";
+        if exp_df.is_file() {
+            try {
+                rel_project = str(
+                    project_dir.resolve().relative_to(repo_root.resolve())
+                );
+            } except ValueError {
+                rel_project = "";
+            }
+            return (
+                exp_df, repo_root,
+                {"PROJECT_PATH": rel_project} if rel_project else {}
+            );
+        }
     }
 
     shipped = find_shipped_dockerfile();
