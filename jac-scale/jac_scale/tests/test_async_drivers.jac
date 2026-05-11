@@ -1,9 +1,10 @@
 """
 Correctness tests for native async drivers.
 
-Proves that MongoBackend.aget/acommit (Motor) and RedisBackend.aget/aput
-(redis.asyncio) actually read and write anchor data, not just that the
-methods exist, but that round-trips produce the correct values.
+Proves that MongoBackend.aget/acommit (PyMongo AsyncMongoClient) and
+RedisBackend.aget/aput (redis.asyncio) actually read and write anchor
+data, not just that the methods exist, but that round-trips produce the
+correct values.
 
 Requires running MongoDB and Redis via testcontainers (installed via [test]).
 """
@@ -43,7 +44,7 @@ with entry {
     }
 }
 
-test "MongoBackend.aget retrieves stored anchor via Motor" {
+test "MongoBackend.aget retrieves stored anchor via AsyncMongoClient" {
     if _mongo_uri is None {
         print("[skip] MongoDB unavailable");
         return;
@@ -61,13 +62,13 @@ test "MongoBackend.aget retrieves stored anchor via Motor" {
     }
     result = asyncio.run(_read());
 
-    assert result is not None , "aget returned None - Motor read failed";
+    assert result is not None , "aget returned None - AsyncMongoClient read failed";
     assert isinstance(result.archetype, CounterNode);
     assert result.archetype.value == 42;
     backend.close();
 }
 
-test "MongoBackend.acommit persists modified anchor via Motor" {
+test "MongoBackend.acommit persists modified anchor via AsyncMongoClient" {
     if _mongo_uri is None {
         print("[skip] MongoDB unavailable");
         return;
