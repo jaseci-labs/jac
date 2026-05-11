@@ -1,7 +1,15 @@
 """Topology utils implementation."""
 
-"""Check if topology_index is enabled in config."""
+"""Check if topology_index is enabled. The `JAC_TOPOLOGY_INDEX` env var
+overrides the toml flag — useful for A/B benchmarking from a shell loop
+without editing jac.toml. Recognized truthy values: 1 / true / yes / on
+(case-insensitive); anything else is read as off."""
 impl _is_enabled -> bool {
+    import os;
+    env = os.environ.get("JAC_TOPOLOGY_INDEX");
+    if env is not None {
+        return env.lower() in ("1", "true", "yes", "on");
+    }
     try {
         import from jaclang.project.config { get_config }
         cfg = get_config();
@@ -39,6 +47,26 @@ impl _type_name(`obj: object) -> str {
     return `type(`obj).__name__;
 }
 
+"""Get the user-defined MRO chain for an archetype instance, stopping at the
+runtime base archetypes."""
+impl _get_type_mro(`obj: object) -> list[str] {
+    import from jaclang.jac0core.archetype {
+        NodeArchetype,
+        EdgeArchetype,
+        WalkerArchetype,
+        Archetype
+    }
+    stop_classes = (NodeArchetype, EdgeArchetype, WalkerArchetype, Archetype, object);
+    chain: list[str] = [];
+    for cls in `type(`obj).__mro__ {
+        if cls in stop_classes {
+            break;
+        }
+        chain.append(cls.__name__);
+    }
+    return chain;
+}
+
 """Called after an edge is created between source and target."""
 impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
     if not _is_enabled() {
@@ -56,23 +84,28 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
     if not isinstance(idx, TopologyIndex) {
         idx = TopologyIndex();
     }
-    # Ensure root node itself is in the index
-    idx.add_node(root_anchor.id, _type_name(root_anchor.archetype));
-    # Add source node
+    idx.add_node(
+        root_anchor.id,
+        _type_name(root_anchor.archetype),
+        _get_type_mro(root_anchor.archetype)
+    );
     idx.add_node(
         source.id,
         _type_name(source.archetype),
+        _get_type_mro(source.archetype),
         None if source.root == root_anchor.id else source.root
     );
-    # Add target node
     target_owner = None;
     if target.root and target.root != root_anchor.id {
         target_owner = target.root;
     }
-    idx.add_node(target.id, _type_name(target.archetype), target_owner);
-    # Add edge
+    idx.add_node(
+        target.id,
+        _type_name(target.archetype),
+        _get_type_mro(target.archetype),
+        target_owner
+    );
     idx.add_edge(source.id, target.id, _type_name(`edge.archetype));
-    # If undirected, add reverse edge too
     if `edge.is_undirected {
         idx.add_edge(target.id, source.id, _type_name(`edge.archetype));
     }
@@ -124,10 +157,16 @@ impl on_node_saved(node_anchor: Any) -> None {
     if not isinstance(idx, TopologyIndex) {
         idx = TopologyIndex();
     }
-    # Ensure root is in index
-    idx.add_node(root_anchor.id, _type_name(root_anchor.archetype));
-    # Add/update node
-    idx.add_node(node_anchor.id, _type_name(node_anchor.archetype));
+    idx.add_node(
+        root_anchor.id,
+        _type_name(root_anchor.archetype),
+        _get_type_mro(root_anchor.archetype)
+    );
+    idx.add_node(
+        node_anchor.id,
+        _type_name(node_anchor.archetype),
+        _get_type_mro(node_anchor.archetype)
+    );
     root_anchor.set_topology_index(idx);
 }
 
@@ -157,7 +196,7 @@ impl _extract_type_name_from_filter(filt: (Callable | None)) -> (str | None) {
     if filt is None {
         return None;
     }
-    # Check if the filter itself is an Archetype instance (identity filter)
+    # An Archetype instance acts as an identity filter (matches its own type).
     try {
         import from jaclang.jac0core.archetype { Archetype }
         if isinstance(filt, Archetype) {
@@ -166,7 +205,6 @@ impl _extract_type_name_from_filter(filt: (Callable | None)) -> (str | None) {
     } except Exception {
         ;
     }
-    # Try to inspect closure variables for a type
     try {
         closure = inspect.getclosurevars(filt);
         for val in `list(closure.nonlocals.values()) + `list(
@@ -219,7 +257,6 @@ impl plan_query(path: Any) -> (set[UUID] | None) {
     if not _is_enabled() {
         return None;
     }
-    # Get the root's topology index from the origin nodes
     if not path.origin {
         return None;
     }
@@ -231,22 +268,14 @@ impl plan_query(path: Any) -> (set[UUID] | None) {
     if root_anchor is None {
         return None;
     }
-    import from jaclang.runtimelib.topology_index { TopologyIndex }
-    idx = root_anchor.get_topology_index();
-    if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
-        return None;
-    }
-    # Build the chain of (edge_type, node_type, direction).
-    #
-    # The index can only resolve type-only filters. The runtime caller
-    # post-applies the FINAL destination's node filter on the planned
-    # set (see edges_to_nodes in runtime.impl), so node predicates on
-    # that last hop are safe -- their `nd` lambda gets re-evaluated.
-    # Anything else -- an edge predicate at any hop, or a node
-    # predicate on a non-final hop -- would be silently dropped if we
-    # planned it, so we bail and let the linear path handle it.
+    # Build the chain before fetching the index — if no hop has a filter we
+    # can skip the decode entirely below. The index can only resolve type-only
+    # filters; bail when a hop's edge filter has predicates, or when a
+    # non-final node filter has predicates (the runtime post-applies the
+    # final hop's node filter on the planned set so its predicates are safe).
     chain: list[tuple[(str | None), (str | None), int]] = [];
     destinations = path.destinations[:-1] if path.edge_only else path.destinations;
+    has_filter = False;
     last_idx = len(destinations) - 1;
     for (i, dest) in enumerate(destinations) {
         if _filter_has_predicates(dest.`edge) {
@@ -258,11 +287,23 @@ impl plan_query(path: Any) -> (set[UUID] | None) {
         edge_type = _extract_type_name_from_filter(dest.`edge);
         node_type = _extract_type_name_from_filter(dest.nd);
         chain.append((edge_type, node_type, dest.direction.value));
+        if edge_type is not None or node_type is not None {
+            has_filter = True;
+        }
     }
     if not chain {
         return None;
     }
-    # Resolve using the index — authoritative when present
+    # No filters anywhere in the chain — the natural edge-walk is optimal,
+    # so skip the index entirely (avoids decoding the blob for nothing).
+    if not has_filter {
+        return None;
+    }
+    import from jaclang.runtimelib.topology_index { TopologyIndex }
+    idx = root_anchor.get_topology_index();
+    if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
+        return None;
+    }
     origin_ids = {nd.__jac__.id for nd in path.origin};
     return idx.resolve_chain(origin_ids, chain);
 }
@@ -299,7 +340,6 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
                 ctx.mem.batch_get(edge_ids);
             }
         }
-        # Walk edges in order, only emit targets in the planned set
         seen: set = set();
         result = [];
         for nd in origin {
@@ -335,4 +375,101 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
         for a in loaded.values()
         if isinstance(a, NodeAnchor) and a.archetype
     ];
+}
+
+"""Storage-layer pagination via the topology index.
+
+Phase 1 scope: single-hop chains only. For multi-hop, the cross-hop ordering
+semantics aren't well-defined (each hop's set-intersection step loses order),
+so we fall back to the existing plan_query path which materializes everything
+and slices in Python.
+
+Returns None to signal "no pushdown" — callers fall back to the unsliced fast
+path or to the slow path."""
+impl plan_query_ordered(path: Any, slc: slice) -> (list[UUID] | None) {
+    if not _is_enabled() {
+        return None;
+    }
+    if not path.origin {
+        return None;
+    }
+    origin_anchor = path.origin[0].__jac__;
+    if not origin_anchor.persistent {
+        return None;
+    }
+    root_anchor = _get_root_anchor(origin_anchor);
+    if root_anchor is None {
+        return None;
+    }
+    destinations = path.destinations[:-1] if path.edge_only else path.destinations;
+    # Phase 1: single-hop only. Multi-hop pushdown requires defining ordering
+    # across set-intersection steps; defer until there's a concrete request.
+    if len(destinations) != 1 {
+        return None;
+    }
+    dest = destinations[0];
+    if _filter_has_predicates(dest.`edge) {
+        return None;
+    }
+    # Predicates on the final hop's node filter are tolerated by plan_query
+    # (the caller post-applies them); but post-applying *then* slicing changes
+    # the ordering invariant we're trying to provide. Restrict to type-only.
+    if _filter_has_predicates(dest.nd) {
+        return None;
+    }
+    edge_type = _extract_type_name_from_filter(dest.`edge);
+    node_type = _extract_type_name_from_filter(dest.nd);
+    if edge_type is None and node_type is None {
+        # Unfiltered single-hop slice: the natural edge-walk preserves order
+        # cheaply, but pushdown still wins because we skip the edge-anchor
+        # bulk prefetch. Plan as a wildcard chain entry.
+        ;
+    }
+    import from jaclang.runtimelib.topology_index { TopologyIndex }
+    idx = root_anchor.get_topology_index();
+    if not isinstance(idx, TopologyIndex) or len(idx) == 0 {
+        return None;
+    }
+    origin_ids = {nd.__jac__.id for nd in path.origin};
+    return idx.resolve_chain_ordered(
+        origin_ids, edge_type, node_type, dest.direction.value, slc
+    );
+}
+
+"""Load nodes by an ordered list of UUIDs.
+
+Used by the slice-pushdown fast path: the planner has already determined the
+bounded set in canonical order, so we just batch-load and preserve order.
+This skips the edge-anchor bulk prefetch that the unsliced path needs for
+ordering — the topology index already encoded the ordering, so the storage
+layer is asked for exactly the requested subset."""
+impl batch_load_nodes_by_ids(node_ids: list[UUID]) -> list[Any] {
+    import from jaclang { JacRuntimeInterface as Jac }
+    import from jaclang.jac0core.archetype { NodeAnchor }
+    import from jaclang.runtimelib.memory { TieredMemory }
+    if not node_ids {
+        return [];
+    }
+    ctx = Jac.get_context();
+    if isinstance(ctx.mem, TieredMemory) {
+        loaded: dict = ctx.mem.batch_get(node_ids);
+    } else {
+        loaded: dict = {
+            nid: a
+            for nid in node_ids
+            if (a := ctx.mem.get(nid))
+        };
+    }
+    result: list = [];
+    for nid in node_ids {
+        anchor = loaded.get(nid);
+        if (
+            isinstance(anchor, NodeAnchor)
+            and anchor.archetype
+            and Jac.check_read_access(anchor)
+        ) {
+            result.append(anchor.archetype);
+        }
+    }
+    return result;
 }

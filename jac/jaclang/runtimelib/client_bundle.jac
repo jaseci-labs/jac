@@ -5,15 +5,10 @@ import os;
 import from collections.abc { Iterable, Sequence }
 import from pathlib { Path }
 import from types { ModuleType }
-import from typing { TYPE_CHECKING, Any, NamedTuple }
+import from typing { Any, NamedTuple }
 import from jaclang.jac0core.modresolver { convert_to_js_import_path }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.codeinfo { ClientManifest }
-        import from jaclang.jac0core.unitree { Module }
-    }
-}
+import type from jaclang.jac0core.codeinfo { ClientManifest }
+import type from jaclang.jac0core.unitree { Module }
 
 """Raised when the client bundle cannot be generated."""
 class ClientBundleError(RuntimeError) {}

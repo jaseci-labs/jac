@@ -762,7 +762,9 @@ impl script(name: str = '', list_scripts: bool = False) -> int {
     import from jaclang.project.config { get_config }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found. Run 'jac create <name>' to create a project."
+        );
         return 1;
     }
     if list_scripts or not name {
@@ -819,7 +821,9 @@ impl clean(
     import from jaclang.project.config { get_config }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found. Run 'jac create <name>' to create a project."
+        );
         return 1;
     }
     # Determine which directories to clean
