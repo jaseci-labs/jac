@@ -130,12 +130,23 @@ Set `docs_enabled = false` to disable Swagger UI, ReDoc, and the OpenAPI JSON en
 
 ### CORS Configuration
 
+In single-process `jac start` mode the FastAPI app installs a permissive
+CORS middleware (`allow_origins=['*']`, all methods/headers); there is
+no `[plugins.scale.cors]` knob to tune it.
+
+In **microservice mode** (`[plugins.scale.microservices] enabled = true`),
+the gateway exposes a configurable CORS section:
+
 ```toml
-[plugins.scale.cors]
+[plugins.scale.microservices.cors]
 allow_origins = ["https://example.com"]
 allow_methods = ["GET", "POST", "PUT", "DELETE"]
 allow_headers = ["*"]
 ```
+
+Defaults are open (`allow_origins = ["*"]`); set `allow_origins = []` to
+disable. Additional CORS keys (`allow_credentials`, `expose_headers`,
+`max_age`) are recognised under the same section.
 
 ---
 
@@ -2324,6 +2335,7 @@ jaclang = "0.1.5"      # Pin to a specific version
 jac_scale = "latest"   # Latest from PyPI (default)
 jac_client = "0.1.0"   # Specific version
 jac_byllm = "none"     # Skip installation entirely
+jac_mcp = "latest"     # Optional MCP server plugin
 ```
 
 | Package | Description |
@@ -2332,6 +2344,7 @@ jac_byllm = "none"     # Skip installation entirely
 | `jac_scale` | This scaling plugin |
 | `jac_client` | Frontend/client support |
 | `jac_byllm` | LLM integration (set to `"none"` to exclude) |
+| `jac_mcp` | MCP server plugin (set to `"none"` to exclude) |
 
 ---
 
@@ -2375,7 +2388,7 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 - kube-state-metrics (pod, deployment, replica, restart state)
 - node-exporter (CPU, memory, disk, network per node)
 
-> To collect application metrics, also enable `[plugins.scale.metrics] enabled = true` - see [Prometheus Metrics](#prometheus-metrics).
+> To collect application metrics, also enable `[plugins.scale.monitoring] enabled = true` - see [Prometheus Metrics](#prometheus-metrics).
 
 ---
 
@@ -2556,7 +2569,7 @@ jac-scale provides built-in Prometheus metrics collection for monitoring HTTP re
 Configure metrics in `jac.toml`:
 
 ```toml
-[plugins.scale.metrics]
+[plugins.scale.monitoring]
 enabled = true                  # Enable metrics collection and /metrics endpoint
 endpoint = "/metrics"           # Prometheus scrape endpoint path
 namespace = "myapp"             # Metrics namespace prefix

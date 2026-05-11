@@ -86,6 +86,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `test` | Declaration | Test block |
 | `to` | Control | For loop upper bound |
 | `try` | Control | Try block |
+| `type` | Module | Type-only import marker (`import type from ...`) |
 | `visitor` | OSP | Visiting walker (in node) |
 | `wait` | Concurrency | Wait for concurrent result |
 | `walker` | Archetype | Walker type |
@@ -179,7 +180,7 @@ has_stmt      : "has" (modifier)? NAME ":" type ("=" expr)? ";"
 ability       : async? "can" NAME params? ("->" type)? event_clause? (body | ";")
 event_clause  : "with" type_expr? (entry | exit)
 
-import        : "import" (module | "from" import_path "{" names "}")
+import        : "import" "type"? (module | "from" import_path "{" names "}")
               | "import" "from" STRING "{" extern_decl* "}"  # C library import (na)
 import_path   : (NAME ":")? dotted_name       # Optional namespace prefix (e.g., jac:module)
 entry         : "with" "entry" (":" NAME)? body
@@ -265,8 +266,10 @@ obj Example {
 ### 5. Walker `visit` is Queued
 
 ```jac
+node Item { has name: str = ""; }
+
 walker Example {
-    can traverse with Node entry {
+    can traverse with Item entry {
         print("Visiting");
         visit [-->];  # Nodes queued, visited AFTER this method
         print("This prints before visiting children");
@@ -274,19 +277,24 @@ walker Example {
 }
 ```
 
+To match every node regardless of type, use the anonymous form `can traverse with entry { ... }` -- there is no built-in `Node` catch-all trigger.
+
 ### 6. `report` vs `return`
 
-<!-- jac-skip -->
 ```jac
+node Item { has value: int = 0; }
+
 walker Example {
-    can collect with Node entry -> object {
+    can collect with Item entry {
         report here.value;  # Continues execution
         visit [-->];        # Still runs
 
-        return here.value;  # Would stop here
+        return;             # Would stop the walker here
     }
 }
 ```
+
+Walker abilities don't carry an arrow-return type annotation -- `report` accumulates results on the walker's `reports` list, and `return` (with no value) ends the current ability.
 
 ### 7. Global Modification Requires Declaration
 
@@ -508,16 +516,21 @@ finally:
 
 **Jac:**
 
-<!-- jac-skip -->
 ```jac
-try {
-    result = divide(10, 0);
-} except ValueError as e {
-    print(f"Error: {e}");
-} finally {
-    print("Done");
+def divide(a: int, b: int) -> int { return a // b; }
+
+with entry {
+    try {
+        result = divide(10, 0);
+    } except ValueError as e {
+        print(f"Error: {e}");
+    } finally {
+        print("Done");
+    }
 }
 ```
+
+Module-level statements (including `try`) must live inside a `with entry { ... }` block or a function body.
 
 For a step-by-step transition guide, see [Jac Basics Tutorial](../../tutorials/language/basics.md).
 

@@ -218,7 +218,7 @@ With the `jac-client` plugin installed, scaffold a complete full-stack project i
 ```bash
 jac create example --use fullstack
 cd example
-jac add
+jac install
 jac start
 ```
 
@@ -236,7 +236,7 @@ This creates a project with a Jac backend and a React frontend, ready to go at `
 ```bash
 jac create my-todo --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-app/multi-user-todo-app.jacpack
 cd my-todo
-jac add
+jac install
 jac start
 ```
 
@@ -246,7 +246,7 @@ Want to try one with AI built in? The `multi-user-todo-meals-app` uses Jac's AI 
 export ANTHROPIC_API_KEY="your-key-here"
 jac create meals-app --use https://raw.githubusercontent.com/jaseci-labs/jacpacks/main/multi-user-todo-meals-app/multi-user-todo-meals-app.jacpack
 cd meals-app
-jac add
+jac install
 jac start
 ```
 
