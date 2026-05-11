@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.14.1 (Latest Release)
+## jaclang 0.14.2 (Latest Release)
+
+### New Features
+
+- **Compiler: FilterSpec for storage-level filter pushdown**: The compiler now emits a `FilterSpec` wrapper instead of a plain lambda when a `[?:Type, field op const]` filter has extractable field predicates. `FilterSpec` carries the type name, a MongoDB-style predicate dict (`{'age': {'$lt': 28}}`), and the original lambda as a fallback. Type-only filters (`[?:User]`) keep the plain lambda so the `TopologyIndex` fast-path is unchanged. The runtime's `refs()` checks for a `FilterSpec` and, when an L3 backend with `query_by_type` is present (e.g. jac-scale's `MongoBackend`), delegates the query to the backend before any Python-side iteration — so `some_node --> [?:User, age < 28]` becomes a server-side MongoDB filter rather than a full graph scan.
+
+## jaclang 0.14.1
 
 ### Breaking Changes
 

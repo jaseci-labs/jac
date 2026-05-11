@@ -1452,6 +1452,54 @@ impl JacBasics.refs(
     if not isinstance(path, ObjectSpatialPath) {
         path = ObjectSpatialPath(path, [ObjectSpatialDestination(EdgeDir.OUT)]);
     }
+    # Storage pushdown: when the filter is a FilterSpec, try to satisfy the
+    # query entirely from the storage backend before touching Python-side
+    # filtering. Single-hop from a persistent origin only for now.
+    if post_filter is not None {
+        import from jaclang.jac0core.filter_spec { FilterSpec as _FS }
+        if isinstance(post_filter, _FS) and len(path.destinations) == 1 {
+            ctx = JacRuntimeInterface.get_context();
+            l3 = getattr(ctx.mem, 'l3', None);
+            # Duck-type: any l3 backend with query_by_type gets the pushdown
+            if l3 is None {
+                import from jaclang.runtimelib.memory { TieredMemory }
+                if isinstance(ctx.mem, TieredMemory) {
+                    l3 = ctx.mem.l3;
+                }
+            }
+            if l3 is not None and hasattr(l3, 'query_by_type') {
+                # Collect edge-target IDs from origin for the scoped case.
+                scoped_ids: (list | None) = None;
+                origin_anchors = [
+                    nd.__jac__
+                    for nd in path.origin
+                    if hasattr(nd, '__jac__')
+                ];
+                if origin_anchors {
+                    scoped_ids = [
+                        ea.target.id for oa in origin_anchors
+                        for ea in oa.edges
+                        if ea.target is not None
+                    ];
+                }
+                import from jaclang.jac0core.archetype { NodeAnchor }
+                results: list = [];
+                for anchor in l3.query_by_type(
+                    post_filter.type_name, post_filter.predicates, scoped_ids=scoped_ids
+                ) {
+                    if isinstance(anchor, NodeAnchor) and anchor.archetype {
+                        if post_filter(anchor.archetype) {
+                            results.append(anchor.archetype);
+                        }
+                    }
+                }
+                if slc is not None {
+                    results = results[slc];
+                }
+                return results;
+            }
+        }
+    }
     # Fuse post_filter into the last destination's node filter
     if post_filter is not None and path.destinations {
         last = path.destinations[-1];

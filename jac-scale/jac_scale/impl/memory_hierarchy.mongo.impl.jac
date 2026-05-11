@@ -444,7 +444,9 @@ Example:
     for anchor in backend.query_by_type('User', {'age': {'$lt': 28}}) { ... }
 """
 impl MongoBackend.query_by_type(
-    arch_type_name: str, mongo_filter: (dict | None) = None
+    arch_type_name: str,
+    mongo_filter: (dict | None) = None,
+    scoped_ids: (list | None) = None
 ) -> Generator[Anchor, None, None] {
     if self.client is not None {
         filter_dict: dict = {'arch_type': arch_type_name};
@@ -452,6 +454,9 @@ impl MongoBackend.query_by_type(
             for (k, v) in mongo_filter.items() {
                 filter_dict[f'data.archetype.{k}'] = v;
             }
+        }
+        if scoped_ids is not None {
+            filter_dict['_id'] = {'$in': [str(sid) for sid in scoped_ids]};
         }
         try {
             for doc in self.collection.find(filter_dict) {

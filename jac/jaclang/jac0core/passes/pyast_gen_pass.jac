@@ -197,6 +197,14 @@ needs_enum)
     codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into."""
     def _is_edge_ref_target(target: uni.UniNode) -> bool;
 
+    """Try to build a Python ast3.Dict literal from simple field predicates.
+
+    Returns an ast3.Dict node encoding the predicate dict (e.g.
+    {'age': {'$lt': 28}, 'role': 'admin'}) when every compare in nd.compares is
+    a simple (field op constant) expression. Returns None for anything more
+    complex so the caller falls back to a plain lambda."""
+    def _build_predicates_ast(nd: uni.FilterCompr) -> (ast3.Dict | None);
+
     """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
 

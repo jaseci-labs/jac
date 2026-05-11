@@ -119,7 +119,9 @@ obj MongoBackend(PersistentMemory) {
 
     def get_roots -> Generator[Root, None, None];
     def query_by_type(
-        arch_type_name: str, mongo_filter: (dict | None) = None
+        arch_type_name: str,
+        mongo_filter: (dict | None) = None,
+        scoped_ids: (list | None) = None
     ) -> Generator[Anchor, None, None];
 
     def ensure_indexes -> None;

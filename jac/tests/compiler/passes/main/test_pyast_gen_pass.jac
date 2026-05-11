@@ -491,3 +491,40 @@ test "import type wraps in TYPE_CHECKING and resolves circular imports" {
         }
     }
 }
+
+test "FilterSpec emitted for predicate filters, not for type-only" {
+    # Predicate filters [?:Type, field op const] must emit FilterSpec(...) so
+    # storage backends can push the query down without evaluating a Python
+    # lambda per node.  Type-only filters [?:Type] must keep the plain lambda
+    # so the TopologyIndex fast-path is not bypassed.
+    fixture = os.path.join(FIXTURES, "filter_spec_emission.jac");
+    code_gen = (prog := JacProgram()).compile(fixture);
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+
+    py_src = ast3.unparse(code_gen.gen.py_ast[0]);
+
+    # FilterSpec import must appear in the generated module preamble
+    assert "FilterSpec" in py_src , (
+        "Expected FilterSpec in generated source.\nSource:\n" + py_src
+    );
+
+    # Predicate filter must carry type_name, predicates, and func
+    assert "FilterSpec(type_name='User'" in py_src , (
+        "Expected FilterSpec(type_name='User', ...) for [?:User, age < 28].\nSource:\n" + py_src
+    );
+    assert "'age'" in py_src and "'$lt'" in py_src , (
+        "Expected age/$lt predicate in FilterSpec dict.\nSource:\n" + py_src
+    );
+
+    # Multi-predicate filter must also use FilterSpec
+    assert "'role'" in py_src , (
+        "Expected role predicate for [?:User, age < 28, role == 'user'].\nSource:\n" + py_src
+    );
+
+    # Type-only filter must NOT wrap in FilterSpec — plain lambda only
+    filter_spec_count = py_src.count("FilterSpec(type_name=");
+    assert filter_spec_count == 2 , (
+        f"Expected exactly 2 FilterSpec emissions (predicate filters only), got {filter_spec_count}.\nSource:\n" + py_src
+    );
+}

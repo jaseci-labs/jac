@@ -3540,6 +3540,65 @@ impl PyastGenPass.exit_connect_op(nd: uni.ConnectOp) -> None {
     ];
 }
 
+impl PyastGenPass._build_predicates_ast(nd: uni.FilterCompr) -> (ast3.Dict | None) {
+    _op_map: dict[str, str] = {
+        'Lt': '$lt',
+        'LtE': '$lte',
+        'Gt': '$gt',
+        'GtE': '$gte',
+        'Eq': '$eq',
+        'NotEq': '$ne'
+    };
+    fields: dict = {};
+    for x in nd.compares {
+        py = self.py_ast_val(x);
+        if not isinstance(py, ast3.Compare) {
+            return None;
+        }
+        if not isinstance(py.left, ast3.Name) {
+            return None;
+        }
+        if len(py.ops) != 1 or len(py.comparators) != 1 {
+            return None;
+        }
+        mongo_op = _op_map.get(`type(py.ops[0]).__name__);
+        if mongo_op is None {
+            return None;
+        }
+        if not isinstance(py.comparators[0], ast3.Constant) {
+            return None;
+        }
+        field = py.left.id;
+        val = py.comparators[0].value;
+        if field in fields {
+            existing = fields[field];
+            if not isinstance(existing, dict) {
+                return None;
+            }
+            existing[mongo_op] = val;
+        } else {
+            if mongo_op == '$eq' {
+                fields[field] = val;
+            } else {
+                fields[field] = {mongo_op: val};
+            }
+        }
+    }
+    keys: list[ast3.expr] = [];
+    values: list[ast3.expr] = [];
+    for (field, spec) in fields.items() {
+        keys.append(self.sync(ast3.Constant(field)));
+        if isinstance(spec, dict) {
+            inner_keys = [self.sync(ast3.Constant(k)) for k in spec.keys()];
+            inner_vals = [self.sync(ast3.Constant(v)) for v in spec.values()];
+            values.append(self.sync(ast3.Dict(keys=inner_keys, values=inner_vals)));
+        } else {
+            values.append(self.sync(ast3.Constant(spec)));
+        }
+    }
+    return self.sync(ast3.Dict(keys=keys, values=values));
+}
+
 impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
     iter_name = 'i';
     comprs: list[(ast3.Compare | ast3.Call)] = [
@@ -3595,22 +3654,53 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
                 else comprs[0] if comprs else None
         )
     ) {
-        nd.gen.py_ast = [
-            self.sync(
-                ast3.Lambda(
-                    args=self.sync(
-                        ast3.arguments(
-                            posonlyargs=[],
-                            args=[self.sync(ast3.arg(arg=iter_name))],
-                            kwonlyargs=[],
-                            kw_defaults=[],
-                            defaults=[]
-                        )
-                    ),
-                    body=body
-                )
+        lambda_node = self.sync(
+            ast3.Lambda(
+                args=self.sync(
+                    ast3.arguments(
+                        posonlyargs=[],
+                        args=[self.sync(ast3.arg(arg=iter_name))],
+                        kwonlyargs=[],
+                        kw_defaults=[],
+                        defaults=[]
+                    )
+                ),
+                body=body
             )
-        ];
+        );
+        # When type + extractable field predicates: emit FilterSpec so backends
+        # can push the conditions to storage rather than evaluating per-node.
+        pred_ast = self._build_predicates_ast(nd)
+            if nd.f_type and nd.compares
+            else None;
+        type_name_str: (str | None) = None;
+        if pred_ast is not None {
+            type_py = self.py_ast_val(nd.f_type);
+            type_name_str = type_py.id if isinstance(type_py, ast3.Name) else None;
+        }
+        if pred_ast is not None and type_name_str is not None {
+            self.jaclib_imports.add('FilterSpec');
+            nd.gen.py_ast = [
+                self.sync(
+                    ast3.Call(
+                        func=self.sync(ast3.Name(id='FilterSpec', ctx=ast3.Load())),
+                        args=[],
+                        keywords=[
+                            self.sync(
+                                ast3.keyword(
+                                    arg='type_name',
+                                    value=self.sync(ast3.Constant(type_name_str))
+                                )
+                            ),
+                            self.sync(ast3.keyword(arg='predicates', value=pred_ast)),
+                            self.sync(ast3.keyword(arg='func', value=lambda_node))
+                        ]
+                    )
+                )
+            ];
+        } else {
+            nd.gen.py_ast = [lambda_node];
+        }
     }
 }
 

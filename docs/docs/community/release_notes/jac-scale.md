@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.15 (Latest Release)
+## jac-scale 0.2.16 (Latest Release)
+
+### New Features
+
+- **Feat: MongoDB filter pushdown for `[?:Type, field op const]` edge traversals**: `MongoBackend.query_by_type` now accepts an optional `scoped_ids` list and a `mongo_filter` predicate dict. When jaclang's runtime detects a `FilterSpec`-wrapped filter on a single-hop traversal (`node --> [?:User, age < 28]`), it delegates to `query_by_type` with the predicate dict and the set of neighbor IDs as a `$in` constraint, so the filter runs entirely server-side in MongoDB. The Python lambda in the `FilterSpec` is still evaluated as a safety guard on returned anchors. Requires jaclang 0.14.2+.
+
+## jac-scale 0.2.15
 
 ### New Features
 
