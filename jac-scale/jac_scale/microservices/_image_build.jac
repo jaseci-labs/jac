@@ -143,7 +143,8 @@ def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
                 rel_project = "";
             }
             return (
-                exp_df, repo_root,
+                exp_df,
+                repo_root,
                 {"PROJECT_PATH": rel_project} if rel_project else {}
             );
         }

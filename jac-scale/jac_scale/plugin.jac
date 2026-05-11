@@ -126,9 +126,13 @@ def _scale_pre_hook(context: HookContext) -> None {
             import from jac_scale.microservices._image_build { find_jaseci_repo_root }
             repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
             if repo is not None {
-                console.print(f"Preparing microservice deployment (local source: {repo})...");
+                console.print(
+                    f"Preparing microservice deployment (local source: {repo})..."
+                );
             } else {
-                console.print("Preparing microservice deployment (jaseci from PyPI)...");
+                console.print(
+                    "Preparing microservice deployment (jaseci from PyPI)..."
+                );
             }
         } else {
             console.print("Installing Jaseci packages from PyPI...");
