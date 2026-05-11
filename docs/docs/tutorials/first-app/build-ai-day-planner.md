@@ -652,7 +652,6 @@ This loads a CSS file client-side. Add this line at the top of your `main.jac`.
 
 A `cl def:pub` function returning `JsxElement` is a UI component:
 
-<!-- jac-skip -->
 ```jac
 cl def:pub app -> JsxElement {
     has tasks: list = [],
@@ -667,7 +666,6 @@ Notice the `has` keyword appearing again -- you first saw it in `obj` and `node`
 ??? info "You can also use React's `useState` directly"
     Since Jac's client-side code compiles to JavaScript that runs in a React context, you can import and use `useState` from React directly if you prefer:
 
-    <!-- jac-skip -->
     ```jac
     cl import from react { useState }
 
@@ -685,7 +683,6 @@ Notice the `has` keyword appearing again -- you first saw it in `obj` and `node`
 
 **`can with entry`** runs when the component first mounts (like React's `useEffect` on mount):
 
-<!-- jac-skip -->
 ```jac
     async can with entry {
         tasks = await get_tasks();
@@ -697,7 +694,6 @@ This fetches all tasks from the server when the page loads.
 ??? info "You can also use React's `useEffect` directly"
     If you prefer React's hooks, you can import and use `useEffect` directly:
 
-    <!-- jac-skip -->
     ```jac
     cl import from react { useEffect }
 
@@ -739,7 +735,6 @@ onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
 
 This is one of the most important concepts to understand in Jac's full-stack model: **`await add_task(text)`** calls the server function as if it were local code. Behind the scenes, because `add_task` is `def:pub`, Jac generated both an HTTP endpoint on the server *and* a matching typed client stub in the browser automatically. The client stub handles the HTTP request, JSON serialization, and response parsing for you. You never write fetch calls, parse JSON, or handle HTTP status codes -- the boundary between client and server becomes invisible. And because the server declares `-> Task` as the return type, the client receives a proper `Task` object with `.title` and `.done` fields, and you can use `jid(task)` to get its unique identity -- no raw dictionaries or manual ID management.
 
-<!-- jac-skip -->
 ```jac
     async def add_new_task {
         if task_text.strip() {
@@ -776,7 +771,6 @@ This is one of the most important concepts to understand in Jac's full-stack mod
 
 Now that you understand the individual pieces -- reactive state, lifecycle hooks, lambdas, transparent server calls, and JSX rendering -- it's time to assemble them into a working component. Add `cl import "./styles.css";` after your existing import. Start with the input, add button, and a basic task list:
 
-<!-- jac-skip -->
 ```jac
 cl def:pub app -> JsxElement {
     has tasks: list = [],
@@ -824,7 +818,6 @@ This is already functional -- you can type a task, press Enter, and see it appea
 
 Now add checkboxes, delete buttons, and a task counter. Insert these methods after `add_new_task`, and update the task list rendering:
 
-<!-- jac-skip -->
 ```jac
 cl def:pub app -> JsxElement {
     has tasks: list = [],
@@ -1218,7 +1211,6 @@ node ShoppingItem {
 
 And three new endpoints:
 
-<!-- jac-skip -->
 ```jac
 """Generate a shopping list from a meal description."""
 def:pub generate_list(meal: str) -> list[ShoppingItem] {
@@ -1269,7 +1261,6 @@ graph LR
 
 The frontend needs a two-column layout: tasks on the left, shopping list on the right. Update the component with new state, methods, and the shopping panel:
 
-<!-- jac-skip -->
 ```jac
 cl def:pub app -> JsxElement {
     has tasks: list = [],
@@ -1780,7 +1771,6 @@ As your application grows, keeping everything in a single file becomes hard to n
 
 **`frontend.cl.jac`** -- state, method signatures, and the render tree:
 
-<!-- jac-skip -->
 ```jac
 def:pub app -> JsxElement {
     has tasks: list = [];
@@ -1794,7 +1784,6 @@ def:pub app -> JsxElement {
 
 **`frontend.impl.jac`** -- method bodies in `impl` blocks:
 
-<!-- jac-skip -->
 ```jac
 impl app.fetchTasks {
     tasksLoading = True;
@@ -1837,7 +1826,6 @@ Everything before `to cl:` and everything after the next `to sv:` runs on the se
 
 One more concept to learn before assembling the full app. A **dependency-triggered ability** re-runs whenever specific state changes -- conceptually similar to React's `useEffect` with a dependency array, but expressed more declaratively:
 
-<!-- jac-skip -->
 ```jac
     can with [isLoggedIn] entry {
         if isLoggedIn {
@@ -2262,7 +2250,6 @@ All the complete files are in the collapsible sections below. Create each file, 
 
 ??? note "Complete `frontend.impl.jac`"
 
-    <!-- jac-skip -->
     ```jac
     """Implementations for the Day Planner frontend."""
 
@@ -2534,7 +2521,6 @@ def:priv add_task(title: str) -> Task {
 
 And here's the same logic as a walker:
 
-<!-- jac-skip -->
 ```jac
 walker AddTask {
     has title: str;
@@ -2573,7 +2559,6 @@ print(result.reports[0]);  # The reported dict
 
 The `AddTask` walker may seem like unnecessary complexity compared to the function. The value of walkers becomes clearer with `ListTasks`, which demonstrates the **accumulator pattern** -- collecting data across multiple nodes as the walker traverses the graph:
 
-<!-- jac-skip -->
 ```jac
 walker ListTasks {
     has results: list[Task] = [];
@@ -2602,7 +2587,6 @@ A key insight here: the walker's `has results: list = []` state **persists acros
 
 Compare this to the function version:
 
-<!-- jac-skip -->
 ```jac
 def:priv get_tasks -> list[Task] {
     return [root-->][?:Task];
@@ -2618,7 +2602,6 @@ For this simple, flat graph, the function version is clearly more concise. So wh
 
 So far, all abilities have been defined on the **walker** (e.g., `can collect with Task entry`). But Jac offers an alternative: abilities can also live on the **node** itself. This is an important architectural choice to understand:
 
-<!-- jac-skip -->
 ```jac
 node Task {
     has title: str,
@@ -2649,7 +2632,6 @@ visit [-->] else {         # Fallback if no nodes to visit
 
 **`disengage`** stops the walker immediately -- this is an optimization for cases where you've found what you're looking for and don't need to visit the remaining nodes:
 
-<!-- jac-skip -->
 ```jac
 walker ToggleTask {
     has task_id: str;
@@ -2670,7 +2652,6 @@ Without `disengage`, the walker would continue visiting every remaining node unn
 
 `DeleteTask` follows the same pattern:
 
-<!-- jac-skip -->
 ```jac
 walker DeleteTask {
     has task_id: str;
@@ -2693,7 +2674,6 @@ Note that `DeleteTask` still reports a plain dict rather than a typed object -- 
 
 The `GenerateShoppingList` walker demonstrates the real power of OSP -- performing multiple operations in a single graph traversal. Read this carefully, because the execution order is subtle and important:
 
-<!-- jac-skip -->
 ```jac
 walker GenerateShoppingList {
     has meal_description: str;
@@ -2725,7 +2705,6 @@ Compare this to the function version, where you needed an explicit loop to clear
 
 The remaining shopping walkers follow familiar patterns:
 
-<!-- jac-skip -->
 ```jac
 walker GetShoppingList {
     has items: list[ShoppingItem] = [];
@@ -3239,7 +3218,6 @@ All the complete files are in the collapsible sections below. Create each file, 
 
 ??? note "Complete `frontend.impl.jac`"
 
-    <!-- jac-skip -->
     ```jac
     """Implementations for the Day Planner frontend."""
 

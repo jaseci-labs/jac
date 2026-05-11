@@ -2206,29 +2206,31 @@ Anchors provide persistent object references across sessions, allowing nodes and
 
 ### Constructing Browser Objects
 
-Jac does not have a `new` keyword. Use `Reflect.construct()` to instantiate browser built-in constructors:
+Jac does not have a JavaScript-style `new` keyword. Use the `new(...)` ambient builtin to instantiate browser built-in constructors; the compiler lowers it to `Reflect.construct(Cls, [args])` in the emitted JavaScript:
 
 <!-- jac-skip -->
 ```jac
 to cl:
 
 # WebSocket
-ws = Reflect.construct(WebSocket, [url]);
+ws = new(WebSocket, url);
 
 # URL
-url = Reflect.construct(URL, [String(baseUrl)]);
+url = new(URL, String(baseUrl));
 
 # Date
-now = Reflect.construct(Date, []);
+now = new(Date);
 
 # Promise
-p = Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
+p = new(Promise, lambda(resolve: any, reject: any) {
     resolve.call(None, "done");
-}]);
+});
 
 # CustomEvent
-evt = Reflect.construct(CustomEvent, ["my-event", {"detail": data}]);
+evt = new(CustomEvent, "my-event", {"detail": data});
 ```
+
+`new(Cls, ...args)` is portable: it works in any codespace. On the server it is a thin wrapper for `Cls(*args)`; in `cl` blocks the compiler rewrites the call into `Reflect.construct(Cls, [args])` so it can drive JS class constructors that require `new`.
 
 ### Callback Invocations
 

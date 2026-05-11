@@ -1872,6 +1872,18 @@ impl ESBuiltinEmitter.emit_jid(self, ctx: ESEmitCtx, args: list[str]) -> (str | 
     return _rt("builtin", "jid", args);
 }
 
+# Portable constructor:  new(Cls, a, b) → Reflect.construct(Cls, [a, b])
+# (the JS spelling for `new Cls(a, b)`).
+impl ESBuiltinEmitter.emit_new(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
+    if len(args) == 0 {
+        # `new()` with no callee is meaningless; defer to a runtime error.
+        return "Reflect.construct(undefined, [])";
+    }
+    cls = args[0];
+    ctor_args = "[" + ", ".join(args[1:]) + "]";
+    return "Reflect.construct(" + cls + ", " + ctor_args + ")";
+}
+
 impl ESBuiltinEmitter.emit_hash(self, ctx: ESEmitCtx, args: list[str]) -> (str | None) {
     return _rt("builtin", "hash", args);
 }

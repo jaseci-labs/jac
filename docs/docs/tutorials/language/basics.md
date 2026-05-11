@@ -420,13 +420,13 @@ The generated Python lowers this to `if TYPE_CHECKING: from billing import Invoi
 The `glob` keyword declares module-level variables that are accessible from any function in the file. This is Jac's equivalent of Python's module-level variables, but made explicit with a keyword so you can immediately distinguish global state from local variables when reading code.
 
 ```jac
-glob config: dict = {
+glob config: dict[str, any] = {
     "debug": True,
     "version": "1.0.0"
 };
 
 def get_version() -> str {
-    return config["version"];
+    return str(config["version"]);
 }
 
 with entry {

@@ -108,13 +108,11 @@ impl JacConfig.discover(
 }
 
 impl JacConfig.load(toml_path: Path) -> JacConfig {
-    import tomllib;
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
     if not toml_path.exists() {
         raise FileNotFoundError(f"Configuration file not found: {toml_path}");
     }
-    with open(toml_path, "rb") as f {
-        data = tomllib.load(f);
-    }
+    data = read_toml_with_encoding(str(toml_path));
     config = _parse_toml_data(data, toml_path);
     config.config_files = [toml_path];
     config.apply_env_interpolation();
@@ -302,13 +300,11 @@ impl JacConfig.apply_profile_overlay(profile_name: str | None = None) -> None {
 }
 
 impl JacConfig.merge_from_toml_file(toml_path: Path) -> None {
-    import tomllib;
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
     if not toml_path.exists() {
         return;
     }
-    with open(toml_path, "rb") as f {
-        data = tomllib.load(f);
-    }
+    data = read_toml_with_encoding(str(toml_path));
     data = _interpolate_recursive(data);
     section_map: dict = {
         "run": self.run,
@@ -500,9 +496,8 @@ impl JacConfig.save -> None {
     }
     # Load existing data or start fresh
     if self.toml_path.exists() {
-        with open(self.toml_path, "rb") as f {
-            doc = tomllib.load(f);
-        }
+        import from jaclang.jac0core.helpers { read_toml_with_encoding }
+        doc = read_toml_with_encoding(str(self.toml_path));
     } else {
         doc = {};
     }
