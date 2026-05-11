@@ -44,21 +44,14 @@ test "build_registry routes work after build" {
 }
 
 test "build_registry default status is REGISTERED (local-mode invariant)" {
-    # Companion to the K8s mark-healthy regression. Local mode relies on
-    # LocalDeployer flipping REGISTERED -> HEALTHY after spawn; if this
-    # default ever changes, callers (including K8s gateway-only mode)
-    # need to know.
+    # Local mode flips REGISTERED -> HEALTHY in LocalDeployer.deploy_service.
     registry = build_registry({"routes": {"orders_app": "/api/orders"}});
     assert registry.entries["orders_app"].status == ServiceStatus.REGISTERED;
 }
 
 test "_mark_all_healthy_k8s flips every entry to HEALTHY (regression)" {
-    # Regression: K8s gateway-only mode skips LocalDeployer, so without
-    # this helper entries stay REGISTERED forever. handle_proxy then
-    # 503's every /api/<svc>/* request because its status check excludes
-    # REGISTERED. K8s owns real health via kube-proxy + Endpoints, so
-    # pre-marking is correct - failed services still surface as
-    # transport errors from http_forward.
+    # K8s gateway-only mode skips LocalDeployer; without this helper
+    # handle_proxy 503's every request (status check excludes REGISTERED).
     registry = build_registry(
         {
             "routes": {
@@ -90,16 +83,9 @@ test "_mark_all_healthy_k8s is idempotent on empty registry" {
 
 
 test "_populate_k8s_urls writes DNS map onto svc_entry.url (regression)" {
-    # Real bug found during EC2 verification: handle_proxy
-    # uses get_sv_registry() at request time, but
-    # handle_builtin_passthrough (auth, walker, function fan-out)
-    # reads svc_entry.url DIRECTLY and skips entries with empty url.
-    # In K8s mode, build_registry constructs entries with url="" and
-    # the only thing flipping them was _mark_all_healthy_k8s which
-    # didn't touch URL. Result: every built-in route (`/user/login`,
-    # etc) returned "Not found on any service" because every service
-    # got skipped. Fix: at gateway startup, populate svc_entry.url
-    # from the same DNS hookspec used by handle_proxy.
+    # handle_builtin_passthrough reads svc_entry.url directly (not via
+    # the hookspec), so in K8s mode empty urls made it skip every service
+    # and return "Not found on any service" for every built-in route.
     import jaclang;
 
     registry = build_registry(

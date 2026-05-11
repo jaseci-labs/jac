@@ -965,18 +965,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
     }
 
-    """Routes table from [plugins.scale.microservices.routes].
-
-    Used by _build_env to inject `JAC_SV_<PEER>_URL` env vars on every
-    pod, mirroring what LocalDeployer's process_manager does for
-    subprocesses (process_manager.impl.jac:138-139). sv_client's
-    _ensure_available reads the env var BEFORE invoking
-    ensure_sv_service, so dispatch to peer pods works without depending
-    on the runtime hookimpl populating the registry first.
-
-    Returns {} on config-read failure (unit tests / jac.toml absent),
-    matching the defensive pattern used by _drain_timeout / _service_config.
-    """
+    """Routes table from [plugins.scale.microservices.routes]; used by
+    _build_env for `JAC_SV_<PEER>_URL` injection. Returns {} on read failure."""
     def _microservice_routes -> dict[str, str] {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -987,15 +977,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Build the in-cluster DNS URL for a peer microservice.
-
-    Mirrors LocalDeployer.url_for (loopback URL for local subprocesses)
-    but in K8s we resolve via the headless Service's DNS name. The host
-    name uses k8s_safe_name (DNS-1123 — `jac_coder_sv` -> `jac-coder-sv`)
-    while the env-var key keeps the raw module name with .upper() because
-    sv_client._ensure_available computes the env var as
-    `JAC_SV_{module_name.upper()}_URL` against the same raw name.
-    """
+    """In-cluster DNS URL for a peer microservice (mirrors LocalDeployer
+    via the headless Service)."""
     def _peer_dns_url(peer_name: str) -> str {
         return k8s_service_dns_url(
             k8s_safe_name(peer_name),
@@ -1004,18 +987,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         );
     }
 
-    """Extra env vars merged with the auto-set JAC_SV_NAME.
-
-    Order:
-      1. JAC_SV_NAME - sentinel that picks the service at pod startup.
-         Always first, never overrideable.
-      2. Database env (MONGODB_URI, REDIS_URL) - added by
-         `_provision_databases` during apply_manifests, stored on
-         self.env_list. These use `valueFrom: secretKeyRef` so the
-         connection string lives in a K8s Secret, not as plaintext.
-      3. User-defined env from [...services.NAME.env] - last so users
-         can override database env names if they have a custom Mongo.
-    """
+    """Env list in order: JAC_SV_NAME (sentinel, never overridable),
+    DB env (MONGODB_URI/REDIS_URL via secretKeyRef), peer URLs, user env."""
     def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, Any]] {
         env: list[dict[str, Any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
 
@@ -1548,23 +1521,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Pod entrypoint dispatch.
-
-    Each pod runs the same image with `JAC_SV_NAME` env set; this
-    container command reads the env at runtime and routes:
-      __gateway__ -> `jac scale gateway`  (gateway-only mode)
-      <svc_name>  -> `jac start <name>.jac`
-
-    `JAC_SV_SIBLING=1` is exported BEFORE the dispatch so the
-    JacScalePlugin pre-hook skips its local-mode orchestrator block
-    (which would try to spawn peers). DNS-based peer URL resolution
-    is handled by the `get_sv_registry` hookimpl + `sv_service_call`
-    routing through that hookspec.
-
-    Returns the K8s container `command` + `args` pair. Image must have
-    `jac` + `jac-scale[deploy]` installed; see the Dockerfile template
-    in `jac-scale/jac_scale/microservices/scripts/`.
-    """
+    """Pod entrypoint: reads JAC_SV_NAME and runs `jac scale gateway`
+    (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
+    exported so the pre-hook skips local-mode orchestration."""
     def _pod_entrypoint -> dict[str, Any] {
         return {
             "command": ["sh", "-c"],
@@ -1580,19 +1539,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Build the pod-spec for one entry in the routes table OR the
-    gateway. The gateway differs from a regular service only in
-    `svc_name` (== GATEWAY_NAME), which fans out into different
-    `_service_config`, `_build_env`, and `_shared_volumes_for_service`
-    lookups; the rest of the spec (probes, preStop, grace period,
-    SA, init containers, secrets envFrom) is identical, so the two
-    paths share one builder.
-
-    Includes readiness/liveness probes, preStop hook, grace period,
-    per-service config (image_tag override, resources, extra env vars),
-    and the entrypoint command/args that select service vs gateway
-    mode at pod startup based on JAC_SV_NAME.
-    """
+    """Build pod-spec for a service or the gateway (svc_name=GATEWAY_NAME).
+    Both share one builder; the gateway differs only in which
+    _service_config / _build_env / _shared_volumes_for_service lookup
+    fires. Includes probes, preStop, grace, SA, init containers, secrets."""
     def _build_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);

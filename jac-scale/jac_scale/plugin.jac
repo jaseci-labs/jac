@@ -48,11 +48,9 @@ def _scale_pre_hook(context: HookContext) -> None {
     if scale {
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
-        # Target dispatch: when microservice mode is enabled in jac.toml
-        # AND the user accepts the default target ('kubernetes'), swap to
-        # the microservice variant. Explicit --target=kubernetes still
-        # does monolith deploy for back-compat; --target=kubernetes-microservice
-        # also works as an explicit opt-in.
+        # When microservice mode is enabled + target is the default,
+        # swap to kubernetes-microservice. Explicit --target=kubernetes
+        # still does monolith deploy.
         if (target == "kubernetes" and ms_config.get("enabled", False)) {
             target = "kubernetes-microservice";
         }
@@ -66,14 +64,9 @@ def _scale_pre_hook(context: HookContext) -> None {
         scale_config = get_scale_config();
         # Create logger
         logger = UtilityFactory.create_logger('standard');
-        # Get target-specific config. 'kubernetes-microservice' shares
-        # the [plugins.scale.kubernetes] config shape with the monolith
-        # target - it's a different deployment strategy on top of the
-        # same K8s config (resource limits, probe cadences,
-        # ingress, registry). Without this, the microservice path got
-        # an empty target_config and fell back to every default
-        # (1Gi memory limit, 15s liveness probe), making jac.toml's
-        # explicit values silently invisible.
+        # kubernetes-microservice shares the [plugins.scale.kubernetes]
+        # config shape with the monolith target (resources, probes,
+        # ingress, registry are the same knobs, different deploy strategy).
         if target in ('kubernetes', 'kubernetes-microservice') {
             target_config = scale_config.get_kubernetes_config();
         } else {
@@ -130,11 +123,8 @@ def _scale_pre_hook(context: HookContext) -> None {
                 "Installing Jaseci packages from repository (experimental mode)..."
             );
         } elif target == "kubernetes-microservice" {
-            # Auto-build's Dockerfile resolution picks
-            # Dockerfile.microservice.exp (local source) for developer
-            # checkouts, falls back to Dockerfile.microservice (PyPI)
-            # only for end-user installs. Detect the developer-checkout
-            # case here so the log matches reality.
+            # Detect developer-checkout (uses Dockerfile.microservice.exp)
+            # vs end-user PyPI install so the log line matches reality.
             import from jac_scale.microservices._image_build { find_jaseci_repo_root }
             repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
             if repo is not None {
@@ -150,27 +140,17 @@ def _scale_pre_hook(context: HookContext) -> None {
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
-        # opt into the python_image-fallback guard. Off by default
-        # (so unit tests using build=False for manifest-shape assertions
-        # don't trip the guard); on for the production `jac start --scale`
-        # path so users get a clean error instead of a silent
-        # CrashLoopBackOff.
-        # opt into auto-build + auto-distribute. Tests that mock
-        # _handle_image_registry don't see this env var; production does.
+        # Opt into the python_image-fallback guard + auto-build only
+        # on the production `jac start --scale` path. Tests using
+        # build=False for manifest-shape assertions don't see these env
+        # vars and fall through to parent behavior.
         if target == "kubernetes-microservice" {
             os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
             os.environ["_JAC_SCALE_AUTO_BUILD"] = "1";
         }
 
-        # Deploy. A failure here used to `raise` and let the jaclang
-        # hook runner log a warning and fall through to the normal
-        # `jac start` path, which then started a local-mode dev server
-        # (npm install, build client bundle) - giving the user the
-        # impression "scale didn't quite work but local mode picked it
-        # up", when actually the K8s deploy failed and the dev server
-        # they got is unrelated to what they asked for. We now cancel
-        # execution explicitly with a non-zero return code so the
-        # parent process exits cleanly with the actionable error.
+        # Deploy. Cancel execution on failure so we don't fall through to
+        # the local-mode dev server (which would mask the K8s deploy error).
         try {
             result = deployment_target.deploy(app_config);
         } except Exception as e {
@@ -410,8 +390,7 @@ class JacCmd {
             # Create logger
             logger = UtilityFactory.create_logger('standard');
 
-            # Get target-specific config (see notes on the equivalent
-            # block above; same dispatch for `--destroy`).
+            # Same target-specific config dispatch as the deploy path.
             if target in ('kubernetes', 'kubernetes-microservice') {
                 target_config = scale_config.get_kubernetes_config();
             } else {
@@ -701,10 +680,8 @@ class JacCmd {
                 deployer.destroy_all();
                 console.print("[green]All services stopped[/green]");
             } elif action == "gateway" {
-                # gateway-only mode for K8s pods. Skips local-mode
-                # service spawning (K8s manages service pods); just runs
-                # the MicroserviceGateway, which uses get_sv_registry to
-                # resolve services via DNS in cluster.
+                # K8s gateway-only mode: no local service spawning, peer
+                # resolution via DNS through get_sv_registry.
                 import from jac_scale.microservices.orchestrator { start_gateway_only }
                 start_gateway_only(ms_config);
                 return 0;
@@ -798,13 +775,10 @@ class JacScalePlugin {
             return;
         }
 
-        # In K8s mode, peer pods are managed by the K8s controller,
-        # NOT by this process. Don't spawn a local subprocess - just
-        # register the peer's DNS URL so sv_service_call can resolve
-        # it. Detected via KUBERNETES_SERVICE_HOST (set in every pod
-        # by K8s automatically). Mirrors the get_sv_registry pattern.
-        # Falls through to local-mode subprocess-spawn if config read
-        # fails so the local path stays unaffected.
+        # K8s mode: register peer's DNS URL instead of spawning a
+        # subprocess (K8s controller owns peer pods). Detected via
+        # KUBERNETES_SERVICE_HOST. Falls through to local spawn on
+        # config-read failure so the local path stays unaffected.
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jac_scale.config_loader { get_scale_config }
@@ -901,10 +875,7 @@ class JacScalePlugin {
             return dict(sv_client._registry);
         }
 
-        # K8s mode: build DNS map from configured routes. Read namespace
-        # from the downward-API env or the in-cluster secret file
-        # (handled inside build_k8s_registry); read port from the
-        # microservices config.
+        # K8s mode: build DNS map from configured routes.
         try {
             import from jac_scale.config_loader { get_scale_config }
             import from jac_scale.microservices.k8s_deployer { build_k8s_registry }
@@ -913,9 +884,7 @@ class JacScalePlugin {
             port: int = int(ms_cfg.get("gateway_port", 8000));
             return build_k8s_registry(routes, port);
         } except Exception as e {
-            # Defensive: if config read fails inside a pod (shouldn't
-            # happen if jac.toml is in the image), fall back to the
-            # default rather than crashing the gateway on first request.
+            # Defensive: fall back to default on config-read failure.
             import logging;
             logging.getLogger(__name__).warning(
                 f"K8s get_sv_registry fell back to local registry: {e}"
@@ -1001,13 +970,8 @@ class JacScalePlugin {
             );
         }
 
-        # Consult the get_sv_registry hookspec FIRST so the K8s DNS
-        # map wins inside a pod (where sv_client._registry is empty
-        # because there's no local orchestrator pre-spawning peers).
-        # In local mode, the default hookimpl returns
-        # `dict(sv_client._registry)` so the result is the same as
-        # before. Fall back to sv_client.resolve_url for the JAC_SV_*_URL
-        # env-var path used by sub-spawned services.
+        # Hookspec wins in K8s (DNS map); local mode falls back to
+        # sv_client._registry then JAC_SV_*_URL env-var lookup.
         import jaclang;
         ms_registry: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
         url: str = ms_registry.get(module_name, "");

@@ -1,23 +1,8 @@
-"""K8s runtime adapter (mirrors LocalDeployer for in-cluster operation).
-
-Sits at the runtime plane: when the gateway pod boots and needs to
-forward to a service, `url_for` returns the K8s DNS hostname rather
-than a localhost loopback. Selected at runtime via the `get_sv_registry`
-@hookimpl in plugin.jac when `KUBERNETES_SERVICE_HOST` is set (which
-K8s injects into every pod).
-
-This adapter implements `url_for` (DNS resolution) only. The lifecycle
-methods (`deploy_service`, `stop_service`, `restart_service`,
-`scale_service`, `status`, `get_logs`, `destroy_all`, `deploy_all`)
-are admin operations that map to kubectl calls — currently stubbed
-to no-op because:
-  - Deploy lifecycle is owned by `KubernetesMicroserviceTarget` at
-    `jac start --scale` time, not by this runtime adapter.
-  - In-cluster admin commands (`jac scale stop orders` from inside a
-    pod) are deferred; the K8s controller already handles most of
-    the equivalent semantics (a Deployment scale-to-0 stops the
-    service; a rollout-restart is a restart).
-"""
+"""K8s runtime adapter for in-cluster operation. Implements `url_for`
+(returns DNS hostname instead of loopback) so the gateway forwards to
+services via K8s DNS. Selected by the get_sv_registry @hookimpl when
+`KUBERNETES_SERVICE_HOST` is set. Lifecycle methods are no-op stubs -
+deploy is owned by KubernetesMicroserviceTarget, runtime by K8s itself."""
 
 import logging;
 import from typing { Any }
@@ -33,37 +18,15 @@ import from jac_scale.microservices._util {
 glob logger = logging.getLogger(__name__);
 
 
-"""Runtime ServiceDeployer for K8s. Returns DNS-based URLs.
-
-Construction:
-    KubernetesDeployer(
-        registry=service_registry,
-        namespace="prod",
-        port=8000,
-    )
-
-The namespace + port are injected at construction time rather than
-read from KubernetesConfig, because this object lives in the runtime
-plane (inside a pod) where KubernetesConfig.from_dict isn't always
-the right source. The hookimpl that creates instances reads namespace
-from the `POD_NAMESPACE` env var (downward API) and falls back to
-the configured value if not set.
-"""
+"""Runtime ServiceDeployer for K8s. namespace + port are injected at
+construction time (the hookimpl reads namespace from `POD_NAMESPACE` env)."""
 obj KubernetesDeployer(ServiceDeployer) {
     has registry: ServiceRegistry,
         target: str = "kubernetes",
         namespace: str = "default",
         port: int = DEFAULT_GATEWAY_PORT;
 
-    """Return the DNS-based URL for a microservice.
-
-    Format: `http://{k8s_safe_name(svc)}-service.{namespace}.svc.cluster.local:{port}`
-
-    This IS the runtime override that lets the gateway resolve services
-    in-cluster without any code changes. The gateway calls
-    `JacRuntime.get_sv_registry()` -> hookimpl returns DNS map ->
-    `gateway.resolve_target_url` reads from that map.
-    """
+    """DNS URL: `http://{k8s_safe_name(svc)}-service.{ns}.svc.cluster.local:{port}`."""
     def url_for(service_entry: ServiceEntry) -> str {
         return k8s_service_dns_url(
             k8s_safe_name(service_entry.name), self.namespace, self.port
@@ -137,16 +100,8 @@ obj KubernetesDeployer(ServiceDeployer) {
 }
 
 
-"""Build a DNS-based registry map from configured routes + namespace + port.
-
-Used by the `get_sv_registry` @hookimpl in jac-scale's plugin when
-running inside a K8s pod. Returns `{module_name: dns_url, ...}` matching
-the shape jaclang expects.
-
-Namespace comes from `_util.in_cluster_namespace` (POD_NAMESPACE env
--> in-cluster serviceaccount file -> "default"). Port comes from
-`[plugins.scale.microservices.gateway_port]` in jac.toml.
-"""
+"""Build `{module_name: dns_url}` registry map for the get_sv_registry
+hookimpl. Namespace from in_cluster_namespace(); port from jac.toml."""
 def build_k8s_registry(
     routes: dict[str, str], port: int = DEFAULT_GATEWAY_PORT
 ) -> dict[str, str] {

@@ -533,14 +533,9 @@ test "_sv_rpc_timeout returns default when config lookup fails" {
 }
 
 
-# =============================================================================
-# sv_service_call routes URL resolution through the get_sv_registry
-# hookspec (so the K8s DNS map wins inside a pod where _registry is empty)
-# =============================================================================
+# sv_service_call URL resolution via get_sv_registry hookspec
 test "sv_service_call uses URL from get_sv_registry hookspec when present" {
-    # Setup: NO sv_client._registry entry, NO JAC_SV_*_URL env. Without
-    # the hookspec the call would fail with "no URL for module"; the
-    # hookspec returns a URL and the call proceeds.
+    # No sv_client._registry entry + no JAC_SV_*_URL env; hookspec alone resolves.
     import jaclang;
 
     captured: dict = {};
@@ -555,7 +550,7 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
     original_get_registry = jaclang.JacRuntime.get_sv_registry;
     httpx.Client = _mock_client_class(handler);
 
-    # Stub get_sv_registry to return a DNS-like URL for our test module.
+    # Stub: hookspec returns a DNS-like URL.
     def fake_registry -> dict[str, str] {
         return {
             "k9_test_mod": "http://k9-test-mod-service.prod.svc.cluster.local:8000"
@@ -564,16 +559,13 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
     jaclang.JacRuntime.get_sv_registry = staticmethod(fake_registry);
 
     try {
-        # Confirm sv_client doesn't know about this module - hookspec is
-        # the only source of the URL.
         if "k9_test_mod" in sv_client._registry {
             sv_client.unregister("k9_test_mod");
         }
 
         result = JacScalePlugin.sv_service_call("k9_test_mod", "do", {});
         assert result == "via-hookspec";
-        # The captured URL should be the DNS one from our stub, NOT a
-        # localhost (which is what sv_client._registry would have given).
+        # Captured URL must be the DNS one, not a sv_client._registry loopback.
         assert "k9-test-mod-service.prod.svc.cluster.local" in captured["url"];
     } finally {
         jaclang.JacRuntime.get_sv_registry = original_get_registry;
@@ -583,9 +575,7 @@ test "sv_service_call uses URL from get_sv_registry hookspec when present" {
 
 
 test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
-    # The local-mode default hookimpl returns dict(sv_client._registry).
-    # If a module has been registered (e.g. by orchestrator subprocess
-    # spawning) but isn't in the hookspec snapshot for whatever reason,
+    # If module is registered locally but not in the hookspec snapshot,
     # the fallback to sv_client.resolve_url should still work.
     import jaclang;
 
@@ -601,8 +591,7 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
     original_get_registry = jaclang.JacRuntime.get_sv_registry;
     httpx.Client = _mock_client_class(handler);
 
-    # Stub hookspec to return empty (no entry for our module). Force
-    # the fallback branch.
+    # Empty hookspec forces the fallback branch.
     jaclang.JacRuntime.get_sv_registry = staticmethod(lambda : {});
 
     try {
@@ -618,10 +607,7 @@ test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
 }
 
 
-# =============================================================================
-# ensure_sv_service registers DNS URLs in K8s mode instead of
-# spawning subprocesses (peer pods are managed by the K8s controller)
-# =============================================================================
+# ensure_sv_service registers DNS URLs in K8s mode (no subprocess spawn).
 test "ensure_sv_service registers DNS URL when in K8s mode" {
     import os;
     import jac_scale.config_loader as cfg_mod;

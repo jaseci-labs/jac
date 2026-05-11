@@ -142,10 +142,7 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     deployer.deploy_all();
     pm = deployer._ensure_pm();
 
-    # Apply jac.toml overrides for the boot-time and recovery-loop
-    # cadences. Defaults (60s per-service, 90s overall, 10s recovery)
-    # match the new field defaults on ServiceProcessManager; we re-read
-    # here so config takes effect without rebuilding the manager.
+    # jac.toml overrides for boot + recovery cadences (defaults 60/90/10s).
     pm._boot_health_timeout = float(
         ms_config.get("boot_health_timeout", pm._boot_health_timeout)
     );
@@ -188,13 +185,9 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
         logger.warning("Proceeding with unhealthy services...");
     }
 
-    # 3b. Start the background recovery loop. Services that miss the
-    # boot bar by a few seconds will flip back to HEALTHY automatically
-    # via check_all_health's existing "first OK response resets the
-    # counter" branch, so the gateway's `status not in (HEALTHY,
-    # STARTING)` short-circuit unblocks itself without a pod restart.
-    # destroy_all -> stop_all -> stop_health_monitor handles teardown,
-    # so we don't need a separate atexit hook.
+    # Background recovery loop: services that miss the boot bar by a
+    # few seconds flip back to HEALTHY automatically via check_all_health.
+    # destroy_all -> stop_all -> stop_health_monitor handles teardown.
     pm.start_health_monitor();
 
     # 4. Print startup banner
@@ -262,21 +255,9 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
 }
 
 
-"""Pre-mark every registry entry HEALTHY for K8s gateway mode.
-
-In local mode, `LocalDeployer.deploy_service` flips an entry from
-REGISTERED to HEALTHY after a successful spawn. K8s mode skips the
-deployer entirely (kube-proxy + Endpoints already gates routing on
-real readinessProbes), so without this step entries stay REGISTERED
-forever and `handle_proxy` short-circuits every `/api/<svc>/*`
-request with 503. Pre-marking is the K8s equivalent of
-"trust the platform's health signal" - transport failures from a
-not-yet-Ready service still surface naturally as 502/503 from the
-http_forward layer when the connection refuses.
-
-Factored out of `start_gateway_only` so unit tests can verify the
-status flip without booting the gateway server.
-"""
+"""Pre-mark every registry entry HEALTHY for K8s gateway mode (K8s
+gates routing on real readinessProbes; gateway's status check would
+otherwise 503 every request). Factored out for testability."""
 def _mark_all_healthy_k8s(registry: ServiceRegistry) {
     for (_name, _entry) in registry.entries.items() {
         _entry.status = ServiceStatus.HEALTHY;
@@ -284,26 +265,10 @@ def _mark_all_healthy_k8s(registry: ServiceRegistry) {
 }
 
 
-"""Populate svc_entry.url from the runtime DNS resolver.
-
-`handle_proxy` (path-prefix routing for `/api/<svc>/*`) uses
-`resolve_target_url` which calls `JacRuntime.get_sv_registry()` -
-the hookimpl returns the K8s DNS map at request time. Works in K8s.
-
-`handle_builtin_passthrough` (built-in routes like `/user/login`,
-`/walker/*`, `/function/*`) is path-agnostic: it fans out to every
-registered service looking for the first non-404 response. But it
-uses `svc_entry.url` DIRECTLY, not the hookspec. In K8s mode
-`build_registry` constructs entries with `url=""`, so the check
-`if svc_entry.url` skips every service and the gateway returns
-"Not found on any service" for every built-in route.
-
-Fix: at gateway startup, call get_sv_registry() once and write the
-DNS URLs onto each entry's `.url` field. This keeps the existing
-passthrough loop intact while making it work in K8s. Falls back
-silently if the hookspec isn't ready yet (the entry stays empty
-and the existing skip-empty-url logic handles it).
-"""
+"""Write get_sv_registry()'s DNS URLs onto registry entries so the
+gateway's built-in passthrough loop (which reads svc_entry.url
+directly, not the hookspec) finds K8s peers. Silent on lookup
+failure - empty-url entries are skipped by the passthrough loop."""
 def _populate_k8s_urls(registry: ServiceRegistry) {
     try {
         import jaclang;
@@ -329,18 +294,9 @@ def _populate_k8s_urls(registry: ServiceRegistry) {
 }
 
 
-"""Start ONLY the gateway, no service spawning, no orchestrator.
-
-Used by the K8s gateway pod (where K8s manages the service pod
-lifecycle independently). Skips local-mode steps 1-4 (client build,
-process start, health waits) since none apply when peers are real
-K8s pods reachable via DNS.
-
-URL resolution at runtime goes through `JacRuntime.get_sv_registry()`,
-which the hookimpl turns into a DNS map when KUBERNETES_SERVICE_HOST
-is set. So the gateway code is unchanged - only the registry source
-differs between local and K8s.
-"""
+"""Start ONLY the gateway (used by the K8s gateway pod). Skips local-
+mode steps - K8s manages service pod lifecycle. Peer URLs come via
+get_sv_registry() which returns DNS when KUBERNETES_SERVICE_HOST is set."""
 def start_gateway_only(ms_config: dict[str, Any]) -> None {
     if not ms_config.get("routes", {}) {
         logger.error("No routes declared in [plugins.scale.microservices.routes]");
@@ -349,10 +305,7 @@ def start_gateway_only(ms_config: dict[str, Any]) -> None {
 
     registry = build_registry(ms_config);
     _mark_all_healthy_k8s(registry);
-    # handle_proxy uses get_sv_registry() at request time, but
-    # handle_builtin_passthrough (auth, walker, function fan-out)
-    # reads svc_entry.url directly and skips entries with empty url.
-    # Populate from the same DNS map so built-in routes work in K8s.
+    # Built-in passthrough reads svc_entry.url directly (not the hookspec).
     _populate_k8s_urls(registry);
 
     gateway_port = int(ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
