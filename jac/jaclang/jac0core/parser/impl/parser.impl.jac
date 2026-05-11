@@ -819,7 +819,7 @@ impl Parser.parse_expression -> Expr {
     }
     expr = self.parse_concurrent_expr();
     if self._check_js_arrow_fault() {
-        expr = self._recover_js_arrow_fault(expr);
+        self._recover_js_arrow_fault();
     }
     while self._check_js_ternary_fault() {
         q_tok = self.advance();
@@ -861,7 +861,7 @@ impl Parser._check_js_arrow_fault -> bool {
 # parser does not cascade. The body is parsed via the normal expression /
 # block-body routines, so chained arrows, JSX, and nested blocks all
 # recover correctly without a bespoke brace counter.
-impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
+impl Parser._recover_js_arrow_fault{
     eq_tok = self.advance();
     gt_tok = self.advance();
     self.emit_diag(E0025, loc=eq_tok.loc.span_to(gt_tok.loc));
@@ -881,7 +881,6 @@ impl Parser._recover_js_arrow_fault(left: Expr) -> Expr {
     ) {
         self.parse_expression();
     }
-    return left;
 }
 
 # Detect JavaScript ternary operator shape ('? :') in expression position.

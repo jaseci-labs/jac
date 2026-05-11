@@ -242,71 +242,71 @@ test "E0025: empty body recovers without crash" {
 }
 
 
-# ── E0026: JS ternary operator (? :) ───────────────────────────────
-test "E0026: simple inline ternary" {
+# ── E0029: JS ternary operator (? :) ───────────────────────────────
+test "E0029: simple inline ternary" {
     (prog, _) = parse_with_prog('with entry { x = a ? "yes" : "no"; }');
-    assert has_diagnostic_code(prog, "E0026");
-    assert count_diagnostic_code(prog, "E0026") == 1;
+    assert has_diagnostic_code(prog, "E0029");
+    assert count_diagnostic_code(prog, "E0029") == 1;
     assert len(prog.errors_had) == 1;
 }
 
-test "E0026: ternary in jsx child slot" {
+test "E0029: ternary in jsx child slot" {
     src = 'cl { def:pub Foo() -> JsxElement {' + ' return <div>{isActive ? <A /> : <B />}</div>; } }';
     (prog, _) = parse_with_prog(src);
-    assert has_diagnostic_code(prog, "E0026");
-    assert count_diagnostic_code(prog, "E0026") == 1;
+    assert has_diagnostic_code(prog, "E0029");
+    assert count_diagnostic_code(prog, "E0029") == 1;
 }
 
-test "E0026: ternary in jsx attribute slot" {
+test "E0029: ternary in jsx attribute slot" {
     src = 'cl { def:pub Foo() -> JsxElement {' + ' return <button onClick={x ? f : g}>Click</button>; } }';
     (prog, _) = parse_with_prog(src);
-    assert has_diagnostic_code(prog, "E0026");
-    assert count_diagnostic_code(prog, "E0026") == 1;
+    assert has_diagnostic_code(prog, "E0029");
+    assert count_diagnostic_code(prog, "E0029") == 1;
 }
 
-test "E0026: ternary in fstring slot" {
+test "E0029: ternary in fstring slot" {
     (prog, _) = parse_with_prog('with entry { s = f"{x ? a : b}"; }');
-    assert has_diagnostic_code(prog, "E0026");
-    assert count_diagnostic_code(prog, "E0026") == 1;
+    assert has_diagnostic_code(prog, "E0029");
+    assert count_diagnostic_code(prog, "E0029") == 1;
 }
 
-test "E0026: chained ternaries emit one diagnostic per question mark" {
+test "E0029: chained ternaries emit one diagnostic per question mark" {
     (prog, _) = parse_with_prog('with entry { x = a ? b : c ? d : e; }');
-    assert count_diagnostic_code(prog, "E0026") == 2;
+    assert count_diagnostic_code(prog, "E0029") == 2;
 }
 
-test "E0026: missing colon recovers without crash" {
+test "E0029: missing colon recovers without crash" {
     (prog, _) = parse_with_prog('with entry { x = a ? b; }');
-    assert has_diagnostic_code(prog, "E0026");
-    assert count_diagnostic_code(prog, "E0026") == 1;
+    assert has_diagnostic_code(prog, "E0029");
+    assert count_diagnostic_code(prog, "E0029") == 1;
 }
 
-test "E0026: empty then-branch (a ? : b) fires E0026" {
+test "E0029: empty then-branch (a ? : b) fires E0029" {
     (prog, _) = parse_with_prog('with entry { x = a ? : b; }');
-    assert has_diagnostic_code(prog, "E0026");
+    assert has_diagnostic_code(prog, "E0029");
 }
 
-test "E0026: valid jac if-expression does not fire" {
+test "E0029: valid jac if-expression does not fire" {
     (prog, had_err) = parse_with_prog('with entry { x = "yes" if cond else "no"; }');
     assert not had_err;
-    assert not has_diagnostic_code(prog, "E0026");
+    assert not has_diagnostic_code(prog, "E0029");
 }
 
-test "E0026: null-safe member access (?.) does not fire" {
+test "E0029: null-safe member access (?.) does not fire" {
     (prog, had_err) = parse_with_prog('with entry { x = user?.email; }');
     assert not had_err;
-    assert not has_diagnostic_code(prog, "E0026");
+    assert not has_diagnostic_code(prog, "E0029");
 }
 
-test "E0026: null-safe index access (?[]) does not fire" {
+test "E0029: null-safe index access (?[]) does not fire" {
     (prog, had_err) = parse_with_prog('with entry { x = items?[0]; }');
     assert not had_err;
-    assert not has_diagnostic_code(prog, "E0026");
+    assert not has_diagnostic_code(prog, "E0029");
 }
 
-test "E0026: question mark before terminator does not fire" {
+test "E0029: question mark before terminator does not fire" {
     (prog, _) = parse_with_prog('with entry { a?; }');
-    assert not has_diagnostic_code(prog, "E0026");
+    assert not has_diagnostic_code(prog, "E0029");
 }
 
 

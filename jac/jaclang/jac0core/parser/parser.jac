@@ -459,7 +459,7 @@ obj Parser {
     def parse_module -> Module;
     def parse_expression -> Expr;
     def _check_js_arrow_fault -> bool;
-    def _recover_js_arrow_fault(left: Expr) -> Expr;
+    def _recover_js_arrow_fault;
     def _recover_missing_connect_rhs -> bool;
     def _recover_misplaced_disconnect -> None;
     def _check_js_ternary_fault -> bool;
