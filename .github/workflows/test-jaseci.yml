@@ -234,6 +234,10 @@ jobs:
       run: |
         pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac
 
+    - name: Run user manager data-path tests
+      run: |
+        pytest -x jac-scale/jac_scale/tests/test_user_manager_data_path.jac
+
     - name: Run Serializer tests
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_serializer_social.jac
