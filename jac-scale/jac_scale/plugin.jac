@@ -810,7 +810,8 @@ class JacScalePlugin {
                 import from jac_scale.config_loader { get_scale_config }
                 import from jac_scale.microservices.k8s_target { k8s_safe_name }
                 import from jac_scale.microservices._util {
-                    k8s_service_dns_url, in_cluster_namespace
+                    k8s_service_dns_url,
+                    in_cluster_namespace
                 }
                 ms_cfg = get_scale_config().get_microservices_config();
                 port: int = int(ms_cfg.get("gateway_port", 8000));
