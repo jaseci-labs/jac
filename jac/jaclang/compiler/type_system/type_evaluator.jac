@@ -16,7 +16,7 @@ import from jaclang.jac0core.constant { SymbolType, Tokens as Tok }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
 import from jaclang.jac0core.passes.sym_tab_build_pass { SymTabBuildPass }
 import from jaclang.compiler.type_system { types }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.jac0core.helpers { read_file_with_encoding }
 import type from jaclang.jac0core.program { JacProgram }
 
 # FIXME: Conver the bellow to dot import (from . import ...)

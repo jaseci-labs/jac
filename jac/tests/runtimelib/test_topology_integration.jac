@@ -18,6 +18,15 @@ node _SliceOther {
     has idx: int = 0;
 }
 
+# Multi-hop fixture: bucket -> leaf, so we can test 2-hop sliced traversal.
+node _MultiHopBucket {
+    has idx: int = 0;
+}
+
+node _MultiHopLeaf {
+    has idx: int = 0;
+}
+
 test "topology index config from toml" {
     import from jaclang.project.config { JacConfig }
     toml_str = "[project]\nname = \"test\"\n\n[run]\ntopology_index = false\n";
@@ -222,6 +231,66 @@ test "edge-ref slice bounds sqlite l3 fetches" {
         # because all 100 leads + ~120 edges are loaded.
         assert fetch_count <= 60 , (
             f"Slice should bound L3 fetches; got {fetch_count} fetches for [0:50]"
+        );
+
+        ctx2.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+"""Multi-hop slicing must also push the bound down to storage.
+
+Builds `root -> 20 buckets -> 10 leaves each` (200 leaves total). A sliced
+two-hop query `[r-->-->[?:_MultiHopLeaf]][0:50]` should only fetch ~slice
+size from SQLite. Pre-fix this fell through to `plan_query`, which loaded
+all 200 leaves before slicing in Python."""
+test "edge-ref multi-hop slice bounds sqlite l3 fetches" {
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+
+        # --- Phase 1: build graph (20 buckets × 10 leaves), persist ---
+        ctx1 = ExecutionContext();
+        JacRuntime.set_context(ctx1);
+
+        for i in range(20) {
+            bucket = _MultiHopBucket(idx=i);
+            root ++> bucket;
+            for j in range(10) {
+                bucket ++> _MultiHopLeaf(idx=(i * 10 + j));
+            }
+        }
+        root_id = root.__jac__.id;
+        ctx1.mem.commit();
+        ctx1.close();
+
+        # --- Phase 2: fresh ctx (cold L1), run sliced multi-hop query ---
+        ctx2 = ExecutionContext();
+        JacRuntime.set_context(ctx2);
+
+        root_anchor = ctx2.mem.get(root_id);
+        assert root_anchor is not None;
+        r2 = root_anchor.archetype;
+
+        ctx2.mem.reset_l3_fetch_count();
+
+        leaves = [r2-->-->[?:_MultiHopLeaf]][0:50];
+
+        fetch_count = ctx2.mem.get_l3_fetch_count();
+        assert len(leaves) == 50 , f"Expected 50 leaves, got {len(leaves)}";
+        # Pushdown should bound L3 reads to roughly the slice size. Phase-1
+        # pushdown bailed on multi-hop, loading all 200 leaves through the
+        # fast-fallback `plan_query` path.
+        assert fetch_count <= 80 , (
+            "Multi-hop slice should bound L3 fetches; "
+            f"got {fetch_count} fetches for [0:50]"
         );
 
         ctx2.close();

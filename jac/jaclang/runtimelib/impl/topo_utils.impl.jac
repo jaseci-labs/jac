@@ -379,10 +379,21 @@ impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list
 
 """Storage-layer pagination via the topology index.
 
-Phase 1 scope: single-hop chains only. For multi-hop, the cross-hop ordering
-semantics aren't well-defined (each hop's set-intersection step loses order),
-so we fall back to the existing plan_query path which materializes everything
-and slices in Python.
+Handles single-hop and multi-hop type-only chains. For multi-hop, non-final
+hops resolve via the set-based `resolve_chain` and the final hop's edges
+drive the adj_list walk.
+
+Multi-hop ordering is global adj_list (edge-insertion) order restricted to
+final-hop edges whose source is in the prefix-resolved set. This matches
+the slow path's `edges_to_nodes` order when graphs are built with the
+natural pattern (insert each parent's children together); for interleaved
+insertion patterns the two can diverge. Strict per-source slow-path
+equivalence across multiple sources would require per-source ordered
+adjacency in the index — a future enrichment tracked alongside ordering
+DSL work.
+
+Predicates anywhere in the chain disable pushdown — post-apply-then-slice
+breaks the ordering invariant the slice is paying for.
 
 Returns None to signal "no pushdown" — callers fall back to the unsliced fast
 path or to the slow path."""
@@ -402,28 +413,23 @@ impl plan_query_ordered(path: Any, slc: slice) -> (list[UUID] | None) {
         return None;
     }
     destinations = path.destinations[:-1] if path.edge_only else path.destinations;
-    # Phase 1: single-hop only. Multi-hop pushdown requires defining ordering
-    # across set-intersection steps; defer until there's a concrete request.
-    if len(destinations) != 1 {
+    if not destinations {
         return None;
     }
-    dest = destinations[0];
-    if _filter_has_predicates(dest.`edge) {
-        return None;
-    }
-    # Predicates on the final hop's node filter are tolerated by plan_query
-    # (the caller post-applies them); but post-applying *then* slicing changes
-    # the ordering invariant we're trying to provide. Restrict to type-only.
-    if _filter_has_predicates(dest.nd) {
-        return None;
-    }
-    edge_type = _extract_type_name_from_filter(dest.`edge);
-    node_type = _extract_type_name_from_filter(dest.nd);
-    if edge_type is None and node_type is None {
-        # Unfiltered single-hop slice: the natural edge-walk preserves order
-        # cheaply, but pushdown still wins because we skip the edge-anchor
-        # bulk prefetch. Plan as a wildcard chain entry.
-        ;
+    # Build the chain and validate every hop is type-only. Any predicate
+    # (edge or node, intermediate or final) forces post-apply filtering which
+    # would invalidate the ordered slice. Bail and let the caller fall back.
+    chain: list[tuple[(str | None), (str | None), int]] = [];
+    for dest in destinations {
+        if _filter_has_predicates(dest.`edge) {
+            return None;
+        }
+        if _filter_has_predicates(dest.nd) {
+            return None;
+        }
+        edge_type = _extract_type_name_from_filter(dest.`edge);
+        node_type = _extract_type_name_from_filter(dest.nd);
+        chain.append((edge_type, node_type, dest.direction.value));
     }
     import from jaclang.runtimelib.topology_index { TopologyIndex }
     idx = root_anchor.get_topology_index();
@@ -431,9 +437,18 @@ impl plan_query_ordered(path: Any, slc: slice) -> (list[UUID] | None) {
         return None;
     }
     origin_ids = {nd.__jac__.id for nd in path.origin};
-    return idx.resolve_chain_ordered(
-        origin_ids, edge_type, node_type, dest.direction.value, slc
-    );
+    # For multi-hop: resolve the non-final prefix via the set-based walker —
+    # intermediate-hop order isn't observable to the slice. The resulting set
+    # becomes the origin set for the ordered final hop.
+    if len(chain) > 1 {
+        prev_set = idx.resolve_chain(origin_ids, chain[:-1]);
+        if not prev_set {
+            return [];
+        }
+        origin_ids = prev_set;
+    }
+    final = chain[-1];
+    return idx.resolve_chain_ordered(origin_ids, final[0], final[1], final[2], slc);
 }
 
 """Load nodes by an ordered list of UUIDs.
