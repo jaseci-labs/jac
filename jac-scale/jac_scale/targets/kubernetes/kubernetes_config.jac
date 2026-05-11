@@ -14,18 +14,19 @@ obj KubernetesConfig(BaseConfig) {
         cpu_limit: (str | None) = None,
         memory_request: (str | None) = None,
         memory_limit: (str | None) = None,
-        # Probe defaults align with microservice-mode drain semantics.
-        # Tight cadences let kube-proxy drop a draining pod from
-        # Endpoints inside the default 15s graceful-shutdown window;
-        # lenient cadences leak 503s during rolling deploys. Users with
-        # slow first-boot apps (jacBuilder: jac compile + heavy imports)
-        # bump these via [plugins.scale.kubernetes].liveness_initial_delay
-        # etc. in jac.toml.
-        readiness_initial_delay: int = 5,
-        readiness_period: int = 5,
-        liveness_initial_delay: int = 15,
-        liveness_period: int = 10,
-        liveness_failure_threshold: int = 3,
+        # Probe defaults match upstream's pre-microservice baseline so the
+        # monolith all-in-one path keeps the rollout-grace window it
+        # expected (slow first-boot apps with multiple init containers
+        # need ~13min of liveness grace before restart-looping).
+        # Microservice-mode apps that want tighter drain semantics set
+        # `[plugins.scale.kubernetes].liveness_failure_threshold` etc.
+        # in jac.toml explicitly; we don't tighten the defaults globally
+        # because the parent KubernetesTarget shares this config object.
+        readiness_initial_delay: int = 10,
+        readiness_period: int = 20,
+        liveness_initial_delay: int = 10,
+        liveness_period: int = 20,
+        liveness_failure_threshold: int = 80,
         min_replicas: int = 1,
         max_replicas: int = 3,
         cpu_utilization_target: int = 50,
@@ -173,11 +174,11 @@ obj KubernetesConfig(BaseConfig) {
             cpu_limit=config.get('cpu_limit'),
             memory_request=config.get('memory_request'),
             memory_limit=config.get('memory_limit'),
-            readiness_initial_delay=config.get('readiness_initial_delay', 5),
-            readiness_period=config.get('readiness_period', 5),
-            liveness_initial_delay=config.get('liveness_initial_delay', 15),
-            liveness_period=config.get('liveness_period', 10),
-            liveness_failure_threshold=config.get('liveness_failure_threshold', 3),
+            readiness_initial_delay=config.get('readiness_initial_delay', 10),
+            readiness_period=config.get('readiness_period', 20),
+            liveness_initial_delay=config.get('liveness_initial_delay', 10),
+            liveness_period=config.get('liveness_period', 20),
+            liveness_failure_threshold=config.get('liveness_failure_threshold', 80),
             min_replicas=config.get('min_replicas', 1),
             max_replicas=config.get('max_replicas', 3),
             cpu_utilization_target=config.get('cpu_utilization_target', 50),
