@@ -2,17 +2,12 @@
 import ast as ast3;
 import from collections.abc { Sequence }
 import from dataclasses { field }
-import from typing { TYPE_CHECKING, Any }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
-        import from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
-        import from jaclang.compiler.passes.tool.doc_ir { Doc }
-        import from jaclang.jac0core.unitree { Source, Token }
-        import from llvmlite.binding { ModuleRef, ExecutionEngine }
-    }
-}
+import from typing { Any }
+import type from jaclang.compiler.passes.ecmascript.estree { IndexInfo, SliceInfo }
+import type from jaclang.compiler.passes.ecmascript.estree { Node as EsNode }
+import type from jaclang.compiler.passes.tool.doc_ir { Doc }
+import type from jaclang.jac0core.unitree { Source, Token }
+import type from llvmlite.binding { ModuleRef, ExecutionEngine }
 
 """Client-side rendering manifest metadata."""
 obj ClientManifest {
@@ -167,7 +162,12 @@ obj InteropBinding {
         param_names: list[str] = [],
         ast_node: Any = None,
         route: list[InteropContext] = [],
-        source_module: (str | None) = None;
+        source_module: (str | None) = None,
+        # Kind of provider symbol this binding stubs out: 'function' for
+        # `def:pub` functions (POST /function/<name>), 'walker' for
+        # `walker:pub` archetypes (POST /walker/<name>). Drives stub
+        # codegen and runtime dispatch for sv-to-sv imports.
+        kind: str = 'function';
 
     @property
     def is_direct -> bool;

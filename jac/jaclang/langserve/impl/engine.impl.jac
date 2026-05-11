@@ -53,6 +53,15 @@ impl JacLangServer.type_check(file_uri: str) -> None {
 
 """Actually queue the type check task after debounce delay."""
 impl JacLangServer._do_type_check(file_uri: str) -> None {
+    # Fan out BEFORE queuing the primary task. `_fanout_dependents` calls
+    # `invalidate_module(resolved)` for `file_uri` itself; if that runs
+    # after the worker has already popped the task, compiled the file,
+    # and populated `mod.hub`, the invalidation wipes the freshly
+    # written entry — diagnostics for the file then disappear because
+    # `JacLangServer.diagnostics` enumerates `mod.hub` keys. Doing the
+    # eviction first guarantees the worker observes a post-invalidation
+    # state and its mod.hub write survives.
+    self._fanout_dependents(file_uri);
     with self._state_lock.write_lock() {
         # Clear timer reference and pending file
         self._debounce_timer = None;
@@ -64,12 +73,6 @@ impl JacLangServer._do_type_check(file_uri: str) -> None {
         # Trigger the worker to pick up the new task.
         self._work_event.set();
     }
-    # Push transitive open consumers into dirty_files so the dispatcher
-    # re-checks them after the primary task finishes. The fanout is
-    # external-event-driven (called from did_open/did_save/did_change),
-    # so dispatcher-induced re-checks of those consumers cannot recurse:
-    # type_check_file does not loop back through _do_type_check.
-    self._fanout_dependents(file_uri);
 }
 
 """Drop the changed file's IR from program caches and queue every open
