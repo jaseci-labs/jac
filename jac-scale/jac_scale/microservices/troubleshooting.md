@@ -1,477 +1,137 @@
 # Troubleshooting jac-scale microservice deploys
 
-Failure modes you'll actually hit when running `jac start <file> --scale`
-against a Kubernetes cluster, in roughly the order most users hit them.
-Each section: **what you'll see** → **what's wrong** → **how to fix**.
-
-If your symptom isn't here, the [diagnostic flow](#diagnostic-flow) at
-the bottom is the systematic walk.
-
----
+Common failure modes for `jac start <file> --scale` on K8s, in the order
+most users hit them.
 
 ## "Could not load Kubernetes config..."
 
-**Symptom**
-
-```
-RuntimeError: Could not load Kubernetes config from either kubeconfig
-or in-cluster ServiceAccount.
-If you're deploying from a laptop:
-  - Start a local cluster:  minikube start
-  - Verify kubectl works:   kubectl get nodes
-  ...
-```
-
-**What's wrong**
-
-`jac start --scale` couldn't find a cluster to talk to. Either no
-kubeconfig (laptop case) or the pod doesn't have a working ServiceAccount
-(in-cluster case).
-
-**Fix - laptop**
+`jac start --scale` couldn't find a cluster.
 
 ```bash
+# Laptop
 minikube start --driver=docker
-kubectl get nodes        # must show at least one Ready node
+kubectl get nodes        # must show Ready
+
+# Remote
+aws eks update-kubeconfig --name <cluster> --region <region>
+gcloud container clusters get-credentials <cluster> --zone <zone>
+az aks get-credentials --resource-group <rg> --name <cluster>
+
+# Verify
+kubectl cluster-info
 ```
 
-If you already had minikube running and this still fails, your kubeconfig
-is pointing at a stopped cluster:
-
-```bash
-kubectl config current-context
-minikube status          # if "Stopped", `minikube start` again
-```
-
-**Fix - remote cluster (EKS/GKE/AKS)**
-
-```bash
-# AWS EKS
-aws eks update-kubeconfig --name <cluster-name> --region <region>
-
-# Google GKE
-gcloud container clusters get-credentials <cluster-name> \
-    --zone <zone> --project <project>
-
-# Azure AKS
-az aks get-credentials --resource-group <rg> --name <cluster-name>
-```
-
-Verify before re-running:
-
-```bash
-kubectl cluster-info     # must print API server URL
-```
-
-**Fix - inside a pod**
-
-The pod needs a ServiceAccount with cluster API permissions. The default
-`default` ServiceAccount usually has `get/list/watch` on its own namespace
-but NOT cluster-wide; for `jac start --scale` to apply manifests it
-needs at least the verbs listed in the [RBAC scope (deferred)](#rbac-scope-deferred)
-section below. Until that ships, run from a laptop or use a
-cluster-admin ServiceAccount.
-
----
+In-cluster: pod needs a ServiceAccount with cluster API permissions. Run
+from a laptop or use a cluster-admin SA.
 
 ## "Kubernetes API server is unreachable"
 
-**Symptom**
-
-```
-RuntimeError: Kubernetes API server is unreachable.
-  - Verify cluster: kubectl cluster-info
-  - For minikube:   minikube status
-  ...
-Original error: HTTPSConnectionPool(host='192.168.49.2', port=8443):
-  Max retries exceeded with url: /api/v1/namespaces (Caused by
-  NewConnectionError(...)
-```
-
-**What's wrong**
-
-kubeconfig loaded fine, but the cluster behind it is unreachable. Cluster
-stopped, network partition, expired credentials, or firewall.
-
-**Fix**
+Kubeconfig loads but the cluster behind it doesn't respond. Cluster
+stopped, network partition, expired creds, or firewall.
 
 ```bash
-# minikube
-minikube status             # "Running" expected
-minikube start              # if stopped
-
-# remote cluster - re-fetch credentials first
-aws eks update-kubeconfig ...   # or gcloud / az equivalent
-kubectl cluster-info            # confirms API server is responsive
-
-# corporate firewall blocking 6443/8443
-# fix: VPN / proxy / port allowlist with your sec team
+minikube status                  # "Running" expected; otherwise minikube start
+aws eks update-kubeconfig ...    # re-fetch creds if remote
+kubectl cluster-info             # confirms API server reachable
 ```
 
-This error is "fail-fast" - we hit `list_namespace` once at the start of
-apply, not after applying half the manifests. If you got here, no
-manifests were applied; nothing to clean up.
-
----
+We fail-fast at the first `list_namespace` call, so no manifests are
+applied if you got here - nothing to clean up.
 
 ## "[plugins.scale.microservices.routes] is empty"
 
-**Symptom**
-
-```
-ValueError: [plugins.scale.microservices.routes] is empty in jac.toml.
-Microservice mode needs at least one declared service.
-Add to your jac.toml:
-  [plugins.scale.microservices.routes]
-  my_service = "/api/my"
-```
-
-**What's wrong**
-
-Microservice mode is enabled but you haven't told it which services
-exist. Without routes, the gateway has nothing to forward to.
-
-**Fix**
-
-For each `.jac` file under your project root that should be its own
-service, add a route entry:
+Microservice mode is enabled but no routes are declared. Add at least
+one route per service `.jac` file:
 
 ```toml
 [plugins.scale.microservices]
 enabled = true
 
 [plugins.scale.microservices.routes]
-products_app = "/api/products"      # products_app.jac → /api/products/*
+products_app = "/api/products"   # products_app.jac -> /api/products/*
 orders_app   = "/api/orders"
-cart_app     = "/api/cart"
 ```
 
-The key (`products_app`) is the module name (file basename without
-`.jac`). The value (`/api/products`) is the URL prefix the gateway will
-route to that service.
-
----
+Key = module name (file basename without `.jac`); value = URL prefix.
 
 ## Pods deploy but `kubectl logs` shows `jac: command not found`
 
-**Symptom**
-
-```
-$ kubectl get pods -n default
-NAME                                       READY   STATUS              RESTARTS
-products-app-deployment-abc-123            0/1     CrashLoopBackOff    5
-$ kubectl logs <pod-name> -n default
-/bin/sh: 1: jac: not found
-$ kubectl describe pod <pod-name> | grep Image:
-    Image: python:3.12-slim
-```
-
-**What's wrong**
-
-Image is `python:3.12-slim` - the deploy fell back to the generic Python image because the `jac start --scale` flow couldn't find a way to build/load YOUR app's image. Generic Python doesn't have `jac` or `jac-scale` installed, hence "command not found."
-
-This happens when:
-
-1. No `Dockerfile` in the project root + no `image_registry` configured in jac.toml (auto-build doesn't know what to build/where to push).
-2. `app_config.build = False` - explicit opt-out.
-3. You ran `jac start --scale` from inside a fixture / test directory that wasn't designed for direct `jac start --scale` use (e.g. `jac-scale/jac_scale/tests/fixtures/k8s_e2e/` is for the e2e script, not direct deploy).
-
-The fallback-image guard makes this fail loud: `jac start --scale` exits with a clear error pointing here instead of producing a silent CrashLoopBackOff. The auto-build path then "just works" for local clusters so you should not hit this in the first place.
-
-**Fix - for the bundled fixture**
-
-If you're testing the microservice deployer itself (running from inside the jaseci repo), use the e2e script instead of direct `jac start --scale`:
+The image was built without jac-scale installed. Either the wrong
+Dockerfile was picked or pip install failed silently.
 
 ```bash
-cd /path/to/jaseci
-bash jac-scale/scripts/k8s_microservice_real_e2e.sh
+kubectl logs -n <ns> <pod> | head -40
+
+# Check which Dockerfile was used
+ls -la <project>/Dockerfile.microservice
+ls -la <repo-root>/jac-scale/scripts/Dockerfile.microservice.ci
 ```
 
-That script handles image build + load correctly.
-
-**Fix - for your own app**
-
-If auto-build can't pick up your project for some reason, fall back to manual:
-
-```bash
-# 1. Add a Dockerfile.microservice next to your jac.toml
-#    (template: jac-scale/scripts/Dockerfile.microservice in the jaseci repo)
-
-# 2. Tell Docker to talk to minikube's daemon
-eval $(minikube docker-env)
-
-# 3. Build the image (replace TAG with whatever; "myapp:dev" is fine)
-docker build -t myapp:dev -f Dockerfile.microservice .
-
-# 4. Configure jac.toml to use it
-#    [plugins.scale.kubernetes]
-#    image_name = "myapp"
-#    image_tag = "dev"
-#    build = false  # tell K8s target the image is already built
-
-# 5. Now jac start --scale will reference the prebuilt image
-jac start main.jac --scale
-
-# 6. Restore your shell's docker context when done
-eval $(minikube docker-env -u)
-```
-
-In the normal case auto-build handles steps 1-4 transparently - `jac start --scale` does it all.
-
----
+If you committed a custom `Dockerfile.microservice` in your project, it
+overrides everything; verify it actually `pip install`s jac-scale.
 
 ## Pod stuck in `ImagePullBackOff` / `ErrImagePull`
 
-**Symptom**
+The cluster can't pull the image jac-scale built.
 
-```
-$ kubectl get pods -n jac-e2e
-NAME                                 READY   STATUS             RESTARTS
-products-app-deployment-abc-123      0/1     ImagePullBackOff   0
-```
-
-`jac start --scale` returned success but the deploy never actually runs.
-
-**What's wrong**
-
-The K8s nodes can't pull the container image. Three common shapes:
-
-1. **Built locally, didn't push to a registry the cluster can reach.**
-   minikube uses its own Docker daemon; if you built against your host
-   Docker (not minikube's), the image lives on your laptop but not in
-   the cluster.
-
-2. **Image tag wrong** in jac.toml or the registry config.
-
-3. **Private registry, no imagePullSecret** on the ServiceAccount.
-
-**Fix - minikube local image**
-
-Re-run the build with minikube's docker context:
-
-```bash
-eval $(minikube docker-env)        # point host docker at minikube's daemon
-jac start app.jac --scale          # rebuild image inside minikube
-eval $(minikube docker-env -u)     # restore host docker context
-```
-
-The bundled `k8s_microservice_real_e2e.sh` does this automatically when
-it detects minikube; only relevant for manual deploys.
-
-**Fix - remote registry**
-
-Verify the tag is what the cluster sees:
-
-```bash
-kubectl describe pod <pod-name> -n <namespace> | grep "Image:"
-docker pull <that-image-tag>       # from your laptop, see if it works
-```
-
-If `docker pull` from your laptop works but the cluster can't, the
-cluster nodes need credentials. For ECR / GCR, the node IAM role usually
-handles this; for Docker Hub private repos, create an `imagePullSecret`
-and reference it in the ServiceAccount.
-
----
+- **minikube**: image is in minikube's daemon - verify `eval $(minikube docker-env) && docker images | grep <app>`.
+- **k3d/kind**: re-run `jac start --scale`; the import step may have failed silently.
+- **remote**: cluster's nodes need pull access to your registry. Check `imagePullSecrets` or set `[plugins.scale.kubernetes].image_registry` to a registry the cluster can reach.
 
 ## Pod `Running` but readiness probe failing
 
-**Symptom**
-
-```
-$ kubectl get pods -n jac-e2e
-NAME                              READY   STATUS    RESTARTS
-products-app-deployment-...       0/1     Running   0
-$ kubectl describe pod ...
-  Warning  Unhealthy  ... Readiness probe failed: HTTP probe failed
-  with statuscode: 404
-```
-
-**What's wrong**
-
-The container started but `/healthz/ready` isn't responding 200.
-Either the app failed to bind the port, or it bound but isn't routing
-the probe path.
-
-**Fix - check logs**
+Pod is up but `/healthz/ready` isn't returning 200, so kube-proxy
+excludes it from the Service.
 
 ```bash
-kubectl logs <pod-name> -n <namespace>
+kubectl describe pod -n <ns> <pod>          # look for "Readiness probe failed"
+kubectl logs -n <ns> <pod>                  # look for startup errors
+kubectl port-forward -n <ns> <pod> 8000:8000
+curl http://localhost:8000/healthz/ready    # bypass Service, hit pod directly
 ```
 
-Common shapes:
-
-- **`ModuleNotFoundError`** → your Dockerfile didn't install
-  `jac-scale[deploy]` or your service file isn't in `/app`.
-
-- **Port mismatch** → container `containerPort: 8000` but your code
-  binds 8080. Fix in jac.toml:
-
-  ```toml
-  [plugins.scale.kubernetes]
-  container_port = 8080
-  ```
-
-- **`/healthz/ready` returns 404** → you're running an old jac-scale
-  that doesn't have the split-probe endpoints. Either update your
-  image or hit `/healthz` (the legacy alias still works).
-
----
+Common causes: slow first-boot (jac compile + plugin init) crossing the
+probe's `initialDelay`; bump `[plugins.scale.kubernetes].readiness_initial_delay`.
 
 ## Gateway 503 on every `/api/<svc>/*` request
 
-**Symptom**
-
-Pods are all `Ready`, gateway `/health` returns 200, but
-`/api/products/walker/list_products` returns 503.
-
-**What's wrong**
-
-This was a known iteration bug (see [Historical iteration bugs](#historical-iteration-bugs)
-below) - `start_gateway_only` skipped LocalDeployer, so registry entries
-stayed in `REGISTERED` status, and `handle_proxy` short-circuited
-everything to 503.
-
-If you're on a release that has the fix, this should not happen. If
-you ARE seeing this with a recent build:
-
-**Fix**
+Gateway is reachable (`/health` returns 200) but service routes 503.
+Service pod isn't Ready, or its Service has no endpoints.
 
 ```bash
-# Confirm gateway pod is the right image
-kubectl describe pod -l app=gateway -n <ns> | grep Image
-# Should show your build tag, not a stale one
+kubectl get pods -n <ns>                              # look for Ready 0/1
+kubectl get endpoints <svc>-service -n <ns>           # empty means no Ready pod
+kubectl logs -n <ns> -l app=<svc> --tail=80
 ```
 
-Then check the gateway log for any "service unhealthy" lines:
-
-```bash
-kubectl logs -l app=gateway -n <ns> --tail=100
-```
-
-If you see `handle_proxy: svc.status not HEALTHY`, that's the bug; bump
-to a release with the fix.
-
----
-
-## "FAIL: <N> non-2xx responses during rolling restart"
-
-**Symptom**
-
-Real-app e2e (`k8s_microservice_real_e2e.sh`) fails phase 1 or phase 2
-zero-downtime check.
-
-**What's wrong**
-
-The four rolling-deploy wires are misconfigured for the workload:
-
-1. **`RollingUpdate{maxSurge: 1, maxUnavailable: 0}`** - surge a new
-   pod BEFORE killing the old one. Set on the Deployment manifest.
-2. **`readinessProbe` on `/healthz/ready`** - gates Endpoints membership.
-3. **`terminationGracePeriodSeconds`** - must be > drain_timeout + 5.
-4. **`preStop: sleep 5`** - bridges kube-proxy endpoint propagation.
-
-**Fix - diagnose which wire**
-
-Print the histogram from the failed run:
-
-```
-gateway response-code histogram:
-   1245  200
-      3  503
-```
-
-503s during rollout almost always mean the readiness probe fired too
-slow. Lower `periodSeconds` to 3 (from 5) on `_build_readiness_probe` to
-get the rolling-out pod out of Endpoints faster.
-
-000s (connection errors) almost always mean the preStop sleep is too
-short for your kube-proxy refresh cadence. Bump from 5 to 10 in
-`_build_prestop_hook`.
-
-If neither helps, the upstream jaclang drain middleware may not be
-flipping `is_draining()` correctly - check `kubectl logs` for the
-"drain: started" log line on the terminating pod; if missing, the
-SIGTERM-handler chain isn't wired.
-
----
+If the gateway is brand new and the Ingress returns 503 too: NGINX
+Ingress's upstream cache lags Service endpoints by 3-5s after a pod
+becomes Ready. Wait or retry.
 
 ## Diagnostic flow
 
-When stuck, walk this checklist in order:
-
-```
-1. kubectl cluster-info
-   → if fails, fix config/connectivity (above)
-
-2. kubectl get pods -n <ns>
-   → all pods should be Running + Ready
-   → if Pending: kubectl describe pod <name> | tail
-   → if ImagePullBackOff: image push / registry creds (above)
-   → if CrashLoopBackOff: kubectl logs <name>
-
-3. kubectl get endpoints <gateway-service> -n <ns>
-   → must show at least one IP
-   → if empty: readinessProbe failing (above)
-
-4. kubectl port-forward svc/gateway-service 8000:8000 -n <ns>
-5. curl http://localhost:8000/healthz/live
-   → must return 200 always
-6. curl http://localhost:8000/healthz/ready
-   → must return 200 (or 503 only during drain)
-7. curl http://localhost:8000/health
-   → must return 200 with registry summary
-
-8. curl http://localhost:8000/api/<svc>/walker/__missing__
-   → 404 = HEALTHY service that doesn't have this walker (success shape)
-   → 503 = gateway can't reach service (registry / Endpoints issue)
-   → 000 = transport error (port-forward died, retry)
-```
-
-Most failures terminate at one of these steps with a clear next action.
-
----
-
-## When the framework itself is the bug
-
-If you've walked the flow and everything looks correct but it still
-doesn't work, capture this snapshot and file an issue:
+When the symptom doesn't match anything above:
 
 ```bash
-kubectl get pods,svc,endpoints,deploy,hpa,pdb,ingress -n <ns> -o yaml \
-    > snapshot.yaml
-kubectl describe pods -n <ns> > describe.txt
-kubectl logs -l managed=jac-scale -n <ns> --tail=200 > logs.txt
-jac --version > version.txt
+# 1. What's in the namespace
+kubectl get all,ingress,pvc -n <ns>
+
+# 2. Pod events (image pull failures, scheduling, probes)
+kubectl describe pods -n <ns>
+
+# 3. Container logs (most recent restart)
+kubectl logs -n <ns> -l managed=jac-scale --tail=100
+
+# 4. Namespace-wide events sorted by time
+kubectl get events -n <ns> --sort-by='.lastTimestamp'
 ```
 
-`describe.txt` and `logs.txt` are usually enough; `snapshot.yaml` is the
-backup detail dump.
+## When the framework is the bug
 
----
+If you've gone through the above and the failure is in the manifest
+itself (e.g. an env var jac-scale should inject is missing, a probe is
+misconfigured), file an issue with:
 
-## Notes referenced above
-
-### Historical iteration bugs
-
-The CI iteration that landed microservice mode caught three bugs that
-local unit tests didn't catch. They're documented in the release notes
-for historical context but should not recur on a current build:
-
-1. Gateway `/healthz` was in `_BUILTIN_EXACT` -> 404 from passthrough
-   when the registry was empty.
-2. `start_gateway_only` (K8s mode) didn't pre-mark services HEALTHY ->
-   `handle_proxy` 503'd everything.
-3. `get_microservices_config` didn't pass the `ingress` block through
-   -> the Ingress object was silently never applied.
-
-All three now have unit-test regression coverage; you should never see
-them on a current build.
-
-### RBAC scope (deferred)
-
-Today, `jac start --scale` from a pod requires a cluster-admin-equivalent
-ServiceAccount. A future iteration will introduce a least-privilege
-RBAC manifest for in-cluster admin pods. Until then, if you must run
-admin commands from inside a pod, use the `cluster-admin` role bound
-to a dedicated SA, not the default one.
+- `kubectl get deploy <name> -n <ns> -o yaml` (the rendered manifest)
+- `kubectl describe pod <name> -n <ns>` (events + status)
+- The relevant `[plugins.scale.microservices.*]` section of `jac.toml`

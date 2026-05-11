@@ -1,32 +1,13 @@
-"""Kubernetes deployment target for microservice mode.
+"""K8s deployment target for microservice mode.
 
-Fans a single container image out to one Deployment + ClusterIP Service
-+ HorizontalPodAutoscaler + PodDisruptionBudget per microservice, plus
-a gateway. The image build + push is delegated to the parent
-`KubernetesTarget`; this subclass adds per-service iteration over the
-project's `[plugins.scale.microservices.routes]` table, a runtime DNS
-adapter (`KubernetesDeployer`) for `sv import` peer URL resolution,
-and an optional Ingress manifest pointing at the gateway.
-
-Per-service config layering at `[plugins.scale.microservices.services.NAME]`
-flows through the manifest builders:
-
-  - `replicas` (int)             -> Deployment.spec.replicas
-  - `cpu_request`, `cpu_limit`   -> container resources (e.g. "100m")
-  - `memory_request`,
-    `memory_limit`               -> container resources (e.g. "128Mi")
-  - `env` (dict[str,str])        -> extra container env vars (merged
-                                    with JAC_SV_NAME, no override of it)
-  - `image_tag` (str)            -> override the global image tag
-                                    (useful for canary)
-  - `hpa.enabled` (bool)         -> emit HPA at all (default true)
-  - `hpa.min` / `hpa.max` /
-    `hpa.cpu_target` (int)       -> HPA bounds + threshold
-  - `pdb.enabled` (bool)         -> emit PDB at all (default true)
-  - `pdb.max_unavailable` (int)  -> PDB tolerance
-
-The gateway uses the same table keyed by GATEWAY_NAME ("__gateway__").
-All knobs are optional - omit and you get the defaults.
+Fans a single image out to one Deployment + ClusterIP Service + HPA +
+PDB per microservice, plus the gateway. Inherits image build/push from
+KubernetesTarget; adds per-service iteration over
+`[plugins.scale.microservices.routes]`, a DNS adapter
+(KubernetesDeployer) for `sv import` peer resolution, and an optional
+Ingress to the gateway. Per-service config knobs at
+`[plugins.scale.microservices.services.NAME]` (and `__gateway__` for
+the gateway) flow through the manifest builders - see docs.md.
 """
 
 import logging;
@@ -62,18 +43,8 @@ glob _UVICORN_EXIT_CUSHION_S: int = 5;
 
 
 """Map a service name to a DNS-1123-valid K8s resource name.
-
-`GATEWAY_NAME` ("__gateway__") is mapped to "gateway" because K8s
-resource names must match the DNS-1123 regex
-`[a-z0-9]([-a-z0-9]*[a-z0-9])?` (no underscores, no leading hyphens).
-Other names are lowercased and have underscores replaced with hyphens;
-the caller is responsible for ensuring the result is short enough
-(<=63 chars) and otherwise compliant.
-
-Module-level helper (not on `KubernetesMicroserviceTarget`) so
-`KubernetesDeployer.url_for` can reuse it without re-implementing.
-The method `KubernetesMicroserviceTarget._k8s_safe_name` delegates here.
-"""
+`__gateway__` -> "gateway"; others lowercased with `_` -> `-`. Module
+level so KubernetesDeployer.url_for can reuse it."""
 def k8s_safe_name(svc_name: str) -> str {
     if svc_name == GATEWAY_NAME {
         return "gateway";
@@ -82,23 +53,11 @@ def k8s_safe_name(svc_name: str) -> str {
 }
 
 
-"""K8s target that fans a single image out to one pod per microservice.
-
-Inherits from `KubernetesTarget` to reuse:
-    - image build + push (`_handle_image_registry` -> registry.build_and_push)
-    - namespace, secret, env-loading machinery
-    - probe / resource / service config builders
-
-The microservice-specific extension is per-service iteration: the
-project's `[plugins.scale.microservices.routes]` table is the source of
-truth for "which services exist." Each gets a pod-spec dict pointing at
-the same image, differentiated by env `JAC_SV_NAME`.
-
-Selected automatically by `_scale_pre_hook` when
-`[plugins.scale.microservices].enabled = true` AND the user passes
-`--scale` to `jac start`. Registered with `DeploymentTargetFactory`
-under the type name `"kubernetes-microservice"`.
-"""
+"""Fans one image out to one pod per microservice. Inherits image
+build/push + namespace/secret machinery from KubernetesTarget. Routes
+table is the source of truth for which services exist; each gets a
+pod-spec differentiated by `JAC_SV_NAME`. Selected by _scale_pre_hook
+when `[plugins.scale.microservices].enabled=true` + `--scale`."""
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
     # populated by _provision_databases (during deploy()) with
     # the wait-for-Mongo / wait-for-Redis init containers. Service +
@@ -106,25 +65,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     # initContainers so pods don't crash-loop until the DBs are reachable.
     has _microservice_init_containers: list[dict[str, Any]] = [];
 
-    """Auto-build override: front-load the image-build decision.
-
-    Activated only when `_JAC_SCALE_AUTO_BUILD=1` is set in env (the
-    `_scale_pre_hook` in plugin.jac sets this on the production
-    `jac start --scale` path; tests that exercise lower-level builders
-    don't, so they get the parent's existing behavior). When active:
-
-      1. If user pre-set `[plugins.scale.kubernetes].docker_image_name`,
-         trust they pre-built it - return that tag.
-      2. Otherwise, hand off to `auto_build_and_distribute` which detects
-         cluster type from kubeconfig + builds + loads the image into the
-         cluster (minikube/k3d/kind) or pushes to a configured registry
-         (remote). Returns the resolved image tag for the manifest builder.
-
-    When the env var is unset, falls through to KubernetesTarget's
-    behavior - which preserves the existing unit-test contracts that pass
-    `build=False` and assert manifest shape against the python_image
-    fallback.
-    """
+    """Auto-build override when `_JAC_SCALE_AUTO_BUILD=1` is set (production
+    `jac start --scale` path). Returns the user's pre-built docker_image_name
+    if set, else hands off to auto_build_and_distribute which detects
+    cluster type and builds+loads/pushes the image. Falls through to
+    parent behavior when the env var is unset (preserves unit-test
+    manifest-shape contracts that pass build=False)."""
     def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
         import os;
         if os.environ.get("_JAC_SCALE_AUTO_BUILD") == "1" {

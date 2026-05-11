@@ -287,191 +287,104 @@ Same code, different deployer:
 
 ## Kubernetes Deployment
 
-When `[plugins.scale.microservices].enabled = true` AND you pass
-`--scale` to `jac start`, the same dispatch that drives monolith K8s
-deploys auto-routes to the microservice variant: one image is built and
-pushed, then per-service `Deployment` + `ClusterIP Service` manifests
-are applied for every `sv import`-discovered service plus the gateway.
+`jac start <file>.jac --scale` with `[plugins.scale.microservices].enabled = true`
+auto-routes to the microservice K8s target: one image built and pushed,
+then per-service `Deployment` + `ClusterIP Service` + HPA + PDB applied
+for every `sv import`-discovered service plus the gateway.
 
-```bash
-# One command, full topology:
-jac start app.jac --scale --build
-```
-
-That builds + pushes the image, generates manifests, and applies them.
-Each pod boots with `JAC_SV_NAME=<service>` (the gateway gets
-`JAC_SV_NAME=__gateway__`); the entrypoint reads that env var to know
-which service to host. Inside the cluster, the gateway resolves other
-services via DNS (`<svc>-service.<namespace>.svc.cluster.local`)
-automatically - no code changes from local mode.
+Each pod boots with `JAC_SV_NAME=<service>` (`__gateway__` for gateway);
+the entrypoint reads it to know which service to host. Gateway resolves
+peers via in-cluster DNS (`<svc>-service.<ns>.svc.cluster.local`) - no
+code changes from local mode.
 
 ### Per-service config
 
-`[plugins.scale.microservices.services.NAME]` is the per-service
-override table. All keys are optional; omit any and you get the
-defaults. The gateway uses the same table keyed by `__gateway__`.
+`[plugins.scale.microservices.services.NAME]` (gateway = `__gateway__`):
 
-| Key | Type | Default | What it does |
-|-----|------|---------|--------------|
-| `replicas` | int | `1` | `Deployment.spec.replicas` |
-| `cpu_request`, `cpu_limit` | str | unset | Container CPU resource (`"100m"`, `"2000m"`) |
-| `memory_request`, `memory_limit` | str | unset | Container memory resource (`"128Mi"`, `"4Gi"`) |
-| `env` | dict[str,str] | `{}` | Extra env vars (merged with the protected `JAC_SV_NAME`) |
-| `image_tag` | str | unset | Override the global image tag (canary deploys) |
-| `rpc_timeout` | float | `10.0` | Inter-service `sv import` httpx timeout (seconds) |
-| `http_forward_timeout` | float | `30.0` | Gateway-to-service forward timeout (seconds) |
-| `hpa.enabled` | bool | `true` | Emit HorizontalPodAutoscaler at all |
-| `hpa.min` | int | `1` | HPA `minReplicas` |
-| `hpa.max` | int | `3` | HPA `maxReplicas` |
-| `hpa.cpu_target` | int | `70` | HPA target CPU utilization (%) |
-| `pdb.enabled` | bool | `true` | Emit PodDisruptionBudget at all |
-| `pdb.max_unavailable` | int | `1` | PDB `maxUnavailable` |
-
-Example - an LLM service that needs more resources, longer timeouts,
-and aggressive autoscaling:
+| Key | Default | Notes |
+|---|---|---|
+| `replicas` | `1` | `Deployment.spec.replicas` |
+| `cpu_request`/`cpu_limit` | unset | `"100m"`, `"2000m"` |
+| `memory_request`/`memory_limit` | unset | `"128Mi"`, `"4Gi"` |
+| `env` | `{}` | extra env vars |
+| `image_tag` | unset | per-service override (canary) |
+| `rpc_timeout` | `10.0` | `sv import` httpx timeout (s) |
+| `http_forward_timeout` | `30.0` | gateway-to-service forward (s) |
+| `hpa.enabled` / `min` / `max` / `cpu_target` | `true` / `1` / `3` / `70` | autoscaler |
+| `pdb.enabled` / `max_unavailable` | `true` / `1` | PodDisruptionBudget |
 
 ```toml
 [plugins.scale.microservices.services.llm_app]
 replicas = 2
-cpu_request = "500m"
 cpu_limit = "2000m"
-memory_request = "1Gi"
 memory_limit = "4Gi"
 rpc_timeout = 120.0
-http_forward_timeout = 300.0
-env = { LOG_LEVEL = "DEBUG", MODEL_CACHE = "/cache" }
 
 [plugins.scale.microservices.services.llm_app.hpa]
 min = 3
 max = 20
-cpu_target = 60
 ```
 
-### Rolling deploy (zero downtime)
+### Rolling deploy, autoscaling, drain
 
-Every Deployment is generated with the four wires that make rolling
-updates not drop requests:
+Every Deployment gets `RollingUpdate { maxSurge: 1, maxUnavailable: 0 }`,
+readinessProbe on `/healthz/ready`, `terminationGracePeriodSeconds =
+drain_timeout_seconds + 5`, and `preStop: sleep 5`. Together with the
+drain middleware (`P13`), `kubectl rollout restart deployment/<svc>-deployment`
+completes with zero non-2xx responses.
 
-| Wire | What it does |
-|------|--------------|
-| `strategy: RollingUpdate { maxSurge: 1, maxUnavailable: 0 }` | Surges a new pod BEFORE terminating an old one |
-| `readinessProbe` on `/healthz` | New pods only get traffic once ready |
-| `terminationGracePeriodSeconds` = `drain_timeout_seconds + 5` | Lets our drain middleware flush in-flight requests |
-| `lifecycle.preStop: sleep 5` | Bridges the kube-proxy endpoint-propagation gap so other nodes stop sending traffic before this pod stops accepting it |
+Each service also gets an HPA and a PDB (`maxUnavailable=1`). Opt out
+per-service with `hpa.enabled = false` / `pdb.enabled = false`.
 
-Together with the existing drain middleware (`P13`), `kubectl rollout
-restart deployment/<svc>-deployment` completes with **zero non-2xx
-responses during the rollout window**. `drain_timeout_seconds` (default
-10s) is the dial that controls how long we wait for in-flight requests
-to finish before the pod hard-exits.
+### Ingress
 
-### Autoscaling
-
-Each service (and the gateway) gets a `HorizontalPodAutoscaler` by
-default. Defaults: `min=1, max=3, cpu_target=70%`. Tune per service
-under `[...services.NAME.hpa]`, or opt out with `hpa.enabled = false`
-for services that need fixed replica counts (leader-only workers,
-stateful services tied to single PVCs).
-
-Each service also gets a `PodDisruptionBudget` with
-`maxUnavailable=1`, so node drains and voluntary disruptions can't
-take all replicas down simultaneously. Combined with the rolling-
-update settings above, voluntary disruptions stay bounded across both
-scheduled (rollouts) and unscheduled (node maintenance) events.
-
-For services that are explicitly OK with full eviction during node
-maintenance, set `pdb.enabled = false`.
-
-### External traffic - Ingress
-
-Default off. Opt in to get an external URL pointing at the gateway:
+Default off. Opt in for an external URL routed to the gateway:
 
 ```toml
 [plugins.scale.microservices.ingress]
 enabled = true
-host = "shop.example.com"          # optional; match-any-host if unset
-ingress_class_name = "nginx"       # or "alb", "gce", "traefik"
-annotations = {
-    "nginx.ingress.kubernetes.io/proxy-body-size" = "10m",
-}
+host = "shop.example.com"          # optional
+ingress_class_name = "nginx"       # or alb / gce / traefik
+annotations = { "nginx.ingress.kubernetes.io/proxy-body-size" = "10m" }
 ```
 
-Generates a single `networking.k8s.io/v1 Ingress` named
-`gateway-ingress` that routes `/` (Prefix) to `gateway-service`. The
-gateway itself dispatches `/api/{svc}/*` internally; only one Ingress
-is needed for the whole topology.
-
-**HTTP only.** TLS automation (cert-manager + Let's Encrypt, or ALB
-
-+ ACM cert) is deployment-specific - install your own controller and
-add the relevant annotations / `tls:` block. We don't bake those in
-because the right answer differs by cluster (managed vs self-hosted)
-and CA (Let's Encrypt vs internal vs ACM).
-
-When `enabled = false` (the default) no Ingress is emitted; users
-relying on `kubectl port-forward svc/gateway-service` for local-cluster
-testing don't need to change anything.
+One `Ingress` routes `/` to `gateway-service`; the gateway dispatches
+`/api/{svc}/*` internally. HTTP only - TLS automation (cert-manager,
+ACM) is deployment-specific; add via your own annotations/`tls:` block.
 
 ### Tear down
 
 ```bash
-# Programmatically:
 target.destroy("app-name")
-
-# Or by label, directly:
+# or:
 kubectl delete deployment,service,hpa,pdb,ingress -l managed=jac-scale -n <ns>
 ```
 
-`destroy()` deletes by label selector
-(`managed=jac-scale,jac-scale.role in (microservice,gateway)`) rather
-than per-name, so renamed services in `jac.toml` still get cleaned up.
+`destroy()` deletes by `managed=jac-scale,jac-scale.role in
+(microservice,gateway)` so renamed services still get cleaned up.
 
-### Pod entrypoint + image requirements
+### Image + entrypoint
 
-Every pod runs the same image. The K8s pod-spec sets `command +
-args` so the image only needs `jac` and `jac-scale[deploy]` installed -
-no app-side `ENTRYPOINT` required. The container script reads
-`JAC_SV_NAME` at startup and dispatches:
+Every pod runs the same image, only needs `jac` + `jac-scale[deploy]`.
+The pod-spec's `command`/`args` reads `JAC_SV_NAME` and dispatches:
+`<svc>` -> `jac start <svc>.jac`, `__gateway__` -> `jac scale gateway`.
+`JAC_SV_SIBLING=1` is set so the JacScalePlugin pre-hook skips the
+local-mode orchestrator.
 
-| `JAC_SV_NAME`     | Pod runs                              |
-|-------------------|---------------------------------------|
-| `<svc>` (e.g. `cart_app`) | `jac start <svc>.jac`         |
-| `__gateway__`     | `jac scale gateway` (gateway-only mode, no spawning) |
+Starter Dockerfile + .dockerignore at
+`jac-scale/scripts/Dockerfile.microservice` / `dockerignore.microservice`.
 
-`JAC_SV_SIBLING=1` is exported before dispatch so the JacScalePlugin
-pre-hook skips its local-mode orchestrator (which would try to spawn
-peers as subprocesses; in K8s the controller manages peer pods
-independently).
+### End-to-end smoke
 
-A starter Dockerfile + .dockerignore live at
-`jac-scale/scripts/Dockerfile.microservice` and
-`jac-scale/scripts/dockerignore.microservice`. Copy them into your
-project root, adjust the COPY paths if your layout differs, and
-build.
-
-### End-to-end smoke test
-
-A real-app smoke test lives at
-`jac-scale/scripts/k8s_microservice_real_e2e.sh`. Given a project
-directory (a jac-scale microservice project with `jac.toml`), it:
-
-1. Copies the Dockerfile template into the project
-2. Builds the image inside minikube's docker daemon (or pushes to
-   `$REGISTRY` if you set that env)
-3. Deploys via `KubernetesMicroserviceTarget`
-4. Waits for all Deployments to roll out (real readiness probes)
-5. Port-forwards to the gateway, curls `/health` + each route prefix
-   to verify gateway-to-service reachability
-6. Triggers a rolling restart while hammering `/health`, asserts
-   **zero non-2xx responses** during the rollout window
-7. Tears down
+`jac-scale/scripts/k8s_microservice_real_e2e.sh` builds the image,
+deploys, waits for rollout, curls gateway + per-service routes, then
+hammers `/health` during a rolling restart asserting zero non-2xx.
 
 ```bash
-# minikube path:
 minikube start
-bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/your/jac-scale/project
+bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/project
 
-# remote-cluster path (with a registry):
+# Remote (registry):
 USE_MINIKUBE=0 REGISTRY=myregistry.io/myorg \
     bash jac-scale/scripts/k8s_microservice_real_e2e.sh /path/to/project
 ```

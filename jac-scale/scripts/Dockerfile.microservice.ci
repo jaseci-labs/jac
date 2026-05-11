@@ -1,22 +1,8 @@
-# CI-only Dockerfile for the K-track real-app e2e.
+# CI-only Dockerfile for the real-app e2e.
 #
-# Differs from Dockerfile.microservice (the end-user-facing template
-# that installs jaclang + jac-scale from PyPI) by installing from
-# LOCAL source: the repo's `jac/` and `jac-scale/` directories. The
-# K-track code is not on PyPI yet (and PyPI is ~165 commits behind);
-# CI must validate against the actual code in the PR, not against
-# stale published packages.
-#
-# Build context: the repo root (NOT the project dir). The e2e script
-# (k8s_microservice_real_e2e.sh) detects this Dockerfile and switches
-# build cwd to the repo root automatically.
-#
-# Layout expected:
-#   <repo-root>/
-#     jac/                                        # jaclang source
-#     jac-scale/                                  # jac-scale source
-#     jac-scale/scripts/Dockerfile.microservice.ci  # this file
-#     <project-dir>/                              # the app to deploy
+# Installs jaclang + jac-scale from LOCAL source (the repo's jac/ and
+# jac-scale/) instead of PyPI, since the microservice code isn't on
+# PyPI yet. Build context = repo root (set by k8s_microservice_real_e2e.sh).
 
 FROM python:3.12-slim
 
@@ -24,24 +10,11 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Apps that use [[plugins.scale.microservices.shared_volumes]] (P0.25) get
-# their volume mounted across multiple pods. The volume's directories may
-# be owned by a UID that doesn't match the pod's effective UID (EFS CSI
-# access points enforce a posix uid; pod-spec runs as the image's default
-# UID). Any in-pod `git` command on that volume then trips git's
-# CVE-2022-24765 dubious-ownership check and aborts. Marking '*' as a
-# safe directory bypasses the check globally — fine here because the pod
-# already trusts everything mounted into it. (No-op for apps that don't
-# use shared_volumes; just sets a config flag.)
+# See Dockerfile.microservice for the safe.directory rationale.
 RUN git config --system --add safe.directory '*'
 
 RUN pip install --no-cache-dir --upgrade pip
 
-# Install jaclang + jac-scale from local source (the actual code under
-# test, including K1-K10). `-e` (editable) keeps the install pointing
-# at /build/jac so `jac --version` reports the right SHA-derived version.
-# jac-client comes from PyPI (not in this repo); it provides the `jac
-# install` subcommand that resolves jac.toml `[dependencies]` later.
 WORKDIR /build
 COPY jac /build/jac
 COPY jac-scale /build/jac-scale
@@ -49,27 +22,11 @@ RUN pip install --no-cache-dir -e /build/jac \
     && pip install --no-cache-dir -e "/build/jac-scale[deploy,data]" \
     && pip install --no-cache-dir jac-client
 
-# The project dir to deploy. Build arg lets the e2e script point at
-# any project under the repo (default: the K8s e2e fixture).
 ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
 WORKDIR /app
 COPY ${PROJECT_PATH} /app
 
-# P0.15: install the project's own pip deps from jac.toml [dependencies].
-# Without this, real apps (e.g. jacBuilder) crash at startup with
-# "No module named 'websockets'" because our base layer only ships
-# jaclang + jac-scale + jac-client, not the user's app deps.
-# `|| true` so projects without [dependencies] (e.g. the e2e fixture)
-# don't fail the build.
 RUN if [ -f jac.toml ]; then jac install || true; fi
-
-# Sanity-check the jac install. We used to pre-compile .jac files here
-# via `jac tool jac2py` but that subcommand was removed/renamed in
-# recent jac releases (now errors with "Ast tool jac2py not found")
-# and even before that, runtime jaclang compiles .jac on first import
-# via the meta importer - the pre-compile was best-effort, not
-# load-bearing. `jac --version` keeps a fast fail-loud check that the
-# CLI is on PATH without doing wasted work.
 RUN jac --version
 
 EXPOSE 8000
