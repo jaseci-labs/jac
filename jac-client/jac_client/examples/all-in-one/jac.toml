@@ -48,6 +48,15 @@ require_password_reset = true
 [plugins.scale.kubernetes]
 redis_dashboard = true
 mongodb_dashboard = true
+# Diagnostic: 5-min boot grace so the pod can finish git-clone + pip
+# install + jac compile + jac start before the liveness probe gets a
+# vote. test_deploy_all_in_one was crashlooping mid-compile; this rules
+# out "loading time" as the cause vs. an actual hang. Upstream defaults
+# (10 / 20 / 80) give ~26min total grace anyway, but the readiness
+# probe's 10s initial delay was still letting kubelet mark Not Ready
+# very early, which the test interprets as a restart in some paths.
+readiness_initial_delay = 300
+liveness_initial_delay = 300
 
 [dependencies.npm]
 antd = "^6.0.0"
