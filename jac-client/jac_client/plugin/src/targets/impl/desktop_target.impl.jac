@@ -2841,10 +2841,9 @@ try:
     python_deps = toml_data.get('dependencies', {{}})
 
     def _resolve_top_level(dist_name):
-        # Distribution name != module name in general (e.g.
-        # jasketch-mcp-server ships top-level module jasketch_mcp).
-        # Read top_level.txt from the installed dist; fall back to the
-        # dash-to-underscore heuristic only when metadata is missing.
+        # Distribution name != module name in general. Read top_level.txt
+        # from the installed dist; fall back to the dash-to-underscore
+        # heuristic only when metadata is missing.
         try:
             dist = distribution(dist_name)
             top_level = dist.read_text('top_level.txt')
