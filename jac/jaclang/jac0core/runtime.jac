@@ -371,6 +371,29 @@ class JacBasics {
     """Purge current or target graph."""
     static def reset_graph(root: (Root | None) = None) -> int;
 
+    """Find all persisted nodes of the given archetype type with an optional
+    field-level filter.
+
+    On MongoDB backends (jac-scale) the filter is pushed server-side so only
+    matching documents are deserialised. On SQLite or in-memory backends the
+    filter is applied in Python after loading.
+
+    Field filter syntax mirrors MongoDB query operators:
+        {'age': 28}               # equality
+        {'age': {'$lt': 28}}      # less-than
+        {'age': {'$lte': 28}}     # less-than-or-equal
+        {'age': {'$gt': 18}}      # greater-than
+        {'age': {'$gte': 18}}     # greater-than-or-equal
+        {'age': {'$ne': 0}}       # not-equal
+
+    Example:
+        users = Jac.find_nodes(User, {'age': {'$lt': 28}});
+    """
+    static def find_nodes(
+        arch_type: type[T],
+        field_filter: (dict | None) = None
+    ) -> list[T];
+
     """Get object given id."""
     static def get_object(id: str) -> (Archetype | None);
 

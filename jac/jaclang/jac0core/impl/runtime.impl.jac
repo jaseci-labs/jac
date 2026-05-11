@@ -1000,6 +1000,70 @@ impl JacBasics.acommit(anchor: Anchor | Archetype | None = None) -> None {
     await ctx.mem.acommit(anchor);
 }
 
+"""Evaluate one field predicate for the Python-side fallback in find_nodes."""
+def _field_pred_match(val: Any, spec: Any) -> bool {
+    if isinstance(spec, dict) {
+        for (op, expected) in spec.items() {
+            if op == '$lt' and not (val < expected) { return False; }
+            elif op == '$lte' and not (val <= expected) { return False; }
+            elif op == '$gt' and not (val > expected) { return False; }
+            elif op == '$gte' and not (val >= expected) { return False; }
+            elif op == '$ne' and val == expected { return False; }
+            elif op == '$eq' and val != expected { return False; }
+        }
+        return True;
+    }
+    return val == spec;
+}
+
+"""Find all persisted nodes of the given archetype type.
+
+Fast path (MongoDB / jac-scale): delegates to l3.query_by_type so only
+matching documents are fetched from the database. Results are added to the
+L1 cache so subsequent edge operations work correctly.
+
+Python fallback (SQLite / in-memory): iterates the in-memory anchor dict,
+filters by archetype type, then applies the field predicates in Python.
+"""
+impl JacBasics.find_nodes(
+    arch_type: type[NodeArchetype],
+    field_filter: (dict | None) = None
+) -> list[NodeArchetype] {
+    ctx = JacRuntimeInterface.get_context();
+    mem = ctx.mem;
+    results: list[NodeArchetype] = [];
+    l3 = getattr(mem, 'l3', None);
+    if l3 and hasattr(l3, 'query_by_type') {
+        l1 = mem.get_mem();
+        for anchor in l3.query_by_type(arch_type.__name__, field_filter or {}) {
+            if anchor.id not in l1 {
+                mem.put(anchor);
+            }
+            live = l1.get(anchor.id) or anchor;
+            if isinstance(live.archetype, arch_type) {
+                results.append(cast(NodeArchetype, live.archetype));
+            }
+        }
+        return results;
+    }
+    for anchor in mem.query() {
+        if isinstance(anchor.archetype, arch_type) {
+            arch = anchor.archetype;
+            if field_filter {
+                if all(
+                    _field_pred_match(getattr(arch, k, None), v)
+                    for (k, v) in field_filter.items()
+                ) {
+                    results.append(cast(NodeArchetype, arch));
+                }
+            } else {
+                results.append(cast(NodeArchetype, arch));
+            }
+        }
+    }
+    return results;
+}
+
 """Purge current or target graph."""
 impl JacBasics.reset_graph(root: (Root | None) = None) -> int {
     import pickle;
