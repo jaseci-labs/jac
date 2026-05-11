@@ -137,6 +137,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Connect/disconnect operator requires a right operand",
          help="Connect (`++>`, `+>:T:+>`) and disconnect (`del -->`, `del ->:T:->`) operators are binary -- supply the right-hand side, e.g. `a ++> b;` or `a del --> b;`."
      ),
+     E0029 = _err(
+         "E0029",
+         Category.SYNTAX,
+         "JavaScript ternary operator ('? :') is not supported in Jac",
+         help="Use Jac's if-expression instead: 'value_if_true if condition else value_if_false'."
+     ),
      # Parser: statement-level errors
      E0030 = _err("E0030", Category.SYNTAX, "Unexpected semicolon at module level"),
      E0031 = _err(
