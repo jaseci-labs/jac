@@ -200,14 +200,19 @@ impl ServiceProcessManager.start_all -> None {
         }
     }
 
+    timeout: float = self._boot_health_timeout;
     for name in self.registry.entries {
         self.start_service(name);
         entry = self.registry.entries[name];
         proc = self.processes.get(name);
         if proc and entry.url {
-            ok = wait_for_health(entry.url, lambda : proc.poll() is None, timeout=20.0);
+            ok = wait_for_health(
+                entry.url, lambda : proc.poll() is None, timeout=timeout
+            );
             if not ok {
-                logger.warning(f"{name} did not become healthy within 20s; proceeding");
+                logger.warning(
+                    f"{name} did not become healthy within {timeout:.0f}s; proceeding"
+                );
             }
         }
     }
@@ -300,6 +305,10 @@ impl ServiceProcessManager.stop_service(name: str) -> bool {
 
 """Stop all running services."""
 impl ServiceProcessManager.stop_all -> None {
+    # Stop the health monitor first so it doesn't race with stop_service
+    # and flip a just-terminated service back to UNHEALTHY (which would
+    # also make the lifecycle log noisier than it needs to be).
+    self.stop_health_monitor();
     names = list(self.processes.keys());
     for name in names {
         self.stop_service(name);
@@ -355,4 +364,65 @@ impl ServiceProcessManager.check_all_health -> dict[str, bool] {
     }
 
     return results;
+}
+
+
+"""Background loop that keeps re-checking service health forever.
+
+Hoisted to module scope (rather than a nested def inside
+start_health_monitor) so the thread target is picklable and the
+captured `self` reference is explicit. Exits cleanly when the
+stop_event is set; swallows per-iteration exceptions so a transient
+DNS / socket error doesn't kill the recovery loop.
+"""
+def _health_monitor_loop(pm: Any, stop_event: Any, interval: float) -> None {
+    while not stop_event.is_set() {
+        try {
+            pm.check_all_health();
+        } except Exception as e {
+            logger.warning(f"health monitor iteration failed: {e}");
+        }
+        # Event.wait returns True when set (so we exit immediately on
+        # stop) and False on timeout (so we loop again). This is the
+        # standard Python pattern for cancellable periodic work.
+        if stop_event.wait(interval) {
+            return;
+        }
+    }
+}
+
+
+impl ServiceProcessManager.start_health_monitor(
+    interval: float | None = None
+) -> None {
+    if (
+        self._health_monitor_thread is not None
+        and self._health_monitor_thread.is_alive()
+    ) {
+        return;
+    }
+    poll_interval: float = (
+        interval if interval is not None else self._health_monitor_interval
+    );
+    self._health_monitor_stop = threading.Event();
+    self._health_monitor_thread = threading.Thread(
+        target=_health_monitor_loop,
+        args=(self, self._health_monitor_stop, poll_interval),
+        daemon=True,
+        name="jac-scale-health-monitor"
+    );
+    self._health_monitor_thread.start();
+    logger.info(f"Health monitor started (interval={poll_interval}s)");
+}
+
+
+impl ServiceProcessManager.stop_health_monitor -> None {
+    if self._health_monitor_stop is not None {
+        self._health_monitor_stop.set();
+    }
+    if self._health_monitor_thread is not None {
+        self._health_monitor_thread.join(timeout=2);
+    }
+    self._health_monitor_thread = None;
+    self._health_monitor_stop = None;
 }

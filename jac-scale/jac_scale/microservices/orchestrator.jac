@@ -142,12 +142,23 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     deployer.deploy_all();
     pm = deployer._ensure_pm();
 
+    # Apply jac.toml overrides for the boot-time and recovery-loop
+    # cadences. Defaults (60s per-service, 90s overall, 10s recovery)
+    # match the new field defaults on ServiceProcessManager; we re-read
+    # here so config takes effect without rebuilding the manager.
+    pm._boot_health_timeout = float(
+        ms_config.get("boot_health_timeout", pm._boot_health_timeout)
+    );
+    pm._health_monitor_interval = float(
+        ms_config.get("health_monitor_interval", pm._health_monitor_interval)
+    );
+    max_wait: int = int(ms_config.get("boot_max_wait", 90));
+
     # Register cleanup on exit
     atexit.register(deployer.destroy_all);
 
     # 3. Wait for services to become healthy
     logger.info("Waiting for services to start...");
-    max_wait: int = 30;
     start_time: float = time.time();
     all_healthy = False;
 
@@ -176,6 +187,15 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
         }
         logger.warning("Proceeding with unhealthy services...");
     }
+
+    # 3b. Start the background recovery loop. Services that miss the
+    # boot bar by a few seconds will flip back to HEALTHY automatically
+    # via check_all_health's existing "first OK response resets the
+    # counter" branch, so the gateway's `status not in (HEALTHY,
+    # STARTING)` short-circuit unblocks itself without a pod restart.
+    # destroy_all -> stop_all -> stop_health_monitor handles teardown,
+    # so we don't need a separate atexit hook.
+    pm.start_health_monitor();
 
     # 4. Print startup banner
     gateway_port: int = int(ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));

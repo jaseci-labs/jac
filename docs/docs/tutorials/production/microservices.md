@@ -339,6 +339,9 @@ The gateway exposes a standard error envelope (`{ok, error: {code, message, serv
 |---------|--------|---------|
 | Graceful shutdown | `drain_timeout_seconds = 10` | 10s |
 | Per-service RPC timeout | `[...services.NAME] rpc_timeout = 120.0` | 10s |
+| Boot-time per-service /healthz wait | `boot_health_timeout = 60.0` | 60s |
+| Boot-time overall startup window | `boot_max_wait = 90` | 90s |
+| Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s |
 | CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
 | Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
 
