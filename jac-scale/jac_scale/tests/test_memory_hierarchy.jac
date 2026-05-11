@@ -1307,6 +1307,70 @@ test "concurrent requests do not lose edges" {
     }
 }
 
+"""Unit test for issue 1g fix: ScaleTieredMemory._committed flag.
+
+After the first acommit() the flag is set True. A second call (the
+middleware's redundant pass) returns immediately — MongoBackend.sync()
+and its O(L1-size) hash computation are skipped entirely.
+"""
+test "acommit is idempotent — _committed flag prevents second sync pass" {
+    import asyncio;
+    import from unittest.mock { patch }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+
+    call_count = [0];
+
+    def mock_commit(self: ScaleTieredMemory, anchor: Any = None) {
+        call_count[0] += 1;
+    }
+
+    with patch.object(ScaleTieredMemory, 'commit', mock_commit) {
+        mem = object.__new__(ScaleTieredMemory);
+        mem._committed = False;
+        asyncio.run(mem.acommit());
+        assert call_count[0] == 1 , f"expected 1 commit call after first acommit, got {call_count[
+            0
+        ]}";
+        assert mem._committed is True , "_committed must be True after first acommit";
+        asyncio.run(mem.acommit());
+        assert call_count[0] == 1 , (
+            f"second acommit (middleware pass) must be a no-op via _committed flag, "
+            f"but commit() was called {call_count[0]} times"
+        );
+    }
+}
+
+"""Unit test for issue 1g fix: _committed stays False when commit() raises.
+
+If the thread pool commit raises (e.g. MongoDB unreachable), _committed must
+remain False so the middleware safety-net path can retry the commit.
+"""
+test "acommit leaves _committed False when commit() raises" {
+    import asyncio;
+    import from unittest.mock { patch }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+
+    def failing_commit(self: ScaleTieredMemory, anchor: Any = None) {
+        raise RuntimeError("simulated commit failure");
+    }
+
+    with patch.object(ScaleTieredMemory, 'commit', failing_commit) {
+        mem = object.__new__(ScaleTieredMemory);
+        mem._committed = False;
+        raised = False;
+        try {
+            asyncio.run(mem.acommit());
+        } except Exception {
+            raised = True;
+        }
+        assert raised , "acommit() must propagate the exception from commit()";
+        assert mem._committed is False , (
+            "_committed must stay False when commit() raises — "
+            "the middleware safety net must still be able to retry"
+        );
+    }
+}
+
 
 # =============================================================================
 # In-process system root cache tests (no server subprocess needed)
