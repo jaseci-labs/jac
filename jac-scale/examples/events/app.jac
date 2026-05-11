@@ -21,7 +21,6 @@ walker:pub place_order {
         publish(
             "orders.placed",
             Event(
-                event_type="orders.placed",
                 data={"order_id": self.order_id, "amount": self.amount},
                 source="place_order"
             )

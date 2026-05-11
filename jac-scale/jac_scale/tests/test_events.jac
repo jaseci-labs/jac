@@ -101,6 +101,62 @@ test "publish swallows broker errors" {
 }
 
 
+"""Captures the last event passed to publish; lets us inspect what the facade forwarded."""
+obj _CapturingBroker(EventStreamBroker) {
+    has last_event: Event | None = None;
+
+    def start { }
+    def stop(drain: bool = True) { }
+    def publish(topic: str, event: Event, key: str | None = None) {
+        self.last_event = event;
+    }
+
+    def subscribe(
+        topic: str,
+        handler: Callable[[Event], Any],
+        group: str | None = None,
+        retry: RetryPolicy | None = None,
+        start_from: str = "latest"
+    ) -> Subscription {
+        return Subscription(topic=topic);
+    }
+
+    def consume(
+        topic: str,
+        group: str | None = None,
+        max_messages: int = 1,
+        timeout_seconds: float = 5.0,
+        start_from: str = "latest"
+    ) -> list[Event] {
+        return [];
+    }
+
+    def ack(event: Event) { }
+    def health -> HealthStatus {
+        return HealthStatus(healthy=True, broker="capturing");
+    }
+}
+
+
+test "publish auto-defaults event_type from topic" {
+    cap = _CapturingBroker();
+    set_broker(cap);
+    publish("orders.placed", Event(data={"n": 1}));
+    set_broker(None);
+    assert cap.last_event is not None;
+    assert cap.last_event.event_type == "orders.placed";
+}
+
+test "publish preserves explicit event_type" {
+    cap = _CapturingBroker();
+    set_broker(cap);
+    publish("orders.placed", Event(event_type="orders.shipped", data={"n": 1}));
+    set_broker(None);
+    assert cap.last_event is not None;
+    assert cap.last_event.event_type == "orders.shipped";
+}
+
+
 # --- @subscribe decorator + registry ---
 test "subscribe decorator registers entry" {
     before = len(get_subscriptions());

@@ -1833,7 +1833,6 @@ walker place_order {
 
     can fire with Root entry {
         publish("orders.placed", Event(
-            event_type="orders.placed",
             data={"order_id": self.order_id, "amount": self.amount},
             trace_id="trace-1"
         ));
@@ -1841,7 +1840,7 @@ walker place_order {
 }
 ```
 
-`publish()` is fire-and-forget. Errors from the broker are logged and swallowed so emit sites do not have to wrap calls in try/except.
+`publish()` is fire-and-forget. Errors from the broker are logged and swallowed so emit sites do not have to wrap calls in try/except. `event.event_type` auto-defaults to the topic when left empty, so the topic string only needs to appear once at the call site (set `event_type` explicitly only when it differs from the topic).
 
 ### Subscribing (push)
 

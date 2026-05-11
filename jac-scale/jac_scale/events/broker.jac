@@ -3,9 +3,9 @@ import from typing { Any, Callable }
 import from datetime { datetime, UTC }
 import uuid;
 
-"""CloudEvents-style envelope used for every publish/consume."""
+"""CloudEvents-style envelope used for every publish/consume. `event_type` defaults to empty and is auto-filled from the topic by the publish() facade."""
 obj Event {
-    has event_type: str,
+    has event_type: str = "",
         data: dict[str, Any] = {},
         id: str = str(uuid.uuid4()),
         source: str = "jac-scale",
