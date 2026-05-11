@@ -809,23 +809,13 @@ class JacScalePlugin {
             try {
                 import from jac_scale.config_loader { get_scale_config }
                 import from jac_scale.microservices.k8s_target { k8s_safe_name }
+                import from jac_scale.microservices._util {
+                    k8s_service_dns_url, in_cluster_namespace
+                }
                 ms_cfg = get_scale_config().get_microservices_config();
                 port: int = int(ms_cfg.get("gateway_port", 8000));
-                namespace: str = os.environ.get("POD_NAMESPACE", "");
-                if not namespace {
-                    try {
-                        ns_file = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
-                        with open(ns_file) as f {
-                            namespace = f.read().strip();
-                        }
-                    } except Exception {
-                        namespace = "default";
-                    }
-                }
-                k8s_name = k8s_safe_name(module_name);
-                dns_url = (
-                    f"http://{k8s_name}-service.{namespace}"
-                    f".svc.cluster.local:{port}"
+                dns_url = k8s_service_dns_url(
+                    k8s_safe_name(module_name), in_cluster_namespace(), port
                 );
                 sv_client.register(module_name, dns_url);
                 return;

@@ -548,6 +548,18 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 name=name, namespace=namespace
             );
             # Already exists - skip the patch. See docstring above.
+            # Surface the no-op so a user editing `size` or
+            # `storage_class` in jac.toml sees that their change was
+            # ignored. Otherwise the deploy succeeds silently and the
+            # PVC stays at its bound configuration with no signal.
+            if self.logger {
+                self.logger.info(
+                    f"PVC '{name}' already exists; skipping patch (PVCs "
+                    f"are mostly immutable post-bind). To apply size / "
+                    f"storage-class changes, delete the PVC manually "
+                    f"first or run `jac start --scale --destroy`."
+                );
+            }
         } except ApiException as e {
             if e.status == 404 {
                 core_v1.create_namespaced_persistent_volume_claim(
@@ -1083,7 +1095,17 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             # stringData (vs data) so we don't have to base64-encode
             # values on the client - K8s accepts plaintext here and
             # encodes server-side. Identical to parent's create_k8s_secret.
-            "stringData": dict(self.secrets)
+            #
+            # Coerce every value to str: TOML natively supports int /
+            # float / bool, and tomllib preserves those types. K8s
+            # Secret.stringData REJECTS non-strings with HTTP 422
+            # mid-apply, which leaves the bundle half-applied
+            # (Deployments + Services created, Secret missing) and pods
+            # crash-loop on "secret not found". `${ENV_VAR}` paths
+            # always produce strings, but a user writing
+            # `MAX_RETRIES = 3` literally under `[plugins.scale.secrets]`
+            # would otherwise blow up the deploy.
+            "stringData": {k: str(v) for (k, v) in self.secrets.items()}
         };
     }
 

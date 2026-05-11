@@ -85,6 +85,36 @@ def k8s_service_dns_url(safe_name: str, namespace: str, port: int) -> str {
 }
 
 
+"""Resolve the namespace this pod is running in.
+
+Lookup order:
+  1. `POD_NAMESPACE` env var (set via downward API on the pod spec)
+  2. `/var/run/secrets/kubernetes.io/serviceaccount/namespace` (mounted
+     by K8s on every pod that uses a ServiceAccount)
+  3. fall back to `default`
+
+Centralized here so the registry builder, the `ensure_sv_service`
+hookimpl, and any future cross-pod resolver all read namespace the
+same way. Without this, the three callers had independent copies and
+the in-cluster-secret-file fallback would silently diverge.
+"""
+def in_cluster_namespace -> str {
+    import os;
+    ns: str = os.environ.get("POD_NAMESPACE", "");
+    if ns {
+        return ns;
+    }
+    try {
+        ns_file = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
+        with open(ns_file) as f {
+            return f.read().strip() or "default";
+        }
+    } except Exception {
+        return "default";
+    }
+}
+
+
 """Resolve gateway-to-service forward timeout (seconds).
 
 Lookup order:

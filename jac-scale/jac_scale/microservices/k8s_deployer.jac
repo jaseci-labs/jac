@@ -24,7 +24,9 @@ import from typing { Any }
 import from jac_scale.microservices.deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
 import from jac_scale.microservices.k8s_target { k8s_safe_name }
-import from jac_scale.microservices._util { k8s_service_dns_url, DEFAULT_GATEWAY_PORT }
+import from jac_scale.microservices._util {
+    k8s_service_dns_url, in_cluster_namespace, DEFAULT_GATEWAY_PORT
+}
 
 glob logger = logging.getLogger(__name__);
 
@@ -139,29 +141,14 @@ Used by the `get_sv_registry` @hookimpl in jac-scale's plugin when
 running inside a K8s pod. Returns `{module_name: dns_url, ...}` matching
 the shape jaclang expects.
 
-Namespace resolution order:
-  1. `POD_NAMESPACE` env var (set via downward API on the pod spec)
-  2. `/var/run/secrets/kubernetes.io/serviceaccount/namespace` file
-  3. fall back to `default`
-
-Port comes from `[plugins.scale.microservices.gateway_port]` in jac.toml.
+Namespace comes from `_util.in_cluster_namespace` (POD_NAMESPACE env
+-> in-cluster serviceaccount file -> "default"). Port comes from
+`[plugins.scale.microservices.gateway_port]` in jac.toml.
 """
 def build_k8s_registry(
     routes: dict[str, str], port: int = DEFAULT_GATEWAY_PORT
 ) -> dict[str, str] {
-    import os;
-    namespace: str = os.environ.get("POD_NAMESPACE", "");
-    if not namespace {
-        try {
-            ns_file = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
-            with open(ns_file) as f {
-                namespace = f.read().strip();
-            }
-        } except Exception {
-            namespace = "default";
-        }
-    }
-
+    namespace: str = in_cluster_namespace();
     registry: dict[str, str] = {};
     for svc_name in routes.keys() {
         registry[svc_name] = k8s_service_dns_url(
