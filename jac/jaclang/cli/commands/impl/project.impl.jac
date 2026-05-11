@@ -373,7 +373,12 @@ impl install(
 
         dep_specs = installer.get_pip_package_specs(include_dev=dev);
         if extras {
-            extra_specs = installer.get_extra_package_specs(extras);
+            try {
+                extra_specs = installer.get_extra_package_specs(extras);
+            } except ValueError as e {
+                console.error(str(e));
+                return 1;
+            }
             if extra_specs {
                 console.print(f"  Extras: {', '.join(extras)}", style="muted");
             }
@@ -411,7 +416,12 @@ impl install(
     pip_packages = installer.get_pip_package_specs(include_dev=dev);
     git_packages = installer.get_git_package_specs();
     if extras {
-        extra_specs = installer.get_extra_package_specs(extras);
+        try {
+            extra_specs = installer.get_extra_package_specs(extras);
+        } except ValueError as e {
+            console.error(str(e));
+            return 1;
+        }
         if extra_specs {
             console.print(f"  Extras: {', '.join(extras)}", style="muted");
         }

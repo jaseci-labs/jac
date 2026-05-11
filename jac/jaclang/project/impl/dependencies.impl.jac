@@ -121,6 +121,17 @@ impl DependencyInstaller.get_extra_package_specs(groups: list[str]) -> list[str]
         return [];
     }
     opt_deps = self.config.optional_dependencies;
+    unknown: list[str] = [
+        g
+        for g in groups
+        if g not in opt_deps
+    ];
+    if unknown {
+        available: str = ", ".join(sorted(opt_deps.keys())) if opt_deps else "none";
+        raise ValueError(
+            f"Unknown extras: {', '.join(unknown)}. Available: {available}"
+        );
+    }
     pkg_key: str = self.config.project.name.lower().replace("_", "-");
     resolved: dict[str, str] = {};
     seen: set[str] = set();
