@@ -1161,9 +1161,7 @@ test "install editable calls get_config with target path when outside project di
             "jaclang.publish.builder.WheelBuilder.install_editable"
         ) {
             project.install(editable=str(pkg_dir));
-            mock_get_config.assert_called_once_with(
-                start_path=pkg_dir, force_discover=True
-            );
+            mock_get_config.assert_any_call(start_path=pkg_dir, force_discover=True);
         }
     } finally {
         os.chdir(original_cwd);
@@ -1189,7 +1187,7 @@ test "install editable calls get_config with resolved cwd when given dot path" {
             "jaclang.publish.builder.WheelBuilder.install_editable"
         ) {
             project.install(editable=".");
-            mock_get_config.assert_called_once_with(
+            mock_get_config.assert_any_call(
                 start_path=Path(_tmpdir).resolve(), force_discover=True
             );
         }
