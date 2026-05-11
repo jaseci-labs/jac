@@ -340,7 +340,9 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 }
 
 """Install all dependencies from jac.toml."""
-impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> int {
+impl install(
+    editable: str = "", dev: bool = False, extras: list = [], verbose: bool = False
+) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
@@ -354,7 +356,7 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
         console.error("No jac.toml found", hint=hint);
         return 1;
     }
-
+    installer = DependencyInstaller(config=config, verbose=verbose);
     # ── Editable install ──────────────────────────────────────────────────────
     if editable {
         import sys;
@@ -369,15 +371,15 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
             style="bold"
         );
 
-        all_deps: dict[str, str] = dict(config.dependencies);
-        if dev {
-            all_deps.update(config.dev_dependencies);
-        }
-        if all_deps {
-            dep_specs: list[str] = [];
-            for (name, ver) in all_deps.items() {
-                dep_specs.append(f"{name}{ver}" if ver and ver != "*" else name);
+        dep_specs = installer.get_pip_package_specs(include_dev=dev);
+        if extras {
+            extra_specs = installer.get_extra_package_specs(extras);
+            if extra_specs {
+                console.print(f"  Extras: {', '.join(extras)}", style="muted");
             }
+            dep_specs.extend(extra_specs);
+        }
+        if dep_specs {
             console.print(
                 f"  Installing {len(dep_specs)} dependencies...", style="muted"
             );
@@ -406,9 +408,15 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
     );
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
-    installer = DependencyInstaller(config=config, verbose=verbose);
     pip_packages = installer.get_pip_package_specs(include_dev=dev);
     git_packages = installer.get_git_package_specs();
+    if extras {
+        extra_specs = installer.get_extra_package_specs(extras);
+        if extra_specs {
+            console.print(f"  Extras: {', '.join(extras)}", style="muted");
+        }
+        pip_packages.extend(extra_specs);
+    }
     # Check for plugin dependencies (npm, etc.)
     dep_registry = get_dependency_registry();
     plugin_types = dep_registry.get_all();
