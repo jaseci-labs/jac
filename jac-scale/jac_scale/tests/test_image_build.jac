@@ -78,8 +78,8 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
     with tempfile.TemporaryDirectory() as tmp {
         project = Path(tmp);
 
-        with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE):
-            with mock.patch.object(ib_mod, "_read_client_entry", return_value=""):
+        with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE) {
+            with mock.patch.object(ib_mod, "_read_client_entry", return_value="") {
                 raised = False;
                 try {
                     auto_build_and_distribute("myapp", project, registry_url=None);
@@ -88,26 +88,43 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
                     assert "registry" in str(e).lower();
                 }
                 assert raised;
+            }
+        }
 
-        with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE):
-            with mock.patch.object(ib_mod, "_read_client_entry", return_value=""):
-                with mock.patch.object(ib_mod, "resolve_dockerfile",
-                                       return_value=(Path("/Dockerfile.microservice"), project, {})):
-                    with mock.patch.object(ib_mod, "run_docker_build"):
-                        with mock.patch.object(ib_mod, "_retag_with_content_id",
-                                               side_effect=lambda tag, env=None: f"{tag}-abc123"):
-                            with mock.patch.object(ib_mod, "run_docker_push") as push_mock:
+        with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE) {
+            with mock.patch.object(ib_mod, "_read_client_entry", return_value="") {
+                with mock.patch.object(
+                    ib_mod, "resolve_dockerfile",
+                    return_value=(Path("/Dockerfile.microservice"), project, {})
+                ) {
+                    with mock.patch.object(ib_mod, "run_docker_build") {
+                        with mock.patch.object(
+                            ib_mod, "_retag_with_content_id",
+                            side_effect=lambda tag, env=None: f"{tag}-abc123"
+                        ) {
+                            with mock.patch.object(
+                                ib_mod, "run_docker_push"
+                            ) as push_mock {
                                 tag = auto_build_and_distribute(
                                     "myapp", project, registry_url="reg.example.com/org"
                                 );
                                 assert tag == "reg.example.com/org/myapp:dev-abc123";
-                                assert push_mock.call_args.args[0] == "reg.example.com/org/myapp:dev-abc123";
+                                assert (
+                                    push_mock.call_args.args[0]
+                                    == "reg.example.com/org/myapp:dev-abc123"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
 
 test "auto_build_and_distribute on unknown cluster raises actionable error" {
-    with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_UNKNOWN):
+    with mock.patch.object(ib_mod, "detect_cluster_type", return_value=CLUSTER_UNKNOWN) {
         raised = False;
         try {
             auto_build_and_distribute("myapp", Path("/tmp"));
@@ -116,4 +133,5 @@ test "auto_build_and_distribute on unknown cluster raises actionable error" {
             assert "cluster" in str(e).lower();
         }
         assert raised;
+    }
 }
