@@ -1,16 +1,6 @@
 name: Build Mobile Apps
 
-# Native mobile build on the GitHub Actions runner — no EAS Cloud.
-#
-# Android: compiled on ubuntu-latest via Gradle.  Always produces a
-# release-mode APK (pre-bundled JS, __DEV__=false) signed with either
-# (a) the real release keystore from secrets, or (b) an auto-generated
-# throwaway keystore if no secrets are configured.  Either way the APK
-# is installable on any device.  For Play Store you need (a) with a
-# stable keystore — see .github/MOBILE_CICD.md.
-#
-# The build path: jac setup mobile → jac build --client mobile (prepares
-# the bundle in .jac/mobile/) → expo prebuild → gradle release build → APK.
+
 
 on:
   push:
@@ -26,12 +16,19 @@ on:
         description: 'Path to the app to build'
         required: false
         default: 'jac-client/jac_client/examples/all-in-one'
+      api_url:
+        description: 'Backend API URL to bake into the APK (overrides [mobile.features].api_url from jac.toml). Leave blank to use the TOML value.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
 
 env:
   APP_PATH: ${{ github.event.inputs.app_path || 'jac-client/jac_client/examples/all-in-one' }}
+  # Override [mobile.features].api_url from jac.toml when set.  Picked up by
+  # _resolve_production_api_url in jac-client/.../mobile/dev_helpers.jac.
+  JAC_MOBILE_API_URL: ${{ github.event.inputs.api_url }}
 
 jobs:
   build-android:
@@ -105,11 +102,7 @@ jobs:
         run: |
           npx expo prebuild --platform android --clean --no-install
 
-      # Always produce a release-mode APK.  Use real keystore if all four
-      # secrets are configured, otherwise auto-generate a throwaway keystore.
-      # The throwaway path makes CI self-sufficient (no secrets required to
-      # get a working APK out) but the APK cannot be uploaded to Play Store
-      # because the signing identity changes every run.
+
       - name: Configure release signing
         id: signing
         working-directory: ${{ env.APP_PATH }}/.jac/mobile/android
@@ -246,6 +239,6 @@ jobs:
             echo "| Artifact | \`android-release-${{ github.run_number }}\` (downloadable above) |"
             echo ""
             if [ "${{ steps.signing.outputs.signing_mode }}" = "throwaway-keystore" ]; then
-              echo "> **Note:** signed with an auto-generated keystore. Installable on any device for testing, but **cannot be uploaded to Google Play** because the signing identity changes every CI run. Configure \`ANDROID_KEYSTORE_BASE64\` + 3 password/alias secrets to use a stable keystore. See \`.github/MOBILE_CICD.md\`."
+              echo "> **Note:** signed with an auto-generated keystore. Installable on any device for testing, but **cannot be uploaded to Google Play** because the signing identity changes every CI run. Configure \`ANDROID_KEYSTORE_BASE64\` + 3 password/alias secrets to use a stable keystore. See \`.github/JAC_MOBILE.md\`."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

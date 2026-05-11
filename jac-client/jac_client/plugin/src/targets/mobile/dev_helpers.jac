@@ -8,6 +8,7 @@ import from typing { Any }
 import from jaclang.cli.console { console }
 import subprocess;
 import json;
+import os;
 
 """Return http://127.0.0.1:{port}."""
 def _make_localhost_url(port: int) -> str {
@@ -54,16 +55,25 @@ def _get_local_ip -> str {
     }
 }
 
-"""Write dev-config.json with local IP and production API URL for the app."""
-def _write_dev_config(mobile_dir: Path, project_dir: Path, local_ip: str) {
+"""Resolve the production API URL: env var JAC_MOBILE_API_URL wins, else jac.toml [mobile.features].api_url, else ''."""
+def _resolve_production_api_url(project_dir: Path) -> str {
+    env_url = os.environ.get("JAC_MOBILE_API_URL", "").strip();
+    if env_url {
+        return env_url;
+    }
     import from jac_client.plugin.src.mobile_config { MobileConfig }
     try {
         mobile_config = MobileConfig(project_dir=project_dir);
         config_data = mobile_config.load();
-        production_api_url = config_data.get('features', {}).get('api_url', '');
+        return config_data.get('features', {}).get('api_url', '') or '';
     } except Exception {
-        production_api_url = '';
+        return '';
     }
+}
+
+"""Write dev-config.json with local IP and production API URL for the app."""
+def _write_dev_config(mobile_dir: Path, project_dir: Path, local_ip: str) {
+    production_api_url = _resolve_production_api_url(project_dir);
 
     dev_config = {'localIP': local_ip, 'productionApiUrl': production_api_url};
 
@@ -72,6 +82,35 @@ def _write_dev_config(mobile_dir: Path, project_dir: Path, local_ip: str) {
         json.dump(dev_config, f, indent=2);
     }
     console.print(f"  ✔ Dev config written (IP: {local_ip})", style="success");
+}
+
+"""Write dev-config.json for a release build — only productionApiUrl matters."""
+def _write_build_config(mobile_dir: Path, project_dir: Path) {
+    production_api_url = _resolve_production_api_url(project_dir);
+
+    if not production_api_url {
+        console.warning(
+            "  No backend URL configured.  Set [mobile.features].api_url in jac.toml "
+            + "or pass JAC_MOBILE_API_URL=... — the APK will ship with an empty "
+            + "API URL and runtime calls will fail."
+        );
+    } else {
+        source = "env JAC_MOBILE_API_URL" if os.environ.get(
+            "JAC_MOBILE_API_URL", ""
+        ).strip() else "jac.toml [mobile.features].api_url";
+        console.print(
+            f"  Baking productionApiUrl = {production_api_url} (from {source})",
+            style="muted"
+        );
+    }
+
+    build_config = {'localIP': '', 'productionApiUrl': production_api_url};
+
+    config_path = mobile_dir / "dev-config.json";
+    with open(config_path, "w") as f {
+        json.dump(build_config, f, indent=2);
+    }
+    console.print(f"  ✔ Build config written", style="success");
 }
 
 """Start Vite dev server for HMR support."""
@@ -97,16 +136,21 @@ def _start_vite_dev_server(
     }
 }
 
-"""Start jac serve backend in the background."""
+"""Start the Jac API server in the background.
+
+"""
 def _start_backend_server(
     entry_file: Path, project_dir: Path, port: int
 ) -> subprocess.Popen {
+    verbose = os.environ.get("JAC_MOBILE_VERBOSE_BACKEND", "").strip() == "1";
+    stdout_pipe = None if verbose else subprocess.DEVNULL;
+    stderr_pipe = None if verbose else subprocess.DEVNULL;
     try {
         process = subprocess.Popen(
-            ["jac", "serve", str(entry_file), "--port", str(port)],
+            ["jac", "start", str(entry_file), "--port", str(port)],
             cwd=str(project_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            stdout=stdout_pipe,
+            stderr=stderr_pipe
         );
         return process;
     } except Exception as e {

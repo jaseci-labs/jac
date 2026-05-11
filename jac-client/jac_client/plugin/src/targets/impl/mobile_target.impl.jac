@@ -31,6 +31,7 @@ import from jac_client.plugin.src.targets.mobile.bundle_helpers {
 import from jac_client.plugin.src.targets.mobile.dev_helpers {
     _get_local_ip,
     _write_dev_config,
+    _write_build_config,
     _start_vite_dev_server,
     _start_backend_server
 }
@@ -159,7 +160,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
 """Build mobile bundle — produces .jac/mobile/ ready for `expo prebuild` + native build.
 
 The native APK/IPA build (Gradle / Xcode) is intentionally not run here.
-Drive it from CI or a local script; see .github/MOBILE_CICD.md.
+Drive it from CI or a local script; see .github/JAC_MOBILE.md.
 """
 impl MobileTarget.build(
     entry_file: Path,
@@ -187,6 +188,9 @@ impl MobileTarget.build(
 
     console.print("  Step 4: Creating mobile bundle...", style="muted");
     _create_mobile_bundle(mobile_build_dir);
+
+    console.print("  Step 5: Writing build config (backend URL)...", style="muted");
+    _write_build_config(mobile_build_dir, project_dir);
 
     console.success("Mobile bundle created successfully!");
     console.print(f"  Build directory: {mobile_build_dir}", style="muted");
