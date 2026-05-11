@@ -212,6 +212,9 @@ plugins:
         # Main landing page
         index.md: quick-guide/index.md
 
+        # README.md contribution guide link
+        internals/contrib.md: community/contributing.md
+
         # Old Quick Guide section redirects
         getting-started/index.md: quick-guide/index.md
         quick-guide/hello-world.md: quick-guide/install.md
