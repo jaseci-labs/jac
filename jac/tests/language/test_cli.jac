@@ -2182,3 +2182,72 @@ test "jir cache preserves code context for cl jac files" {
         }
     }
 }
+
+# ===== install --extras CLI tests =====
+glob _EXTRAS_JAC_TOML = (
+         '[project]\nname = "mypkg"\nversion = "0.1.0"\n\n'
+         '[dependencies]\n\n'
+         '[optional-dependencies.data]\npymongo = ">=4.0,<5.0"\nredis = ">=7.0,<8.0"\n\n'
+         '[optional-dependencies.monitoring]\nprometheus-client = ">=0.21.0,<1.0.0"\n\n'
+         '[optional-dependencies.all]\n"mypkg[data,monitoring]" = "*"\n'
+     );
+
+def _make_extras_cli_project(tmpdir: str) -> str {
+    project_path = os.path.join(tmpdir, "mypkg");
+    os.makedirs(project_path, exist_ok=True);
+    with open(os.path.join(project_path, "jac.toml"), "w") as f {
+        f.write(_EXTRAS_JAC_TOML);
+    }
+    return project_path;
+}
+
+test "jac install --extras unknown group exits non-zero with helpful message" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_path = _make_extras_cli_project(tmp);
+        result = subprocess.run(
+            ["jac", "install", "--extras", "doesnotexist"],
+            cwd=project_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        );
+        combined = result.stdout + result.stderr;
+        assert result.returncode != 0 , "Expected non-zero exit for unknown extras group";
+        assert "doesnotexist" in combined , f"Error should name the bad group; got: {combined}";
+        assert "Available:" in combined , f"Error should list available groups; got: {combined}";
+    }
+}
+
+test "jac install --extras valid group prints Extras line" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_path = _make_extras_cli_project(tmp);
+        result = subprocess.run(
+            ["jac", "install", "--extras", "data", "monitoring"],
+            cwd=project_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        );
+        combined = result.stdout + result.stderr;
+        assert "Extras: data, monitoring" in combined , (
+            f"Expected 'Extras: data, monitoring' in output; got:\n{combined}"
+        );
+    }
+}
+
+test "jac install --extras all expands groups in output" {
+    with tempfile.TemporaryDirectory() as tmp {
+        project_path = _make_extras_cli_project(tmp);
+        result = subprocess.run(
+            ["jac", "install", "--extras", "all"],
+            cwd=project_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        );
+        combined = result.stdout + result.stderr;
+        assert "Extras: all" in combined , (
+            f"Expected 'Extras: all' in output; got:\n{combined}"
+        );
+    }
+}
