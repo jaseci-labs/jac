@@ -174,6 +174,7 @@ Storage configuration comes from environment variables or jac.toml.
 """
 obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
+        _committed: bool = False,
         _persistence_type: PersistenceType = PersistenceType.NONE,
         use_cache:
             bool = True;  # Override parent default to enable Redis cache by default
