@@ -82,6 +82,7 @@ the compiled web bundle, and `dev-config.json`. `expo prebuild` writes
 its native Gradle project here too.
 
 **WebView screen (`app/index.tsx`)** — At app startup it:
+
 1. `require()`s `dev-config.json` to read `productionApiUrl`.
 2. `require()`s `assets/jac-app/bundle.ts` to get the single-file HTML
    bundle.
@@ -93,9 +94,11 @@ its native Gradle project here too.
 builds) or `_write_dev_config` (dev mode) in
 `jac-client/jac_client/plugin/src/targets/mobile/dev_helpers.jac`. Holds
 two fields:
+
 ```json
 { "localIP": "<for dev mode HMR>", "productionApiUrl": "<for release>" }
 ```
+
 Metro statically resolves `require('../dev-config.json')` and bakes the
 JSON content into the APK's JS bundle.
 
@@ -199,10 +202,12 @@ Prerequisites (one-time):
 - **JDK 17** — `brew install --cask temurin@17` on macOS,
   `sudo apt install openjdk-17-jdk` on Ubuntu.
 - **Android SDK** — install Android Studio, then export:
+
   ```bash
   export ANDROID_HOME="$HOME/Library/Android/sdk"
   export PATH="$PATH:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin"
   ```
+
 - **Node 20 + Yarn**.
 
 Then:
