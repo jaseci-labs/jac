@@ -131,7 +131,7 @@ def _scale_pre_hook(context: HookContext) -> None {
             );
         } elif target == "kubernetes-microservice" {
             # Auto-build's Dockerfile resolution picks
-            # Dockerfile.microservice.ci (local source) for developer
+            # Dockerfile.microservice.exp (local source) for developer
             # checkouts, falls back to Dockerfile.microservice (PyPI)
             # only for end-user installs. Detect the developer-checkout
             # case here so the log matches reality.

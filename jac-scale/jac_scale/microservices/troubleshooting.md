@@ -64,7 +64,7 @@ kubectl logs -n <ns> <pod> | head -40
 
 # Check which Dockerfile was used
 ls -la <project>/Dockerfile.microservice
-ls -la <repo-root>/jac-scale/scripts/Dockerfile.microservice.ci
+ls -la <repo-root>/jac-scale/scripts/Dockerfile.microservice.exp
 ```
 
 If you committed a custom `Dockerfile.microservice` in your project, it

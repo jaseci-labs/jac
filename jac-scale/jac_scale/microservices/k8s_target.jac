@@ -136,17 +136,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return image_tag;
     }
 
-    """Generate K8s manifests AND apply them to the cluster.
-
-    deploy() now: build image -> generate manifests -> apply via the
-    kubernetes Python client. Kube config is loaded from kubeconfig
-    when running outside the cluster (e.g. during `jac start --scale`
-    from a developer laptop) and from in-cluster service-account
-    config when running inside a pod (e.g. an admin sidecar).
-
-    The returned `DeploymentResult.details` keeps the manifest bundle
-    so callers can inspect what was applied.
-    """
+    """Build image -> generate manifests -> apply via kubernetes Python
+    client. Kubeconfig from outside, in-cluster SA from inside.
+    `DeploymentResult.details` keeps the manifest bundle."""
     def deploy(app_config: AppConfig) -> DeploymentResult {
         app_name = app_config.app_name or self.k8s_config.app_name;
         if self.logger {
@@ -196,21 +188,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         );
     }
 
-    """Provision MongoDB + Redis (when enabled in jac.toml) and
-    populate `self.env_list` + `self._microservice_init_containers` so
-    every microservice pod gets the connection-string envs and waits
-    for the DBs to be reachable before starting.
-
-    Reuses the parent `KubernetesTarget._deploy_databases` machinery
-    that monolith mode already uses - same StatefulSet + ServiceAccount
-    + Secret per database, same `valueFrom: secretKeyRef` env injection
-    pattern. Idempotent across re-deploys (parent does read-then-create).
-
-    Off when `[plugins.scale.kubernetes].mongodb_enabled = false` AND
-    `redis_enabled = false`. The defaults are both true (we ship a
-    sensible "stateful microservices work out of the box" UX), but
-    users running stateless / external-DB setups can opt out.
-    """
+    """Provision MongoDB + Redis (when enabled), populating self.env_list
+    + self._microservice_init_containers so every pod gets connection
+    envs + waits for the DBs. Reuses the parent's StatefulSet machinery;
+    idempotent. Off when both `[...kubernetes].mongodb_enabled` and
+    `redis_enabled` are false (both default true)."""
     def _provision_databases(app_name: str) -> None {
         import os;
 
@@ -275,18 +257,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Load kubernetes config: kubeconfig first, fall back to in-cluster.
-
-    Same pattern as KubernetesTarget.destroy() and the rest of the K8s
-    target machinery. Splitting out as a helper so apply_manifests +
-    destroy can both call it without duplicating the try/except.
-
-    When BOTH paths fail (common for new users running locally
-    without minikube/kubectl set up), the kubernetes client raises a
-    ConfigException whose default message is unhelpful ("Service host/port
-    is not set"). Re-raise with actionable instructions so the user
-    knows what to do instead of paging through stack traces.
-    """
+    """Load kubeconfig, fall back to in-cluster, re-raise with actionable
+    instructions if both fail (default ConfigException message is
+    unhelpful)."""
     def _load_kube_config {
         kubeconfig_failed: bool = False;
         try {
@@ -316,17 +289,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Apply the manifest bundle to the cluster.
-
-    Order: namespace exists -> Services -> Deployments -> HPAs -> PDBs.
-    Services first so DNS resolution works the moment a Deployment's
-    first pod becomes ready. HPAs and PDBs come AFTER Deployments because
-    they reference Deployment names in scaleTargetRef / selector match;
-    the K8s controllers re-resolve when the targets show up so out-of-
-    order apply still eventually-converges, but applying after avoids
-    a transient "no targets" warning. Each apply is idempotent (read ->
-    patch on exists; create on 404).
-    """
+    """Apply manifests in order: namespace -> Services -> Deployments
+    -> HPAs -> PDBs -> Ingress. Services first so DNS resolves as soon
+    as pods are Ready; HPAs/PDBs after Deployments so the targetRef
+    isn't transiently unresolved. Each apply is read-then-patch-or-create."""
     def apply_manifests(bundle: dict[str, Any]) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
@@ -477,16 +443,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent PVC apply - create on 404, otherwise no-op.
-
-    PVCs are mostly immutable (size/access_mode/storage_class can't be
-    changed after binding without recreating). We deliberately do NOT
-    patch existing PVCs on subsequent deploys - patching a bound PVC
-    fails (`spec.accessModes is immutable`) and even if it didn't, a
-    storage-class change would orphan the underlying PV. So existing
-    PVCs are left as-is. Users who need to resize/rebind delete the
-    PVC manually (or use `jac start --scale --destroy`).
-    """
+    """Idempotent PVC apply: create on 404, otherwise no-op (PVCs are
+    mostly immutable post-bind; patch would error or orphan the PV).
+    To resize/rebind, delete the PVC or `--scale --destroy`."""
     def _apply_or_replace_pvc(core_v1: Any, namespace: str, manifest: dict[str, Any]) {
         name: str = manifest["metadata"]["name"];
         try {
@@ -611,19 +570,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Tear down all microservice Deployments + Services in the namespace.
-
-    Uses a label selector (`managed=jac-scale,jac-scale.role in
-    (microservice,gateway)`) instead of per-name deletion so it
-    handles drift recovery: services that were renamed in jac.toml
-    still get cleaned up because the label selector matches anything
-    we've ever deployed via this target.
-
-    `app_name` and `component` are accepted to satisfy the parent
-    `DeploymentTarget.destroy` signature; they're ignored in
-    microservice mode (we always tear down the whole label-selected
-    set, not individual components).
-    """
+    """Tear down all microservice resources by label selector
+    (`managed=jac-scale,jac-scale.role in (microservice,gateway)`) so
+    renamed services in jac.toml still get cleaned up. `app_name`/
+    `component` are signature-only (whole topology is torn down)."""
     def destroy(app_name: str, component: str = "") {
         if self.logger {
             self.logger.info(
@@ -729,16 +679,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
-    manifests.
-
-    Returns `{"deployments": {svc: manifest}, "services": {svc: manifest},
-    "hpas": {svc: manifest}, "pdbs": {svc: manifest},
-    "pod_specs": {svc: spec}}`. The `pod_specs` entry is the dict
-    `generate_service_pod_specs` returned; deployments wrap each
-    pod-spec; services emit a paired ClusterIP Service for kube-proxy.
-    Per-service HPA (autoscaling/v2) and PDB (policy/v1) entries are
-    emitted alongside.
-    """
+    bundle. Returns `{deployments, services, hpas, pdbs, pod_specs}`."""
     def generate_manifests(app_config: AppConfig) -> dict[str, Any] {
         pod_specs = self.generate_service_pod_specs(app_config);
         deployments: dict[str, dict[str, Any]] = {};
@@ -832,39 +773,12 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Read shared_volumes from [[plugins.scale.microservices.shared_volumes]].
+    """Read [[plugins.scale.microservices.shared_volumes]] entries.
 
-    Each entry declares a volume that gets mounted at the same path on
-    every named service. Two backing modes are supported:
-
-      - PVC (production / cloud K8s):
-            [[plugins.scale.microservices.shared_volumes]]
-            name = "jac-ide-projects"
-            mount_path = "/root/.jac-ide/projects"
-            services = ["builder_sv", "jac_coder_sv"]
-            size = "10Gi"
-            access_mode = "ReadWriteMany"   # default ReadWriteOnce
-            storage_class = ""              # default cluster default
-
-      - hostPath (single-node dev clusters: k3d, kind, minikube):
-            [[plugins.scale.microservices.shared_volumes]]
-            name = "jac-ide-projects"
-            mount_path = "/root/.jac-ide/projects"
-            services = ["builder_sv", "jac_coder_sv"]
-            host_path = "/var/lib/jacbuilder/projects"
-
-    Use case: services that intentionally share filesystem state (e.g.
-    jacBuilder's IDE workspace passed by path between builder_sv and
-    jac_coder_sv). Without this, microservice-mode deploys force apps
-    to either pass file content via RPC payload or hand-roll PVC
-    manifests outside `jac start --scale`.
-
-    `services` may include "__gateway__" for the gateway pod.
-
-    Read failures (no jac.toml, malformed config) return [] - any
-    service that doesn't appear in any volume's `services` list just
-    gets no extra mounts (current default behavior preserved).
-    """
+    Each entry declares a volume mounted at the same path on every
+    listed service. PVC mode (`size`, `access_mode`, `storage_class`)
+    for cloud K8s; hostPath mode (`host_path`) for single-node dev.
+    `services` may include `__gateway__`. Returns [] on read failure."""
     def _shared_volumes_config -> list[dict[str, Any]] {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -885,16 +799,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Build (volumes, volumeMounts) for the named service from
-    shared_volumes config.
-
-    Returns the additions to inject - existing volume/mount entries
-    on the pod-spec / container are left untouched. Service name must
-    match what the user wrote in jac.toml's `services` list (e.g.
-    "builder_sv", "__gateway__"). Volume name in the K8s spec is the
-    user-provided `name` field, sanitized to DNS-1123 (k8s_safe_name)
-    so kebab-case names round-trip correctly.
-    """
+    """Build (volumes, volumeMounts) additions for `svc_name` from
+    shared_volumes config. Existing entries on the pod-spec are left
+    untouched. Volume names are k8s_safe_name'd to DNS-1123."""
     def _shared_volumes_for_service(
         svc_name: str
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] {
@@ -1004,23 +911,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return pvcs;
     }
 
-    """K8s Secret manifest for user-defined `[plugins.scale.secrets]`.
-
-    Same shape the parent KubernetesTarget already uses for monolith
-    deploys. Reuses parent's create_k8s_secret in apply_manifests; this
-    builder just produces the manifest dict so the microservice bundle
-    can own it (dry-run / inspection / destroy filtering).
-
-    `self.secrets` is populated upstream by `_scale_pre_hook` (in
-    plugin.jac) which calls `scale_config.get_secrets_config()` - that
-    in turn returns jaclang-core-interpolated values from
-    `[plugins.scale.secrets]`. So `${OPENAI_API_KEY}` etc. are already
-    expanded by the time we get here.
-
-    Returns None when `self.secrets` is empty - no Secret created, no
-    `envFrom` injected. Apps with no secrets get a pod spec without
-    any secret references (back-compat).
-    """
+    """Build the K8s Secret manifest for `[plugins.scale.secrets]`.
+    `self.secrets` is pre-interpolated by `_scale_pre_hook` so
+    `${VAR}` is already expanded. Returns None if no secrets."""
     def _build_user_secret_manifest -> dict[str, Any] | None {
         if not self.secrets {
             return None;
@@ -1065,16 +958,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return f"{self.k8s_config.app_name}-secrets";
     }
 
-    """ServiceAccount name to attach to every microservice
-    Deployment + the gateway Deployment. Empty string means "fall back
-    to the namespace's `default` SA".
-
-    The parent (non-microservice) kubernetes target auto-creates
-    `<app_name>-sa` and binds it; microservice mode does not
-    provision the SA itself. Apps that need cluster API access
-    (sandbox-spawning, operator-style controllers) point this at a
-    pre-bound SA in the target namespace.
-    """
+    """ServiceAccount for every service + gateway pod; empty -> namespace
+    `default` SA. Microservice mode does NOT auto-provision the SA -
+    apps that need cluster API access point this at a pre-bound SA."""
     def _service_account_name -> str {
         return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
     }
@@ -1191,40 +1077,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return env;
     }
 
-    """Container resources with sane defaults so pods are
-    Burstable QoS, not BestEffort.
-
-    Without resource requests, K8s assigns BestEffort QoS class. Under
-    node memory pressure (especially during transient peaks like jac
-    runtime compile, which briefly hits 1-2GB per process), kubelet
-    evicts BestEffort pods FIRST - even if the node has spare capacity
-    overall. We saw this empirically on a 2 vCPU / 7.6GB EC2 box: all
-    3 service pods crash-looping for ~25min before stabilizing because
-    the eviction storm kept restarting them faster than they could
-    settle.
-
-    The fix: emit small but real default requests/limits unless the
-    user explicitly overrides via per-service config. Defaults are
-    intentionally tiny (won't constrain real workloads) but enough to
-    bump QoS to Burstable, which kubelet evicts AFTER BestEffort.
-
-    Defaults:
-      memory_request: 128Mi  (bumps QoS to Burstable)
-      memory_limit:   1Gi    (caps runaway services from taking node)
-      cpu_request:    50m    (~5% of one vCPU - tiny floor)
-      cpu_limit:      omitted (CPU limits are usually counterproductive
-                               vs. just letting cgroups fair-share;
-                               see "kubernetes cpu limits considered
-                               harmful" for the standard argument)
-
-    Per-service config in jac.toml still overrides. To get back to
-    BestEffort (e.g. dev clusters where you want predictable scheduling
-    without resource accounting), set every value to "" or "0":
-      [plugins.scale.microservices.services.NAME]
-      memory_request = ""
-      memory_limit = ""
-      cpu_request = ""
-    """
+    """Container resources with Burstable-QoS defaults (128Mi req / 1Gi
+    limit / 50m cpu req, no cpu limit). BestEffort pods get evicted
+    first under memory pressure, so tiny defaults bump QoS without
+    constraining real workloads. Per-service config overrides; set
+    values to "" or "0" to opt back to BestEffort."""
     def _build_resources(svc_cfg: dict[str, Any]) -> dict[str, Any] {
         # Priority chain: per-service > [plugins.scale.kubernetes]
         # > Burstable-QoS floor (128Mi/1Gi/50m). Empty string ("")
@@ -1598,32 +1455,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         };
     }
 
-    """Build an Ingress manifest pointing at the gateway Service.
-
-    Returns None unless `[plugins.scale.microservices.ingress].enabled
-    = true` in jac.toml (default off so existing deployments don't grow
-    an Ingress unexpectedly).
-
-    Scope is intentionally narrow:
-      - One Ingress for the gateway, NOT per-service. All external
-        traffic flows through the gateway, which dispatches to services
-        internally via ClusterIP DNS.
-      - HTTP only. TLS automation (cert-manager + Let's Encrypt or ACM)
-        is P-track work because it requires installing controllers and
-        configuring Issuers - too cluster-specific to bake in here.
-      - Controller-agnostic. Users set `ingress_class_name` to nginx /
-        alb / gce / traefik / etc. We don't emit controller-specific
-        annotations; users add them via the `annotations` map for any
-        controller-specific knobs (proxy-body-size, scheme, etc).
-
-    Config schema at [plugins.scale.microservices.ingress]:
-      enabled            bool        opt-in
-      host               str         optional - omits the host clause
-                                     entirely if unset (Ingress matches
-                                     any host)
-      ingress_class_name str         e.g. "nginx", "alb", "gce"
-      annotations        dict        controller-specific annotations
-    """
+    """Single Ingress -> gateway Service; HTTP only; controller-agnostic
+    (user sets `ingress_class_name` and any controller-specific
+    annotations). Returns None if `[...ingress].enabled` is unset."""
     def _build_ingress_manifest(ingress_cfg: dict[str, Any]) -> dict[str, Any] | None {
         if not ingress_cfg.get("enabled", False) {
             return None;

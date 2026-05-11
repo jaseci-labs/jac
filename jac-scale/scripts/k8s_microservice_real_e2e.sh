@@ -30,7 +30,7 @@ REGISTRY="${REGISTRY:-}"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 DOCKERFILE_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice"
 DOCKERIGNORE_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/dockerignore.microservice"
-DOCKERFILE_CI_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice.ci"
+DOCKERFILE_EXP_TEMPLATE="${REPO_ROOT}/jac-scale/scripts/Dockerfile.microservice.exp"
 
 # Use the CI (local-source) Dockerfile if we're inside the jaseci repo;
 # PyPI is too far behind for the K-track code to be installable.
@@ -53,14 +53,14 @@ cleanup() {
 trap cleanup EXIT
 
 if [ "${USE_LOCAL_SOURCE}" = "1" ]; then
-    echo "=== using local-source CI Dockerfile ==="
+    echo "=== using local-source experimental Dockerfile ==="
     PROJECT_REL="${PROJECT_DIR#${REPO_ROOT}/}"
     if [ "${PROJECT_REL}" = "${PROJECT_DIR}" ]; then
         echo "FAIL: PROJECT_DIR (${PROJECT_DIR}) is not under REPO_ROOT (${REPO_ROOT})" >&2
         exit 1
     fi
     BUILD_CWD="${REPO_ROOT}"
-    BUILD_FILE="${DOCKERFILE_CI_TEMPLATE}"
+    BUILD_FILE="${DOCKERFILE_EXP_TEMPLATE}"
     BUILD_ARGS="--build-arg PROJECT_PATH=${PROJECT_REL}"
 else
     echo "=== copy Dockerfile + .dockerignore into ${PROJECT_DIR} ==="

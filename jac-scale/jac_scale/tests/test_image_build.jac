@@ -58,17 +58,17 @@ test "resolve_dockerfile priority: user override > dev-checkout > embedded fallb
         assert ctx.resolve() == project.resolve();
         assert args == {};
 
-        # 2. Developer checkout picks Dockerfile.microservice.ci with repo root as context.
+        # 2. Developer checkout picks Dockerfile.microservice.exp with repo root as context.
         repo = Path(tmp) / "jaseci";
         (repo / "jac").mkdir(parents=True);
         scripts_dir = repo / "jac-scale" / "scripts";
         scripts_dir.mkdir(parents=True);
-        ci_df = scripts_dir / "Dockerfile.microservice.ci";
-        ci_df.write_text("FROM python:3.12-slim\n");
+        exp_df = scripts_dir / "Dockerfile.microservice.exp";
+        exp_df.write_text("FROM python:3.12-slim\n");
         proj2 = repo / "jac-scale" / "jac_scale" / "tests" / "fixtures" / "k8s_e2e";
         proj2.mkdir(parents=True);
         (df, ctx, args) = resolve_dockerfile(proj2);
-        assert df.resolve() == ci_df.resolve();
+        assert df.resolve() == exp_df.resolve();
         assert ctx.resolve() == repo.resolve();
         assert args.get("PROJECT_PATH") == "jac-scale/jac_scale/tests/fixtures/k8s_e2e";
 

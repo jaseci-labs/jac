@@ -84,7 +84,7 @@ glob _EMBEDDED_DOCKERFILE: str = "FROM python:3.12-slim\n\n"
 
 """Walk up from `start` looking for both `jac/` and `jac-scale/` siblings.
 Returns the repo root, or None within `max_levels`. Used to detect the
-developer-checkout case for picking Dockerfile.microservice.ci."""
+developer-checkout case for picking Dockerfile.microservice.exp."""
 def find_jaseci_repo_root(start: Path, max_levels: int = 8) -> Path | None {
     current = start.resolve();
     for _ in range(max_levels) {
@@ -123,7 +123,7 @@ def find_shipped_dockerfile -> Path | None {
 
 """Pick (dockerfile, context, build_args) in priority order:
   1. <project>/Dockerfile.microservice (user override)
-  2. Developer checkout -> repo-root Dockerfile.microservice.ci
+  2. Developer checkout -> repo-root Dockerfile.microservice.exp
   3. Shipped <pkg>/scripts/Dockerfile.microservice (PyPI install)
   4. Embedded fallback written to <project>/.jac/Dockerfile.gen"""
 def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
@@ -134,8 +134,8 @@ def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
 
     repo_root = find_jaseci_repo_root(project_dir);
     if repo_root {
-        ci_dockerfile = repo_root / "jac-scale" / "scripts" / "Dockerfile.microservice.ci";
-        if ci_dockerfile.is_file() {
+        exp_dockerfile = repo_root / "jac-scale" / "scripts" / "Dockerfile.microservice.exp";
+        if exp_dockerfile.is_file() {
             try {
                 rel_project = str(
                     project_dir.resolve().relative_to(repo_root.resolve())
@@ -144,7 +144,7 @@ def resolve_dockerfile(project_dir: Path) -> tuple[Path, Path, dict[str, str]] {
                 rel_project = "";
             }
             return (
-                ci_dockerfile,
+                exp_dockerfile,
                 repo_root,
                 {"PROJECT_PATH": rel_project} if rel_project else {}
             );

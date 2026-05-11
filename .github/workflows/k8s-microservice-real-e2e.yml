@@ -1,16 +1,10 @@
 name: K8s Microservice Real E2E
 
-# Real-app end-to-end test: builds an actual image from the
-# micr-s-example fixture, deploys via the K-track pipeline against a
-# minikube cluster, verifies pods come up, exercises the gateway via
-# port-forward, hits the K10 Ingress path, then triggers a rolling
-# restart while hammering /health and asserts ZERO non-2xx during the
-# rollout window. Closes the loop on K1-K10.
-#
-# Heavier than the manifest-only smoke (k8s-microservice-e2e.yml) - it
-# builds the full image and runs real pods. Triggered manually
-# (workflow_dispatch) and on PRs that touch the K-track surface OR
-# the fixture itself.
+# Real-app e2e: builds an image from the fixture, deploys via the
+# microservice K8s pipeline against minikube, verifies pods up, exercises
+# the gateway via port-forward, hits Ingress, then triggers a rolling
+# restart while hammering /health and asserts zero non-2xx during the
+# rollout window.
 
 on:
   workflow_dispatch:
