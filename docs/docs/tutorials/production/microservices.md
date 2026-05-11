@@ -1,6 +1,6 @@
 # Microservices with `sv import`
 
-A Jac codebase can run as a single monolith or as several independently-deployed microservices, with no source changes between the two. The trick is the `sv import` keyword: when both the importer and the importee are server-context modules, the compiler generates an HTTP client stub for the imported function instead of pulling the provider into the consumer's process. Calls become RPCs over the wire, but the source still reads like a normal import.
+A Jac codebase can run as a single monolith or as several independently-deployed microservices, with no source changes between the two. The trick is the `sv import` keyword: when both the importer and the importee are server-context modules, the compiler generates an HTTP client stub for the imported symbol instead of pulling the provider into the consumer's process. Calls become RPCs over the wire, but the source still reads like a normal import. Both `def:pub` functions and `walker:pub` archetypes are supported -- functions translate to `POST /function/<name>`, walkers to `POST /walker/<name>` plus a return-side rehydration that hands the consumer back a real walker instance with `reports` populated.
 
 This tutorial walks through splitting a tiny app into two services, running the whole thing from one command, watching the round-trip happen over real HTTP, and then covers testing and multi-host production deployment.
 
@@ -183,6 +183,56 @@ curl -X POST http://localhost:8002/function/safe_divide \
 
 Both error and success cases survive the boundary intact. The `_jac_type` metadata lets the consumer's runtime hand the caller a real `DivResult` instance, not a raw dict; `_jac_id` and `_jac_archetype` are envelope bookkeeping the runtime uses to hydrate the object on the other side.
 
+### Walker Imports
+
+`def:pub` is one of two shapes that can cross the sv boundary; the other is `walker:pub`. A walker imported through `sv import` becomes a remote spawn: the consumer-side stub class accepts the walker's `has` fields as keyword arguments, fires off a `POST /walker/<name>` over the wire, and returns the executed walker with its fields and `reports` populated -- the same shape you'd get from a local spawn.
+
+Add a walker to `math_service.jac`:
+
+```jac
+walker:pub Greet {
+    has name: str;
+    can greet with Root entry {
+        report f"hello, {self.name}";
+    }
+}
+```
+
+Then in `calculator_service.jac`, list `Greet` alongside the functions and use it from one of the consumer's own walkers:
+
+```jac
+sv import from math_service { add, multiply, divide, Greet, DivResult }
+
+walker:pub TriggerGreet {
+    has who: str;
+    can run with Root entry {
+        rg = Greet(name=self.who);   # POST /walker/Greet on the provider
+        report rg.reports[0];        # "hello, <who>"
+    }
+}
+```
+
+Hit it the same way you'd hit any walker endpoint:
+
+```bash
+curl -X POST http://localhost:8002/walker/TriggerGreet \
+  -H "Content-Type: application/json" \
+  -d '{"who":"world"}'
+```
+
+```json
+{"ok":true,"type":"response","data":{"result":{"_jac_type":"TriggerGreet","_jac_id":"...","_jac_archetype":"walker","reports":[],"who":"world"},"reports":["hello, world"]},"error":null,"meta":{"extra":{"http_status":200}}}
+```
+
+The provider log shows the cross-service hop: `POST /walker/Greet 200`. The consumer's `Greet(name=self.who)` call site reads exactly like a local construction; the compiler swaps it for an HTTP spawn at compile time.
+
+A few things to know:
+
+- **Spawn semantics, not construction.** Locally, `Greet(name="x")` only constructs a walker; you still need `spawn` to run it. Across the boundary there's no useful concept of an unexecuted remote walker, so instantiating a sv-imported walker is **spawn-and-execute** and always returns a post-execution instance.
+- **`walker:pub` only.** Private walkers don't get an endpoint. The same 404 you'd see for non-public functions also fires for non-public walkers.
+- **Boundary types still flow through.** A walker that emits an `obj` value via `report` comes back as that type, not as a raw dict, as long as the type is also listed in the `sv import`.
+- **Same observability as functions.** Walker calls share the per-provider circuit breaker, retries, and `X-Trace-Id` propagation with function calls. See the [jac-scale reference](../../reference/plugins/jac-scale.md#walker-imports) for the full contract.
+
 ---
 
 ## 6. Test the Boundary In-Process
@@ -302,9 +352,9 @@ The gateway reference lives at [`jac-scale/jac_scale/microservices/docs.md`](htt
 
 - **`{"detail":"Invalid anchor id ..."}` 500s.** Stale anchor data persisted from a previous run with a different schema. Stop the server, `rm -rf .jac/data/`, and restart. Not specific to sv-to-sv; any `def:pub` call can hit this after a schema change.
 - **Consumer crashes at startup with `ModuleNotFoundError: No module named '<provider>'`.** Automatic startup could not find the provider source in the directory you ran `jac start` from. Either move all services into the same project directory and run `jac start` from there, or set `JAC_SV_<MODULE>_URL` to point at a provider already running elsewhere.
-- **Cross-service call returns 404.** The provider function is not declared `def:pub`. Walkers similarly need `walker:pub`.
+- **Cross-service call returns 404.** The provider function is not declared `def:pub`, or the walker is not declared `walker:pub`. Only public symbols are exposed at the HTTP boundary.
 - **`Error: No jac.toml found`.** `jac start <relative-path>` requires a `jac.toml` in the current directory. Run `jac create` (or just create an empty one), or pass an absolute path.
-- **Cross-service errors raise an exception.** Network failures, missing services, and error responses from the provider all surface at the call site as an exception with the message `sv-to-sv RPC '<module>.<func>' failed: <reason>`. Catch at the boundaries where you want graceful degradation.
+- **Cross-service errors raise an exception.** Network failures, missing services, and error responses from the provider all surface at the call site as an exception. Function-call failures use the message `sv-to-sv RPC '<module>.<func>' failed: <reason>`; walker-spawn failures use `sv-to-sv walker spawn '<module>.<walker>' failed: <reason>`. Catch at the boundaries where you want graceful degradation.
 
 ---
 

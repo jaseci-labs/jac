@@ -1,6 +1,6 @@
 [project]
 name = "jac-super"
-version = "0.1.10"
+version = "0.1.11"
 description = "Enhanced console output for Jac CLI with Rich formatting"
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -16,14 +16,17 @@ keywords = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang>=0.14.0",
+    "jaclang>=0.14.1",
     "rich>=13.0.0",
 ]
 
 [project.urls]
-Repository = "https://github.com/Jaseci-Labs/jaseci"
+Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://jac-lang.org"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jac-super"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community/release_notes/jac-super.md"
 
 [project.entry-points."jac"]
 console = "jac_super.plugin.console:JacSuperPlugin"

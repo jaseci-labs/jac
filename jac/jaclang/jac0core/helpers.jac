@@ -9,13 +9,8 @@ import from collections.abc { Callable, Sequence }
 import from dataclasses { fields, is_dataclass }
 import from functools { lru_cache }
 import from traceback { TracebackException }
-import from typing { TYPE_CHECKING, get_args, get_origin }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang { plugin as pluggy }
-    }
-}
+import from typing { get_args, get_origin }
+import type from jaclang { plugin as pluggy }
 
 """Convert pascal case to snake case."""
 @lru_cache(maxsize=256)
@@ -398,9 +393,7 @@ def _describe_node(`obj: object) -> str {
 
 """One object per line, index-friendly for returning list."""
 def _describe_nodes_list(objects: Sequence) -> str {
-    return '\n'.join(
-        f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects)
-    );
+    return '\n'.join(f"{i}) {_describe_node(obj)}" for (i, `obj) in enumerate(objects));
 }
 
 """Minimal distribution facade for tracking plugin origins.

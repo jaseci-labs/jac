@@ -7,14 +7,11 @@ import from jac_scale.microservices.service_registry {
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.local_deployer {
-    LocalDeployer
-}
+import from jac_scale.microservices.local_deployer { LocalDeployer }
 
 # =============================================================================
 # LocalDeployer basics
 # =============================================================================
-
 test "local deployer initializes with registry" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
@@ -36,18 +33,21 @@ test "local deployer creates process manager on first use" {
 # =============================================================================
 # url_for: LocalDeployer is the single source of service URL construction
 # =============================================================================
-
 test "local deployer url_for returns loopback URL" {
     reg = ServiceRegistry();
     deployer = LocalDeployer(registry=reg);
-    entry = ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=18042);
+    entry = ServiceEntry(
+        name="orders", file="orders.jac", prefix="/api/orders", port=18042
+    );
     assert deployer.url_for(entry) == "http://127.0.0.1:18042";
 }
 
 test "local deployer url_for tracks port mutations" {
     reg = ServiceRegistry();
     deployer = LocalDeployer(registry=reg);
-    entry = ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders", port=0);
+    entry = ServiceEntry(
+        name="orders", file="orders.jac", prefix="/api/orders", port=0
+    );
     # Pre-spawn: port=0 yields a well-formed but non-listening URL; the
     # method doesn't short-circuit on port==0 because start_all's pre-pass
     # sets the port before start_service reads URLs via this method.
@@ -76,7 +76,6 @@ test "process manager _url_for uses deployer.url_for when wired" {
 # =============================================================================
 # Deploy / Stop / Restart
 # =============================================================================
-
 test "deploy service starts subprocess" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
@@ -138,7 +137,6 @@ test "restart service stops then starts" {
 # =============================================================================
 # Scale
 # =============================================================================
-
 test "scale to 0 stops service" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
@@ -157,20 +155,31 @@ test "scale to 0 stops service" {
 # =============================================================================
 # Status
 # =============================================================================
-
 test "status returns all services" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001"
-    ));
-    reg.register(ServiceEntry(
-        name="cart", file="cart.jac", prefix="/api/cart",
-        port=8002, url="http://127.0.0.1:8002"
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001"
+        )
+    );
+    reg.register(
+        ServiceEntry(
+            name="cart",
+            file="cart.jac",
+            prefix="/api/cart",
+            port=8002,
+            url="http://127.0.0.1:8002"
+        )
+    );
     deployer = LocalDeployer(registry=reg);
 
-    with unittest.mock.patch.object(deployer._ensure_pm(), "check_all_health", return_value={}) {
+    with unittest.mock.patch.object(
+        deployer._ensure_pm(), "check_all_health", return_value={}
+    ) {
         svc_status = deployer.status();
         assert "orders" in svc_status;
         assert "cart" in svc_status;
@@ -182,7 +191,6 @@ test "status returns all services" {
 # =============================================================================
 # Logs
 # =============================================================================
-
 test "get logs for missing service" {
     reg = ServiceRegistry();
     deployer = LocalDeployer(registry=reg);
@@ -202,7 +210,6 @@ test "get logs returns string for registered service" {
 # =============================================================================
 # Destroy
 # =============================================================================
-
 test "destroy all stops everything" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));
@@ -225,7 +232,6 @@ test "destroy all stops everything" {
 # =============================================================================
 # Deploy all
 # =============================================================================
-
 test "deploy all starts all services" {
     reg = ServiceRegistry();
     reg.register(ServiceEntry(name="orders", file="orders.jac", prefix="/api/orders"));

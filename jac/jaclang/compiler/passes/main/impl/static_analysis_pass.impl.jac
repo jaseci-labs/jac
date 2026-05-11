@@ -11,10 +11,12 @@ impl StaticAnalysisPass.transform(ir_in: uni.Module) -> uni.Module {
     self._check_undefined_names(self.ir_in);
     self._check_unreachable_code(self.ir_in);
     self._check_semantic_patterns(self.ir_in);
+    self._check_redundant_imports(self.ir_in);
     for annex_mod in self.ir_in.impl_mod + self.ir_in.test_mod + self.ir_in.variant_mod {
         self._check_undefined_names(annex_mod);
         self._check_unreachable_code(annex_mod);
         self._check_semantic_patterns(annex_mod);
+        self._check_redundant_imports(annex_mod);
     }
     return ir_in;
 }
@@ -118,8 +120,67 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         if name_nd.find_parent_of_type(uni.ModulePath) is not None {
             continue;
         }
+        # Issue #5885 gap 7: undefined names in OSP-shape positions
+        # (connect/disconnect typed-edge, ability trigger) are
+        # structural errors, not the stylistic W2001 warning.
+        # Skip backtick-escaped names — the escape form references
+        # runtime built-ins (e.g. `root) that fail symbol-table
+        # resolution today; promoting those would regress valid code.
+        if not name_nd.is_kwesc {
+            position = self._osp_shape_position(name_nd);
+            if position is not None {
+                self.emit(
+                    E2018, node_override=name_nd, name=name_nd.value, position=position
+                );
+                continue;
+            }
+        }
         self.emit(W2001, node_override=name_nd, name=name_nd.value);
     }
+}
+
+"""Return the OSP-shape position label for an unresolved Name, or None.
+
+Walks up the parent chain through transparent containers (tuple, union,
+attr-trailer) and reports the structural position when the chain
+reaches one of:
+
+    1. ConnectOp.conn_type            -> "connect typed-edge position"
+    2. DisconnectOp's edge_spec       -> "disconnect typed-edge position"
+       FilterCompr.f_type
+    3. EventSignature.arch_tag_info   -> "ability trigger position"
+
+These positions require a defined edge or archetype type — leaving the
+name unresolved breaks the program's runtime shape, not just hygiene."""
+impl StaticAnalysisPass._osp_shape_position(name_nd: uni.Name) -> (str | None) {
+    cur = name_nd;
+    parent = cur.parent;
+    # Bound the walk so a deeply-nested unresolved name in unrelated
+    # code doesn't accidentally collide with a structural ancestor.
+    for _ in range(8) {
+        if parent is None {
+            return None;
+        }
+        if isinstance(parent, uni.ConnectOp) and parent.conn_type is cur {
+            return "connect typed-edge position";
+        }
+        if isinstance(parent, uni.EventSignature) and parent.arch_tag_info is cur {
+            return "ability trigger position";
+        }
+        if isinstance(parent, uni.FilterCompr) and parent.f_type is cur {
+            edge_ref = parent.parent;
+            if (
+                isinstance(edge_ref, uni.EdgeOpRef)
+                and isinstance(edge_ref.parent, uni.DisconnectOp)
+            ) {
+                return "disconnect typed-edge position";
+            }
+            return None;
+        }
+        cur = parent;
+        parent = cur.parent;
+    }
+    return None;
 }
 
 """Detect unreachable code by scanning code blocks for statements after return/break/continue."""
@@ -263,6 +324,63 @@ impl StaticAnalysisPass._check_semantic_patterns(mod: uni.Module) -> None {
         }
         if not in_walker {
             self.emit(E2083, node_override=nd);
+        }
+    }
+}
+
+"""Flag imports of names that are now ambient or have a Jac builtin equivalent.
+
+W1103: name is re-exported into builtins by typing_ambient.pyi (its __all__
+       is the source of truth). The import is redundant -- drop it.
+W1104: 'Any' has a lowercase Jac BuiltinType keyword 'any'; replace usages
+       and drop the import.
+
+Source-module match is exact (typing / collections.abc) and only fires when
+the stub actually re-exports the name from that module, so growing the
+ambient set never produces a coincidentally-correct flag from the wrong
+source module. Aliased items and `*` are skipped -- the user expressed
+intent we should respect.
+"""
+impl StaticAnalysisPass._check_redundant_imports(mod: uni.Module) -> None {
+    if not self.prog.type_evaluator {
+        # Schedules that skip type checking don't populate the registry.
+        # The lint depends on it, so silently no-op rather than guess.
+        return;
+    }
+    registry = self.prog.type_evaluator.ambient_typing_names_by_module;
+    if not registry {
+        return;
+    }
+    for nd in mod.get_all_sub_nodes(typ=uni.Import, brute_force=True) {
+        if nd.from_loc is None {
+            continue;
+        }
+        from_mod_name = nd.from_loc.dot_path_str;
+        ambient = registry.get(from_mod_name);
+        is_typing = from_mod_name == "typing";
+        if ambient is None and not is_typing {
+            continue;
+        }
+        for item in nd.items {
+            if not isinstance(item, uni.ModuleItem) {
+                continue;
+            }
+            if not isinstance(item.name, uni.Name) {
+                # Star or default-import tokens -- user intent is broader
+                # than per-name; skip.
+                continue;
+            }
+            if item.alias is not None {
+                continue;
+            }
+            nm = item.name.value;
+            if is_typing and nm == "Any" {
+                self.emit(W1104, node_override=item.name);
+            } elif ambient is not None and nm in ambient {
+                self.emit(
+                    W1103, node_override=item.name, name=nm, module=from_mod_name
+                );
+            }
         }
     }
 }

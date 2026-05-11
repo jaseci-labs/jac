@@ -23,12 +23,12 @@ def:pub add_todo(title: str) -> Todo {
         category = "other (setup AI key)";
     }
     todo = Todo(title=title, category=category);
-    root() ++> todo;
+    root ++> todo;
     return todo;
 }
 
 def:pub get_todos -> list[Todo] {
-    return [root()-->][?:Todo];
+    return [root-->][?:Todo];
 }
 
 cl def:pub app -> JsxElement {
@@ -87,7 +87,7 @@ This single file defines a persistent data model, an AI-powered categorizer, a R
     ```bash
     pip install jaseci
     export ANTHROPIC_API_KEY="your-key-here"
-    jac start main.jac
+    jac start
     ```
 
     Open [http://localhost:8000](http://localhost:8000) to see it running. Jac supports any [LiteLLM-compatible model](https://docs.litellm.ai/docs/providers) -- use `gemini/gemini-2.5-flash` for a free alternative or `ollama/llama3.2:1b` for local models.
@@ -179,6 +179,7 @@ The return type serves as the output contract -- `enum` means the LLM can only p
 
 For **agentic workflows**, Jac's graph constructs (nodes, edges, walkers) naturally model AI agents that traverse structured state spaces, make decisions with `by llm()`, and call tools:
 
+<!-- jac-skip -->
 ```jac
 def get_weather(city: str) -> str { return fetch_weather_api(city); }
 def search_web(query: str) -> list[str] { return web_search_api(query); }
@@ -204,12 +205,12 @@ with entry {
 }
 ```
 
-This same program runs three ways with no code changes:
+This same program runs three ways with no code changes. `jac start` defaults to `main.jac` if you omit the filename; `jac run` always needs the filename explicitly:
 
 | Command | What Happens |
 |---------|-------------|
-| `jac app.jac` | Runs locally, SQLite persistence |
-| `jac start app.jac` | HTTP API server, walkers become REST endpoints |
+| `jac main.jac` | Runs locally, SQLite persistence |
+| `jac start` (or `jac start main.jac`) | HTTP API server, walkers become REST endpoints |
 | `jac start --scale` | Kubernetes deployment with Redis, MongoDB, load balancing |
 
 The runtime handles database schemas, user authentication (per-user graph isolation), API generation (Swagger docs at `/docs`), caching tiers, and Kubernetes orchestration. You write application logic; the runtime handles infrastructure.
@@ -254,7 +255,7 @@ jac hello.jac
 
 Note: `jac` is shorthand for `jac run` -- both work identically.
 
-> **💡 Tip**: Add `-e` to see type check diagnostics: `jac -e hello.jac`. This shows errors and warnings without needing a separate `jac check`.
+> **💡 Tip**: Add `-e all` to see type check diagnostics: `jac -e all hello.jac`. This shows errors and warnings without needing a separate `jac check`.
 
 **That's it!** You just ran your first Jac program.
 

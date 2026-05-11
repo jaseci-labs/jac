@@ -675,6 +675,14 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     if "tool_choice" in mt_run.call_params {
         params["tool_choice"] = mt_run.call_params["tool_choice"];
     }
+    # Inject the response_format schema's enum hint (e.g. "1=WORK, 2=PERSONAL,
+    # ...") into the last user message so every backend sees the constraint
+    # the same way frontier providers' server-side prompt builders do for
+    # cloud routes. Local-style backends (Ollama, vLLM, in-process llama.cpp)
+    # use response_format only as a grammar constraint and would otherwise
+    # default to the first allowed enum value for every input. No-op when
+    # response_format has no enum-typed properties.
+    params = inject_schema_hint(params);
     return params;
 }
 
@@ -704,17 +712,21 @@ impl BaseLLM.format_prompt(params: dict) -> str {
             log_params["api_key"] = "*" * (len(key) - 4) + key[-4:];
         }
     }
+    def _msg_content(m: object) -> object {
+        if isinstance(m, dict) {
+            return m.get("content");
+        }
+        return m?.content;
+    }
+    msgs = log_params["messages"];
+    user_content = _msg_content(msgs[1]);
     log = f"""
     {MAGENTA}[SYSTEM]{RESET}
-    {log_params["messages"][0]["content"]}
+    {_msg_content(msgs[0])}
     {MAGENTA}[USER]{RESET}
-    {log_params["messages"][1]["content"][0]['text']
-        if isinstance(log_params["messages"][1]["content"], list)
-        else log_params["messages"][1]["content"]}
+    {user_content[0]['text'] if isinstance(user_content, list) else user_content}
     {MAGENTA}[TOOL]{RESET}
-    {log_params["messages"][3]["content"]
-        if len(log_params["messages"]) > 3
-        else "No tools provided."}
+    {_msg_content(msgs[3]) if len(msgs) > 3 else "No tools provided."}
     {" "}
     {MAGENTA}[TOOLS]{RESET}
     {json.dumps(log_params.get("tools"), indent=2, ensure_ascii=False)

@@ -1,6 +1,6 @@
 [project]
 name = "jac-client"
-version = "0.3.12"
+version = "0.3.13"
 description = "Build full-stack web applications with Jac - one language for frontend and backend."
 authors = [{name = "Jason Mars", email = "jason@mars.ninja"}]
 maintainers = [{name = "Jason Mars", email = "jason@mars.ninja"}]
@@ -16,13 +16,16 @@ keywords = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "jaclang>=0.14.0",
+    "jaclang>=0.14.1",
 ]
 
 [project.urls]
-Repository = "https://github.com/Jaseci-Labs/jaseci"
+Repository = "https://github.com/jaseci-labs/jaseci"
 Homepage = "https://jaseci.org"
 Documentation = "https://jac-lang.org"
+Source = "https://github.com/jaseci-labs/jaseci/tree/main/jac-client"
+Issues = "https://github.com/jaseci-labs/jaseci/issues"
+Changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community/release_notes/jac-client.md"
 
 [project.entry-points."jac"]
 serve = "jac_client.plugin.client:JacClient"

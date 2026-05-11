@@ -47,8 +47,8 @@ def:pub TestButton(text: str, onClick: Any, variant: str) -> JsxElement {
                 "fontWeight": "600",
                 "transition": "all 0.2s"
             }}
-            onMouseOver={lambda e: Any { e.target.style.backgroundColor = hover_color;}}
-            onMouseOut={lambda e: Any { e.target.style.backgroundColor = bg_color;}}
+            onMouseOver={lambda e: Any { e.target.style.backgroundColor = hover_color; }}
+            onMouseOut={lambda e: Any { e.target.style.backgroundColor = bg_color; }}
         >
             {text}
         </button>;
@@ -365,7 +365,7 @@ def:pub FeaturesTest -> JsxElement {
                         <input
                             type="text"
                             value={testMessage}
-                            onChange={lambda e: Any { testMessage = e.target.value;}}
+                            onChange={lambda e: Any { testMessage = e.target.value; }}
                             placeholder="Enter test message..."
                             style={{
                                 "flex": "1",
@@ -377,7 +377,7 @@ def:pub FeaturesTest -> JsxElement {
                         />
                         <TestButton
                             text="Create"
-                            onClick={lambda { handleCreate();}}
+                            onClick={lambda { handleCreate(); }}
                             variant="primary"
                         />
                     </div>
@@ -420,12 +420,12 @@ def:pub FeaturesTest -> JsxElement {
                                 <div style={{"display": "flex", "gap": "8px"}}>
                                     <TestButton
                                         text="Edit"
-                                        onClick={lambda { handleUpdate(item._jac_id);}}
+                                        onClick={lambda { handleUpdate(item._jac_id); }}
                                         variant="secondary"
                                     />
                                     <TestButton
                                         text="Delete"
-                                        onClick={lambda { handleDelete(item._jac_id);}}
+                                        onClick={lambda { handleDelete(item._jac_id); }}
                                         variant="secondary"
                                     />
                                 </div>
@@ -476,7 +476,7 @@ def:pub FeaturesTest -> JsxElement {
                             <input
                                 type="text"
                                 value={stringInput}
-                                onChange={lambda e: Any { stringInput = e.target.value;}}
+                                onChange={lambda e: Any { stringInput = e.target.value; }}
                                 style={{
                                     "flex": "1",
                                     "padding": "10px",
@@ -487,7 +487,7 @@ def:pub FeaturesTest -> JsxElement {
                             />
                             <TestButton
                                 text="Process with Walker"
-                                onClick={lambda { handleStringTest();}}
+                                onClick={lambda { handleStringTest(); }}
                                 variant="primary"
                             />
                         </div>
@@ -508,7 +508,7 @@ def:pub FeaturesTest -> JsxElement {
                         <input
                             type="text"
                             value={numberList}
-                            onChange={lambda e: Any { numberList = e.target.value;}}
+                            onChange={lambda e: Any { numberList = e.target.value; }}
                             placeholder="Enter numbers (comma-separated)"
                             style={{
                                 "flex": "1",
@@ -520,7 +520,7 @@ def:pub FeaturesTest -> JsxElement {
                         />
                         <TestButton
                             text="Process List"
-                            onClick={lambda { handleListTest();}}
+                            onClick={lambda { handleListTest(); }}
                             variant="primary"
                         />
                     </div>
@@ -717,7 +717,7 @@ def:pub FeaturesTest -> JsxElement {
                     </p>
                     <TestButton
                         text="Process Sample Data"
-                        onClick={lambda { handleComplexTest();}}
+                        onClick={lambda { handleComplexTest(); }}
                         variant="primary"
                     />
                     {complexResult

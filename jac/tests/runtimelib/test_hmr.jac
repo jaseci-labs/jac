@@ -213,7 +213,7 @@ test "file change triggers callback" {
         );
         # Track if callback was called
         callback_called = threading.Event();
-        def mock_callback(event: object) -> None {
+        def mock_callback(event: object) {
             callback_called.set();
         }
         reloader.on_file_change = mock_callback;
@@ -240,7 +240,7 @@ test "multiple file changes handled" {
             base_path=str(temp_dir), module_name="test", watcher=watcher
         );
         changed_files: list[str] = [];
-        def track_changes(event: FileChangeEvent) -> None {
+        def track_changes(event: FileChangeEvent) {
             changed_files.append(event.path);
         }
         reloader.on_file_change = track_changes;
@@ -253,6 +253,8 @@ test "multiple file changes handled" {
         time.sleep(0.3);
         reloader.stop();
         # Both files should have been detected
-        assert len(changed_files) >= 2 , f"Expected 2+ changes, got {len(changed_files)}";
+        assert len(changed_files) >= 2 , f"Expected 2+ changes, got {len(
+            changed_files
+        )}";
     }
 }

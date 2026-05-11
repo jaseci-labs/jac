@@ -99,11 +99,11 @@ cl {
         }
 
         def makeEditHandler(username: str, role: str, resetRequired: bool) -> Any {
-            return lambda e: Any { openEditModal(username, role, resetRequired);};
+            return lambda e: Any { openEditModal(username, role, resetRequired); };
         }
 
         def makeDeleteHandler(username: str) -> Any {
-            return lambda e: Any { handleDelete(username);};
+            return lambda e: Any { handleDelete(username); };
         }
 
         totalUsers = len(users);
@@ -139,7 +139,7 @@ cl {
                 <Card className="overflow-hidden">
                     <CardHeader
                         title="Users"
-                        action={<Button onClick={lambda { showCreateModal = True;}}>
+                        action={<Button onClick={lambda { showCreateModal = True; }}>
                             Add User
                         </Button>}
                     />
@@ -187,12 +187,12 @@ cl {
                 </Card>
                 <CreateUserModal
                     isOpen={showCreateModal}
-                    onClose={lambda { showCreateModal = False;}}
+                    onClose={lambda { showCreateModal = False; }}
                     onCreate={handleCreate}
                 />
                 <EditUserModal
                     isOpen={showEditModal}
-                    onClose={lambda { showEditModal = False;}}
+                    onClose={lambda { showEditModal = False; }}
                     onUpdate={handleUpdate}
                     username={editUsername}
                     initialRole={editRole}

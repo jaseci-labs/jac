@@ -274,6 +274,9 @@ impl NormalizePass.enter_import(nd: uni.Import) -> None {
     } else {
         new_kid.append(nd.gen_token(Tok.KW_IMPORT));
     }
+    if nd.is_typed {
+        new_kid.append(nd.gen_token(Tok.TYP_TYPE));
+    }
     if nd.from_loc {
         new_kid.append(nd.gen_token(Tok.KW_FROM));
         new_kid.append(nd.from_loc);

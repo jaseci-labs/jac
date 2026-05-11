@@ -12,6 +12,8 @@ import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.jac0core.constant { SymbolType }
 import from jaclang.jac0core.diagnostics {
+    W1103,
+    W1104,
     W2001,
     W2002,
     W2003,
@@ -20,6 +22,7 @@ import from jaclang.jac0core.diagnostics {
     W2070,
     W2074,
     W2075,
+    E2018,
     E2055,
     E2083
 }
@@ -39,6 +42,8 @@ obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
     def transform(ir_in: uni.Module) -> uni.Module;
     def _check_unused_symbols(scope: uni.UniScopeNode) -> None;
     def _check_undefined_names(mod: uni.Module) -> None;
+    def _osp_shape_position(name_nd: uni.Name) -> (str | None);
     def _check_unreachable_code(mod: uni.Module) -> None;
     def _check_semantic_patterns(mod: uni.Module) -> None;
+    def _check_redundant_imports(mod: uni.Module) -> None;
 }

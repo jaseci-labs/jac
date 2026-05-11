@@ -14,11 +14,57 @@ impl PyastGenPass._get_builtin_names(cls: Any) -> set[str] {
     return cls._builtin_names;
 }
 
+"""Read __all__ from typing_ambient.pyi, cached after first access."""
+@classmethod
+impl PyastGenPass._get_ambient_typing_names(cls: Any) -> set[str] {
+    if (cls._ambient_typing_names is not None) {
+        return cls._ambient_typing_names;
+    }
+    import os;
+    import ast as py_ast;
+    stub_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+        "compiler",
+        "type_system",
+        "typing_ambient.pyi"
+    );
+    try {
+        with open(stub_path, encoding="utf-8") as f {
+            tree = py_ast.parse(f.read());
+        }
+        for node in tree.body {
+            if (
+                isinstance(node, py_ast.Assign)
+                and len(node.targets) == 1
+                and isinstance(node.targets[0], py_ast.Name)
+                and node.targets[0].id == "__all__"
+                and isinstance(node.value, (py_ast.List, py_ast.Tuple))
+            ) {
+                names: set[str] = `set();
+                for elt in node.value.elts {
+                    if (
+                        isinstance(elt, py_ast.Constant) and isinstance(elt.value, str)
+                    ) {
+                        names.add(elt.value);
+                    }
+                }
+                cls._ambient_typing_names = names;
+                return names;
+            }
+        }
+    } except (OSError, SyntaxError) {
+        pass;
+    }
+    cls._ambient_typing_names = `set();
+    return cls._ambient_typing_names;
+}
+
 impl PyastGenPass.postinit -> None {
     # Initialize by-postinit fields
     self.debuginfo = {'jac_mods': []};
     self.jaclib_imports = `set();
     self.builtin_imports = `set();
+    self.typing_imports = `set();
     self.child_passes = self._init_child_passes(PyastGenPass);
     self.preamble = [
         self.sync(
@@ -192,6 +238,14 @@ impl PyastGenPass._generate_sv_to_sv_stubs(nd: uni.Import) -> bool {
         if binding is None {
             continue;
         }
+        if binding.kind == 'walker' {
+            parts.append(
+                self._gen_py_sv_walker_stub(
+                    local_name, item_name, module_name, binding, boundary_types
+                )
+            );
+            continue;
+        }
         parts.append(
             self._gen_py_sv_func_stub(
                 local_name, item_name, module_name, binding, boundary_types
@@ -239,6 +293,92 @@ impl PyastGenPass._gen_py_sv_func_stub(
         ret_expr = raw_call;
     }
     return 'def ' + local_name + '(' + params + '):\n    return ' + ret_expr;
+}
+
+"""Build a Python source string for an sv-to-sv walker stub class."""
+impl PyastGenPass._gen_py_sv_walker_stub(
+    local_name: str,
+    walker_name: str,
+    module_name: str,
+    binding: InteropBinding,
+    boundary_types: dict[str, BoundaryTypeInfo]
+) -> str {
+    field_names = list(binding.param_names);
+    field_types = list(binding.param_types);
+    fields_repr_pieces: list[str] = [];
+    for fname in field_names {
+        fields_repr_pieces.append("'" + fname + "'");
+    }
+    fields_repr = '[' + ', '.join(fields_repr_pieces) + ']';
+    boundary_pairs: list[str] = [];
+    for i in range(len(field_names)) {
+        ptype = field_types[i] if i < len(field_types) else '';
+        if (ptype in boundary_types and boundary_types[ptype].kind != "enum") {
+            boundary_pairs.append("'" + field_names[i] + "': " + ptype);
+        }
+    }
+    boundary_map = '{' + ', '.join(boundary_pairs) + '}';
+    args_kvs: list[str] = [];
+    for i in range(len(field_names)) {
+        pname = field_names[i];
+        ptype = field_types[i] if i < len(field_types) else '';
+        if (ptype in boundary_types and boundary_types[ptype].kind != "enum") {
+            args_kvs.append(
+                "'" + pname + "': (" + pname + "._to_wire() if hasattr(" + pname + ", '_to_wire') else " + pname + ")"
+            );
+        } else {
+            args_kvs.append("'" + pname + "': " + pname);
+        }
+    }
+    args_dict = '{' + ', '.join(args_kvs) + '}';
+    init_params = ', '.join(
+        ['cls'] + [field_names[i] + '=None' for i in range(len(field_names))]
+    );
+    lines: list[str] = [];
+    lines.append('class ' + local_name + ':');
+    lines.append('    __jac_fields__ = ' + fields_repr);
+    lines.append('    __jac_walker_name__ = ' + "'" + walker_name + "'");
+    lines.append('    __jac_provider_module__ = ' + "'" + module_name + "'");
+    lines.append('    __jac_boundary_types__ = ' + boundary_map);
+    lines.append('    def __new__(' + init_params + '):');
+    lines.append('        kwargs = ' + args_dict);
+    if field_names {
+        lines.append(
+            '        kwargs = {k: v for k, v in kwargs.items() if v is not None}'
+        );
+    }
+    # Inside a class body, identifiers with 2+ leading underscores get
+    # name-mangled to _<ClassName>__name. Look the runtime up via
+    # `globals()[...]` so the mangled spelling never bites us.
+    lines.append(
+        '        return globals()["__jac_sv_client"].spawn_walker(' + "'" + module_name + "', '" + walker_name + "', kwargs, cls)"
+    );
+    # __new__ already populated the instance via spawn_walker -> _from_wire.
+    # Python still invokes __init__ on a returned cls-instance, so we need a
+    # no-op that swallows whatever kwargs the call site passed.
+    lines.append('    def __init__(self, *args, **kwargs):');
+    lines.append('        pass');
+    lines.append('    def _to_wire(self):');
+    lines.append(
+        '        return {f: getattr(self, f, None) for f in self.__jac_fields__}'
+    );
+    lines.append('    @classmethod');
+    lines.append('    def _from_wire(cls, d):');
+    lines.append('        if d is None:');
+    lines.append('            return None');
+    lines.append('        if isinstance(d, list):');
+    lines.append('            return [cls._from_wire(i) for i in d]');
+    lines.append('        if not isinstance(d, dict):');
+    lines.append('            return d');
+    lines.append('        inst = object.__new__(cls)');
+    lines.append('        for k, v in d.items():');
+    lines.append('            if k in cls.__jac_boundary_types__ and v is not None:');
+    lines.append('                v = cls.__jac_boundary_types__[k]._from_wire(v)');
+    lines.append('            setattr(inst, k, v)');
+    lines.append('        if not hasattr(inst, "reports"):');
+    lines.append('            inst.reports = []');
+    lines.append('        return inst');
+    return '\n'.join(lines);
 }
 
 """Build a Python source string for a boundary type stub class."""
@@ -296,6 +436,25 @@ impl PyastGenPass.builtin_name(name: str) -> ast3.Name {
         self.builtin_imports.add(name);
     }
     return self.sync(ast3.Name(id=name, ctx=ast3.Load()));
+}
+
+"""True if `target` is (or transitively wraps) an edge-ref trailer whose
+codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into.
+
+Recurses through inner AtomTrailers when the right-hand side is a FilterCompr
+(those fuse with the EdgeRefTrailer on this same pass), so chains like
+`[-->][?:Lead]` still expose the underlying refs() call to the outer slice."""
+impl PyastGenPass._is_edge_ref_target(target: uni.UniNode) -> bool {
+    if isinstance(target, uni.EdgeRefTrailer) {
+        return not target.edges_only and not target.is_async;
+    }
+    if (
+        isinstance(target, uni.AtomTrailer)
+        and isinstance(target.right, uni.FilterCompr)
+    ) {
+        return self._is_edge_ref_target(target.target);
+    }
+    return False;
 }
 
 """Append an import statement to the preamble once."""
@@ -694,6 +853,7 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
     for child_pass in self.child_passes {
         self.jaclib_imports.update(child_pass.jaclib_imports);
         self.builtin_imports.update(child_pass.builtin_imports);
+        self.typing_imports.update(child_pass.typing_imports);
     }
     is_builtin_module = (
         nd.loc.mod_path.endswith(('builtin.jac', 'builtin.py'))
@@ -707,6 +867,21 @@ impl PyastGenPass.exit_module(nd: uni.Module) -> None {
                     names=[
                         self.sync(ast3.alias(name=name, asname=None))
                         for name in sorted(self.builtin_imports)
+                    ],
+                    level=0
+                ),
+                jac_node=self.ir_out
+            )
+        );
+    }
+    if self.typing_imports {
+        self.preamble.append(
+            self.sync(
+                ast3.ImportFrom(
+                    module='typing',
+                    names=[
+                        self.sync(ast3.alias(name=name, asname=None))
+                        for name in sorted(self.typing_imports)
                     ],
                     level=0
                 ),
@@ -934,11 +1109,12 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
     # Only triggered when the user explicitly wrote `sv import from ...`
     # (we detect this via the sv token, not code_context which defaults
     # to SERVER for all nodes).
+    src_token = nd._source_context_token();
     if (
         nd.from_loc
         and nd.items
-        and nd._source_context_token() is not None
-        and nd._source_context_token().name == Tok.KW_SERVER
+        and src_token is not None
+        and src_token.name == Tok.KW_SERVER
         and self._generate_sv_to_sv_stubs(nd)
     ) {
         return;
@@ -998,6 +1174,24 @@ impl PyastGenPass.exit_import(nd: uni.Import) -> None {
                 )
             )
         );
+    }
+    if nd.is_typed {
+        self.typing_imports.add('TYPE_CHECKING');
+        body_stmts = [
+            stmt
+            for stmt in py_nodes
+            if isinstance(stmt, ast3.stmt)
+        ];
+        if body_stmts {
+            wrapped = self.sync(
+                ast3.If(
+                    test=self.sync(ast3.Name(id='TYPE_CHECKING', ctx=ast3.Load())),
+                    body=body_stmts,
+                    orelse=[]
+                )
+            );
+            py_nodes = [wrapped];
+        }
     }
     nd.gen.py_ast = py_nodes;
 }
@@ -2905,6 +3099,43 @@ impl PyastGenPass.exit_atom_trailer(nd: uni.AtomTrailer) -> None {
                 )
             )
         ];
+    } elif (
+        isinstance(nd.right, uni.IndexSlice)
+        and nd.right.is_range
+        and len(nd.right.slices) == 1
+        and self._is_edge_ref_target(nd.target)
+    ) {
+        # Pushdown fusion: a slice chained on an edge-ref result becomes a
+        # `slc=slice(...)` kwarg on the Jac.refs() call so the runtime can
+        # bound the storage-layer load to the sliced subset, not all neighbors.
+        target_py = cast(ast3.Call, self.py_ast_val(nd.target));
+        slc = nd.right.slices[0];
+        start_ast = (
+            cast(ast3.expr, self.py_ast_val(slc.start))
+                if slc.start
+                else self.sync(ast3.Constant(value=None))
+        );
+        stop_ast = (
+            cast(ast3.expr, self.py_ast_val(slc.stop))
+                if slc.stop
+                else self.sync(ast3.Constant(value=None))
+        );
+        step_ast = (
+            cast(ast3.expr, self.py_ast_val(slc.step))
+                if slc.step
+                else self.sync(ast3.Constant(value=None))
+        );
+        # `slice` is a Python builtin — emit a bare Name (not via builtin_name,
+        # which would also try to add it to the builtin imports table).
+        slice_call = self.sync(
+            ast3.Call(
+                func=self.sync(ast3.Name(id='slice', ctx=ast3.Load())),
+                args=[start_ast, stop_ast, step_ast],
+                keywords=[]
+            )
+        );
+        target_py.keywords.append(self.sync(ast3.keyword(arg='slc', value=slice_call)));
+        nd.gen.py_ast = [target_py];
     } else {
         nd.gen.py_ast = [
             self.sync(
@@ -3553,6 +3784,9 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
     }
     if (name in self._get_builtin_names()) {
         self.builtin_imports.add(name);
+    }
+    if (name in self._get_ambient_typing_names()) {
+        self.typing_imports.add(name);
     }
     nd.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=nd.py_ctx_func()))];
 }

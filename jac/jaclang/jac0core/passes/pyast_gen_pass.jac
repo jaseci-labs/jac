@@ -99,6 +99,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
         already_added: list[str] = [],
         jaclib_imports: set[str] by postinit,
         builtin_imports: set[str] by postinit,
+        typing_imports: set[str] by postinit,
         _temp_name_counter: int = 0,
         _hoisted_funcs: list[ast3.FunctionDef | ast3.AsyncFunctionDef] = [],
         child_passes: list[PyastGenPass] by postinit,
@@ -107,11 +108,21 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
 
     with entry {
         _builtin_names: ClassVar[(set[str] | None)] = None;
+        _ambient_typing_names: ClassVar[(set[str] | None)] = None;
     }
 
     """Get the set of builtin names, cached after first successful access."""
     @classmethod
     def _get_builtin_names(cls: Any) -> set[str];
+
+    """Get the curated ambient typing names. Single source of truth is
+    `compiler/type_system/typing_ambient.pyi` — the same file TypeEvaluator
+    uses to drive its merge into `builtins_module`. Parsing the stub's
+    __all__ here lets codegen auto-emit `from typing import <names>` when
+    a reference appears, keeping `typing.get_type_hints` / pydantic /
+    FastAPI annotation introspection working at runtime."""
+    @classmethod
+    def _get_ambient_typing_names(cls: Any) -> set[str];
 
     def postinit -> None;
     """Enter node."""
@@ -151,6 +162,23 @@ ctypes.
         boundary_types: dict[str, BoundaryTypeInfo]
     ) -> str;
 
+    """Build a Python source string for an sv-to-sv walker stub.
+
+    A walker stub is a class whose constructor performs a remote spawn:
+    instantiating `Greet(name="x")` on the consumer issues a POST to
+    `/walker/Greet` on the provider, deserialises the response, and
+    returns an instance with `has` fields and a `reports` attribute
+    populated. The consumer-side class shape mirrors the provider's
+    walker so type identity and boundary-typed fields survive the trip.
+    """
+    def _gen_py_sv_walker_stub(
+        local_name: str,
+        walker_name: str,
+        module_name: str,
+        binding: InteropBinding,
+        boundary_types: dict[str, BoundaryTypeInfo]
+    ) -> str;
+
     """Build a Python source string for a boundary type stub class."""
     def _gen_py_boundary_stub_class(class_name: str, info: BoundaryTypeInfo) -> str;
 
@@ -164,6 +192,10 @@ needs_enum)
         and should not be added to builtin_imports.
         """
     def builtin_name(name: str) -> ast3.Name;
+
+    """True if `target` is (or transitively wraps) an edge-ref trailer whose
+    codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into."""
+    def _is_edge_ref_target(target: uni.UniNode) -> bool;
 
     """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
