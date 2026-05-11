@@ -2,13 +2,16 @@ name: Build Mobile Apps
 
 # Native mobile build on the GitHub Actions runner — no EAS Cloud.
 #
-# Android: compiled on ubuntu-latest via Gradle, producing an APK that is
-# uploaded as a GitHub artifact. iOS support will be added once Apple
-# Developer credentials are provisioned (see .github/MOBILE_CICD.md).
+# Android: compiled on ubuntu-latest via Gradle.  Always produces a
+# release-mode APK (pre-bundled JS, __DEV__=false) signed with either
+# (a) the real release keystore from secrets, or (b) an auto-generated
+# throwaway keystore if no secrets are configured.  Either way the APK
+# is installable on any device.  For Play Store you need (a) with a
+# stable keystore — see .github/MOBILE_CICD.md.
 #
 # The build path: jac setup mobile → jac build --client mobile (with
 # JAC_MOBILE_SKIP_EAS=1 so the plugin stops after preparing the bundle in
-# .jac/mobile/) → expo prebuild → gradlew → APK.
+# .jac/mobile/) → expo prebuild → gradle release build → APK artifact.
 
 on:
   push:
@@ -20,21 +23,6 @@ on:
 
   workflow_dispatch:
     inputs:
-      platform:
-        description: 'Platform to build'
-        required: true
-        type: choice
-        options:
-          - android
-        default: 'android'
-      build_type:
-        description: 'Build type'
-        required: true
-        type: choice
-        options:
-          - debug
-          - release
-        default: 'debug'
       app_path:
         description: 'Path to the app to build'
         required: false
@@ -45,11 +33,10 @@ permissions:
 
 env:
   APP_PATH: ${{ github.event.inputs.app_path || 'jac-client/jac_client/examples/all-in-one' }}
-  BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
 
 jobs:
   build-android:
-    name: Build Android (${{ github.event.inputs.build_type || 'debug' }})
+    name: Build Android (release)
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -122,60 +109,129 @@ jobs:
         run: |
           npx expo prebuild --platform android --clean --no-install
 
-      # ── Release signing (only runs if all three secrets are present) ──
-      # Configure secrets ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
-      # ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD to enable signed release
-      # builds. See .github/MOBILE_CICD.md for the full setup.
-      - name: Decode signing keystore
-        id: keystore
-        if: env.BUILD_TYPE == 'release' && env.ANDROID_KEYSTORE_BASE64 != ''
-        working-directory: ${{ env.APP_PATH }}/.jac/mobile/android/app
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-        run: |
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
-          echo "keystore_present=true" >> "$GITHUB_OUTPUT"
-
-      - name: Build APK
-        id: gradle
+      # Always produce a release-mode APK.  Use real keystore if all four
+      # secrets are configured, otherwise auto-generate a throwaway keystore.
+      # The throwaway path makes CI self-sufficient (no secrets required to
+      # get a working APK out) but the APK cannot be uploaded to Play Store
+      # because the signing identity changes every run.
+      - name: Configure release signing
+        id: signing
         working-directory: ${{ env.APP_PATH }}/.jac/mobile/android
         env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          chmod +x ./gradlew
-          if [ "$BUILD_TYPE" = "release" ] && [ "${{ steps.keystore.outputs.keystore_present }}" = "true" ]; then
-            echo "Building signed release APK..."
-            ./gradlew assembleRelease \
-              -PMYAPP_RELEASE_STORE_FILE=release.keystore \
-              -PMYAPP_RELEASE_STORE_PASSWORD="$ANDROID_KEYSTORE_PASSWORD" \
-              -PMYAPP_RELEASE_KEY_ALIAS="$ANDROID_KEY_ALIAS" \
-              -PMYAPP_RELEASE_KEY_PASSWORD="$ANDROID_KEY_PASSWORD"
-            echo "apk_path=app/build/outputs/apk/release/app-release.apk" >> "$GITHUB_OUTPUT"
-            echo "apk_variant=release" >> "$GITHUB_OUTPUT"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] \
+             && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] \
+             && [ -n "$ANDROID_KEY_ALIAS" ] \
+             && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            echo "::notice::Signing release APK with keystore from repository secrets"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+            STORE_PWD="$ANDROID_KEYSTORE_PASSWORD"
+            KEY_ALIAS_VAL="$ANDROID_KEY_ALIAS"
+            KEY_PWD="$ANDROID_KEY_PASSWORD"
+            echo "signing_mode=release-keystore" >> "$GITHUB_OUTPUT"
           else
-            if [ "$BUILD_TYPE" = "release" ]; then
-              echo "WARNING: release build requested but signing secrets missing — falling back to debug APK."
-            fi
-            echo "Building debug APK..."
-            ./gradlew assembleDebug
-            echo "apk_path=app/build/outputs/apk/debug/app-debug.apk" >> "$GITHUB_OUTPUT"
-            echo "apk_variant=debug" >> "$GITHUB_OUTPUT"
+            echo "::warning::No release keystore secrets found — generating throwaway keystore for this CI run (installable on any device, but NOT Play-Store-distributable)"
+            STORE_PWD="ciinstall"
+            KEY_ALIAS_VAL="ciinstallkey"
+            KEY_PWD="ciinstall"
+            keytool -genkeypair -v \
+              -keystore app/release.keystore \
+              -storepass "$STORE_PWD" -keypass "$KEY_PWD" -alias "$KEY_ALIAS_VAL" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Jac CI, OU=CI, O=Jaseci Labs, C=US"
+            echo "signing_mode=throwaway-keystore" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Verify APK exists
+          # Pass keystore credentials to Gradle via gradle.properties so the
+          # patched build.gradle below can pick them up.
+          {
+            echo ""
+            echo "MYAPP_RELEASE_STORE_FILE=release.keystore"
+            echo "MYAPP_RELEASE_STORE_PASSWORD=$STORE_PWD"
+            echo "MYAPP_RELEASE_KEY_ALIAS=$KEY_ALIAS_VAL"
+            echo "MYAPP_RELEASE_KEY_PASSWORD=$KEY_PWD"
+          } >> gradle.properties
+
+          # Patch app/build.gradle:
+          #   1. Add a `release` block inside signingConfigs that reads the
+          #      MYAPP_RELEASE_* gradle properties.
+          #   2. Switch the release buildType to use signingConfigs.release
+          #      instead of signingConfigs.debug (Expo's default).
+          python3 - <<'PYEOF'
+          from pathlib import Path
+          import re
+
+          p = Path('app/build.gradle')
+          t = p.read_text()
+
+          if 'MYAPP_RELEASE_STORE_FILE' in t:
+              print('build.gradle already has release signing config; skipping patch')
+          else:
+              release_block = """
+                      release {
+                          if (project.hasProperty('MYAPP_RELEASE_STORE_FILE')) {
+                              storeFile file(MYAPP_RELEASE_STORE_FILE)
+                              storePassword MYAPP_RELEASE_STORE_PASSWORD
+                              keyAlias MYAPP_RELEASE_KEY_ALIAS
+                              keyPassword MYAPP_RELEASE_KEY_PASSWORD
+                          }
+                      }
+          """
+              t_new = re.sub(
+                  r'(signingConfigs\s*\{)',
+                  r'\1' + release_block,
+                  t,
+                  count=1,
+              )
+              if t_new == t:
+                  raise SystemExit('Could not find signingConfigs block in build.gradle')
+              t = t_new
+
+              t_new = re.sub(
+                  r'(buildTypes\s*\{[^}]*?release\s*\{[^}]*?)signingConfig\s+signingConfigs\.debug',
+                  r'\1signingConfig signingConfigs.release',
+                  t,
+                  count=1,
+                  flags=re.DOTALL,
+              )
+              if t_new == t:
+                  print('NOTE: release buildType did not reference signingConfigs.debug — leaving as-is')
+              t = t_new
+
+              p.write_text(t)
+              print('Patched build.gradle for release signing')
+          PYEOF
+
+      - name: Build release APK
+        id: gradle
         working-directory: ${{ env.APP_PATH }}/.jac/mobile/android
         run: |
-          test -f "${{ steps.gradle.outputs.apk_path }}" \
-            || (echo "APK not produced at ${{ steps.gradle.outputs.apk_path }}" && exit 1)
-          ls -lh "${{ steps.gradle.outputs.apk_path }}"
+          chmod +x ./gradlew
+          ./gradlew assembleRelease
+
+      - name: Locate APK
+        id: apk
+        working-directory: ${{ env.APP_PATH }}/.jac/mobile/android
+        run: |
+          APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          if [ -z "$APK" ]; then
+            echo "No APK produced under app/build/outputs/apk/release/" >&2
+            ls -la app/build/outputs/apk/release/ || true
+            exit 1
+          fi
+          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
+          echo "apk_name=$(basename $APK)" >> "$GITHUB_OUTPUT"
+          ls -lh "$APK"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: android-${{ steps.gradle.outputs.apk_variant }}-${{ github.run_number }}
-          path: ${{ env.APP_PATH }}/.jac/mobile/android/${{ steps.gradle.outputs.apk_path }}
+          name: android-release-${{ github.run_number }}
+          path: ${{ env.APP_PATH }}/.jac/mobile/android/${{ steps.apk.outputs.apk_path }}
           retention-days: 30
           if-no-files-found: error
 
@@ -187,8 +243,13 @@ jobs:
             echo ""
             echo "| Property | Value |"
             echo "|---|---|"
-            echo "| Variant | ${{ steps.gradle.outputs.apk_variant || 'failed' }} |"
-            echo "| APK | \`${{ steps.gradle.outputs.apk_path || '—' }}\` |"
+            echo "| Mode | release (assembleRelease) |"
+            echo "| Signing | ${{ steps.signing.outputs.signing_mode || 'unknown' }} |"
+            echo "| APK | \`${{ steps.apk.outputs.apk_name || '—' }}\` |"
             echo "| App path | \`${{ env.APP_PATH }}\` |"
-            echo "| Artifact | \`android-${{ steps.gradle.outputs.apk_variant }}-${{ github.run_number }}\` (downloadable above) |"
+            echo "| Artifact | \`android-release-${{ github.run_number }}\` (downloadable above) |"
+            echo ""
+            if [ "${{ steps.signing.outputs.signing_mode }}" = "throwaway-keystore" ]; then
+              echo "> **Note:** signed with an auto-generated keystore. Installable on any device for testing, but **cannot be uploaded to Google Play** because the signing identity changes every CI run. Configure \`ANDROID_KEYSTORE_BASE64\` + 3 password/alias secrets to use a stable keystore. See \`.github/MOBILE_CICD.md\`."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
