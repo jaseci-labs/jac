@@ -199,3 +199,65 @@ test "sv-to-sv: walker routes through provider" {
         done(tmp);
     }
 }
+
+# =============================================================================
+# Walker imported across the sv boundary (provider exposes a walker).
+# =============================================================================
+test "sv-to-sv: sv-imported walker round-trips report and fields" {
+    tmp = setup_env();
+    try {
+        prov = make_server("notify_service", tmp);
+        cons = make_server("dispatcher_service", tmp);
+        rpt = xd(cons.post("/walker/TriggerGreet", json={"who": "world"}))["reports"][
+            0
+        ];
+        assert rpt == "hello, world";
+        # Calling the sv-imported walker as a plain function from a
+        # def:pub helper should also round-trip and not fall through to
+        # an in-process import.
+        rpt2 = xd(cons.post("/function/greet_via_walker", json={"who": "ada"}))[
+            "result"
+        ];
+        assert rpt2 == "hello, ada";
+    } finally {
+        done(tmp);
+    }
+}
+
+test "sv-to-sv: sv-imported walker preserves boundary type in reports" {
+    tmp = setup_env();
+    try {
+        prov = make_server("notify_service", tmp);
+        cons = make_server("dispatcher_service", tmp);
+        rpt = xd(
+            cons.post("/walker/Announce", json={"channel": "ops", "subject": "rollout"})
+        )["reports"][0];
+        assert rpt["channel"] == "ops";
+        assert rpt["delivered"] is True;
+        assert rpt["message"] == "[ops] rollout";
+    } finally {
+        done(tmp);
+    }
+}
+
+test "sv-to-sv: sv-imported walker does not load provider in-process" {
+    tmp = setup_env();
+    try {
+        if "notify_service" in sys.modules {
+            del sys.modules["notify_service"];
+        }
+        if "notify_service" in Jac.loaded_modules {
+            del Jac.loaded_modules["notify_service"];
+        }
+        cons = make_server("dispatcher_service", tmp);
+        # The consumer-side Greet symbol must be a generated stub, not a
+        # reference to the provider's walker class. If sv import of a
+        # walker silently degrades to a regular import the provider's
+        # module ends up in sys.modules and the symbol identities match.
+        disp_mod = Jac.loaded_modules["dispatcher_service"];
+        notify_mod = sys.modules.get("notify_service");
+        assert notify_mod is None or disp_mod.Greet is not notify_mod.Greet;
+    } finally {
+        done(tmp);
+    }
+}

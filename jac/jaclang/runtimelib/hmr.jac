@@ -5,16 +5,11 @@ Uses AST-based classification to determine client vs server declarations.
 """
 
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, Any, Callable }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.runtimelib.watcher {
-            JacFileWatcher,
-            FileChangeEvent,
-            ChangeType
-        }
-    }
+import from typing { Any, Callable }
+import type from jaclang.runtimelib.watcher {
+    JacFileWatcher,
+    FileChangeEvent,
+    ChangeType
 }
 
 """Handles hot reloading of Jac modules."""

@@ -422,3 +422,72 @@ test "ClassVar import stays runtime-visible (dataclass can find it)" {
         sys.modules.pop(mod.__name__, None);
     }
 }
+
+test "import type wraps in TYPE_CHECKING and resolves circular imports" {
+    # Compile a module that uses `import type from foo { Bar }` and verify
+    # that the import lowers to `if typing.TYPE_CHECKING: from foo import Bar`
+    # in the generated Python, while the named symbol does NOT appear as a
+    # top-level runtime import.
+    a_path = os.path.join(FIXTURES, "typed_import_circ_a.jac");
+    b_path = os.path.join(FIXTURES, "typed_import_circ_b.jac");
+    a_gen = (prog := JacProgram()).compile(a_path);
+    b_gen = prog.compile(b_path);
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert a_gen.gen.py_ast and isinstance(a_gen.gen.py_ast[0], ast3.Module);
+    py_mod: ast3.Module = a_gen.gen.py_ast[0];
+    runtime_import_of_b = False;
+    tc_guarded_b = False;
+    for stmt in py_mod.body {
+        if isinstance(stmt, ast3.ImportFrom)
+        and stmt.module == "typed_import_circ_b"
+        and any(n.name == "B" for n in stmt.names) {
+            runtime_import_of_b = True;
+        }
+        if isinstance(stmt, ast3.If)
+        and (
+            (isinstance(stmt.test, ast3.Name) and stmt.test.id == "TYPE_CHECKING")
+            or (
+                isinstance(stmt.test, ast3.Attribute)
+                and stmt.test.attr == "TYPE_CHECKING"
+            )
+        ) {
+            for inner in stmt.body {
+                if isinstance(inner, ast3.ImportFrom)
+                and inner.module == "typed_import_circ_b"
+                and any(n.name == "B" for n in inner.names) {
+                    tc_guarded_b = True;
+                }
+            }
+        }
+    }
+    assert tc_guarded_b , (
+        "expected `import type from typed_import_circ_b { B }` to lower to "
+        "`if typing.TYPE_CHECKING: from typed_import_circ_b import B`. "
+        "Source:\n" + ast3.unparse(py_mod)
+    );
+    assert not runtime_import_of_b , (
+        "B from `import type` must NOT appear as a top-level runtime "
+        "import.\nSource:\n" + ast3.unparse(py_mod)
+    );
+
+    # End-to-end: actually run both halves and confirm the cycle resolves.
+    a_mod = types.ModuleType("typed_import_circ_a");
+    b_mod = types.ModuleType("typed_import_circ_b");
+    sys.modules[a_mod.__name__] = a_mod;
+    sys.modules[b_mod.__name__] = b_mod;
+    sys.path.insert(0, FIXTURES);
+    try {
+        exec(compile(a_gen.gen.py_ast[0], filename="<a>", mode="exec"), a_mod.__dict__);
+        exec(compile(b_gen.gen.py_ast[0], filename="<b>", mode="exec"), b_mod.__dict__);
+        a_inst = a_mod.__dict__["A"]();
+        b_inst = b_mod.__dict__["B"]();
+        assert a_inst.name == "A";
+        assert b_inst.name == "B";
+    } finally {
+        sys.modules.pop(a_mod.__name__, None);
+        sys.modules.pop(b_mod.__name__, None);
+        if FIXTURES in sys.path {
+            sys.path.remove(FIXTURES);
+        }
+    }
+}

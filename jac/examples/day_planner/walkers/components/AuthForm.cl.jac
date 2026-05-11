@@ -53,7 +53,7 @@ def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
             }
         } else {
             loading = False;
-            error = result["error"] if result["error"] else "Signup failed";
+            error = str(result["error"]) if result["error"] else "Signup failed";
         }
     }
 
