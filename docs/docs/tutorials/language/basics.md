@@ -403,7 +403,6 @@ with entry {
 
 When two modules only reference each other in type annotations, a regular `import` creates a circular import at module load. Mark the import with `type` to tell the compiler it's annotation-only:
 
-<!-- jac-skip: illustrative; assumes a sibling `billing` module not provided here -->
 ```jac
 import type from billing { Invoice }
 

@@ -128,7 +128,6 @@ glob BOARD_SIZE: int = 8;
 
 Global dictionaries map piece kinds to display symbols and material values:
 
-<!-- jac-skip: excerpt from chess.jac; depends on the PieceKind enum declared above -->
 ```jac
 glob WHITE_SYMBOLS: dict[PieceKind, str] = {
     PieceKind.PAWN: "P", PieceKind.KNIGHT: "N", PieceKind.BISHOP: "B",
@@ -194,7 +193,6 @@ Each subclass uses `override` to declare that it replaces the base `raw_moves()`
 
 The entry point parses command-line arguments to choose between interactive play and benchmark mode:
 
-<!-- jac-skip: excerpt from chess.jac; depends on the Game obj declared elsewhere in the file -->
 ```jac
 import sys;
 
@@ -231,7 +229,6 @@ All method bodies live in the `impl` file. A few highlights:
 
 The base `Piece` provides a `slide_moves()` method used by Bishop, Rook, and Queen:
 
-<!-- jac-skip: excerpt from chess.impl.jac; impl bodies link to head decls in chess.jac -->
 ```jac
 impl Piece.slide_moves(board: Board, directions: list[tuple[int, int]]) -> list[Move] {
     moves: list[Move] = [];
@@ -259,7 +256,6 @@ impl Piece.slide_moves(board: Board, directions: list[tuple[int, int]]) -> list[
 
 Each sliding piece just passes its directions:
 
-<!-- jac-skip: excerpt from chess.impl.jac; impl bodies link to head decls in chess.jac -->
 ```jac
 impl Bishop.raw_moves(board: Board) -> list[Move] {
     return self.slide_moves(board, [(-1, -1), (-1, 1), (1, -1), (1, 1)]);
@@ -274,7 +270,6 @@ impl Rook.raw_moves(board: Board) -> list[Move] {
 
 The King uses a list comprehension with nested loops and a filter:
 
-<!-- jac-skip: excerpt from chess.impl.jac; impl bodies link to head decls in chess.jac -->
 ```jac
 impl King.raw_moves(board: Board) -> list[Move] {
     moves: list[Move] = [];
@@ -305,7 +300,6 @@ impl King.raw_moves(board: Board) -> list[Move] {
 
 The board uses nested list comprehensions and a `postinit` hook:
 
-<!-- jac-skip: excerpt from chess.impl.jac; impl bodies link to head decls in chess.jac -->
 ```jac
 impl Board.postinit {
     self.squares = [[None for _ in range(BOARD_SIZE)] for _ in range(BOARD_SIZE)];
@@ -317,7 +311,6 @@ impl Board.postinit {
 
 Attacked squares are computed using set comprehensions and set union:
 
-<!-- jac-skip: excerpt from chess.impl.jac; impl bodies link to head decls in chess.jac -->
 ```jac
 impl Board.attacked_squares(by_color: Color) -> set[tuple[int, int]] {
     attacked: set[tuple[int, int]] = set();
@@ -348,7 +341,6 @@ if piece.kind == PieceKind.KING {
 
 The evaluator uses material values, center-control bonuses, and development bonuses:
 
-<!-- jac-skip: excerpt from chess.impl.jac; impl bodies link to head decls in chess.jac -->
 ```jac
 impl Board.evaluate(color: Color) -> int {
     score = 0;
@@ -379,7 +371,6 @@ impl Board.evaluate(color: Color) -> int {
 
 The `benchmark` method runs N automated games and reports results:
 
-<!-- jac-skip: excerpt from chess.impl.jac; impl bodies link to head decls in chess.jac -->
 ```jac
 impl Game.benchmark(num_games: int) -> None {
     white_wins = 0;

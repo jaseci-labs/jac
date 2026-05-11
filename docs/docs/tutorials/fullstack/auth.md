@@ -112,7 +112,6 @@ def:pub LoginPage() -> JsxElement {
 
 Authenticates a user and stores the JWT token.
 
-<!-- jac-skip -->
 ```jac
 cl import from "@jac/runtime" { jacLogin }
 
@@ -135,7 +134,6 @@ async def handleLogin() -> None {
 
 Registers a new user account.
 
-<!-- jac-skip -->
 ```jac
 cl import from "@jac/runtime" { jacSignup }
 
@@ -196,7 +194,6 @@ def:pub NavBar() -> JsxElement {
 
 ## Complete Auth Example
 
-<!-- jac-skip -->
 ```jac
 cl import from "@jac/runtime" {
     jacLogin,
@@ -476,7 +473,6 @@ The `AuthGuard` component:
 
 For complex apps that need shared auth state across components:
 
-<!-- jac-skip -->
 ```jac
 cl import from "@jac/runtime" { jacIsLoggedIn, jacLogin, jacLogout }
 

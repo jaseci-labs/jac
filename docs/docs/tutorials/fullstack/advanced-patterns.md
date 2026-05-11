@@ -20,7 +20,6 @@ These patterns are drawn from [JacBuilder](https://github.com/jaseci-labs/jacBui
 
 In Jac client code, use `Reflect.construct()` instead of the `new` keyword to instantiate browser built-in objects like `WebSocket`:
 
-<!-- jac-skip -->
 ```jac
 glob _ws: any = None;
 
@@ -52,7 +51,6 @@ def connectWebSocket(url: str) -> None {
 
 ### Sending Messages
 
-<!-- jac-skip -->
 ```jac
 def sendMessage(action: str, data: any) -> None {
     if not _ws or _ws.readyState != 1 {
@@ -77,7 +75,6 @@ def sendMessage(action: str, data: any) -> None {
 
 For WebSocket protocols that use request IDs:
 
-<!-- jac-skip -->
 ```jac
 glob _nextReqId: int = 1;
 glob _pendingCallbacks: any = {};
@@ -107,7 +104,6 @@ def handleResponse(msg: any) -> None {
 
 ### Constructing WebSocket URLs
 
-<!-- jac-skip -->
 ```jac
 def buildWsUrl(basePath: str, token: str) -> str {
     wsUrl = Reflect.construct(URL, [String(window.location.origin)]);
@@ -254,7 +250,6 @@ document.querySelector(".my-element");
 
 ### Custom Events (Cross-Component Communication)
 
-<!-- jac-skip -->
 ```jac
 glob _THEME_EVENT: str = "theme-change";
 
@@ -293,7 +288,6 @@ def:pub ThemeListener() -> JsxElement {
 
 ### Async File Reading with Promises
 
-<!-- jac-skip -->
 ```jac
 def readAllEntries(reader: any) -> any {
     return Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
@@ -323,7 +317,6 @@ def readAllEntries(reader: any) -> any {
 
 ### Debounced Auto-Save
 
-<!-- jac-skip -->
 ```jac
 import from react { useRef }
 
@@ -355,7 +348,6 @@ def:pub useAutoSave() -> any {
 
 ### requestAnimationFrame for Smooth UI
 
-<!-- jac-skip -->
 ```jac
 import from react { useRef }
 
@@ -400,7 +392,6 @@ console.error("[DataLoader] Failed to fetch:", err);
 
 ### Error Recovery with Retry Limits
 
-<!-- jac-skip -->
 ```jac
 
 glob _errorCount: int = 0;
@@ -423,7 +414,6 @@ def handleError(context: str, err: any) -> None {
 
 ### Preventing Duplicate Operations
 
-<!-- jac-skip -->
 ```jac
 import from react { useRef }
 
@@ -517,7 +507,6 @@ myapp/
 
 Extract reusable stateful logic into custom hooks (functions starting with `use`):
 
-<!-- jac-skip -->
 ```jac
 
 # hooks/usePolling.cl.jac

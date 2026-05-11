@@ -118,7 +118,6 @@ walker:pub delete_task {
 
 Use `root() spawn walker_name()` to call walkers from client code:
 
-<!-- jac-skip -->
 ```jac
 # Import walkers from your main module
 sv import from ...main { get_tasks, add_task, toggle_task }
@@ -174,7 +173,6 @@ def:pub TaskList() -> JsxElement {
 
 ## Mutations (Create, Update, Delete)
 
-<!-- jac-skip -->
 ```jac
 sv import from ...main { get_tasks, add_task, toggle_task, delete_task }
 
@@ -272,7 +270,6 @@ def:pub TaskManager() -> JsxElement {
 
 ### Try-Catch Pattern
 
-<!-- jac-skip -->
 ```jac
 sv import from ...main { submit_data }
 
@@ -315,7 +312,6 @@ def:pub SafeSubmit() -> JsxElement {
 
 ### Loading States Pattern
 
-<!-- jac-skip -->
 ```jac
 to cl:
 
@@ -369,7 +365,6 @@ def:pub DataView() -> JsxElement {
 
 ### Polling Pattern
 
-<!-- jac-skip -->
 ```jac
 to cl:
 
@@ -409,7 +404,6 @@ def:pub LiveData() -> JsxElement {
 
 ## Complete Example: Task App
 
-<!-- jac-skip -->
 ```jac
 # main.jac - Combined backend and frontend
 

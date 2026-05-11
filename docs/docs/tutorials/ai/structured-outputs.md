@@ -349,7 +349,6 @@ walker PrioritizeTickets {
 !!! warning "Graph Persistence"
     Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
 
-<!-- jac-skip: depends on the `Ticket`/`PrioritizeTickets` declarations above; `result.reports` access is checker-pending (Phase 5.1) -->
 ```jac
 with entry {
     root ++> Ticket(title="App crash", description="App crashes on startup");

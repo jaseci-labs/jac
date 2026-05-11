@@ -85,7 +85,6 @@ def:pub Form() -> JsxElement {
 
 ## Complex State (Objects/Lists)
 
-<!-- jac-skip -->
 ```jac
 to cl:
 
@@ -139,7 +138,6 @@ def:pub TodoApp() -> JsxElement {
 
 Similar to how `has` automatically generates `useState`, you can use `can with entry` and `can with exit` to automatically generate `useEffect` hooks:
 
-<!-- jac-skip -->
 ```jac
 to cl:
 
@@ -168,7 +166,6 @@ def:pub DataFetcher() -> JsxElement {
 
 Use list syntax `[dep1, dep2]` to specify dependencies (similar to React's dependency arrays):
 
-<!-- jac-skip -->
 ```jac
 to cl:
 
@@ -247,7 +244,6 @@ def:pub DataFetcher() -> JsxElement {
 
 ### Creating Context
 
-<!-- jac-skip -->
 ```jac
 to cl:
 
@@ -307,7 +303,6 @@ def:pub app() -> JsxElement {
 
 Create reusable state logic:
 
-<!-- jac-skip -->
 ```jac
 to cl:
 

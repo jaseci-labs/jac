@@ -233,7 +233,6 @@ def:pub LoginForm() -> JsxElement {
 
 ### Children
 
-<!-- jac-skip: `children` is a special JSX prop the static checker does not yet model as optional -->
 ```jac
 to cl:
 

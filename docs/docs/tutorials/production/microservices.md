@@ -200,7 +200,6 @@ walker:pub Greet {
 
 Then in `calculator_service.jac`, list `Greet` alongside the functions and use it from one of the consumer's own walkers:
 
-<!-- jac-skip: depends on the math_service module declared above; walker spawn-result `.reports` access is checker-pending (Phase 5.1) -->
 ```jac
 sv import from math_service { add, multiply, divide, Greet, DivResult }
 

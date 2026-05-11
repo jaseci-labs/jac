@@ -115,7 +115,6 @@ The `Image` type accepts multiple input formats:
 
 ### In-Memory Usage
 
-<!-- jac-skip: non-string Image inputs work at runtime but are not yet covered by the static stub -->
 ```jac
 import from byllm.lib { Image }
 import io;

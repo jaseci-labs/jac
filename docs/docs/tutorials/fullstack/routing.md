@@ -86,7 +86,6 @@ def:pub page() -> JsxElement {
 
 Use square brackets for dynamic URL segments:
 
-<!-- jac-skip -->
 ```jac
 # pages/users/[id].jac
 cl import from "@jac/runtime" { Link, useParams }
@@ -122,7 +121,6 @@ def:pub page() -> JsxElement {
 
 ### Slug-Based Routes
 
-<!-- jac-skip -->
 ```jac
 # pages/posts/[slug].jac
 cl import from "@jac/runtime" { Link, useParams }
@@ -557,7 +555,6 @@ Any pages in the `(protected)` group will require authentication.
 
 ### Custom Protected Routes
 
-<!-- jac-skip -->
 ```jac
 cl import from "@jac/runtime" { useNavigate, jacIsLoggedIn }
 
@@ -589,7 +586,6 @@ def:pub ProtectedRoute(props: dict) -> JsxElement {
 
 Access query parameters using `useLocation` and standard URL parsing:
 
-<!-- jac-skip -->
 ```jac
 cl import from "@jac/runtime" { useLocation, useNavigate }
 
@@ -662,7 +658,6 @@ def:pub app() -> JsxElement {
 
 Use `useLocation` with `Link` to create active link styling:
 
-<!-- jac-skip -->
 ```jac
 cl import from "@jac/runtime" { Link, useLocation }
 

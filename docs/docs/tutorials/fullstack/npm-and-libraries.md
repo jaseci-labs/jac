@@ -105,7 +105,6 @@ This is useful when:
 
 `useRef` creates a mutable reference that persists across renders without triggering re-renders:
 
-<!-- jac-skip -->
 ```jac
 import from react { useRef }
 
@@ -144,7 +143,6 @@ isMountedRef = useRef(False);
 
 `useCallback` memoizes a function so it only changes when dependencies change:
 
-<!-- jac-skip -->
 ```jac
 import from react { useCallback }
 
@@ -168,7 +166,6 @@ def:pub FileUploader() -> JsxElement {
 
 You can freely mix `has` (useState sugar) with direct React hook imports in the same component:
 
-<!-- jac-skip -->
 ```jac
 import from react { useRef, useCallback, useEffect }
 
@@ -324,7 +321,6 @@ def:pub MyPage() -> JsxElement {
 
 The standard shadcn `cn()` utility can be written entirely in Jac (no TypeScript needed):
 
-<!-- jac-skip -->
 ```jac
 # lib/utils.cl.jac
 import from "clsx" { clsx }
@@ -348,7 +344,6 @@ tailwind-merge = "*"
 
 Here's how the shadcn Button component looks in Jac, using Class Variance Authority (CVA) for variant management:
 
-<!-- jac-skip -->
 ```jac
 # components/ui/button.cl.jac
 import from "class-variance-authority" { cva }
@@ -502,7 +497,6 @@ def:pub NavBar() -> JsxElement {
 
 ### Monaco Editor
 
-<!-- jac-skip -->
 ```jac
 import from "@monaco-editor/react" { Editor }
 
@@ -526,7 +520,6 @@ def:pub CodeEditor() -> JsxElement {
 
 ### Toast Notifications (Sonner)
 
-<!-- jac-skip -->
 ```jac
 import from "sonner" { toast as sonnerToast, Toaster }
 
