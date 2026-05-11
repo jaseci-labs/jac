@@ -193,6 +193,10 @@ needs_enum)
         """
     def builtin_name(name: str) -> ast3.Name;
 
+    """True if `target` is (or transitively wraps) an edge-ref trailer whose
+    codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into."""
+    def _is_edge_ref_target(target: uni.UniNode) -> bool;
+
     """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
 

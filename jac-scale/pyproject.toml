@@ -36,6 +36,13 @@ scheduler = [
 deploy = [
     "kubernetes>=34.1.0,<35.0.0",
     "docker>=7.1.0,<8.0.0",
+    # K-track P0.8 auto-deploys MongoDB + Redis as StatefulSets and
+    # injects MONGODB_URI / REDIS_URL into every service pod. Without
+    # the matching client libraries on the pod side, services crash
+    # at startup when Jac.get_user_manager() tries to open the Mongo
+    # connection. `deploy` mode genuinely needs the data clients, so
+    # bundle them rather than make every user remember `[deploy,data]`.
+    "jac-scale[data]",
 ]
 all = [
     "jac-scale[data,monitoring,scheduler,deploy]",

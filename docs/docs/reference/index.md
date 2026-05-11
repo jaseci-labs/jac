@@ -129,34 +129,43 @@ The `jac` command is your primary interface to the Jac toolchain. For the full r
 ### Managing Plugins
 
 ```bash
-# List plugins
+# List installed plugins
 jac plugins list
 
-# Enable plugin
-jac plugins enable byllm
+# Show currently disabled plugins
+jac plugins disabled
 
-# Disable plugin
+# Disable a plugin (writes to jac.toml)
 jac plugins disable byllm
+
+# Re-enable a previously disabled plugin (removes from disabled list)
+jac plugins enable byllm
 
 # Plugin info
 jac plugins info byllm
 ```
+
+`jac plugins enable` and `jac plugins disable` toggle the `disabled` list in
+`[plugins]`; calling `enable` on a plugin that is not currently disabled is
+a no-op.
 
 ### Plugin Configuration
 
 In `jac.toml`:
 
 ```toml
-[plugins.byllm]
-enabled = true
-default_model = "gpt-4"
+[plugins.byllm.model]
+default_model = "gpt-4o"
 
-[plugins.client]
-port = 5173
-typescript = false
+[plugins.byllm.call_params]
+temperature = 0.7
 
-[plugins.scale]
-replicas = 3
+[plugins.client.npm.scoped_registries]
+"@mycompany" = "https://npm.pkg.github.com"
+
+[plugins.scale.server]
+port = 8000
+host = "0.0.0.0"
 ```
 
 ---
@@ -172,7 +181,7 @@ For the full reference, see [Configuration](config/index.md).
 name = "my-app"
 version = "1.0.0"
 description = "My Jac application"
-entry = "main.jac"
+entry-point = "main.jac"
 
 [dependencies]
 numpy = "^1.24.0"
@@ -185,11 +194,8 @@ pytest = "^7.0.0"
 react = "^18.0.0"
 "@mui/material" = "^5.0.0"
 
-[plugins.byllm]
-default_model = "gpt-4"
-
-[plugins.client]
-port = 5173
+[plugins.byllm.model]
+default_model = "gpt-4o"
 
 # Private npm registries (generates .npmrc)
 [plugins.client.npm.scoped_registries]
@@ -250,8 +256,8 @@ JAC_PROFILE=ci jac test
     [serve]
     port = 80
 
-    [plugins.byllm]
-    default_model = "gpt-4"
+    [plugins.byllm.model]
+    default_model = "gpt-4o"
     ```
 
 === "jac.local.toml (gitignored, developer-specific)"
@@ -314,11 +320,13 @@ import from axios { default as axios }
 
 ### TypeScript Configuration
 
-TypeScript is supported through the jac-client Vite toolchain for client-side code. Configure in `jac.toml`:
+TypeScript is supported through the jac-client Vite toolchain for client-side code. Override the generated `tsconfig.json` from `jac.toml`:
 
 ```toml
-[plugins.client]
-typescript = true
+[plugins.client.ts]
+compilerOptions = { target = "ES2022", strict = true }
+include = ["src/**/*"]
+exclude = ["node_modules"]
 ```
 
 > **Note:** Jac does not parse TypeScript files directly. TypeScript support is provided through Vite's built-in TypeScript handling in client-side (`cl {}`) code.

@@ -1938,23 +1938,13 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
     for target_node in nd.target {
         (left, reference, decl_name) = self._convert_assignment_target(target_node);
         pattern_names = self._collect_pattern_names(target_node);
-        first_def = False;
-        if isinstance(target_node, uni.Name) {
-            first_def = self._is_name_first_definition(target_node);
-        } elif pattern_names {
-            first_def = any(
-                self._is_name_first_definition(name_node)
-                for (_, name_node) in pattern_names
-            );
-        }
         targets_info.append(
             AssignmentTargetInfo(
                 nd=target_node,
                 left=left,
                 reference=reference,
                 decl_name=decl_name,
-                pattern_names=pattern_names,
-                is_first=first_def
+                pattern_names=pattern_names
             )
         );
     }
@@ -1974,16 +1964,18 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
         left = info.left;
         decl_name = info.decl_name;
         pattern_names = info.pattern_names;
-        is_first = info.is_first;
         should_declare = False;
+        # Whether a name needs `let` is a block-scope question, not a
+        # symbol-table one — sibling if/else branches must each declare
+        # their own local because the if-branch's block scope is already
+        # popped by the time we reach the else (#5930). The active-scope
+        # stack is the authoritative signal.
         if decl_name {
-            should_declare = is_first and not self._is_declared_in_any_scope(decl_name);
+            should_declare = not self._is_declared_in_any_scope(decl_name);
         } elif pattern_names {
             should_declare = any(
-                (
-                    self._is_name_first_definition(name_node)
-                    and not self._is_declared_in_any_scope(name)
-                ) for (name, name_node) in pattern_names
+                (not self._is_declared_in_any_scope(name))
+                for (name, _) in pattern_names
             );
         }
         if should_declare {
@@ -2034,15 +2026,6 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
     } else {
         nd.gen.es_ast = statements;
     }
-}
-
-"""Determine whether a name node corresponds to the first definition in its scope."""
-impl EsastGenPass._is_name_first_definition(name_node: uni.Name) -> bool {
-    sym = name_node.sym;
-    if (sym and (name_node.name_spec in sym.defn)) {
-        return (sym.defn.index(name_node.name_spec) == 0);
-    }
-    return True;
 }
 
 """Collect identifier names from a (possibly nested) destructuring target."""
@@ -5091,12 +5074,19 @@ impl EsastGenPass._current_scope -> (ScopeInfo | None) {
     return self.scope_stack[-1] if self.scope_stack else None;
 }
 
-"""Exit a lexical scope."""
+"""
+End the active phase of a lexical scope: pop it from the scope stack so
+its declarations no longer participate in name-lookup. The scope's
+`ScopeInfo` is *kept* in `scope_map` so that follow-on bookkeeping —
+notably the `_prepend_hoisted(compound, ...)` call that runs inside
+`exit_<compound>_stmt` — can still retrieve the hoisted declarations
+collected during the scope's lifetime. Final removal from `scope_map`
+happens in `exit_node` once the owning AST node has fully unwound.
+"""
 impl EsastGenPass._pop_scope(nd: uni.UniScopeNode) -> None {
     if (self.scope_stack and (self.scope_stack[-1].nd is nd)) {
         self.scope_stack.pop();
     }
-    self.scope_map.pop(nd, None);
 }
 
 """Enter a new lexical scope."""
@@ -5104,6 +5094,56 @@ impl EsastGenPass._push_scope(nd: uni.UniScopeNode) -> None {
     info = ScopeInfo(nd=nd);
     self.scope_stack.append(info);
     self.scope_map[nd] = info;
+}
+
+"""
+Return the enclosing compound statement whose primary-body scope must be
+finalized before entering `nd`, when `nd` is one of that compound's
+alternate-branch blocks (else / elif / except / finally / try-else /
+loop-else).
+
+In this codegen's scoping model, each compound statement (IfStmt, TryStmt,
+loops) owns one block scope — the scope of its *primary body*. Its
+alternate branches are independent sibling block scopes whose own
+UniScopeNodes establish their scopes; descending into one of them ends
+the primary-body scope. Returns None for nodes that aren't alt-branches.
+"""
+impl EsastGenPass._alt_branch_scope_to_finalize(
+    nd: uni.UniNode
+) -> (uni.UniScopeNode | None) {
+    parent = nd.parent;
+    if parent is None {
+        return None;
+    }
+    # else / elif under an if
+    if (
+        (isinstance(nd, uni.ElseStmt) or isinstance(nd, uni.ElseIf))
+        and isinstance(parent, uni.IfStmt)
+        and (parent.else_body is nd)
+    ) {
+        return parent;
+    }
+    # except / finally / try-else under a try
+    if isinstance(parent, uni.TryStmt) {
+        if isinstance(nd, uni.Except) and (nd in parent.excepts) {
+            return parent;
+        }
+        if isinstance(nd, uni.FinallyStmt) and (parent.finally_body is nd) {
+            return parent;
+        }
+        if isinstance(nd, uni.ElseStmt) and (parent.else_body is nd) {
+            return parent;
+        }
+    }
+    # loop-else under while / for
+    if (
+        isinstance(nd, uni.ElseStmt)
+        and isinstance(parent, (uni.WhileStmt, uni.IterForStmt, uni.InForStmt))
+        and (parent.else_body is nd)
+    ) {
+        return parent;
+    }
+    return None;
 }
 
 """Sync source locations from Jac node to ES node."""
@@ -5139,6 +5179,12 @@ impl EsastGenPass.exit_node(nd: uni.UniNode) -> None {
     super.exit_node(nd);
     if isinstance(nd, uni.UniScopeNode) {
         self._pop_scope(nd);
+        # Drop the ScopeInfo only now that `super.exit_node` (and the
+        # `exit_<stmt>` handler it dispatches to) has had its chance to
+        # call `_prepend_hoisted(nd, ...)`. Earlier removal — e.g. on a
+        # sibling-alt-branch transition that called `_pop_scope` from
+        # `enter_node` — would have stranded walrus / hoisted decls.
+        self.scope_map.pop(nd, None);
     }
 }
 
@@ -5168,6 +5214,19 @@ impl EsastGenPass.enter_node(nd: uni.UniNode) -> None {
         }
     }
     if isinstance(nd, uni.UniScopeNode) {
+        # Scoping model: a compound statement (IfStmt, TryStmt, loops) owns
+        # one block scope — the scope of its primary body. When we descend
+        # into one of its alternate branches (else / elif / except /
+        # finally / loop-else), the primary-body scope ends and the
+        # sibling block's scope begins. Finalize the primary scope here
+        # before pushing the sibling's. The matching `_pop_scope` in
+        # exit_node becomes a no-op for the parent (it only pops when the
+        # top matches) and `scope_map[parent]` is preserved for the later
+        # `_prepend_hoisted` call inside `exit_<compound>_stmt`.
+        scope_to_finalize = self._alt_branch_scope_to_finalize(nd);
+        if scope_to_finalize is not None {
+            self._pop_scope(scope_to_finalize);
+        }
         self._push_scope(nd);
     }
     if nd.gen.es_ast {

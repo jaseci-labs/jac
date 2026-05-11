@@ -55,6 +55,21 @@ obj TopologyIndex {
         origin_ids: set[UUID], chain: list[tuple[(str | None), (str | None), int]]
     ) -> set[UUID];
 
+    """Single-hop ordered resolution: walk the canonical adj_list in
+    insertion order, filtering by origin / edge_type / node_type / direction
+    (with MRO fan-out), and return the slice of resulting target UUIDs.
+
+    Returns the ordered list of UUIDs after applying `slc`. Order matches the
+    natural edge-walk that `edges_to_nodes` would produce, so the bounded
+    fast path stays semantically equivalent to materialize-then-slice."""
+    def resolve_chain_ordered(
+        origin_ids: set[UUID],
+        edge_type: (str | None),
+        node_type: (str | None),
+        direction: int,
+        slc: slice
+    ) -> list[UUID];
+
     def get_cross_root_ids(node_ids: set[UUID]) -> dict[UUID, set[UUID]];
     def encode -> bytes;
     static def decode(data: bytes) -> TopologyIndex;

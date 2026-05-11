@@ -256,14 +256,16 @@ impl gen_jir_registry(verify: bool = False) -> int {
             [sys.executable, '-m', 'jaclang', 'format', '--lintfix', tmp_path],
             capture_output=True
         );
-        content = Path(tmp_path).read_text();
+        content = Path(tmp_path).read_text(encoding="utf-8");
         Path(tmp_path).unlink(missing_ok=True);
     } except Exception {
         ;
     }
 
     if verify {
-        current = registry_path.read_text() if registry_path.exists() else "";
+        current = registry_path.read_text(encoding="utf-8")
+            if registry_path.exists()
+            else "";
         if current == content {
             console.print("jir_registry.jac is up to date.");
             return 0;

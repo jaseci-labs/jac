@@ -103,6 +103,39 @@ my-lib = { git = "https://github.com/user/repo.git", branch = "main" }
 
 ---
 
+### [optional-dependencies]
+
+Optional dependency groups that users can install on demand with `jac install --extras <group>`. Useful for heavy or situational dependencies (monitoring, test infrastructure, database drivers) that most users don't need.
+
+```toml
+[optional-dependencies.data]
+pymongo = ">=4.0,<5.0"
+redis = ">=7.0,<8.0"
+
+[optional-dependencies.monitoring]
+prometheus-client = ">=0.21.0,<1.0.0"
+
+[optional-dependencies.all]
+"mypkg[data,monitoring]" = "*"
+```
+
+Install a group at the command line:
+
+```bash
+jac install --extras data monitoring
+jac install -e . --extras all    # editable install + extras
+```
+
+Version specifiers follow the same rules as `[dependencies]`. Use `"*"` or `"latest"` to express no constraint (the package is installed without a version pin).
+
+**Group composition:**
+
+An entry whose name matches `<project-name>[group,...]` is not installed as a package - it expands the listed groups transitively. In the example above, `"mypkg[data,monitoring]" = "*"` under `[optional-dependencies.all]` means `--extras all` pulls in everything from both `data` and `monitoring`.
+
+Third-party extras syntax (e.g. `"testcontainers[mongodb,redis]"`) passes through to pip unchanged.
+
+---
+
 ### [run]
 
 Defaults for `jac run`:
@@ -342,11 +375,13 @@ discovery = "auto"      # "auto", "manual", or "disabled"
 enabled = ["byllm"] # Explicitly enabled
 disabled = []           # Explicitly disabled
 
-# Plugin-specific settings
-[plugins.byllm]
-model = "gpt-4"
-temperature = 0.7
+# Plugin-specific settings (byllm splits model identity from call params)
+[plugins.byllm.model]
+default_model = "gpt-4o"
 api_key = "${OPENAI_API_KEY}"
+
+[plugins.byllm.call_params]
+temperature = 0.7
 
 # Server settings (jac-scale)
 [plugins.scale.server]
@@ -367,12 +402,13 @@ jaclang = "latest"
 jac_scale = "latest"
 jac_client = "latest"
 jac_byllm = "none"           # Use "none" to skip installation
+jac_mcp = "latest"
 ```
 
 **Prometheus Metrics (jac-scale):**
 
 ```toml
-[plugins.scale.metrics]
+[plugins.scale.monitoring]
 enabled = true
 endpoint = "/metrics"
 namespace = "myapp"
@@ -511,10 +547,10 @@ JAC_PROFILE=production jac run main.jac
 Use environment variable interpolation:
 
 ```toml
-[plugins.byllm]
-api_key = "${OPENAI_API_KEY}"              # Required
-model = "${MODEL:-gpt-3.5-turbo}"          # With default
-secret = "${SECRET:?Secret is required}"   # Required with error
+[plugins.byllm.model]
+api_key = "${OPENAI_API_KEY}"                       # Required
+default_model = "${MODEL:-gpt-4o-mini}"             # With default
+base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 ```
 
 | Syntax | Description |
@@ -683,8 +719,8 @@ exclude = []
 [plugins]
 discovery = "auto"
 
-[plugins.byllm]
-model = "${LLM_MODEL:-gpt-4}"
+[plugins.byllm.model]
+default_model = "${LLM_MODEL:-gpt-4o-mini}"
 api_key = "${OPENAI_API_KEY}"
 
 [scripts]
