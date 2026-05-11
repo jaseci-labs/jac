@@ -15,8 +15,7 @@ import from jaclang.compiler.passes.tool.doc_ir_gen_pass { DocIRGenPass }
 import from jaclang.jac0core.unitree { UniScopeNode }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
-import from jaclang.jac0core.helpers { pascal_to_snake }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.jac0core.helpers { pascal_to_snake, read_file_with_encoding }
 """Information about a kid."""
 obj AstKidInfo {
     has name: str,

@@ -147,7 +147,7 @@ obj MongoBackend(PersistentMemory) {
     ) -> None;
 
     def _write_to_db(anchor: Anchor) -> None;
-    # Async overrides — native Motor (no asyncio.to_thread)
+    # Async overrides — PyMongo AsyncMongoClient / redis.asyncio (no asyncio.to_thread)
     async def aget(id: UUID) -> (Anchor | None);
     async def aput(anchor: Anchor) -> None;
     async def acommit(anchor: (Anchor | None) = None) -> None;

@@ -15,7 +15,7 @@ from jaclang.utils.lang_tools import AstTool
 EXTRACTED_FOLDER = "docs/playground"
 PLAYGROUND_ZIP_PATH = os.path.join(EXTRACTED_FOLDER, "jaclang.zip")
 ZIP_FOLDER_NAME = "jaclang"
-UNIIR_NODE_DOC = "docs/community/internals/uniir_node.md"
+UNIIR_NODE_DOC = "docs/internals/uniir_node.md"
 TOP_CONTRIBUTORS_DOC = "docs/community/top_contributors.md"
 AST_TOOL = AstTool()
 # Directory basenames to exclude

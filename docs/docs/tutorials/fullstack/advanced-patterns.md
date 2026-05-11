@@ -9,19 +9,22 @@ These patterns are drawn from [JacBuilder](https://github.com/jaseci-labs/jacBui
 > - Completed: [NPM Packages & UI Libraries](npm-and-libraries.md)
 > - Time: ~30 minutes
 
+!!! note "Browser globals and `jac check`"
+    Most snippets on this page reference browser globals (`Reflect`, `WebSocket`, `console`, `JSON`, `URL`, `String`, `Date`, `window`, `document`, `setTimeout`, `requestAnimationFrame`, `Promise`, etc.). These are provided by the JS runtime when the file is bundled with `jac start`, but the static checker does not yet ship typed stubs for them, so isolated `jac check` runs flag those names as Unknown. The patterns work as written at runtime; typed stubs land with the browser-globals story tracked as a separate type-checker improvement.
+
 ---
 
 ## WebSocket Client
 
 ### Creating a WebSocket
 
-In Jac client code, use `Reflect.construct()` instead of the `new` keyword to instantiate browser built-in objects like `WebSocket`:
+In Jac client code, use the `new(...)` ambient builtin to instantiate browser built-in objects like `WebSocket`. (The compiler lowers the call to `Reflect.construct(WebSocket, [url])` in the emitted JS; you do not need to write that out by hand.)
 
 ```jac
 glob _ws: any = None;
 
 def connectWebSocket(url: str) -> None {
-    _ws = Reflect.construct(WebSocket, [url]);
+    _ws = new(WebSocket, url);
 
     _ws.onopen = lambda {
         console.log("WebSocket connected");
@@ -103,7 +106,7 @@ def handleResponse(msg: any) -> None {
 
 ```jac
 def buildWsUrl(basePath: str, token: str) -> str {
-    wsUrl = Reflect.construct(URL, [String(window.location.origin)]);
+    wsUrl = new(URL, String(window.location.origin));
     wsUrl.protocol = ("wss:" if window.location.protocol == "https:" else "ws:");
     wsUrl.pathname = basePath;
     wsUrl.search = "?token=" + encodeURIComponent(token);
@@ -120,36 +123,36 @@ Jac compiles to JavaScript, and there are several patterns where you need to wor
 !!! tip "Lambda, closure, IIFE, and factory analogs from JS"
     For a side-by-side mapping of common JS function idioms (`x => x + 1`, IIFEs, closure factories) to their Jac equivalents, see [§8 IIFE & Anonymous Factories](../../reference/language/functions-objects.md#8-iife-anonymous-factories) in the language reference.
 
-### Reflect.construct for `new` Objects
+### The `new(...)` Builtin for JS Constructors
 
-Jac does not have a `new` keyword. For browser built-in constructors, use `Reflect.construct()`:
+Jac does not have a JavaScript-style `new` keyword. Instead, the ambient `new(Cls, ...args)` builtin is the portable spelling; in `cl` blocks the compiler lowers it to `Reflect.construct(Cls, [args])` in the generated JavaScript, which is the standard JS reflection API equivalent to `new Cls(...)`. The same call also works on the server, where it is a thin alias for `Cls(*args)`.
 
 <!-- jac-skip -->
 ```jac
 # WebSocket
-ws = Reflect.construct(WebSocket, [url]);
+ws = new(WebSocket, url);
 
 # URL
-url = Reflect.construct(URL, [String(base)]);
+url = new(URL, String(base));
 
 # Date
-now = Reflect.construct(Date, []);
+now = new(Date);
 
 # Promise
-promise = Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
+promise = new(Promise, lambda(resolve: any, reject: any) {
     # ... async work ...
     resolve.call(None, result);
-}]);
+});
 
 # CustomEvent
-evt = Reflect.construct(CustomEvent, ["my-event", {"detail": {"key": "value"}}]);
+evt = new(CustomEvent, "my-event", {"detail": {"key": "value"}});
 window.dispatchEvent(evt);
 
 # Map
-map = Reflect.construct(Map, []);
+map = new(Map);
 
 # xterm.js Terminal
-terminal = Reflect.construct(XTerminal, [termConfig]);
+terminal = new(XTerminal, termConfig);
 ```
 
 ### Callback Invocations with .call()
@@ -166,7 +169,7 @@ ws.onmessage = lambda(e: any) {
 };
 
 # Promise resolve/reject
-Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
+new(Promise, lambda(resolve: any, reject: any) {
     resolveFn = resolve;
     rejectFn = reject;
 
@@ -174,7 +177,7 @@ Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
         lambda(result: any) { resolveFn.call(None, result); },
         lambda(err: any) { rejectFn.call(None, err); }
     );
-}]);
+});
 ```
 
 ### String Concatenation vs F-Strings
@@ -252,10 +255,11 @@ glob _THEME_EVENT: str = "theme-change";
 
 # Dispatch
 def dispatchThemeChange(theme: str) -> None {
-    evt = Reflect.construct(CustomEvent, [
+    evt = new(
+        CustomEvent,
         _THEME_EVENT,
         {"detail": {"theme": theme}}
-    ]);
+    );
     window.dispatchEvent(evt);
 }
 
@@ -287,7 +291,7 @@ def:pub ThemeListener() -> JsxElement {
 
 ```jac
 def readAllEntries(reader: any) -> any {
-    return Reflect.construct(Promise, [lambda(resolve: any, reject: any) {
+    return new(Promise, lambda(resolve: any, reject: any) {
         allEntries: list = [];
         resolveFn = resolve;
         rejectFn = reject;
@@ -308,7 +312,7 @@ def readAllEntries(reader: any) -> any {
             );
         }
         readBatch();
-    }]);
+    });
 }
 ```
 
@@ -559,13 +563,13 @@ def:pub PreviewPanel() -> JsxElement {
 
 | Pattern | Jac Approach |
 |---------|-------------|
-| Instantiate browser objects | `Reflect.construct(ClassName, [args])` |
+| Instantiate browser objects | `new(ClassName, ...args)` |
 | Invoke callbacks | `callback.call(None, arg)` |
 | Module-level state | `glob varname: Type = value;` |
 | Browser globals | `globalThis.X`, `window.X`, `localStorage` |
 | Newline character | `String.fromCharCode(10)` |
 | Debug logging | `console.log("[prefix]", data)` |
-| WebSocket | `Reflect.construct(WebSocket, [url])` |
+| WebSocket | `new(WebSocket, url)` |
 
 ---
 
