@@ -269,6 +269,102 @@ test "check all health resets failure count on success" {
     assert reg.entries["orders"].status == ServiceStatus.HEALTHY;
 }
 
+test "check all health flips UNHEALTHY back to HEALTHY when service recovers" {
+    # Regression coverage for the gateway-bricking scenario: a service that
+    # crossed the startup_timeout bar was marked UNHEALTHY and never came
+    # back, even after /healthz started responding. check_all_health is
+    # supposed to flip it back; this test pins that contract.
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001"
+        )
+    );
+
+    pm = ServiceProcessManager(registry=reg, _max_failures=2);
+
+    # Force the entry into UNHEALTHY the same way the startup race does.
+    with unittest.mock.patch.object(pm, "check_health", return_value=False) {
+        pm.check_all_health();
+        pm.check_all_health();
+    }
+    assert reg.entries["orders"].status == ServiceStatus.UNHEALTHY;
+
+    # Now /healthz starts responding. One pass should flip it back.
+    with unittest.mock.patch.object(pm, "check_health", return_value=True) {
+        pm.check_all_health();
+    }
+    assert reg.entries["orders"].status == ServiceStatus.HEALTHY;
+    assert pm._failure_counts["orders"] == 0;
+}
+
+test "start_health_monitor is idempotent and spawns a single daemon thread" {
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001"
+        )
+    );
+    pm = ServiceProcessManager(registry=reg);
+
+    try {
+        pm.start_health_monitor(interval=0.05);
+        first = pm._health_monitor_thread;
+        assert first is not None;
+        assert first.is_alive();
+        assert first.daemon;
+
+        # Re-calling while alive should not spawn a new thread.
+        pm.start_health_monitor(interval=0.05);
+        assert pm._health_monitor_thread is first;
+    } finally {
+        pm.stop_health_monitor();
+    }
+    assert pm._health_monitor_thread is None;
+}
+
+test "background health monitor drives check_all_health on its loop" {
+    # Lightweight liveness test for the monitor: it should fire at least
+    # one check_all_health call between start and stop. The recovery
+    # semantics it relies on (UNHEALTHY -> HEALTHY flip on success) are
+    # covered by the deterministic test above.
+    import time;
+
+    reg = ServiceRegistry();
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001"
+        )
+    );
+    pm = ServiceProcessManager(registry=reg);
+
+    mock_ch = unittest.mock.MagicMock(return_value=True);
+    with unittest.mock.patch.object(pm, "check_health", mock_ch) {
+        try {
+            pm.start_health_monitor(interval=0.05);
+            # Give the loop a couple of ticks. 0.5s >> 2 intervals so this
+            # is robust to scheduler jitter without being timing-fragile.
+            time.sleep(0.5);
+            assert mock_ch.call_count >= 1;
+        } finally {
+            pm.stop_health_monitor();
+        }
+    }
+    assert pm._health_monitor_thread is None;
+}
+
 # =============================================================================
 # Restart
 # =============================================================================

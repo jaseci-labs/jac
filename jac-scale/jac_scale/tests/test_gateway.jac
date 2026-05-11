@@ -1298,3 +1298,57 @@ test "http_forward_timeout precedence: per-service > global > default" {
         setattr(cfg_mod, "get_scale_config", original);
     }
 }
+
+
+# =============================================================================
+# startup_timeout resolver (per-service startup health-wait; configurable)
+# =============================================================================
+test "startup_timeout falls back to 60s default when config read fails" {
+    import from jac_scale.microservices._util { startup_timeout }
+    # No working config -> the except branch in the resolver fires and
+    # returns _DEFAULT_STARTUP_TIMEOUT (60.0).
+    t: float = startup_timeout("module_with_no_override");
+    assert t == 60.0 , f"expected 60.0 default, got {t}";
+}
+
+test "startup_timeout precedence: per-service > global > default" {
+    import unittest.mock;
+    import from jac_scale.microservices._util { startup_timeout }
+    import jac_scale.config_loader as cfg_mod;
+
+    def _stub_returning(data: dict[str, Any]) -> Any {
+        m = unittest.mock.MagicMock();
+        m.get_microservices_config.return_value = data;
+        return m;
+    }
+
+    original = getattr(cfg_mod, "get_scale_config");
+    try {
+        # Case A: only global default set
+        stub_a = _stub_returning({"startup_timeout": 90.0, "services": {}});
+        setattr(cfg_mod, "get_scale_config", lambda : stub_a );
+        assert startup_timeout(None) == 90.0;
+        assert startup_timeout("any_service") == 90.0;
+
+        # Case B: per-service override beats the global default
+        stub_b = _stub_returning(
+            {
+                "startup_timeout": 90.0,
+                "services": {"warm_app": {"startup_timeout": 180.0}}
+            }
+        );
+        setattr(cfg_mod, "get_scale_config", lambda : stub_b );
+        assert startup_timeout("warm_app") == 180.0;
+        assert startup_timeout("other_service") == 90.0;
+
+        # Case C: only per-service override; other services fall to default
+        stub_c = _stub_returning(
+            {"services": {"warm_app": {"startup_timeout": 120.0}}}
+        );
+        setattr(cfg_mod, "get_scale_config", lambda : stub_c );
+        assert startup_timeout("warm_app") == 120.0;
+        assert startup_timeout("other_service") == 60.0;
+    } finally {
+        setattr(cfg_mod, "get_scale_config", original);
+    }
+}

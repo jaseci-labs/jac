@@ -27,7 +27,14 @@ obj ServiceProcessManager {
         _health_check_timeout: int = 3,
         _max_failures: int = 3,
         _failure_counts: dict[str, int] = {},
-        _next_port: int = 8001;
+        _next_port: int = 8001,
+        # Background recovery monitor state. Typed Any to avoid pulling
+        # threading.Thread / threading.Event into this declaration file
+        # (and to dodge a type-checker warning around Optional[Thread]).
+        _health_monitor_thread: (Any | None) = None,
+        _health_monitor_stop: (Any | None) = None,
+        _health_monitor_interval: float = 5.0,
+        _health_lock: (Any | None) = None;
 
     """Resolve a service's base URL via the owning deployer, with a
     loopback fallback so tests that instantiate ServiceProcessManager
@@ -57,4 +64,19 @@ obj ServiceProcessManager {
 
     """Run health checks on all services. Returns per-service results."""
     def check_all_health -> dict[str, bool];
+
+    """Start the background recovery health monitor.
+
+    Periodically calls check_all_health so a service that crosses the
+    startup_timeout bar by a few seconds can be flipped back to HEALTHY.
+    Idempotent; safe to call multiple times. Pair with stop_health_monitor
+    in shutdown to join the thread cleanly.
+    """
+    def start_health_monitor(interval: float = 5.0) -> None;
+
+    """Signal the background recovery health monitor to stop and join it."""
+    def stop_health_monitor -> None;
+
+    """Internal: the monitor thread body."""
+    def _health_monitor_loop -> None;
 }

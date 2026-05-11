@@ -56,6 +56,15 @@ def resolve_jac_binary -> str {
 """Hardcoded fallback if config read fails (no jac.toml, malformed schema)."""
 glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0;
 
+"""Default startup health-wait per service.
+
+60s headroom for first-run jac compile of the service file plus plugin
+init (warmpool prefill, byllm import, sqlite create_all, MCP register)
+which routinely crosses 30-40s on cold boot. Apps with known-fast
+services can drop this via the per-service override.
+"""
+glob _DEFAULT_STARTUP_TIMEOUT: float = 60.0;
+
 
 """Resolve gateway-to-service forward timeout (seconds).
 
@@ -86,6 +95,44 @@ def http_forward_timeout(service_name: str | None = None) -> float {
         ;
     }
     return _DEFAULT_HTTP_FORWARD_TIMEOUT;
+}
+
+
+"""Resolve per-service startup health-wait timeout (seconds).
+
+Lookup order mirrors `http_forward_timeout`:
+  1. `[plugins.scale.microservices.services.NAME].startup_timeout`
+     (per-service override)
+  2. `[plugins.scale.microservices].startup_timeout` (global default)
+  3. `_DEFAULT_STARTUP_TIMEOUT` (60s; only hit when config read fails)
+
+Returns the resolved timeout in seconds. Never raises; on config read
+failure (e.g. no jac.toml in tests) falls through to the default.
+
+The previous hardcoded 20s tripped real apps that do non-trivial work
+at boot (warmpool prefill, plugin init, first-run jac compile). Once a
+service missed the bar it stayed UNHEALTHY for the process lifetime
+and the gateway short-circuited every routed call with 503 or
+'Not found on any service'.
+"""
+def startup_timeout(service_name: str | None = None) -> float {
+    try {
+        import from jac_scale.config_loader { get_scale_config }
+        ms_cfg = get_scale_config().get_microservices_config();
+        if service_name {
+            svc_cfg = ms_cfg.get("services", {}).get(service_name, {});
+            if "startup_timeout" in svc_cfg {
+                return float(svc_cfg["startup_timeout"]);
+            }
+        }
+        if "startup_timeout" in ms_cfg {
+            return float(ms_cfg["startup_timeout"]);
+        }
+    } except Exception {
+        # Fall through on config read failure.
+        ;
+    }
+    return _DEFAULT_STARTUP_TIMEOUT;
 }
 
 

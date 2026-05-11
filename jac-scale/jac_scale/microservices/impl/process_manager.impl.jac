@@ -191,7 +191,7 @@ Two passes:
      engine calls create_all() simultaneously.
 """
 impl ServiceProcessManager.start_all -> None {
-    import from jac_scale.microservices._util { wait_for_health }
+    import from jac_scale.microservices._util { wait_for_health, startup_timeout }
 
     for (name, entry) in self.registry.entries.items() {
         if entry.port == 0 {
@@ -205,9 +205,16 @@ impl ServiceProcessManager.start_all -> None {
         entry = self.registry.entries[name];
         proc = self.processes.get(name);
         if proc and entry.url {
-            ok = wait_for_health(entry.url, lambda : proc.poll() is None, timeout=20.0);
+            timeout_s: float = startup_timeout(name);
+            ok = wait_for_health(
+                entry.url, lambda : proc.poll() is None, timeout=timeout_s
+            );
             if not ok {
-                logger.warning(f"{name} did not become healthy within 20s; proceeding");
+                logger.warning(
+                    f"{name} did not become healthy within {int(timeout_s)}s; "
+                    f"the background health monitor will keep polling and "
+                    f"flip it back to HEALTHY when it recovers"
+                );
             }
         }
     }
@@ -330,29 +337,129 @@ impl ServiceProcessManager.check_health(name: str) -> bool {
     }
 }
 
-"""Run health checks on all services. Returns per-service results."""
+"""Run health checks on all services. Returns per-service results.
+
+Lock-protected so the background recovery monitor and ad-hoc callers
+(LocalDeployer.status, the admin endpoint) can't race on
+_failure_counts during simultaneous passes. The lock is lazily
+constructed since obj has-defaults can't hold a threading.Lock literal
+across instances cleanly.
+"""
 impl ServiceProcessManager.check_all_health -> dict[str, bool] {
+    import threading;
+    if self._health_lock is None {
+        self._health_lock = threading.Lock();
+    }
     results: dict[str, bool] = {};
+    self._health_lock.acquire();
+    try {
+        for (name, entry) in self.registry.entries.items() {
+            previous = entry.status;
+            healthy = self.check_health(name);
+            results[name] = healthy;
 
-    for (name, entry) in self.registry.entries.items() {
-        healthy = self.check_health(name);
-        results[name] = healthy;
-
-        if healthy {
-            entry.status = ServiceStatus.HEALTHY;
-            self._failure_counts[name] = 0;
-        } else {
-            self._failure_counts[name] = self._failure_counts.get(name, 0) + 1;
-            if self._failure_counts[name] >= self._max_failures {
-                entry.status = ServiceStatus.UNHEALTHY;
-                logger.warning(
-                    f"{name} is UNHEALTHY ({self._failure_counts[
-                        name
-                    ]} consecutive failures)"
-                );
+            if healthy {
+                entry.status = ServiceStatus.HEALTHY;
+                self._failure_counts[name] = 0;
+                if previous == ServiceStatus.UNHEALTHY {
+                    logger.info(
+                        f"{name} recovered (now HEALTHY after previously "
+                        f"being UNHEALTHY)"
+                    );
+                }
+            } else {
+                self._failure_counts[name] = self._failure_counts.get(name, 0) + 1;
+                if self._failure_counts[name] >= self._max_failures {
+                    entry.status = ServiceStatus.UNHEALTHY;
+                    logger.warning(
+                        f"{name} is UNHEALTHY ({self._failure_counts[
+                            name
+                        ]} consecutive failures)"
+                    );
+                }
             }
         }
+    } finally {
+        self._health_lock.release();
     }
 
     return results;
+}
+
+
+"""Internal: thread body for the background recovery monitor.
+
+Periodically calls check_all_health and lets it flip UNHEALTHY entries
+back to HEALTHY as services recover. Uses Event.wait(interval) for
+the sleep so stop_health_monitor can wake it up immediately.
+"""
+impl ServiceProcessManager._health_monitor_loop -> None {
+    while True {
+        stop = self._health_monitor_stop;
+        if stop is None or stop.is_set() {
+            return;
+        }
+        try {
+            self.check_all_health();
+        } except Exception as e {
+            logger.warning(f"Health monitor pass failed: {e}");
+        }
+        stop.wait(self._health_monitor_interval);
+    }
+}
+
+
+"""Start the background recovery health monitor.
+
+Called once after start_all completes (whether or not all services
+became healthy in the startup window). Idempotent: re-calling while
+the monitor is already alive is a no-op. The thread is daemon=True so
+it doesn't block process exit; pair with stop_health_monitor in
+graceful shutdown to join it cleanly.
+
+Without this, a service that crossed the startup_timeout bar by a few
+seconds stays UNHEALTHY for the process lifetime and the gateway
+short-circuits every routed call with 503 or 'Not found on any
+service'.
+"""
+impl ServiceProcessManager.start_health_monitor(interval: float = 5.0) -> None {
+    import threading;
+    existing = self._health_monitor_thread;
+    if existing is not None and existing.is_alive() {
+        return;
+    }
+    self._health_monitor_interval = interval;
+    self._health_monitor_stop = threading.Event();
+    self._health_monitor_thread = threading.Thread(
+        target=self._health_monitor_loop, daemon=True, name="jac-scale-health-monitor"
+    );
+    self._health_monitor_thread.start();
+    logger.info(
+        f"Health monitor started (interval={interval}s); UNHEALTHY services "
+        f"will recover automatically when healthz starts responding"
+    );
+}
+
+
+"""Signal the background recovery health monitor to stop and join it.
+
+Idempotent: safe to call when the monitor never started. Bounded join
+(2s) so a stuck thread can't block shutdown indefinitely; the thread
+is daemon anyway so the process will exit either way.
+"""
+impl ServiceProcessManager.stop_health_monitor -> None {
+    stop = self._health_monitor_stop;
+    if stop is not None {
+        stop.set();
+    }
+    thread = self._health_monitor_thread;
+    if thread is not None {
+        try {
+            thread.join(timeout=2.0);
+        } except Exception {
+            ;
+        }
+    }
+    self._health_monitor_thread = None;
+    self._health_monitor_stop = None;
 }

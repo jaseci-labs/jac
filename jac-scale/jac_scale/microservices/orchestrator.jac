@@ -136,6 +136,14 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
         logger.warning("Proceeding with unhealthy services...");
     }
 
+    # Background monitor keeps polling /healthz so a service that crossed
+    # the startup_timeout bar by a few seconds can be flipped back to
+    # HEALTHY automatically. Without this, the initial UNHEALTHY mark
+    # stuck for the process lifetime and the gateway short-circuited
+    # every routed call.
+    pm.start_health_monitor(interval=5.0);
+    atexit.register(pm.stop_health_monitor);
+
     # 4. Print startup banner
     gateway_port: int = int(ms_config.get("gateway_port", 8000));
     gateway_host: str = str(ms_config.get("gateway_host", "0.0.0.0"));
@@ -228,5 +236,6 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     gateway.start();
 
     # 6. Cleanup (runs when gateway shuts down)
+    pm.stop_health_monitor();
     deployer.destroy_all();
 }
