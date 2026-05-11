@@ -24,7 +24,7 @@ jac_scale = [
    "templates/**/*.html",
    "providers/**/*.template",
    "admin/_dist/**",
- ]
+]
 
 [dependencies]
 rich = ">=13.0.0"
@@ -54,7 +54,11 @@ apscheduler = ">=3.11.2,<4.0.0"
 kubernetes = ">=34.1.0,<35.0.0"
 docker = ">=7.1.0,<8.0.0"
 
-[dev-dependencies]
+[optional-dependencies.all]
+"jac-scale[data,monitoring,scheduler,deploy]" = "*"
+
+[optional-dependencies.test]
+"jac-scale[all]" = "*"
 "testcontainers[mongodb,redis]" = "*"
 requests = "*"
 
