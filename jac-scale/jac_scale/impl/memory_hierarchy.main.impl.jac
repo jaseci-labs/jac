@@ -143,16 +143,27 @@ impl ScaleTieredMemory.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
 
 MongoBackend.acommit uses a plain bulk_write (last-writer-wins), which
 bypasses the delta-merge _put_node_atomic path in sync(). Using
-asyncio.to_thread(self.commit) keeps the event loop free while still
-running the correct merge-aware sync() + L2 update.
+asyncio.to_thread(self.commit, anchor) keeps the event loop free while
+still running the correct merge-aware sync() + L2 update.
+
+Forwards the `anchor` parameter so single-anchor and full commits both
+go through the merge-aware path. Only marks `_committed = True` when
+`anchor is None` (full commit) — partial commits must not short-circuit
+future full commits.
 """
 impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
     import asyncio;
-    if self._committed {
+    # For full commits, the _committed flag prevents redundant flushes
+    # within the same request (middleware safety-net). Partial commits
+    # (anchor is not None) always run — they target a single anchor and
+    # the caller expects exactly that write to occur.
+    if anchor is None and self._committed {
         return;
     }
-    await asyncio.to_thread(self.commit);
-    self._committed = True;
+    await asyncio.to_thread(self.commit, anchor);
+    if anchor is None {
+        self._committed = True;
+    }
 }
 
 """Close all backends."""
