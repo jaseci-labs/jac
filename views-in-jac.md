@@ -514,6 +514,14 @@ The lowering (per target):
 - Solid/Ripple: wrap the field with the target's signal/tracked primitive.
 - Vue Vapor: `shallowRef` on each reactive field.
 
+**Mutation rule: reassign, don't mutate in place.** Tracking is keyed on the
+field reference, so `cart.items = cart.items + [x]` triggers re-render,
+while `cart.items.append(x)` does **not** - the list object is the same. The
+`view_body_check` pass lints `.append` / `.pop` / `.clear` / `del cart.items[i]`
+/ etc. on `by view` fields and suggests the reassignment form. No
+`ReactiveList` wrapper; the cost is verbosity, the benefit is one obvious
+mental model with no `isinstance` / equality / third-party-function surprises.
+
 ### Derivations: plain `def` is enough
 
 Computed values that depend on `by view` fields are just regular methods:
@@ -811,14 +819,7 @@ Built on top of the existing JSX infrastructure, not parallel to it.
 
 ## Open Design Questions
 
-1. **Mutation granularity for `by view` lists/dicts** - `cart.items = cart.items + [x]` triggers (reassignment). `cart.items.append(x)` does **not** trigger because the field reference is unchanged. Pick one:
-   - Lint against `.append`/`.pop`/etc on `by view` fields and require
-     reassignment (predictable, verbose).
-   - Wrap reactive lists in an instrumented `ReactiveList` that triggers on
-     mutation (less verbose, more magic).
-   Recommend lint-first; revisit after Phase 4.
-
-2. **CSS engine choice** - emit CSS modules (cross-bundler), scoped-attr
+1. **CSS engine choice** - emit CSS modules (cross-bundler), scoped-attr
    style (Vue-native), or CSS-in-JS (React idiom). Recommend CSS modules as
    the unified emit format; bundlers already understand them. Vue target
    bridges to Vapor's scoped-attr.
