@@ -203,7 +203,7 @@ def reset_drain -> None {
 short-circuit (liveness must stay 200 mid-drain; readiness has its own
 draining-aware handler)."""
 def build_drain_middleware(service_label: str = "service") -> Any {
-    import from jac_scale.microservices._errors { service_unavailable }
+    import from jac_scale.microservices.runtime.errors { service_unavailable }
 
     async def drain_middleware(request: Any, call_next: Any) -> Any {
         # `getattr` (vs attr access) keeps the unit-test bare-`object()`

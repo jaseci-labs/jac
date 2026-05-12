@@ -26,7 +26,7 @@ import from jac_scale.microservices.service_registry {
 import from jac_scale.microservices.process_manager { ServiceProcessManager }
 import from jac_scale.microservices.local_deployer { LocalDeployer }
 import from jac_scale.microservices.gateway { MicroserviceGateway }
-import from jac_scale.microservices._util {
+import from jac_scale.microservices.runtime.util {
     DEFAULT_GATEWAY_PORT,
     DEFAULT_GATEWAY_HOST,
     DEFAULT_CLIENT_DIST_DIR

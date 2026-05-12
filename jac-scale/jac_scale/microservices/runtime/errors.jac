@@ -53,7 +53,7 @@ def error_response(
     service: str | None = None,
     retry_after_seconds: int | None = None
 ) -> JSONResponse {
-    import from jac_scale.microservices._trace_ctx { get_current_trace }
+    import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
 
     err: dict = {"code": code, "message": message};
     if service {

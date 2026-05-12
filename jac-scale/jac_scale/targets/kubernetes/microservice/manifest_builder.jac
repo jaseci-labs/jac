@@ -380,7 +380,7 @@ obj MicroserviceManifestBuilder {
     """In-cluster DNS URL for a peer microservice (mirrors LocalDeployer
     via the headless Service)."""
     def _peer_dns_url(peer_name: str) -> str {
-        import from jac_scale.microservices._util { k8s_service_dns_url }
+        import from jac_scale.microservices.runtime.util { k8s_service_dns_url }
         return k8s_service_dns_url(
             k8s_safe_name(peer_name),
             self.k8s_config.namespace,

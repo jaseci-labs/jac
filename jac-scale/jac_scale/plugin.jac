@@ -758,7 +758,7 @@ class JacScalePlugin {
         import subprocess;
         import from jaclang.runtimelib { sv_client }
         import from pathlib { Path }
-        import from jac_scale.microservices._util {
+        import from jac_scale.microservices.runtime.util {
             pick_free_port,
             resolve_jac_binary,
             wait_for_health
@@ -780,7 +780,7 @@ class JacScalePlugin {
             try {
                 import from jac_scale.config_loader { get_scale_config }
                 import from jac_scale.targets.kubernetes.microservice.manifest_builder { k8s_safe_name }
-                import from jac_scale.microservices._util {
+                import from jac_scale.microservices.runtime.util {
                     k8s_service_dns_url,
                     in_cluster_namespace
                 }
@@ -928,8 +928,8 @@ class JacScalePlugin {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jaclang.runtimelib.sv_sse { consume_sse_stream }
-        import from jac_scale.microservices._auth_ctx { get_current_auth }
-        import from jac_scale.microservices._trace_ctx { get_current_trace }
+        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
+        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
 
         func_label = f"{module_name}.{func_name}";
 
@@ -1075,8 +1075,8 @@ class JacScalePlugin {
     ) -> Any {
         import time;
         import from jaclang.runtimelib { sv_client }
-        import from jac_scale.microservices._auth_ctx { get_current_auth }
-        import from jac_scale.microservices._trace_ctx { get_current_trace }
+        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
+        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
 
         label = f"{module_name}.{walker_name}";
 

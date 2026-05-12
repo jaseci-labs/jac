@@ -451,7 +451,7 @@ test "error envelope carries the request's trace id for correlation" {
 # Unified /docs Swagger aggregation
 # =============================================================================
 test "_prefixed_paths prepends the service prefix to every key" {
-    import from jac_scale.microservices._openapi_agg { _prefixed_paths }
+    import from jac_scale.microservices.gateway_internals.openapi_agg { _prefixed_paths }
     raw = {
         "/function/list_products": {"post": {"summary": "list"}},
         "/function/get_product": {"post": {"summary": "get"}}
@@ -464,7 +464,7 @@ test "_prefixed_paths prepends the service prefix to every key" {
 }
 
 test "_prefixed_paths handles prefix with trailing slash" {
-    import from jac_scale.microservices._openapi_agg { _prefixed_paths }
+    import from jac_scale.microservices.gateway_internals.openapi_agg { _prefixed_paths }
     out = _prefixed_paths(
         {"/function/x": {"post": {}}}, "/api/products/"  # trailing slash
     );
@@ -1353,7 +1353,7 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
 # http_forward_timeout resolver (gateway-to-service forward; configurable)
 # =============================================================================
 test "http_forward_timeout falls back to 30s default when config read fails" {
-    import from jac_scale.microservices._util { http_forward_timeout }
+    import from jac_scale.microservices.runtime.util { http_forward_timeout }
     # No working config -> the except branch in the resolver fires and
     # returns _DEFAULT_HTTP_FORWARD_TIMEOUT (30.0).
     t: float = http_forward_timeout("module_with_no_override");
@@ -1361,7 +1361,7 @@ test "http_forward_timeout falls back to 30s default when config read fails" {
 }
 
 test "http_forward_timeout precedence: per-service > global > default" {
-    import from jac_scale.microservices._util { http_forward_timeout }
+    import from jac_scale.microservices.runtime.util { http_forward_timeout }
     import jac_scale.config_loader as cfg_mod;
 
     obj _StubCfg {
