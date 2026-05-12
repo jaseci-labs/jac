@@ -199,8 +199,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         func, self._func_loc.get(name, nd.loc.first_line if nd.loc else 1)
     );
 
-    # Non-:pub abilities get internal linkage so they don't collide
+    # Explicitly :priv abilities get internal linkage so they don't collide
     # when two modules with identically-named private functions are linked.
+    # Default (no modifier) and :pub both remain external.
     _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
     if _is_priv {
         func.linkage = "internal";

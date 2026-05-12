@@ -169,6 +169,13 @@ impl NativeCompilePass.transform(ir_in: uni.Module) -> uni.Module {
             return ir_in;
         }
 
+        # Short-circuit before JIT creation if any link-time errors were emitted
+        # (e.g. E5024/E5025/E5026). Running create_mcjit_compiler on broken IR
+        # can crash or produce misleading follow-on errors.
+        if self.errors_had {
+            return ir_in;
+        }
+
         # Collect all function names from the module BEFORE create_mcjit_compiler
         # consumes it.  We need these to build the symbol map for GDB.
         _all_fn_names: list = [];
