@@ -811,50 +811,17 @@ Built on top of the existing JSX infrastructure, not parallel to it.
 
 ## Open Design Questions
 
-1. **`view` as a new declarator vs. a `:view:` modifier on `def`** -
-   committing to `view` as a top-level keyword adds vocabulary. An
-   alternative is `def:view:pub Button(...) { ... }` - same as today's
-   `def:pub Name -> JsxElement` but with an explicit marker that enables
-   statement-form body, scoped styles, and boundary clauses. Costs less
-   surface area; loses a little discoverability. Recommend `view`.
-
-2. **Should `view` allow plain (non-`has`) variables as state?** - today the
-   ecmascript pass auto-`useState`s `has`-fields specifically. Plain
-   assignments inside the body (`x = 1; x = 2;`) currently mean local
-   variables, not state. We should keep this distinction: `has` for state,
-   `let`/bare for locals. The `view_body_check` pass can lint and suggest
-   `has` when a local is reassigned inside an event handler.
-
-3. **`<tag>` lexer disambiguation** - `<` is ambiguous between JSX open-tag
-   and less-than comparison (Jac uses `[T]` for generics, not `<T>`, so
-   generics aren't the conflict). The existing JSX flavor has already
-   resolved this with context-sensitive lexing - `<` after expression-start
-   tokens (`=`, `(`, `,`, `{`, `return`, etc.) is JSX; after value-producing
-   tokens it's the operator. Since `def:pub Name -> JsxElement { return
-   <div>…</div>; }` works today, `view` inherits the resolution with no new
-   parser work.
-
-4. **Mutation granularity for `by view` lists/dicts** - `cart.items = cart.items + [x]` triggers (reassignment). `cart.items.append(x)` does **not** trigger because the field reference is unchanged. Pick one:
+1. **Mutation granularity for `by view` lists/dicts** - `cart.items = cart.items + [x]` triggers (reassignment). `cart.items.append(x)` does **not** trigger because the field reference is unchanged. Pick one:
    - Lint against `.append`/`.pop`/etc on `by view` fields and require
      reassignment (predictable, verbose).
    - Wrap reactive lists in an instrumented `ReactiveList` that triggers on
      mutation (less verbose, more magic).
    Recommend lint-first; revisit after Phase 4.
 
-5. **Server / async views** - `async can with entry` already works for mount.
-   Top-level `await` for async views (React-style "async component" emit) is
-   not yet on the table. Defer until target-specific async support stabilizes.
-
-6. **CSS engine choice** - emit CSS modules (cross-bundler), scoped-attr
+2. **CSS engine choice** - emit CSS modules (cross-bundler), scoped-attr
    style (Vue-native), or CSS-in-JS (React idiom). Recommend CSS modules as
    the unified emit format; bundlers already understand them. Vue target
    bridges to Vapor's scoped-attr.
-
-7. **Relationship to the existing client runtime** - `@jac/runtime` is
-   auto-imported into every compiled `.cl.jac`. Any new runtime helpers for
-   `by view`, `try/pending/except`, scoped-style application should live
-   in the same package so `.cl.jac` continues to be the sole user-facing
-   client module convention.
 
 ## Related Documents
 
