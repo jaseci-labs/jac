@@ -160,7 +160,7 @@ with entry {
 }
 ```
 
-Jac provides two pattern-matching constructs, each designed for a different purpose. **`switch`/`case`** is for classic simple value matching. Like C, cases fall through to subsequent cases -- use `return`, `break`, or another control-flow statement to exit a case before the next one runs:
+Jac provides two constructs for branching on values. **`switch`/`case`** is for classic simple value matching. Like C, cases fall through to subsequent cases -- use `return`, `break`, or another control-flow statement to exit a case before the next one runs:
 
 ```jac
 def categorize(fruit: str) -> str {
@@ -180,14 +180,18 @@ In the example above, each case ends with `return`, so the function exits before
 **`match`/`case`**, on the other hand, is for Python-style structural pattern matching -- use it when you need to destructure values or match more complex patterns:
 
 ```jac
-def describe(value: any) -> str {
-    match value {
-        case 0:
-            return "zero";
-        case 1 | 2 | 3:
-            return "small number";
+def describe_point(point: tuple) -> str {
+    match point {
+        case (0, 0):
+            return "origin";
+        case (x, 0):
+            return f"on x-axis at {x}";
+        case (0, y):
+            return f"on y-axis at {y}";
+        case (x, y):
+            return f"at ({x}, {y})";
         case _:
-            return "something else";
+            return "not a point";
     }
 }
 ```
