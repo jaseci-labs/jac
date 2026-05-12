@@ -35,7 +35,7 @@ def _scale_pre_hook(context: HookContext) -> None {
     if ms_config.get("enabled", False) and not is_sv_sibling {
         scale_flag = context.get_arg("scale", False);
         if not scale_flag {
-            import from jac_scale.microservices.orchestrator { start_microservice_mode }
+            import from jac_scale.microservices.orchestrator.orchestrator { start_microservice_mode }
             start_microservice_mode(ms_config);
             context.set_data("cancel_execution", True);
             context.set_data("cancel_return_code", 0);
@@ -593,7 +593,7 @@ class JacCmd {
             source="jac-scale"
         )
         def scale_cmd(action: str, service_name: str = "", lines: int = 50) -> int {
-            import from jac_scale.microservices.orchestrator { build_registry }
+            import from jac_scale.microservices.orchestrator.orchestrator { build_registry }
             import from jac_scale.microservices.local_deployer { LocalDeployer }
 
             scale_config = get_scale_config();
@@ -679,7 +679,7 @@ class JacCmd {
             } elif action == "gateway" {
                 # K8s gateway-only mode: no local service spawning, peer
                 # resolution via DNS through get_sv_registry.
-                import from jac_scale.microservices.orchestrator { start_gateway_only }
+                import from jac_scale.microservices.orchestrator.orchestrator { start_gateway_only }
                 start_gateway_only(ms_config);
                 return 0;
             } else {
