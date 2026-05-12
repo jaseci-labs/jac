@@ -75,6 +75,13 @@ def create(
             "dev", typ=bool, default=False, help="Include dev dependencies", short="d"
         ),
         Arg.create(
+            "extras",
+            kind=ArgKind.MULTI,
+            default=[],
+            help="Optional dependency groups to install (e.g. data monitoring)",
+            short="x"
+        ),
+        Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
 
@@ -84,11 +91,15 @@ def create(
         ("jac install -e .", "Install current package in editable mode"),
         ("jac install -e /path/to/lib", "Install a cloned library in editable mode"),
         ("jac install --dev", "Include dev dependencies"),
+        ("jac install --extras data monitoring", "Include optional dependency groups"),
+        ("jac install -e . --extras all", "Editable install with all optional deps"),
 
     ],
     group="project"
 )
-def install(editable: str = "", dev: bool = False, verbose: bool = False) -> int;
+def install(
+    editable: str = "", dev: bool = False, extras: list = [], verbose: bool = False
+) -> int;
 
 """Add dependencies to the project."""
 @registry.command(

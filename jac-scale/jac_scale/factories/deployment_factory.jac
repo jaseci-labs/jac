@@ -79,6 +79,21 @@ class DeploymentTargetFactory {
             }
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
             return KubernetesTarget(config=k8s_config, logger=logger);
+        } elif target_type == 'kubernetes-microservice' {
+            # Microservice-mode K8s target: one image fanned out to one pod
+            # per `sv import`-discovered service. Selected automatically by
+            # _scale_pre_hook when [plugins.scale.microservices].enabled is
+            # true; users don't normally pass --target=kubernetes-microservice
+            # directly.
+            require_optional("kubernetes", "deploy");
+            import from jac_scale.targets.kubernetes.kubernetes_config {
+                KubernetesConfig
+            }
+            import from jac_scale.microservices.k8s_target {
+                KubernetesMicroserviceTarget
+            }
+            k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);
+            return KubernetesMicroserviceTarget(config=k8s_config, logger=logger);
         } elif target_type == 'aws' {
             raise NotImplementedError("AWS target not yet implemented");
         } elif target_type == 'gcp' {

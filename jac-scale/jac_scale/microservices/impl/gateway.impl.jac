@@ -263,7 +263,7 @@ glob _BUILTIN_PREFIXES: tuple = (
          "/jobs/",
          "/graph/"
      ),
-     _BUILTIN_EXACT: set[str] = {"/user","/healthz","/graph"};
+     _BUILTIN_EXACT: set[str] = {"/user","/graph"};
 
 """Copy incoming request headers, dropping hop-by-hop headers.
 
@@ -296,6 +296,39 @@ impl MicroserviceGateway.handle_health -> Response {
         status_code=200,
         content={"status": "healthy", "services": self.registry.health_summary()}
     );
+}
+
+
+"""Liveness endpoint - 200 if the process is alive, ALWAYS.
+
+Liveness gates pod restart. We deliberately don't check anything that
+could fail other than the dispatcher itself responding. Checking
+dependencies here would let a transient DB blip cascade into a kubelet
+restart, which then blips more pods, which can spiral. K8s convention:
+liveness = "is the container hung", not "is it usable."
+"""
+impl MicroserviceGateway.handle_health_live -> Response {
+    return JSONResponse(status_code=200, content={"status": "alive"});
+}
+
+
+"""Readiness endpoint - 200 normally, 503 during drain.
+
+Readiness gates traffic. When SIGTERM hits, our drain middleware flips
+`is_draining()` true and the readiness probe starts failing; kube-proxy
+removes the pod from Endpoints within a probe period or two so new
+requests stop arriving while in-flight ones complete. Pair with the
+preStop sleep (bridges the kube-proxy-propagation gap) and
+terminationGracePeriodSeconds (gives drain time to flush).
+"""
+impl MicroserviceGateway.handle_health_ready -> Response {
+    import from jac_scale.microservices._drain { is_draining }
+    if is_draining() {
+        return JSONResponse(
+            status_code=503, content={"status": "draining", "ready": False}
+        );
+    }
+    return JSONResponse(status_code=200, content={"status": "ready"});
 }
 
 """Built-in jac-scale routes (/user/*, /walker/*, /function/*, etc.).
@@ -486,6 +519,17 @@ impl MicroserviceGateway.handle_static(request: Request, path: str) -> Response 
                 return static_resp;
             }
         }
+    } else {
+        # GET / is the SPA root. Always serve dist/index.html when it
+        # exists, regardless of Accept header (curl, monitoring probes,
+        # server-side fetches, and crawlers all need to land somewhere
+        # other than 404). Browsers reach the same response via the
+        # text/html Accept fallback below; this branch makes
+        # the behavior consistent across clients.
+        index_resp = self.serve_spa_fallback();
+        if index_resp {
+            return index_resp;
+        }
     }
 
     accept: str = request.headers.get("accept", "");
@@ -543,7 +587,21 @@ impl MicroserviceGateway.setup -> FastAPI {
         svc_label: str = "__unmatched__";
         try {
             resp: Response | None = None;
-            if path == "/health" {
+            if path == "/healthz/live" {
+                # K8s livenessProbe target. Always 200 if dispatcher runs.
+                svc_label = "__health_live__";
+                resp = gw.handle_health_live();
+            } elif path == "/healthz/ready" {
+                # K8s readinessProbe target. 503 during drain so kube-proxy
+                # removes us from Endpoints before in-flight requests
+                # finish; pair with preStop + terminationGracePeriodSeconds.
+                svc_label = "__health_ready__";
+                resp = gw.handle_health_ready();
+            } elif path == "/health" or path == "/healthz" {
+                # Backward-compat aliases. /healthz used to be the
+                # combined probe target; now /healthz/live + /ready
+                # serve K8s and /healthz keeps the registry-summary view
+                # for humans / dashboards. /health is the legacy alias.
                 svc_label = "__health__";
                 resp = gw.handle_health();
             } elif path == "/metrics" {
@@ -622,7 +680,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
 
-    # P17: rate limit between drain and CORS. Preflights bypass the
+    # rate limit between drain and CORS. Preflights bypass the
     # limiter (CORS outer handles OPTIONS short-circuit) and drain
     # inner can still 503 once the limiter allows through.
     import from jac_scale.microservices._rate_limit { build_rate_limit_middleware }
@@ -631,7 +689,7 @@ impl MicroserviceGateway.setup -> FastAPI {
         self.app.middleware("http")(rl_mw);
     }
 
-    # P16: CORS registered AFTER drain so preflights answer correctly
+    # CORS registered AFTER drain so preflights answer correctly
     # even during shutdown (clients need CORS headers to read 503s).
     # Disabled unless `allow_origins` is configured.
     cors_cfg = ms_cfg.get("cors", {});

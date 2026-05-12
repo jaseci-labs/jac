@@ -220,6 +220,11 @@ class JacScalePluginConfig {
                             "default": 30.0,
                             "description": "Gateway-to-service forward timeout (seconds). Applies to `raw_forward` (built-in passthrough fan-out) and `stream_forward` (path-routed proxy). Distinct from `services.NAME.rpc_timeout`, which controls inter-service `sv import` calls. Override per-service with `[plugins.scale.microservices.services.NAME].http_forward_timeout`."
                         },
+                        "ingress": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Optional K8s Ingress for the gateway. Default off (no Ingress emitted) so existing deployments don't grow one unexpectedly. Subkeys: `enabled` (bool, opt-in), `host` (str, omitted means match-any-host), `ingress_class_name` (str, e.g. \"nginx\", \"alb\", \"gce\"), `annotations` (dict[str,str], controller-specific knobs like nginx.ingress.kubernetes.io/proxy-body-size). HTTP only - TLS via cert-manager / ACM is deployment-specific. Routes all external traffic to gateway-service:container_port; the gateway dispatches /api/{svc}/* internally."
+                        },
                         "routes": {
                             "type": "dict",
                             "default": {},
@@ -228,7 +233,7 @@ class JacScalePluginConfig {
                         "services": {
                             "type": "dict",
                             "default": {},
-                            "description": "Per-service overrides keyed by module name. Each subkey is a dict with optional `rpc_timeout` (float seconds; default 10s; controls inter-service `sv import` httpx calls) and/or `http_forward_timeout` (float seconds; default 30s; controls gateway-to-service aiohttp forwarding). Use for LLM/long-running services that need minutes, not seconds. Example: [plugins.scale.microservices.services.llm_app] rpc_timeout = 120.0, http_forward_timeout = 300.0"
+                            "description": "Per-service overrides keyed by module name. Subkeys (all optional): `rpc_timeout` (float, default 10s, inter-service sv-import calls), `http_forward_timeout` (float, default 30s, gateway-to-service forward), `replicas` (int, default 1, K8s Deployment.spec.replicas), `cpu_request` / `cpu_limit` (str, e.g. \"100m\", K8s container resources), `memory_request` / `memory_limit` (str, e.g. \"128Mi\"), `env` (dict[str,str], extra container env vars merged with auto-set JAC_SV_NAME), `image_tag` (str, override global image tag for canary), and nested `hpa` / `pdb` sub-tables. `hpa` keys: `enabled` (bool, default true), `min` (int, default 1), `max` (int, default 3), `cpu_target` (int percent, default 70). `pdb` keys: `enabled` (bool, default true), `max_unavailable` (int, default 1). Gateway uses the `__gateway__` key. Example: [plugins.scale.microservices.services.llm_app] rpc_timeout = 120.0, replicas = 2, cpu_limit = \"2000m\", memory_limit = \"4Gi\", env = { LOG_LEVEL = \"DEBUG\" }, [plugins.scale.microservices.services.llm_app.hpa] max = 20, cpu_target = 60"
                         },
                         "rate_limit": {
                             "type": "dict",

@@ -1,0 +1,30 @@
+# Experimental Dockerfile: installs jaclang + jac-scale from LOCAL source
+# (the repo's jac/ and jac-scale/) for testing PR code before PyPI ships.
+# Build context = repo root (set by k8s_microservice_real_e2e.sh).
+
+FROM python:3.12-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# See Dockerfile.microservice for the safe.directory rationale.
+RUN git config --system --add safe.directory '*'
+
+RUN pip install --no-cache-dir --upgrade pip
+
+WORKDIR /build
+COPY jac /build/jac
+COPY jac-scale /build/jac-scale
+RUN pip install --no-cache-dir -e /build/jac \
+    && pip install --no-cache-dir -e "/build/jac-scale[deploy,data]" \
+    && pip install --no-cache-dir jac-client
+
+ARG PROJECT_PATH=jac-scale/jac_scale/tests/fixtures/k8s_e2e
+WORKDIR /app
+COPY ${PROJECT_PATH} /app
+
+RUN if [ -f jac.toml ]; then jac install || true; fi
+RUN jac --version
+
+EXPOSE 8000
