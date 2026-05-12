@@ -1,22 +1,7 @@
-"""K8s deployment target for microservice mode.
-
-Thin orchestrator that wires image build + DB provisioning + manifest
-build + apply + destroy. Implementation classes (all sibling files):
-  - manifest_builder.MicroserviceManifestBuilder
-  - database_provisioner.MicroserviceDatabaseProvisioner
-  - image build: jac_scale.microservices.images.auto_build
-
-This file owns:
-  - image build override (_handle_image_registry, _auto_build_image)
-  - kube-config loading
-  - manifest apply (apply_manifests + _apply_or_replace_* helpers)
-  - destroy
-
-Per-service config knobs at `[plugins.scale.microservices.services.NAME]`
-(and `__gateway__` for the gateway) flow through the manifest builder.
-
-Registered as `kubernetes-microservice` in DeploymentTargetFactory.
-"""
+"""K8s deployment target for microservice mode. Thin orchestrator over
+MicroserviceManifestBuilder + MicroserviceDatabaseProvisioner + the
+auto_build_and_distribute image pipeline. Registered as
+`kubernetes-microservice` in DeploymentTargetFactory."""
 
 import logging;
 import from typing { Any }
@@ -46,36 +31,23 @@ import from jac_scale.targets.kubernetes.microservice.database_provisioner {
 glob logger = logging.getLogger(__name__);
 
 
-"""Fans one image out to one pod per microservice. Inherits image
-build/push + namespace/secret machinery from KubernetesTarget. Routes
-table is the source of truth for which services exist; each gets a
-pod-spec differentiated by `JAC_SV_NAME`. Selected by _scale_pre_hook
-when `[plugins.scale.microservices].enabled=true` + `--scale`."""
+"""Fans one image out to one pod per microservice. Routes table is the
+source of truth for which services exist; each gets a pod-spec
+differentiated by `JAC_SV_NAME`. Selected by _scale_pre_hook when
+`[plugins.scale.microservices].enabled=true` + `--scale`."""
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
-    # Per-deploy state populated by MicroserviceDatabaseProvisioner
-    # in deploy(); threaded into MicroserviceManifestBuilder. Default
-    # empty so generate_manifests() called directly (tests, dry-run)
-    # works without prior provision step.
+    # Populated by MicroserviceDatabaseProvisioner in deploy(); threaded
+    # into MicroserviceManifestBuilder. Default empty so direct
+    # generate_manifests() callers (tests) work without prior provision.
     has _deploy_context: DeployContext = DeployContext(),
-        # auto_build: when True, _handle_image_registry routes to
-        # _auto_build_image (cluster-aware build via auto_build_and_distribute).
-        # When False, falls through to parent KubernetesTarget behavior
-        # (existing build_via_registry / python_image fallback).
-        # Set by _scale_pre_hook on the production `jac start --scale` path;
-        # unit tests construct without it for parent-behavior manifest assertions.
+        # _scale_pre_hook flips these on the production `jac start --scale`
+        # path. Test path keeps them False -> parent KubernetesTarget
+        # behavior (build_via_registry / python_image fallback).
         auto_build: bool = False,
-        # guard_fallback_image: when True, generate_manifests raises a
-        # loud RuntimeError if image resolution falls back to python_image
-        # (which has no jac/jac-scale installed - pods would CrashLoopBackOff
-        # in microservice mode). Same gating as auto_build.
         guard_fallback_image: bool = False;
 
-    """Auto-build override when `auto_build=True`. Returns the user's
-    pre-built docker_image_name if set, else hands off to
-    auto_build_and_distribute which detects cluster type and
-    builds+loads/pushes the image. Falls through to parent behavior when
-    auto_build is False (preserves unit-test manifest-shape contracts
-    that pass build=False)."""
+    """Auto-build path when `auto_build=True`: prefer user's pre-built
+    docker_image_name, else auto_build_and_distribute. Else parent behavior."""
     def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
         if self.auto_build {
             user_image = self.k8s_config.docker_image_name;
@@ -96,14 +68,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         return KubernetesTarget._handle_image_registry(self, app_name, app_config);
     }
 
-    """Orchestrate the auto-build for a microservice deploy.
-
-    Resolves the registry URL from raw config (avoids adding a new field
-    to KubernetesConfig - users put `image_registry` directly under
-    `[plugins.scale.kubernetes]` and we read it here). Hands off to the
-    auto-build pipeline which knows how to talk to minikube/k3d/kind/
-    remote registries.
-    """
+    """Reads image_registry from raw config (KubernetesConfig.from_dict
+    drops unknown keys so we can't go via the typed view) and hands off
+    to the cluster-aware auto-build pipeline."""
     def _auto_build_image(app_name: str, app_config: AppConfig) -> str {
         import from pathlib { Path }
         import from jac_scale.microservices.images.auto_build { auto_build_and_distribute }
@@ -194,27 +161,16 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         );
     }
 
-    """Build the manifest bundle by delegating to MicroserviceManifestBuilder.
-
-    Threads target state (k8s_config, secrets, deploy_context) into the
-    builder. Tests that exercise manifest shape call this method
-    directly with build=False; the env-var guard inside
-    _handle_image_registry preserves their parent-behavior fallback.
-
-    deploy_context starts empty by default; deploy() populates it via
-    MicroserviceDatabaseProvisioner before calling this method. Direct
-    callers (tests, future dry-run) get an empty context which produces
-    pod specs without DB env / init containers.
-    """
+    """Delegates to MicroserviceManifestBuilder. deploy() populates
+    _deploy_context first; direct callers (tests) get an empty context
+    which produces pod specs without DB env / init containers."""
     def generate_manifests(app_config: AppConfig) -> dict[str, Any] {
         app_name = app_config.app_name or self.k8s_config.app_name;
         image = self._handle_image_registry(app_name, app_config);
 
-        # fail loud on the python_image fallback in production
-        # (`jac start --scale`) so users don't get a confusing silent
-        # CrashLoopBackOff. The guard is opt-in via the constructor flag
-        # so existing tests (which use build=False with the fallback to
-        # assert manifest shape) keep working.
+        # Fail loud on python_image fallback so users don't get a silent
+        # CrashLoopBackOff (the image has no jac/jac-scale installed).
+        # Opt-in via the constructor flag to preserve manifest-shape tests.
         if self.guard_fallback_image {
             fallback_image = self.k8s_config.python_image;
             if image == fallback_image or image.startswith("python:") {
@@ -275,10 +231,11 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Apply manifests in order: namespace -> Services -> Deployments
-    -> HPAs -> PDBs -> Ingress. Services first so DNS resolves as soon
-    as pods are Ready; HPAs/PDBs after Deployments so the targetRef
-    isn't transiently unresolved. Each apply is read-then-patch-or-create."""
+    """Apply order: PVCs -> Secrets -> Services -> Deployments -> HPAs ->
+    PDBs -> Ingress. Services first so DNS resolves before pods boot
+    (cross-service `sv import` calls need it at startup); HPAs/PDBs after
+    Deployments so the targetRef isn't transiently unresolved; Ingress
+    last to avoid a transient `no backend` event."""
     def apply_manifests(bundle: dict[str, Any]) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
@@ -288,11 +245,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         networking_v1 = client.NetworkingV1Api();
         namespace: str = self.k8s_config.namespace;
 
-        # probe the API server early so an unreachable cluster
-        # surfaces a clean error here rather than mid-apply with a
-        # half-baked manifest set. `list_namespace` is the cheapest
-        # cluster-scoped read (every cluster has at least kube-system),
-        # and any failure here is universally bad for what follows.
+        # Probe API server early so an unreachable cluster surfaces a clean
+        # error here rather than mid-apply with a half-baked manifest set.
         try {
             core_v1.list_namespace(_request_timeout=5);
         } except Exception as e {
@@ -308,9 +262,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         ensure_namespace_exists(namespace);
 
-        # PVCs first so Deployments referencing them don't hit
-        # `persistentvolumeclaim "X" not found` and back off. PVCs in
-        # "Pending" state are fine - kube-scheduler waits for binding.
         for (pvc_name, pvc_manifest) in bundle.get("pvcs", {}).items() {
             self._apply_or_replace_pvc(core_v1, namespace, pvc_manifest);
             if self.logger {
@@ -321,10 +272,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # user-secret BEFORE Deployments so envFrom: secretRef
-        # resolves at pod startup. Reuses parent's create_k8s_secret
-        # helper which handles the create-or-replace idempotency
-        # (409 -> replace_namespaced_secret).
         user_secret = bundle.get("user_secret");
         if user_secret {
             create_k8s_secret(
@@ -342,10 +289,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Services first - their endpoints registry is empty until the
-        # paired Deployment's first pod becomes ready, but DNS for the
-        # Service hostname needs to exist BEFORE pods boot so any
-        # cross-service `sv import` calls resolve at startup.
         for (svc_name, svc_manifest) in bundle["services"].items() {
             self._apply_or_replace_service(core_v1, namespace, svc_manifest);
             if self.logger {
@@ -356,9 +299,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Deployments next - patching an existing Deployment kicks off
-        # a rolling update via the K8s Deployment controller (using the
-        # RollingUpdate + readiness + grace + preStop config below).
         for (svc_name, dep_manifest) in bundle["deployments"].items() {
             self._apply_or_replace_deployment(apps_v1, namespace, dep_manifest);
             if self.logger {
@@ -369,8 +309,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # HPAs - target Deployments by name; safe to apply after the
-        # Deployments exist. Default: min=1, max=3, cpu=70%.
         for (svc_name, hpa_manifest) in bundle.get("hpas", {}).items() {
             self._apply_or_replace_hpa(autoscaling_v2, namespace, hpa_manifest);
             if self.logger {
@@ -381,8 +319,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # PDBs - select pods by label, safe to apply alongside HPAs.
-        # Default: maxUnavailable=1.
         for (svc_name, pdb_manifest) in bundle.get("pdbs", {}).items() {
             self._apply_or_replace_pdb(policy_v1, namespace, pdb_manifest);
             if self.logger {
@@ -393,11 +329,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
             }
         }
 
-        # Ingress, applied LAST. References gateway-service by
-        # name; the Ingress controller (nginx, ALB, etc.) will resolve
-        # the Service the moment it sees the Ingress object regardless
-        # of order, but applying after gateway-service exists avoids a
-        # transient "no backend" event.
         ingress_manifest: any = bundle.get("ingress");
         if ingress_manifest {
             self._apply_or_replace_ingress(networking_v1, namespace, ingress_manifest);
@@ -410,7 +341,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent Service apply - read first, patch on hit, create on 404."""
+    # _apply_or_replace_* family: idempotent read-then-patch-or-create on 404.
+    # PVC is the exception: create-on-404, otherwise no-op (PVCs are mostly
+    # immutable post-bind; patch would error or orphan the PV).
     def _apply_or_replace_service(
         core_v1: any, namespace: str, manifest: dict[str, Any]
     ) {
@@ -429,22 +362,17 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent PVC apply: create on 404, otherwise no-op (PVCs are
-    mostly immutable post-bind; patch would error or orphan the PV).
-    To resize/rebind, delete the PVC or `--scale --destroy`."""
     def _apply_or_replace_pvc(core_v1: any, namespace: str, manifest: dict[str, Any]) {
         name: str = manifest["metadata"]["name"];
         try {
             core_v1.read_namespaced_persistent_volume_claim(
                 name=name, namespace=namespace
             );
-            # Already exists - skip the patch. See docstring above.
             if self.logger {
                 self.logger.info(
-                    f"PVC '{name}' already exists; skipping patch (PVCs "
-                    f"are mostly immutable post-bind). To apply size / "
-                    f"storage-class changes, delete the PVC manually "
-                    f"first or run `jac start --scale --destroy`."
+                    f"PVC '{name}' already exists; skipping patch. To apply "
+                    f"size/storage-class changes, delete the PVC manually or "
+                    f"run `jac start --scale --destroy`."
                 );
             }
         } except ApiException as e {
@@ -458,7 +386,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent Deployment apply: read -> patch on hit, create on 404."""
     def _apply_or_replace_deployment(
         apps_v1: any, namespace: str, manifest: dict[str, Any]
     ) {
@@ -479,7 +406,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent HPA apply - mirrors _apply_or_replace_deployment shape."""
     def _apply_or_replace_hpa(
         autoscaling_v2: any, namespace: str, manifest: dict[str, Any]
     ) {
@@ -502,7 +428,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent PDB apply - mirrors _apply_or_replace_deployment shape."""
     def _apply_or_replace_pdb(
         policy_v1: any, namespace: str, manifest: dict[str, Any]
     ) {
@@ -525,7 +450,6 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Idempotent Ingress apply - mirrors the deployment shape."""
     def _apply_or_replace_ingress(
         networking_v1: any, namespace: str, manifest: dict[str, Any]
     ) {

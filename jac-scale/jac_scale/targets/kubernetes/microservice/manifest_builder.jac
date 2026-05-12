@@ -1,13 +1,6 @@
-"""Manifest builder for K8s microservice mode.
-
-Extracted from microservices/k8s_target.jac. Pure function-style class:
-takes config + per-deploy state in the constructor, produces a manifest
-bundle dict. Stateless beyond what's passed in.
-
-The bundle dict has keys: deployments, services, hpas, pdbs, pod_specs,
-and optionally pvcs, user_secret, ingress. KubernetesMicroserviceTarget
-hands this to apply_manifests().
-"""
+"""Manifest builder for K8s microservice mode. Produces the bundle
+{deployments, services, hpas, pdbs, pod_specs, [pvcs, user_secret,
+ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 
 import from typing { Any }
 import from jac_scale.abstractions.config.app_config { AppConfig }
@@ -15,12 +8,8 @@ import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 
-"""Sentinel name used in pod_specs for the gateway pod-spec entry.
-
-The gateway is just another pod in K8s mode (one Deployment, one
-ClusterIP Service), but its name is reserved to avoid collision with
-user-defined service modules.
-"""
+# Sentinel for the gateway pod-spec entry; reserved to avoid collision
+# with user-defined service modules.
 glob GATEWAY_NAME: str = "__gateway__";
 
 # +5s cushion lets uvicorn finish exiting AFTER our drain middleware
@@ -28,9 +17,8 @@ glob GATEWAY_NAME: str = "__gateway__";
 glob _UVICORN_EXIT_CUSHION_S: int = 5;
 
 
-"""Map a service name to a DNS-1123-valid K8s resource name.
-`__gateway__` -> "gateway"; others lowercased with `_` -> `-`. Module
-level so K8sRuntimeServiceResolver.url_for and plugin.jac can reuse it."""
+"""DNS-1123-valid K8s resource name. Module level so
+K8sRuntimeServiceResolver.url_for + plugin.jac can reuse it."""
 def k8s_safe_name(svc_name: str) -> str {
     if svc_name == GATEWAY_NAME {
         return "gateway";
@@ -39,15 +27,6 @@ def k8s_safe_name(svc_name: str) -> str {
 }
 
 
-"""Builds the full K8s manifest bundle for a microservice deploy.
-
-Stateless beyond the per-deploy inputs threaded through the constructor:
-  - k8s_config: KubernetesConfig (namespace, container_port, defaults)
-  - secrets: dict[str, str] of env-interpolated user secrets
-  - deploy_context: DeployContext carrying DB env + init containers
-                    produced by MicroserviceDatabaseProvisioner
-  - logger: optional structured logger
-"""
 obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
@@ -336,19 +315,10 @@ obj MicroserviceManifestBuilder {
                 }
             },
             "type": "Opaque",
-            # stringData (vs data) so we don't have to base64-encode
-            # values on the client - K8s accepts plaintext here and
-            # encodes server-side. Identical to parent's create_k8s_secret.
-            #
-            # Coerce every value to str: TOML natively supports int /
-            # float / bool, and tomllib preserves those types. K8s
-            # Secret.stringData REJECTS non-strings with HTTP 422
-            # mid-apply, which leaves the bundle half-applied
-            # (Deployments + Services created, Secret missing) and pods
-            # crash-loop on "secret not found". `${ENV_VAR}` paths
-            # always produce strings, but a user writing
-            # `MAX_RETRIES = 3` literally under `[plugins.scale.secrets]`
-            # would otherwise blow up the deploy.
+            # stringData (vs data) avoids client-side base64. Coerce values
+            # to str: K8s rejects non-strings with HTTP 422 mid-apply,
+            # leaving the bundle half-applied with pods crash-looping on
+            # missing secret. TOML scalars (int/float/bool) get coerced.
             "stringData": {k: str(v) for (k, v) in self.secrets.items()}
         };
     }
@@ -388,78 +358,47 @@ obj MicroserviceManifestBuilder {
         );
     }
 
-    """Env list in order: JAC_SV_NAME (sentinel, never overridable),
-    DB env (MONGODB_URI/REDIS_URL via secretKeyRef), peer URLs, user env."""
+    """Env list: JAC_SV_NAME (sentinel), peer URLs (JAC_SV_<PEER>_URL),
+    DB env from DeployContext, user env. sv_client._ensure_available
+    checks JAC_SV_<PEER>_URL BEFORE invoking ensure_sv_service so sv-to-sv
+    dispatch resolves via this fast-path; without it, sv calls silently
+    fall back to local module imports inside the image."""
     def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, Any]] {
         env: list[dict[str, Any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
 
-        # peer URL env vars (mirrors LocalDeployer's pattern at
-        # process_manager.impl.jac:138-139). Every microservice + gateway
-        # pod gets `JAC_SV_<PEER>_URL` set to the K8s DNS URL of every
-        # other peer in the routes table. sv_client._ensure_available
-        # checks this env var BEFORE invoking ensure_sv_service, so
-        # sv-to-sv dispatch resolves via this fast-path without depending
-        # on the runtime hookimpl populating sv_client._registry.
-        # Without this, builder_sv -> jac_coder_sv calls silently fall
-        # back to local module imports (the source files are in the
-        # image), making the microservice split theatre at runtime.
-        # The env-var key uses raw module_name.upper() (matching
-        # sv_client.jac:115 `f"JAC_SV_{module_name.upper()}_URL"`); the
-        # URL host uses k8s_safe_name to satisfy DNS-1123. Self is
-        # skipped (no point); GATEWAY_NAME is skipped because it is the
-        # ingress front, not an sv-import target.
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
         for peer_name in routes {
-            if peer_name == svc_name {
-                continue;
-            }
-            if peer_name == GATEWAY_NAME {
-                continue;
-            }
+            if peer_name == svc_name { continue; }
+            if peer_name == GATEWAY_NAME { continue; }
             key = f"JAC_SV_{peer_name.upper()}_URL";
-            if key in seen_peer_keys {
-                continue;  # defensive against duplicate route entries
-            }
+            if key in seen_peer_keys { continue; }
             seen_peer_keys.add(key);
             env.append({"name": key, "value": self._peer_dns_url(peer_name)});
         }
 
-        # database env from DeployContext (Mongo + Redis URIs from
-        # K8s Secrets, populated by MicroserviceDatabaseProvisioner).
-        # Empty if databases disabled or provision step hasn't run
-        # (e.g. unit tests with default-constructed context).
         for entry in self.deploy_context.env_list {
             env.append(entry);
         }
 
+        # JAC_SV_NAME and JAC_SV_*_URL are protected - users can't shadow
+        # the sentinel or override peer URLs via the per-service env table
+        # (a stale override would silently route sv calls to the wrong place).
         extra: dict[str, Any] = svc_cfg.get("env", {});
         for (k, v) in extra.items() {
-            if k == "JAC_SV_NAME" {
-                continue;  # protected; users can't shadow the sentinel
-            }
-            if k.startswith("JAC_SV_") and k.endswith("_URL") {
-                # Protected: peer-URL env vars are computed from the
-                # routes table; users can't override them via
-                # `[plugins.scale.microservices.services.<name>.env]`
-                # because a stale override would silently route
-                # sv-to-sv calls to the wrong place.
-                continue;
-            }
+            if k == "JAC_SV_NAME" { continue; }
+            if k.startswith("JAC_SV_") and k.endswith("_URL") { continue; }
             env.append({"name": k, "value": str(v)});
         }
         return env;
     }
 
     """Container resources with Burstable-QoS defaults (128Mi req / 1Gi
-    limit / 50m cpu req, no cpu limit). BestEffort pods get evicted
-    first under memory pressure, so tiny defaults bump QoS without
-    constraining real workloads. Per-service config overrides; set
-    values to "" or "0" to opt back to BestEffort."""
+    limit / 50m cpu req). BestEffort pods get evicted first under memory
+    pressure, so tiny defaults bump QoS without constraining real
+    workloads. Priority: per-service > [plugins.scale.kubernetes] >
+    defaults. Empty string opts back to BestEffort."""
     def _build_resources(svc_cfg: dict[str, Any]) -> dict[str, Any] {
-        # Priority chain: per-service > [plugins.scale.kubernetes]
-        # > Burstable-QoS floor (128Mi/1Gi/50m). Empty string ("")
-        # still means "opt out of any request/limit" (back to BestEffort).
         cfg = self.k8s_config;
 
         memory_request_val = svc_cfg.get("memory_request");
@@ -674,9 +613,10 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Single Ingress -> gateway Service; HTTP only; controller-agnostic
-    (user sets `ingress_class_name` and any controller-specific
-    annotations). Returns None if `[...ingress].enabled` is unset."""
+    """Single Ingress -> gateway Service; HTTP only; controller-agnostic.
+    Returns None if `[...ingress].enabled` is unset. Backend always points
+    at gateway-service with path "/" Prefix - the gateway owns /api/{svc}/*
+    dispatch internally. `host` is optional (omitted = match any host)."""
     def _build_ingress_manifest(ingress_cfg: dict[str, Any]) -> dict[str, Any] | None {
         if not ingress_cfg.get("enabled", False) {
             return None;
@@ -688,9 +628,6 @@ obj MicroserviceManifestBuilder {
             annotations[str(k)] = str(v);
         }
 
-        # Backend always points at the gateway Service. Gateway path is
-        # always "/" with Prefix matching - the gateway itself owns
-        # /api/{svc}/* dispatch internally.
         backend: dict[str, Any] = {
             "service": {
                 "name": "gateway-service",
@@ -703,9 +640,6 @@ obj MicroserviceManifestBuilder {
             "backend": backend
         };
 
-        # `host` is optional in K8s Ingress: omitted means "match any
-        # host." Useful for clusters without DNS automation, dev minikube,
-        # or apps fronted by an external LB that does its own host routing.
         rule: dict[str, Any] = {"http": {"paths": [path_entry]}};
         if host {
             rule["host"] = host;
@@ -779,18 +713,14 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Build pod-spec for a service or the gateway (svc_name=GATEWAY_NAME).
-    Both share one builder; the gateway differs only in which
-    _service_config / _build_env / _shared_volumes_for_service lookup
-    fires. Includes probes, preStop, grace, SA, init containers, secrets."""
+    """Pod-spec for a service or the gateway (svc_name=GATEWAY_NAME).
+    Includes probes, preStop, grace, SA, init containers, secrets."""
     def _build_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
-        # Container name must follow DNS-1123 label rules (no underscores).
-        # Use the K8s-safe form so e.g. `orders_app` -> `orders-app` (and
-        # GATEWAY_NAME -> "gateway"). JAC_SV_NAME env still carries the
-        # raw name; only the K8s resource identifier is normalized.
+        # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
+        # env carries the raw name.
         container: dict[str, Any] = {
             "name": k8s_safe_name(svc_name),
             "image": self._resolve_image(image, svc_cfg),
@@ -806,21 +736,12 @@ obj MicroserviceManifestBuilder {
         if resources {
             container["resources"] = resources;
         }
-        # shared volumes from [[microservices.shared_volumes]].
-        # Apps that pass file paths between services (e.g. jacBuilder's
-        # IDE workspace) need the same mount on each pod that touches
-        # the data. Gateway opts in by listing GATEWAY_NAME in the
-        # volume's `services` list.
         (shared_vols, shared_mounts) = self._shared_volumes_for_service(svc_name);
         if shared_mounts {
             container["volumeMounts"] = shared_mounts;
         }
-        # inject every key from the user-secret as an env var via
-        # envFrom (single line vs N per-key entries). Same Secret for
-        # services and gateway - SSO client_ids, JWT signing keys, etc.
-        # land in both. The Secret is created in apply_manifests BEFORE
-        # Deployments so envFrom doesn't trip "secret not found" at pod
-        # startup. Empty self.secrets => no envFrom (back-compat).
+        # envFrom for the user secret: created BEFORE Deployments in
+        # apply_manifests so the secretRef resolves at pod startup.
         if self.secrets {
             container["envFrom"] = [{"secretRef": {"name": self._user_secret_name()}}];
         }
@@ -828,9 +749,6 @@ obj MicroserviceManifestBuilder {
             "containers": [container],
             "terminationGracePeriodSeconds": drain_t + _UVICORN_EXIT_CUSHION_S
         };
-        # opt into a pre-bound ServiceAccount when configured.
-        # Gateway and services share the same SA so any cluster API
-        # calls from gateway middleware inherit the same RBAC.
         sa_name = self._service_account_name();
         if sa_name {
             spec["serviceAccountName"] = sa_name;
@@ -838,9 +756,6 @@ obj MicroserviceManifestBuilder {
         if shared_vols {
             spec["volumes"] = shared_vols;
         }
-        # wait-for-Mongo / wait-for-Redis init containers from
-        # DeployContext - pods block startup until DB Endpoints reachable.
-        # Empty when DBs disabled or provision step hasn't run (tests).
         if self.deploy_context.init_containers {
             spec["initContainers"] = list(self.deploy_context.init_containers);
         }

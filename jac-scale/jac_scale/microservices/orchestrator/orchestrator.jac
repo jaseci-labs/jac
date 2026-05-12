@@ -1,17 +1,7 @@
-"""Microservice mode lifecycle orchestrator.
-
-Replaces the prior flat-function script in microservices/orchestrator.jac
-with a MicroserviceOrchestrator class. The class owns the lifecycle
-phases (build registry / build client bundle / spawn deployers / wait
-for health / print banner / start gateway) as private methods; two
-public entry points (.start_local() and .start_gateway_only()) thread
-them together.
-
-Module-level functions (start_microservice_mode, start_gateway_only,
-build_registry, _mark_all_healthy_k8s, _populate_k8s_urls) are kept
-as thin wrappers so existing callers (plugin.jac, tests) don't need
-to construct an orchestrator instance themselves.
-"""
+"""Microservice mode lifecycle orchestrator. Public entry points:
+.start_local() (subprocess fan-out + gateway) and .start_gateway_only()
+(K8s pod context, no spawning). Module-level wrappers preserve the
+prior function-call API for plugin.jac + tests."""
 
 import time;
 import atexit;
@@ -35,23 +25,12 @@ import from jac_scale.microservices.runtime.util {
 glob logger = logging.getLogger(__name__);
 
 
-"""Orchestrates one microservice-mode run. Stateless w.r.t. the
-ms_config: the full TOML view is the only constructor input. Lifecycle
-methods (.start_local(), .start_gateway_only()) block the calling
-thread on gateway.start()."""
+"""Lifecycle methods block on gateway.start()."""
 obj MicroserviceOrchestrator {
     has ms_config: dict[str, Any];
 
-    """Bootstrap and run microservice mode locally.
-
-    1. Build client bundle (if configured)
-    2. Build the ServiceRegistry from routes
-    3. Start all service subprocesses via LocalDeployer
-    4. Wait for health checks
-    5. Print startup banner
-    6. Start the gateway (blocking)
-    7. On shutdown: stop all services
-    """
+    """Build client bundle -> registry -> spawn deployers -> wait for
+    health -> print banner -> start gateway -> stop all on shutdown."""
     def start_local -> None {
         if not self.ms_config.get("routes", {}) {
             logger.error(
@@ -122,10 +101,8 @@ obj MicroserviceOrchestrator {
         deployer.destroy_all();
     }
 
-    """Start ONLY the gateway (used by the K8s gateway pod). Skips
-    local-mode steps - K8s manages service pod lifecycle. Peer URLs come
-    via get_sv_registry() which returns DNS when KUBERNETES_SERVICE_HOST
-    is set."""
+    """K8s gateway pod entry point. K8s owns pod lifecycle; peer URLs
+    come via get_sv_registry() hookimpl returning DNS."""
     def start_gateway_only -> None {
         if not self.ms_config.get("routes", {}) {
             logger.error(
@@ -165,11 +142,8 @@ obj MicroserviceOrchestrator {
         gateway.start();
     }
 
-    """Build a ServiceRegistry from the `routes` map: {module_name: prefix}.
-
-    Entries have `file = {module_name}.jac` by convention - the same file
-    the `sv import` machinery resolves on cold start.
-    """
+    """Routes map: {module_name: prefix}. Entries have `file = {name}.jac`
+    matching what `sv import` resolves on cold start."""
     def _build_registry -> ServiceRegistry {
         registry = ServiceRegistry();
         routes = self.ms_config.get("routes", {});
@@ -221,9 +195,7 @@ obj MicroserviceOrchestrator {
         return out;
     }
 
-    """Build the FE bundle on the host (`jac build <entry>`) if configured
-    and not already built. No-op when client_config is empty or
-    index.html already exists."""
+    """Build FE bundle on the host if configured + not already built."""
     def _build_client_bundle_if_needed(
         client_config: dict[str, Any], client_dist: str
     ) -> None {
@@ -262,8 +234,7 @@ obj MicroserviceOrchestrator {
         }
     }
 
-    """Wait for services to become healthy (up to max_wait seconds).
-    Logs progress every 2s; warns and proceeds if not all healthy."""
+    """Logs progress every 2s; warns and proceeds if not all healthy."""
     def _wait_for_health(
         pm: ServiceProcessManager, registry: ServiceRegistry, max_wait: int
     ) -> None {
@@ -300,8 +271,7 @@ obj MicroserviceOrchestrator {
         }
     }
 
-    """Print the startup banner: gateway URL, per-service status icons,
-    optional client + static-mount lines."""
+    """Gateway URL, per-service status icons, optional client + mount lines."""
     def _print_startup_banner(
         registry: ServiceRegistry,
         client_config: dict[str, Any],
@@ -362,8 +332,7 @@ obj MicroserviceOrchestrator {
 # ---------------------------------------------------------------------------
 
 
-"""Build a ServiceRegistry from a `routes` map. Module-level wrapper -
-new code should construct MicroserviceOrchestrator(ms_config) instead."""
+"""Module-level wrapper - prefer MicroserviceOrchestrator(...) for new code."""
 def build_registry(ms_config: dict[str, Any]) -> ServiceRegistry {
     return MicroserviceOrchestrator(ms_config=ms_config)._build_registry();
 }

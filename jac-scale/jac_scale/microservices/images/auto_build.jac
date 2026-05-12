@@ -1,13 +1,5 @@
 """Auto-build + auto-distribute entry point for `jac start --scale`.
-
-Picks the right ImageDistributor based on detected cluster type and
-drives it. Replaces the if/elif cluster-type branching of the old
-_image_build.jac with strategy dispatch.
-
-Detect cluster -> build FE bundle (if configured) -> select distributor
--> distributor.build_and_distribute -> return final image tag for the
-manifest builder.
-"""
+Detect cluster -> build FE bundle -> pick distributor -> drive it."""
 
 import from pathlib { Path }
 import from jac_scale.microservices.images.cluster_detect {
@@ -34,7 +26,6 @@ import from jac_scale.microservices.images.distributors {
 
 
 """Build user app image, distribute to cluster, return final image tag.
-
 `registry_url` is required for remote clusters, ignored for local."""
 def auto_build_and_distribute(
     app_name: str, project_dir: Path, registry_url: str | None = None
