@@ -1,7 +1,7 @@
 """Tests for the streaming + WebSocket proxy modules (ROADMAP P15)."""
 
 import asyncio;
-import from jac_scale.microservices._ws_forward {
+import from jac_scale.microservices.gateway_internals.middleware.ws_forward {
     _to_ws_scheme,
     _select_handshake_headers
 }

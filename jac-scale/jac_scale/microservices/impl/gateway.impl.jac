@@ -13,7 +13,7 @@ import from fastapi { WebSocket }
 registry (matching prefix -> upstream URL). Close codes: 1012 drain,
 1008 no route, 1013 unhealthy."""
 def _install_ws_catchall(gw: object) {
-    import from jac_scale.microservices._ws_forward { websocket_forward }
+    import from jac_scale.microservices.gateway_internals.middleware.ws_forward { websocket_forward }
     import from jac_scale.microservices.gateway_internals.drain { is_draining }
     import from jac_scale.microservices.service_registry { ServiceStatus }
 
@@ -460,7 +460,7 @@ extra wasn't pulled in). Path routing lands here when
 through to passthrough as before.
 """
 impl MicroserviceGateway.handle_metrics -> Response {
-    import from jac_scale.microservices._metrics { render_metrics }
+    import from jac_scale.microservices.gateway_internals.middleware.metrics { render_metrics }
     import from jac_scale.microservices._errors { error_response }
     (body, ctype) = render_metrics(self._metrics_registry);
     if not body {
@@ -561,7 +561,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     # installed). Only initialized once per gateway instance; spawning
     # a fresh gateway in tests gets a fresh registry to avoid
     # "Duplicated timeseries" errors.
-    import from jac_scale.microservices._metrics { build_gateway_metrics }
+    import from jac_scale.microservices.gateway_internals.middleware.metrics { build_gateway_metrics }
     import from jac_scale.config_loader { get_scale_config }
     mon_cfg = get_scale_config().get_monitoring_config();
     (self._metrics_registry, self._metrics_requests, self._metrics_duration) = (
@@ -652,7 +652,7 @@ impl MicroserviceGateway.setup -> FastAPI {
             resp.headers["X-Trace-Id"] = trace_id;
             # Prometheus metrics (no-op when prometheus_client absent).
             if gw._metrics_requests is not None {
-                import from jac_scale.microservices._metrics { classify_outcome }
+                import from jac_scale.microservices.gateway_internals.middleware.metrics { classify_outcome }
                 outcome = classify_outcome(resp.status_code);
                 gw._metrics_requests.labels(
                     service=svc_label, method=request.method, outcome=outcome
@@ -683,7 +683,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     # rate limit between drain and CORS. Preflights bypass the
     # limiter (CORS outer handles OPTIONS short-circuit) and drain
     # inner can still 503 once the limiter allows through.
-    import from jac_scale.microservices._rate_limit { build_rate_limit_middleware }
+    import from jac_scale.microservices.gateway_internals.middleware.rate_limit { build_rate_limit_middleware }
     rl_mw = build_rate_limit_middleware(ms_cfg.get("rate_limit", {}));
     if rl_mw is not None {
         self.app.middleware("http")(rl_mw);

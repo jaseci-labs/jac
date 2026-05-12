@@ -316,7 +316,7 @@ test "unmatched path returns 404" {
 # Prometheus metrics
 # =============================================================================
 test "build_gateway_metrics returns a fresh registry with both collectors" {
-    import from jac_scale.microservices._metrics { build_gateway_metrics }
+    import from jac_scale.microservices.gateway_internals.middleware.metrics { build_gateway_metrics }
     (registry, requests, duration) = build_gateway_metrics();
     assert registry is not None;
     assert requests is not None;
@@ -324,7 +324,7 @@ test "build_gateway_metrics returns a fresh registry with both collectors" {
 }
 
 test "classify_outcome maps status codes to label values" {
-    import from jac_scale.microservices._metrics { classify_outcome }
+    import from jac_scale.microservices.gateway_internals.middleware.metrics { classify_outcome }
     assert classify_outcome(200) == "2xx";
     assert classify_outcome(302) == "3xx";
     assert classify_outcome(404) == "4xx";
