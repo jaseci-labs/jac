@@ -148,6 +148,7 @@ import from jaclang.jac0core.diagnostics {
     E0030,
     E0032,
     E0034,
+    E0063,
     E0045,
     E0046,
     E0047,
@@ -4012,6 +4013,12 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.KW_DELETE) {
         return self.parse_delete_stmt();
+    }
+    # glob is module-level only; reject and recover cleanly
+    if self.check(TokenKind.KW_GLOBAL) {
+        self.emit_diag(E0063);
+        self.parse_global_var();
+        return None;
     }
     # Handle global statement (inside functions): global a, b;
     if self.check(TokenKind.KW_GLOBAL_REF) {

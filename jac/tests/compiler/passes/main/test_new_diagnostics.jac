@@ -360,6 +360,22 @@ test "E0062: nonlocal at module level" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
 }
 
+test "E0063: glob inside function body" {
+    (has_err, prog) = parse_and_validate('def foo() { glob x: int = 5; }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
+}
+
+test "E0063: glob at module level is valid" {
+    (has_err, _) = parse_and_validate('glob x: int = 5;');
+    assert not has_err;
+}
+
+test "E0063: glob inside module-level with entry is rejected" {
+    (has_err, prog) = parse_and_validate(
+        'with entry { glob y: str = "hi"; }'
+    );
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
+}
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 3: NAME RESOLUTION / SCOPE DIAGNOSTICS (E/W 2020-2037)
@@ -836,7 +852,7 @@ glob MUST_REJECT_NEW: dict[str, str] = {
          "E0058_continue_no_loop": "with entry { continue; }"
      };
 
-glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0071_bare_except_first","E0075_dup_base"},
+glob IMPLEMENTED_REJECT: set[str] = {"E0062_nonlocal_module","E0063_glob_inside_func","E0071_bare_except_first","E0075_dup_base"},
      IMPLEMENTED_VALIDATE: set[str] = {"E0055_yield_in_entry","E0058_break_no_loop","E0058_continue_no_loop"};
 
 def reject_test(name_snippet: tuple) {
