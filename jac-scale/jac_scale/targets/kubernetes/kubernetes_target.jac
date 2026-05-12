@@ -204,11 +204,20 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
-            commands.append('pip install -e ./jac');
-            commands.append('pip install -e "./jac-scale[all]"');
-            commands.append('pip install -e ./jac-client');
-            commands.append('pip install -e ./jac-byllm');
-            commands.append('pip install -e ./jac-mcp');
+            # Regular install (not editable): builds wheels from local source.
+            # Wheels carry whatever the build process generated (e.g. jaclang's
+            # _precompiled/ if precompile ran at build time). Editable installs
+            # symlink to source so package_data globs like `_precompiled/**/*.jir`
+            # only resolve if the dir exists in the source tree (which it doesn't
+            # for git clones). Regular install is also what production users do.
+            commands.append('pip install ./jac');
+            commands.append('pip install "./jac-scale[data,monitoring]"');
+            commands.append('pip install ./jac-client');
+            # jac-byllm + jac-mcp dropped from the unconditional install:
+            # byllm pulls litellm -> tokenizers + huggingface-hub + hf_xet
+            # + pillow which adds ~3 min to every pod boot. Apps that need
+            # them get them via `jac install` reading their jac.toml
+            # [plugins.byllm] / [plugins.mcp] sections (PyPI versions).
             commands.append('cd ..');
         } else {
             packages = config.plugin_versions or {};
@@ -223,9 +232,9 @@ obj KubernetesTarget(DeploymentTarget) {
                 commands.append(f'pip install jaclang=={jaclang_v}');
             }
             if scale_v == 'latest' {
-                commands.append('pip install "jac-scale[all]"');
+                commands.append('pip install "jac-scale[data,monitoring]"');
             } else {
-                commands.append(f'pip install "jac-scale[all]=={scale_v}"');
+                commands.append(f'pip install "jac-scale[data,monitoring]=={scale_v}"');
             }
             if client_v == 'latest' {
                 commands.append('pip install jac-client');

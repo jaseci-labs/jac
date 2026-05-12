@@ -651,7 +651,7 @@ impl check_deployment_status(
     node_port: int,
     path: str = '/docs',
     interval: int = 15,
-    max_retries: int = 48,
+    max_retries: int = 30,
     nlb_url: (str | None) = None,
     namespace: str = "default",
     app_name: str = "jaseci"
@@ -683,6 +683,79 @@ impl check_deployment_status(
         if (attempt < max_retries) {
             time.sleep(interval);
         }
+    }
+    # Dump pod logs + events on timeout so CI failures show which step
+    # in the pod's bash chain (pip install / jac install / jac start)
+    # is the bottleneck. Without this, the runner only sees "Timeout
+    # reached" and we have to guess at why.
+    try {
+        v1 = client.CoreV1Api();
+        pods = v1.list_namespaced_pod(
+            namespace=namespace, label_selector=f"app={app_name}"
+        );
+        for pod in pods.items {
+            console.print(f"--- {pod.metadata.name} status ---");
+            console.print(f"  phase: {pod.status.phase}");
+            has_prev: bool = False;
+            if pod.status.container_statuses {
+                for cs in pod.status.container_statuses {
+                    state = "running";
+                    if cs.state.waiting {
+                        state = f"waiting ({cs.state.waiting.reason})";
+                    } elif cs.state.terminated {
+                        state = f"terminated ({cs.state.terminated.reason})";
+                    }
+                    last_term = "n/a";
+                    if cs.last_state and cs.last_state.terminated {
+                        has_prev = cs.restart_count > 0;
+                        last_term = (
+                            f"reason={cs.last_state.terminated.reason} "
+                            f"exit_code={cs.last_state.terminated.exit_code}"
+                        );
+                    }
+                    console.print(
+                        f"  container {cs.name}: ready={cs.ready} "
+                        f"restarts={cs.restart_count} state={state} "
+                        f"last_terminated={last_term}"
+                    );
+                }
+            }
+            # Fetch BOTH previous-instance logs (what crashed) AND current
+            # logs (what's running now). The previous-instance logs are
+            # the actual smoking gun in a crashloop - current logs only
+            # show the most recent restart re-doing pip install / etc.
+            if has_prev {
+                try {
+                    prev_logs = v1.read_namespaced_pod_log(
+                        name=pod.metadata.name,
+                        namespace=namespace,
+                        previous=True,
+                        tail_lines=200
+                    );
+                    console.print(
+                        f"--- {pod.metadata.name} PREVIOUS-instance logs (last 200 lines) ---"
+                    );
+                    console.print(prev_logs);
+                    console.print(f"--- end {pod.metadata.name} previous logs ---");
+                } except Exception as prev_err {
+                    console.print(f"(could not fetch previous logs: {prev_err})");
+                }
+            }
+            try {
+                logs = v1.read_namespaced_pod_log(
+                    name=pod.metadata.name, namespace=namespace, tail_lines=200
+                );
+                console.print(
+                    f"--- {pod.metadata.name} current logs (last 200 lines) ---"
+                );
+                console.print(logs);
+                console.print(f"--- end {pod.metadata.name} current logs ---");
+            } except Exception as log_err {
+                console.print(f"(could not fetch current logs: {log_err})");
+            }
+        }
+    } except Exception as dump_err {
+        console.print(f"(timeout diagnostic dump failed: {dump_err})");
     }
     return (False, "Timeout reached");
 }

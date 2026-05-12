@@ -1,25 +1,21 @@
-"""File covering plugin implementation."""
+"""File covering plugin implementation.
+
+Plugin discovery loads this module at first `jac` invocation. Heavy
+imports here cascade into compiling deep dependency trees during
+jaclang's first-use compile pass, which has caused OOM kills on
+memory-constrained pods. Module-level imports below are restricted
+to type annotations + lightweight jaclang core types; everything
+else is lazy-loaded inside the function/hookimpl that uses it.
+"""
 import os;
 import pathlib;
 import from typing { Any }
-import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
 import from jaclang.cli.console { console }
-import from rich.table { Table }
 import from jaclang.jac0core.runtime { hookimpl, plugin_manager }
 import from jaclang.runtimelib.context { ExecutionContext }
-import from jaclang.runtimelib.server { JacAPIServer as JacServer }
-import from .context { JScaleExecutionContext }
-import from .serve { JacAPIServer }
-import from .jserver.jfast_api { JFastApiServer }
-import from .config_loader { get_scale_config }
-import from .factories.deployment_factory { DeploymentTargetFactory }
-import from .factories.registry_factory { ImageRegistryFactory }
-import from .factories.utility_factory { UtilityFactory }
-import from .abstractions.config.app_config { AppConfig }
-import from .user_manager { JacScaleUserManager }
-import from jaclang.runtimelib.server { UserManager }
+import from jaclang.runtimelib.server { JacAPIServer as JacServer, UserManager }
 import from jaclang.runtimelib.storage { Storage }
 
 """Pre-hook for jac start command to handle microservice mode and --scale flag."""
@@ -28,6 +24,7 @@ def _scale_pre_hook(context: HookContext) -> None {
     # discovery + our ensure_sv_service hookimpl. The pre-hook only
     # bootstraps the gateway for client-facing routing when enabled
     # and we're NOT already running as an sv sibling child.
+    import from .config_loader { get_scale_config }
     scale_config = get_scale_config();
     ms_config = scale_config.get_microservices_config();
     is_sv_sibling = os.environ.get("JAC_SV_SIBLING") == "1";
@@ -46,6 +43,16 @@ def _scale_pre_hook(context: HookContext) -> None {
 
     scale = context.get_arg("scale", False);
     if scale {
+        # Lazy-import the deploy-only machinery so plugin discovery
+        # doesn't pull the whole tree (factories + deployment targets
+        # + image registry + dotenv) into jaclang's first-use compile
+        # peak. None of this is needed unless --scale is set.
+        import from dotenv { load_dotenv }
+        import from .factories.deployment_factory { DeploymentTargetFactory }
+        import from .factories.registry_factory { ImageRegistryFactory }
+        import from .factories.utility_factory { UtilityFactory }
+        import from .abstractions.config.app_config { AppConfig }
+
         filename = context.get_arg("filename");
         target = context.get_arg("target", "kubernetes");
         # When microservice mode is enabled + target is the default,
@@ -178,6 +185,7 @@ def _scale_pre_hook(context: HookContext) -> None {
 
 """Print deployment status as a formatted table."""
 def _print_deployment_status(status_data: dict) -> None {
+    import from rich.table { Table }
     app_name = status_data.get('app_name', 'unknown');
     namespace = status_data.get('namespace', 'default');
     components = status_data.get('components', []);
@@ -351,6 +359,10 @@ class JacCmd {
         def destroy(
             file_path: str, target: str = "kubernetes", component: str = ""
         ) -> int {
+            import from dotenv { load_dotenv }
+            import from .config_loader { get_scale_config }
+            import from .factories.deployment_factory { DeploymentTargetFactory }
+            import from .factories.utility_factory { UtilityFactory }
             if not os.path.exists(file_path) {
                 raise FileNotFoundError(f"File not found: '{file_path}'");
             }
@@ -455,6 +467,10 @@ class JacCmd {
             source="jac-scale"
         )
         def status(file_path: str, target: str = "kubernetes") -> int {
+            import from dotenv { load_dotenv }
+            import from .config_loader { get_scale_config }
+            import from .factories.deployment_factory { DeploymentTargetFactory }
+            import from .factories.utility_factory { UtilityFactory }
             if not os.path.exists(file_path) {
                 raise FileNotFoundError(f"File not found: '{file_path}'");
             }
@@ -595,6 +611,7 @@ class JacCmd {
         def scale_cmd(action: str, service_name: str = "", lines: int = 50) -> int {
             import from jac_scale.microservices.orchestrator { build_registry }
             import from jac_scale.microservices.local_deployer { LocalDeployer }
+            import from .config_loader { get_scale_config }
 
             scale_config = get_scale_config();
             ms_config = scale_config.get_microservices_config();
@@ -697,7 +714,7 @@ class JacCmd {
 class JacScalePlugin {
     @hookimpl
     static def create_j_context(user_root: (str | None)) -> ExecutionContext {
-        # Storage backend configured via environment (MONGODB_URI, etc.)
+        import from .context { JScaleExecutionContext }
         ctx = JScaleExecutionContext();
         if user_root is not None {
             ctx.set_user_root(user_root);
@@ -711,21 +728,25 @@ class JacScalePlugin {
     Port fallback is handled in run_server.
     """
     @hookimpl
-    static def create_server(
-        jac_server: JacServer, host: str, port: int
-    ) -> JFastApiServer {
+    static def create_server(jac_server: JacServer, host: str, port: int) -> Any {
+        # Lazy-imported: .jserver.jfast_api drags FastAPI/Starlette into
+        # plugin discovery's compile pass. The hookspec dispatch only
+        # cares about the returned instance, not the static return type.
+        import from .jserver.jfast_api { JFastApiServer }
         return JFastApiServer([]);
     }
 
     """Provide jac-scale's enhanced JacAPIServer class."""
     @hookimpl
     static def get_api_server_class -> type {
+        import from .serve { JacAPIServer }
         return JacAPIServer;
     }
 
     """Provide jac-scale's UserManager."""
     @hookimpl
     static def get_user_manager(base_path: str) -> UserManager {
+        import from .user_manager { JacScaleUserManager }
         return JacScaleUserManager(base_path=base_path);
     }
 
