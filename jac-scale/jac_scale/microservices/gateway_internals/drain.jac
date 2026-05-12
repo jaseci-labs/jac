@@ -10,13 +10,12 @@ import from threading { Lock as _DrainLock }
 
 glob logger = logging.getLogger(__name__);
 
-# K8s probe paths bypass drain short-circuit: liveness must stay 200
-# mid-drain; readiness has its own draining-aware handler.
+# Liveness must stay 200 mid-drain; readiness has its own draining handler.
 glob _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live","/healthz/ready"};
 
 
+# Pre-set: inflight=0 so wait_for_zero returns True immediately.
 def _make_preset_event -> threading.Event {
-    # Pre-set: inflight starts at 0 so wait_for_zero returns True immediately.
     ev = threading.Event();
     ev.set();
     return ev;
