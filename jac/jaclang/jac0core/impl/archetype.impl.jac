@@ -381,7 +381,16 @@ impl ObjectSpatialFunction.trigger -> (
     if (len(parameters) >= 2) {
         second_param = `list(parameters.values())[1];
         ty = second_param.annotation;
-        return ty if (ty != _empty) else None;
+        if ty == _empty {
+            return None;
+        }
+        if not isinstance(ty, (type, UnionType, tuple)) {
+            raise TypeError(
+                f"Ability trigger annotation must be a type (class), got {ty!r}. "
+                "If you wrote `with root entry`, use `with Root entry` instead."
+            );
+        }
+        return ty;
     }
     return None;
 }

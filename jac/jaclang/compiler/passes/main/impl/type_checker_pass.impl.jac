@@ -613,6 +613,7 @@ impl TypeCheckPass._check_event_trigger_archetype(
     self: TypeCheckPass, nd: uni.Ability
 ) -> None {
     import from jaclang.compiler.type_system { types }
+    import from jaclang.jac0core.constant { Tokens as Tok }
     sig = nd.signature;
     if not isinstance(sig, uni.EventSignature) or sig.arch_tag_info is None {
         return;
@@ -654,6 +655,10 @@ impl TypeCheckPass._check_event_trigger_archetype(
     );
     err = E1116 if walker_owner else E1117;
     for arg in targets {
+        if isinstance(arg, uni.SpecialVarRef) and arg.name == Tok.KW_ROOT {
+            self.emit(err, node_override=arg, type="root");
+            continue;
+        }
         ty = self.evaluator.get_type_of_expression(arg);
         if not is_valid(ty) {
             self.emit(err, node_override=arg, type=str(ty));

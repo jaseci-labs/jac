@@ -1072,6 +1072,25 @@ test "ability_trigger_archetype" {
     )}:\n" + "\n---\n".join(e.pretty_print() for e in e1117);
 }
 
+test "root_keyword_as_walker_trigger" {
+    # Issue #5049 — writing `with root entry` instead of `with Root entry`
+    # silently skipped the ability body at runtime with no error. The checker
+    # must catch it and emit E1116 so the mistake is found at compile time.
+    path = os.path.join(CHECKER_FIXTURES, "checker_root_keyword_trigger.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1116 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1116"
+    ];
+    assert len(e1116) == 1 , f"Expected exactly 1 E1116 for `root` keyword trigger, got {len(
+        e1116
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
+    assert "root" in e1116[0].pretty_print() , "E1116 message should mention 'root'";
+}
+
 test "undefined_osp_position" {
     # Issue #5885 gap 7: undefined names in OSP-shape positions
     # (connect/disconnect typed-edge, ability trigger) must promote
