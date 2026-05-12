@@ -1186,6 +1186,8 @@ impl JFastApiServer.init(
 
     # P13: drain registered last -> outermost, so a 503 short-circuits
     # before JWT/context setup runs during graceful shutdown.
-    import from jac_scale.microservices.gateway_internals.drain { build_drain_middleware }
+    import from jac_scale.microservices.gateway_internals.drain {
+        build_drain_middleware
+    }
     self.app.middleware('http')(build_drain_middleware("service"));
 }

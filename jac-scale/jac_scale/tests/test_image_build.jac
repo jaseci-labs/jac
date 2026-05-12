@@ -11,9 +11,7 @@ import from jac_scale.microservices.images.build_helpers {
     ensure_dockerignore,
     build_client_bundle
 }
-import from jac_scale.microservices.images.auto_build {
-    auto_build_and_distribute
-}
+import from jac_scale.microservices.images.auto_build { auto_build_and_distribute }
 import from jac_scale.microservices.images.cluster_detect {
     CLUSTER_MINIKUBE,
     CLUSTER_K3D,
@@ -40,7 +38,9 @@ test "resolve_dockerfile priority: user override > shipped > embedded fallback" 
         # 2. Embedded fallback when no user file + no shipped Dockerfile.
         proj2 = Path(tmp) / "myapp";
         proj2.mkdir();
-        with mock.patch.object(helpers_mod, "find_shipped_dockerfile", return_value=None) {
+        with mock.patch.object(
+            helpers_mod, "find_shipped_dockerfile", return_value=None
+        ) {
             (df, ctx, args) = resolve_dockerfile(proj2);
         }
         assert df.parent.name == ".jac";

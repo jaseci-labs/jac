@@ -10,11 +10,10 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 # Sentinel for the gateway pod-spec entry; reserved to avoid collision
 # with user-defined service modules.
-glob GATEWAY_NAME: str = "__gateway__";
-
-# +5s cushion lets uvicorn finish exiting AFTER our drain middleware
-# completes; without it, SIGKILL can arrive mid-drain.
-glob _UVICORN_EXIT_CUSHION_S: int = 5;
+glob GATEWAY_NAME: str = "__gateway__",
+     # +5s cushion lets uvicorn finish exiting AFTER our drain middleware
+     # completes; without it, SIGKILL can arrive mid-drain.
+     _UVICORN_EXIT_CUSHION_S: int = 5;
 
 
 """DNS-1123-valid K8s resource name. Module level so
@@ -48,9 +47,13 @@ obj MicroserviceManifestBuilder {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
             hpa = self._build_hpa_manifest(svc_name);
-            if hpa is not None { hpas[svc_name] = hpa; }
+            if hpa is not None {
+                hpas[svc_name] = hpa;
+            }
             pdb = self._build_pdb_manifest(svc_name);
-            if pdb is not None { pdbs[svc_name] = pdb; }
+            if pdb is not None {
+                pdbs[svc_name] = pdb;
+            }
         }
 
         bundle: dict[str, Any] = {
@@ -340,10 +343,16 @@ obj MicroserviceManifestBuilder {
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
         for peer_name in routes {
-            if peer_name == svc_name { continue; }
-            if peer_name == GATEWAY_NAME { continue; }
+            if peer_name == svc_name {
+                continue;
+            }
+            if peer_name == GATEWAY_NAME {
+                continue;
+            }
             key = f"JAC_SV_{peer_name.upper()}_URL";
-            if key in seen_peer_keys { continue; }
+            if key in seen_peer_keys {
+                continue;
+            }
             seen_peer_keys.add(key);
             env.append({"name": key, "value": self._peer_dns_url(peer_name)});
         }
@@ -357,8 +366,12 @@ obj MicroserviceManifestBuilder {
         # (a stale override would silently route sv calls to the wrong place).
         extra: dict[str, Any] = svc_cfg.get("env", {});
         for (k, v) in extra.items() {
-            if k == "JAC_SV_NAME" { continue; }
-            if k.startswith("JAC_SV_") and k.endswith("_URL") { continue; }
+            if k == "JAC_SV_NAME" {
+                continue;
+            }
+            if k.startswith("JAC_SV_") and k.endswith("_URL") {
+                continue;
+            }
             env.append({"name": k, "value": str(v)});
         }
         return env;

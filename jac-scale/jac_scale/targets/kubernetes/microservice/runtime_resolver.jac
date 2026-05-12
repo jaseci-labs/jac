@@ -37,18 +37,21 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
         );
         return False;
     }
+
     def stop_service(name: str) -> bool {
         logger.warning(
             f"K8sRuntimeServiceResolver.stop_service({name}): admin op not yet wired."
         );
         return False;
     }
+
     def restart_service(name: str) -> bool {
         logger.warning(
             f"K8sRuntimeServiceResolver.restart_service({name}): admin op not yet wired."
         );
         return False;
     }
+
     def scale_service(name: str, replicas: int) -> bool {
         logger.warning(
             f"K8sRuntimeServiceResolver.scale_service({name}, {replicas}): "
@@ -56,8 +59,13 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
         );
         return False;
     }
-    def status -> dict[str, dict] { return {}; }
-    def get_logs(name: str, lines: int = 50) -> str { return ""; }
+
+    def status -> dict[str, dict] {
+        return {};
+    }
+    def get_logs(name: str, lines: int = 50) -> str {
+        return "";
+    }
     def destroy_all -> bool {
         logger.warning(
             "K8sRuntimeServiceResolver.destroy_all: use "
@@ -65,6 +73,7 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
         );
         return False;
     }
+
     def deploy_all -> bool {
         logger.warning(
             "K8sRuntimeServiceResolver.deploy_all: use `jac start --scale` instead."

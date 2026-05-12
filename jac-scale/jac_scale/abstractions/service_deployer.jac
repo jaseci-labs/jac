@@ -7,7 +7,6 @@ their own `has registry: ServiceRegistry` field; this ABC stays
 interface-only to avoid the abstractions -> microservices layering
 inversion."""
 
-
 class ServiceDeployer {
     """Single source of truth for service URLs.
       LocalDeployer       -> http://127.0.0.1:{service_entry.port}

@@ -33,9 +33,7 @@ obj MicroserviceOrchestrator {
     health -> print banner -> start gateway -> stop all on shutdown."""
     def start_local -> None {
         if not self.ms_config.get("routes", {}) {
-            logger.error(
-                "No routes declared in [plugins.scale.microservices.routes]"
-            );
+            logger.error("No routes declared in [plugins.scale.microservices.routes]");
             logger.error("Run `jac setup microservice` to configure.");
             return;
         }
@@ -57,9 +55,7 @@ obj MicroserviceOrchestrator {
             self.ms_config.get("boot_health_timeout", pm._boot_health_timeout)
         );
         pm._health_monitor_interval = float(
-            self.ms_config.get(
-                "health_monitor_interval", pm._health_monitor_interval
-            )
+            self.ms_config.get("health_monitor_interval", pm._health_monitor_interval)
         );
         max_wait: int = int(self.ms_config.get("boot_max_wait", 90));
 
@@ -80,11 +76,13 @@ obj MicroserviceOrchestrator {
             self.ms_config.get("gateway_host", DEFAULT_GATEWAY_HOST)
         );
 
-        static_mounts: list[dict[str, str]] = self._parse_static_mounts(
-            client_config
-        );
+        static_mounts: list[dict[str, str]] = self._parse_static_mounts(client_config);
         self._print_startup_banner(
-            registry, client_config, client_dist, gateway_host, gateway_port,
+            registry,
+            client_config,
+            client_dist,
+            gateway_host,
+            gateway_port,
             static_mounts
         );
 
@@ -105,9 +103,7 @@ obj MicroserviceOrchestrator {
     come via get_sv_registry() hookimpl returning DNS."""
     def start_gateway_only -> None {
         if not self.ms_config.get("routes", {}) {
-            logger.error(
-                "No routes declared in [plugins.scale.microservices.routes]"
-            );
+            logger.error("No routes declared in [plugins.scale.microservices.routes]");
             return;
         }
 
@@ -116,17 +112,13 @@ obj MicroserviceOrchestrator {
         # Built-in passthrough reads svc_entry.url directly (not the hookspec).
         _populate_k8s_urls(registry);
 
-        gateway_port = int(
-            self.ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT)
-        );
+        gateway_port = int(self.ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
         gateway_host = self.ms_config.get("gateway_host", DEFAULT_GATEWAY_HOST);
 
         client_config = self.ms_config.get("client", {});
         client_dist: str = self._client_dist_dir(client_config);
 
-        static_mounts: list[dict[str, str]] = self._parse_static_mounts(
-            client_config
-        );
+        static_mounts: list[dict[str, str]] = self._parse_static_mounts(client_config);
 
         gateway = MicroserviceGateway(
             registry=registry,
@@ -150,10 +142,7 @@ obj MicroserviceOrchestrator {
         for (route_name, prefix) in routes.items() {
             name_str: str = str(route_name);
             svc_entry = ServiceEntry(
-                name=name_str,
-                file=f"{name_str}.jac",
-                prefix=str(prefix),
-                port=0
+                name=name_str, file=f"{name_str}.jac", prefix=str(prefix), port=0
             );
             registry.register(svc_entry);
             logger.info(f"Registered route: {name_str} -> {svc_entry.prefix}");
@@ -171,9 +160,7 @@ obj MicroserviceOrchestrator {
 
     """Parse static_mounts entries into {url_prefix, local_path} dicts;
     skips malformed entries."""
-    def _parse_static_mounts(
-        client_config: dict[str, Any]
-    ) -> list[dict[str, str]] {
+    def _parse_static_mounts(client_config: dict[str, Any]) -> list[dict[str, str]] {
         out: list[dict[str, str]] = [];
         if not client_config {
             return out;
@@ -187,9 +174,7 @@ obj MicroserviceOrchestrator {
             url_prefix = str(ed.get("url_prefix", "")).strip();
             local_path = str(ed.get("local_path", "")).strip();
             if url_prefix and local_path {
-                out.append(
-                    {"url_prefix": url_prefix, "local_path": local_path}
-                );
+                out.append({"url_prefix": url_prefix, "local_path": local_path});
             }
         }
         return out;
@@ -217,9 +202,7 @@ obj MicroserviceOrchestrator {
 
         console.print(f"  Building client from {client_entry}...");
         try {
-            build_result = subprocess.run(
-                ["jac", "build", client_entry], timeout=120
-            );
+            build_result = subprocess.run(["jac", "build", client_entry], timeout=120);
             if build_result.returncode == 0 {
                 console.print("  Client build complete");
             } else {
@@ -237,7 +220,7 @@ obj MicroserviceOrchestrator {
     """Logs progress every 2s; warns and proceeds if not all healthy."""
     def _wait_for_health(
         pm: ServiceProcessManager, registry: ServiceRegistry, max_wait: int
-    ) -> None {
+    ) {
         logger.info("Waiting for services to start...");
         start_time: float = time.time();
         all_healthy = False;
@@ -279,12 +262,10 @@ obj MicroserviceOrchestrator {
         gateway_host: str,
         gateway_port: int,
         static_mounts: list[dict[str, str]]
-    ) -> None {
+    ) {
         console.print();
         console.print("[bold cyan]  Jac Microservice Mode[/bold cyan]");
-        console.print(
-            f"  [bold]Gateway:[/bold] http://{gateway_host}:{gateway_port}"
-        );
+        console.print(f"  [bold]Gateway:[/bold] http://{gateway_host}:{gateway_port}");
         console.print();
         console.print("  [bold]Services[/bold]");
         console.print(f"  [dim]{'-' * 48}[/dim]");
@@ -294,16 +275,12 @@ obj MicroserviceOrchestrator {
             } else {
                 icon = "[yellow]○[/yellow]";
             }
-            console.print(
-                f"  {icon} {name:18s} {entry.prefix:20s} -> {entry.url}"
-            );
+            console.print(f"  {icon} {name:18s} {entry.prefix:20s} -> {entry.url}");
         }
 
         if client_config and dict(client_config).get("entry") {
             console.print();
-            console.print(
-                f"  [bold]Client:[/bold] {dict(client_config)['entry']}"
-            );
+            console.print(f"  [bold]Client:[/bold] {dict(client_config)['entry']}");
             console.print(f"  [bold]Static:[/bold] {client_dist}");
         }
 
@@ -331,17 +308,16 @@ obj MicroserviceOrchestrator {
 # Each instantiates a fresh MicroserviceOrchestrator and delegates.
 # ---------------------------------------------------------------------------
 
-
 # Module-level wrappers preserve the legacy function-call API.
 def build_registry(ms_config: dict[str, Any]) -> ServiceRegistry {
     return MicroserviceOrchestrator(ms_config=ms_config)._build_registry();
 }
 
-def start_microservice_mode(ms_config: dict[str, Any]) -> None {
+def start_microservice_mode(ms_config: dict[str, Any]) {
     MicroserviceOrchestrator(ms_config=ms_config).start_local();
 }
 
-def start_gateway_only(ms_config: dict[str, Any]) -> None {
+def start_gateway_only(ms_config: dict[str, Any]) {
     MicroserviceOrchestrator(ms_config=ms_config).start_gateway_only();
 }
 

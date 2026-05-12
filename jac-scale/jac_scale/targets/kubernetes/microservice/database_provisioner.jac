@@ -65,9 +65,7 @@ obj MicroserviceDatabaseProvisioner {
         # without this, pods crash-loop with connection-refused on every
         # restart until the DB happens to win the race.
         ctx.env_list = list(self.k8s_target.env_list);
-        ctx.init_containers = self.k8s_target._get_database_init_containers(
-            app_name
-        );
+        ctx.init_containers = self.k8s_target._get_database_init_containers(app_name);
 
         if self.logger {
             self.logger.info(

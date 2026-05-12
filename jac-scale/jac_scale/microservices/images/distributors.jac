@@ -19,13 +19,13 @@ obj MinikubeDistributor(ImageDistributor) {
     def build_and_distribute(project_dir: Path, image_tag: str) -> str {
         (dockerfile, context_dir, build_args) = resolve_dockerfile(project_dir);
         env_overrides = get_minikube_docker_env();
-        run_docker_build(
-            context_dir, image_tag, dockerfile, build_args, env_overrides
-        );
+        run_docker_build(context_dir, image_tag, dockerfile, build_args, env_overrides);
         return _retag_with_content_id(image_tag, env_overrides);
     }
 
-    def distribute(image_tag: str) -> str { return image_tag; }
+    def distribute(image_tag: str) -> str {
+        return image_tag;
+    }
 }
 
 

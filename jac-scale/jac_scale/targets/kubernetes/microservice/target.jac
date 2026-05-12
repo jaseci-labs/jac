@@ -73,7 +73,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     to the cluster-aware auto-build pipeline."""
     def _auto_build_image(app_name: str, app_config: AppConfig) -> str {
         import from pathlib { Path }
-        import from jac_scale.microservices.images.auto_build { auto_build_and_distribute }
+        import from jac_scale.microservices.images.auto_build {
+            auto_build_and_distribute
+        }
 
         # Read image_registry directly from raw [plugins.scale.kubernetes]
         # config; KubernetesConfig.from_dict drops unknown keys, so going
@@ -127,7 +129,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
                 k8s_target=self, logger=self.logger, enabled=self.auto_build
-            ).provision(app_name);
+            ).provision(
+                app_name
+            );
         } except Exception as e {
             return DeploymentResult(
                 success=False, message=f"database provisioning failed: {e}"
@@ -497,7 +501,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 namespace=namespace, label_selector=selector
             );
         } except ApiException as e {
-            if e.status != 404 { raise; }
+            if e.status != 404 {
+                raise;
+            }
         }
 
         try {
@@ -505,7 +511,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
-            if e.status != 404 { raise; }
+            if e.status != 404 {
+                raise;
+            }
         }
 
         try {
@@ -513,7 +521,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
-            if e.status != 404 { raise; }
+            if e.status != 404 {
+                raise;
+            }
         }
 
         try {
@@ -521,7 +531,9 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
                 namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
-            if e.status != 404 { raise; }
+            if e.status != 404 {
+                raise;
+            }
         }
 
         # Services use the role-LESS selector since Service manifests

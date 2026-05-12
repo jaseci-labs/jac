@@ -35,7 +35,9 @@ def _scale_pre_hook(context: HookContext) -> None {
     if ms_config.get("enabled", False) and not is_sv_sibling {
         scale_flag = context.get_arg("scale", False);
         if not scale_flag {
-            import from jac_scale.microservices.orchestrator.orchestrator { start_microservice_mode }
+            import from jac_scale.microservices.orchestrator.orchestrator {
+                start_microservice_mode
+            }
             start_microservice_mode(ms_config);
             context.set_data("cancel_execution", True);
             context.set_data("cancel_return_code", 0);
@@ -123,7 +125,9 @@ def _scale_pre_hook(context: HookContext) -> None {
                 "Installing Jaseci packages from repository (experimental mode)..."
             );
         } elif target == "kubernetes-microservice" {
-            import from jac_scale.microservices.images.build_helpers { find_jaseci_repo_root }
+            import from jac_scale.microservices.images.build_helpers {
+                find_jaseci_repo_root
+            }
             repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
             if repo is not None {
                 console.print(
@@ -593,7 +597,9 @@ class JacCmd {
             source="jac-scale"
         )
         def scale_cmd(action: str, service_name: str = "", lines: int = 50) -> int {
-            import from jac_scale.microservices.orchestrator.orchestrator { build_registry }
+            import from jac_scale.microservices.orchestrator.orchestrator {
+                build_registry
+            }
             import from jac_scale.microservices.local_deployer { LocalDeployer }
 
             scale_config = get_scale_config();
@@ -679,7 +685,9 @@ class JacCmd {
             } elif action == "gateway" {
                 # K8s gateway-only mode: no local service spawning, peer
                 # resolution via DNS through get_sv_registry.
-                import from jac_scale.microservices.orchestrator.orchestrator { start_gateway_only }
+                import from jac_scale.microservices.orchestrator.orchestrator {
+                    start_gateway_only
+                }
                 start_gateway_only(ms_config);
                 return 0;
             } else {
@@ -779,7 +787,9 @@ class JacScalePlugin {
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jac_scale.config_loader { get_scale_config }
-                import from jac_scale.targets.kubernetes.microservice.manifest_builder { k8s_safe_name }
+                import from jac_scale.targets.kubernetes.microservice.manifest_builder {
+                    k8s_safe_name
+                }
                 import from jac_scale.microservices.runtime.util {
                     k8s_service_dns_url,
                     in_cluster_namespace
@@ -875,7 +885,9 @@ class JacScalePlugin {
         # K8s mode: build DNS map from configured routes.
         try {
             import from jac_scale.config_loader { get_scale_config }
-            import from jac_scale.targets.kubernetes.microservice.runtime_resolver { build_k8s_registry }
+            import from jac_scale.targets.kubernetes.microservice.runtime_resolver {
+                build_k8s_registry
+            }
             ms_cfg = get_scale_config().get_microservices_config();
             routes: dict[str, str] = ms_cfg.get("routes", {});
             port: int = int(ms_cfg.get("gateway_port", 8000));

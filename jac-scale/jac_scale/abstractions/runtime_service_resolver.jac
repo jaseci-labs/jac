@@ -2,7 +2,6 @@
 at which a registered microservice is reachable (loopback for subprocess
 mode, K8s DNS for in-cluster mode)."""
 
-
 class RuntimeServiceResolver {
     """Return the base URL for the given service entry.
     `service_entry` is typed `any` to keep abstractions/ free of
