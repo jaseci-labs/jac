@@ -223,7 +223,7 @@ test "health endpoint returns service summary" {
 
 test "/healthz/live returns 200 always (liveness, no drain check)" {
     # Liveness gates restart; drain affects readiness only.
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain { reset_drain, start_drain }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -246,7 +246,7 @@ test "/healthz/live returns 200 always (liveness, no drain check)" {
 
 test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
     # Readiness 503s during drain so kube-proxy removes pod from Endpoints.
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain { reset_drain, start_drain }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -1127,7 +1127,7 @@ test "health endpoint does not require auth" {
 }
 
 test "gateway drain 503s new requests with Retry-After + envelope" {
-    import from jac_scale.microservices._drain { reset_drain, start_drain, is_draining }
+    import from jac_scale.microservices.gateway_internals.drain { reset_drain, start_drain, is_draining }
     reset_drain();
 
     reg = ServiceRegistry();
@@ -1161,7 +1161,7 @@ test "gateway drain 503s new requests with Retry-After + envelope" {
 # Drain runs before the dispatcher (outermost middleware), so 503d
 # responses should not carry the X-Trace-Id header the dispatcher stamps.
 test "gateway drain does not burn metrics labels on 503d requests" {
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain { reset_drain, start_drain }
     reset_drain();
 
     reg = ServiceRegistry();
@@ -1305,7 +1305,7 @@ test "CORS simple request echoes Allow-Origin on the response" {
 
 
 test "CORS preflight still responds during drain (headers reachable on 503)" {
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain { reset_drain, start_drain }
     def build -> object {
         reg = ServiceRegistry();
         gw = MicroserviceGateway(registry=reg);

@@ -14,7 +14,7 @@ registry (matching prefix -> upstream URL). Close codes: 1012 drain,
 1008 no route, 1013 unhealthy."""
 def _install_ws_catchall(gw: object) {
     import from jac_scale.microservices._ws_forward { websocket_forward }
-    import from jac_scale.microservices._drain { is_draining }
+    import from jac_scale.microservices.gateway_internals.drain { is_draining }
     import from jac_scale.microservices.service_registry { ServiceStatus }
 
     @gw.app.websocket("/{ws_path:path}")
@@ -322,7 +322,7 @@ preStop sleep (bridges the kube-proxy-propagation gap) and
 terminationGracePeriodSeconds (gives drain time to flush).
 """
 impl MicroserviceGateway.handle_health_ready -> Response {
-    import from jac_scale.microservices._drain { is_draining }
+    import from jac_scale.microservices.gateway_internals.drain { is_draining }
     if is_draining() {
         return JSONResponse(
             status_code=503, content={"status": "draining", "ready": False}
@@ -674,7 +674,7 @@ impl MicroserviceGateway.setup -> FastAPI {
     # Drain registered LAST so Starlette's insert(0, ...) puts it as
     # the outermost HTTP middleware - 503s short-circuit before the
     # dispatcher stamps metrics or trace-ids.
-    import from jac_scale.microservices._drain { build_drain_middleware }
+    import from jac_scale.microservices.gateway_internals.drain { build_drain_middleware }
     self.app.middleware("http")(build_drain_middleware("__gateway__"));
 
     import from jac_scale.config_loader { get_scale_config }
@@ -712,7 +712,7 @@ impl MicroserviceGateway.setup -> FastAPI {
 """Start the gateway (blocking). Uses Config+Server so install_signal_drain
 can wrap `handle_exit` before the event loop starts."""
 impl MicroserviceGateway.start -> None {
-    import from jac_scale.microservices._drain { install_signal_drain }
+    import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
     import from jac_scale.config_loader { get_scale_config }
 
     if self.app is None {

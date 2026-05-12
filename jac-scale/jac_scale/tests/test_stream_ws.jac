@@ -275,7 +275,7 @@ test "ws route rejects with 1012 during drain" {
         ServiceStatus
     }
     import from jac_scale.microservices.gateway { MicroserviceGateway }
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain { reset_drain, start_drain }
     import from fastapi.testclient { TestClient }
 
     reset_drain();
