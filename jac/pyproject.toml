@@ -33,6 +33,9 @@ jac = "jaclang.jac0core.cli_boot:start_cli"
 [project.entry-points.pytest11]
 jaclang = "jaclang.pytest_plugin"
 
+[project.entry-points."pyinstaller40"]
+hook-dirs = "jaclang._pyinstaller:get_hook_dirs"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8.2.1",

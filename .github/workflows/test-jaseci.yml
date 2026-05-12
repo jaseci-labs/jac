@@ -54,6 +54,11 @@ jobs:
         pip install pytest
         pip install pytest-xdist
         pip install watchdog
+        # Required by the PyInstaller-hook acceptance test in
+        # jac/tests/packaging/. Without this install, that test
+        # silently skips via pytest.importorskip and the hook ships
+        # with no actual end-to-end coverage in CI.
+        pip install pyinstaller
 
     - name: Run runtime + langserve + language tests
       run: pytest -x jac -n auto --ignore=jac/tests/compiler

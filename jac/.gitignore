@@ -60,6 +60,7 @@ out.txt
 # session files
 *.bak
 *.dat
+!jaclang/_pyinstaller/rthooks.dat
 *.dir
 *.log
 

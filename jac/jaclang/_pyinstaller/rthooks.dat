@@ -1,0 +1,3 @@
+{
+    '_jac_finder': ['pyi_rth_jac_finder.py'],
+}
