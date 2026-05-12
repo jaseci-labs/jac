@@ -25,11 +25,13 @@ The `jac --version` output lists all installed plugins and their versions. Check
 | jac-scale | 0.2.0 |
 | byllm | 0.5.0 |
 
-**API Key:** Parts 5+ use AI features powered by Anthropic's Claude. Set your API key as an environment variable before running those sections:
+**Local AI Model:** Parts 5+ use AI features. The tutorial defaults to a local model -- Google Gemma 4 E4B running in-process via `llama.cpp` -- so **no API key is required**. Install the local-model dependency once:
 
 ```bash
-export ANTHROPIC_API_KEY="your-key-here"
+pip install 'byllm[local]'
 ```
+
+The first AI call downloads ~5 GB of GGUF weights to your machine and caches them; subsequent runs are instant. If you'd rather use a cloud model (Anthropic Claude, Google Gemini, Ollama, etc.), see the "Use a cloud model instead" callout in [Part 5](#part-5-making-it-smart-with-ai).
 
 The tutorial is split into seven parts. Each builds on the last:
 
@@ -551,7 +553,7 @@ def:pub toggle_task(id: str) -> Task | None {
 }
 
 """Delete a task."""
-def:pub delete_task(id: str) -> dict {
+def:pub delete_task(id: str) -> dict[str, str] {
     for task in [root-->][?:Task] {
         if jid(task) == id {
             del task;
@@ -944,7 +946,7 @@ h1 { text-align: center; margin-bottom: 24px; color: #333; }
     }
 
     """Delete a task."""
-    def:pub delete_task(id: str) -> dict {
+    def:pub delete_task(id: str) -> dict[str, str] {
         for task in [root-->][?:Task] {
             if jid(task) == id {
                 del task;
@@ -1064,41 +1066,52 @@ Your day planner works, but it doesn't leverage AI yet. This part introduces one
 !!! tip "Starting fresh"
     If you have leftover data from Parts 1–4, delete the `.jac/data/` directory before running Part 5. The schema changes (adding `category` to Task) may conflict with old nodes.
 
-**Set Up Your API Key**
+**Set Up the Model**
 
-Jac's AI features use an LLM under the hood. You need an API key from Anthropic (or another provider). Set it as an environment variable:
+Jac's AI features need an LLM to run. The tutorial defaults to a **local model** -- Google Gemma 4 E4B, running in-process via `llama.cpp` -- so there's no API key to manage and no per-call cost. Install the local-model dependency once:
 
 ```bash
-export ANTHROPIC_API_KEY="your-key-here"
+pip install 'byllm[local]'
 ```
 
-!!! info "Free and Alternative Models"
-    **Anthropic API keys are not free** -- you'll need API credits at [console.anthropic.com](https://console.anthropic.com).
+The first time you run an AI feature, byLLM prompts you (in an interactive terminal) to download the ~5 GB GGUF weights, caches them under `~/.cache/jac/models/`, and uses the cached copy from then on. If you'd rather pre-fetch the weights now -- useful in CI, Docker, or just to know the download is done -- run:
 
-    **Free alternative:** Use Google Gemini with [Gemini API](https://ai.google.dev/):
-    ```jac
-    glob llm = Model(model_name="gemini/gemini-2.5-flash");
-    ```
-
-    **Self-hosted:** Run models locally with [Ollama](https://ollama.ai/):
-    ```jac
-    glob llm = Model(model_name="ollama/llama3.2:1b");
-    ```
-
-    Jac's AI plugin wraps [LiteLLM](https://docs.litellm.ai/docs/providers), supporting OpenAI, Anthropic, Google, Azure, and many more.
+```bash
+jac model pull gemma-4-e4b
+```
 
 **Configure the LLM**
 
-Add the AI import and model initialization to the top of `main.jac`, right after the existing imports:
+The model is chosen in `jac.toml` -- the project file that `jac create` generated for you. Add a `[plugins.byllm.model]` section:
 
-```jac
-import from byllm.lib { Model }
-cl import "./styles.css";
-
-glob llm = Model(model_name="claude-sonnet-4-20250514");
+```toml
+[plugins.byllm.model]
+default_model = "local:gemma-4-e4b"
 ```
 
-`import from byllm.lib { Model }` loads Jac's AI plugin. The syntax is `import from module { names }` -- you can import any Python or PyPI package this way. `glob llm = Model(...)` initializes the model at module level -- the **`glob`** keyword declares a module-level variable, accessible everywhere in the file.
+That's the whole configuration. Anywhere you write `by llm()` in your Jac code, this is the model that runs. No import, no module-level variable -- swapping models means editing one line in `jac.toml`, with no code change.
+
+!!! info "Use a cloud model instead"
+    If you prefer a hosted model -- typically because you want a stronger model than runs locally, or you're on a machine without GPU/RAM headroom -- swap the `default_model` line in `jac.toml`. Jac's AI plugin wraps [LiteLLM](https://docs.litellm.ai/docs/providers), so anything LiteLLM supports works here:
+
+    | Provider | `default_model` value | Notes |
+    |----------|-----------------------|-------|
+    | Anthropic Claude | `"claude-sonnet-4-20250514"` | Set `ANTHROPIC_API_KEY`; get credits at [console.anthropic.com](https://console.anthropic.com) |
+    | Google Gemini | `"gemini/gemini-2.5-flash"` | Set `GEMINI_API_KEY`; free tier at [ai.google.dev](https://ai.google.dev/) |
+    | Ollama (local daemon) | `"ollama/llama3.2:1b"` | Requires [Ollama](https://ollama.ai/) running locally |
+
+    Whichever you pick, set the matching API key as an environment variable before `jac start` (e.g. `export ANTHROPIC_API_KEY="..."`). The rest of the tutorial code is identical.
+
+!!! info "Alternative: configure the model in code with `glob`"
+    You can also initialize the model from Jac source, which is useful when you want the choice of model to be visible in the code itself or vary by file:
+
+    ```jac
+    import from byllm.lib { Model }
+
+    glob llm = Model(model_name="local:gemma-4-e4b");
+    ```
+
+    `import from byllm.lib { Model }` loads the AI plugin. `glob` declares a module-level variable accessible throughout the file. We'll stick with the `jac.toml` form in this tutorial because it keeps source files focused on logic.
 
 **Enums as Output Constraints**
 
@@ -1169,11 +1182,11 @@ Now for a more advanced use case: the shopping list. The `categorize` function r
 enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
 
 obj Ingredient {
-    has name: str;
-    has quantity: float;
-    has unit: Unit;
-    has cost: float;
-    has carby: bool;
+    has name: str,
+        quantity: float,
+        unit: Unit,
+        cost: float,
+        carby: bool;
 }
 ```
 
@@ -1236,7 +1249,7 @@ def:pub get_shopping_list -> list[ShoppingItem] {
 }
 
 """Clear the shopping list."""
-def:pub clear_shopping_list -> dict {
+def:pub clear_shopping_list -> dict[str, bool] {
     for item in [root-->][?:ShoppingItem] {
         del item;
     }
@@ -1386,13 +1399,13 @@ cl def:pub app -> JsxElement {
                                 {(
                                     <span class="carb-badge">Carbs</span>
                                 ) if ing.carby else None}
-                                <span class="ing-cost">${format(ing.cost, ".2f")}</span>
+                                <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
                             </div>
                         </div> for ing in ingredients
                     ]}
                     {(
                         <div class="shopping-footer">
-                            <span class="total">Total: ${format(total_cost, ".2f")}</span>
+                            <span class="total">Total: ${f"{total_cost:.2f}"}</span>
                             <button class="btn-clear" onClick={clear_list}>Clear</button>
                         </div>
                     ) if len(ingredients) > 0 else None}
@@ -1401,6 +1414,220 @@ cl def:pub app -> JsxElement {
         </div>;
 }
 ```
+
+**Componentizing the UI**
+
+The two-column `app` function works, but look at the code: it's mixing four different concerns -- task list state, shopping list state, the task row markup, and the ingredient row markup. As any UI grows, this single-component approach becomes harder to navigate and harder to change. The fix is the same idea that React, Vue, and Svelte use: **break the UI into smaller, focused components**.
+
+In Jac, a component is just a `cl def:pub` function that returns `JsxElement`. Components can take parameters (called *props*), own their own `has` state, and compose into bigger components. You'll factor the app into four:
+
+| Component | Owns state? | Purpose |
+|-----------|-------------|---------|
+| `TaskItem` | No | Renders one task row given a `task` and callbacks |
+| `TasksColumn` | Yes (tasks, input text) | Owns the task list and fetches on mount |
+| `IngredientItem` | No | Renders one ingredient row |
+| `ShoppingColumn` | Yes (ingredients, meal text) | Owns the shopping list and fetches on mount |
+
+The top-level `app` then becomes a trivial composition of `<TasksColumn/>` and `<ShoppingColumn/>` -- no shared state, no mixed concerns.
+
+**A presentational component: `TaskItem`**
+
+A component that takes props but owns no state is called *presentational* -- it renders what it's given, and the parent decides what happens on interaction:
+
+```jac
+"""Single task row -- presentational; toggle and delete are passed in."""
+cl def:pub TaskItem(
+    task: Task, onToggle: Callable[[], None], onDelete: Callable[[], None]
+) -> JsxElement {
+    return
+        <div class="task-item">
+            <input type="checkbox" checked={task.done} onChange={onToggle}/>
+            <span class={"task-title " + ("task-done" if task.done else "")}>
+                {task.title}
+            </span>
+            {(<span class="category">{task.category}</span>)
+                if task.category and task.category != "other"
+                else None}
+            <button class="btn-delete" onClick={onDelete}>X</button>
+        </div>;
+}
+```
+
+Two things to notice. First, `task: Task` is a real typed `node` -- the same type used on the server. Because `Task` returned by `get_tasks()` crosses the client-server boundary as a typed object, `TaskItem` works on the original typed instance, not a dict. Second, `onToggle: Callable[[], None]` declares that the parent must pass a function taking no arguments and returning nothing. `Callable` is how Jac describes function signatures in type annotations.
+
+**A stateful component: `TasksColumn`**
+
+`TasksColumn` owns the task list and the input text. It fetches on mount, makes server calls in response to user actions, and renders `TaskItem` instances:
+
+```jac
+"""Tasks column -- owns task list state, fetches on mount."""
+cl def:pub TasksColumn -> JsxElement {
+    has tasks: list[Task] = [],
+        task_text: str = "";
+
+    async can with entry {
+        tasks = await get_tasks();
+    }
+
+    async def add_new_task {
+        if task_text.strip() {
+            task = await add_task(task_text.strip());
+            tasks = tasks + [task];
+            task_text = "";
+        }
+    }
+
+    async def toggle(id: str) {
+        updated = await toggle_task(id);
+        if updated is not None {
+            tasks = [updated if jid(t) == id else t for t in tasks];
+        }
+    }
+
+    async def remove(id: str) {
+        await delete_task(id);
+        tasks = [t for t in tasks if jid(t) != id];
+    }
+
+    remaining = len([t for t in tasks if not t.done]);
+
+    return
+        <div class="column">
+            <h2>Today's Tasks</h2>
+            <div class="input-row">
+                <input
+                    class="input"
+                    value={task_text}
+                    onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                    onKeyPress={lambda e: KeyboardEvent {
+                        if e.key == "Enter" { add_new_task(); }
+                    }}
+                    placeholder="What needs to be done today?"
+                />
+                <button class="btn-add" onClick={add_new_task}>Add</button>
+            </div>
+            {[
+                <TaskItem
+                    key={jid(t)}
+                    task={t}
+                    onToggle={lambda { toggle(jid(t)); }}
+                    onDelete={lambda { remove(jid(t)); }}
+                /> for t in tasks
+            ]}
+            <div class="count">
+                {remaining} {("task" if remaining == 1 else "tasks")} remaining
+            </div>
+        </div>;
+}
+```
+
+The rendering is much easier to read now: a header, an input row, a list of `<TaskItem/>` elements, and a count. The inline lambdas for `onToggle` and `onDelete` close over `jid(t)` so each row knows which task it's acting on. This pattern -- passing callbacks that capture per-row data -- is how parent components stay in control of what happens when a child is interacted with.
+
+**The shopping components**
+
+`IngredientItem` and `ShoppingColumn` follow the same shape -- presentational row, then stateful column:
+
+```jac
+"""Single ingredient row -- presentational."""
+cl def:pub IngredientItem(ing: ShoppingItem) -> JsxElement {
+    return
+        <div class="ingredient-item">
+            <div class="ing-info">
+                <span class="ing-name">{ing.name}</span>
+                <span class="ing-qty">{ing.quantity} {ing.unit}</span>
+            </div>
+            <div class="ing-meta">
+                {(<span class="carb-badge">Carbs</span>) if ing.carby else None}
+                <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
+            </div>
+        </div>;
+}
+
+"""Shopping list column -- owns ingredient state, fetches on mount."""
+cl def:pub ShoppingColumn -> JsxElement {
+    has ingredients: list[ShoppingItem] = [],
+        meal_text: str = "",
+        generating: bool = False;
+
+    async can with entry {
+        ingredients = await get_shopping_list();
+    }
+
+    async def generate_meal_list {
+        if meal_text.strip() {
+            generating = True;
+            ingredients = await generate_list(meal_text.strip());
+            generating = False;
+        }
+    }
+
+    async def clear_list {
+        await clear_shopping_list();
+        ingredients = [];
+        meal_text = "";
+    }
+
+    total_cost = 0.0;
+    for ing in ingredients {
+        total_cost = total_cost + ing.cost;
+    }
+
+    return
+        <div class="column">
+            <h2>Meal Shopping List</h2>
+            <div class="input-row">
+                <input
+                    class="input"
+                    value={meal_text}
+                    onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
+                    onKeyPress={lambda e: KeyboardEvent {
+                        if e.key == "Enter" { generate_meal_list(); }
+                    }}
+                    placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
+                />
+                <button
+                    class="btn-generate"
+                    onClick={generate_meal_list}
+                    disabled={generating}
+                >
+                    {("Generating..." if generating else "Generate")}
+                </button>
+            </div>
+            {(<div class="generating-msg">Generating with AI...</div>)
+                if generating
+                else None}
+            {[<IngredientItem key={ing.name} ing={ing}/> for ing in ingredients]}
+            {(
+                <div class="shopping-footer">
+                    <span class="total">Total: ${f"{total_cost:.2f}"}</span>
+                    <button class="btn-clear" onClick={clear_list}>Clear</button>
+                </div>
+            ) if len(ingredients) > 0 else None}
+        </div>;
+}
+```
+
+**The new `app`**
+
+With the column components doing all the heavy lifting, `app` is now small enough to read in a breath:
+
+```jac
+cl def:pub app -> JsxElement {
+    return
+        <div class="container">
+            <h1>AI Day Planner</h1>
+            <div class="two-column">
+                <TasksColumn/>
+                <ShoppingColumn/>
+            </div>
+        </div>;
+}
+```
+
+Step back and notice the architectural payoff. The two columns are *independent* -- each owns its own state, makes its own server calls, and renders itself. Adding a third column, swapping `<TasksColumn/>` for a routing wrapper, or reusing `<TaskItem/>` somewhere else is now a local change that doesn't touch the rest of the app. This is the same separation-of-concerns thinking that makes graphs and `def:priv` clean -- only applied to UI.
+
+!!! info "Components live in one file -- for now"
+    All four components currently live in the same `main.jac`. That's fine for a tutorial. In a real project, each component would live in its own file -- you'll see that layout in Part 6, where you'll split components into a `components/` folder.
 
 **Update Styles**
 
@@ -1441,10 +1668,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
 ??? note "Complete `main.jac` for Parts 1–5"
 
     ```jac
-    import from byllm.lib { Model }
     cl import "./styles.css";
-
-    glob llm = Model(model_name="claude-sonnet-4-20250514");
 
     # --- Enums ---
 
@@ -1455,11 +1679,11 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     # --- AI Types ---
 
     obj Ingredient {
-        has name: str;
-        has quantity: float;
-        has unit: Unit;
-        has cost: float;
-        has carby: bool;
+        has name: str,
+            quantity: float,
+            unit: Unit,
+            cost: float,
+            carby: bool;
     }
 
     sem Ingredient.cost = "Estimated cost in USD";
@@ -1513,7 +1737,7 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     }
 
     """Delete a task."""
-    def:pub delete_task(id: str) -> dict {
+    def:pub delete_task(id: str) -> dict[str, str] {
         for task in [root-->][?:Task] {
             if jid(task) == id {
                 del task;
@@ -1547,25 +1771,39 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
     }
 
     """Clear the shopping list."""
-    def:pub clear_shopping_list -> dict {
+    def:pub clear_shopping_list -> dict[str, bool] {
         for item in [root-->][?:ShoppingItem] {
             del item;
         }
         return {"cleared": True};
     }
 
-    # --- Frontend ---
+    # --- Frontend Components ---
 
-    cl def:pub app -> JsxElement {
+    """Single task row -- presentational; toggle and delete are passed in."""
+    cl def:pub TaskItem(
+        task: Task, onToggle: Callable[[], None], onDelete: Callable[[], None]
+    ) -> JsxElement {
+        return
+            <div class="task-item">
+                <input type="checkbox" checked={task.done} onChange={onToggle}/>
+                <span class={"task-title " + ("task-done" if task.done else "")}>
+                    {task.title}
+                </span>
+                {(<span class="category">{task.category}</span>)
+                    if task.category and task.category != "other"
+                    else None}
+                <button class="btn-delete" onClick={onDelete}>X</button>
+            </div>;
+    }
+
+    """Tasks column -- owns task list state, fetches on mount."""
+    cl def:pub TasksColumn -> JsxElement {
         has tasks: list[Task] = [],
-            task_text: str = "",
-            meal_text: str = "",
-            ingredients: list[ShoppingItem] = [],
-            generating: bool = False;
+            task_text: str = "";
 
         async can with entry {
             tasks = await get_tasks();
-            ingredients = await get_shopping_list();
         }
 
         async def add_new_task {
@@ -1578,13 +1816,70 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
 
         async def toggle(id: str) {
             updated = await toggle_task(id);
-            if updated is None { return; }
-            tasks = [updated if jid(t) == id else t for t in tasks];
+            if updated is not None {
+                tasks = [updated if jid(t) == id else t for t in tasks];
+            }
         }
 
         async def remove(id: str) {
             await delete_task(id);
             tasks = [t for t in tasks if jid(t) != id];
+        }
+
+        remaining = len([t for t in tasks if not t.done]);
+
+        return
+            <div class="column">
+                <h2>Today's Tasks</h2>
+                <div class="input-row">
+                    <input
+                        class="input"
+                        value={task_text}
+                        onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
+                        onKeyPress={lambda e: KeyboardEvent {
+                            if e.key == "Enter" { add_new_task(); }
+                        }}
+                        placeholder="What needs to be done today?"
+                    />
+                    <button class="btn-add" onClick={add_new_task}>Add</button>
+                </div>
+                {[
+                    <TaskItem
+                        key={jid(t)}
+                        task={t}
+                        onToggle={lambda { toggle(jid(t)); }}
+                        onDelete={lambda { remove(jid(t)); }}
+                    /> for t in tasks
+                ]}
+                <div class="count">
+                    {remaining} {("task" if remaining == 1 else "tasks")} remaining
+                </div>
+            </div>;
+    }
+
+    """Single ingredient row -- presentational."""
+    cl def:pub IngredientItem(ing: ShoppingItem) -> JsxElement {
+        return
+            <div class="ingredient-item">
+                <div class="ing-info">
+                    <span class="ing-name">{ing.name}</span>
+                    <span class="ing-qty">{ing.quantity} {ing.unit}</span>
+                </div>
+                <div class="ing-meta">
+                    {(<span class="carb-badge">Carbs</span>) if ing.carby else None}
+                    <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
+                </div>
+            </div>;
+    }
+
+    """Shopping list column -- owns ingredient state, fetches on mount."""
+    cl def:pub ShoppingColumn -> JsxElement {
+        has ingredients: list[ShoppingItem] = [],
+            meal_text: str = "",
+            generating: bool = False;
+
+        async can with entry {
+            ingredients = await get_shopping_list();
         }
 
         async def generate_meal_list {
@@ -1601,109 +1896,68 @@ h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
             meal_text = "";
         }
 
-        remaining = len([t for t in tasks if not t.done]);
         total_cost = 0.0;
         for ing in ingredients { total_cost = total_cost + ing.cost; }
 
         return
+            <div class="column">
+                <h2>Meal Shopping List</h2>
+                <div class="input-row">
+                    <input
+                        class="input"
+                        value={meal_text}
+                        onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
+                        onKeyPress={lambda e: KeyboardEvent {
+                            if e.key == "Enter" { generate_meal_list(); }
+                        }}
+                        placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
+                    />
+                    <button
+                        class="btn-generate"
+                        onClick={generate_meal_list}
+                        disabled={generating}
+                    >
+                        {("Generating..." if generating else "Generate")}
+                    </button>
+                </div>
+                {(<div class="generating-msg">Generating with AI...</div>)
+                    if generating
+                    else None}
+                {[<IngredientItem key={ing.name} ing={ing}/> for ing in ingredients]}
+                {(
+                    <div class="shopping-footer">
+                        <span class="total">Total: ${f"{total_cost:.2f}"}</span>
+                        <button class="btn-clear" onClick={clear_list}>Clear</button>
+                    </div>
+                ) if len(ingredients) > 0 else None}
+            </div>;
+    }
+
+    cl def:pub app -> JsxElement {
+        return
             <div class="container">
                 <h1>AI Day Planner</h1>
                 <div class="two-column">
-                    <div class="column">
-                        <h2>Today's Tasks</h2>
-                        <div class="input-row">
-                            <input
-                                class="input"
-                                value={task_text}
-                                onChange={lambda e: ChangeEvent { task_text = e.target.value; }}
-                                onKeyPress={lambda e: KeyboardEvent {
-                                    if e.key == "Enter" { add_new_task(); }
-                                }}
-                                placeholder="What needs to be done today?"
-                            />
-                            <button class="btn-add" onClick={add_new_task}>Add</button>
-                        </div>
-                        {[
-                            <div key={jid(t)} class="task-item">
-                                <input
-                                    type="checkbox"
-                                    checked={t.done}
-                                    onChange={lambda { toggle(jid(t)); }}
-                                />
-                                <span class={"task-title " + ("task-done" if t.done else "")}>
-                                    {t.title}
-                                </span>
-                                {(
-                                    <span class="category">{t.category}</span>
-                                ) if t.category and t.category != "other" else None}
-                                <button
-                                    class="btn-delete"
-                                    onClick={lambda { remove(jid(t)); }}
-                                >
-                                    X
-                                </button>
-                            </div> for t in tasks
-                        ]}
-                        <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
-                    </div>
-                    <div class="column">
-                        <h2>Meal Shopping List</h2>
-                        <div class="input-row">
-                            <input
-                                class="input"
-                                value={meal_text}
-                                onChange={lambda e: ChangeEvent { meal_text = e.target.value; }}
-                                onKeyPress={lambda e: KeyboardEvent {
-                                    if e.key == "Enter" { generate_meal_list(); }
-                                }}
-                                placeholder="Describe a meal, e.g. 'chicken stir fry for 4'"
-                            />
-                            <button
-                                class="btn-generate"
-                                onClick={generate_meal_list}
-                                disabled={generating}
-                            >
-                                {("Generating..." if generating else "Generate")}
-                            </button>
-                        </div>
-                        {(
-                            <div class="generating-msg">Generating with AI...</div>
-                        ) if generating else None}
-                        {[
-                            <div key={ing.name} class="ingredient-item">
-                                <div class="ing-info">
-                                    <span class="ing-name">{ing.name}</span>
-                                    <span class="ing-qty">
-                                        {ing.quantity} {ing.unit}
-                                    </span>
-                                </div>
-                                <div class="ing-meta">
-                                    {(
-                                        <span class="carb-badge">Carbs</span>
-                                    ) if ing.carby else None}
-                                    <span class="ing-cost">${format(ing.cost, ".2f")}</span>
-                                </div>
-                            </div> for ing in ingredients
-                        ]}
-                        {(
-                            <div class="shopping-footer">
-                                <span class="total">Total: ${format(total_cost, ".2f")}</span>
-                                <button class="btn-clear" onClick={clear_list}>Clear</button>
-                            </div>
-                        ) if len(ingredients) > 0 else None}
-                    </div>
+                    <TasksColumn/>
+                    <ShoppingColumn/>
                 </div>
             </div>;
     }
     ```
 
+!!! info "Style note: the reference example uses `to cl:` / `to sv:`"
+    The matching example at [`jac/examples/day_planner/basic/`](https://github.com/Jaseci-Labs/jaseci/tree/main/jac/examples/day_planner/basic) groups all client-side declarations under a `to cl:` section header instead of prefixing each with `cl`. The two styles are equivalent -- `to cl:` is just a way to flip the *default* context for everything that follows. You'll learn that mechanism formally in Part 6.
+
 ```bash
-export ANTHROPIC_API_KEY="your-key"
 jac start main.jac  # or: jac start
 ```
 
 !!! warning "Common issue"
-    If adding a task silently fails (nothing happens), check the terminal running `jac start` for error messages -- a missing or invalid API key causes a server error.
+    If adding a task silently fails (nothing happens), check the terminal running `jac start` for error messages. The most common culprits:
+
+    - `byllm[local]` not installed -- re-run `pip install 'byllm[local]'`
+    - Weights not downloaded yet in a non-interactive terminal -- run `jac model pull gemma-4-e4b` once, or set `BYLLM_AUTO_DOWNLOAD=1` and let `jac start` fetch them
+    - If you switched to a cloud model, a missing or invalid API key causes a server error -- check the export
 
 Open [http://localhost:8000](http://localhost:8000). The app now has two columns. Try it:
 
@@ -1720,15 +1974,17 @@ The AI can only pick from the enum values you defined -- `Category` for tasks, `
 
 **What You Learned**
 
-- **`import from byllm.lib { Model }`** -- load the AI plugin
-- **`glob`** -- module-level variables, accessible throughout the file
-- **`glob llm = Model(...)`** -- initialize an LLM at module level
+- **`[plugins.byllm.model]` in `jac.toml`** -- configure which LLM `by llm()` calls use
+- **`glob`** -- module-level variables, accessible throughout the file (used here for `glob llm = Model(...)` as an alternative to `jac.toml` configuration)
 - **`enum`** -- fixed set of named values, used here to constrain AI output
 - **`def func(...) -> Type by llm()`** -- let the LLM implement a function from its signature
 - **`obj`** -- structured data types (not stored in graph, used as data containers)
 - **`sem Type.field = "..."`** -- semantic hints that guide LLM field interpretation
 - **`-> list[Type] by llm()`** -- get validated structured output from the LLM
 - **Jac's type system is the LLM's output schema** -- name things clearly and `by llm()` handles the rest
+- **Components** -- `cl def:pub Name(props) -> JsxElement` is a reusable UI building block; presentational components take props and render, stateful components own `has` state and fetch on mount
+- **`Callable[[], None]`** -- the type annotation for a callback prop (a function taking no arguments and returning nothing)
+- **Composition** -- a parent component renders `<Child prop={...}/>`; per-row data is captured by inline lambdas passed as callbacks
 
 > **Deep Dive:** [byLLM Reference](../../reference/plugins/byllm.md) covers all AI integration options including model configuration, multi-provider support, and advanced prompt control. [Structured Outputs tutorial](../ai/structured-outputs.md) has more examples of `obj` + `sem` patterns.
 
@@ -1767,43 +2023,53 @@ With `def:priv`, each authenticated user gets their own isolated graph with its 
 
 **Multi-File Organization**
 
-As your application grows, keeping everything in a single file becomes hard to navigate and maintain. Jac supports splitting code across files using a **declaration/implementation pattern** -- a clean architectural approach that separates *what* a component looks like from *how* it behaves.
+You met components at the end of Part 5 -- four `cl def:pub` functions in one file. As your app grows, you'll want each component in its own file. Jac gives you two **orthogonal** axes for splitting code:
 
-**`frontend.cl.jac`** -- state, method signatures, and the render tree:
+1. **Split by component** -- each component lives in its own `.cl.jac` file. This is the primary axis, and it's what every real Jac project does.
+2. **Split by declaration / implementation** -- *inside* one component, you can put the state and render tree in a `.cl.jac` file and the method bodies in a `.impl.jac` file. This is optional and useful only when a single component grows too long to read top-to-bottom.
 
-```jac
-def:pub app -> JsxElement {
-    has tasks: list = [];
+Most code organization happens on axis (1). We'll cover (2) at the end of this section.
 
-    async def fetchTasks;  # Just the signature -- no body
-    # ... more declarations ...
+**Component files**
 
-    # ... UI rendering ...
-}
-```
-
-**`frontend.impl.jac`** -- method bodies in `impl` blocks:
+A component file is just a `.cl.jac` file that exports a `def:pub` function returning `JsxElement`. The `.cl.jac` extension tells the compiler "this whole file is client-side" -- you don't write `cl` prefixes anymore, because *everything* in a `.cl.jac` file is client by default. Other files import the component by name:
 
 ```jac
-impl app.fetchTasks {
-    tasksLoading = True;
-    tasks = await get_tasks();
-    tasksLoading = False;
-}
+import from .components.TaskItem { TaskItem }
+import from .components.TasksPanel { TasksPanel }
 ```
 
-The `.cl.jac` file focuses on what the component *looks like* and what state it has -- think of it as the interface. The `.impl.jac` file focuses on what the methods *do* -- the implementation details. This separation is optional -- you could keep everything in one file -- but it's a best practice that pays off as your application grows, because you can understand the component's structure at a glance without scrolling through method bodies.
+The authenticated app will have this shape:
 
-**`sv import`** brings server functions into client code. When a `.cl.jac` file calls `def:priv` (or `def:pub`) functions defined in a server module, it needs `sv import` so the compiler generates HTTP stubs instead of raw function calls:
+```
+day-planner-auth/
+├── main.jac                       # Server: nodes, AI, endpoints + client entry
+├── frontend.cl.jac                # Client: top-level orchestrator
+├── components/
+│   ├── AuthForm.cl.jac            # Login / signup form
+│   ├── Header.cl.jac              # Header with sign-out button
+│   ├── TasksPanel.cl.jac          # Task column -- owns task state
+│   ├── TaskItem.cl.jac            # Single task row -- presentational
+│   ├── ShoppingPanel.cl.jac       # Shopping column -- owns ingredient state
+│   └── IngredientItem.cl.jac      # Single ingredient row -- presentational
+└── styles.css
+```
+
+`TaskItem` and `IngredientItem` were already components in Part 5 -- the only difference now is that they live in their own files. Each panel still owns its own state and fetches on mount; you just rendered everything in one file before.
+
+**`sv import` -- bringing server code into client files**
+
+When a `.cl.jac` file calls server functions, it needs `sv import` so the compiler generates HTTP stubs instead of raw function calls:
 
 ```jac
-sv import from main {
-    get_tasks, add_task, toggle_task, delete_task,
-    generate_list, get_shopping_list, clear_shopping_list
-}
+sv import from ..main { Task, get_tasks, add_task, toggle_task, delete_task }
 ```
 
-**`to cl:` section headers** let you embed client-side code in a server file. Once you write `to cl:`, every following module-level declaration is client-side until the next `to X:` header (or end of file). This is useful for the entry point:
+The `sv` prefix means "server import." You also use it to bring server `node` types into client code, so `TaskItem(task: Task)` can be typed end-to-end. The `..main` is a relative import: `..` means "parent directory," because components live one folder below `main.jac` -- the same convention Python uses.
+
+**`to cl:` section headers**
+
+Sometimes you want both server and client code in the same file -- typically the entry point, where one server-side `def:pub app` just renders the client app. Section headers do that:
 
 ```jac
 to cl:
@@ -1812,30 +2078,60 @@ import from frontend { app as ClientApp }
 
 def:pub app -> JsxElement {
     return
-        <ClientApp />;
+        <ClientApp/>;
 }
 
 to sv:
 
-# Back to server-side: nodes, walkers, AI delegations, etc. live here.
+# Back to server-side: nodes, AI delegations, endpoints live here.
 ```
 
-Everything before `to cl:` and everything after the next `to sv:` runs on the server. Everything between them runs in the browser.
+Everything between `to cl:` and the next `to sv:` runs in the browser; everything else runs on the server. Section headers and the `cl`/`sv` prefixes you saw in Part 4 are two ways to do the same thing -- prefixes are good for the occasional client thing in a server file, section headers are good when most of the file goes one way.
+
+**Optional: splitting one big component into declaration + implementation**
+
+For an individual component that grows too large, you can split its state and render tree from its method bodies using `.impl.jac`. The header file holds method *signatures*:
+
+```jac
+# big_component.cl.jac
+def:pub BigComponent -> JsxElement {
+    has tasks: list[Task] = [];
+
+    async def fetchTasks;        # signature only
+    async def addTask;
+    # ... render tree ...
+}
+```
+
+And the implementation file holds the *bodies* in `impl` blocks:
+
+```jac
+# big_component.impl.jac
+impl BigComponent.fetchTasks {
+    tasks = await get_tasks();
+}
+
+impl BigComponent.addTask {
+    # ...
+}
+```
+
+In this tutorial we won't use this axis -- each component is small enough that keeping state, methods, and render tree together is easier to read than splitting them across two files. Reach for `.impl.jac` only when a single component file feels overwhelming on its own.
 
 **Dependency-Triggered Abilities**
 
-One more concept to learn before assembling the full app. A **dependency-triggered ability** re-runs whenever specific state changes -- conceptually similar to React's `useEffect` with a dependency array, but expressed more declaratively:
+A **dependency-triggered ability** re-runs whenever specific state changes -- conceptually similar to React's `useEffect` with a dependency array:
 
 ```jac
-    can with [isLoggedIn] entry {
-        if isLoggedIn {
-            fetchTasks();
-            fetchShoppingList();
-        }
+can with [isLoggedIn] entry {
+    if isLoggedIn {
+        fetchTasks();
+        fetchShoppingList();
     }
+}
 ```
 
-When `isLoggedIn` changes from `False` to `True` (user logs in), this ability fires automatically and loads their data. This is a powerful pattern: instead of manually calling data-loading functions after every login action, the reactive system handles it for you.
+When `isLoggedIn` flips from `False` to `True`, this ability fires automatically. The auth example below uses a different approach for the same effect: each panel mounts only *after* the user logs in (because the parent renders `<TasksPanel/>` conditionally), so the panel's plain `can with entry` is enough -- no dependency tracking needed. Both patterns are idiomatic; pick the one that matches where the state lives.
 
 **The Complete Authenticated App**
 
@@ -1844,16 +2140,6 @@ Create a new project for the authenticated version:
 ```bash
 jac create day-planner-auth --use client
 cd day-planner-auth
-```
-
-You'll create these files:
-
-```
-day-planner-auth/
-├── main.jac                # Server: nodes, AI, endpoints, entry point
-├── frontend.cl.jac         # Client: state, UI, method declarations
-├── frontend.impl.jac       # Client: method implementations
-└── styles.css              # Styles
 ```
 
 **Run It**
@@ -1876,10 +2162,6 @@ All the complete files are in the collapsible sections below. Create each file, 
 
     to sv:
 
-    import from byllm.lib { Model }
-
-    glob llm = Model(model_name="claude-sonnet-4-20250514");
-
     # --- Enums ---
 
     enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
@@ -1889,11 +2171,11 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- AI Types ---
 
     obj Ingredient {
-        has name: str;
-        has quantity: float;
-        has unit: Unit;
-        has cost: float;
-        has carby: bool;
+        has name: str,
+            quantity: float,
+            unit: Unit,
+            cost: float,
+            carby: bool;
     }
 
     sem Ingredient.cost = "Estimated cost in USD";
@@ -1947,7 +2229,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Delete a task."""
-    def:priv delete_task(id: str) -> dict {
+    def:priv delete_task(id: str) -> dict[str, str] {
         for task in [root-->][?:Task] {
             if jid(task) == id {
                 del task;
@@ -1981,7 +2263,7 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     """Clear the shopping list."""
-    def:priv clear_shopping_list -> dict {
+    def:priv clear_shopping_list -> dict[str, bool] {
         for item in [root-->][?:ShoppingItem] {
             del item;
         }
@@ -1992,59 +2274,34 @@ All the complete files are in the collapsible sections below. Create each file, 
 ??? note "Complete `frontend.cl.jac`"
 
     ```jac
-    """AI Day Planner -- Client-Side UI."""
+    """AI Day Planner -- top-level client app composes feature components."""
 
-    import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
-
-    sv import from main {
-        get_tasks, add_task, toggle_task, delete_task,
-        generate_list, get_shopping_list, clear_shopping_list
-    }
+    import from "@jac/runtime" { jacLogout, jacIsLoggedIn }
 
     import "./styles.css";
 
+    import from .components.AuthForm { AuthForm }
+    import from .components.Header { Header }
+    import from .components.TasksPanel { TasksPanel }
+    import from .components.ShoppingPanel { ShoppingPanel }
+
     def:pub app -> JsxElement {
         has isLoggedIn: bool = False,
-            checkingAuth: bool = True,
-            isSignup: bool = False,
-            username: str = "",
-            password: str = "",
-            error: str = "",
-            loading: bool = False,
-            tasks: list = [],
-            taskText: str = "",
-            tasksLoading: bool = True,
-            mealText: str = "",
-            ingredients: list = [],
-            generating: bool = False;
+            checkingAuth: bool = True;
 
         can with entry {
             isLoggedIn = jacIsLoggedIn();
             checkingAuth = False;
         }
 
-        can with [isLoggedIn] entry {
-            if isLoggedIn {
-                fetchTasks();
-                fetchShoppingList();
-            }
+        def handleAuth {
+            isLoggedIn = True;
         }
 
-        # Method declarations -- bodies are in frontend.impl.jac
-        async def fetchTasks;
-        async def addTask;
-        async def toggleTask(id: str);
-        async def deleteTask(id: str);
-        async def handleLogin;
-        async def handleSignup;
-        def handleLogout;
-        async def handleSubmit(e: FormEvent);
-        def handleTaskKeyPress(e: KeyboardEvent);
-        async def fetchShoppingList;
-        async def generateList;
-        async def clearList;
-        def handleMealKeyPress(e: KeyboardEvent);
-        def getTotal -> float;
+        def handleLogout {
+            jacLogout();
+            isLoggedIn = False;
+        }
 
         if checkingAuth {
             return
@@ -2052,140 +2309,90 @@ All the complete files are in the collapsible sections below. Create each file, 
         }
 
         if isLoggedIn {
-            totalCost = getTotal();
-            remaining = len([t for t in tasks if not t.done]);
             return
                 <div class="container">
-                    <div class="header">
-                        <div>
-                            <h1>AI Day Planner</h1>
-                            <p class="subtitle">
-                                Task management with AI-powered meal planning
-                            </p>
-                        </div>
-                        <button class="btn-signout" onClick={handleLogout}>
-                            Sign Out
-                        </button>
-                    </div>
+                    <Header onLogout={handleLogout}/>
                     <div class="two-column">
-                        <div class="column">
-                            <h2>Today's Tasks</h2>
-                            <div class="input-row">
-                                <input
-                                    class="input"
-                                    value={taskText}
-                                    onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
-                                    onKeyPress={handleTaskKeyPress}
-                                    placeholder="What needs to be done today?"
-                                />
-                                <button
-                                    class="btn-add"
-                                    onClick={lambda { addTask(); }}
-                                >
-                                    Add
-                                </button>
-                            </div>
-                            {(
-                                <div class="loading-msg">Loading tasks...</div>
-                            ) if tasksLoading else (
-                                <div>
-                                    {(
-                                        <div class="empty-msg">
-                                            No tasks yet. Add one above!
-                                        </div>
-                                    ) if len(tasks) == 0 else (
-                                        <div>
-                                            {[
-                                                <div key={jid(t)} class="task-item">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={t.done}
-                                                        onChange={lambda { toggleTask(jid(t)); }}
-                                                    />
-                                                    <span class={"task-title " + ("task-done" if t.done else "")}>
-                                                        {t.title}
-                                                    </span>
-                                                    {(
-                                                        <span class="category">{t.category}</span>
-                                                    ) if t.category and t.category != "other" else None}
-                                                    <button
-                                                        class="btn-delete"
-                                                        onClick={lambda { deleteTask(jid(t)); }}
-                                                    >
-                                                        X
-                                                    </button>
-                                                </div> for t in tasks
-                                            ]}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
-                        </div>
-                        <div class="column">
-                            <h2>Meal Shopping List</h2>
-                            <div class="input-row">
-                                <input
-                                    class="input"
-                                    value={mealText}
-                                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
-                                    onKeyPress={handleMealKeyPress}
-                                    placeholder="e.g. 'chicken stir fry for 4'"
-                                />
-                                <button
-                                    class="btn-generate"
-                                    onClick={lambda { generateList(); }}
-                                    disabled={generating}
-                                >
-                                    {("Generating..." if generating else "Generate")}
-                                </button>
-                            </div>
-                            {(
-                                <div class="generating-msg">Generating with AI...</div>
-                            ) if generating else (
-                                <div>
-                                    {(
-                                        <div class="empty-msg">
-                                            Enter a meal above to generate ingredients.
-                                        </div>
-                                    ) if len(ingredients) == 0 else (
-                                        <div>
-                                            {[
-                                                <div key={ing.name} class="ingredient-item">
-                                                    <div class="ing-info">
-                                                        <span class="ing-name">{ing.name}</span>
-                                                        <span class="ing-qty">
-                                                            {ing.quantity} {ing.unit}
-                                                        </span>
-                                                    </div>
-                                                    <div class="ing-meta">
-                                                        {(
-                                                            <span class="carb-badge">Carbs</span>
-                                                        ) if ing.carby else None}
-                                                        <span class="ing-cost">
-                                                            ${format(ing.cost, ".2f")}
-                                                        </span>
-                                                    </div>
-                                                </div> for ing in ingredients
-                                            ]}
-                                            <div class="shopping-footer">
-                                                <span class="total">
-                                                    Total: ${format(totalCost, ".2f")}
-                                                </span>
-                                                <button
-                                                    class="btn-clear"
-                                                    onClick={lambda { clearList(); }}
-                                                >
-                                                    Clear
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
+                        <TasksPanel/>
+                        <ShoppingPanel/>
                     </div>
                 </div>;
+        }
+
+        return
+            <AuthForm onAuth={handleAuth}/>;
+    }
+    ```
+
+??? note "Complete `components/AuthForm.cl.jac`"
+
+    ```jac
+    """Login / signup form -- owns its own form state.
+
+    Calls `onAuth()` after a successful login or signup so the parent can
+    flip the app into its logged-in state.
+    """
+
+    import from "@jac/runtime" { jacLogin, jacSignup }
+
+    def:pub AuthForm(onAuth: Callable[[], None]) -> JsxElement {
+        has isSignup: bool = False,
+            username: str = "",
+            password: str = "",
+            error: str = "",
+            loading: bool = False;
+
+        async def handleLogin {
+            error = "";
+            if not username.strip() or not password {
+                error = "Please fill in all fields";
+                return;
+            }
+            loading = True;
+            success = await jacLogin(username, password);
+            loading = False;
+            if success {
+                onAuth();
+            } else {
+                error = "Invalid username or password";
+            }
+        }
+
+        async def handleSignup {
+            error = "";
+            if not username.strip() or not password {
+                error = "Please fill in all fields";
+                return;
+            }
+            if len(password) < 4 {
+                error = "Password must be at least 4 characters";
+                return;
+            }
+            loading = True;
+            result = await jacSignup(username, password);
+            if result["success"] {
+                # /user/register creates the account but does not return a
+                # session token; sign in immediately to establish one.
+                logged_in = await jacLogin(username, password);
+                loading = False;
+                if logged_in {
+                    onAuth();
+                } else {
+                    error = "Account created but sign-in failed";
+                }
+            } else {
+                loading = False;
+                error = str(result["error"]) if result["error"] else "Signup failed";
+            }
+        }
+
+        async def handleSubmit(e: FormEvent) {
+            e.preventDefault();
+            if isSignup {
+                await handleSignup();
+            } else {
+                await handleLogin();
+            }
         }
 
         return
@@ -2195,9 +2402,7 @@ All the complete files are in the collapsible sections below. Create each file, 
                     <p class="auth-subtitle">
                         {("Create your account" if isSignup else "Welcome back")}
                     </p>
-                    {(
-                        <div class="auth-error">{error}</div>
-                    ) if error else None}
+                    {(<div class="auth-error">{error}</div>) if error else None}
                     <form onSubmit={handleSubmit}>
                         <div class="form-field">
                             <label class="form-label">Username</label>
@@ -2222,8 +2427,8 @@ All the complete files are in the collapsible sections below. Create each file, 
                         <button type="submit" disabled={loading} class="auth-submit">
                             {(
                                 "Processing..."
-                                if loading
-                                else ("Create Account" if isSignup else "Sign In")
+                                    if loading
+                                    else ("Create Account" if isSignup else "Sign In")
                             )}
                         </button>
                     </form>
@@ -2231,13 +2436,16 @@ All the complete files are in the collapsible sections below. Create each file, 
                         <span class="auth-toggle-text">
                             {(
                                 "Already have an account? "
-                                if isSignup
-                                else "Don't have an account? "
+                                    if isSignup
+                                    else "Don't have an account? "
                             )}
                         </span>
                         <button
                             type="button"
-                            onClick={lambda { isSignup = not isSignup; error = ""; }}
+                            onClick={lambda {
+                                isSignup = not isSignup;
+                                error = "";
+                            }}
                             class="auth-toggle-btn"
                         >
                             {("Sign In" if isSignup else "Sign Up")}
@@ -2248,127 +2456,257 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
     ```
 
-??? note "Complete `frontend.impl.jac`"
+??? note "Complete `components/Header.cl.jac`"
 
     ```jac
-    """Implementations for the Day Planner frontend."""
+    """App header with title, subtitle, and sign-out button."""
 
-    impl app.fetchTasks {
-        tasksLoading = True;
-        tasks = await get_tasks();
-        tasksLoading = False;
+    def:pub Header(onLogout: Callable[[], None]) -> JsxElement {
+        return
+            <div class="header">
+                <div>
+                    <h1>AI Day Planner</h1>
+                    <p class="subtitle">Task management with AI-powered meal planning</p>
+                </div>
+                <button class="btn-signout" onClick={onLogout}>Sign Out</button>
+            </div>;
     }
+    ```
 
-    impl app.addTask {
-        if not taskText.strip() { return; }
-        task = await add_task(taskText.strip());
-        tasks = tasks + [task];
-        taskText = "";
-    }
+??? note "Complete `components/TasksPanel.cl.jac`"
 
-    impl app.toggleTask(id: str) {
-        updated = await toggle_task(id);
-        tasks = [updated if jid(t) == id else t for t in tasks];
-    }
+    ```jac
+    """Tasks column -- owns task list state, fetches on mount."""
 
-    impl app.deleteTask(id: str) {
-        await delete_task(id);
-        tasks = [t for t in tasks if jid(t) != id];
-    }
+    sv import from ..main { Task, get_tasks, add_task, toggle_task, delete_task }
 
-    impl app.handleLogin {
-        error = "";
-        if not username.strip() or not password {
-            error = "Please fill in all fields";
-            return;
+    import from .TaskItem { TaskItem }
+
+    def:pub TasksPanel -> JsxElement {
+        has tasks: list[Task] = [],
+            taskText: str = "",
+            tasksLoading: bool = True;
+
+        async can with entry {
+            tasks = await get_tasks();
+            tasksLoading = False;
         }
-        loading = True;
-        success = await jacLogin(username, password);
-        loading = False;
-        if success {
-            isLoggedIn = True;
-            username = "";
-            password = "";
-        } else {
-            error = "Invalid username or password";
-        }
-    }
 
-    impl app.handleSignup {
-        error = "";
-        if not username.strip() or not password {
-            error = "Please fill in all fields";
-            return;
-        }
-        if len(password) < 4 {
-            error = "Password must be at least 4 characters";
-            return;
-        }
-        loading = True;
-        result = await jacSignup(username, password);
-        if result["success"] {
-            # /user/register creates the account but does not return a
-            # session token; sign in immediately to establish one.
-            logged_in = await jacLogin(username, password);
-            loading = False;
-            if logged_in {
-                isLoggedIn = True;
-                username = "";
-                password = "";
-            } else {
-                error = "Account created but sign-in failed";
+        async def addTask {
+            if not taskText.strip() {
+                return;
             }
-        } else {
-            loading = False;
-            error = result["error"] if result["error"] else "Signup failed";
+            task = await add_task(taskText.strip());
+            tasks = tasks + [task];
+            taskText = "";
         }
+
+        async def toggleTask(id: str) {
+            updated = await toggle_task(id);
+            if updated is not None {
+                tasks = [updated if jid(t) == id else t for t in tasks];
+            }
+        }
+
+        async def deleteTask(id: str) {
+            await delete_task(id);
+            tasks = [t for t in tasks if jid(t) != id];
+        }
+
+        def handleKeyPress(e: KeyboardEvent) {
+            if e.key == "Enter" {
+                addTask();
+            }
+        }
+
+        remaining = len([t for t in tasks if not t.done]);
+
+        return
+            <div class="column">
+                <h2>Today's Tasks</h2>
+                <div class="input-row">
+                    <input
+                        class="input"
+                        value={taskText}
+                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onKeyPress={handleKeyPress}
+                        placeholder="What needs to be done today?"
+                    />
+                    <button class="btn-add" onClick={lambda { addTask(); }}>Add</button>
+                </div>
+                {(<div class="loading-msg">Loading tasks...</div>)
+                    if tasksLoading
+                    else (
+                        <div>
+                            {(<div class="empty-msg">No tasks yet. Add one above!</div>)
+                                if len(tasks) == 0
+                                else (
+                                    <div>
+                                        {[
+                                            <TaskItem
+                                                key={jid(t)}
+                                                task={t}
+                                                onToggle={lambda { toggleTask(jid(t)); }}
+                                                onDelete={lambda { deleteTask(jid(t)); }}
+                                            /> for t in tasks
+                                        ]}
+                                    </div>
+                                )}
+                        </div>
+                    )}
+                <div class="count">
+                    {remaining} {("task" if remaining == 1 else "tasks")} remaining
+                </div>
+            </div>;
+    }
+    ```
+
+??? note "Complete `components/TaskItem.cl.jac`"
+
+    ```jac
+    """Single task row -- presentational; toggle and delete are passed in."""
+
+    sv import from ..main { Task }
+
+    def:pub TaskItem(
+        task: Task, onToggle: Callable[[], None], onDelete: Callable[[], None]
+    ) -> JsxElement {
+        return
+            <div class="task-item">
+                <input type="checkbox" checked={task.done} onChange={onToggle}/>
+                <span class={"task-title " + ("task-done" if task.done else "")}>
+                    {task.title}
+                </span>
+                {(<span class="category">{task.category}</span>)
+                    if task.category and task.category != "other"
+                    else None}
+                <button class="btn-delete" onClick={onDelete}>X</button>
+            </div>;
+    }
+    ```
+
+??? note "Complete `components/ShoppingPanel.cl.jac`"
+
+    ```jac
+    """Shopping list column -- owns ingredient state, fetches on mount."""
+
+    sv import from ..main {
+        ShoppingItem,
+        generate_list,
+        get_shopping_list,
+        clear_shopping_list
     }
 
-    impl app.handleLogout {
-        jacLogout();
-        isLoggedIn = False;
-        isSignup = False;
-        tasks = [];
-        ingredients = [];
-    }
+    import from .IngredientItem { IngredientItem }
 
-    impl app.handleSubmit(e: FormEvent) {
-        e.preventDefault();
-        if isSignup { await handleSignup(); }
-        else { await handleLogin(); }
-    }
+    def:pub ShoppingPanel -> JsxElement {
+        has ingredients: list[ShoppingItem] = [],
+            mealText: str = "",
+            generating: bool = False;
 
-    impl app.handleTaskKeyPress(e: KeyboardEvent) {
-        if e.key == "Enter" { addTask(); }
-    }
+        async can with entry {
+            ingredients = await get_shopping_list();
+        }
 
-    impl app.fetchShoppingList {
-        ingredients = await get_shopping_list();
-    }
+        async def generateList {
+            if not mealText.strip() {
+                return;
+            }
+            generating = True;
+            ingredients = await generate_list(mealText.strip());
+            generating = False;
+        }
 
-    impl app.generateList {
-        if not mealText.strip() { return; }
-        generating = True;
-        ingredients = await generate_list(mealText.strip());
-        generating = False;
-    }
+        async def clearList {
+            await clear_shopping_list();
+            ingredients = [];
+            mealText = "";
+        }
 
-    impl app.clearList {
-        await clear_shopping_list();
-        ingredients = [];
-        mealText = "";
-    }
+        def handleKeyPress(e: KeyboardEvent) {
+            if e.key == "Enter" {
+                generateList();
+            }
+        }
 
-    impl app.handleMealKeyPress(e: KeyboardEvent) {
-        if e.key == "Enter" { generateList(); }
-    }
-
-    impl app.getTotal -> float {
-        total = 0.0;
+        totalCost = 0.0;
         for ing in ingredients {
-            total = total + ing.cost;
+            totalCost = totalCost + ing.cost;
         }
-        return total;
+
+        return
+            <div class="column">
+                <h2>Meal Shopping List</h2>
+                <div class="input-row">
+                    <input
+                        class="input"
+                        value={mealText}
+                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onKeyPress={handleKeyPress}
+                        placeholder="e.g. 'chicken stir fry for 4'"
+                    />
+                    <button
+                        class="btn-generate"
+                        onClick={lambda { generateList(); }}
+                        disabled={generating}
+                    >
+                        {("Generating..." if generating else "Generate")}
+                    </button>
+                </div>
+                {(<div class="generating-msg">Generating with AI...</div>)
+                    if generating
+                    else (
+                        <div>
+                            {(
+                                <div class="empty-msg">
+                                    Enter a meal above to generate ingredients.
+                                </div>
+                            )
+                                if len(ingredients) == 0
+                                else (
+                                    <div>
+                                        {[
+                                            <IngredientItem key={ing.name} ing={ing}/>
+                                            for ing in ingredients
+                                        ]}
+                                        <div class="shopping-footer">
+                                            <span class="total">
+                                                Total: ${f"{totalCost:.2f}"}
+                                            </span>
+                                            <button
+                                                class="btn-clear"
+                                                onClick={lambda { clearList(); }}
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                        </div>
+                    )}
+            </div>;
+    }
+    ```
+
+??? note "Complete `components/IngredientItem.cl.jac`"
+
+    ```jac
+    """Single ingredient row -- presentational."""
+
+    sv import from ..main { ShoppingItem }
+
+    def:pub IngredientItem(ing: ShoppingItem) -> JsxElement {
+        return
+            <div class="ingredient-item">
+                <div class="ing-info">
+                    <span class="ing-name">{ing.name}</span>
+                    <span class="ing-qty">{ing.quantity} {ing.unit}</span>
+                </div>
+                <div class="ing-meta">
+                    {(<span class="carb-badge">Carbs</span>) if ing.carby else None}
+                    <span class="ing-cost">${f"{ing.cost:.2f}"}</span>
+                </div>
+            </div>;
     }
     ```
 
@@ -2439,7 +2777,6 @@ All the complete files are in the collapsible sections below. Create each file, 
     ```
 
 ```bash
-export ANTHROPIC_API_KEY="your-key"
 jac start main.jac  # or: jac start
 ```
 
@@ -2462,13 +2799,14 @@ Step back and consider what you've built: a **complete, fully functional applica
 - **`def:priv`** -- private endpoints with per-user data isolation (each user gets their own `root`)
 - **`jacSignup`**, **`jacLogin`**, **`jacLogout`**, **`jacIsLoggedIn`** -- built-in auth functions
 - **`import from "@jac/runtime"`** -- import Jac's built-in client-side utilities
-- **`can with [deps] entry`** -- dependency-triggered abilities (re-runs when state changes)
+- **Component files** -- each component in its own `.cl.jac` file; the whole file is client-side, no `cl` prefixes needed
+- **`sv import from ..main { ... }`** -- bring server functions and node types into client files; the `..` is a relative import to the parent directory
 - **`to cl:`** / **`to sv:`** -- section headers that switch the default context for everything that follows, until the next `to X:` header or end of file
-- **Declaration/implementation split** -- `.cl.jac` for UI, `.impl.jac` for logic
-- **`impl app.method { ... }`** -- implement declared methods in a separate file
+- **`can with [deps] entry`** -- dependency-triggered abilities (re-run when state changes); useful when the component owning the dependency stays mounted
+- **Optional: declaration/implementation split** -- `.cl.jac` for state + render tree, `.impl.jac` for `impl Component.method { ... }` bodies; reach for it only when a single component is too long to read top-to-bottom
 
 !!! example "Try It Yourself"
-    Display the logged-in username in the header next to the Sign Out button. Hint: add a `currentUser: str` state variable and set it from `username` after a successful login.
+    Add a small `Footer` component (presentational, no state) that shows a copyright line. Place it in `components/Footer.cl.jac`, import it into `frontend.cl.jac`, and render it at the bottom of the logged-in container -- the same pattern as `Header`.
 
 ---
 
@@ -2550,10 +2888,37 @@ Spawn it:
 <!-- jac-skip -->
 ```jac
 result = root spawn AddTask(title="Buy groceries");
-print(result.reports[0]);  # The reported dict
+print(result.reports[0]);  # The reported Task
 ```
 
 **`root spawn AddTask(title="...")`** creates a walker and starts it at root. Whatever the walker `report`s ends up in `result.reports`.
+
+**Typed Walker Reports**
+
+Before going further, there's one best practice to apply to every walker you write: declare a typed `reports` field that mirrors what `report` will produce. Add `reports: list[Task] = []` to `AddTask`:
+
+```jac
+walker AddTask {
+    has title: str,
+        reports: list[Task] = [];
+
+    can create with Root entry {
+        category = str(categorize(self.title)).split(".")[-1].lower();
+        new_task = here ++> Task(title=self.title, category=category);
+        report new_task[0];
+    }
+}
+```
+
+`report` already collects values into `.reports` automatically -- you don't write `self.reports.append(...)`. What the `has reports: list[Task] = []` declaration adds is **type information for the report channel**: the compiler checks that every `report X` statement is assignable to `Task`, and the client side knows `result.reports[0]` is a `Task` (not `any`). Without the declaration the channel defaults to `list[any]`, which propagates `any` into the calling code and undermines the type-aware UI you built in Part 6.
+
+The shape of the type depends on what you report:
+
+- **One typed object per ability** -- `report new_task[0];` reporting a `Task` → `reports: list[Task] = []`
+- **A whole list at once** -- `report self.results;` where `results: list[Task]` → `reports: list[list[Task]] = []`
+- **Plain dicts** -- `report {"deleted": id};` → you can leave `reports` undeclared; the channel stays `list[any]`, which is fine for status responses
+
+Every walker in this part will use this pattern.
 
 **The Accumulator Pattern**
 
@@ -2561,7 +2926,8 @@ The `AddTask` walker may seem like unnecessary complexity compared to the functi
 
 ```jac
 walker ListTasks {
-    has results: list[Task] = [];
+    has results: list[Task] = [],
+        reports: list[list[Task]] = [];
 
     can start with Root entry {
         visit [-->];
@@ -2583,7 +2949,9 @@ Three abilities work together:
 2. **`with Task entry`** -- fires at each Task node, appending `here` (the node itself) to `self.results`
 3. **`with Root exit`** -- after visiting all children, the walker returns to root and reports the accumulated list
 
-A key insight here: the walker's `has results: list = []` state **persists across the entire traversal**. Unlike a local variable in a function call, walker state survives as the walker moves from node to node. This is what makes the accumulator pattern work -- the walker builds up its result set incrementally as it visits each node. And because the results are typed `Task` objects, the client receives them with all fields accessible via dot notation -- no manual dict construction needed.
+Notice `reports: list[list[Task]] = []` -- because `report self.results` reports a whole `list[Task]` in one go, the outer type is `list[list[Task]]`. This is the pattern you saw introduced above.
+
+A key insight here: the walker's `has results: list[Task] = []` state **persists across the entire traversal**. Unlike a local variable in a function call, walker state survives as the walker moves from node to node. This is what makes the accumulator pattern work -- the walker builds up its result set incrementally as it visits each node. And because the results are typed `Task` objects, the client receives them with all fields accessible via dot notation -- no manual dict construction needed.
 
 Compare this to the function version:
 
@@ -2634,7 +3002,8 @@ visit [-->] else {         # Fallback if no nodes to visit
 
 ```jac
 walker ToggleTask {
-    has task_id: str;
+    has task_id: str,
+        reports: list[Task] = [];
 
     can search with Root entry { visit [-->]; }
 
@@ -2650,7 +3019,7 @@ walker ToggleTask {
 
 Without `disengage`, the walker would continue visiting every remaining node unnecessarily.
 
-`DeleteTask` follows the same pattern:
+`DeleteTask` follows the same pattern, but omits `reports` because it only reports a status dict:
 
 ```jac
 walker DeleteTask {
@@ -2668,7 +3037,7 @@ walker DeleteTask {
 }
 ```
 
-Note that `DeleteTask` still reports a plain dict rather than a typed object -- this is fine for simple status responses where no typed data needs to cross the boundary.
+Reporting plain dicts is fine for simple status responses where no typed data needs to cross the boundary -- the channel stays `list[any]`, which is what you want when the shape is intentionally ad-hoc.
 
 **Multi-Step Traversals**
 
@@ -2676,7 +3045,8 @@ The `GenerateShoppingList` walker demonstrates the real power of OSP -- performi
 
 ```jac
 walker GenerateShoppingList {
-    has meal_description: str;
+    has meal_description: str,
+        reports: list[list[ShoppingItem]] = [];
 
     can generate with Root entry {
         # Queue connected nodes for traversal after this ability completes
@@ -2707,7 +3077,8 @@ The remaining shopping walkers follow familiar patterns:
 
 ```jac
 walker GetShoppingList {
-    has items: list[ShoppingItem] = [];
+    has items: list[ShoppingItem] = [],
+        reports: list[list[ShoppingItem]] = [];
 
     can collect with Root entry { visit [-->]; }
 
@@ -2757,6 +3128,16 @@ new_task = result.reports[0];  # A typed Task object
 
 The key pattern: **`root spawn Walker(params)`** creates a walker and starts it at root. The walker traverses the graph, and whatever it `report`s ends up in `result.reports`. Since the walker reports typed `Task` objects, the client receives them with full field access -- `new_task.title`, `new_task.done`, `new_task.category` all work directly.
 
+!!! tip "Guard against empty reports"
+    A walker that visits no matching nodes returns an empty `result.reports`. When you fetch a list, prefer the safe form:
+
+    <!-- jac-skip -->
+    ```jac
+    tasks = result.reports[0] if result.reports else [];
+    ```
+
+    This avoids an index error on a fresh user with no data yet, and is the pattern the completed files below use.
+
 **walker:priv -- Per-User Data Isolation**
 
 Just as `def:priv` gave functions per-user isolation, walkers can be marked with access modifiers for the same purpose:
@@ -2769,7 +3150,13 @@ When you use `walker:priv`, the walker runs on the authenticated user's **own pr
 **The Complete Walker Version**
 
 !!! info "Same UI, different backend"
-    The `frontend.cl.jac` and `styles.css` files are identical to Part 6 -- only `main.jac` (walkers instead of `def:priv` functions) and `frontend.impl.jac` (spawning walkers instead of calling functions) change. When reading the code below, focus on those two files.
+    The UI is identical to Part 6 -- so `frontend.cl.jac`, `components/AuthForm.cl.jac`, `components/Header.cl.jac`, `components/TaskItem.cl.jac`, `components/IngredientItem.cl.jac`, and `styles.css` are all **unchanged** from Part 6. Only three files change:
+
+    - `main.jac` -- replaces `def:priv` functions with `walker:priv` declarations
+    - `components/TasksPanel.cl.jac` -- spawns walkers instead of calling functions
+    - `components/ShoppingPanel.cl.jac` -- same
+
+    Focus on those three files below.
 
 To try the walker-based version, create a new project:
 
@@ -2778,19 +3165,25 @@ jac create day-planner-v2 --use client
 cd day-planner-v2
 ```
 
-You'll create these files:
+You'll end up with the same file layout as Part 6:
 
 ```
 day-planner-v2/
-├── main.jac                # Server: nodes, AI, walkers
-├── frontend.cl.jac         # Client: state, UI, method declarations
-├── frontend.impl.jac       # Client: method implementations
-└── styles.css              # Styles
+├── main.jac                       # Server: walkers (instead of def:priv functions)
+├── frontend.cl.jac                # Client orchestrator -- unchanged from Part 6
+├── components/
+│   ├── AuthForm.cl.jac            # Unchanged from Part 6
+│   ├── Header.cl.jac              # Unchanged from Part 6
+│   ├── TasksPanel.cl.jac          # Now spawns walkers
+│   ├── TaskItem.cl.jac            # Unchanged from Part 6
+│   ├── ShoppingPanel.cl.jac       # Now spawns walkers
+│   └── IngredientItem.cl.jac      # Unchanged from Part 6
+└── styles.css                     # Unchanged from Part 6
 ```
 
 **Run It**
 
-All the complete files are in the collapsible sections below. Create each file, then run.
+The three files that change are in the collapsible sections below. Copy the unchanged files over from your Part 6 project.
 
 ??? note "Complete `main.jac`"
 
@@ -2808,10 +3201,6 @@ All the complete files are in the collapsible sections below. Create each file, 
 
     to sv:
 
-    import from byllm.lib { Model }
-
-    glob llm = Model(model_name="claude-sonnet-4-20250514");
-
     # --- Enums ---
 
     enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
@@ -2821,11 +3210,11 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- AI Types ---
 
     obj Ingredient {
-        has name: str;
-        has quantity: float;
-        has unit: Unit;
-        has cost: float;
-        has carby: bool;
+        has name: str,
+            quantity: float,
+            unit: Unit,
+            cost: float,
+            carby: bool;
     }
 
     sem Ingredient.cost = "Estimated cost in USD";
@@ -2856,20 +3245,19 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Task Walkers ---
 
     walker:priv AddTask {
-        has title: str;
+        has title: str,
+            reports: list[Task] = [];
 
         can create with Root entry {
             category = str(categorize(self.title)).split(".")[-1].lower();
-            new_task = here ++> Task(
-                title=self.title,
-                category=category
-            );
+            new_task = here ++> Task(title=self.title, category=category);
             report new_task[0];
         }
     }
 
     walker:priv ListTasks {
-        has results: list = [];
+        has results: list[Task] = [],
+            reports: list[list[Task]] = [];
 
         can start with Root entry {
             visit [-->];
@@ -2885,7 +3273,8 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     walker:priv ToggleTask {
-        has task_id: str;
+        has task_id: str,
+            reports: list[Task] = [];
 
         can search with Root entry { visit [-->]; }
 
@@ -2915,16 +3304,19 @@ All the complete files are in the collapsible sections below. Create each file, 
     # --- Shopping List Walkers ---
 
     walker:priv GenerateShoppingList {
-        has meal_description: str;
+        has meal_description: str,
+            reports: list[list[ShoppingItem]] = [];
 
         can generate with Root entry {
             visit [-->];
             ingredients = generate_shopping_list(self.meal_description);
             for ing in ingredients {
                 here ++> ShoppingItem(
-                    name=ing.name, quantity=ing.quantity,
+                    name=ing.name,
+                    quantity=ing.quantity,
                     unit=str(ing.unit).split(".")[-1].lower(),
-                    cost=ing.cost, carby=ing.carby
+                    cost=ing.cost,
+                    carby=ing.carby
                 );
             }
             report [here-->][?:ShoppingItem];
@@ -2936,7 +3328,8 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
 
     walker:priv GetShoppingList {
-        has items: list = [];
+        has items: list[ShoppingItem] = [],
+            reports: list[list[ShoppingItem]] = [];
 
         can collect with Root entry { visit [-->]; }
 
@@ -2957,461 +3350,200 @@ All the complete files are in the collapsible sections below. Create each file, 
     }
     ```
 
-??? note "Complete `frontend.cl.jac`"
+??? note "Complete `components/TasksPanel.cl.jac` (spawns walkers)"
 
     ```jac
-    """AI Day Planner -- Client-Side UI."""
+    """Tasks column -- owns task list state, spawns walkers for CRUD."""
 
-    import from "@jac/runtime" { jacSignup, jacLogin, jacLogout, jacIsLoggedIn }
+    sv import from ..main { Task, AddTask, ListTasks, ToggleTask, DeleteTask }
 
-    import "./styles.css";
+    import from .TaskItem { TaskItem }
 
-    sv import from main {
-        AddTask, ListTasks, ToggleTask, DeleteTask,
-        GenerateShoppingList, GetShoppingList, ClearShoppingList
-    }
-
-    def:pub app -> JsxElement {
-        has isLoggedIn: bool = False,
-            checkingAuth: bool = True,
-            isSignup: bool = False,
-            username: str = "",
-            password: str = "",
-            error: str = "",
-            loading: bool = False,
-            tasks: list = [],
+    def:pub TasksPanel -> JsxElement {
+        has tasks: list[Task] = [],
             taskText: str = "",
-            tasksLoading: bool = True,
-            mealText: str = "",
-            ingredients: list = [],
-            generating: bool = False;
+            tasksLoading: bool = True;
 
-        can with entry {
-            isLoggedIn = jacIsLoggedIn();
-            checkingAuth = False;
+        async can with entry {
+            result = root spawn ListTasks();
+            tasks = result.reports[0] if result.reports else [];
+            tasksLoading = False;
         }
 
-        can with [isLoggedIn] entry {
-            if isLoggedIn {
-                fetchTasks();
-                fetchShoppingList();
+        async def addTask {
+            if not taskText.strip() {
+                return;
+            }
+            response = root spawn AddTask(title=taskText);
+            tasks = tasks + [response.reports[0]];
+            taskText = "";
+        }
+
+        async def toggleTask(id: str) {
+            response = root spawn ToggleTask(task_id=id);
+            updated = response.reports[0];
+            tasks = [updated if jid(t) == id else t for t in tasks];
+        }
+
+        async def deleteTask(id: str) {
+            root spawn DeleteTask(task_id=id);
+            tasks = [t for t in tasks if jid(t) != id];
+        }
+
+        def handleKeyPress(e: KeyboardEvent) {
+            if e.key == "Enter" {
+                addTask();
             }
         }
 
-        # Method declarations -- bodies are in frontend.impl.jac
-        async def fetchTasks;
-        async def addTask;
-        async def toggleTask(id: str);
-        async def deleteTask(id: str);
-        async def handleLogin;
-        async def handleSignup;
-        def handleLogout;
-        async def handleSubmit(e: FormEvent);
-        def handleTaskKeyPress(e: KeyboardEvent);
-        async def fetchShoppingList;
-        async def generateList;
-        async def clearList;
-        def handleMealKeyPress(e: KeyboardEvent);
-        def getTotal -> float;
-
-        if checkingAuth {
-            return
-                <div class="auth-loading">Loading...</div>;
-        }
-
-        if isLoggedIn {
-            totalCost = getTotal();
-            remaining = len([t for t in tasks if not t.done]);
-            return
-                <div class="container">
-                    <div class="header">
-                        <div>
-                            <h1>AI Day Planner</h1>
-                            <p class="subtitle">
-                                Task management with AI-powered meal planning
-                            </p>
-                        </div>
-                        <button class="btn-signout" onClick={handleLogout}>
-                            Sign Out
-                        </button>
-                    </div>
-                    <div class="two-column">
-                        <div class="column">
-                            <h2>Today's Tasks</h2>
-                            <div class="input-row">
-                                <input
-                                    class="input"
-                                    value={taskText}
-                                    onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
-                                    onKeyPress={handleTaskKeyPress}
-                                    placeholder="What needs to be done today?"
-                                />
-                                <button
-                                    class="btn-add"
-                                    onClick={lambda { addTask(); }}
-                                >
-                                    Add
-                                </button>
-                            </div>
-                            {(
-                                <div class="loading-msg">Loading tasks...</div>
-                            ) if tasksLoading else (
-                                <div>
-                                    {(
-                                        <div class="empty-msg">
-                                            No tasks yet. Add one above!
-                                        </div>
-                                    ) if len(tasks) == 0 else (
-                                        <div>
-                                            {[
-                                                <div key={jid(t)} class="task-item">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={t.done}
-                                                        onChange={lambda { toggleTask(jid(t)); }}
-                                                    />
-                                                    <span class={"task-title " + ("task-done" if t.done else "")}>
-                                                        {t.title}
-                                                    </span>
-                                                    {(
-                                                        <span class="category">{t.category}</span>
-                                                    ) if t.category and t.category != "other" else None}
-                                                    <button
-                                                        class="btn-delete"
-                                                        onClick={lambda { deleteTask(jid(t)); }}
-                                                    >
-                                                        X
-                                                    </button>
-                                                </div> for t in tasks
-                                            ]}
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                            <div class="count">{remaining} {("task" if remaining == 1 else "tasks")} remaining</div>
-                        </div>
-                        <div class="column">
-                            <h2>Meal Shopping List</h2>
-                            <div class="input-row">
-                                <input
-                                    class="input"
-                                    value={mealText}
-                                    onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
-                                    onKeyPress={handleMealKeyPress}
-                                    placeholder="e.g. 'chicken stir fry for 4'"
-                                />
-                                <button
-                                    class="btn-generate"
-                                    onClick={lambda { generateList(); }}
-                                    disabled={generating}
-                                >
-                                    {("Generating..." if generating else "Generate")}
-                                </button>
-                            </div>
-                            {(
-                                <div class="generating-msg">Generating with AI...</div>
-                            ) if generating else (
-                                <div>
-                                    {(
-                                        <div class="empty-msg">
-                                            Enter a meal above to generate ingredients.
-                                        </div>
-                                    ) if len(ingredients) == 0 else (
-                                        <div>
-                                            {[
-                                                <div key={ing.name} class="ingredient-item">
-                                                    <div class="ing-info">
-                                                        <span class="ing-name">{ing.name}</span>
-                                                        <span class="ing-qty">
-                                                            {ing.quantity} {ing.unit}
-                                                        </span>
-                                                    </div>
-                                                    <div class="ing-meta">
-                                                        {(
-                                                            <span class="carb-badge">Carbs</span>
-                                                        ) if ing.carby else None}
-                                                        <span class="ing-cost">
-                                                            ${format(ing.cost, ".2f")}
-                                                        </span>
-                                                    </div>
-                                                </div> for ing in ingredients
-                                            ]}
-                                            <div class="shopping-footer">
-                                                <span class="total">
-                                                    Total: ${format(totalCost, ".2f")}
-                                                </span>
-                                                <button
-                                                    class="btn-clear"
-                                                    onClick={lambda { clearList(); }}
-                                                >
-                                                    Clear
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>;
-        }
+        remaining = len([t for t in tasks if not t.done]);
 
         return
-            <div class="auth-container">
-                <div class="auth-card">
-                    <h1 class="auth-title">AI Day Planner</h1>
-                    <p class="auth-subtitle">
-                        {("Create your account" if isSignup else "Welcome back")}
-                    </p>
-                    {(
-                        <div class="auth-error">{error}</div>
-                    ) if error else None}
-                    <form onSubmit={handleSubmit}>
-                        <div class="form-field">
-                            <label class="form-label">Username</label>
-                            <input
-                                type="text"
-                                value={username}
-                                onChange={lambda e: ChangeEvent { username = e.target.value; }}
-                                placeholder="Enter username"
-                                class="auth-input"
-                            />
+            <div class="column">
+                <h2>Today's Tasks</h2>
+                <div class="input-row">
+                    <input
+                        class="input"
+                        value={taskText}
+                        onChange={lambda e: ChangeEvent { taskText = e.target.value; }}
+                        onKeyPress={handleKeyPress}
+                        placeholder="What needs to be done today?"
+                    />
+                    <button class="btn-add" onClick={lambda { addTask(); }}>Add</button>
+                </div>
+                {(<div class="loading-msg">Loading tasks...</div>)
+                    if tasksLoading
+                    else (
+                        <div>
+                            {(<div class="empty-msg">No tasks yet. Add one above!</div>)
+                                if len(tasks) == 0
+                                else (
+                                    <div>
+                                        {[
+                                            <TaskItem
+                                                key={jid(t)}
+                                                task={t}
+                                                onToggle={lambda { toggleTask(jid(t)); }}
+                                                onDelete={lambda { deleteTask(jid(t)); }}
+                                            /> for t in tasks
+                                        ]}
+                                    </div>
+                                )}
                         </div>
-                        <div class="form-field">
-                            <label class="form-label">Password</label>
-                            <input
-                                type="password"
-                                value={password}
-                                onChange={lambda e: ChangeEvent { password = e.target.value; }}
-                                placeholder="Enter password"
-                                class="auth-input"
-                            />
-                        </div>
-                        <button type="submit" disabled={loading} class="auth-submit">
-                            {(
-                                "Processing..."
-                                if loading
-                                else ("Create Account" if isSignup else "Sign In")
-                            )}
-                        </button>
-                    </form>
-                    <div class="auth-toggle">
-                        <span class="auth-toggle-text">
-                            {(
-                                "Already have an account? "
-                                if isSignup
-                                else "Don't have an account? "
-                            )}
-                        </span>
-                        <button
-                            type="button"
-                            onClick={lambda { isSignup = not isSignup; error = ""; }}
-                            class="auth-toggle-btn"
-                        >
-                            {("Sign In" if isSignup else "Sign Up")}
-                        </button>
-                    </div>
+                    )}
+                <div class="count">
+                    {remaining} {("task" if remaining == 1 else "tasks")} remaining
                 </div>
             </div>;
     }
     ```
 
-??? note "Complete `frontend.impl.jac`"
+??? note "Complete `components/ShoppingPanel.cl.jac` (spawns walkers)"
 
     ```jac
-    """Implementations for the Day Planner frontend."""
+    """Shopping list column -- owns ingredient state, spawns walkers."""
 
-    impl app.fetchTasks {
-        tasksLoading = True;
-        result = root spawn ListTasks();
-        tasks = result.reports[0] if result.reports else [];
-        tasksLoading = False;
+    sv import from ..main {
+        ShoppingItem,
+        GenerateShoppingList,
+        GetShoppingList,
+        ClearShoppingList
     }
 
-    impl app.addTask {
-        if not taskText.strip() { return; }
-        response = root spawn AddTask(title=taskText);
-        tasks = tasks + [response.reports[0]];
-        taskText = "";
-    }
+    import from .IngredientItem { IngredientItem }
 
-    impl app.toggleTask(id: str) {
-        response = root spawn ToggleTask(task_id=id);
-        updated = response.reports[0];
-        tasks = [updated if jid(t) == id else t for t in tasks];
-    }
+    def:pub ShoppingPanel -> JsxElement {
+        has ingredients: list[ShoppingItem] = [],
+            mealText: str = "",
+            generating: bool = False;
 
-    impl app.deleteTask(id: str) {
-        root spawn DeleteTask(task_id=id);
-        tasks = [t for t in tasks if jid(t) != id];
-    }
-
-    impl app.handleLogin {
-        error = "";
-        if not username.strip() or not password {
-            error = "Please fill in all fields";
-            return;
+        async can with entry {
+            result = root spawn GetShoppingList();
+            ingredients = result.reports[0] if result.reports else [];
         }
-        loading = True;
-        success = await jacLogin(username, password);
-        loading = False;
-        if success {
-            isLoggedIn = True;
-            username = "";
-            password = "";
-        } else {
-            error = "Invalid username or password";
-        }
-    }
 
-    impl app.handleSignup {
-        error = "";
-        if not username.strip() or not password {
-            error = "Please fill in all fields";
-            return;
-        }
-        if len(password) < 4 {
-            error = "Password must be at least 4 characters";
-            return;
-        }
-        loading = True;
-        result = await jacSignup(username, password);
-        if result["success"] {
-            # /user/register creates the account but does not return a
-            # session token; sign in immediately to establish one.
-            logged_in = await jacLogin(username, password);
-            loading = False;
-            if logged_in {
-                isLoggedIn = True;
-                username = "";
-                password = "";
-            } else {
-                error = "Account created but sign-in failed";
+        async def generateList {
+            if not mealText.strip() {
+                return;
             }
-        } else {
-            loading = False;
-            error = result["error"] if result["error"] else "Signup failed";
+            generating = True;
+            result = root spawn GenerateShoppingList(meal_description=mealText);
+            ingredients = result.reports[0] if result.reports else [];
+            generating = False;
         }
-    }
 
-    impl app.handleLogout {
-        jacLogout();
-        isLoggedIn = False;
-        isSignup = False;
-        tasks = [];
-        ingredients = [];
-    }
+        async def clearList {
+            root spawn ClearShoppingList();
+            ingredients = [];
+            mealText = "";
+        }
 
-    impl app.handleSubmit(e: FormEvent) {
-        e.preventDefault();
-        if isSignup { await handleSignup(); }
-        else { await handleLogin(); }
-    }
+        def handleKeyPress(e: KeyboardEvent) {
+            if e.key == "Enter" {
+                generateList();
+            }
+        }
 
-    impl app.handleTaskKeyPress(e: KeyboardEvent) {
-        if e.key == "Enter" { addTask(); }
-    }
-
-    impl app.fetchShoppingList {
-        result = root spawn GetShoppingList();
-        ingredients = result.reports[0] if result.reports else [];
-    }
-
-    impl app.generateList {
-        if not mealText.strip() { return; }
-        generating = True;
-        result = root spawn GenerateShoppingList(meal_description=mealText);
-        ingredients = result.reports[0] if result.reports else [];
-        generating = False;
-    }
-
-    impl app.clearList {
-        root spawn ClearShoppingList();
-        ingredients = [];
-        mealText = "";
-    }
-
-    impl app.handleMealKeyPress(e: KeyboardEvent) {
-        if e.key == "Enter" { generateList(); }
-    }
-
-    impl app.getTotal -> float {
-        total = 0.0;
+        totalCost = 0.0;
         for ing in ingredients {
-            total = total + ing.cost;
+            totalCost = totalCost + ing.cost;
         }
-        return total;
+
+        return
+            <div class="column">
+                <h2>Meal Shopping List</h2>
+                <div class="input-row">
+                    <input
+                        class="input"
+                        value={mealText}
+                        onChange={lambda e: ChangeEvent { mealText = e.target.value; }}
+                        onKeyPress={handleKeyPress}
+                        placeholder="e.g. 'chicken stir fry for 4'"
+                    />
+                    <button
+                        class="btn-generate"
+                        onClick={lambda { generateList(); }}
+                        disabled={generating}
+                    >
+                        {("Generating..." if generating else "Generate")}
+                    </button>
+                </div>
+                {(<div class="generating-msg">Generating with AI...</div>)
+                    if generating
+                    else (
+                        <div>
+                            {(
+                                <div class="empty-msg">
+                                    Enter a meal above to generate ingredients.
+                                </div>
+                            )
+                                if len(ingredients) == 0
+                                else (
+                                    <div>
+                                        {[
+                                            <IngredientItem key={ing.name} ing={ing}/>
+                                            for ing in ingredients
+                                        ]}
+                                        <div class="shopping-footer">
+                                            <span class="total">
+                                                Total: ${f"{totalCost:.2f}"}
+                                            </span>
+                                            <button
+                                                class="btn-clear"
+                                                onClick={lambda { clearList(); }}
+                                            >
+                                                Clear
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                        </div>
+                    )}
+            </div>;
     }
-    ```
-
-??? note "Complete `styles.css`"
-
-    ```css
-    /* Base */
-    .container { max-width: 900px; margin: 40px auto; font-family: system-ui; padding: 20px; }
-    h1 { margin: 0; color: #333; }
-    h2 { margin: 0 0 16px 0; font-size: 1.2rem; color: #444; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
-    .subtitle { margin: 4px 0 0 0; color: #888; font-size: 0.85rem; }
-
-    /* Layout */
-    .two-column { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
-    @media (max-width: 700px) { .two-column { grid-template-columns: 1fr; } }
-
-    /* Inputs */
-    .input-row { display: flex; gap: 8px; margin-bottom: 16px; }
-    .input { flex: 1; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 1rem; }
-
-    /* Buttons */
-    .btn-add { padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; }
-    .btn-generate { padding: 10px 16px; background: #2196F3; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; white-space: nowrap; }
-    .btn-generate:disabled { opacity: 0.6; cursor: not-allowed; }
-    .btn-delete { background: #e53e3e; color: white; border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.85rem; }
-    .btn-clear { background: #888; color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 0.85rem; }
-    .btn-signout { padding: 8px 16px; background: #f5f5f5; color: #666; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; }
-
-    /* Task Items */
-    .task-item { display: flex; align-items: center; padding: 10px; border-bottom: 1px solid #eee; gap: 10px; }
-    .task-title { flex: 1; }
-    .task-done { text-decoration: line-through; color: #888; }
-    .category { padding: 2px 8px; background: #e8f5e9; border-radius: 12px; font-size: 0.75rem; color: #2e7d32; margin-right: 8px; }
-    .count { text-align: center; color: #888; margin-top: 12px; font-size: 0.9rem; }
-
-    /* Shopping Items */
-    .ingredient-item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
-    .ing-info { display: flex; flex-direction: column; gap: 2px; }
-    .ing-name { font-weight: 500; }
-    .ing-qty { color: #666; font-size: 0.85rem; }
-    .ing-meta { display: flex; align-items: center; gap: 8px; }
-    .ing-cost { color: #2196F3; font-weight: 600; }
-    .carb-badge { padding: 2px 6px; background: #fff3e0; border-radius: 12px; font-size: 0.7rem; color: #e65100; }
-    .shopping-footer { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; margin-top: 8px; border-top: 1px solid #ddd; }
-    .total { font-weight: 700; color: #2196F3; }
-    .generating-msg { text-align: center; padding: 20px; color: #666; }
-
-    /* Status Messages */
-    .loading-msg { text-align: center; padding: 20px; color: #888; }
-    .empty-msg { text-align: center; padding: 30px; color: #888; }
-    .auth-loading { display: flex; justify-content: center; align-items: center; min-height: 100vh; color: #888; font-family: system-ui; }
-
-    /* Auth Form */
-    .auth-container { min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: system-ui; background: #f5f5f5; }
-    .auth-card { background: white; border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 400px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
-    .auth-title { margin: 0 0 4px 0; text-align: center; font-size: 1.75rem; color: #333; }
-    .auth-subtitle { margin: 0 0 24px 0; text-align: center; color: #888; font-size: 0.9rem; }
-    .auth-error { margin-bottom: 16px; padding: 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #dc2626; font-size: 0.9rem; }
-    .form-field { margin-bottom: 16px; }
-    .form-label { display: block; color: #555; font-size: 0.85rem; margin-bottom: 6px; }
-    .auth-input { width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; box-sizing: border-box; }
-    .auth-submit { width: 100%; padding: 12px; background: #4CAF50; color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: 600; cursor: pointer; margin-top: 8px; }
-    .auth-submit:disabled { opacity: 0.6; }
-    .auth-toggle { margin-top: 16px; text-align: center; }
-    .auth-toggle-text { color: #888; font-size: 0.9rem; }
-    .auth-toggle-btn { background: none; border: none; color: #4CAF50; font-weight: 600; cursor: pointer; font-size: 0.9rem; }
     ```
 
 ```bash
-export ANTHROPIC_API_KEY="your-key"
 jac start main.jac  # or: jac start
 ```
 
@@ -3439,11 +3571,12 @@ This part introduced Jac's Object-Spatial Programming paradigm:
 - **`self`** -- the walker itself (its state and properties)
 - **`visitor`** -- inside a node ability, the walker that's visiting
 - **`report`** -- send data back (typed objects or dicts), collected in `.reports`
+- **`has reports: list[T] = []`** -- type the reports channel so the compiler checks `report X` calls and the client receives typed objects (drop it only when you intentionally report ad-hoc dicts)
 - **`disengage`** -- stop traversal immediately
 - **`root spawn Walker()`** -- create and start a walker at a node
-- **`result.reports[0]`** -- access the walker's reported data
+- **`result.reports[0] if result.reports else []`** -- safe access to the walker's reported data (handles empty traversals)
 - **`walker:priv`** -- per-user walker with data isolation
-- **`sv import`** -- import server walkers into client code
+- **`sv import`** -- import server walkers (and node types) into client code
 
 **When to use each approach:**
 

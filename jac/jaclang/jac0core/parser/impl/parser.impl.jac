@@ -3559,7 +3559,10 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_IMPL,
         TokenKind.TYP_TYPE,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_WITH
+        TokenKind.KW_WITH,
+        TokenKind.KW_CLIENT,
+        TokenKind.KW_SERVER,
+        TokenKind.KW_NATIVE
     ) {
         return self.parse_docstring_target();
     }
@@ -3711,6 +3714,17 @@ impl Parser.parse_docstring_target{
         result = self.parse_module_code();
         result.doc = elem_doc;
         result.add_kids_left([elem_doc]);
+        return result;
+    }
+    # cl / sv / na single-stmt prefix: recurse into parse_element_stmt so the
+    # prefix is consumed and code_context is tagged on the inner element. The
+    # docstring attaches to that inner element, not to the context prefix.
+    if self.check_any(TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE) {
+        result = self.parse_element_stmt();
+        if result is not None {
+            result.doc = elem_doc;
+            result.add_kids_left([elem_doc]);
+        }
         return result;
     }
     # Complex case: decorators/async/ability/archetype — dispatch via lookahead
@@ -4113,6 +4127,12 @@ impl Parser.parse_statement{
     expr_kid: list = [expr];
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
+    } elif isinstance(expr, Name) and expr.value == "new" {
+        # `new` is an ambient builtin; a bare `new` followed by another atom
+        # is JS-style `new Foo(...)` usage. Emit the migration-friendly
+        # E0012 (which recommends `new(target, ...args)`) instead of the
+        # generic E0002 "Missing ';'".
+        self.emit_diag(E0012, loc=self.current().loc);
     } else {
         self.emit_diag(E0002, token=";");
     }
@@ -5101,7 +5121,17 @@ impl Parser.parse_assignment_with_target(
     }
     # Add Semi as child of Assignment (matching Lark structure)
     if require_semi {
-        self.expect(TokenKind.SEMI);
+        if not self.check(TokenKind.SEMI)
+        and value is not None
+        and isinstance(value, Name)
+        and value.value == "new" {
+            # JS-style `lhs = new Foo(...)`: emit E0012 instead of the
+            # generic E0002 from expect(SEMI). See parse_statement for
+            # the same detection on bare expressions.
+            self.emit_diag(E0012, loc=self.current().loc);
+        } else {
+            self.expect(TokenKind.SEMI);
+        }
         kid.append(self.make_semi());
     } elif self.match_tok(TokenKind.SEMI) {
         kid.append(self.make_semi());

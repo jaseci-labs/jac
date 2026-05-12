@@ -2831,20 +2831,41 @@ if jac_toml.exists():
 # Read Python dependencies from jac.toml and add to hiddenimports
 try:
     import tomllib
+    from importlib.metadata import distribution, PackageNotFoundError
     with open(jac_toml, 'rb') as f:
         toml_data = tomllib.load(f)
     # Get [dependencies] section (Python packages)
     python_deps = toml_data.get('dependencies', {{}})
+
+    def _resolve_top_level(dist_name):
+        # Distribution name != module name in general. Read top_level.txt
+        # from the installed dist; fall back to the dash-to-underscore
+        # heuristic only when metadata is missing.
+        try:
+            dist = distribution(dist_name)
+            top_level = dist.read_text('top_level.txt')
+            if top_level:
+                names = [n.strip() for n in top_level.splitlines() if n.strip()]
+                if names:
+                    return names
+        except PackageNotFoundError:
+            pass
+        return [dist_name.replace('-', '_')]
+
     for dep_name, dep_version in python_deps.items():
         # Skip sub-tables like npm, git, etc.
         if isinstance(dep_version, str):
-            # Convert package name to module name (e.g., jac-scale -> jac_scale)
-            module_name = dep_name.replace('-', '_')
-            hiddenimports.append(module_name)
-            try:
-                hiddenimports += collect_submodules(module_name)
-            except Exception:
-                pass
+            for module_name in _resolve_top_level(dep_name):
+                hiddenimports.append(module_name)
+                try:
+                    hiddenimports += collect_submodules(module_name)
+                except Exception:
+                    pass
+                # Pull data files too so .jac sources ship alongside .py
+                try:
+                    datas += collect_data_files(module_name)
+                except Exception:
+                    pass
     print(f"Added {{len([d for d in python_deps.values() if isinstance(d, str)])}} Python dependencies from jac.toml")
 
     # Read [desktop.bundle] extra_data glob patterns from jac.toml and bundle

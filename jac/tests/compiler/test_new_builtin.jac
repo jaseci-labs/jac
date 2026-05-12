@@ -83,6 +83,38 @@ test "JS-style `new Foo()` keyword usage still errors" {
     );
 }
 
+test "JS-style `new Foo(...)` emits E0012, not a generic parse error" {
+    # The parser detects `<value> = new <atom>` and `new <atom>;` shapes
+    # and emits the migration-friendly E0012 rather than the cascade of
+    # E0002 (Missing ';') errors users used to hit. Locks in the helpful
+    # diagnostic so a future regression cannot silently downgrade it.
+    prog = parse_and_validate("with entry { x = new Foo(1, 2); }");
+    assert has_code(prog, "E0012") , (
+        "Assignment-style `x = new Foo(...)` must emit E0012"
+    );
+    assert not has_code(prog, "E0002") , (
+        "Should not also emit E0002 when E0012 fired for the same offense"
+    );
+}
+
+test "JS-style bare `new Foo();` emits E0012" {
+    prog = parse_and_validate("with entry { new Foo(1, 2); }");
+    assert has_code(prog, "E0012") , ("Bare statement `new Foo(...)` must emit E0012");
+    assert not has_code(prog, "E0002");
+}
+
+test "`f = new;` (first-class reference) does NOT emit E0012" {
+    # Passing `new` as a first-class function reference is legitimate
+    # now that it is an ambient builtin. The detection rule only fires
+    # when `;` is *missing* after a bare `new`, so this pattern must
+    # parse cleanly.
+    prog = parse_and_validate("with entry { f = new; }");
+    assert not has_code(prog, "E0012") , (
+        "Legitimate `f = new;` must not trip the JS-pattern detector"
+    );
+    assert not has_code(prog, "E0002");
+}
+
 
 # ─────────────────────────────────────────────────────────────────────
 #  Client (cl) backend: `new(...)` → `Reflect.construct(...)`
