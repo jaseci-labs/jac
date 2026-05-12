@@ -343,29 +343,51 @@ Constraints:
 
 ## Refs
 
-Three forms cover the design space:
+One attribute, `ref={EXPR}`. The compiler dispatches on the value's type;
+no contextual keyword, no new attribute-brace form.
 
 ```jac
 view RefDemo() {
-    # 1. Callback ref - block-body lambda for the side effect
-    <input {ref lambda n: HtmlInputElement { n.focus(); }} />
+    # 1. Callback ref - lambda value
+    <input ref={lambda n: HtmlInputElement { n.focus(); }} />
 
-    # 2. Bound handle (useRef returns a stable Ref[T])
-    inputRef = useRef();
+    # 2. Handle ref - Ref[T] value from useRef()
+    inputRef = useRef[HtmlInputElement]();
     <input ref={inputRef} />
 
-    # 3. Mutable variable (reactive targets only)
+    # 3. Mutable variable (reactive targets only) - T | None value
     let input: HtmlInputElement | None = None;
     <input ref={input} />
 
-    # Multiple refs on one element compose:
-    <input ref={inputRef} {ref a} {ref b} myRef={ref input} />
+    # 4. Composite - list of any of the above
+    <input ref={[inputRef, a, b]} />
+
+    # 5. Pass a ref binding through a prop - just pass the Ref[T]
+    <Child myRef={inputRef} />
 }
 ```
 
-Compile target determines merge behavior - composite refs on React lower to
-`mergeRefs(...)`; on Solid they lower to a native ref array `ref={[a,b,c]}`;
-on Vue, composite refs are rejected at compile time.
+Dispatch by value type (already what the per-target lowering does):
+
+| `ref={…}` value type | Lowering |
+|----------------------|----------|
+| `(T) -> ()` lambda | callback ref |
+| `Ref[T]` (from `useRef`) | handle: `r.current = node` (React) / native ref binding (Solid/Vue/Ripple) |
+| `T \| None` mutable var | reactive-target only: bind variable to node, trigger on mount/unmount |
+| `list[…]` of the above | composite: `mergeRefs(...)` on React, native array `ref={[a,b,c]}` on Solid, compile-error on Vue |
+
+Why one form rather than three: the original draft used `{ref EXPR}` as a
+JSX attribute-brace prefix and `ref EXPR` as a general-expression prefix
+keyword. Both are *contextual* keywords (since `ref` is a common identifier
+we don't want to fully reserve). Two contextual keywords across two
+sub-grammars (JSX-attribute mode and the general expression grammar), plus
+an attribute-brace form `{KEYWORD EXPR}` that no other JSX dialect uses
+and that collides with JSX shorthand `{name}`, costs more parser/LSP/
+formatter surface than the composite-array form saves the user. Composite
+refs become `ref={[a, b, c]}` - exactly what Solid emits natively, what
+React 19 supports, and what the Solid lowering in this doc was already
+producing. Passing a binding through a prop becomes ordinary value-passing
+(`<Child myRef={inputRef} />`) typed at the receiving boundary.
 
 ## Scoped Styles
 
