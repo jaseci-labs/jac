@@ -21,7 +21,7 @@ jobs:
       - name: Install jaclang and jac-client
         run: |
           pip install -e ./jac
-          cd jac-client && jac install -e .
+          jac install -e ./jac-client
       - name: Precompile bytecode
         run: jac run jac/scripts/precompile_bytecode.jac ./jac-client
       - name: Upload precompiled artifacts
