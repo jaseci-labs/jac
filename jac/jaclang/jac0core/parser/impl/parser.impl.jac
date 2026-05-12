@@ -4017,7 +4017,7 @@ impl Parser.parse_statement{
     # glob is module-level only; reject and recover cleanly
     if self.check(TokenKind.KW_GLOBAL) {
         self.emit_diag(E0063);
-        self.parse_global_var();
+        self.synchronize();
         return None;
     }
     # Handle global statement (inside functions): global a, b;

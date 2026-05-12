@@ -380,6 +380,11 @@ test "E0063: glob with value inside with entry" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
 }
 
+test "E0063: glob with value no semicolon inside with entry" {
+    (has_err, prog) = parse_and_validate('with entry { glob a = 90 }');
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
+}
+
 test "E0063: glob with missing rhs inside with entry" {
     (has_err, prog) = parse_and_validate('with entry { glob a = }');
     assert has_err;
