@@ -11,10 +11,10 @@ import sys;
 import from pathlib { Path }
 import tomlkit;
 import from release_utils { PACKAGES, bump_version, check_pypi }
-"""Read the current version from a package's pyproject.toml."""
+"""Read the current version from a package's jac.toml."""
 def get_current_version(repo_root: Path, pkg_dir: str) -> str {
-    pyproject = repo_root / pkg_dir / "pyproject.toml";
-    data = tomlkit.loads(pyproject.read_text());
+    jac_toml = repo_root / pkg_dir / "jac.toml";
+    data = tomlkit.loads(jac_toml.read_text());
     return str(data["project"]["version"]);
 }
 def main() -> int {
