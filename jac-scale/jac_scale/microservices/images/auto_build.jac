@@ -1,5 +1,4 @@
-"""Auto-build + auto-distribute entry point for `jac start --scale`.
-Detect cluster -> build FE bundle -> pick distributor -> drive it."""
+"""`jac start --scale` entry: detect cluster, FE bundle, pick distributor."""
 
 import from pathlib { Path }
 import from jac_scale.microservices.images.cluster_detect {
