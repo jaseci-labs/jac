@@ -144,6 +144,8 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0027,
+    E0028,
     E0026,
     E0030,
     E0032,
@@ -1226,6 +1228,11 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid.append(conn_assign);
             }
         }
+        if not self.check(TokenKind.CARROW_R_P2) {
+            self.emit_diag(E0027);
+            self.synchronize();
+            return None;
+        }
         end_uni = self.consume_uni(TokenKind.CARROW_R_P2);
         kid.append(end_uni);
         return ConnectOp(
@@ -1290,7 +1297,8 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid=kid
             );
         } else {
-            self.emit_diag(E0021);
+            self.emit_diag(E0028);
+            self.synchronize();
             return None;
         }
     }
