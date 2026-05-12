@@ -28,7 +28,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project/project dependencies |
+| `jac install` | Install project dependencies (or `-e <path>` for an editable install) |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac bundle` | Build a distributable `.whl` from `jac.toml` |
@@ -1042,12 +1042,14 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 Sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`.
 
 ```bash
-jac install [-h] [-d] [-v]
+jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. | `""` |
 | `-d, --dev` | Include dev dependencies | `False` |
+| `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
 
 **Examples:**
@@ -1059,9 +1061,23 @@ jac install
 # Install including dev dependencies
 jac install --dev
 
+# Install optional dependency groups defined in jac.toml
+jac install --extras data monitoring
+
+# Editable install with an optional group
+jac install -e . --extras all
+
 # Install with verbose output
 jac install -v
+
+# Editable install of the current package
+jac install -e .
+
+# Editable install from anywhere (no need to cd into the package)
+jac install -e /path/to/lib
 ```
+
+Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
 ---
 

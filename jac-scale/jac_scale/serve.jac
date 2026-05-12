@@ -28,6 +28,7 @@ import from jac_scale.utils { generate_random_password, _extract_path_param_name
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
 import from jac_scale.abstractions.metrics { MetricsCollector }
+import from jac_scale.events.broker { EventStreamBroker }
 import from jac_scale.websocket { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
@@ -138,6 +139,7 @@ obj JacAPIServerCore {
     def _register_endpoints -> None;
     def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
+    def _setup_events -> None;
     # Metrics endpoint wrapper for admin-only access
     def _create_admin_metrics_handler(
         original_handler: Callable[..., Any]
@@ -215,5 +217,6 @@ obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacA
         _api_key_manager: ApiKeyManager | None = None,
         _metrics: MetricsCollector | None = None,
         _ws_manager: WebSocketConnectionManager | None = None,
+        _broker: EventStreamBroker | None = None,
         _emailer: Emailer | None = None;
 }

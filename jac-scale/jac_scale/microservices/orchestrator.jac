@@ -13,8 +13,45 @@ import from jac_scale.microservices.service_registry {
 import from jac_scale.microservices.process_manager { ServiceProcessManager }
 import from jac_scale.microservices.local_deployer { LocalDeployer }
 import from jac_scale.microservices.gateway { MicroserviceGateway }
+import from jac_scale.microservices._util {
+    DEFAULT_GATEWAY_PORT,
+    DEFAULT_GATEWAY_HOST,
+    DEFAULT_CLIENT_DIST_DIR
+}
 
 glob logger = logging.getLogger(__name__);
+
+
+"""Parse static_mounts entries into {url_prefix, local_path} dicts;
+skips malformed entries."""
+def _parse_static_mounts(client_config: dict[str, Any]) -> list[dict[str, str]] {
+    out: list[dict[str, str]] = [];
+    if not client_config {
+        return out;
+    }
+    raw = dict(client_config).get("static_mounts", []);
+    if not isinstance(raw, list) {
+        return out;
+    }
+    for entry in raw {
+        ed = dict(entry) if isinstance(entry, dict) else {};
+        url_prefix = str(ed.get("url_prefix", "")).strip();
+        local_path = str(ed.get("local_path", "")).strip();
+        if url_prefix and local_path {
+            out.append({"url_prefix": url_prefix, "local_path": local_path});
+        }
+    }
+    return out;
+}
+
+
+"""Read client.dist_dir; defaults to `.jac/client/dist`."""
+def _client_dist_dir(client_config: dict[str, Any]) -> str {
+    if not client_config {
+        return DEFAULT_CLIENT_DIST_DIR;
+    }
+    return str(dict(client_config).get("dist_dir", DEFAULT_CLIENT_DIST_DIR));
+}
 
 """Build a ServiceRegistry from a `routes` map: {module_name: prefix}.
 
@@ -59,9 +96,7 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     client_entry: str = str(dict(client_config).get("entry", ""))
         if client_config
         else "";
-    client_dist: str = str(dict(client_config).get("dist_dir", ".jac/client/dist"))
-        if client_config
-        else ".jac/client/dist";
+    client_dist: str = _client_dist_dir(client_config);
 
     if client_entry {
         import subprocess;
@@ -101,12 +136,20 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     deployer.deploy_all();
     pm = deployer._ensure_pm();
 
+    # jac.toml overrides for boot + recovery cadences (defaults 60/90/10s).
+    pm._boot_health_timeout = float(
+        ms_config.get("boot_health_timeout", pm._boot_health_timeout)
+    );
+    pm._health_monitor_interval = float(
+        ms_config.get("health_monitor_interval", pm._health_monitor_interval)
+    );
+    max_wait: int = int(ms_config.get("boot_max_wait", 90));
+
     # Register cleanup on exit
     atexit.register(deployer.destroy_all);
 
     # 3. Wait for services to become healthy
     logger.info("Waiting for services to start...");
-    max_wait: int = 30;
     start_time: float = time.time();
     all_healthy = False;
 
@@ -136,13 +179,16 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
         logger.warning("Proceeding with unhealthy services...");
     }
 
+    # Background recovery loop: services that miss the boot bar by a
+    # few seconds flip back to HEALTHY automatically via check_all_health.
+    # destroy_all -> stop_all -> stop_health_monitor handles teardown.
+    pm.start_health_monitor();
+
     # 4. Print startup banner
-    gateway_port: int = int(ms_config.get("gateway_port", 8000));
-    gateway_host: str = str(ms_config.get("gateway_host", "0.0.0.0"));
+    gateway_port: int = int(ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
+    gateway_host: str = str(ms_config.get("gateway_host", DEFAULT_GATEWAY_HOST));
     client_config = ms_config.get("client", {});
-    client_dist: str = str(dict(client_config).get("dist_dir", ".jac/client/dist"))
-        if client_config
-        else ".jac/client/dist";
+    client_dist: str = _client_dist_dir(client_config);
 
     console.print();
     console.print("[bold cyan]  Jac Microservice Mode[/bold cyan]");
@@ -165,31 +211,6 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
         console.print(f"  [bold]Static:[/bold] {client_dist}");
     }
 
-    # Read static_mounts (used in step 5 below) so we can show them in the
-    # banner. We re-read here for display only; the canonical list is built
-    # again in step 5 to keep that block self-contained.
-    _banner_mounts: list[Any] = [];
-    if client_config {
-        _raw = dict(client_config).get("static_mounts", []);
-        if isinstance(_raw, list) {
-            _banner_mounts = list(_raw);
-        }
-    }
-    if _banner_mounts {
-        console.print();
-        console.print("  [bold]Static mounts[/bold]");
-        console.print(f"  [dim]{'─' * 48}[/dim]");
-        for _m in _banner_mounts {
-            _md = dict(_m) if isinstance(_m, dict) else {};
-            _u = str(_md.get("url_prefix", ""));
-            _p = str(_md.get("local_path", ""));
-            if _u and _p {
-                console.print(f"  [cyan]→[/cyan] {_u:20s} -> {_p}");
-            }
-        }
-    }
-    console.print();
-
     # 5. Build optional static_mounts list. Each entry maps a URL prefix to
     #    a local directory the gateway should serve from BEFORE falling back
     #    to client_dist_dir. Configured as:
@@ -197,25 +218,21 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     #      url_prefix = "/static/assets"
     #      local_path = "assets"
     #    Tolerates missing/empty config — defaults to no extra mounts.
-    static_mounts: list[dict[str, str]] = [];
-    if client_config {
-        raw_mounts: list[Any] = [];
-        _raw = dict(client_config).get("static_mounts", []);
-        if isinstance(_raw, list) {
-            raw_mounts = list(_raw);
-        }
-        for entry in raw_mounts {
-            ed = dict(entry) if isinstance(entry, dict) else {};
-            url_prefix = str(ed.get("url_prefix", "")).strip();
-            local_path = str(ed.get("local_path", "")).strip();
-            if url_prefix and local_path {
-                static_mounts.append(
-                    {"url_prefix": url_prefix, "local_path": local_path,}
-                );
-                logger.info(f"Static mount: {url_prefix} -> {local_path}");
-            }
+    static_mounts: list[dict[str, str]] = _parse_static_mounts(client_config);
+    if static_mounts {
+        console.print();
+        console.print("  [bold]Static mounts[/bold]");
+        console.print(f"  [dim]{'─' * 48}[/dim]");
+        for mount in static_mounts {
+            console.print(
+                f"  [cyan]→[/cyan] {mount['url_prefix']:20s} -> {mount['local_path']}"
+            );
+            logger.info(
+                f"Static mount: {mount['url_prefix']} -> {mount['local_path']}"
+            );
         }
     }
+    console.print();
 
     # 6. Start gateway (blocking)
     gateway = MicroserviceGateway(
@@ -229,4 +246,80 @@ def start_microservice_mode(ms_config: dict[str, Any]) -> None {
 
     # 6. Cleanup (runs when gateway shuts down)
     deployer.destroy_all();
+}
+
+
+"""Pre-mark every registry entry HEALTHY for K8s gateway mode (K8s
+gates routing on real readinessProbes; gateway's status check would
+otherwise 503 every request). Factored out for testability."""
+def _mark_all_healthy_k8s(registry: ServiceRegistry) {
+    for (_name, _entry) in registry.entries.items() {
+        _entry.status = ServiceStatus.HEALTHY;
+    }
+}
+
+
+"""Write get_sv_registry()'s DNS URLs onto registry entries so the
+gateway's built-in passthrough loop (which reads svc_entry.url
+directly, not the hookspec) finds K8s peers. Silent on lookup
+failure - empty-url entries are skipped by the passthrough loop."""
+def _populate_k8s_urls(registry: ServiceRegistry) {
+    try {
+        import jaclang;
+        dns_map: dict[str, str] = jaclang.JacRuntime.get_sv_registry();
+    } except Exception as e {
+        logger.warning(f"K8s URL population failed: {e}");
+        return;
+    }
+    for (svc_name, _entry) in registry.entries.items() {
+        url = dns_map.get(svc_name, "");
+        if url {
+            _entry.url = url;
+        }
+    }
+    logger.info(
+        f"K8s URLs populated: {sum(
+            1
+            for e in registry.entries.values()
+            if e.url
+        )}"
+        f"/{len(registry.entries)} services"
+    );
+}
+
+
+"""Start ONLY the gateway (used by the K8s gateway pod). Skips local-
+mode steps - K8s manages service pod lifecycle. Peer URLs come via
+get_sv_registry() which returns DNS when KUBERNETES_SERVICE_HOST is set."""
+def start_gateway_only(ms_config: dict[str, Any]) -> None {
+    if not ms_config.get("routes", {}) {
+        logger.error("No routes declared in [plugins.scale.microservices.routes]");
+        return;
+    }
+
+    registry = build_registry(ms_config);
+    _mark_all_healthy_k8s(registry);
+    # Built-in passthrough reads svc_entry.url directly (not the hookspec).
+    _populate_k8s_urls(registry);
+
+    gateway_port = int(ms_config.get("gateway_port", DEFAULT_GATEWAY_PORT));
+    gateway_host = ms_config.get("gateway_host", DEFAULT_GATEWAY_HOST);
+
+    client_config = ms_config.get("client", {});
+    client_dist: str = _client_dist_dir(client_config);
+
+    static_mounts: list[dict[str, str]] = _parse_static_mounts(client_config);
+
+    gateway = MicroserviceGateway(
+        registry=registry,
+        port=gateway_port,
+        host=gateway_host,
+        client_dist_dir=client_dist,
+        static_mounts=static_mounts
+    );
+    logger.info(
+        f"Starting gateway-only mode on {gateway_host}:{gateway_port} "
+        f"(K8s pod context; no service spawning)"
+    );
+    gateway.start();
 }

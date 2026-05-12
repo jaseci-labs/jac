@@ -921,14 +921,16 @@ impl MongoBackend.remove_alias(old_name: str) -> bool {
 }
 
 
-"""Get anchor by UUID using native Motor (no asyncio.to_thread)."""
+"""Get anchor by UUID using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
 impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
-    import from jac_scale._optdeps.motor { AsyncIOMotorClient, HAS_MOTOR }
-    if not HAS_MOTOR or AsyncIOMotorClient is None or self.mongo_url is None {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
         return await super.aget(id);
     }
-    motor_client = AsyncIOMotorClient(self.mongo_url);
-    coll = motor_client[self.db_name][self.collection_name];
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
     try {
         db_obj = await coll.find_one({'_id': str(to_uuid(id))});
         if not db_obj {
@@ -936,20 +938,18 @@ impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
         }
         return self._load_anchor(db_obj);
     } except Exception as e {
-        logger.debug(f"Motor aget failed: {e}");
+        logger.debug(f"Async aget failed: {e}");
         return None;
-    } finally {
-        motor_client.close();
     }
 }
 
-"""Store anchor using native Motor (no asyncio.to_thread)."""
+"""Store anchor using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
 impl MongoBackend.aput(anchor: Anchor) -> None { }
 
-"""Flush dirty anchors via Motor (no asyncio.to_thread)."""
+"""Flush dirty anchors using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
 impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
-    import from jac_scale._optdeps.motor { AsyncIOMotorClient, HAS_MOTOR }
-    if not HAS_MOTOR or AsyncIOMotorClient is None or self.mongo_url is None {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
         await super.acommit(anchor);
         return;
     }
@@ -957,8 +957,10 @@ impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
         await super.acommit(anchor);
         return;
     }
-    motor_client = AsyncIOMotorClient(self.mongo_url);
-    coll = motor_client[self.db_name][self.collection_name];
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
     dirty = [];
     targets = [anchor] if anchor is not None else list(self._mem_ref.values());
     for a in targets {
@@ -974,10 +976,9 @@ impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
         try {
             await coll.bulk_write(ops, ordered=False);
         } except Exception as e {
-            logger.warning(f"Motor acommit bulk_write failed: {e}");
+            logger.warning(f"Async acommit bulk_write failed: {e}");
         }
     }
-    motor_client.close();
 }
 
 """Load DB-resident aliases into the in-process Serializer registry."""

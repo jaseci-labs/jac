@@ -27,7 +27,12 @@ impl JacScaleUserManager.postinit -> None {
         self._identity_storage.ensure_indexes();
     } else {
         import os;
-        data_dir = os.path.join(self.base_path, '.jac', 'data');
+        # Honor JAC_DATA_PATH so frozen sidecars on read-only system paths
+        # (e.g. /usr/lib/<app>/jac for a .deb) write the SQLite store under
+        # the user's data dir instead of base_path. Falls back to base_path
+        # for dev/source-tree runs where the env var isn't set.
+        base_for_data = os.environ.get('JAC_DATA_PATH', self.base_path);
+        data_dir = os.path.join(base_for_data, '.jac', 'data');
         os.makedirs(data_dir, exist_ok=True);
         db_path = os.path.join(data_dir, 'users.db');
         self._identity_storage = SqliteIdentityStorage(db_path=db_path);
