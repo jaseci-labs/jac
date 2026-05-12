@@ -1,11 +1,13 @@
 """K8s deployment target for microservice mode.
 
-Thin orchestrator that wires image build + manifest build + apply +
-destroy. The manifest building logic lives in
-targets.kubernetes.microservice.manifest_builder.MicroserviceManifestBuilder;
-this file owns:
+Thin orchestrator that wires image build + DB provisioning + manifest
+build + apply + destroy. Implementation classes:
+  - DB provisioning: MicroserviceDatabaseProvisioner
+  - Manifest build:  MicroserviceManifestBuilder
+  - Image build:     auto_build_and_distribute (microservices/images/)
+
+This file owns:
   - image build override (_handle_image_registry, _auto_build_image)
-  - database provisioning (_provision_databases - moves to its own class in C6)
   - kube-config loading
   - manifest apply (apply_manifests + _apply_or_replace_* helpers)
   - destroy
@@ -19,6 +21,7 @@ import from typing { Any }
 import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
+import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale._optdeps.kubernetes {
     client,
     config as k8s_cluster_config,
@@ -34,6 +37,9 @@ import from jac_scale.targets.kubernetes.microservice.manifest_builder {
     GATEWAY_NAME,
     k8s_safe_name
 }
+import from jac_scale.targets.kubernetes.microservice.database_provisioner {
+    MicroserviceDatabaseProvisioner
+}
 
 glob logger = logging.getLogger(__name__);
 
@@ -44,10 +50,11 @@ table is the source of truth for which services exist; each gets a
 pod-spec differentiated by `JAC_SV_NAME`. Selected by _scale_pre_hook
 when `[plugins.scale.microservices].enabled=true` + `--scale`."""
 obj KubernetesMicroserviceTarget(KubernetesTarget) {
-    # populated by _provision_databases (during deploy()) with
-    # the wait-for-Mongo / wait-for-Redis init containers.
-    # MicroserviceManifestBuilder reads this when constructing pod specs.
-    has _microservice_init_containers: list[dict[str, Any]] = [];
+    # Per-deploy state populated by MicroserviceDatabaseProvisioner
+    # in deploy(); threaded into MicroserviceManifestBuilder. Default
+    # empty so generate_manifests() called directly (tests, dry-run)
+    # works without prior provision step.
+    has _deploy_context: DeployContext = DeployContext();
 
     """Auto-build override when `_JAC_SCALE_AUTO_BUILD=1` is set (production
     `jac start --scale` path). Returns the user's pre-built docker_image_name
@@ -133,12 +140,14 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
 
         # provision MongoDB + Redis BEFORE generate_manifests so
-        # the env_list (with MONGODB_URI/REDIS_URL secretKeyRef entries)
-        # and init_containers populate every microservice pod-spec.
-        # Skipped silently in tests (no kube config / not on a real cluster);
-        # the provisioning helper is idempotent for re-deploys.
+        # the DeployContext (with MONGODB_URI/REDIS_URL secretKeyRef entries
+        # and wait-for-DB init containers) populates every microservice
+        # pod-spec. Skipped silently in tests (no kube config / not on a
+        # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
-            self._provision_databases(app_name);
+            self._deploy_context = MicroserviceDatabaseProvisioner(
+                k8s_target=self, logger=self.logger
+            ).provision(app_name);
         } except Exception as e {
             return DeploymentResult(
                 success=False, message=f"database provisioning failed: {e}"
@@ -174,11 +183,15 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
     """Build the manifest bundle by delegating to MicroserviceManifestBuilder.
 
-    Threads target state (k8s_config, secrets, env_list from
-    _provision_databases, init_containers from _provision_databases)
-    into the builder. Tests that exercise manifest shape call this
-    method directly with build=False; the env-var guard inside
+    Threads target state (k8s_config, secrets, deploy_context) into the
+    builder. Tests that exercise manifest shape call this method
+    directly with build=False; the env-var guard inside
     _handle_image_registry preserves their parent-behavior fallback.
+
+    deploy_context starts empty by default; deploy() populates it via
+    MicroserviceDatabaseProvisioner before calling this method. Direct
+    callers (tests, future dry-run) get an empty context which produces
+    pod specs without DB env / init containers.
     """
     def generate_manifests(app_config: AppConfig) -> dict[str, Any] {
         app_name = app_config.app_name or self.k8s_config.app_name;
@@ -212,80 +225,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         builder = MicroserviceManifestBuilder(
             k8s_config=self.k8s_config,
             secrets=self.secrets,
-            env_list=getattr(self, "env_list", []) or [],
-            init_containers=self._microservice_init_containers,
+            deploy_context=self._deploy_context,
             logger=self.logger
         );
         return builder.generate_manifests(app_config, image);
-    }
-
-    """Provision MongoDB + Redis (when enabled), populating self.env_list
-    + self._microservice_init_containers so every pod gets connection
-    envs + waits for the DBs. Reuses the parent's StatefulSet machinery;
-    idempotent. Off when both `[...kubernetes].mongodb_enabled` and
-    `redis_enabled` are false (both default true)."""
-    def _provision_databases(app_name: str) -> None {
-        import os;
-
-        # Reset before each deploy so re-running doesn't accumulate
-        # duplicate env entries (the parent's _deploy_databases appends).
-        self.env_list = [];
-        self._microservice_init_containers = [];
-
-        # Same env-var gate as the auto-build path: only fires on the
-        # production `jac start --scale` path (where _scale_pre_hook sets it).
-        # Unit tests that exercise deploy() directly don't set the env
-        # so they skip cluster-touching work entirely.
-        if os.environ.get("_JAC_SCALE_AUTO_BUILD") != "1" {
-            return;
-        }
-
-        mongo_on = self.k8s_config.mongodb_enabled;
-        redis_on = self.k8s_config.redis_enabled;
-        if not (mongo_on or redis_on) {
-            if self.logger {
-                self.logger.info(
-                    "Database provisioning skipped (mongodb_enabled=false, "
-                    "redis_enabled=false)",
-                    {"app_name": app_name}
-                );
-            }
-            return;
-        }
-
-        self._load_kube_config();
-        apps_v1 = client.AppsV1Api();
-        core_v1 = client.CoreV1Api();
-        namespace: str = self.k8s_config.namespace;
-        ensure_namespace_exists(namespace);
-
-        # Apply DB StatefulSets + Services + Secrets + ServiceAccounts.
-        # `cluster_env` is unused by _deploy_databases for our case
-        # (it's a monolith-only knob); pass empty string.
-        if self.logger {
-            self.logger.info(
-                f"Provisioning databases for '{app_name}': "
-                f"mongodb={mongo_on}, redis={redis_on}",
-                {"namespace": namespace}
-            );
-        }
-        self._deploy_databases(app_name, namespace, apps_v1, core_v1, "");
-
-        # Collect wait-for-DB init containers; service pods reuse them
-        # to block startup until Mongo/Redis Endpoints are reachable.
-        # Without this, pods crash-loop with connection-refused on
-        # every restart until the DB happens to win the race.
-        self._microservice_init_containers = self._get_database_init_containers(
-            app_name
-        );
-
-        if self.logger {
-            self.logger.info(
-                f"Database env injected ({len(self.env_list)} vars), "
-                f"init containers ({len(self._microservice_init_containers)})",
-                {"app_name": app_name}
-            );
-        }
     }
 
     """Load kubeconfig, fall back to in-cluster, re-raise with actionable

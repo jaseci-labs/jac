@@ -11,6 +11,7 @@ hands this to apply_manifests().
 
 import from typing { Any }
 import from jac_scale.abstractions.config.app_config { AppConfig }
+import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 
 
@@ -43,15 +44,14 @@ def k8s_safe_name(svc_name: str) -> str {
 Stateless beyond the per-deploy inputs threaded through the constructor:
   - k8s_config: KubernetesConfig (namespace, container_port, defaults)
   - secrets: dict[str, str] of env-interpolated user secrets
-  - env_list: env entries to inject (DB URIs from DatabaseProvisioner)
-  - init_containers: wait-for-DB init containers from DatabaseProvisioner
+  - deploy_context: DeployContext carrying DB env + init containers
+                    produced by MicroserviceDatabaseProvisioner
   - logger: optional structured logger
 """
 obj MicroserviceManifestBuilder {
     has k8s_config: KubernetesConfig,
         secrets: dict[str, str] = {},
-        env_list: list[dict[str, Any]] = [],
-        init_containers: list[dict[str, Any]] = [],
+        deploy_context: DeployContext = DeployContext(),
         logger: any = None;
 
     """Lift pod-specs into full Deployment + Service + HPA + PDB
@@ -425,10 +425,11 @@ obj MicroserviceManifestBuilder {
             env.append({"name": key, "value": self._peer_dns_url(peer_name)});
         }
 
-        # database env injected by _provision_databases (Mongo +
-        # Redis URIs from K8s Secrets). Empty if databases disabled
-        # or _provision_databases hasn't run yet (e.g. unit tests).
-        for entry in self.env_list {
+        # database env from DeployContext (Mongo + Redis URIs from
+        # K8s Secrets, populated by MicroserviceDatabaseProvisioner).
+        # Empty if databases disabled or provision step hasn't run
+        # (e.g. unit tests with default-constructed context).
+        for entry in self.deploy_context.env_list {
             env.append(entry);
         }
 
@@ -837,12 +838,11 @@ obj MicroserviceManifestBuilder {
         if shared_vols {
             spec["volumes"] = shared_vols;
         }
-        # wait-for-Mongo / wait-for-Redis init containers so
-        # pods don't crash-loop on startup before the database
-        # StatefulSet is reachable. Only attached when the parent's DB
-        # provisioning ran (apply_manifests stage).
-        if self.init_containers {
-            spec["initContainers"] = list(self.init_containers);
+        # wait-for-Mongo / wait-for-Redis init containers from
+        # DeployContext - pods block startup until DB Endpoints reachable.
+        # Empty when DBs disabled or provision step hasn't run (tests).
+        if self.deploy_context.init_containers {
+            spec["initContainers"] = list(self.deploy_context.init_containers);
         }
         return spec;
     }

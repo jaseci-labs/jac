@@ -8,6 +8,9 @@ through manifest builders explicitly. Eliminates the
 old k8s_target.jac god object.
 """
 
+import from typing { Any }
+
+
 """Per-deploy state threaded through manifest builders.
 
   env_list: env entries (each `{"name": ..., "value": ...}` or with
@@ -18,17 +21,8 @@ old k8s_target.jac god object.
 
   init_containers: wait-for-DB init containers. Pod-spec builders attach
                    these so pods don't crash-loop on database not-ready.
-
-  user_secret_name: K8s Secret name for [plugins.scale.secrets]; '' when
-                    user defined no secrets.
 """
 obj DeployContext {
-    has env_list: list[dict[str, any]] = [],
-        init_containers: list[dict[str, any]] = [],
-        user_secret_name: str = "";
-
-    """True if the user defined any [plugins.scale.secrets] entries."""
-    def has_user_secret -> bool {
-        return self.user_secret_name != "";
-    }
+    has env_list: list[dict[str, Any]] = [],
+        init_containers: list[dict[str, Any]] = [];
 }
