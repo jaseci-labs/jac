@@ -1,5 +1,4 @@
-"""Concrete ImageDistributor strategies, one per cluster type.
-Replaces the if/elif cluster-type branching in auto_build_and_distribute."""
+"""ImageDistributor strategies, one per cluster type."""
 
 import from pathlib { Path }
 import from jac_scale.abstractions.image_distributor { ImageDistributor }
