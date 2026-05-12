@@ -139,11 +139,11 @@ def _scale_pre_hook(context: HookContext) -> None {
         }
         # Opt into the python_image-fallback guard + auto-build only
         # on the production `jac start --scale` path. Tests using
-        # build=False for manifest-shape assertions don't see these env
-        # vars and fall through to parent behavior.
+        # build=False for manifest-shape assertions construct the
+        # target without these flags and fall through to parent behavior.
         if target == "kubernetes-microservice" {
-            os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
-            os.environ["_JAC_SCALE_AUTO_BUILD"] = "1";
+            deployment_target.auto_build = True;
+            deployment_target.guard_fallback_image = True;
         }
 
         # Deploy. Cancel execution on failure so we don't fall through to

@@ -56,17 +56,28 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     # in deploy(); threaded into MicroserviceManifestBuilder. Default
     # empty so generate_manifests() called directly (tests, dry-run)
     # works without prior provision step.
-    has _deploy_context: DeployContext = DeployContext();
+    has _deploy_context: DeployContext = DeployContext(),
+        # auto_build: when True, _handle_image_registry routes to
+        # _auto_build_image (cluster-aware build via auto_build_and_distribute).
+        # When False, falls through to parent KubernetesTarget behavior
+        # (existing build_via_registry / python_image fallback).
+        # Set by _scale_pre_hook on the production `jac start --scale` path;
+        # unit tests construct without it for parent-behavior manifest assertions.
+        auto_build: bool = False,
+        # guard_fallback_image: when True, generate_manifests raises a
+        # loud RuntimeError if image resolution falls back to python_image
+        # (which has no jac/jac-scale installed - pods would CrashLoopBackOff
+        # in microservice mode). Same gating as auto_build.
+        guard_fallback_image: bool = False;
 
-    """Auto-build override when `_JAC_SCALE_AUTO_BUILD=1` is set (production
-    `jac start --scale` path). Returns the user's pre-built docker_image_name
-    if set, else hands off to auto_build_and_distribute which detects
-    cluster type and builds+loads/pushes the image. Falls through to
-    parent behavior when the env var is unset (preserves unit-test
-    manifest-shape contracts that pass build=False)."""
+    """Auto-build override when `auto_build=True`. Returns the user's
+    pre-built docker_image_name if set, else hands off to
+    auto_build_and_distribute which detects cluster type and
+    builds+loads/pushes the image. Falls through to parent behavior when
+    auto_build is False (preserves unit-test manifest-shape contracts
+    that pass build=False)."""
     def _handle_image_registry(app_name: str, app_config: AppConfig) -> str {
-        import os;
-        if os.environ.get("_JAC_SCALE_AUTO_BUILD") == "1" {
+        if self.auto_build {
             user_image = self.k8s_config.docker_image_name;
             if user_image and user_image != f"{app_name}:latest" {
                 # User explicitly set a non-default image -> trust it
@@ -148,7 +159,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         # real cluster); the provisioning helper is idempotent for re-deploys.
         try {
             self._deploy_context = MicroserviceDatabaseProvisioner(
-                k8s_target=self, logger=self.logger
+                k8s_target=self, logger=self.logger, enabled=self.auto_build
             ).provision(app_name);
         } except Exception as e {
             return DeploymentResult(
@@ -201,11 +212,10 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
 
         # fail loud on the python_image fallback in production
         # (`jac start --scale`) so users don't get a confusing silent
-        # CrashLoopBackOff. The guard is opt-in via the env var so
-        # existing tests (which use build=False with the fallback to
+        # CrashLoopBackOff. The guard is opt-in via the constructor flag
+        # so existing tests (which use build=False with the fallback to
         # assert manifest shape) keep working.
-        import os;
-        if os.environ.get("_JAC_SCALE_GUARD_FALLBACK_IMAGE") == "1" {
+        if self.guard_fallback_image {
             fallback_image = self.k8s_config.python_image;
             if image == fallback_image or image.startswith("python:") {
                 raise RuntimeError(

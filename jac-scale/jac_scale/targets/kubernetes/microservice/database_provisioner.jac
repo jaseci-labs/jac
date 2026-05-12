@@ -7,11 +7,10 @@ containers populated.
 
 Delegates the actual K8s API work to the KubernetesTarget parent class
 (whose _deploy_databases method handles the StatefulSet machinery).
-This class owns the env-var gating, the result collection, and the
-lifecycle around the parent's call.
+This class owns the gating, the result collection, and the lifecycle
+around the parent's call.
 """
 
-import os;
 import from typing { Any }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale._optdeps.kubernetes { client }
@@ -22,15 +21,21 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
 
 """Provisions DB StatefulSets, collects connection env + init containers
 into a DeployContext for downstream manifest builders. Stateless
-beyond the target reference held in the constructor."""
+beyond the target reference held in the constructor.
+
+`enabled=False` (the default) returns an empty DeployContext without
+touching the cluster. The target sets `enabled=True` on the production
+`jac start --scale` path so unit tests calling deploy() directly skip
+cluster-touching work."""
 obj MicroserviceDatabaseProvisioner {
     has k8s_target: Any,
-        logger: Any = None;
+        logger: Any = None,
+        enabled: bool = False;
 
     """Provision DBs, return populated DeployContext.
 
     Returns an empty context when:
-    - `_JAC_SCALE_AUTO_BUILD` env var is not set (test / dry-run path), OR
+    - `enabled` is False (test / dry-run path), OR
     - both `mongodb_enabled` and `redis_enabled` are false in k8s_config.
     """
     def provision(app_name: str) -> DeployContext {
@@ -41,11 +46,9 @@ obj MicroserviceDatabaseProvisioner {
         # target's env_list; if re-deploy without reset, duplicates accrue.
         self.k8s_target.env_list = [];
 
-        # Same env-var gate as the auto-build path: only fires on the
-        # production `jac start --scale` path (where _scale_pre_hook sets it).
-        # Unit tests that exercise deploy() directly don't set the env
-        # so they skip cluster-touching work entirely.
-        if os.environ.get("_JAC_SCALE_AUTO_BUILD") != "1" {
+        # Skip when disabled (unit tests that exercise deploy() directly
+        # don't set enabled=True and thus skip cluster-touching work).
+        if not self.enabled {
             return ctx;
         }
 
