@@ -341,7 +341,18 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 
 """Install all dependencies from jac.toml."""
 impl install(
-    editable: str = "", dev: bool = False, extras: list = [], verbose: bool = False
+    editable: str = "",
+    dev: bool = False,
+    extras: list = [],
+    verbose: bool = False,
+    upgrade: bool = False,
+    force_reinstall: bool = False,
+    no_cache_dir: bool = False,
+    pre: bool = False,
+    dry_run: bool = False,
+    no_deps: bool = False,
+    quiet: bool = False,
+    prefer_binary: bool = False
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -363,7 +374,34 @@ impl install(
         console.error("No jac.toml found", hint=hint);
         return 1;
     }
-    installer = DependencyInstaller(config=config, verbose=verbose);
+    install_flags: list[str] = [];
+    if upgrade {
+        install_flags.append("--upgrade");
+    }
+    if force_reinstall {
+        install_flags.append("--force-reinstall");
+    }
+    if no_cache_dir {
+        install_flags.append("--no-cache-dir");
+    }
+    if pre {
+        install_flags.append("--pre");
+    }
+    if dry_run {
+        install_flags.append("--dry-run");
+    }
+    if no_deps {
+        install_flags.append("--no-deps");
+    }
+    if quiet {
+        install_flags.append("-q");
+    }
+    if prefer_binary {
+        install_flags.append("--prefer-binary");
+    }
+    installer = DependencyInstaller(
+        config=config, verbose=verbose, install_flags=install_flags
+    );
     # ── Editable install ──────────────────────────────────────────────────────
     if editable {
         import sys;
@@ -394,7 +432,7 @@ impl install(
                 f"  Installing {len(dep_specs)} dependencies...", style="muted"
             );
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install"] + dep_specs,
+                [sys.executable, "-m", "pip", "install"] + installer.install_flags + dep_specs,
                 capture_output=not verbose,
                 text=True,
             );
@@ -664,7 +702,9 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         );
         return 1;
     }
-    installer = DependencyInstaller(config=config, verbose=verbose);
+    installer = DependencyInstaller(
+        config=config, verbose=verbose, install_flags=["--upgrade"]
+    );
     resolver = DependencyResolver(config=config);
     # Collect specs to update
     specs_to_update: list[str] = [];

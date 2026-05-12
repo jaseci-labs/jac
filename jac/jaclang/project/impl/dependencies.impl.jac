@@ -184,12 +184,20 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     }
     self.ensure_venv();
     import re;
-    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade"] + specs);
+    (returncode, stdout, stderr) = self._run_pip(
+        ["install"] + self.install_flags + specs
+    );
     if returncode == 0 {
+        if "--dry-run" in self.install_flags {
+            console.print("✔ Dry run complete (nothing installed):", style="success");
+            if stdout {
+                console.print(stdout, style="dim");
+            }
+            return True;
+        }
         # Parse and display what was actually installed
         if "Successfully installed" in stdout {
             console.print("✔ Installation complete:", style="success");
-            # Extract installed packages from pip output
             installed = re.search(r"Successfully installed (.+)", stdout);
             if installed {
                 packages = installed.group(1).split();

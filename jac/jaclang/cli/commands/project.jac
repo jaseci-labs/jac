@@ -84,6 +84,58 @@ def create(
         Arg.create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
+        Arg.create(
+            "upgrade",
+            typ=bool,
+            default=False,
+            help="Upgrade already-installed packages to the newest available version",
+            short="U"
+        ),
+        Arg.create(
+            "force_reinstall",
+            typ=bool,
+            default=False,
+            help="Reinstall all packages even if they are already up-to-date",
+            short=""
+        ),
+        Arg.create(
+            "no_cache_dir",
+            typ=bool,
+            default=False,
+            help="Disable the pip download cache",
+            short=""
+        ),
+        Arg.create(
+            "pre",
+            typ=bool,
+            default=False,
+            help="Include pre-release and development versions",
+            short=""
+        ),
+        Arg.create(
+            "dry_run",
+            typ=bool,
+            default=False,
+            help="Show what would be installed without actually installing anything",
+            short=""
+        ),
+        Arg.create(
+            "no_deps",
+            typ=bool,
+            default=False,
+            help="Don't install package dependencies",
+            short=""
+        ),
+        Arg.create(
+            "quiet", typ=bool, default=False, help="Suppress pip output", short="q"
+        ),
+        Arg.create(
+            "prefer_binary",
+            typ=bool,
+            default=False,
+            help="Prefer wheel files over source distributions",
+            short=""
+        ),
 
     ],
     examples=[
@@ -93,12 +145,34 @@ def create(
         ("jac install --dev", "Include dev dependencies"),
         ("jac install --extras data monitoring", "Include optional dependency groups"),
         ("jac install -e . --extras all", "Editable install with all optional deps"),
+        ("jac install -U", "Upgrade all packages to the latest available versions"),
+        ("jac install --force-reinstall", "Reinstall all packages from scratch"),
+        ("jac install --pre", "Include pre-release versions"),
+        ("jac install --no-cache-dir", "Install without using pip's download cache"),
+        ("jac install --dry-run", "Preview what would be installed without doing it"),
+        ("jac install --no-deps", "Install packages without their dependencies"),
+        ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
+        (
+            "jac install -U --pre --no-cache-dir",
+            "Upgrade to latest including pre-releases, no cache"
+        ),
 
     ],
     group="project"
 )
 def install(
-    editable: str = "", dev: bool = False, extras: list = [], verbose: bool = False
+    editable: str = "",
+    dev: bool = False,
+    extras: list = [],
+    verbose: bool = False,
+    upgrade: bool = False,
+    force_reinstall: bool = False,
+    no_cache_dir: bool = False,
+    pre: bool = False,
+    dry_run: bool = False,
+    no_deps: bool = False,
+    quiet: bool = False,
+    prefer_binary: bool = False
 ) -> int;
 
 """Add dependencies to the project."""
