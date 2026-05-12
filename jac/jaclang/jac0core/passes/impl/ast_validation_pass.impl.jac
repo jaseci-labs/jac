@@ -237,7 +237,8 @@ impl ASTValidationPass.enter_global_vars(
 ) -> None {
     if nd.find_parent_of_type(uni.Ability) is not None
     or nd.find_parent_of_type(uni.ImplDef) is not None
-    or nd.find_parent_of_type(uni.Archetype) is not None {
+    or nd.find_parent_of_type(uni.Archetype) is not None
+    or nd.find_parent_of_type(uni.ModuleCode) is not None {
         self.emit(E0078, node_override=nd);
     }
 }

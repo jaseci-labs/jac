@@ -372,6 +372,13 @@ test "E0078: glob inside an object body is rejected" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0078"));
 }
 
+test "E0078: glob inside module-level with entry is rejected" {
+    (has_err, prog) = parse_and_validate(
+        'with entry { glob y: str = "hi"; }'
+    );
+    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0078"));
+}
+
 test "E0078: glob at module scope is valid" {
     (has_err, _) = parse_and_validate('glob x: int = 5;');
     assert not has_err;
