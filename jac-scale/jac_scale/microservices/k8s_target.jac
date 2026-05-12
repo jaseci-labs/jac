@@ -102,7 +102,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """
     def _auto_build_image(app_name: str, app_config: AppConfig) -> str {
         import from pathlib { Path }
-        import from jac_scale.microservices._image_build { auto_build_and_distribute }
+        import from jac_scale.microservices.images.auto_build { auto_build_and_distribute }
 
         # Read image_registry directly from raw [plugins.scale.kubernetes]
         # config; KubernetesConfig.from_dict drops unknown keys, so going

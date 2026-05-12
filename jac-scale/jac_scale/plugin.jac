@@ -123,7 +123,7 @@ def _scale_pre_hook(context: HookContext) -> None {
                 "Installing Jaseci packages from repository (experimental mode)..."
             );
         } elif target == "kubernetes-microservice" {
-            import from jac_scale.microservices._image_build { find_jaseci_repo_root }
+            import from jac_scale.microservices.images.build_helpers { find_jaseci_repo_root }
             repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
             if repo is not None {
                 console.print(
