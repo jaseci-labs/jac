@@ -42,21 +42,15 @@ obj MicroserviceManifestBuilder {
         services: dict[str, dict[str, Any]] = {};
         hpas: dict[str, dict[str, Any]] = {};
         pdbs: dict[str, dict[str, Any]] = {};
+        # HPA / PDB / PVC / Secret / Ingress builders return None when
+        # disabled or unconfigured; bundle only carries non-None entries.
         for (svc_name, pod_spec) in pod_specs.items() {
             deployments[svc_name] = self._build_deployment_manifest(svc_name, pod_spec);
             services[svc_name] = self._build_service_manifest(svc_name);
-            # HPA / PDB builders return None when the user opts out
-            # via [...services.NAME.{hpa,pdb}].enabled = false. Skip
-            # those so the bundle only carries enabled entries (which
-            # apply_manifests + destroy can iterate without nil checks).
             hpa = self._build_hpa_manifest(svc_name);
-            if hpa is not None {
-                hpas[svc_name] = hpa;
-            }
+            if hpa is not None { hpas[svc_name] = hpa; }
             pdb = self._build_pdb_manifest(svc_name);
-            if pdb is not None {
-                pdbs[svc_name] = pdb;
-            }
+            if pdb is not None { pdbs[svc_name] = pdb; }
         }
 
         bundle: dict[str, Any] = {
@@ -66,17 +60,10 @@ obj MicroserviceManifestBuilder {
             "pdbs": pdbs,
             "pod_specs": pod_specs
         };
-        # PVCs for any PVC-mode shared_volumes. Empty when no
-        # shared_volumes configured or all entries use host_path.
         pvcs = self._build_shared_pvc_manifests();
         if pvcs {
             bundle["pvcs"] = pvcs;
         }
-        # K8s Secret holding `[plugins.scale.secrets]` values
-        # (already env-interpolated by jaclang core's
-        # apply_env_interpolation). pod-spec builders inject envFrom
-        # referencing this Secret's name. None when the user defined
-        # no secrets - back-compat with apps that never had any.
         user_secret = self._build_user_secret_manifest();
         if user_secret is not None {
             bundle["user_secret"] = user_secret;
@@ -95,8 +82,7 @@ obj MicroserviceManifestBuilder {
         return bundle;
     }
 
-    """Emit per-service pod-spec stubs keyed by service name (+ GATEWAY_NAME).
-    `generate_manifests` lifts these into full Deployment + Service manifests."""
+    """Per-service pod-spec stubs keyed by service name (+ GATEWAY_NAME)."""
     def generate_service_pod_specs(
         app_config: AppConfig, image: str
     ) -> dict[str, dict[str, Any]] {
@@ -106,11 +92,6 @@ obj MicroserviceManifestBuilder {
         ms_cfg = get_scale_config().get_microservices_config();
         routes: dict[str, str] = ms_cfg.get("routes", {});
 
-        # actionable error when the user runs `jac start --scale`
-        # against a project that has microservice mode enabled but no
-        # services declared. Without this check, generation succeeds with
-        # only a gateway pod and the user gets a confusing "what is this
-        # gateway routing to?" deploy.
         if not routes {
             raise ValueError(
                 "[plugins.scale.microservices.routes] is empty in jac.toml. "
@@ -459,8 +440,8 @@ obj MicroserviceManifestBuilder {
         return f"{image[:idx]}:{tag}";
     }
 
-    """Readiness probe -> /healthz/ready; gates Endpoints. Tight cadence
-    so pod drops out of rotation within ~15s of drain start."""
+    """/healthz/ready; gates Endpoints. Tight cadence so pod drops out
+    of rotation within ~15s of drain start."""
     def _build_readiness_probe -> dict[str, Any] {
         cfg = self.k8s_config;
         return {
@@ -472,8 +453,7 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """Liveness probe -> /healthz/live; gates pod restart. More lenient
-    than readiness (restart cascades hurt; only fail on a hung process)."""
+    """/healthz/live; gates pod restart. More lenient than readiness."""
     def _build_liveness_probe -> dict[str, Any] {
         cfg = self.k8s_config;
         return {
@@ -491,14 +471,12 @@ obj MicroserviceManifestBuilder {
         return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
     }
 
-    """Thin method delegator to module-level `k8s_safe_name` (test ergonomics)."""
+    # Thin delegator to module-level k8s_safe_name (test ergonomics).
     def _k8s_safe_name(svc_name: str) -> str {
         return k8s_safe_name(svc_name);
     }
 
-    """Deployment manifest wrapping the pod-spec. Replicas from
-    [...services.NAME].replicas (default 1). Labels match the monolith
-    convention so existing dashboards discover microservice pods."""
+    """Deployment manifest. Replicas from [...services.NAME].replicas."""
     def _build_deployment_manifest(
         svc_name: str, pod_spec: dict[str, Any]
     ) -> dict[str, Any] {
@@ -521,10 +499,8 @@ obj MicroserviceManifestBuilder {
             },
             "spec": {
                 "replicas": replicas,
-                # surge a new pod before terminating an old one,
-                # never go below the current replica count during
-                # rollout. With drain + preStop on the pod side, this
-                # gives no-downtime rolling updates.
+                # surge=1, maxUnavailable=0 + drain + preStop on the pod
+                # side gives no-downtime rolling updates.
                 "strategy": {
                     "type": "RollingUpdate",
                     "rollingUpdate": {"maxSurge": 1, "maxUnavailable": 0}
@@ -535,8 +511,7 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """ClusterIP Service paired with the Deployment. External traffic
-    comes through the gateway via the optional Ingress."""
+    """ClusterIP Service. External traffic comes via the optional Ingress."""
     def _build_service_manifest(svc_name: str) -> dict[str, Any] {
         k8s_name = self._k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
@@ -545,8 +520,7 @@ obj MicroserviceManifestBuilder {
             "selector": {"app": k8s_name},
             "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
         };
-        # Gateway-only ClientIP stickiness so WS reconnects land on the
-        # same pod. Service pods stay round-robin (stateless wrt conn).
+        # Gateway-only ClientIP stickiness so WS reconnects land on the same pod.
         if svc_name == GATEWAY_NAME {
             spec["sessionAffinity"] = "ClientIP";
             spec["sessionAffinityConfig"] = {"clientIP": {"timeoutSeconds": 10800}};
@@ -563,8 +537,7 @@ obj MicroserviceManifestBuilder {
         };
     }
 
-    """HPA targeting the Deployment; overrides at [...services.NAME.hpa].
-    Returns None on `hpa.enabled=false` (opt out for leader-only/stateful)."""
+    """HPA; overrides at [...services.NAME.hpa]. None on hpa.enabled=false."""
     def _build_hpa_manifest(svc_name: str) -> dict[str, Any] | None {
         cfg: dict[str, Any] = self._service_config(svc_name).get("hpa", {});
         if not cfg.get("enabled", True) {
@@ -752,12 +725,10 @@ obj MicroserviceManifestBuilder {
         return spec;
     }
 
-    """Per-service pod-spec (thin delegator)."""
     def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
         return self._build_pod_spec(svc_name, image);
     }
 
-    """Gateway pod-spec (same image, entrypoint selects via JAC_SV_NAME)."""
     def _build_gateway_pod_spec(image: str) -> dict[str, Any] {
         return self._build_pod_spec(GATEWAY_NAME, image);
     }

@@ -332,27 +332,22 @@ obj MicroserviceOrchestrator {
 # ---------------------------------------------------------------------------
 
 
-"""Module-level wrapper - prefer MicroserviceOrchestrator(...) for new code."""
+# Module-level wrappers preserve the legacy function-call API.
 def build_registry(ms_config: dict[str, Any]) -> ServiceRegistry {
     return MicroserviceOrchestrator(ms_config=ms_config)._build_registry();
 }
 
-
-"""Bootstrap and run microservice mode locally (legacy function-call API)."""
 def start_microservice_mode(ms_config: dict[str, Any]) -> None {
     MicroserviceOrchestrator(ms_config=ms_config).start_local();
 }
 
-
-"""Start ONLY the gateway (K8s gateway pod entry point; legacy API)."""
 def start_gateway_only(ms_config: dict[str, Any]) -> None {
     MicroserviceOrchestrator(ms_config=ms_config).start_gateway_only();
 }
 
 
-"""Pre-mark every registry entry HEALTHY for K8s gateway mode (K8s
-gates routing on real readinessProbes; gateway's status check would
-otherwise 503 every request). Factored out for testability."""
+"""Pre-mark every entry HEALTHY for K8s gateway mode (K8s gates routing
+on real readinessProbes; gateway's status check would otherwise 503)."""
 def _mark_all_healthy_k8s(registry: ServiceRegistry) {
     for (_name, _entry) in registry.entries.items() {
         _entry.status = ServiceStatus.HEALTHY;
@@ -361,9 +356,7 @@ def _mark_all_healthy_k8s(registry: ServiceRegistry) {
 
 
 """Write get_sv_registry()'s DNS URLs onto registry entries so the
-gateway's built-in passthrough loop (which reads svc_entry.url
-directly, not the hookspec) finds K8s peers. Silent on lookup
-failure - empty-url entries are skipped by the passthrough loop."""
+gateway's built-in passthrough loop finds K8s peers."""
 def _populate_k8s_urls(registry: ServiceRegistry) {
     try {
         import jaclang;
