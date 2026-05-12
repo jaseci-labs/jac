@@ -875,7 +875,7 @@ class JacScalePlugin {
         # K8s mode: build DNS map from configured routes.
         try {
             import from jac_scale.config_loader { get_scale_config }
-            import from jac_scale.microservices.k8s_deployer { build_k8s_registry }
+            import from jac_scale.targets.kubernetes.microservice.runtime_resolver { build_k8s_registry }
             ms_cfg = get_scale_config().get_microservices_config();
             routes: dict[str, str] = ms_cfg.get("routes", {});
             port: int = int(ms_cfg.get("gateway_port", 8000));

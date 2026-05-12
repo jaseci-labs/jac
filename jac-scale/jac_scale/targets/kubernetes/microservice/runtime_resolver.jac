@@ -20,7 +20,7 @@ glob logger = logging.getLogger(__name__);
 
 """Runtime ServiceDeployer for K8s. namespace + port are injected at
 construction time (the hookimpl reads namespace from `POD_NAMESPACE` env)."""
-obj KubernetesDeployer(ServiceDeployer) {
+obj K8sRuntimeServiceResolver(ServiceDeployer) {
     has registry: ServiceRegistry,
         target: str = "kubernetes",
         namespace: str = "default",
@@ -40,7 +40,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     """
     def deploy_service(name: str) -> bool {
         logger.warning(
-            f"KubernetesDeployer.deploy_service({name}): admin op not "
+            f"K8sRuntimeServiceResolver.deploy_service({name}): admin op not "
             "yet wired. Use `jac start --scale` for deployment."
         );
         return False;
@@ -49,7 +49,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     """Admin op stub. Use `kubectl scale deployment/{name}-deployment --replicas=0`."""
     def stop_service(name: str) -> bool {
         logger.warning(
-            f"KubernetesDeployer.stop_service({name}): admin op not yet wired."
+            f"K8sRuntimeServiceResolver.stop_service({name}): admin op not yet wired."
         );
         return False;
     }
@@ -57,7 +57,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     """Admin op stub. Use `kubectl rollout restart`."""
     def restart_service(name: str) -> bool {
         logger.warning(
-            f"KubernetesDeployer.restart_service({name}): admin op not yet wired."
+            f"K8sRuntimeServiceResolver.restart_service({name}): admin op not yet wired."
         );
         return False;
     }
@@ -65,7 +65,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     """Admin op stub. Future: kubectl scale + HPA-bound clamping."""
     def scale_service(name: str, replicas: int) -> bool {
         logger.warning(
-            f"KubernetesDeployer.scale_service({name}, {replicas}): "
+            f"K8sRuntimeServiceResolver.scale_service({name}, {replicas}): "
             "admin op not yet wired."
         );
         return False;
@@ -84,7 +84,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     """Tear-down stub. Use `KubernetesMicroserviceTarget.destroy()` instead."""
     def destroy_all -> bool {
         logger.warning(
-            "KubernetesDeployer.destroy_all: use "
+            "K8sRuntimeServiceResolver.destroy_all: use "
             "`KubernetesMicroserviceTarget.destroy(app_name)` instead."
         );
         return False;
@@ -93,7 +93,7 @@ obj KubernetesDeployer(ServiceDeployer) {
     """Deploy stub. Use `jac start --scale` (calls deploy() on the target)."""
     def deploy_all -> bool {
         logger.warning(
-            "KubernetesDeployer.deploy_all: use `jac start --scale` instead."
+            "K8sRuntimeServiceResolver.deploy_all: use `jac start --scale` instead."
         );
         return False;
     }
