@@ -1361,10 +1361,10 @@ impl PyastGenPass.enter_ability(nd: uni.Ability) -> None {
     }
 }
 
-"""Reusable method to codegen call_llm(model, caller, args)."""
+"""Reusable method to codegen call_llm / acall_llm; returns Await when is_async."""
 impl PyastGenPass._invoke_llm_call(
-    model: ast3.expr, caller: ast3.expr, args: ast3.Dict
-) -> ast3.Call {
+    model: ast3.expr, caller: ast3.expr, args: ast3.Dict, is_async: bool = False
+) -> ast3.expr {
     mtir_ast = self.sync(
         ast3.Call(
             func=self.jaclib_obj('get_mtir'),
@@ -1385,9 +1385,10 @@ impl PyastGenPass._invoke_llm_call(
             ]
         )
     );
-    return self.sync(
+    hook_name = 'acall_llm' if is_async else 'call_llm';
+    call = self.sync(
         ast3.Call(
-            func=self.jaclib_obj('call_llm'),
+            func=self.jaclib_obj(hook_name),
             args=[],
             keywords=[
                 self.sync(ast3.keyword(arg='model', value=model)),
@@ -1395,6 +1396,10 @@ impl PyastGenPass._invoke_llm_call(
             ]
         )
     );
+    if is_async {
+        return self.sync(ast3.Await(value=call));
+    }
+    return call;
 }
 
 """Generate the by LLM body."""
@@ -1443,7 +1448,9 @@ impl PyastGenPass.gen_llm_body(nd: uni.Ability) -> list[ast3.stmt] {
             ]
         )
     );
-    llm_call = self._invoke_llm_call(model=model_expr, caller=caller, args=args);
+    llm_call = self._invoke_llm_call(
+        model=model_expr, caller=caller, args=args, is_async=nd.is_async
+    );
     statements: list[ast3.stmt] = [];
     if nd.doc {
         statements.append(

@@ -1300,3 +1300,114 @@ test "prompt caching disabled via config" {
         ) == False;
     }
 }
+
+import asyncio;
+import inspect;
+
+test "acall_llm proxy is a coroutine function" {
+    assert inspect.iscoroutinefunction(Jac.acall_llm) , (
+        "Jac.acall_llm must be an async function so async walkers can await it"
+    );
+}
+
+test "model_call_no_stream_async raises and logs AuthenticationError" {
+    log_output = io.StringIO();
+    _loguru_logger.remove();
+    handler_id = _loguru_logger.add(log_output, level="ERROR");
+    try {
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._litellm_config,
+            {"debug": False, "drop_params": True},
+            clear=True
+        ) {
+            model = Model(model_name="gpt-4o-mini");
+            auth_err = litellm.exceptions.AuthenticationError(
+                message="Invalid API key", llm_provider="openai", model="gpt-4o-mini"
+            );
+            async def _run_no_stream_auth {
+                with unittest.mock.patch("litellm.acompletion", side_effect=auth_err) {
+                    raised = False;
+                    try {
+                        await model.model_call_no_stream_async(
+                            {"model": "gpt-4o-mini", "messages": []}
+                        );
+                    } except AuthenticationError as e {
+                        raised = True;
+                        assert "Invalid API key" in str(e);
+                    }
+                    assert raised , "AuthenticationError should propagate from async path";
+                }
+            }
+            asyncio.run(_run_no_stream_auth());
+            log_value = log_output.getvalue();
+            assert "LLM AuthenticationError" in log_value , (
+                f"logger.error should fire for async AuthenticationError, got: {log_value}"
+            );
+        }
+    } finally {
+        _loguru_logger.remove(handler_id);
+    }
+}
+
+test "model_call_with_stream_async raises and logs RateLimitError" {
+    log_output = io.StringIO();
+    _loguru_logger.remove();
+    handler_id = _loguru_logger.add(log_output, level="ERROR");
+    try {
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._litellm_config,
+            {"debug": False, "drop_params": True},
+            clear=True
+        ) {
+            model = Model(model_name="gpt-4o-mini");
+            rate_err = litellm.exceptions.RateLimitError(
+                message="Rate limit exceeded",
+                llm_provider="openai",
+                model="gpt-4o-mini"
+            );
+            async def _run_stream_rate {
+                with unittest.mock.patch("litellm.acompletion", side_effect=rate_err) {
+                    raised = False;
+                    try {
+                        await model.model_call_with_stream_async(
+                            {"model": "gpt-4o-mini", "messages": []}
+                        );
+                    } except RateLimitError as e {
+                        raised = True;
+                        assert "Rate limit" in str(e);
+                    }
+                    assert raised , "RateLimitError should propagate from async stream path";
+                }
+            }
+            asyncio.run(_run_stream_rate());
+            log_value = log_output.getvalue();
+            assert "LLM RateLimitError" in log_value , (
+                f"logger.error should fire for async stream RateLimitError, got: {log_value}"
+            );
+        }
+    } finally {
+        _loguru_logger.remove(handler_id);
+    }
+}
+
+test "model_call_http_async returns json response" {
+    mock_response = unittest.mock.MagicMock();
+    mock_response.json.return_value = {"choices": [{"message": {"content": "ok"}}]};
+    async def _run_http_async {
+        mock_client = unittest.mock.AsyncMock();
+        mock_client.__aenter__.return_value = mock_client;
+        mock_client.post.return_value = mock_response;
+        with unittest.mock.patch("httpx.AsyncClient", return_value=mock_client) {
+            model = Model(model_name="gpt-4o-mini");
+            result = await model.model_call_http_async(
+                url="https://example.com/v1/chat/completions",
+                token="test-token",
+                payload={"model": "gpt-4o-mini", "messages": []},
+                ca_bundle=None
+            );
+            return result;
+        }
+    }
+    result = asyncio.run(_run_http_async());
+    assert result == {"choices": [{"message": {"content": "ok"}}]};
+}

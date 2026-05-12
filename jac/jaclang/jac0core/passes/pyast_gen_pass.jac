@@ -319,10 +319,10 @@ variables
     def enter_enum(nd: uni.Enum) -> None;
     def exit_enum(nd: uni.Enum) -> None;
     def enter_ability(nd: uni.Ability) -> None;
-    """Reusable method to codegen call_llm(model, caller, args)."""
+    """Reusable method to codegen call_llm / acall_llm; returns Await when is_async."""
     def _invoke_llm_call(
-        model: ast3.expr, caller: ast3.expr, args: ast3.Dict
-    ) -> ast3.Call;
+        model: ast3.expr, caller: ast3.expr, args: ast3.Dict, is_async: bool = False
+    ) -> ast3.expr;
 
     """Generate the by LLM body."""
     def gen_llm_body(nd: uni.Ability) -> list[ast3.stmt];

@@ -279,16 +279,22 @@ impl Model.model_call_with_stream_async(params: dict) {
             );
         }
     } except litellm.exceptions.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
         raise AuthenticationError(str(e));
     } except openai.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
         raise AuthenticationError(str(e));
     } except litellm.exceptions.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
         raise RateLimitError(str(e));
     } except openai.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
         raise RateLimitError(str(e));
     } except litellm.exceptions.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
         raise ModelNotFoundError(str(e));
     } except openai.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
         raise ModelNotFoundError(str(e));
     }
     return response;
