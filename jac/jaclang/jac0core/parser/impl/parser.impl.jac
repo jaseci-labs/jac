@@ -3559,7 +3559,10 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_IMPL,
         TokenKind.TYP_TYPE,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_WITH
+        TokenKind.KW_WITH,
+        TokenKind.KW_CLIENT,
+        TokenKind.KW_SERVER,
+        TokenKind.KW_NATIVE
     ) {
         return self.parse_docstring_target();
     }
@@ -3711,6 +3714,17 @@ impl Parser.parse_docstring_target{
         result = self.parse_module_code();
         result.doc = elem_doc;
         result.add_kids_left([elem_doc]);
+        return result;
+    }
+    # cl / sv / na single-stmt prefix: recurse into parse_element_stmt so the
+    # prefix is consumed and code_context is tagged on the inner element. The
+    # docstring attaches to that inner element, not to the context prefix.
+    if self.check_any(TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE) {
+        result = self.parse_element_stmt();
+        if result is not None {
+            result.doc = elem_doc;
+            result.add_kids_left([elem_doc]);
+        }
         return result;
     }
     # Complex case: decorators/async/ability/archetype — dispatch via lookahead

@@ -1,0 +1,82 @@
+[project]
+name = "jac-shop"
+version = "0.1.0"
+description = "A small e-commerce app built as microservices"
+entry-point = "main.jac"
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+react-hook-form = "^7.71.0"
+zod = "^4.3.6"
+"@hookform/resolvers" = "^5.2.2"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
+
+[dev-dependencies]
+watchdog = ">=3.0.0"
+
+[serve]
+base_route_app = "app"
+
+[plugins.client]
+
+# Microservice mode - services are auto-discovered from `sv import`.
+# The gateway only needs to know which module name maps to which URL prefix
+# for client-facing routing.
+[plugins.scale.microservices]
+enabled = true
+gateway_port = 8000
+gateway_host = "0.0.0.0"
+# 5-min boot windows to rule out slow-start as the cause of flakes
+# (defaults are 60s / 90s / 10s).
+boot_health_timeout = 300.0
+boot_max_wait = 300
+health_monitor_interval = 10.0
+
+# Map module name -> gateway prefix. Services NOT listed here still work
+# for internal `sv import` calls; this only controls public URL routing.
+[plugins.scale.microservices.routes]
+products_app = "/api/products"
+orders_app = "/api/orders"
+cart_app = "/api/cart"
+
+[plugins.scale.microservices.client]
+entry = "main.jac"
+dist_dir = ".jac/client/dist"
+base_route = "/"
+
+# K10: Ingress for K8s deploys. Enabled here so the CI real-app e2e
+# (.github/workflows/k8s-microservice-real-e2e.yml) exercises the
+# full external-URL path (Ingress -> gateway -> services). Local-mode
+# deploys ignore this section entirely.
+[plugins.scale.microservices.ingress]
+enabled = true
+host = "jac-shop.local"
+ingress_class_name = "nginx"
+
+# CORS (P16). Defaults to open (allow_origins = ["*"]); override with
+# a concrete list to restrict. The e2e script runs with this explicit
+# allow list so it can also verify disallowed-origin behavior.
+[plugins.scale.microservices.cors]
+allow_origins = ["http://app.example.com"]
+allow_methods = ["GET", "POST", "OPTIONS"]
+allow_headers = ["Authorization", "Content-Type"]
+allow_credentials = true
+
+# Rate limiting (P17) - opt-in. Reference values:
+#   [plugins.scale.microservices.rate_limit]
+#   enabled = true
+#   per_ip_rpm = 600
+#   per_user_rpm = 120
+#   burst_multiplier = 2.0
+#   exempt_paths = ["/health", "/healthz", "/metrics"]
+# Unit tests (test_rate_limit.jac) cover the full contract; leaving
+# it disabled here keeps e2e timing independent of the bucket refill.

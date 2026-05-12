@@ -61,12 +61,13 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'cpu_limit': None,
             'memory_request': None,
             'memory_limit': None,
-            # Probe timings
-            'readiness_initial_delay': 10,
-            'readiness_period': 20,
-            'liveness_initial_delay': 10,
-            'liveness_period': 20,
-            'liveness_failure_threshold': 80
+            # Probe timings (aligned with microservice drain semantics;
+            # see kubernetes_config.jac probe-default comment).
+            'readiness_initial_delay': 5,
+            'readiness_period': 5,
+            'liveness_initial_delay': 15,
+            'liveness_period': 10,
+            'liveness_failure_threshold': 3
         },
         'secrets': {},
         'server': {'port': 8000, 'host': '0.0.0.0', 'docs_enabled': True},
@@ -295,6 +296,34 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
     };
 }
 
+"""Get event-streaming config from jac.toml.
+Reads `[plugins.scale.events]`. `enabled` is the master switch; `url` defaults to None so the caller can fall back to `database.redis_url`.
+"""
+impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, Any] {
+    import from jac_scale.events.broker { RetryPolicy }
+    config = self.load();
+    events_config = config.get('events', {});
+    retry_config = events_config.get('retry', {});
+    retry_defaults = RetryPolicy();
+    return {
+        'enabled': events_config.get('enabled', False),
+        'url': events_config.get('url'),
+        'consumer_group': events_config.get('consumer_group', 'jac-scale'),
+        'serializer': events_config.get('serializer', 'json'),
+        'retry': {
+            'max_attempts': retry_config.get(
+                'max_attempts', retry_defaults.max_attempts
+            ),
+            'backoff_seconds': retry_config.get(
+                'backoff_seconds', retry_defaults.backoff_seconds
+            ),
+            'dead_letter_suffix': retry_config.get(
+                'dead_letter_suffix', retry_defaults.dead_letter_suffix
+            )
+        }
+    };
+}
+
 """Get or create the global JacScaleConfig instance."""
 impl get_scale_config(project_dir: Path | None = None) -> JacScaleConfig {
     global _scale_config_instance;
@@ -377,7 +406,18 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
             'entry': client_config.get('entry', ''),
             'dist_dir': client_config.get('dist_dir', '.jac/client/dist'),
             'base_route': client_config.get('base_route', '/')
-        }
+        },
+        # Ingress block. Pass through opaquely so K8s target sees
+        # whatever the user wrote (host / ingress_class_name / annotations).
+        'ingress': dict(ms_config.get('ingress', {})),
+        # Cross-service shared volumes. Array-of-tables in jac.toml
+        # ([[plugins.scale.microservices.shared_volumes]]) decoded as a
+        # list of dicts. Pass through opaquely so the K8s microservice
+        # target validates each entry (name/mount_path/services/...) at
+        # manifest-build time. Empty list when the user hasn't declared
+        # any - existing microservice apps without shared FS state get
+        # an empty list and the same pod specs they had before.
+        'shared_volumes': list(ms_config.get('shared_volumes', []))
     };
 }
 
