@@ -110,7 +110,7 @@ test "resolve no query string omits question mark" {
 }
 
 # =============================================================================
-# get_sv_registry hookspec dispatch (ROADMAP P3)
+# get_sv_registry hookspec dispatch
 # =============================================================================
 test "resolve_target_url prefers the sv_registry URL over service_entry.url" {
     # Simulates KubernetesDeployer: the registry says the service lives
@@ -221,6 +221,76 @@ test "health endpoint returns service summary" {
     assert "orders" in data["services"];
 }
 
+test "/healthz/live returns 200 always (liveness, no drain check)" {
+    # Liveness gates restart; drain affects readiness only.
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/healthz/live");
+        assert resp.status_code == 200;
+        assert resp.json()["status"] == "alive";
+
+        start_drain(10.0);
+        resp2 = client.get("/healthz/live");
+        assert resp2.status_code == 200;
+    } finally {
+        reset_drain();
+    }
+}
+
+
+test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
+    # Readiness 503s during drain so kube-proxy removes pod from Endpoints.
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/healthz/ready");
+        assert resp.status_code == 200;
+        assert resp.json()["status"] == "ready";
+
+        start_drain(10.0);
+        resp2 = client.get("/healthz/ready");
+        assert resp2.status_code == 503 , (
+            "readiness must 503 during drain so kube-proxy removes "
+            "the pod from Endpoints"
+        );
+        body = resp2.json();
+        assert body["ready"] is False;
+        assert body["status"] == "draining";
+    } finally {
+        reset_drain();
+    }
+}
+
+
+test "healthz returns 200 from gateway, not 404 from builtin passthrough" {
+    # Regression: /healthz was in _BUILTIN_EXACT and fanned out to backends;
+    # empty registry returned 404 so the gateway never went Ready.
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/healthz");
+    assert resp.status_code == 200 , (
+        f"/healthz must return 200 (gateway-local) even with empty registry, "
+        f"got {resp.status_code}"
+    );
+    data = resp.json();
+    assert data["status"] == "healthy";
+}
+
 test "unmatched path returns 404" {
     reg = ServiceRegistry();
     reg.register(
@@ -243,7 +313,7 @@ test "unmatched path returns 404" {
 }
 
 # =============================================================================
-# Prometheus metrics (ROADMAP P8)
+# Prometheus metrics
 # =============================================================================
 test "build_gateway_metrics returns a fresh registry with both collectors" {
     import from jac_scale.microservices._metrics { build_gateway_metrics }
@@ -284,7 +354,7 @@ test "gateway /metrics returns Prometheus exposition after a request" {
 }
 
 # =============================================================================
-# Standardized error envelope + graceful degradation (ROADMAP P10)
+# Standardized error envelope + graceful degradation
 # =============================================================================
 test "service-down returns standardized envelope with SERVICE_UNAVAILABLE + Retry-After" {
     reg = ServiceRegistry();
@@ -378,7 +448,7 @@ test "error envelope carries the request's trace id for correlation" {
 }
 
 # =============================================================================
-# Unified /docs Swagger aggregation (ROADMAP P9)
+# Unified /docs Swagger aggregation
 # =============================================================================
 test "_prefixed_paths prepends the service prefix to every key" {
     import from jac_scale.microservices._openapi_agg { _prefixed_paths }
@@ -446,8 +516,9 @@ test "gateway /openapi.json returns a minimal doc when no services reachable" {
 }
 
 test "gateway /openapi.json is its own route - not proxied to a service" {
-    # Pre-P9 /openapi.json fell through to handle_builtin_passthrough.
-    # With aggregation, /openapi.json is dispatched directly.
+    # Without dispatch, /openapi.json would fall through to
+    # handle_builtin_passthrough; the aggregation route dispatches it
+    # directly.
     reg = ServiceRegistry();
     reg.register(
         ServiceEntry(
@@ -472,8 +543,9 @@ test "gateway /openapi.json is its own route - not proxied to a service" {
 }
 
 test "gateway /metrics is its own route - not proxied to a service" {
-    # Before P8, /metrics fell through to handle_builtin_passthrough.
-    # With gateway-level metrics, /metrics is dispatched directly.
+    # Without dispatch, /metrics would fall through to
+    # handle_builtin_passthrough; the gateway-level metrics route
+    # dispatches it directly.
     reg = ServiceRegistry();
     reg.register(
         ServiceEntry(
@@ -492,7 +564,7 @@ test "gateway /metrics is its own route - not proxied to a service" {
     client = TestClient(gw.app);
     resp = client.get("/metrics");
     # Must succeed (200) without attempting a service passthrough;
-    # a pre-P8 gateway would 502 here (orders service unreachable).
+    # a passthrough would 502 here (orders service unreachable).
     assert resp.status_code == 200;
     assert "jac_scale_gateway_requests_total" in resp.text;
 }
@@ -851,6 +923,61 @@ test "gateway returns 404 for missing static and no spa" {
     shutil.rmtree(tmp);
 }
 
+
+test "Gateway serves index.html for GET / regardless of Accept" {
+    # The previous behavior 404'd `GET /` for any client that didn't
+    # send Accept: text/html (curl, monitoring probes, server-side
+    # fetches, crawlers). Browsers worked because they include
+    # text/html in Accept by default. The SPA root has to be reachable
+    # for everything - it's the entry point.
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "index.html").write_text("<html><body>SPA App</body></html>");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+
+    # No Accept header (matches `curl http://gateway/` and most non-browser
+    # clients).
+    resp = client.get("/", headers={"Accept": ""});
+    assert resp.status_code == 200 , (
+        f"GET / should serve index.html even without text/html Accept, "
+        f"got {resp.status_code}"
+    );
+    assert "SPA App" in resp.text;
+
+    # Browser-style request still works (existing behavior).
+    resp_browser = client.get("/", headers={"Accept": "text/html"});
+    assert resp_browser.status_code == 200;
+    assert "SPA App" in resp_browser.text;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+
+test "Gateway returns 404 for GET / when no index.html exists" {
+    # Companion test - the new branch must not 200-on-empty for projects
+    # without a frontend (LLM-only / API-only apps). Those should still
+    # 404 the root request so callers can detect the absence.
+    tmp = tempfile.mkdtemp();
+    # NOTE: deliberately no index.html in tmp.
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/", headers={"Accept": ""});
+    assert resp.status_code == 404;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
 # =============================================================================
 # Admin UI serving
 # =============================================================================
@@ -1053,7 +1180,7 @@ test "gateway drain does not burn metrics labels on 503d requests" {
 }
 
 
-# P16: CORS middleware. The gateway only installs CORSMiddleware when
+# CORS middleware. The gateway only installs CORSMiddleware when
 # `allow_origins` is configured; these tests patch the config resolver
 # so setup() sees the test config.
 obj _FakeScaleConfig {

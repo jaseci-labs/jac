@@ -4,6 +4,8 @@ The `jac.toml` file is the central configuration for Jac projects -- similar to 
 
 You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac add` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
 
+`jac` commands locate `jac.toml` by walking up from the current working directory. The only exception is `jac install -e <path>`, which reads `jac.toml` from the resolved `<path>` so editable installs work from anywhere.
+
 ## Creating a Project
 
 ```bash
@@ -98,6 +100,39 @@ my-lib = { git = "https://github.com/user/repo.git", branch = "main" }
 | Compatible | `"~=1.4.2"` | 1.4.x |
 
 > **Default behavior:** When you run `jac add requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back.
+
+---
+
+### [optional-dependencies]
+
+Optional dependency groups that users can install on demand with `jac install --extras <group>`. Useful for heavy or situational dependencies (monitoring, test infrastructure, database drivers) that most users don't need.
+
+```toml
+[optional-dependencies.data]
+pymongo = ">=4.0,<5.0"
+redis = ">=7.0,<8.0"
+
+[optional-dependencies.monitoring]
+prometheus-client = ">=0.21.0,<1.0.0"
+
+[optional-dependencies.all]
+"mypkg[data,monitoring]" = "*"
+```
+
+Install a group at the command line:
+
+```bash
+jac install --extras data monitoring
+jac install -e . --extras all    # editable install + extras
+```
+
+Version specifiers follow the same rules as `[dependencies]`. Use `"*"` or `"latest"` to express no constraint (the package is installed without a version pin).
+
+**Group composition:**
+
+An entry whose name matches `<project-name>[group,...]` is not installed as a package - it expands the listed groups transitively. In the example above, `"mypkg[data,monitoring]" = "*"` under `[optional-dependencies.all]` means `--extras all` pulls in everything from both `data` and `monitoring`.
+
+Third-party extras syntax (e.g. `"testcontainers[mongodb,redis]"`) passes through to pip unchanged.
 
 ---
 

@@ -421,21 +421,78 @@ impl JacAPIServerCore._configure_openapi_security -> None {
 # ============================================================================
 # HMR (Hot Module Replacement) Support
 # ============================================================================
-"""Register the /healthz endpoint for liveness checks."""
+"""Register health endpoints: /healthz/live (liveness, restart-gating)
+and /healthz/ready (readiness, traffic-gating), plus the legacy /healthz
+as a back-compat alias for /healthz/live.
+
+Liveness deliberately does NOT check dependencies (DB, peer services) -
+a transient downstream blip would otherwise restart the pod, which can
+cascade. Readiness flips to 503 once `is_draining()` is true so kube-proxy
+removes us from Endpoints during graceful shutdown.
+"""
 impl JacAPIServerCore.register_health_endpoint -> None {
-    async def health_check -> dict {
+    import from fastapi.responses { JSONResponse }
+    import from jac_scale.microservices._drain { is_draining }
+
+    async def health_live -> dict {
+        return {"status": "alive"};
+    }
+    async def health_ready -> JSONResponse {
+        if is_draining() {
+            return JSONResponse(
+                status_code=503, content={"status": "draining", "ready": False}
+            );
+        }
+        return JSONResponse(status_code=200, content={"status": "ready"});
+    }
+    # Legacy alias - same shape as live (an earlier revision used a
+    # single /healthz for both probes; users hitting /healthz manually
+    # still get 200).
+    async def health_legacy -> dict {
         return {"status": "ok"};
     }
+
     self.server.add_endpoint(
         JEndPoint(
             method=HTTPMethod.GET,
-            path='/healthz',
-            callback=health_check,
+            path='/healthz/live',
+            callback=health_live,
             parameters=[],
             response_model=None,
             tags=['Health'],
             summary='Liveness check',
-            description='Returns 200 if the server is running'
+            description=(
+                'Returns 200 if the server process is alive. Used by '
+                'Kubernetes livenessProbe to gate pod restarts.'
+            )
+        )
+    );
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz/ready',
+            callback=health_ready,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Readiness check',
+            description=(
+                'Returns 200 when ready to serve traffic, 503 during '
+                'graceful shutdown drain. Used by Kubernetes readinessProbe '
+                'to gate Endpoints membership.'
+            )
+        )
+    );
+    self.server.add_endpoint(
+        JEndPoint(
+            method=HTTPMethod.GET,
+            path='/healthz',
+            callback=health_legacy,
+            parameters=[],
+            response_model=None,
+            tags=['Health'],
+            summary='Liveness check (legacy)',
+            description='Back-compat alias; returns 200 if the server is running.'
         )
     );
 }

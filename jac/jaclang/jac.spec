@@ -264,6 +264,7 @@ docstring_target ::=
         | global_var
         | "impl" impl_def
         | module_code
+        | ("cl" | "sv" | "na") element_stmt
     )?
 
 client_block ::= "cl" ("{" element_stmt* "}" | element_stmt)
