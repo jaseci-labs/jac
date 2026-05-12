@@ -4570,3 +4570,27 @@ test "isinstance_and_narrowing" {
         w.pretty_print() for w in w1051
     );
 }
+
+test "pipe_forward_typing_matches_call_form" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_pipe_forward_typing.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on pipe expressions, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+
+    assert len(program.errors_had) == 1 , f"Expected exactly 1 error (the intentional negative case), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    err = program.errors_had[0];
+    assert err.code and err.code.code == "E1053" , f"Expected E1053, got {err.code.code
+        if err.code
+        else 'no-code'}:\n{err.pretty_print()}";
+}
