@@ -23,7 +23,8 @@ packages = ["jac_scale*"]
 jac_scale = [
    "templates/**/*.html",
    "providers/**/*.template",
-   "admin/_dist/**",
+   "admin/_dist/*",
+   "admin/_dist/**/*",
 ]
 
 [dependencies]
