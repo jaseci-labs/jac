@@ -140,8 +140,7 @@ obj MicroserviceManifestBuilder {
         return specs;
     }
 
-    """Read drain_timeout_seconds (default 10s); used to size
-    terminationGracePeriodSeconds + uvicorn exit cushion."""
+    """drain_timeout_seconds (default 10s); sizes terminationGracePeriodSeconds."""
     def _drain_timeout -> int {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -163,12 +162,8 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """Read [[plugins.scale.microservices.shared_volumes]] entries.
-
-    Each entry declares a volume mounted at the same path on every
-    listed service. PVC mode (`size`, `access_mode`, `storage_class`)
-    for cloud K8s; hostPath mode (`host_path`) for single-node dev.
-    `services` may include `__gateway__`. Returns [] on read failure."""
+    """[[shared_volumes]] entries. PVC mode for cloud K8s, hostPath mode
+    for single-node dev. `services` may include `__gateway__`."""
     def _shared_volumes_config -> list[dict[str, Any]] {
         try {
             import from jac_scale.config_loader { get_scale_config }
@@ -189,9 +184,7 @@ obj MicroserviceManifestBuilder {
         }
     }
 
-    """Build (volumes, volumeMounts) additions for `svc_name` from
-    shared_volumes config. Existing entries on the pod-spec are left
-    untouched. Volume names are k8s_safe_name'd to DNS-1123."""
+    """(volumes, volumeMounts) for svc_name from shared_volumes config."""
     def _shared_volumes_for_service(
         svc_name: str
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] {
@@ -239,8 +232,7 @@ obj MicroserviceManifestBuilder {
         return (volumes, mounts);
     }
 
-    """PVC manifests for PVC-mode shared volumes. Skips hostPath/empty
-    entries. PVC name = k8s_safe_name(vol.name). Default access_mode
+    """PVC manifests for PVC-mode shared volumes. Default access_mode
     ReadWriteOnce; multi-node clusters set ReadWriteMany."""
     def _build_shared_pvc_manifests -> dict[str, dict[str, Any]] {
         pvcs: dict[str, dict[str, Any]] = {};
@@ -295,9 +287,8 @@ obj MicroserviceManifestBuilder {
         return pvcs;
     }
 
-    """Build the K8s Secret manifest for `[plugins.scale.secrets]`.
-    `self.secrets` is pre-interpolated by `_scale_pre_hook` so
-    `${VAR}` is already expanded. Returns None if no secrets."""
+    """Secret manifest for [plugins.scale.secrets] (pre-interpolated).
+    Returns None if no secrets."""
     def _build_user_secret_manifest -> dict[str, Any] | None {
         if not self.secrets {
             return None;
@@ -328,9 +319,8 @@ obj MicroserviceManifestBuilder {
         return f"{self.k8s_config.app_name}-secrets";
     }
 
-    """ServiceAccount for every service + gateway pod; empty -> namespace
-    `default` SA. Microservice mode does NOT auto-provision the SA -
-    apps that need cluster API access point this at a pre-bound SA."""
+    """ServiceAccount; empty -> namespace default SA. Microservice mode
+    does NOT auto-provision SA - apps point this at a pre-bound one."""
     def _service_account_name -> str {
         return str(getattr(self.k8s_config, "service_account_name", "") or "").strip();
     }

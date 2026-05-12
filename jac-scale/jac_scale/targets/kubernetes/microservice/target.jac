@@ -470,10 +470,8 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    """Tear down all microservice resources by label selector
-    (`managed=jac-scale,jac-scale.role in (microservice,gateway)`) so
-    renamed services in jac.toml still get cleaned up. `app_name`/
-    `component` are signature-only (whole topology is torn down)."""
+    """Tear down by label selector so renamed services still get cleaned
+    up. app_name/component are signature-only (whole topology torn down)."""
     def destroy(app_name: str, component: str = "") {
         if self.logger {
             self.logger.info(
@@ -486,72 +484,50 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
-        namespace: str = self.k8s_config.namespace;
-
-        # also clean up HPAs and PDBs we applied.
         autoscaling_v2 = client.AutoscalingV2Api();
         policy_v1 = client.PolicyV1Api();
-        # Ingress cleanup.
         networking_v1 = client.NetworkingV1Api();
+        namespace: str = self.k8s_config.namespace;
 
-        # Label selector matches anything this target has ever applied.
         selector: str = "managed=jac-scale,jac-scale.role in (microservice,gateway)";
         ms_selector: str = "managed=jac-scale";
 
-        # Deployments first - delete_collection_namespaced_deployment
-        # is batched. Pods stop receiving traffic as the Deployment
-        # controller scales them down; the pod-spec preStop hooks
-        # bridge the kube-proxy propagation gap.
         try {
             apps_v1.delete_collection_namespaced_deployment(
                 namespace=namespace, label_selector=selector
             );
         } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
+            if e.status != 404 { raise; }
         }
 
-        # HPAs - batched.
         try {
             autoscaling_v2.delete_collection_namespaced_horizontal_pod_autoscaler(
                 namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
+            if e.status != 404 { raise; }
         }
 
-        # PDBs - batched.
         try {
             policy_v1.delete_collection_namespaced_pod_disruption_budget(
                 namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
+            if e.status != 404 { raise; }
         }
 
-        # Ingresses - batched. Same `managed=jac-scale` selector
-        # since the Ingress carries that label too.
         try {
             networking_v1.delete_collection_namespaced_ingress(
                 namespace=namespace, label_selector=ms_selector
             );
         } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
+            if e.status != 404 { raise; }
         }
 
-        # Services - no batched delete_collection helper for v1.Service,
-        # so list-then-delete by name. Use the role-LESS selector since
-        # Service manifests only carry `app=<name>` + `managed=jac-scale`,
-        # not the `jac-scale.role` label that's only on Deployments and
-        # their pod templates. (Found by CI: the strict selector left
-        # Services orphaned because they don't match it.)
+        # Services use the role-LESS selector since Service manifests
+        # only carry `app=<name>` + `managed=jac-scale`, not the role
+        # label (CI-found bug: strict selector left Services orphaned).
+        # No batched delete_collection for v1.Service - list-then-delete.
         try {
             services = core_v1.list_namespaced_service(
                 namespace=namespace, label_selector=ms_selector
