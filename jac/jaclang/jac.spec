@@ -264,6 +264,7 @@ docstring_target ::=
         | global_var
         | "impl" impl_def
         | module_code
+        | ("cl" | "sv" | "na") element_stmt
     )?
 
 client_block ::= "cl" ("{" element_stmt* "}" | element_stmt)
@@ -406,7 +407,7 @@ assignment_with_target ::=
     ) ";" ";"?
 
 import_stmt ::=
-    ("include" | "import") ("from" from_path)? (
+    ("include" | "import") "type"? ("from" from_path)? (
         import_items
         | (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)?
           ("as" (NAME | KWESC_NAME))?

@@ -339,12 +339,29 @@ The gateway exposes a standard error envelope (`{ok, error: {code, message, serv
 |---------|--------|---------|
 | Graceful shutdown | `drain_timeout_seconds = 10` | 10s |
 | Per-service RPC timeout | `[...services.NAME] rpc_timeout = 120.0` | 10s |
+| Boot-time per-service /healthz wait | `boot_health_timeout = 60.0` | 60s |
+| Boot-time overall startup window | `boot_max_wait = 90` | 90s |
+| Background recovery health-check cadence | `health_monitor_interval = 10.0` | 10s |
 | CORS | `[...cors] allow_origins = [...]` | open (`["*"]`); set to `[]` to disable |
 | Rate limiting | `[...rate_limit] enabled = true, per_ip_rpm = 600, per_user_rpm = 120` | disabled |
 
 WebSockets (`/ws/*`) and SSE / chunked responses flow through the gateway transparently -- no config. On `SIGTERM` (or `jac scale stop`), each service flips a drain flag (new requests get `503` with `Retry-After: 2`) and uvicorn waits up to `drain_timeout_seconds` for in-flight requests to complete before exiting. Mirrors K8s `terminationGracePeriodSeconds`.
 
 The gateway reference lives at [`jac-scale/jac_scale/microservices/docs.md`](https://github.com/Jaseci-Labs/jaseci/blob/main/jac-scale/jac_scale/microservices/docs.md) in the jac-scale source tree.
+
+### Kubernetes (microservice mode)
+
+When `[plugins.scale.microservices].enabled = true`, `jac start --scale` deploys every service as its own Kubernetes Deployment, fronted by the gateway. Each service gets its own pod template, HPA, and PodDisruptionBudget; peer URLs and routing are derived from `[plugins.scale.microservices.routes]`. You do not write any of those manifests by hand and you do not set the peer URLs by hand either -- in `--scale` K8s mode the consumer's `JAC_SV_<MODULE>_URL` for every peer is auto-injected on every pod, pointing at the in-cluster Service DNS:
+
+```text
+JAC_SV_INVENTORY_SERVICE_URL=http://inventory-service.<namespace>.svc.cluster.local:<port>
+```
+
+The env-var name follows the same convention as the manual setup above (raw module name from `sv import from <name>`, upper-cased, joined with `JAC_SV_…_URL`); the URL host uses the Kubernetes Service's DNS-1123 form (`jac_coder_sv` becomes `jac-coder-sv-service`). Per-service env overrides under `[plugins.scale.microservices.services.<name>.env]` cannot shadow these keys -- a stale override would silently route sv-to-sv calls to the wrong backend.
+
+If you need a sibling sv-to-sv call to leave the cluster (e.g. point at a vendor SaaS), wire it like the [Kubernetes section](#kubernetes) above by editing the Deployment's env spec directly; the value you set wins for that one service. Most apps never need to.
+
+For the full deploy pipeline (image building, ingress, autoscaling, secrets, shared volumes), see the [Kubernetes tutorial](kubernetes.md).
 
 ---
 

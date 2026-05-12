@@ -1,42 +1,42 @@
 """Redis CacheBackend Implementation."""
 
-"""Post-initialization: connect to Redis."""
+"""Post-initialization: connect to Redis using a process-level shared client."""
 impl RedisBackend.postinit -> None {
     if self.redis_url is None {
         self.redis_url = _get_db_config().get('redis_url');
     }
-    if self.redis_url and self.redis_client is None {
+    if not self.redis_url {
+        return;
+    }
+    if 'redis_client' not in _process_cache {
         try {
-            self.redis_client = redis.from_url(self.redis_url);
+            db_config = _get_db_config();
+            max_connections = db_config.get('redis_max_connections', 20);
+            _process_cache['redis_client'] = redis.from_url(
+                self.redis_url, max_connections=max_connections
+            );
         } except Exception as e {
             logger.warning(f"Redis connection failed: {e}");
-            self.redis_client = None;
         }
     }
+    self.redis_client = _process_cache.get('redis_client');
 }
 
 """Check if Redis is available and connected."""
 impl RedisBackend.is_available -> bool {
-    if not self.redis_url {
-        self.redis_url = _get_db_config().get('redis_url');
+    if _process_cache.get('redis_available') is True {
+        return True;
     }
-    if not self.redis_url {
+    if self.redis_client is None {
         return False;
     }
-    client = None;
     try {
-        client = redis.from_url(self.redis_url);
-        client.ping();
+        self.redis_client.ping();
+        _process_cache['redis_available'] = True;
         return True;
     } except Exception as e {
         logger.debug(f"Redis availability check failed: {e}");
         return False;
-    } finally {
-        if client {
-            try {
-                client.close();
-            } except Exception { }
-        }
     }
 }
 
@@ -45,6 +45,7 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     if self.redis_client is None {
         return None;
     }
+    self.fetch_count += 1;
     key = storage_key(to_uuid(id));
     try {
         raw = self.redis_client.get(key);
@@ -59,11 +60,18 @@ impl RedisBackend.get(id: UUID) -> (Anchor | None) {
     }
 }
 
+"""Reset get/put counters (for instrumentation/tests)."""
+impl RedisBackend.reset_counters -> None {
+    self.fetch_count = 0;
+    self.put_count = 0;
+}
+
 """Store anchor in Redis cache."""
 impl RedisBackend.put(anchor: Anchor) -> None {
     if self.redis_client is None {
         return;
     }
+    self.put_count += 1;
     try {
         data = Serializer.serialize(anchor, include_type=True);
         key = storage_key(anchor.id);
@@ -97,16 +105,9 @@ impl RedisBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Close Redis connection."""
+"""Close Redis connection (drops local reference; shared client stays open)."""
 impl RedisBackend.close -> None {
-    if self.redis_client {
-        try {
-            self.redis_client.close();
-        } except Exception as e {
-            logger.warning(f"Error closing Redis connection: {e}");
-        }
-        self.redis_client = None;
-    }
+    self.redis_client = None;
 }
 
 """Check if an anchor is in the cache."""
@@ -163,15 +164,40 @@ impl RedisBackend.commit(anchor: (Anchor | None) = None) -> None {
 # No-op: cache doesn't need commit
 }
 
-"""Batch get from Redis cache. Falls back to individual gets."""
+"""Batch get from Redis cache using a single MGET pipeline call."""
 impl RedisBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     result: dict[UUID, Anchor] = {};
-    for id in ids {
-        if (anchor := self.get(id)) {
-            result[id] = anchor;
+    if not ids or self.redis_client is None {
+        return result;
+    }
+    self.fetch_count += len(ids);
+    try {
+        keys = [storage_key(to_uuid(id)) for id in ids];
+        values = self.redis_client.mget(keys);
+        for (id, raw) in zip(ids, values) {
+            if raw {
+                try {
+                    data = json.loads(raw);
+                    anchor = Serializer.deserialize(data);
+                    if anchor {
+                        result[id] = anchor;
+                    }
+                } except Exception as e {
+                    logger.debug(f"Redis batch_get deserialize failed for {id}: {e}");
+                }
+            }
         }
+    } except Exception as e {
+        logger.debug(f"Redis batch_get failed: {e}");
     }
     return result;
+}
+
+"""Batch write anchors to Redis cache."""
+impl RedisBackend.batch_put(anchors: list[Anchor]) -> None {
+    for anchor in anchors {
+        self.put(anchor);
+    }
 }
 
 # CacheMemory-specific methods
@@ -203,4 +229,59 @@ impl RedisBackend.put_if_exists(anchor: Anchor) -> bool {
 """Remove an entry from cache."""
 impl RedisBackend.invalidate(id: UUID) -> None {
     self.delete(id);
+}
+
+"""Get anchor by UUID using native redis.asyncio (no asyncio.to_thread)."""
+impl RedisBackend.aget(id: UUID) -> (Anchor | None) {
+    import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }
+    if not HAS_REDIS or AsyncRedis is None {
+        return await super.aget(id);
+    }
+    if self._async_redis is None {
+        if self.redis_url is None {
+            return await super.aget(id);
+        }
+        self._async_redis = AsyncRedis.from_url(self.redis_url);
+    }
+    key = storage_key(to_uuid(id));
+    try {
+        raw = await self._async_redis.get(key);
+        if not raw {
+            return None;
+        }
+        data = json.loads(raw);
+        return Serializer.deserialize(data);
+    } except Exception as e {
+        logger.debug(f"Redis async get failed: {e}");
+        return None;
+    }
+}
+
+"""Store anchor using native redis.asyncio (no asyncio.to_thread)."""
+impl RedisBackend.aput(anchor: Anchor) -> None {
+    import from jac_scale._optdeps.redis { AsyncRedis, HAS_REDIS }
+    if not HAS_REDIS or AsyncRedis is None {
+        await super.aput(anchor);
+        return;
+    }
+    if self._async_redis is None {
+        if self.redis_url is None {
+            await super.aput(anchor);
+            return;
+        }
+        self._async_redis = AsyncRedis.from_url(self.redis_url);
+    }
+    try {
+        data = Serializer.serialize(anchor, include_type=True);
+        key = storage_key(anchor.id);
+        db_config = _get_db_config();
+        ttl = db_config.get('redis_default_ttl', 0);
+        if ttl > 0 {
+            await self._async_redis.setex(key, ttl, json.dumps(data));
+        } else {
+            await self._async_redis.set(key, json.dumps(data));
+        }
+    } except Exception as e {
+        logger.debug(f"Redis async put failed: {e}");
+    }
 }
