@@ -360,49 +360,24 @@ test "E0062: nonlocal at module level" {
     assert has_err or (prog is not None and has_diagnostic_code(prog, "E0062"));
 }
 
-test "E0063: glob inside function body" {
-    (has_err, prog) = parse_and_validate('def foo() { glob x: int = 5; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
-}
-
 test "E0063: glob at module level is valid" {
     (has_err, _) = parse_and_validate('glob x: int = 5;');
     assert not has_err;
 }
 
-test "E0063: glob inside module-level with entry is rejected" {
-    (has_err, prog) = parse_and_validate('with entry { glob y: str = "hi"; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
-}
-
-test "E0063: glob with value inside with entry" {
-    (has_err, prog) = parse_and_validate('with entry { glob a = 90; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
-}
-
-test "E0063: glob with value no semicolon inside with entry" {
-    (has_err, prog) = parse_and_validate('with entry { glob a = 90 }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
-}
-
-test "E0063: glob with missing rhs inside with entry" {
-    (has_err, prog) = parse_and_validate('with entry { glob a = }');
-    assert has_err;
-}
-
-test "E0063: glob with no value inside with entry" {
-    (has_err, prog) = parse_and_validate('with entry { glob a }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
-}
-
-test "E0063: bare glob inside with entry" {
-    (has_err, prog) = parse_and_validate('with entry { glob }');
-    assert has_err;
-}
-
-test "E0063: glob inside function with return" {
-    (has_err, prog) = parse_and_validate('def foo() -> int { glob a = 1; return a; }');
-    assert has_err or (prog is not None and has_diagnostic_code(prog, "E0063"));
+test "E0063: glob in statement position is always rejected" {
+    sources = [
+        "with entry { glob a = 90; }",
+        "with entry { glob a = 90 }",
+        "with entry { glob a = }",
+        "with entry { glob a }",
+        "with entry { glob }",
+        "def foo() -> int { glob a = 1; return a; }"
+    ];
+    for src in sources {
+        (has_err, _) = parse_and_validate(src);
+        assert has_err , f"Expected error for: {src}";
+    }
 }
 
 # ══════════════════════════════════════════════════════════════════
