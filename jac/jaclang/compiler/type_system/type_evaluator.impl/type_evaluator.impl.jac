@@ -3558,11 +3558,16 @@ impl TypeEvaluator.postinit -> None {
 # Type narrowing support (CFG-based, flow-sensitive)
 # Pyright-style implementation with affected_symbols optimization.
 # -------------------------------------------------------------------------
-"""Find the nearest enclosing CFG node (CfgExpr or CodeBlockStmt)."""
+"""Find the nearest enclosing CFG node (CfgExpr or CodeBlockStmt).
+
+`InnerCompr` inherits `UniCFGNode` for its scope/symbol bookkeeping but is
+never wired into the CFG, so it has no `bb_in`/`bb_out`. Treat it as
+transparent so narrowing established by an enclosing guard reaches
+references inside the comprehension's iterator and conditional clauses."""
 def _find_cfg_node_for(at_node: uni.UniNode) -> uni.UniCFGNode | None {
     cur: uni.UniNode | None = at_node;
     while cur is not None {
-        if isinstance(cur, uni.UniCFGNode) {
+        if isinstance(cur, uni.UniCFGNode) and not isinstance(cur, uni.InnerCompr) {
             return cur;
         }
         cur = cur.parent;
