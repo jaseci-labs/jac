@@ -37,6 +37,7 @@ import from jaclang.jac0core.diagnostics {
     E0032,
     E0033,
     E0034,
+    E0035,
     E0040,
     E0041,
     E0042,

@@ -3952,6 +3952,16 @@ impl Parser.parse_statement{
     if self.check(TokenKind.RBRACE) or self.at_end() {
         return None;
     }
+    # 'glob' is a module-scope declaration; reject it in statement position
+    # with a targeted diagnostic instead of letting it fall into the
+    # expression fallback (which would emit a misleading "Missing ';'" at
+    # the wrong column).
+    if self.check(TokenKind.KW_GLOBAL) {
+        glob_loc = self.current().loc;
+        self.emit_diag(E0035, loc=glob_loc);
+        self.synchronize();
+        return None;
+    }
     # Allow imports inside code blocks
     if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
         return self.parse_import_stmt();

@@ -154,6 +154,32 @@ test "new keyword errors" {
     }
 }
 
+def has_diag_code(prog: JacProgram, want: str) -> bool {
+    for d in prog.errors_had {
+        if d.code is not None and d.code.code == want {
+            return True;
+        }
+    }
+    return False;
+}
+
+test "glob in statement position emits E0035, not E0002" {
+    sources = [
+        "with entry { glob a = 90; }",
+        "with entry { glob a = 90 }",
+        "with entry { glob a = }",
+        "with entry { glob a }",
+        "with entry { glob }",
+        "def foo() -> int { glob a = 1; return a; }"
+    ];
+    for src in sources {
+        prog = JacProgram();
+        (_, _) = rd_parse(src, "<test>", prog=prog);
+        assert has_diag_code(prog, "E0035") , f"E0035 missing for: {src}";
+        assert not has_diag_code(prog, "E0002") , f"E0002 leaked for: {src}";
+    }
+}
+
 test "pass keyword errors" {
     # ASTValidationPass catches all 17 occurrences of 'pass' with the same
     # message. The 5 archetype body usages also produce 'Missing ;' from the

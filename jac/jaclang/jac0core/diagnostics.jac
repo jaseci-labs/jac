@@ -158,6 +158,12 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.SYNTAX,
          "Expected 'with' after 'can' ability name (use 'def' for function-style declarations)"
      ),
+     E0035 = _err(
+         "E0035",
+         Category.SYNTAX,
+         "'glob' declarations are only allowed at module scope, not inside a code block",
+         help="Move the 'glob' declaration outside this block, or use 'global name;' here to reference an existing module-level global."
+     ),
      # Parser: block/body requirements
      E0040 = _err(
          "E0040",
