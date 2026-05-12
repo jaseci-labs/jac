@@ -152,8 +152,7 @@ obj AssignmentTargetInfo {
         left: (es.Pattern | es.Expression),
         reference: (es.Expression | None),
         decl_name: (str | None),
-        pattern_names: list[tuple[(str, uni.Name)]],
-        is_first: bool;
+        pattern_names: list[tuple[(str, uni.Name)]];
 }
 
 """Describes the walker-side of a spawn expression."""
@@ -189,6 +188,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -> _T;
     def _push_scope(nd: uni.UniScopeNode) -> None;
     def _pop_scope(nd: uni.UniScopeNode) -> None;
+    def _alt_branch_scope_to_finalize(nd: uni.UniNode) -> (uni.UniScopeNode | None);
     def _current_scope -> (ScopeInfo | None);
     def _is_declared_in_any_scope(name: str) -> bool;
     def _register_declaration(name: str) -> None;
@@ -303,7 +303,6 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)];
 
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
-    def _is_name_first_definition(name_node: uni.Name) -> bool;
     def exit_assignment(nd: uni.Assignment) -> None;
     def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
     def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);

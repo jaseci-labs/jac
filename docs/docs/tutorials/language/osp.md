@@ -425,6 +425,11 @@ Without `disengage`, the walker would continue visiting Carol. With it, the walk
 Walkers can have different entry points:
 
 ```jac
+node Person {
+    has name: str;
+    has age: int;
+}
+
 walker DataProcessor {
     has data: str;
 
