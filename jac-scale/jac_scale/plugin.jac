@@ -779,7 +779,7 @@ class JacScalePlugin {
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jac_scale.config_loader { get_scale_config }
-                import from jac_scale.microservices.k8s_target { k8s_safe_name }
+                import from jac_scale.targets.kubernetes.microservice.manifest_builder { k8s_safe_name }
                 import from jac_scale.microservices._util {
                     k8s_service_dns_url,
                     in_cluster_namespace

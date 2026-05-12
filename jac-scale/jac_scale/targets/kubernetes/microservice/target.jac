@@ -1,10 +1,10 @@
 """K8s deployment target for microservice mode.
 
 Thin orchestrator that wires image build + DB provisioning + manifest
-build + apply + destroy. Implementation classes:
-  - DB provisioning: MicroserviceDatabaseProvisioner
-  - Manifest build:  MicroserviceManifestBuilder
-  - Image build:     auto_build_and_distribute (microservices/images/)
+build + apply + destroy. Implementation classes (all sibling files):
+  - manifest_builder.MicroserviceManifestBuilder
+  - database_provisioner.MicroserviceDatabaseProvisioner
+  - image build: jac_scale.microservices.images.auto_build
 
 This file owns:
   - image build override (_handle_image_registry, _auto_build_image)
@@ -14,6 +14,8 @@ This file owns:
 
 Per-service config knobs at `[plugins.scale.microservices.services.NAME]`
 (and `__gateway__` for the gateway) flow through the manifest builder.
+
+Registered as `kubernetes-microservice` in DeploymentTargetFactory.
 """
 
 import logging;

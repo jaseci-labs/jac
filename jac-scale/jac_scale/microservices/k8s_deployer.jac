@@ -8,7 +8,7 @@ import logging;
 import from typing { Any }
 import from jac_scale.abstractions.service_deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
-import from jac_scale.microservices.k8s_target { k8s_safe_name }
+import from jac_scale.targets.kubernetes.microservice.manifest_builder { k8s_safe_name }
 import from jac_scale.microservices._util {
     k8s_service_dns_url,
     in_cluster_namespace,
