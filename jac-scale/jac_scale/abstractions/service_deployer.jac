@@ -9,18 +9,17 @@ New microservice implementations should prefer depending on the smaller
 RuntimeServiceResolver or ServiceLifecycleManager interfaces directly.
 ServiceDeployer is the back-compatible wrapper kept during the M-track
 refactor.
-"""
 
-import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
+Interface-only ABC. Concrete subclasses declare their own `has registry`
+field (a ServiceRegistry from jac_scale.microservices.service_registry);
+this keeps abstractions/ free of microservices imports.
+"""
 
 
 """Combined deployer interface: per-service URL resolution + lifecycle
 operations. Concrete subclasses (LocalDeployer, KubernetesDeployer)
 override the subset of methods relevant to their deployment target."""
 class ServiceDeployer {
-    has registry: ServiceRegistry,
-        target: str = "local";
-
     """Construct the base URL at which this service is reachable.
 
     Single source of truth for service URLs across the microservice
@@ -30,8 +29,11 @@ class ServiceDeployer {
 
       LocalDeployer       -> http://127.0.0.1:{service_entry.port}
       KubernetesDeployer  -> http://{svc}.{ns}.svc.cluster.local:{port}
+
+    `service_entry` is typed `any` here so abstractions/ doesn't import
+    from microservices/; concrete subclasses accept a real ServiceEntry.
     """
-    def url_for(self: ServiceDeployer, service_entry: ServiceEntry) -> str;
+    def url_for(self: ServiceDeployer, service_entry: any) -> str;
 
     """Deploy a single service. Returns True on success."""
     def deploy_service(self: ServiceDeployer, name: str) -> bool;

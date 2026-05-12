@@ -6,7 +6,7 @@ deploy is owned by KubernetesMicroserviceTarget, runtime by K8s itself."""
 
 import logging;
 import from typing { Any }
-import from jac_scale.microservices.deployer { ServiceDeployer }
+import from jac_scale.abstractions.service_deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry { ServiceRegistry, ServiceEntry }
 import from jac_scale.microservices.k8s_target { k8s_safe_name }
 import from jac_scale.microservices._util {

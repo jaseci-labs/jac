@@ -4,17 +4,17 @@ Implementations own service start / stop / restart / scale / status / logs
 for a deployment target. Local subprocess mode is the primary implementer;
 K8s mode delegates lifecycle to the K8s controller and implements only
 RuntimeServiceResolver, not this interface.
+
+Concrete subclasses declare their own `has registry` field (a
+ServiceRegistry from jac_scale.microservices.service_registry); this ABC
+stays interface-only to avoid the abstractions -> microservices layering
+inversion.
 """
 
-import from jac_scale.microservices.service_registry { ServiceRegistry }
 
-
-"""Manages the lifecycle of registered microservices. Carries the
-ServiceRegistry that lifecycle operations mutate."""
+"""Manages the lifecycle of registered microservices. Interface-only;
+concrete subclasses own the ServiceRegistry they mutate."""
 class ServiceLifecycleManager {
-    has registry: ServiceRegistry,
-        target: str = "local";
-
     """Deploy a single service. Returns True on success."""
     def deploy_service(self: ServiceLifecycleManager, name: str) -> bool;
 

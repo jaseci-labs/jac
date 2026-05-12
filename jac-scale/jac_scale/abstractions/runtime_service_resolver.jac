@@ -12,19 +12,19 @@ that don't own service lifecycle (K8s, where the K8s controller owns pod
 lifecycle) implement only this interface.
 """
 
-import from jac_scale.microservices.service_registry { ServiceEntry }
-
 
 """Resolves the runtime URL of a microservice. Stateless w.r.t. the
-registry - takes a ServiceEntry directly, no lookup."""
+registry - takes a service entry directly, no lookup."""
 class RuntimeServiceResolver {
     """Construct the base URL at which the given service is reachable.
 
     Args:
-        service_entry: The ServiceEntry to resolve.
+        service_entry: ServiceEntry (jac_scale.microservices.service_registry).
+                       Typed `any` here to keep this ABC free of microservices
+                       imports; concrete subclasses accept a real ServiceEntry.
 
     Returns:
         The fully-qualified base URL (scheme + host + port). No path.
     """
-    def url_for(self: RuntimeServiceResolver, service_entry: ServiceEntry) -> str;
+    def url_for(self: RuntimeServiceResolver, service_entry: any) -> str;
 }
