@@ -245,9 +245,10 @@ test "compiler separates internal from user modules" {
 }
 
 test "run with absolute path respects file dir not cwd" {
-    # contains a main.jac must execute the specified file, not the cwd's main.jac.
+    # When the cwd contains a main.jac, execution must use the specified file, not the cwd's main.jac.
     tmpdir: str = tempfile.mkdtemp(prefix="jac_test_abspath_");
     original_cwd: str = os.getcwd();
+    original_stdout = sys.stdout;
     original_main = sys.modules.get("__main__");
     captured_output = io.StringIO();
     try {
@@ -264,7 +265,7 @@ test "run with absolute path respects file dir not cwd" {
         sys.stdout = captured_output;
         execution.run(os.path.join(sub_dir, "main.jac"));
     } finally {
-        sys.stdout = sys.__stdout__;
+        sys.stdout = original_stdout;
         os.chdir(original_cwd);
         if original_main is not None {
             sys.modules["__main__"] = original_main;
