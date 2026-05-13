@@ -232,8 +232,12 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
                 ca_bundle=self.config.get("ca_bundle", None),
             );
         } elif self.proxy {
-            client = AsyncOpenAI(base_url=self.api_base, api_key=self.api_key or None);
-            response = await client.chat.completions.create(**params);
+            if not self._async_proxy_client {
+                self._async_proxy_client = AsyncOpenAI(
+                    base_url=self.api_base, api_key=self.api_key or None
+                );
+            }
+            response = await self._async_proxy_client.chat.completions.create(**params);
         } else {
             response = await litellm.acompletion(
                 api_key=self.api_key or None, **params
@@ -278,8 +282,14 @@ impl Model.model_call_with_stream_async(params: dict) {
                 ca_bundle=self.config.get("ca_bundle", None),
             );
         } elif self.proxy {
-            client = AsyncOpenAI(base_url=self.api_base, api_key=self.api_key or None);
-            response = await client.chat.completions.create(stream=True, **params);
+            if not self._async_proxy_client {
+                self._async_proxy_client = AsyncOpenAI(
+                    base_url=self.api_base, api_key=self.api_key or None
+                );
+            }
+            response = await self._async_proxy_client.chat.completions.create(
+                stream=True, **params
+            );
         } else {
             response = await litellm.acompletion(
                 stream=True, api_key=self.api_key or None, **params
@@ -303,6 +313,9 @@ impl Model.model_call_with_stream_async(params: dict) {
     } except openai.NotFoundError as e {
         logger.error(f"LLM ModelNotFoundError: {e}");
         raise ModelNotFoundError(str(e));
+    } except Exception as e {
+        logger.error(f"LLM call failed with {type(e).__name__}: {e}");
+        raise;
     }
     return response;
 }

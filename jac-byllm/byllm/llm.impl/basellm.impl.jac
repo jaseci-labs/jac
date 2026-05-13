@@ -941,13 +941,30 @@ impl BaseLLM.model_call_no_stream_async(params: dict) -> dict {
     return await asyncio.to_thread(self.model_call_no_stream, params);
 }
 
-"""Async fallback: wraps sync model_call_with_stream in a thread.
+"""Async fallback: drives the sync streaming generator step-by-step in a thread pool.
 
+asyncio.to_thread(model_call_with_stream, params) would only off-thread generator
+creation — actual chunk I/O still runs on the event loop during iteration. This impl
+calls next() inside the thread for each chunk so every blocking step is off-loop.
 Subclasses with native async support (e.g. Model) override this.
 """
 impl BaseLLM.model_call_with_stream_async(params: dict) {
     import asyncio;
-    return await asyncio.to_thread(self.model_call_with_stream, params);
+    def _next_chunk(gen: object) -> tuple[bool, object] {
+        try {
+            return (True, next(gen));
+        } except StopIteration {
+            return (False, None);
+        }
+    }
+    gen = self.model_call_with_stream(params);
+    while True {
+        (has_value, chunk) = await asyncio.to_thread(_next_chunk, gen);
+        if not has_value {
+            break;
+        }
+        yield chunk;
+    }
 }
 
 """Force LLM to produce a final answer (non-streaming). Restricts tools to finish_tool only."""

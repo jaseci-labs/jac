@@ -171,7 +171,8 @@ obj Model(BaseLLM) {
     has proxy: bool = False,
         http_client: bool = False,
         _mock_delegate: MockLLM | None = None,
-        _local_delegate: BaseLLM | None = None;
+        _local_delegate: BaseLLM | None = None,
+        _async_proxy_client: AsyncOpenAI | None = None;
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> object;
