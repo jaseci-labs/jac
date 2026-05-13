@@ -1436,31 +1436,42 @@ test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
         f"Expected 'call_llm' in generated source for sync by llm(). Got:\n{py_source}"
     );
 
-    # The async body must contain an Await node whose value calls acall_llm.
+    # The async body must contain an Await node whose value is a Call to acall_llm.
+    # The codegen imports acall_llm directly (Name node), not as Jac.acall_llm (Attribute).
+    def _is_acall_llm_call(`node: object) -> bool {
+        if not (isinstance(`node, ast3.Call)) {
+            return False;
+        }
+        func = `node.func;
+        return (
+            (isinstance(func, ast3.Name) and func.id == "acall_llm")
+            or (isinstance(func, ast3.Attribute) and func.attr == "acall_llm")
+        );
+    }
     await_nodes = [
         n
         for n in ast3.walk(code_gen.gen.py_ast[0])
-        if isinstance(n, ast3.Await)
-        and isinstance(n.value, ast3.Call)
-        and isinstance(n.value.func, ast3.Attribute)
-        and n.value.func.attr == "acall_llm"
+        if isinstance(n, ast3.Await) and _is_acall_llm_call(n.value)
     ];
     assert len(await_nodes) >= 1 , (
-        "Expected at least one ast3.Await(value=Call(...acall_llm...)) in generated AST"
+        "Expected at least one ast3.Await(value=Call(acall_llm, ...)) in generated AST"
     );
 
-    # Ensure no bare (non-awaited) call_llm appears for the async function,
-    # i.e. acall_llm must NOT appear without Await wrapping it.
-    bare_acall_nodes = [
+    # All acall_llm calls must be wrapped in Await — no bare unawaited calls.
+    all_acall_nodes = [
         n
         for n in ast3.walk(code_gen.gen.py_ast[0])
-        if isinstance(n, ast3.Call)
-        and isinstance(n.func, ast3.Attribute)
-        and n.func.attr == "acall_llm"
-        and not any(
-            isinstance(parent, ast3.Await) and parent.value is n
-            for parent in ast3.walk(code_gen.gen.py_ast[0])
-        )
+        if _is_acall_llm_call(n)
+    ];
+    awaited_values = {
+        id(n.value)
+        for n in ast3.walk(code_gen.gen.py_ast[0])
+        if isinstance(n, ast3.Await)
+    };
+    bare_acall_nodes = [
+        n
+        for n in all_acall_nodes
+        if id(n) not in awaited_values
     ];
     assert len(bare_acall_nodes) == 0 , (
         f"Found {len(bare_acall_nodes)} bare (non-awaited) acall_llm call(s) — "
@@ -1485,7 +1496,10 @@ test "async by llm() end-to-end with mocked acall_llm" {
         async def _fake_acall_llm(**kwargs: object) -> object {
             return "summary";
         }
-        with unittest.mock.patch.object(Jac, "acall_llm", _fake_acall_llm) {
+        # acall_llm is imported directly from jaclang.jac0core.jaclib into the
+        # compiled module's namespace, so we patch it there.
+        import jaclang.jac0core.jaclib as _jaclib;
+        with unittest.mock.patch.object(_jaclib, "acall_llm", _fake_acall_llm) {
             exec(compiled, module.__dict__);
             result = await module.__dict__["get_summary"](text="hello world");
             return result;
