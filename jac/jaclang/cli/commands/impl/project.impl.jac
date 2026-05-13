@@ -345,7 +345,6 @@ impl install(
     dev: bool = False,
     extras: list = [],
     verbose: bool = False,
-    upgrade: bool = False,
     force_reinstall: bool = False,
     no_cache_dir: bool = False,
     pre: bool = False,
@@ -375,7 +374,6 @@ impl install(
         return 1;
     }
     flag_defs: list = [
-        (upgrade, "--upgrade"),
         (force_reinstall, "--force-reinstall"),
         (no_cache_dir, "--no-cache-dir"),
         (pre, "--pre"),
@@ -423,7 +421,7 @@ impl install(
                 f"  Installing {len(dep_specs)} dependencies...", style="muted"
             );
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install"] + installer.install_flags + dep_specs,
+                [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
                 capture_output=not verbose,
                 text=True,
             );
@@ -700,9 +698,7 @@ impl update(packages: list = [], dev: bool = False, verbose: bool = False) -> in
         );
         return 1;
     }
-    installer = DependencyInstaller(
-        config=config, verbose=verbose, install_flags=["--upgrade"]
-    );
+    installer = DependencyInstaller(config=config, verbose=verbose);
     resolver = DependencyResolver(config=config);
     # Collect specs to update
     specs_to_update: list[str] = [];

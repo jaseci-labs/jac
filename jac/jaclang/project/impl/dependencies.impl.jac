@@ -188,7 +188,7 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     self.ensure_venv();
     import re;
     (returncode, stdout, stderr) = self._run_pip(
-        ["install"] + self.install_flags + specs
+        ["install", "--upgrade"] + self.install_flags + specs
     );
     if returncode == 0 {
         if "--dry-run" in self.install_flags {

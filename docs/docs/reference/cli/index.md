@@ -1053,9 +1053,9 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 Sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`.
 
 ```bash
-jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v] [-U]
+jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
             [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
-            [--no-deps] [-q] [--prefer-binary]
+            [--no-deps] [--quiet] [--prefer-binary]
 ```
 
 | Option | Description | Default |
@@ -1064,13 +1064,12 @@ jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v] [-U]
 | `-d, --dev` | Include dev dependencies | `False` |
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
-| `-U, --upgrade` | Upgrade already-installed packages to the newest available version | `False` |
 | `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
 | `--no-cache-dir` | Disable the pip download cache | `False` |
 | `--pre` | Include pre-release and development versions | `False` |
 | `--dry-run` | Show what would be installed without actually installing anything | `False` |
 | `--no-deps` | Don't install package dependencies | `False` |
-| `-q, --quiet` | Suppress pip output | `False` |
+| `--quiet` | Suppress pip output | `False` |
 | `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
 
 **Examples:**
@@ -1097,9 +1096,6 @@ jac install -e .
 # Editable install from anywhere (no need to cd into the package)
 jac install -e /path/to/lib
 
-# Upgrade all packages to the latest available versions
-jac install -U
-
 # Reinstall all packages from scratch (ignores cached state)
 jac install --force-reinstall
 
@@ -1111,14 +1107,11 @@ jac install --dry-run
 
 # Install without using pip's download cache
 jac install --no-cache-dir
-
-# Combine flags: upgrade to latest pre-releases without cache
-jac install -U --pre --no-cache-dir
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
-> **Note:** The pip passthrough flags (`-U`, `--force-reinstall`, etc.) are forwarded directly to the underlying pip invocation. `jac update` always applies `--upgrade` automatically - use `jac install -U` when you want the same behaviour on-demand without updating `jac.toml`.
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 

@@ -85,13 +85,6 @@ def create(
             "verbose", typ=bool, default=False, help="Verbose output", short="v"
         ),
         Arg.create(
-            "upgrade",
-            typ=bool,
-            default=False,
-            help="Upgrade already-installed packages to the newest available version",
-            short="U"
-        ),
-        Arg.create(
             "force-reinstall",
             typ=bool,
             default=False,
@@ -127,7 +120,7 @@ def create(
             short=""
         ),
         Arg.create(
-            "quiet", typ=bool, default=False, help="Suppress pip output", short="q"
+            "quiet", typ=bool, default=False, help="Suppress pip output", short=""
         ),
         Arg.create(
             "prefer-binary",
@@ -145,17 +138,12 @@ def create(
         ("jac install --dev", "Include dev dependencies"),
         ("jac install --extras data monitoring", "Include optional dependency groups"),
         ("jac install -e . --extras all", "Editable install with all optional deps"),
-        ("jac install -U", "Upgrade all packages to the latest available versions"),
         ("jac install --force-reinstall", "Reinstall all packages from scratch"),
         ("jac install --pre", "Include pre-release versions"),
         ("jac install --no-cache-dir", "Install without using pip's download cache"),
         ("jac install --dry-run", "Preview what would be installed without doing it"),
         ("jac install --no-deps", "Install packages without their dependencies"),
         ("jac install --prefer-binary", "Prefer pre-built wheels over source builds"),
-        (
-            "jac install -U --pre --no-cache-dir",
-            "Upgrade to latest including pre-releases, no cache"
-        ),
 
     ],
     group="project"
@@ -165,7 +153,6 @@ def install(
     dev: bool = False,
     extras: list = [],
     verbose: bool = False,
-    upgrade: bool = False,
     force_reinstall: bool = False,
     no_cache_dir: bool = False,
     pre: bool = False,

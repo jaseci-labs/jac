@@ -222,6 +222,7 @@ test "DependencyInstaller install_package success" {
             mock_pip.assert_called_once();
             call_args = mock_pip.call_args[0][0];
             assert "install" in call_args;
+            assert "--upgrade" in call_args;
             assert "requests>=2.28.0" in call_args;
             assert "--target" not in call_args;
         }
@@ -832,6 +833,7 @@ test "install with pip and git deps" {
             mock_pip.assert_called();
             call_args = mock_pip.call_args[0][0];
             assert "install" in call_args;
+            assert "--upgrade" in call_args;
         } finally {
             os.chdir(original_cwd);
             reset_config();
@@ -880,6 +882,7 @@ test "install pip and npm deps" {
             mock_pip.assert_called();
             pip_call_args = mock_pip.call_args[0][0];
             assert "install" in pip_call_args;
+            assert "--upgrade" in pip_call_args;
             mock_install_all.assert_called_once();
         } finally {
             os.chdir(original_cwd);
@@ -1639,7 +1642,7 @@ test "DependencyInstaller install_flags passed to pip" {
     try {
         config = JacConfig.load(project_dir / "jac.toml");
         installer = DependencyInstaller(
-            config=config, install_flags=["--upgrade", "--no-cache-dir"]
+            config=config, install_flags=["--no-cache-dir"]
         );
         with patch.object(installer, "ensure_venv") as _ev, patch.object(
             installer, "_run_pip"
@@ -1647,9 +1650,9 @@ test "DependencyInstaller install_flags passed to pip" {
             mock_pip.return_value = (0, "Successfully installed requests-2.31.0", "");
             installer.install_package(["requests>=2.28.0"]);
             call_args = mock_pip.call_args[0][0];
+            assert "install" in call_args;
             assert "--upgrade" in call_args;
             assert "--no-cache-dir" in call_args;
-            assert "install" in call_args;
         }
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
