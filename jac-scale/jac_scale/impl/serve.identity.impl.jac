@@ -170,15 +170,10 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
         );
         recipient = target.get('value_raw') or raw_value;
         sent = emailer.send_email(
-            to_addr=recipient,
-            subject='Verify your email address',
-            body_text=body_text
+            to_addr=recipient, subject='Verify your email address', body_text=body_text
         );
         return TransportResponse.success(
-            data={
-                'status': 'pending_verification',
-                'email_sent': bool(sent)
-            },
+            data={'status': 'pending_verification', 'email_sent': bool(sent)},
             meta=Meta(extra={'http_status': 202})
         );
     }

@@ -129,7 +129,8 @@ class VerifyIdentityRequest(BaseModel) {
 
 class SendVerificationRequest(BaseModel) {
     has identity: IdentityInput = Field(
-        ..., description='Identity (email) on the current user to send a verification mail for'
+        ...,
+        description='Identity (email) on the current user to send a verification mail for'
     );
 }
 
