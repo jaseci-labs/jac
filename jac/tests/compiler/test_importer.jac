@@ -244,6 +244,36 @@ test "compiler separates internal from user modules" {
     }
 }
 
+test "run with absolute path respects file dir not cwd" {
+    # Regression: `jac run /abs/path/sub/main.jac` from a parent dir that also
+    # contains a main.jac must execute the specified file, not the cwd's main.jac.
+    tmpdir: str = tempfile.mkdtemp(prefix="jac_test_abspath_");
+    original_cwd: str = os.getcwd();
+    captured_output = io.StringIO();
+    try {
+        parent_dir: str = os.path.join(tmpdir, "parent");
+        sub_dir: str = os.path.join(parent_dir, "sub");
+        os.makedirs(sub_dir);
+        with open(os.path.join(parent_dir, "main.jac"), "w") as f {
+            f.write('with entry { "WRONG_FILE" :> print; }\n');
+        }
+        with open(os.path.join(sub_dir, "main.jac"), "w") as f {
+            f.write('with entry { "CORRECT_FILE" :> print; }\n');
+        }
+        os.chdir(parent_dir);
+        sys.stdout = captured_output;
+        execution.run(os.path.join(sub_dir, "main.jac"));
+    } finally {
+        sys.stdout = sys.__stdout__;
+        os.chdir(original_cwd);
+        sys.modules.pop("__main__", None);
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+    output = captured_output.getvalue();
+    assert "CORRECT_FILE" in output , f"Expected CORRECT_FILE but got: {output!r}";
+    assert "WRONG_FILE" not in output , "Ran cwd's main.jac instead of the specified file";
+}
+
 test "get bytecode uses JIR cache on second call" {
     with tempfile.NamedTemporaryFile(
         mode="w", suffix=".jac", delete=False, dir=_test_tmp_dir

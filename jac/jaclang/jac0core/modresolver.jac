@@ -9,7 +9,6 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
     if base_path {
         paths.append(base_path);
     }
-    paths.append(os.getcwd());
     if ('JACPATH' in os.environ) {
         paths.extend(
             p.strip()
@@ -18,6 +17,7 @@ def get_jac_search_paths(base_path: (str | None) = None) -> list[str] {
         );
     }
     paths.extend(sys.path);
+    paths.append(os.getcwd());
     site_pkgs = site.getsitepackages();
     if site_pkgs {
         paths.extend(site_pkgs);
