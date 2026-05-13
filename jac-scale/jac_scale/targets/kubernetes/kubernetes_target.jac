@@ -170,6 +170,15 @@ obj KubernetesTarget(DeploymentTarget) {
 
         # Base setup
         commands.append('export DEBIAN_FRONTEND=noninteractive');
+        # Disable the jac-scale plugin inside the pod: this pod IS the deployed
+        # app, not the deployer. jac-scale's CLI plugin (commands like `--scale`,
+        # `setup microservice`, `destroy`) is only useful from the developer's
+        # machine. Skipping it stops pluggy from importing jac_scale.plugin,
+        # which avoids compiling plugin.jac + its transitive .jac imports in
+        # the same Python process as jaclang's first-use compile. That combined
+        # peak was the OOM root cause - removing it keeps each compile pass
+        # comfortably under the 16Gi runner budget.
+        commands.append('export JAC_DISABLED_PLUGINS=scale');
         # Disable apt sandbox: CAP_SETUID/CAP_SETGID are dropped in the container
         # security context, so apt cannot drop privileges to the _apt user.
         commands.append(
