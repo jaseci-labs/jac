@@ -13,6 +13,7 @@ dependencies = [
     "litellm>=1.70.0,<=1.82.6",  # SECURITY: v1.82.7+ was compromised and yanked from PyPI
     "loguru>=0.7.2,<0.8.0",
     "pillow>=12.0.0,<13.0.0",
+    "httpx>=0.27.0",
 ]
 
 [project.urls]

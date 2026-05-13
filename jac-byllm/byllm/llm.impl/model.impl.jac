@@ -264,13 +264,20 @@ impl Model.model_call_no_stream_async(params: dict) -> dict {
     return response;
 }
 
-"""Async streaming call: litellm.acompletion(stream=True) or AsyncOpenAI."""
+"""Async streaming call: litellm.acompletion(stream=True), AsyncOpenAI, or custom endpoint."""
 impl Model.model_call_with_stream_async(params: dict) {
     params["stream_options"] = (params.get("stream_options") or {}) | {
         "include_usage": True
     };
     try {
-        if self.proxy {
+        if self.http_client {
+            response = await self.model_call_http_async(
+                url=self.api_base,
+                token=self.api_key,
+                payload=params | {"stream": True},
+                ca_bundle=self.config.get("ca_bundle", None),
+            );
+        } elif self.proxy {
             client = AsyncOpenAI(base_url=self.api_base, api_key=self.api_key or None);
             response = await client.chat.completions.create(stream=True, **params);
         } else {

@@ -1411,3 +1411,88 @@ test "model_call_http_async returns json response" {
     result = asyncio.run(_run_http_async());
     assert result == {"choices": [{"message": {"content": "ok"}}]};
 }
+
+import ast as ast3;
+import from jaclang.jac0core.program { JacProgram }
+
+test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
+    # Compile the fixture that has both an async and a sync by llm() function.
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURE_DIR, "async_by_llm.jac")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module) , (
+        "Expected a compiled Python AST module"
+    );
+    py_source = ast3.unparse(code_gen.gen.py_ast[0]);
+
+    # Async function must use acall_llm, wrapped in await.
+    assert "acall_llm" in py_source , (
+        f"Expected 'acall_llm' in generated source for async by llm(). Got:\n{py_source}"
+    );
+
+    # Sync function must still use call_llm (no await).
+    assert "call_llm" in py_source , (
+        f"Expected 'call_llm' in generated source for sync by llm(). Got:\n{py_source}"
+    );
+
+    # The async body must contain an Await node whose value calls acall_llm.
+    await_nodes = [
+        n
+        for n in ast3.walk(code_gen.gen.py_ast[0])
+        if isinstance(n, ast3.Await)
+        and isinstance(n.value, ast3.Call)
+        and isinstance(n.value.func, ast3.Attribute)
+        and n.value.func.attr == "acall_llm"
+    ];
+    assert len(await_nodes) >= 1 , (
+        "Expected at least one ast3.Await(value=Call(...acall_llm...)) in generated AST"
+    );
+
+    # Ensure no bare (non-awaited) call_llm appears for the async function,
+    # i.e. acall_llm must NOT appear without Await wrapping it.
+    bare_acall_nodes = [
+        n
+        for n in ast3.walk(code_gen.gen.py_ast[0])
+        if isinstance(n, ast3.Call)
+        and isinstance(n.func, ast3.Attribute)
+        and n.func.attr == "acall_llm"
+        and not any(
+            isinstance(parent, ast3.Await) and parent.value is n
+            for parent in ast3.walk(code_gen.gen.py_ast[0])
+        )
+    ];
+    assert len(bare_acall_nodes) == 0 , (
+        f"Found {len(bare_acall_nodes)} bare (non-awaited) acall_llm call(s) — "
+        "async by llm() must always be awaited"
+    );
+}
+
+test "async by llm() end-to-end with mocked acall_llm" {
+    # Compile the fixture and execute it with acall_llm mocked to return "summary".
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURE_DIR, "async_by_llm.jac")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+
+    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    module = types.ModuleType("async_by_llm_fixture");
+    module.__dict__["__file__"] = code_gen.loc.mod_path;
+
+    async def _run_end_to_end -> str {
+        # Patch acall_llm so no real API call is made.
+        async def _fake_acall_llm(**kwargs: object) -> object {
+            return "summary";
+        }
+        with unittest.mock.patch.object(Jac, "acall_llm", _fake_acall_llm) {
+            exec(compiled, module.__dict__);
+            result = await module.__dict__["get_summary"](text="hello world");
+            return result;
+        }
+    }
+    result = asyncio.run(_run_end_to_end());
+    assert result == "summary" , (
+        f"Expected mocked acall_llm result 'summary', got: {result!r}"
+    );
+}

@@ -2288,9 +2288,15 @@ impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
     return random_value_for_type(return_type);
 }
 
-"""Base stub for acall_llm — returns random value. byllm overrides with asyncio.to_thread."""
+"""Base stub for acall_llm — returns random value. byllm overrides with native async dispatch.
+
+Uses await so this impl compiles to an async def, matching the static async def declaration
+and ensuring inspect.iscoroutinefunction returns True even when byllm is not installed.
+"""
 impl JacByLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
+    import asyncio;
     import from jaclang.utils { NonGPT }
+    await asyncio.sleep(0);
     try {
         random_value_for_type = cast(
             Callable[([Any], Any)], NonGPT.random_value_for_type
