@@ -252,7 +252,12 @@ jobs:
         pytest -x -vv -s jac-scale/jac_scale/tests/test_scheduling.jac
 
   test-scale-k8s:
-    runs-on: ubuntu-latest
+    # ubuntu-latest is 16Gi; the all-in-one pod's combined first-use compile
+    # of jaclang core + jac-scale plugin tree exceeds that budget on this
+    # job and the pod crash-loops until a lucky restart fits (~+5min vs
+    # pre-K-track baseline). Larger runner has 32Gi which clears the cliff
+    # in a single shot.
+    runs-on: ubuntu-latest-large
     steps:
       - name: Check out code
         uses: actions/checkout@v5
