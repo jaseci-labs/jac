@@ -1694,7 +1694,7 @@ test "update always uses upgrade flag" {
 test "arg name underscore registered as kebab-case" {
     import argparse;
     import from jaclang.cli.command { Arg, ArgKind }
-    import from jaclang.cli.impl.registry { CommandRegistry }
+    import from jaclang.cli.registry { CommandRegistry }
 
     registry = CommandRegistry();
     parser = argparse.ArgumentParser();
