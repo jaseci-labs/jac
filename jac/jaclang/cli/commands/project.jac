@@ -92,14 +92,14 @@ def create(
             short="U"
         ),
         Arg.create(
-            "force_reinstall",
+            "force-reinstall",
             typ=bool,
             default=False,
             help="Reinstall all packages even if they are already up-to-date",
             short=""
         ),
         Arg.create(
-            "no_cache_dir",
+            "no-cache-dir",
             typ=bool,
             default=False,
             help="Disable the pip download cache",
@@ -113,14 +113,14 @@ def create(
             short=""
         ),
         Arg.create(
-            "dry_run",
+            "dry-run",
             typ=bool,
             default=False,
             help="Show what would be installed without actually installing anything",
             short=""
         ),
         Arg.create(
-            "no_deps",
+            "no-deps",
             typ=bool,
             default=False,
             help="Don't install package dependencies",

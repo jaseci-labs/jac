@@ -1690,28 +1690,3 @@ test "update always uses upgrade flag" {
         shutil.rmtree(tmp, ignore_errors=True);
     }
 }
-
-test "arg name underscore registered as kebab-case" {
-    import argparse;
-    import from jaclang.cli.command { Arg, ArgKind }
-    import from jaclang.cli.registry { CommandRegistry }
-
-    registry = CommandRegistry();
-    parser = argparse.ArgumentParser();
-    registry._add_argument(
-        parser, Arg.create("no_cache_dir", typ=bool, default=False, short="")
-    );
-    registry._add_argument(
-        parser, Arg.create("force_reinstall", typ=bool, default=False, short="")
-    );
-
-    option_strings_all: list[str] = [];
-    for action in parser._actions {
-        option_strings_all.extend(action.option_strings);
-    }
-
-    assert "--no-cache-dir" in option_strings_all;
-    assert "--force-reinstall" in option_strings_all;
-    assert "--no_cache_dir" not in option_strings_all;
-    assert "--force_reinstall" not in option_strings_all;
-}

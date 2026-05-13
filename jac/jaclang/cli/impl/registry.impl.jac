@@ -232,7 +232,6 @@ impl CommandRegistry._build_subparser(
 impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) -> None {
     import from jaclang.cli.command { Arg, ArgKind }
     kwargs: dict = {"help": arg.help};
-    opt = arg.name.replace("_", "-");
     if arg.choices {
         kwargs["choices"] = arg.choices;
     }
@@ -269,9 +268,9 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
                 kwargs["default"] = arg.default;
             }
             if arg.short {
-                parser.add_argument(f"-{arg.short}", f"--{opt}", **kwargs);
+                parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
             } else {
-                parser.add_argument(f"--{opt}", **kwargs);
+                parser.add_argument(f"--{arg.name}", **kwargs);
             }
         }
     } elif arg.kind == ArgKind.REMAINDER {
@@ -283,9 +282,9 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
         kwargs["action"] = "store_true";
         kwargs["default"] = arg.default if arg.default is not None else False;
         if arg.short {
-            parser.add_argument(f"-{arg.short}", f"--{opt}", **kwargs);
+            parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
-            parser.add_argument(f"--{opt}", **kwargs);
+            parser.add_argument(f"--{arg.name}", **kwargs);
         }
         # Add --no-X variant
         no_kwargs = {
@@ -293,7 +292,7 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
             "dest": arg.name,
             "help": f"Disable {arg.name}"
         };
-        parser.add_argument(f"--no-{opt}", **no_kwargs);
+        parser.add_argument(f"--no-{arg.name}", **no_kwargs);
     } else {
         # Regular option
         kwargs["type"] = arg.typ;
@@ -302,9 +301,9 @@ impl CommandRegistry._add_argument(parser: argparse.ArgumentParser, arg: Arg) ->
             kwargs["required"] = True;
         }
         if arg.short {
-            parser.add_argument(f"-{arg.short}", f"--{opt}", **kwargs);
+            parser.add_argument(f"-{arg.short}", f"--{arg.name}", **kwargs);
         } else {
-            parser.add_argument(f"--{opt}", **kwargs);
+            parser.add_argument(f"--{arg.name}", **kwargs);
         }
     }
 }
