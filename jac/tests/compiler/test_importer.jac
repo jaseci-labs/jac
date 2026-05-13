@@ -248,6 +248,7 @@ test "run with absolute path respects file dir not cwd" {
     # contains a main.jac must execute the specified file, not the cwd's main.jac.
     tmpdir: str = tempfile.mkdtemp(prefix="jac_test_abspath_");
     original_cwd: str = os.getcwd();
+    original_main = sys.modules.get("__main__");
     captured_output = io.StringIO();
     try {
         parent_dir: str = os.path.join(tmpdir, "parent");
@@ -265,7 +266,11 @@ test "run with absolute path respects file dir not cwd" {
     } finally {
         sys.stdout = sys.__stdout__;
         os.chdir(original_cwd);
-        sys.modules.pop("__main__", None);
+        if original_main is not None {
+            sys.modules["__main__"] = original_main;
+        } else {
+            sys.modules.pop("__main__", None);
+        }
         shutil.rmtree(tmpdir, ignore_errors=True);
     }
     output = captured_output.getvalue();
