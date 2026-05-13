@@ -11,6 +11,10 @@ For creating client projects, use: `jac create --use client`
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, HookContext }
 import from jaclang.jac0core.runtime { hookimpl }
+import from jac_client.plugin.src.mobile_setup_env {
+    mobile_setup_platform_env_restore,
+    mobile_setup_platform_env_swap
+}
 import os;
 
 glob registry = get_registry();
@@ -19,6 +23,7 @@ glob registry = get_registry();
 # Import base target classes - this should trigger annex pass to auto-discover .impl.jac files
 import from jac_client.plugin.src.targets.desktop_target { DesktopTarget }
 import from jac_client.plugin.src.targets.web_target { WebTarget }
+import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
 import from jac_client.plugin.src.targets.register { register_targets }
 
 with entry {
@@ -40,16 +45,16 @@ with entry {
             "client",
             typ=str,
             default="web",
-            help="Build client (web, desktop, pwa)",
-            choices=["web", "desktop", "pwa"],
+            help="Build client (web, desktop, pwa, mobile)",
+            choices=["web", "desktop", "pwa", "mobile"],
             short=""  # Disable auto-generated -t (may conflict with other plugins)
         ),
         Arg.create(
             "platform",
             typ=str,
             default=None,
-            help="Platform for desktop builds (windows, macos, linux, all)",
-            choices=["windows", "macos", "linux", "all"],
+            help="Platform for desktop/mobile builds (windows, macos, linux, all, android, ios)",
+            choices=["windows", "macos", "linux", "all", "android", "ios"],
             short="p"  # Use -p for platform
         ),
 
@@ -59,6 +64,8 @@ with entry {
         ("jac build main.jac", "Build specific file"),
         ("jac build --client pwa", "Build PWA (Progressive Web App)"),
         ("jac build --client desktop", "Build desktop app"),
+        ("jac build --client mobile --platform android", "Build Android mobile app"),
+        ("jac build --client mobile --platform ios", "Build iOS mobile app"),
         ("jac build --client desktop --platform windows", "Build for Windows"),
 
     ],
@@ -72,7 +79,13 @@ def build(
     return 0;
 }
 
-"""Register 'setup' command at module level."""
+"""Register 'setup' command at module level.
+
+Note: --platform is wired in via extend_command (see create_cmd) so it survives
+when a higher-priority plugin (e.g. jac-scale) replaces this spec — primary
+args on a spec are spec-local, but extension args are preserved across
+priority replacement by the registry.
+"""
 @registry.command(
     name="setup",
     help="Setup a build target (one-time initialization)",
@@ -82,21 +95,29 @@ def build(
         ),
 
     ],
-    examples=[("jac setup desktop", "Setup desktop target (Tauri)"), ],
+    examples=[
+        ("jac setup desktop", "Setup desktop target (Tauri)"),
+        ("jac setup mobile", "Setup mobile target (default platform)"),
+        ("jac setup mobile --platform ios", "Setup iOS scaffold only"),
+        ("jac setup mobile --platform all", "Setup both Android and iOS (macOS)")
+    ],
     group="project",
     source="jac-client"
 )
-def setup(target: str) -> int {
+def setup(target: str, platform: str | None = None) -> int {
     # This will be handled by the pre_hook
     return 0;
 }
 
 """Jac CLI extensions for client-side development."""
 class JacCmd {
-    """Create Jac CLI cmds."""
+    """Create Jac CLI cmds.
+
+    Extends core commands (create/add/remove/start/build/setup) with client-side
+    behavior; see ``create_cmd`` implementation.
+    """
     @hookimpl
     static def create_cmd {
-        """Extend core commands to add --npm flag for npm package management.""";
         registry = get_registry();
 
         # Extend the core 'create' command with --skip flag for client template
@@ -152,9 +173,26 @@ class JacCmd {
             command_name="build", pre_hook=_handle_build_target, source="jac-client"
         );
 
-        # Add pre-hook to setup command (command is registered at module level)
+        # Add pre-hook + --platform to setup command. Registering --platform via
+        # extend_command (instead of inline on the @registry.command above) keeps
+        # the arg attached when a higher-priority plugin re-registers `setup`
+        # (e.g. jac-scale's microservice handler). See registry.impl.jac for the
+        # corresponding extra_args preservation logic.
         registry.extend_command(
-            command_name="setup", pre_hook=_handle_setup_target, source="jac-client"
+            command_name="setup",
+            args=[
+                Arg.create(
+                    "platform",
+                    typ=str,
+                    default=None,
+                    help="Platform for mobile setup (android, ios, all)",
+                    choices=["android", "ios", "all"],
+                    short="p"
+                ),
+
+            ],
+            pre_hook=_handle_setup_target,
+            source="jac-client"
         );
 
         # Extend 'start' command with --client flag
@@ -167,9 +205,30 @@ class JacCmd {
                         "client",  # Use client to avoid conflict with jac-scale's --client
                         typ=str,
                         default="web",
-                        help="Client build target for dev server (web, desktop, pwa)",
-                        choices=["web", "desktop", "pwa"],
+                        help="Client build target for dev server (web, desktop, pwa, mobile)",
+                        choices=["web", "desktop", "pwa", "mobile"],
                         short=""  # Disable auto-generated short flag
+                    ),
+                    Arg.create(
+                        "host",
+                        typ=str,
+                        default="",
+                        help=(
+                            "Mobile dev (--client mobile --dev): optional host/IP override for "
+                            "Capacitor live-reload. When omitted, jac auto-selects a host."
+                        ),
+                        short=""
+                    ),
+                    Arg.create(
+                        "platform",
+                        typ=str,
+                        default="auto",
+                        help=(
+                            "Mobile start/dev: android or ios (auto = use [plugins.client.mobile] "
+                            "default_platform or android)"
+                        ),
+                        choices=["auto", "android", "ios"],
+                        short=""
                     ),
 
                 ],
@@ -450,29 +509,61 @@ def _handle_start_target(ctx: HookContext) -> None {
     # Store target info in context
     ctx.set_data("start_client_target", target);
 
-    api_port = ctx.get_arg("port", 8000);
+    # Match core `jac start`: in --dev, `port` is the Vite (frontend) port and `api_port` is
+    # the API port (0 = use port+1). In non-dev, `port` is the single server port (API / preview).
+    start_port = ctx.get_arg("port", 8000);
+    if start_port is None {
+        start_port = 8000;
+    }
+    start_api = ctx.get_arg("api_port", 0);
+    if start_api is None {
+        start_api = 0;
+    }
 
     # Handle non-web targets (desktop, pwa) - they override dev/start behavior
     if target_name != "web" {
         # Check if target requires setup
         if target.requires_setup {
-            tauri_dir = project_dir / "src-tauri";
-            if not tauri_dir.exists() {
-                console.error(
-                    f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
-                );
-                ctx.set_data("cancel_execution", True);
-                ctx.set_data("cancel_return_code", 1);
-                return;
+            if target_name == "desktop" {
+                tauri_dir = project_dir / "src-tauri";
+                if not tauri_dir.exists() {
+                    console.error(
+                        f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
+                    );
+                    ctx.set_data("cancel_execution", True);
+                    ctx.set_data("cancel_return_code", 1);
+                    return;
+                }
+            } elif target_name == "mobile" {
+                android_dir = project_dir / "android";
+                ios_dir = project_dir / "ios";
+                if not android_dir.exists() and not ios_dir.exists() {
+                    console.error(
+                        f"Target '{target_name}' not set up. Run 'jac setup {target_name}' first."
+                    );
+                    ctx.set_data("cancel_execution", True);
+                    ctx.set_data("cancel_return_code", 1);
+                    return;
+                }
             }
         }
         try {
+            if target_name == "mobile" {
+                os.environ["JAC_MOBILE_PLATFORM"] = str(
+                    ctx.get_arg("platform", "auto")
+                );
+            }
             if dev_mode {
+                if target_name == "mobile" {
+                    os.environ["JAC_MOBILE_DEV_HOST"] = str(ctx.get_arg("host", ""));
+                }
                 # Use target's dev() method (polymorphic dispatch)
-                target.dev(entry_path, project_dir, api_port=api_port);
+                target.dev(
+                    entry_path, project_dir, port=start_port, api_port=start_api
+                );
             } else {
                 # Use target's start() method (polymorphic dispatch)
-                target.start(entry_path, project_dir, api_port=api_port);
+                target.start(entry_path, project_dir, api_port=start_port);
             }
             ctx.set_data("cancel_execution", True);
             ctx.set_data("cancel_return_code", 0);
@@ -501,12 +592,20 @@ def _handle_setup_target(ctx: HookContext) -> None {
 
     factory = get_target_factory();
 
-    target_name = ctx.get_arg("target", None);
+    # `target` is jac-client's positional; `subcommand` is what jac-scale's
+    # higher-priority `setup` spec exposes. Reading both keeps us routable no
+    # matter which plugin wins the surface registration.
+    target_name = ctx.get_arg("target", None) or ctx.get_arg("subcommand", None);
+    available_targets = factory.get_available_target_names();
+    if target_name and target_name not in available_targets {
+        # Unknown to us — let another plugin's handler claim it (e.g. jac-scale's
+        # `jac setup microservice`). Do NOT cancel.
+        return;
+    }
     if not target_name {
         console.error("No target specified. Use: jac setup <target>");
         console.print(
-            f"Available targets: {', '.join(factory.get_available_target_names())}",
-            style="muted"
+            f"Available targets: {', '.join(available_targets)}", style="muted"
         );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
@@ -538,7 +637,13 @@ def _handle_setup_target(ctx: HookContext) -> None {
         return;
     }
 
-    # Setup using target's setup method (polymorphic dispatch)
+    # Setup using target's setup method (polymorphic dispatch).
+    # JAC_MOBILE_SETUP_PLATFORM is set/restored in mobile_setup_env (swap/restore).
+    setup_platform = ctx.get_arg("platform", None);
+    prev_setup_platform_env = None;
+    if target_name == "mobile" and setup_platform {
+        prev_setup_platform_env = mobile_setup_platform_env_swap(str(setup_platform));
+    }
     try {
         console.print(
             f"Setting up target '{target_name}' in: {project_dir}", style="muted"
@@ -554,6 +659,22 @@ def _handle_setup_target(ctx: HookContext) -> None {
                 );
                 console.print(
                     "This may indicate the setup function failed silently.",
+                    style="muted"
+                );
+                ctx.set_data("cancel_execution", True);
+                ctx.set_data("cancel_return_code", 1);
+                return;
+            }
+        }
+        if target_name == "mobile" {
+            android_dir = project_dir / "android";
+            ios_dir = project_dir / "ios";
+            if not android_dir.exists() and not ios_dir.exists() {
+                console.error(
+                    "Setup completed but neither android/ nor ios/ directory was found."
+                );
+                console.print(
+                    "This may indicate mobile setup did not complete successfully.",
                     style="muted"
                 );
                 ctx.set_data("cancel_execution", True);
@@ -590,6 +711,10 @@ def _handle_setup_target(ctx: HookContext) -> None {
         console.print(traceback.format_exc(), style="muted");
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);
+    } finally {
+        if target_name == "mobile" and setup_platform {
+            mobile_setup_platform_env_restore(prev_setup_platform_env);
+        }
     }
 }
 

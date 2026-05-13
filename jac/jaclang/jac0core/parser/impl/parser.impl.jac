@@ -3363,6 +3363,13 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
+    # JSX block comment: {#* ... *#} — renders nothing, but kept in the AST
+    # so the formatter can round-trip it.
+    if self.check(TokenKind.JSX_COMMENT) {
+        cmt_tok = self.advance();
+        cmt_node = self.make_uni_token(cmt_tok);
+        return JsxComment(value=cmt_node, kid=[cmt_node]);
+    }
     # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {

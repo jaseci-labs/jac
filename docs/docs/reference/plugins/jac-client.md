@@ -1123,6 +1123,28 @@ def:pub JsxExamples() -> JsxElement {
 }
 ```
 
+### Comments inside JSX
+
+Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac format`:
+
+```jac
+to cl:
+
+def:pub App() -> JsxElement {
+    return <div>
+        <h1>Hello</h1>
+        {#* TODO: replace with a custom Button component *#}
+        <button>Click me</button>
+    </div>;
+}
+```
+
+A few rules to keep in mind:
+
+- **Line comments don't work in JSX text.** A `#` outside an expression slot is treated as literal text -- HTML allows `#` in content, so the lexer can't reinterpret it. Wrap the note in `{#* ... *#}` instead.
+- **The standard React form `{/* ... */}` is not supported.** Inside an expression slot, `/` and `*` parse as Jac operators, so a JSX comment must use Jac-native `{#* ... *#}`.
+- **`{#* ... *#}` is the only no-op JSX slot.** An empty `{}` is still a parse error -- the slot must contain either a real expression or a block comment.
+
 ---
 
 ## TypeScript Integration
@@ -1468,8 +1490,10 @@ Defaults to `true` for `jac build` and `false` for `jac start --dev`.
 | `jac start --dev` | Dev server with HMR |
 | `jac start --client pwa` | Start PWA (builds then serves) |
 | `jac start --client desktop` | Start desktop app in dev mode |
+| `jac start --client mobile` | Start mobile app on device/simulator |
 | `jac build` | Build for production (web) |
 | `jac build --client desktop` | Build desktop app |
+| `jac build --client mobile` | Build mobile app (Android/iOS) |
 | `jac build --client pwa` | Build PWA with offline support |
 | `jac setup desktop` | One-time desktop target setup (Tauri) |
 | `jac setup pwa` | One-time PWA setup (icons directory) |
@@ -1501,8 +1525,8 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`, `pwa`) | `web` |
-| `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+| `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
+| `-p, --platform` | Platform for desktop (`windows`, `macos`, `linux`, `all`) or mobile (`android`, `ios`) builds | Current platform |
 
 For desktop builds, the **client-only** variant (web bundle inside a Tauri shell, no bundled sidecar) is enabled by setting `client_only = true` under `[desktop]` in `jac.toml` rather than via a CLI flag -- see [Desktop Target → Client-Only Mode](#client-only-mode). In all desktop builds the build environment sets `JAC_BUILD=1` so import-time server starts stay inert.
 
@@ -1526,6 +1550,12 @@ jac build --client desktop --platform windows
 
 # Build for all platforms
 jac build --client desktop --platform all
+
+# Build mobile app for Android
+jac build --client mobile --platform android
+
+# Build mobile app for iOS
+jac build --client mobile --platform ios
 ```
 
 ### jac setup
@@ -1533,12 +1563,13 @@ jac build --client desktop --platform all
 One-time initialization for a build target.
 
 ```bash
-jac setup <target>
+jac setup <target> [-p PLATFORM]
 ```
 
 | Option | Description |
 |--------|-------------|
-| `target` | Target to setup (`desktop`, `pwa`) |
+| `target` | Target to setup (`desktop`, `mobile`, `pwa`) |
+| `-p, --platform` | Mobile setup platform (`android`, `ios`, `all`) |
 
 **Examples:**
 
@@ -1548,6 +1579,12 @@ jac setup desktop
 
 # Setup PWA target (creates pwa_icons/ directory)
 jac setup pwa
+
+# Setup mobile target for one platform only
+jac setup mobile --platform ios
+
+# Setup both mobile platforms (macOS only)
+jac setup mobile --platform all
 ```
 
 ### Extended Core Commands
@@ -1573,6 +1610,7 @@ jac-client supports building for multiple deployment targets from a single codeb
 |--------|---------|--------|----------------|
 | **Web** (default) | `jac build` | `.jac/client/dist/` | No |
 | **Desktop** (Tauri) | `jac build --client desktop` | Native installers | Yes |
+| **Mobile** (Capacitor) | `jac build --client mobile --platform android` | Android APK / iOS build products | Yes |
 | **PWA** | `jac build --client pwa` | Installable web app | No |
 
 ### Web Target (Default)
@@ -1743,6 +1781,67 @@ If you are debugging an "API not reachable" issue inside an installed desktop ap
 1. Run the sidecar binary directly from `src-tauri/binaries/` -- it logs to stderr and prints `JAC_SIDECAR_PORT=<port>` to stdout on startup.
 2. Use the **Debug** page in the `all-in-one` example app (under `examples/all-in-one/pages/debug.jac`), which shows the resolved API base URL, Tauri runtime detection, `get_api_url` invoke results, and interactive walker/HTTP probes.
 3. Check the data path the sidecar settled on -- it logs `[sidecar] Cannot use data path …` lines for any candidate it had to skip.
+
+### Mobile Target (Capacitor)
+
+Native mobile applications for Android and iOS using [Capacitor](https://capacitorjs.com/). The same web bundle the web target produces is wrapped in a native shell, producing an Android APK or an iOS app.
+
+**Prerequisites:**
+
+- Node.js (or Bun)
+- **Android**: Java/JDK 21+, Android SDK ([Android Studio](https://developer.android.com/studio))
+- **iOS** (macOS only): Xcode, Xcode Command Line Tools, [CocoaPods](https://cocoapods.org/)
+
+**Setup & Build:**
+
+```bash
+# 1. One-time setup (defaults from config / host)
+jac setup mobile
+
+# Optional explicit setup platform
+jac setup mobile --platform android
+jac setup mobile --platform ios     # macOS only
+jac setup mobile --platform all     # both on macOS
+
+# 2. Development: build and launch on device/simulator
+jac start main.jac --client mobile                    # Android (default)
+jac start main.jac --client mobile --platform ios
+
+# 3. Build for Android
+jac build --client mobile --platform android
+
+# 4. Build for iOS
+jac build --client mobile --platform ios
+```
+
+**Output:**
+
+- Android: APK in `android/app/build/outputs/apk/`
+- iOS: Xcode build products in `ios/App/build/`
+
+**Configuration** via `[plugins.client.mobile]` in `jac.toml`:
+
+```toml
+[plugins.client.mobile]
+app_name = "My App"
+app_id = "com.example.myapp"
+release = false          # true for release builds
+bundle = false           # true to produce AAB instead of APK (Android)
+default_platform = "android"  # default for jac start --client mobile
+ios_sdk = "iphonesimulator"   # or "iphoneos" for device builds
+ios_destination = "platform=iOS Simulator,name=iPhone 16,OS=latest"
+```
+
+**Notes:**
+
+- `jac setup mobile` uses `--platform` when provided, otherwise `[plugins.client.mobile].default_platform`, otherwise host default (`ios` on macOS, `android` elsewhere).
+- Mobile dev networking is auto-resolved by default; use `--host <ip>` only when you need to force a specific host.
+- Android mobile dev auto-attempts `adb reverse` for Vite/API ports before launching Capacitor.
+- iOS device builds and App Store archives require Xcode provisioning profiles. Use `npx cap open ios` to open the project in Xcode for signing configuration.
+- Android release builds and signing require a keystore configured in `android/app/build.gradle`.
+- Native Capacitor plugins (camera, geolocation, etc.) can be added via `jac add --npm @capacitor/<plugin>` followed by `npx cap sync`.
+
+For a step-by-step tutorial, see [Building a Mobile App](../../tutorials/fullstack/mobile.md).
 
 ### PWA Target
 

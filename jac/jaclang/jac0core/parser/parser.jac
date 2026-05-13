@@ -183,7 +183,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
