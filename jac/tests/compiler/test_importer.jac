@@ -245,7 +245,6 @@ test "compiler separates internal from user modules" {
 }
 
 test "run with absolute path respects file dir not cwd" {
-    # Regression: `jac run /abs/path/sub/main.jac` from a parent dir that also
     # contains a main.jac must execute the specified file, not the cwd's main.jac.
     tmpdir: str = tempfile.mkdtemp(prefix="jac_test_abspath_");
     original_cwd: str = os.getcwd();
