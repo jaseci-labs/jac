@@ -784,6 +784,128 @@ The response strips internal fields (`credentials`, `password_hash`, `value_norm
 
 Returns `401 UNAUTHORIZED` for a missing or expired token, `404 NOT_FOUND` if the user has been deleted but the token is still valid.
 
+### Identity Management & Password Reset
+
+In addition to the static identities supplied at registration, users can attach more identities (e.g. add an email to a username-registered account), verify them via emailed links, and reset their password through a single-use token. All four endpoints share the same `Emailer` plug-in (see [Emailer](#emailer)); if no emailer is configured, identity additions still work for non-email types and password reset is disabled.
+
+**Tokens are:**
+
+- **Random** 32-byte URL-safe strings issued per request.
+- **SHA256-hashed at rest** so the raw token never lives in the database.
+- **Single-use**: consumed on first successful redeem, all other outstanding reset tokens for the same user are revoked on a successful password reset.
+- **TTL-bounded**: defaults are 24h for verify, 30min for reset; both configurable.
+- Stored in MongoDB with a TTL index when MongoDB is configured, in-process otherwise.
+
+Configure TTLs and the URLs the emails should point at:
+
+```toml
+[plugins.scale.auth]
+verify_token_ttl_seconds = 86400    # 24h
+reset_token_ttl_seconds  = 1800     # 30min
+verify_url_template      = "https://app.example.com/verify?token={token}"
+reset_url_template       = "https://app.example.com/reset?token={token}"
+```
+
+The `{token}` placeholder in each template is replaced with the raw token before the email is sent. Leave a template empty to receive the bare token in the email body (useful in tests/dev).
+
+#### Add Identity
+
+Attach a new identity to the authenticated user. Email identities trigger a verification email and start unverified; username identities are added immediately.
+
+```bash
+curl -X POST http://localhost:8000/user/add-identity \
+  -H "Authorization: Bearer <token>" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identity": {"type": "email", "value": "alice@example.com"},
+    "is_recovery": true
+  }'
+```
+
+Returns HTTP 202 for email identities (verification email queued):
+
+```json
+{
+  "ok": true,
+  "data": {"status": "pending_verification", "verified": false, "email_sent": true},
+  "meta": {"extra": {"http_status": 202}}
+}
+```
+
+Returns HTTP 200 for non-email identities (added immediately).
+
+Errors: `401 UNAUTHORIZED`, `409 IDENTITY_TAKEN`, `503 EMAIL_DISABLED` (email type when no emailer is configured), `404 NOT_FOUND`.
+
+#### Verify Identity
+
+Consume the verification token delivered in the email. No Bearer token required; the verification token _is_ the credential.
+
+```bash
+curl -X POST http://localhost:8000/user/verify-identity \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<verification-token-from-email>"}'
+```
+
+Returns HTTP 200:
+
+```json
+{
+  "ok": true,
+  "data": {"status": "verified", "identity": "alice@example.com"},
+  "meta": {"extra": {"http_status": 200}}
+}
+```
+
+Errors: `400 INVALID_TOKEN` (expired, already-consumed, or unknown).
+
+#### Forgot Password
+
+Issue a one-time reset token to the user's verified recovery email. **Always returns HTTP 200** regardless of whether the account exists, to avoid leaking account existence to a probing attacker.
+
+```bash
+curl -X POST http://localhost:8000/user/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"identity": {"type": "email", "value": "alice@example.com"}}'
+```
+
+Always returns:
+
+```json
+{
+  "ok": true,
+  "data": {
+    "status": "ok",
+    "message": "If that account exists, a reset link has been sent."
+  },
+  "meta": {"extra": {"http_status": 200}}
+}
+```
+
+#### Reset Password
+
+Consume the reset token (delivered to the recovery email) and set a new password. Other outstanding reset tokens for the same user are revoked on success.
+
+```bash
+curl -X POST http://localhost:8000/user/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{
+    "token": "<reset-token-from-email>",
+    "new_password": "newSecret123"
+  }'
+```
+
+Returns HTTP 200:
+
+```json
+{
+  "ok": true,
+  "data": {"status": "password_reset"},
+  "meta": {"extra": {"http_status": 200}}
+}
+```
+
+Errors: `400 INVALID_TOKEN`.
+
 ### Auth Endpoint Summary
 
 | Method | Path | Auth Required | Description |
@@ -793,11 +915,217 @@ Returns `401 UNAUTHORIZED` for a missing or expired token, `404 NOT_FOUND` if th
 | POST | `/user/refresh-token` | No (token in body) | Refresh an existing JWT |
 | GET | `/user/me` | Yes (Bearer) | Get the authenticated user's profile |
 | PUT | `/user/password` | Yes (Bearer) | Update password |
+| POST | `/user/add-identity` | Yes (Bearer) | Attach an email/username identity to the current user |
+| POST | `/user/verify-identity` | No (token in body) | Confirm an email identity via the token sent by email |
+| POST | `/user/forgot-password` | No | Start the password-reset flow (always returns 200) |
+| POST | `/user/reset-password` | No (token in body) | Consume a reset token and set a new password |
 | GET | `/sso/{platform}/{operation}` | No | Initiate SSO flow |
 | GET/POST | `/sso/{platform}/callback` | No | SSO callback handler |
 | POST | `/api-key/create` | Yes (Bearer) | Create an API key |
 | GET | `/api-key/list` | Yes (Bearer) | List API keys |
 | DELETE | `/api-key/{api_key_id}` | Yes (Bearer) | Revoke an API key |
+
+---
+
+## Emailer
+
+jac-scale's `Emailer` is a thin abstraction (`jac_scale.abstractions.emailer.Emailer`) used by the framework to send verification and password-reset emails. It ships with a built-in SMTP implementation and accepts any user-supplied subclass via `jac.toml` -- no jac-scale code changes required.
+
+### Configuration
+
+```toml
+[plugins.scale.emailer]
+provider     = "smtp"                   # 'smtp', a registered short name, or 'pkg.module:ClassName'
+from_address = "no-reply@example.com"
+enabled      = true                     # set false to disable email features without removing config
+```
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `provider` | Resolution token. `"smtp"` selects the built-in SMTPEmailer, any other registered short name selects a class registered via `emailer_factory.register()`, and `"pkg.module:ClassName"` is dynamically imported. Empty means email is disabled. | `""` (disabled) |
+| `from_address` | Default `From:` address used when a handler doesn't override `from_addr`. | `""` |
+| `enabled` | Soft kill-switch; the framework treats the emailer as disabled when `false`. | `true` |
+
+### Resolution Order
+
+The factory resolves `provider` in this order:
+
+1. `"smtp"` → built-in `SMTPEmailer` (uses the `[plugins.scale.emailer.smtp]` table).
+2. A name registered programmatically via `emailer_factory.register(name, cls)`.
+3. A `"pkg.module:ClassName"` (or fallback `"pkg.module.ClassName"`) string is imported via `importlib`, validated as a subclass of `Emailer`, and instantiated with the resolved config dict.
+
+If `provider` is empty or import/validation fails, the factory returns `None` and the framework logs that email features are disabled.
+
+### Built-in SMTP
+
+```toml
+[plugins.scale.emailer]
+provider     = "smtp"
+from_address = "no-reply@example.com"
+
+[plugins.scale.emailer.smtp]
+host     = "smtp.example.com"
+port     = 587
+username = "apikey"
+# password = "..."          # or set EMAILER_SMTP_PASSWORD env var (preferred)
+use_tls  = true
+timeout  = 10.0
+```
+
+| SMTP key | Description | Default |
+|----------|-------------|---------|
+| `host` | SMTP server hostname | `localhost` |
+| `port` | SMTP port | `25` |
+| `username` | SMTP auth username | `""` |
+| `password` | SMTP auth password. **Prefer the `EMAILER_SMTP_PASSWORD` env var.** | `""` |
+| `use_tls` | STARTTLS upgrade after connect | `true` |
+| `timeout` | Connection timeout in seconds | `10.0` |
+
+### Custom Emailer (Python or Jac)
+
+Subclass `Emailer` and point `provider` at your class. The factory imports it dynamically at server startup and instantiates it with the full emailer config dict.
+
+```python
+# myapp/email.py
+from jac_scale.abstractions.emailer import Emailer
+import os, sendgrid
+
+class SendGridEmailer(Emailer):
+    def postinit(self):
+        self._client = sendgrid.SendGridAPIClient(api_key=os.environ["SENDGRID_API_KEY"])
+
+    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None):
+        # ... use self._client to send ...
+        return True
+
+    def is_ready(self):
+        return self.enabled and self._client is not None
+```
+
+```toml
+[plugins.scale.emailer]
+provider     = "myapp.email:SendGridEmailer"
+from_address = "no-reply@example.com"
+```
+
+The constructor receives the resolved config dict, so any extra TOML keys you put under `[plugins.scale.emailer.<your_section>]` are available via `self.config`. Keep secrets (API keys, passwords) in environment variables -- the constructor can read `os.environ` directly.
+
+### Examples
+
+#### Example 1 -- Built-in SMTP (default emailer)
+
+Use this when you have an SMTP relay already (Gmail, AWS SES SMTP interface, your own postfix, etc.). No custom code required.
+
+```toml
+# jac.toml
+[plugins.scale.emailer]
+provider     = "smtp"
+from_address = "no-reply@example.com"
+
+[plugins.scale.emailer.smtp]
+host     = "smtp.gmail.com"
+port     = 587
+username = "no-reply@example.com"
+use_tls  = true
+
+[plugins.scale.auth]
+verify_token_ttl_seconds = 86400
+reset_token_ttl_seconds  = 1800
+verify_url_template      = "https://app.example.com/verify?token={token}"
+reset_url_template       = "https://app.example.com/reset?token={token}"
+```
+
+Export the password before starting the server:
+
+```bash
+export EMAILER_SMTP_PASSWORD="<app-password>"
+jac start
+```
+
+Test the flow end to end:
+
+```bash
+# 1) Register
+curl -X POST http://localhost:8000/user/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "identities": [{"type": "email", "value": "alice@example.com"}],
+    "credential": {"type": "password", "password": "secret"}
+  }'
+
+# 2) Trigger forgot-password (always returns 200)
+curl -X POST http://localhost:8000/user/forgot-password \
+  -H "Content-Type: application/json" \
+  -d '{"identity": {"type": "email", "value": "alice@example.com"}}'
+
+# 3) Click the link in the email; the frontend pulls the token out of the
+#    URL and posts it back:
+curl -X POST http://localhost:8000/user/reset-password \
+  -H "Content-Type: application/json" \
+  -d '{"token": "<token-from-email>", "new_password": "brandNew123"}'
+```
+
+#### Example 2 -- Custom SendGrid emailer
+
+Use this when you want SendGrid's REST API instead of SMTP (better deliverability stats, templates, webhooks).
+
+```python
+# myapp/email.py
+from jac_scale.abstractions.emailer import Emailer
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
+import os, logging
+
+logger = logging.getLogger(__name__)
+
+class SendGridEmailer(Emailer):
+    def postinit(self):
+        api_key = os.environ.get("SENDGRID_API_KEY", "")
+        self._client = SendGridAPIClient(api_key=api_key) if api_key else None
+
+    def send_email(self, to_addr, subject, body_text, body_html=None, from_addr=None):
+        if self._client is None:
+            logger.warning("SendGrid client not configured; dropping email to %s", to_addr)
+            return False
+        msg = Mail(
+            from_email=from_addr or self.from_address,
+            to_emails=to_addr,
+            subject=subject,
+            plain_text_content=body_text,
+            html_content=body_html,
+        )
+        try:
+            resp = self._client.send(msg)
+            return 200 <= resp.status_code < 300
+        except Exception as e:
+            logger.error("SendGrid send failed: %s", e)
+            return False
+
+    def is_ready(self):
+        return self.enabled and self._client is not None
+```
+
+```toml
+# jac.toml
+[plugins.scale.emailer]
+provider     = "myapp.email:SendGridEmailer"
+from_address = "no-reply@example.com"
+
+[plugins.scale.auth]
+verify_token_ttl_seconds = 86400
+reset_token_ttl_seconds  = 1800
+verify_url_template      = "https://app.example.com/verify?token={token}"
+reset_url_template       = "https://app.example.com/reset?token={token}"
+```
+
+Run:
+
+```bash
+export SENDGRID_API_KEY="SG.xxxxxxxx"
+jac start
+```
+
+Run `jac start` from the directory containing `myapp/` so the package is importable. The factory verifies `issubclass(SendGridEmailer, Emailer)` at startup; on a typo or wrong base class it logs an error and disables email (the server keeps running).
 
 ---
 
