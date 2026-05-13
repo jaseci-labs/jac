@@ -150,6 +150,7 @@ impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
 """Get default configuration structure for client."""
 impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any] {
     return {
+        'base_path': '/',
         'api': {'base_url': ''},
         'vite': {
             'plugins': [],
@@ -228,6 +229,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
 
     # Build user config in the expected internal format
     user_config: dict[str, Any] = {
+        'base_path': client_config.get('base_path', '/'),
         'api': client_config.get('api', {}),
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),

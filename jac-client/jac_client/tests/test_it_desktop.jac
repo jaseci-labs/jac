@@ -27,7 +27,7 @@ import from subprocess { PIPE, Popen, run }
 import from urllib.error { HTTPError, URLError }
 import from urllib.request { Request, urlopen }
 
-import from .test_helpers {
+import from test_helpers {
     get_env_with_npm,
     get_free_port,
     get_jac_command,
