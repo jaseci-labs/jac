@@ -35,11 +35,7 @@ background_color = "#ffffff"
 TEST_SECRET_KEY = "${TEST_SECRET_KEY}"
 
 [plugins.scale.monitoring]
-# DIAGNOSTIC EXPERIMENT: turn off monitoring to free ~1.5-2GB on the kind
-# cluster node. Tests test_deploy_all_in_one's deep assertions on
-# Prometheus/Grafana/KSM/NE will fail instead of OOM, which tells us
-# whether node-memory-pressure is the actual cause of the OOM.
-enabled = false
+enabled = true
 namespace = "default"
 walker_metrics = true
 

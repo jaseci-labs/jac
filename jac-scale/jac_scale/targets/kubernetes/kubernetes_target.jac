@@ -204,14 +204,20 @@ obj KubernetesTarget(DeploymentTarget) {
             }
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
-            # Regular install (not editable): builds wheels from local source.
-            # Wheels carry whatever the build process generated (e.g. jaclang's
-            # _precompiled/ if precompile ran at build time). Editable installs
-            # symlink to source so package_data globs like `_precompiled/**/*.jir`
-            # only resolve if the dir exists in the source tree (which it doesn't
-            # for git clones). Regular install is also what production users do.
+            # Two-pass install + precompile. Each `jac run precompile_bytecode.jac`
+            # runs in a fresh Python subprocess where the just-installed packages
+            # are visible but later ones are not. That keeps jaclang's first-use
+            # compile peak isolated from the jac-scale plugin compile peak,
+            # which is what was OOM-killing the pod at 8Gi when both happened
+            # in the same process.
             commands.append('pip install ./jac');
+            commands.append(
+                'jac run jac/scripts/precompile_bytecode.jac "$(python -c "import jaclang,os;print(os.path.dirname(jaclang.__file__))")"'
+            );
             commands.append('pip install "./jac-scale[data,monitoring]"');
+            commands.append(
+                'jac run jac/scripts/precompile_bytecode.jac "$(python -c "import jac_scale,os;print(os.path.dirname(jac_scale.__file__))")"'
+            );
             commands.append('pip install ./jac-client');
             # jac-byllm + jac-mcp dropped from the unconditional install:
             # byllm pulls litellm -> tokenizers + huggingface-hub + hf_xet
