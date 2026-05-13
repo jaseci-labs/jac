@@ -654,3 +654,24 @@ test "bug_none_eq_neq_narrowing" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# =========================================================================
+# Bug #COMPR-NARROW: `T | None` narrowing did not reach comprehension
+# iterators or conditionals.
+#
+# `InnerCompr` is a `UniCFGNode` but is never wired into the CFG. A
+# reference to a narrowed symbol inside the comprehension's `collection`
+# or `conditional` walks up to the orphan `InnerCompr` and stops, missing
+# the narrowing established by an enclosing guard. Pyright and mypy treat
+# the comprehension as part of the enclosing flow scope; Jac now does too.
+# =========================================================================
+test "bug_comprehension_narrowing" {
+    program = compile_and_check("checker_bug_compr_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`T | None` narrowing established by an enclosing guard must "
+        "propagate into list/dict/set/gen comprehension iterators, out "
+        "expressions, and conditional clauses. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}

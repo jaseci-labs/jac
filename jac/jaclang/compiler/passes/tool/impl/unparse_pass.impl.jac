@@ -1159,6 +1159,11 @@ impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
+}
+
+"""JsxComment: emit the raw `{#* ... *#}` text verbatim."""
+impl UnparsePass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.jac = nd.value.value if isinstance(nd.value, uni.Token) else str(nd.value);
     # ── Match / Switch ───────────────────────────────────────────────────
 }
 

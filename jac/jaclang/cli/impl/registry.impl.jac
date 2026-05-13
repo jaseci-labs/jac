@@ -60,6 +60,15 @@ impl CommandRegistry.command(
             existing = self.commands[name];
             # Higher priority wins
             if priority.value > existing.priority.value {
+                # Preserve extensions registered via extend_command before the
+                # higher-priority plugin re-registered the command. Without this
+                # carry-over, a plugin that re-declares a command silently wipes
+                # any pre/post hooks and extension args other plugins attached
+                # to the existing spec (e.g. `jac setup mobile` would lose
+                # jac-client's _handle_setup_target dispatcher).
+                spec.pre_hooks = list(existing.pre_hooks) + spec.pre_hooks;
+                spec.post_hooks = list(existing.post_hooks) + spec.post_hooks;
+                spec.extra_args = list(existing.extra_args) + spec.extra_args;
                 self.commands[name] = spec;
             }
             # Same or lower priority - keep existing

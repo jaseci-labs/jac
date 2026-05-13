@@ -211,6 +211,7 @@ enum TokenKind {
     CONV = "CONV",
     F_FORMAT_TEXT = "F_FORMAT_TEXT",
     JSX_TEXT = "JSX_TEXT",
+    JSX_COMMENT = "JSX_COMMENT",
     JSX_OPEN_START = "JSX_OPEN_START",
     JSX_SELF_CLOSE = "/>",
     JSX_TAG_END = "JSX_TAG_END",
