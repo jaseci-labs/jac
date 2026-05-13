@@ -130,7 +130,7 @@ def create(
             "quiet", typ=bool, default=False, help="Suppress pip output", short="q"
         ),
         Arg.create(
-            "prefer_binary",
+            "prefer-binary",
             typ=bool,
             default=False,
             help="Prefer wheel files over source distributions",

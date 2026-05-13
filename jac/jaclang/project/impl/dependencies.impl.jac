@@ -16,6 +16,9 @@ impl DependencyInstaller.postinit -> None {
         );
     }
     self.venv_dir = self.config.get_venv_dir();
+    if self.install_flags is None {
+        self.install_flags = [];
+    }
 }
 
 impl DependencyInstaller.ensure_venv -> None {
@@ -189,7 +192,6 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     );
     if returncode == 0 {
         if "--dry-run" in self.install_flags {
-            console.print("✔ Dry run complete (nothing installed):", style="success");
             if stdout {
                 console.print(stdout, style="dim");
             }

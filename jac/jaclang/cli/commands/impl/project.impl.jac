@@ -374,31 +374,22 @@ impl install(
         console.error("No jac.toml found", hint=hint);
         return 1;
     }
-    install_flags: list[str] = [];
-    if upgrade {
-        install_flags.append("--upgrade");
-    }
-    if force_reinstall {
-        install_flags.append("--force-reinstall");
-    }
-    if no_cache_dir {
-        install_flags.append("--no-cache-dir");
-    }
-    if pre {
-        install_flags.append("--pre");
-    }
-    if dry_run {
-        install_flags.append("--dry-run");
-    }
-    if no_deps {
-        install_flags.append("--no-deps");
-    }
-    if quiet {
-        install_flags.append("-q");
-    }
-    if prefer_binary {
-        install_flags.append("--prefer-binary");
-    }
+    flag_defs: list = [
+        (upgrade, "--upgrade"),
+        (force_reinstall, "--force-reinstall"),
+        (no_cache_dir, "--no-cache-dir"),
+        (pre, "--pre"),
+        (dry_run, "--dry-run"),
+        (no_deps, "--no-deps"),
+        (quiet, "--quiet"),
+        (prefer_binary, "--prefer-binary"),
+
+    ];
+    install_flags: list[str] = [
+        flag
+        for (enabled, flag) in flag_defs
+        if enabled
+    ];
     installer = DependencyInstaller(
         config=config, verbose=verbose, install_flags=install_flags
     );
@@ -500,8 +491,7 @@ impl install(
     }
     # Install plugin dependencies (npm, etc.)
     if dry_run {
-        console.print("  ✔ Dry run complete (nothing installed).", style="success");
-        return 0;
+        return 0 if install_success else 1;
     }
     plugin_failed = False;
     for (type_name, dep_type) in plugin_types.items() {
