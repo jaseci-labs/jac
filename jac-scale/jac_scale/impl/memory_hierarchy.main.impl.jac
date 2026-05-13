@@ -148,7 +148,13 @@ running the correct merge-aware sync() + L2 update.
 """
 impl ScaleTieredMemory.acommit(anchor: (Anchor | None) = None) -> None {
     import asyncio;
-    await asyncio.to_thread(self.commit);
+    if anchor is None and self._committed {
+        return;
+    }
+    await asyncio.to_thread(self.commit, anchor);
+    if anchor is None {
+        self._committed = True;
+    }
 }
 
 """Close all backends."""

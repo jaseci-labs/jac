@@ -241,6 +241,34 @@ test "E0025: empty body recovers without crash" {
     assert has_diagnostic_code(prog, "E0025");
 }
 
+# ── E0027: forward typed connection missing :+> ──────────────────────
+test "E0027: +>: EdgeType without :+> closer emits E0027" {
+    (prog, _) = compile_only("parser_E0027_forward_missing_close.jac");
+    assert has_diagnostic_code(prog, "E0027");
+}
+
+test "E0027: complete +>: EdgeType :+> does not fire" {
+    (prog, had_err) = parse_with_prog(
+        'node N {} edge F {} with entry { n1=N(); n2=N(); n1 +>: F :+> n2; }'
+    );
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0027");
+}
+
+# ── E0028: backward typed connection missing :<+ ─────────────────────
+test "E0028: <+: EdgeType without :<+ closer emits E0028" {
+    (prog, _) = compile_only("parser_E0028_backward_missing_close.jac");
+    assert has_diagnostic_code(prog, "E0028");
+}
+
+test "E0028: complete <+: EdgeType :<+ does not fire" {
+    (prog, had_err) = parse_with_prog(
+        'node N {} edge F {} with entry { n1=N(); n2=N(); n1 <+: F :<+ n2; }'
+    );
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0028");
+}
+
 
 test "E0052: missing type annotation on parameter" {
     (has_err, prog) = parse_and_validate('def foo(x) { }');

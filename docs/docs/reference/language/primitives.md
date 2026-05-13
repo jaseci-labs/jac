@@ -559,6 +559,7 @@ Every primitive type can be constructed explicitly:
 | `open(file, mode)` | Open a file |
 | `format(value, spec)` | Format a value |
 | `ascii(obj)` | ASCII representation |
+| `new(cls, ...args)` | Portable constructor: `cls(*args)` on the server; `Reflect.construct(cls, [args])` in `cl` blocks |
 
 ---
 

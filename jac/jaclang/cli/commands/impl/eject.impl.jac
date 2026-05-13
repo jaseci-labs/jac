@@ -10,7 +10,6 @@ jaclang dependency".
 """
 
 import shutil;
-import tomllib;
 import json;
 import re;
 import from pathlib { Path }
@@ -77,13 +76,8 @@ def load_eject_project_metadata(src: Path) -> dict {
     if not toml_path.exists() {
         raise FileNotFoundError(f"No jac.toml found in {src}");
     }
-    try {
-        with open(toml_path, "rb") as f {
-            toml_data = tomllib.load(f);
-        }
-    } except Exception as e {
-        raise RuntimeError(f"Failed to parse {toml_path}: {e}");
-    }
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
+    toml_data = read_toml_with_encoding(str(toml_path));
     project_section = toml_data.get("project", {});
     raw_name = project_section.get("name", "") or "";
     # Fall back to the source directory name if jac.toml has the unrendered

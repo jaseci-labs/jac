@@ -1,0 +1,63 @@
+# .dockerignore for the jaseci repo root. Keeps the docker build context
+# bounded - without this, `.git` (~860MB) + caches push past 2GB and the
+# build times out before any layer runs.
+
+# Git + CI + editor + OS metadata
+.git
+.gitignore
+.gitattributes
+.github
+.vscode
+.idea
+.DS_Store
+*.swp
+*.swo
+*~
+
+# Python build / cache artifacts
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/*.egg-info
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.coverage
+**/htmlcov
+**/.tox
+**/.venv
+**/venv
+
+# Python build outputs - anchored so `**/dist` doesn't drop `.jac/client/dist`.
+/dist
+/build
+jac/dist
+jac/build
+jac-scale/dist
+jac-scale/build
+*.tar.gz
+*.whl
+
+# Jac runtime artifacts. Specific subdirs - blanket `**/.jac` would
+# silently drop the FE bundle at `.jac/client/dist`.
+**/.jac/cache
+**/.jac/data
+**/.jac/logs
+**/.jac/run
+**/.jac/__pycache__
+**/__jac_gen__
+
+# Frontend
+**/node_modules
+**/.vite
+**/.next
+**/.turbo
+
+# Working docs / secrets / test artifacts
+.local-docs
+.env
+.env.*
+.envrc
+*.local
+**/test-results
+**/playwright-report

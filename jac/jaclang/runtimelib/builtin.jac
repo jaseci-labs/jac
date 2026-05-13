@@ -65,6 +65,16 @@ def restspec(**specs: Any) -> Callable;
 
 def schedule(**kwargs: Any) -> Callable;
 
+"""Portable constructor: returns ``cls(*args)``.
+
+On the server this is just a thin alias for direct instantiation, so the
+same source code can be written once and used in any codespace. In a
+``cl { ... }`` block this same call lowers to
+``Reflect.construct(cls, [args])`` (the JS spelling for ``new cls(...)``),
+since JavaScript classes require ``new``.
+"""
+def new(cls: Any, *args: Any) -> Any;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -76,6 +86,7 @@ glob __all__ = [
          'commit',
          'store',
          'llm',
+         'new',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',

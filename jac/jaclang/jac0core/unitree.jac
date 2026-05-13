@@ -1295,6 +1295,19 @@ obj JsxExpression(JsxChild) {
     def postinit -> None;
 }
 
+"""JsxComment node type for Jac Ast.
+
+Represents a Jac-native JSX block comment of the form ``{#* ... *#}``.
+The whole brace-wrapped span is owned by this node so the formatter can
+round-trip the comment verbatim; codegen passes treat it as a no-op
+child and emit nothing.
+"""
+obj JsxComment(JsxChild) {
+    has value: Token;
+
+    def postinit -> None;
+}
+
 """MatchStmt node type for Jac Ast."""
 obj MatchStmt(CodeBlockStmt) {
     has target: Expr,

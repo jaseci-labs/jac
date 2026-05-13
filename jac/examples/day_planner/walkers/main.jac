@@ -11,12 +11,10 @@ def:pub app -> JsxElement {
 
 to sv:
 
-# --- Enums ---
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
 enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
 
-# --- AI Types ---
 obj Ingredient {
     has name: str,
         quantity: float,
@@ -34,7 +32,6 @@ sem categorize = "Categorize a task based on its title";
 def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
 sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
-# --- Data Nodes ---
 node Task {
     has title: str,
         done: bool = False,
@@ -49,7 +46,6 @@ node ShoppingItem {
         carby: bool;
 }
 
-# --- Task Walkers ---
 walker:priv AddTask {
     has title: str,
         reports: list[Task] = [];
@@ -111,7 +107,6 @@ walker:priv DeleteTask {
     }
 }
 
-# --- Shopping List Walkers ---
 walker:priv GenerateShoppingList {
     has meal_description: str,
         reports: list[list[ShoppingItem]] = [];

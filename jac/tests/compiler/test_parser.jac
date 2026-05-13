@@ -16,7 +16,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { CodeContext }
 import from jaclang.jac0core.parser { parse as rd_parse }
 import from jaclang.jac0core.program { JacProgram }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.jac0core.helpers { read_file_with_encoding }
 import from jaclang.runtimelib.test { parametrize }
 import from tests.fixtures_list { MICRO_JAC_FILES }
 
@@ -134,24 +134,23 @@ test "param syntax" {
 }
 
 test "new keyword errors" {
-    # Parser emits 'Missing ;' (treats 'new' as identifier, so 'new car(...)' is
-    # two expressions). ASTValidationPass then catches 'new' as a banned keyword.
+    # `new` is an ambient builtin in Jac (callable as `new(Cls, ...args)`),
+    # so JS-style `new Cls(args)` usage no longer parses. The parser detects
+    # the offending shape ("bare `new` followed by another atom in
+    # statement-terminator position") and emits the migration-friendly
+    # `E0012` instead of the cascade of `Missing ';'` errors users used to
+    # see. Each of the two offending lines in the fixture should produce
+    # one `E0012`.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
     prog.compile(os.path.join(FIXTURES, "new_keyword_err.jac"));
     sys.stdout = sys.__stdout__;
-    assert len(prog.errors_had) == 4;
-    expected_substrings = [
-        "Missing ';'",
-        "Missing ';'",
-        "'new' is not supported in Jac",
-        "'new' is not supported in Jac",
-
-    ];
-    for (alrt, expected) in zip(prog.errors_had, expected_substrings, strict=True) {
+    assert len(prog.errors_had) == 2;
+    for alrt in prog.errors_had {
+        assert alrt.code is not None and alrt.code.code == "E0012";
         pretty = alrt.pretty_print();
-        assert expected in pretty;
+        assert "`new(target, ...args)`" in pretty;
     }
 }
 
@@ -491,6 +490,61 @@ to cl:
     assert isinstance(mod.body[1], uni.ClientBlock);
     assert mod.body[1].implicit;
     assert len(mod.body[1].body) == 0;
+}
+
+test "docstring before context prefix" {
+    # Regression: a """docstring""" placed before a `cl`/`sv`/`na` prefix used
+    # to fail with E0005 because the docstring-prefix dispatcher in
+    # parse_element_stmt only knew about the bare declaration keywords
+    # (def/can/obj/node/...) — not the context prefixes. With the fix in
+    # parse_element_stmt + parse_docstring_target, the docstring attaches to
+    # the inner declaration and the prefix tags its code_context.
+    source = """
+def first -> int { return 0; }
+
+\"\"\"Task row docstring.\"\"\"
+cl def cl_fn -> int { return 1; }
+
+\"\"\"Server helper docstring.\"\"\"
+sv def sv_fn -> int { return 2; }
+
+\"\"\"Native fn docstring.\"\"\"
+na def na_fn -> int { return 3; }
+""";
+    prog = JacProgram();
+    mod = prog.parse_str(source, "test.jac");
+    assert not prog.errors_had;
+    # body[0] is the bare `def first` (no docstring, server context by default).
+    # body[1..3] are the three docstring-prefixed prefixed defs.
+    assert len(mod.body) == 4;
+    expected = [
+        (None, CodeContext.SERVER, "first"),
+        ('"""Task row docstring."""', CodeContext.CLIENT, "cl_fn"),
+        ('"""Server helper docstring."""', CodeContext.SERVER, "sv_fn"),
+        ('"""Native fn docstring."""', CodeContext.NATIVE, "na_fn"),
+
+    ];
+    for (stmt, (exp_doc, exp_ctx, exp_name)) in zip(mod.body, expected) {
+        assert isinstance(stmt, uni.Ability) , (
+            f"expected Ability, got {type(stmt).__name__} for {exp_name}"
+        );
+        actual_doc = stmt.doc.value if stmt.doc else None;
+        assert actual_doc == exp_doc , (
+            f"{exp_name}: doc mismatch (got {actual_doc!r}, want {exp_doc!r})"
+        );
+        assert stmt.code_context == exp_ctx , (
+            f"{exp_name}: code_context mismatch "
+            f"(got {stmt.code_context}, want {exp_ctx})"
+        );
+        # And the docstring must appear in the kid chain — confirms it was
+        # actually wired in (not just stashed on .doc).
+        if exp_doc is not None {
+            kid_values = [k?.value for k in stmt.kid];
+            assert exp_doc in kid_values , (
+                f"{exp_name}: docstring not found in kid chain: {kid_values}"
+            );
+        }
+    }
 }
 
 test "cl/sv/na braced-block deprecation warning" {

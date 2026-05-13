@@ -1144,7 +1144,7 @@ impl JFastApiServer.init(
         try {
             response = await call_next(request);
             try {
-                ctx.mem.commit();
+                await ctx.mem.acommit();
             } except Exception as e {
                 logger.error(
                     f"CRITICAL: Failed to commit request data: {e}. Request will fail.",
