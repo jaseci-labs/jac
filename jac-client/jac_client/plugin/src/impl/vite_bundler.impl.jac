@@ -356,7 +356,7 @@ impl ViteBundler._generate_vite_config_content(
     entry_file: Path,
     api_base_url: str,
     api_port: int = 8000,
-    base_path: str = "/"
+    base_path: str = "/",
     for_mobile_dev: bool = False,
     mobile_hmr_host: str = "",
     mobile_hmr_port: int = 0
@@ -803,7 +803,7 @@ impl ViteBundler.create_vite_config(
         entry_file=entry_file,
         api_base_url=api_base_url,
         api_port=api_port,
-        base_path=base_path
+        base_path=base_path,
         for_mobile_dev=for_mobile_dev,
         mobile_hmr_host=mobile_hmr_host,
         mobile_hmr_port=mobile_hmr_port
