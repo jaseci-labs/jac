@@ -991,7 +991,7 @@ test "desktop build handles base path" {
         shutil.copytree(app_dir, project_dir);
         jac_toml = project_dir / "jac.toml";
         toml_content = jac_toml.read_text();
-        toml_content += "\n[plugins.client]\nbase_path = \"/custom-base/\"\n";
+        toml_content += "\nbase_path = \"/custom-base/\"\n";
         jac_toml.write_text(toml_content);
         jac_cmd = get_jac_command();
         # We try to build. It might fail at the Tauri step if Rust is missing,
