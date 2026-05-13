@@ -63,9 +63,11 @@ obj K8sRuntimeServiceResolver(ServiceDeployer) {
     def status -> dict[str, dict] {
         return {};
     }
+
     def get_logs(name: str, lines: int = 50) -> str {
         return "";
     }
+
     def destroy_all -> bool {
         logger.warning(
             "K8sRuntimeServiceResolver.destroy_all: use "

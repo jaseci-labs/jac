@@ -37,15 +37,19 @@ obj DrainCoordinator {
     def is_draining -> bool {
         return self._is_draining;
     }
+
     def drain_started_ts -> float | None {
         return self._drain_started_ts;
     }
+
     def drain_timeout_s -> float {
         return self._drain_timeout_s;
     }
+
     def set_timeout(timeout_s: float) {
         self._drain_timeout_s = timeout_s;
     }
+
     def inflight -> int {
         self._lock.acquire();
         try {
@@ -131,30 +135,39 @@ glob _default_coordinator: DrainCoordinator = DrainCoordinator();
 def default_coordinator -> DrainCoordinator {
     return _default_coordinator;
 }
+
 def is_draining -> bool {
     return _default_coordinator.is_draining();
 }
+
 def drain_started_ts -> float | None {
     return _default_coordinator.drain_started_ts();
 }
+
 def drain_timeout_s -> float {
     return _default_coordinator.drain_timeout_s();
 }
+
 def inflight -> int {
     return _default_coordinator.inflight();
 }
+
 def start_drain(timeout_s: float | None = None) {
     _default_coordinator.start_drain(timeout_s);
 }
+
 def incr_inflight -> int {
     return _default_coordinator.incr_inflight();
 }
+
 def decr_inflight -> int {
     return _default_coordinator.decr_inflight();
 }
+
 def wait_for_zero(timeout_s: float | None = None) -> bool {
     return _default_coordinator.wait_for_zero(timeout_s);
 }
+
 def reset_drain {
     _default_coordinator.reset();
 }
