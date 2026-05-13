@@ -2973,6 +2973,11 @@ impl EsastGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     self.jsx_processor.text(nd);
 }
 
+"""Process JSX block comment — no-op; the element processor filters it out."""
+impl EsastGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.es_ast = None;
+}
+
 """Process JSX normal attribute."""
 impl EsastGenPass.exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None {
     self.jsx_processor.normal_attribute(nd);

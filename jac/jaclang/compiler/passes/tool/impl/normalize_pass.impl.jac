@@ -1697,6 +1697,15 @@ impl NormalizePass.enter_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
+"""Normalize JsxComment kid list."""
+impl NormalizePass.enter_jsx_comment(nd: uni.JsxComment) -> None {
+    if isinstance(nd.value, uni.Token) {
+        nd.set_kids(nodes=[nd.value]);
+    } else {
+        nd.set_kids(nodes=[nd.gen_token(Tok.JSX_COMMENT, value=str(nd.value))]);
+    }
+}
+
 """Normalize MatchStmt kid list."""
 impl NormalizePass.enter_match_stmt(nd: uni.MatchStmt) -> None {
     new_kid: list[uni.UniNode] = [nd.gen_token(Tok.KW_MATCH), nd.target, ];

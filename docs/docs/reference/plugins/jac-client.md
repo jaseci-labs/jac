@@ -1123,6 +1123,28 @@ def:pub JsxExamples() -> JsxElement {
 }
 ```
 
+### Comments inside JSX
+
+Use Jac's block-comment syntax wrapped in a JSX expression slot -- `{#* ... *#}` -- to leave a note inside a JSX tree. The comment renders nothing and is preserved verbatim by `jac format`:
+
+```jac
+to cl:
+
+def:pub App() -> JsxElement {
+    return <div>
+        <h1>Hello</h1>
+        {#* TODO: replace with a custom Button component *#}
+        <button>Click me</button>
+    </div>;
+}
+```
+
+A few rules to keep in mind:
+
+- **Line comments don't work in JSX text.** A `#` outside an expression slot is treated as literal text -- HTML allows `#` in content, so the lexer can't reinterpret it. Wrap the note in `{#* ... *#}` instead.
+- **The standard React form `{/* ... */}` is not supported.** Inside an expression slot, `/` and `*` parse as Jac operators, so a JSX comment must use Jac-native `{#* ... *#}`.
+- **`{#* ... *#}` is the only no-op JSX slot.** An empty `{}` is still a parse error -- the slot must contain either a real expression or a block comment.
+
 ---
 
 ## TypeScript Integration

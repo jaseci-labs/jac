@@ -97,6 +97,11 @@ impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Express
         if isinstance(child, uni.JsxText) and not child.get_normalized_text() {
             continue;
         }
+        # JsxComment nodes render nothing — they exist only so the formatter
+        # can round-trip `{#* ... *#}` source.
+        if isinstance(child, uni.JsxComment) {
+            continue;
+        }
         child_expr = child.gen.es_ast;
         if (child_expr is None) {
             continue;
@@ -278,12 +283,14 @@ impl PyJsxProcessor.element(
     }
     if nd.children {
         # Drop JsxText nodes whose normalized text is empty (structural
-        # whitespace), matching the client-side codegen behavior so that
+        # whitespace) and JsxComment nodes (Jac-native JSX block comments
+        # render nothing), matching the client-side codegen behavior so
         # server-rendered JSX produces the same children list.
         kept_children = [
             c
             for c in nd.children
-            if not (isinstance(c, uni.JsxText) and not c.get_normalized_text())
+            if not isinstance(c, uni.JsxComment)
+            and not (isinstance(c, uni.JsxText) and not c.get_normalized_text())
         ];
         children_arg = self.pass_ref.sync(
             ast3.List(
