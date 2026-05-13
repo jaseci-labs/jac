@@ -264,21 +264,7 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
-"""Resolve the base path for assets from config."""
-impl ViteBundler._resolve_base_path(self: ViteBundler) -> str {
-    import from jaclang.project.config { get_config }
-    config = get_config();
-    if not config {
-        return "/";
-    }
-    client_cfg = config.get_plugin_config("client");
-    if not client_cfg {
-        return "/";
-    }
-    return client_cfg.get("base_path", "/");
-}
 
-"""Get a valid JavaScript variable name from plugin module name."""
 impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
     name = plugin_name.split('/')[-1];
     name = name.replace('-', '_').replace('.', '_');
@@ -356,7 +342,6 @@ impl ViteBundler._generate_vite_config_content(
     entry_file: Path,
     api_base_url: str,
     api_port: int = 8000,
-    base_path: str = "/",
     for_mobile_dev: bool = False,
     mobile_hmr_host: str = "",
     mobile_hmr_port: int = 0
@@ -564,7 +549,6 @@ function jacErrorReporter() {{
  * Proxies API routes to Python server at localhost:{api_port}
  */
 export default defineConfig({{
-  base: '{base_path}',
   define: {{
 {define_str}
   }},
@@ -730,7 +714,6 @@ function jacSourceMapper() {{
  */
 
 export default defineConfig({{
-  base: '{base_path}',
   define: {{
 {define_str}
   }},
@@ -795,7 +778,6 @@ impl ViteBundler.create_vite_config(
     configs_dir = build_dir / 'configs';
     configs_dir.mkdir(exist_ok=True);
     api_base_url = self._resolve_api_base_url(api_base_url_override);
-    base_path = self._resolve_base_path();
     config_filename = 'vite.dev.config.js' if is_dev else 'vite.config.js';
     config_path = configs_dir / config_filename;
     config_content = self._generate_vite_config_content(
@@ -803,7 +785,6 @@ impl ViteBundler.create_vite_config(
         entry_file=entry_file,
         api_base_url=api_base_url,
         api_port=api_port,
-        base_path=base_path,
         for_mobile_dev=for_mobile_dev,
         mobile_hmr_host=mobile_hmr_host,
         mobile_hmr_port=mobile_hmr_port

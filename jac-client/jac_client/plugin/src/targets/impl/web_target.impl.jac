@@ -185,7 +185,7 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
 }
 
 """Build CSS link tag if CSS file exists."""
-def _build_css_link(bundler: ViteBundler, base_path: str = "/") -> str {
+def _build_css_link(bundler: ViteBundler) -> str {
     import hashlib;
 
     css_file = bundler.find_css();
@@ -194,7 +194,7 @@ def _build_css_link(bundler: ViteBundler, base_path: str = "/") -> str {
     }
     if css_file.exists() {
         css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
-        return f'<link rel="stylesheet" href="{base_path}styles.css?hash={css_hash}"/>';
+        return f'<link rel="stylesheet" href="/styles.css?hash={css_hash}"/>';
     }
     return '';
 }
@@ -214,20 +214,6 @@ def _get_app_meta_data -> dict {
     return client_cfg.get("app_meta_data", {});
 }
 
-"""Get base path from project config."""
-def _get_base_path -> str {
-    import from jaclang.project.config { get_config }
-
-    config = get_config();
-    if not config {
-        return "/";
-    }
-    client_cfg = config.get_plugin_config("client");
-    if not client_cfg {
-        return "/";
-    }
-    return client_cfg.get("base_path", "/");
-}
 
 """Generate static index.html file for the built bundle."""
 def _generate_index_html(
@@ -243,8 +229,7 @@ def _generate_index_html(
     function_name = _get_client_function_name(loaded_mod);
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
-    base_path = _get_base_path();
-    css_link = _build_css_link(bundler, base_path);
+    css_link = _build_css_link(bundler);
     meta_data = _get_app_meta_data();
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
@@ -270,7 +255,7 @@ def _generate_index_html(
   <body>
     <div id="root"></div>
     <script id="__jac_init__" type="application/json">{init_json}</script>
-    <script type="module" src="{base_path}{bundle_filename}"></script>
+    <script type="module" src="/{bundle_filename}"></script>
   </body>
 </html>''';
     index_html = dist_dir / 'index.html';

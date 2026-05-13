@@ -38,7 +38,6 @@ class ViteBundler {
         self: ViteBundler, api_base_url_override: str = ""
     ) -> str;
 
-    def _resolve_base_path(self: ViteBundler) -> str;
     def create_vite_config(
         self: ViteBundler,
         entry_file: Path,
@@ -66,7 +65,6 @@ class ViteBundler {
         entry_file: Path,
         api_base_url: str,
         api_port: int = 8000,
-        base_path: str = "/",
         for_mobile_dev: bool = False,
         mobile_hmr_host: str = "",
         mobile_hmr_port: int = 0
