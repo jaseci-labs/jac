@@ -1,6 +1,8 @@
 """Mobile target: Vite HMR, Capacitor live-reload, and dev workflow helpers."""
 import json;
 import os;
+import shutil;
+import socket;
 import subprocess;
 import from pathlib { Path }
 import from typing { Any, cast }
@@ -16,6 +18,36 @@ import from jac_client.plugin.src.targets.mobile.common {
 def _get_api_base_url_str(project_dir: Path) -> str {
     loader = JacClientConfig(project_dir);
     return loader.get_api_config().get("base_url", "") or "";
+}
+
+"""Fail fast if a port is already bound.
+
+The mobile dev flow reserves ports via adb reverse and rewrites
+capacitor.config.json with a fixed Vite URL. The API subprocess
+(`jaclang start`) silently bumps the port on EADDRINUSE — which leaves
+adb-reverse / cap-config pointing at a port nothing is listening on, so the
+device can never reach the API. Probing the port before we configure
+anything makes the failure mode explicit instead of arriving as a confusing
+"WebView won't connect" issue later.
+
+`role` is a short label (e.g. "Vite" or "API") used in the error message.
+"""
+def _assert_mobile_port_available(port: int, role: str) {
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM);
+    try {
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1);
+        s.bind(("0.0.0.0", port));
+    } except OSError as e {
+        raise RuntimeError(
+            f"{role} port {port} is already in use ({e}). Mobile dev needs "
+            "deterministic ports so adb reverse and capacitor.config.json "
+            "match what the server actually binds. Stop the conflicting "
+            f"process, choose a different port (e.g. --port {port + 100}), "
+            f"or set [plugins.client].vite.server.port in jac.toml."
+        );
+    } finally {
+        s.close();
+    }
 }
 
 """API connectivity for mobile dev."""
@@ -39,8 +71,19 @@ def _mobile_read_dev_env -> tuple[str, str] {
     return (host_ov, plat_mode);
 }
 
-"""Best-effort ADB reverse for Android mobile dev connectivity."""
+"""Best-effort ADB reverse for Android mobile dev connectivity.
+
+No-op when adb is not on PATH — adb only exists when the Android SDK platform
+tools are installed, so a missing binary means there is no device to reverse
+ports to anyway. The previous implementation called subprocess unconditionally
+and emitted noisy "[Errno 2] No such file" warnings on every dev run on hosts
+without adb.
+"""
 def _mobile_setup_android_port_reverse(vite_port: int, server_port: int) {
+    if not shutil.which("adb") {
+        return;
+    }
+
     def _try_adb_reverse_port(port: int) {
         cmd = ["adb", "reverse", f"tcp:{port}", f"tcp:{port}"];
         try {
@@ -233,4 +276,34 @@ def _run_cap_run_live_reload(
     console.print("  (Press Ctrl+C to stop)\n", style="muted");
     result = subprocess.run(cmd, cwd=project_dir, check=False);
     return result.returncode;
+}
+
+"""Describe the user-facing outcome of `cap run`. Pure / no side effects.
+
+Returns a dict with:
+  ok       — True when rc == 0 (cap run succeeded).
+  messages — list[str] for the user. Must NOT claim deployment when rc != 0
+             (the original code printed "📱 App deployed" unconditionally,
+             misleading users when there was no device or no Android SDK).
+"""
+def _describe_cap_run_completion(rc: int, dev_url: str) -> dict {
+    if rc == 0 {
+        return {
+            "ok": True,
+            "messages": [
+                "📱 App deployed. Vite + API servers running.",
+                f"WebView loads: {dev_url}",
+                "Press Ctrl+C to quit."
+            ]
+        };
+    }
+    return {
+        "ok": False,
+        "messages": [
+            f"⚠ cap run exited with code {rc} — app was not deployed.",
+            f"Vite + API servers are still running at {dev_url}.",
+            "Fix the underlying error (e.g. missing Android SDK / no device) and "
+            "re-run `cap run` manually, or press Ctrl+C to stop."
+        ]
+    };
 }

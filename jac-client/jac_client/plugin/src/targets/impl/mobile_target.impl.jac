@@ -35,6 +35,8 @@ import from jac_client.plugin.src.targets.mobile.deps {
     _try_check_mobile_dependencies
 }
 import from jac_client.plugin.src.targets.mobile.dev {
+    _assert_mobile_port_available,
+    _describe_cap_run_completion,
     _get_api_base_url_str,
     _inject_capacitor_dev_url,
     _mobile_ensure_watchdog,
@@ -296,6 +298,15 @@ impl MobileTarget.dev(
 
     toml_base_url = _get_api_base_url_str(project_dir);
     server_port = cast(int, resolve_mobile_server_port(toml_base_url, effective_api));
+
+    # Verify both ports are free BEFORE rewriting capacitor.config.json and
+    # running adb reverse. The API subprocess otherwise silently bumps to a
+    # different port, breaking the handshake with the device.
+    _assert_mobile_port_available(vite_port, "Vite");
+    if server_port != vite_port {
+        _assert_mobile_port_available(server_port, "API");
+    }
+
     if plat == "android" {
         _mobile_setup_android_port_reverse(vite_port, server_port);
     }
@@ -378,14 +389,14 @@ impl MobileTarget.dev(
     try {
         _run_cap_cmd(project_dir, ["sync", plat], f"cap sync {plat}");
         rc = _run_cap_run_live_reload(project_dir, plat, visible_host, vite_port);
-        if rc != 0 {
-            console.warning(f"  cap run exited with code {rc}");
+        outcome = _describe_cap_run_completion(rc, dev_url);
+        msg_style = "bold green" if outcome["ok"] else "bold yellow";
+        for i in range(len(outcome["messages"])) {
+            line = outcome["messages"][i];
+            style = msg_style if i == 0 else "muted";
+            console.print(f"\n  {line}" if i == 0 else f"  {line}", style=style);
         }
-        console.print(
-            "\n  📱 App deployed. Vite + API servers running.", style="bold green"
-        );
-        console.print(f"  WebView loads: {dev_url}", style="muted");
-        console.print("  Press Ctrl+C to quit.\n", style="muted");
+        console.print("");
         import from time { sleep }
         while True {
             sleep(1);

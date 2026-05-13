@@ -8,6 +8,7 @@ import from jac_client.plugin.src.targets.mobile.common {
     SUBPROCESS_TIMEOUT_SHORT,
     _check_command_available,
     _get_java_runtime_details,
+    _get_jdk_compiler_details,
     _normalize_mobile_platform
 }
 
@@ -15,6 +16,7 @@ import from jac_client.plugin.src.targets.mobile.common {
 def _check_android_dependencies {
     # Java / JDK (Capacitor Android Gradle modules target Java 21+)
     (java_ok, java_line, java_major) = _get_java_runtime_details();
+    (javac_ok, javac_line, javac_major) = _get_jdk_compiler_details();
     java_exe = shutil.which("java");
     java_home = os.environ.get("JAVA_HOME", "");
     if java_ok {
@@ -52,6 +54,35 @@ def _check_android_dependencies {
         console.warning("  ✖ Java runtime not found on PATH");
         console.print(
             "    Install JDK 21+ (e.g. OpenJDK 21): https://adoptium.net or your package manager",
+            style="muted"
+        );
+    }
+    # The JDK compiler (javac) is what Gradle actually invokes. Many distros
+    # split JRE/JDK packages, so probe it separately — a JRE-only install
+    # certifies green here today and then fails inside Gradle with an opaque
+    # "Toolchain ... does not provide [JAVA_COMPILER]" message.
+    if javac_ok {
+        console.print(f"  ✔ JDK compiler: {javac_line}", style="success");
+        if (
+            java_major is not None
+            and javac_major is not None
+            and java_major != javac_major
+        ) {
+            console.print(
+                f"  java ({java_major}) and javac ({javac_major}) major versions "
+                "differ. Gradle uses javac — align them via JAVA_HOME.",
+                style="warning"
+            );
+        }
+    } else {
+        console.warning(
+            "  ✖ JDK compiler (javac) not found — Gradle cannot build without it"
+        );
+        console.print(
+            "    A JRE alone is not enough. Install a JDK (e.g. OpenJDK 21):\n"
+            "    Ubuntu/Debian: sudo apt install openjdk-21-jdk\n"
+            "    macOS:         brew install openjdk@21\n"
+            "    or download from https://adoptium.net",
             style="muted"
         );
     }

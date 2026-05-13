@@ -79,21 +79,19 @@ def build(
     return 0;
 }
 
-"""Register 'setup' command at module level."""
+"""Register 'setup' command at module level.
+
+Note: --platform is wired in via extend_command (see create_cmd) so it survives
+when a higher-priority plugin (e.g. jac-scale) replaces this spec — primary
+args on a spec are spec-local, but extension args are preserved across
+priority replacement by the registry.
+"""
 @registry.command(
     name="setup",
     help="Setup a build target (one-time initialization)",
     args=[
         Arg.create(
             "target", kind=ArgKind.POSITIONAL, help="Target to setup (e.g., desktop)"
-        ),
-        Arg.create(
-            "platform",
-            typ=str,
-            default=None,
-            help="Platform for mobile setup (android, ios, all)",
-            choices=["android", "ios", "all"],
-            short="p"
         ),
 
     ],
@@ -175,9 +173,26 @@ class JacCmd {
             command_name="build", pre_hook=_handle_build_target, source="jac-client"
         );
 
-        # Add pre-hook to setup command (command is registered at module level)
+        # Add pre-hook + --platform to setup command. Registering --platform via
+        # extend_command (instead of inline on the @registry.command above) keeps
+        # the arg attached when a higher-priority plugin re-registers `setup`
+        # (e.g. jac-scale's microservice handler). See registry.impl.jac for the
+        # corresponding extra_args preservation logic.
         registry.extend_command(
-            command_name="setup", pre_hook=_handle_setup_target, source="jac-client"
+            command_name="setup",
+            args=[
+                Arg.create(
+                    "platform",
+                    typ=str,
+                    default=None,
+                    help="Platform for mobile setup (android, ios, all)",
+                    choices=["android", "ios", "all"],
+                    short="p"
+                ),
+
+            ],
+            pre_hook=_handle_setup_target,
+            source="jac-client"
         );
 
         # Extend 'start' command with --client flag
@@ -577,12 +592,20 @@ def _handle_setup_target(ctx: HookContext) -> None {
 
     factory = get_target_factory();
 
-    target_name = ctx.get_arg("target", None);
+    # `target` is jac-client's positional; `subcommand` is what jac-scale's
+    # higher-priority `setup` spec exposes. Reading both keeps us routable no
+    # matter which plugin wins the surface registration.
+    target_name = ctx.get_arg("target", None) or ctx.get_arg("subcommand", None);
+    available_targets = factory.get_available_target_names();
+    if target_name and target_name not in available_targets {
+        # Unknown to us — let another plugin's handler claim it (e.g. jac-scale's
+        # `jac setup microservice`). Do NOT cancel.
+        return;
+    }
     if not target_name {
         console.error("No target specified. Use: jac setup <target>");
         console.print(
-            f"Available targets: {', '.join(factory.get_available_target_names())}",
-            style="muted"
+            f"Available targets: {', '.join(available_targets)}", style="muted"
         );
         ctx.set_data("cancel_execution", True);
         ctx.set_data("cancel_return_code", 1);

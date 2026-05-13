@@ -58,23 +58,46 @@ def _parse_java_major_from_version_output(text: str) -> int | None {
 """Return (ok, first_line, major) for the default java on PATH.
 """
 def _get_java_runtime_details -> tuple[bool, str | None, int | None] {
+    return _probe_java_tool_version("java");
+}
+
+"""Return (ok, first_line, major) for the default javac (JDK compiler) on PATH.
+
+Capacitor Android builds need a JDK, not just a JRE. Distros (e.g. Ubuntu)
+ship `default-jre` and `default-jdk` as separate packages — `java` can be
+present without `javac`, in which case Gradle fails much later with an opaque
+"Toolchain ... does not provide [JAVA_COMPILER]" error.
+"""
+def _get_jdk_compiler_details -> tuple[bool, str | None, int | None] {
+    return _probe_java_tool_version("javac");
+}
+
+"""Common (ok, first_line, major) probe for java/javac tools.
+
+`tool` must be the executable name (java or javac). Both print their version
+banner to stderr (java) or stdout (javac); we merge both streams.
+"""
+def _probe_java_tool_version(tool: str) -> tuple[bool, str | None, int | None] {
     try {
         result = subprocess.run(
-            ["java", "-version"],
+            [tool, "-version"],
             capture_output=True,
             text=True,
             timeout=SUBPROCESS_TIMEOUT_SHORT
         );
-        out = (result.stderr or "") + (result.stdout or "");
-        if not out.strip() {
-            return (False, None, None);
-        }
-        first_line = out.strip().split("\n")[0];
-        major = _parse_java_major_from_version_output(out);
-        return (True, first_line, major);
     } except Exception {
         return (False, None, None);
     }
+    if result.returncode != 0 and not (result.stdout or result.stderr) {
+        return (False, None, None);
+    }
+    out = (result.stderr or "") + (result.stdout or "");
+    if not out.strip() {
+        return (False, None, None);
+    }
+    first_line = out.strip().split("\n")[0];
+    major = _parse_java_major_from_version_output(out);
+    return (True, first_line, major);
 }
 
 """Normalize and validate mobile platform string.
