@@ -165,8 +165,7 @@ test "desktop target files exist" {
 # =============================================================================
 test "pyinstaller spec excludes litellm bloat for windows max_path" {
     impl_path = (
-        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl"
-        / "desktop_target.impl.jac"
+        Path(__file__).parent.parent / "plugin" / "src" / "targets" / "impl" / "desktop_target.impl.jac"
     );
     assert impl_path.exists() , f"impl file not found at {impl_path}";
 
@@ -557,7 +556,9 @@ test "sidecar module runs directly" {
             # Test functions endpoint
             print("[DEBUG] Testing /functions endpoint");
             try {
-                with urlopen(f"http://127.0.0.1:{port}/functions", timeout=10) as resp {
+                with urlopen(
+                    f"http://127.0.0.1:{port}/functions", timeout=10
+                ) as resp {
                     funcs_body = resp.read().decode("utf-8", errors="ignore");
                     print(f"[DEBUG] Functions response: {funcs_body[:500]}");
                     if "greet" in funcs_body or "add" in funcs_body {
@@ -965,5 +966,50 @@ cl {
             "Copied image should have same content as original"
         );
         print("[DEBUG] Desktop asset copying test passed!");
+    }
+}
+
+test "desktop build handles base path" {
+    import from subprocess { run }
+
+    if not is_jac_setup_available() {
+        pytest.skip("'jac setup' CLI command not available");
+    }
+
+    print("[DEBUG] Starting test_desktop_build_handles_base_path");
+
+    fixtures_dir = Path(__file__).parent / "fixtures";
+    app_dir = fixtures_dir / "multi_segment_app";
+
+    if not app_dir.exists() {
+        pytest.skip("multi_segment_app fixture not found");
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_dir = Path(temp_dir) / "multi_segment_app";
+        import shutil;
+        shutil.copytree(app_dir, project_dir);
+        jac_toml = project_dir / "jac.toml";
+        toml_content = jac_toml.read_text();
+        toml_content += "\n[plugins.client]\nbase_path = \"/custom-base/\"\n";
+        jac_toml.write_text(toml_content);
+        jac_cmd = get_jac_command();
+        # We try to build. It might fail at the Tauri step if Rust is missing,
+        # but it should have generated index.html by then.
+        build_result = run(
+            [*jac_cmd, "build", "main.jac", "--client", "desktop"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        );
+        dist_dir = project_dir / ".jac" / "client" / "dist";
+        index_html = dist_dir / "index.html";
+        assert index_html.exists() , "index.html should be generated";
+        html_content = index_html.read_text();
+        assert "/custom-base/client." in html_content , (
+            f"index.html should use the configured base_path. Content:\n{html_content}"
+        );
+        print("[DEBUG] Desktop build base path test passed!");
     }
 }
