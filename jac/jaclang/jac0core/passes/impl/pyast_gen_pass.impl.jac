@@ -3971,6 +3971,11 @@ impl PyastGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     self.jsx_processor.expression(nd);
 }
 
+"""Generate Python AST for JSX block comments — no-op; element processor skips it."""
+impl PyastGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.py_ast = [];
+}
+
 impl PyastGenPass.exit_semi(nd: uni.Semi) -> None {
     ;
 }
