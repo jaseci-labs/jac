@@ -20,6 +20,60 @@ import from jac_scale.auth_tokens { AuthTokenStore }
 import from jac_scale.utils { authenticate_or_fail }
 
 # ============================================================================
+# Private helpers — shared by the identity / password-reset endpoints
+# ============================================================================
+"""Normalize an `IdentityInput`-shaped dict into (type, raw_value, normalized)."""
+def _normalize_identity(identity_input: Any) -> tuple[str, str, str] {
+    identity = identity_input.model_dump(mode='json');
+    id_type = identity.get('type', '');
+    raw_value = identity.get('value', '') or '';
+    normalized = raw_value.lower().strip();
+    return (id_type, raw_value, normalized);
+}
+
+"""Build the plain-text body for an action-link email (verify / reset).
+
+`action` is the verb shown to the user (e.g. 'verify your email address',
+'reset your password'). `extra_footer` is appended after the standard
+"ignore this message" line — pass an empty string when nothing extra applies.
+"""
+def _build_link_email(
+    action: str, link: str, ttl_seconds: int, extra_footer: str = ''
+) -> str {
+    body = (
+        f"Hello,\n\nUse the link below to {action}:\n\n"
+        f"{link}\n\nThis link expires in {ttl_seconds // 60} minutes.\n\n"
+        f"If you did not request this, you can ignore this message{extra_footer}."
+    );
+    return body;
+}
+
+"""Issue a fresh action token + materialise the click-through URL.
+
+Revokes any prior outstanding tokens of the same purpose for this user, then
+creates a new one and substitutes it into the configured URL template. If no
+template is set, the raw token is returned as the link so it remains usable
+in dev / test setups.
+
+Returns `(token, link)` so callers can use the link in the email body and
+keep the token for follow-up assertions or logging.
+"""
+def _issue_link_token(
+    user_id: str, purpose: str, identity_value: str, ttl_seconds: int, url_template: str
+) -> tuple[str, str] {
+    store = AuthTokenStore.instance();
+    store.revoke_user_tokens(user_id, purpose);
+    token = store.create_token(
+        user_id=user_id,
+        purpose=purpose,
+        ttl_seconds=ttl_seconds,
+        identity_value=identity_value
+    );
+    link = url_template.replace('{token}', token) if url_template else token;
+    return (token, link);
+}
+
+# ============================================================================
 # /user/add-identity  (requires Bearer token)
 # ============================================================================
 impl JacAPIServerAuth.register_add_identity_endpoint -> None {
@@ -33,10 +87,7 @@ impl JacAPIServerAuth.register_add_identity_endpoint -> None {
         if auth_err is not None {
             return auth_err;
         }
-        identity = body_data.identity.model_dump(mode='json');
-        id_type = identity.get('type', '');
-        raw_value = identity.get('value', '');
-        normalized = raw_value.lower().strip();
+        (id_type, raw_value, normalized) = _normalize_identity(body_data.identity);
         if not normalized {
             return TransportResponse.fail(
                 code='VALIDATION_ERROR',
@@ -99,10 +150,7 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
         if auth_err is not None {
             return auth_err;
         }
-        identity = body_data.identity.model_dump(mode='json');
-        id_type = identity.get('type', '');
-        raw_value = identity.get('value', '');
-        normalized = (raw_value or '').lower().strip();
+        (id_type, raw_value, normalized) = _normalize_identity(body_data.identity);
         if id_type != 'email' or not normalized {
             return TransportResponse.fail(
                 code='VALIDATION_ERROR',
@@ -150,24 +198,17 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
                 meta=Meta(extra={'http_status': 503})
             );
         }
-        # Revoke any outstanding verify tokens for this user before issuing a
-        # fresh one — keeps "resend" idempotent and prevents token reuse races.
-        AuthTokenStore.instance().revoke_user_tokens(user_id, 'verify');
         auth_cfg = get_scale_config().get_auth_config();
         ttl = auth_cfg.get('verify_token_ttl_seconds', 86400);
         url_template = auth_cfg.get('verify_url_template', '');
-        token = AuthTokenStore.instance().create_token(
+        (_token, link) = _issue_link_token(
             user_id=user_id,
             purpose='verify',
+            identity_value=normalized,
             ttl_seconds=ttl,
-            identity_value=normalized
+            url_template=url_template
         );
-        link = url_template.replace('{token}', token) if url_template else token;
-        body_text = (
-            f"Hello,\n\nUse the link below to verify your email address:\n\n"
-            f"{link}\n\nThis link expires in {ttl // 60} minutes.\n\n"
-            "If you did not request this, you can ignore this message."
-        );
+        body_text = _build_link_email('verify your email address', link, ttl);
         recipient = target.get('value_raw') or raw_value;
         sent = emailer.send_email(
             to_addr=recipient, subject='Verify your email address', body_text=body_text
@@ -249,8 +290,7 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
     async def forgot_password_handler(
         body_data: ForgotPasswordRequest
     ) -> TransportResponse {
-        identity = body_data.identity.model_dump(mode='json');
-        normalized = (identity.get('value', '') or '').lower().strip();
+        (_id_type, _raw_value, normalized) = _normalize_identity(body_data.identity);
         ok_response = TransportResponse.success(
             data={
                 'status': 'ok',
@@ -299,20 +339,18 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
         auth_cfg = get_scale_config().get_auth_config();
         ttl = auth_cfg.get('reset_token_ttl_seconds', 1800);
         url_template = auth_cfg.get('reset_url_template', '');
-        # Invalidate prior outstanding reset tokens for this user.
-        AuthTokenStore.instance().revoke_user_tokens(user.get('user_id', ''), 'reset');
-        token = AuthTokenStore.instance().create_token(
+        (_token, link) = _issue_link_token(
             user_id=user.get('user_id', ''),
             purpose='reset',
+            identity_value=recipient_normalized or '',
             ttl_seconds=ttl,
-            identity_value=recipient_normalized
+            url_template=url_template
         );
-        link = url_template.replace('{token}', token) if url_template else token;
-        body_text = (
-            f"Hello,\n\nUse the link below to reset your password:\n\n"
-            f"{link}\n\nThis link expires in {ttl // 60} minutes.\n\n"
-            "If you did not request this, you can ignore this message - your "
-            "password will remain unchanged."
+        body_text = _build_link_email(
+            'reset your password',
+            link,
+            ttl,
+            extra_footer=' — your password will remain unchanged'
         );
         emailer.send_email(
             to_addr=recipient_raw, subject='Reset your password', body_text=body_text

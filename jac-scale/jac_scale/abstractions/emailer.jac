@@ -47,5 +47,7 @@ obj Emailer {
     The default implementation returns self.enabled; subclasses can override
     if they need to test connectivity or credentials.
     """
-    def is_ready -> bool;
+    def is_ready -> bool {
+        return self.enabled;
+    }
 }
