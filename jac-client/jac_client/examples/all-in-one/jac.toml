@@ -48,13 +48,6 @@ require_password_reset = true
 [plugins.scale.kubernetes]
 redis_dashboard = true
 mongodb_dashboard = true
-# Memory cap for jaclang's first-time compile. 6Gi still OOM'd at
-# runtimelib/storage/local_storage.jac because the kind-cluster
-# kubelet's OOM threshold can fire before cgroup limit (node-level
-# memory pressure with Redis + Mongo + monitoring stack also resident).
-# 8Gi gives a single-attempt fit on a 16GB GitHub runner.
-memory_request = "2Gi"
-memory_limit = "8Gi"
 
 [dependencies.npm]
 antd = "^6.0.0"
