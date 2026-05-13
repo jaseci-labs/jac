@@ -525,22 +525,55 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     self._dict_val_type_hint = None;
     # Handle empty dict literal {} with type annotation
     if value is None and isinstance(nd.value, uni.DictVal) {
-        if not nd.value.kv_pairs and nd.type_tag and nd.type_tag.tag {
-            # Empty dict with type hint - create empty dict of correct type
-            dict_type = self._resolve_jac_type(nd.type_tag.tag);
-            if isinstance(dict_type, ir.PointerType) {
-                # Find the dict helpers for this type
-                for (dict_key, dtype) in self.dict_types.items() {
-                    if dict_type == dtype.as_pointer() {
-                        helpers = self.dict_helpers.get(dict_key);
-                        if helpers is not None {
-                            value = self.builder.call(
-                                helpers["new"], [], name="dict.new"
-                            );
-                            # RC: fresh allocation — caller owns it; skip RETAIN on assign.
-                            self._mark_owned(value);
+        if not nd.value.kv_pairs {
+            _edict_type_tag = nd.type_tag.tag
+                if nd.type_tag and nd.type_tag.tag
+                else None;
+            # Fallback: no explicit type annotation but target is obj.field = {} —
+            # infer the dict type from field_type_node so we emit __dict_new_*().
+            if _edict_type_tag is None {
+                _check_targets = nd.target
+                    if isinstance(nd.target, (list, tuple))
+                    else [(nd.target)];
+                for _ct in _check_targets {
+                    if isinstance(_ct, uni.AtomTrailer) and _ct.is_attr {
+                        _ct_target_name = self._get_name(_ct.target);
+                        _ct_field_name = self._get_name(_ct.right);
+                        if _ct_target_name is not None and _ct_field_name is not None {
+                            _ct_type_name = self.type_var_map.get(_ct_target_name);
+                            if _ct_type_name is not None
+                            and _ct_type_name in self.field_type_node {
+                                _ftn = self.field_type_node[_ct_type_name].get(
+                                    _ct_field_name
+                                );
+                                if _ftn is not None {
+                                    _edict_type_tag = _ftn;
+                                }
+                            }
                         }
+                    }
+                    if _edict_type_tag is not None {
                         break;
+                    }
+                }
+            }
+            if _edict_type_tag is not None {
+                # Empty dict with type hint - create empty dict of correct type
+                dict_type = self._resolve_jac_type(_edict_type_tag);
+                if isinstance(dict_type, ir.PointerType) {
+                    # Find the dict helpers for this type
+                    for (dict_key, dtype) in self.dict_types.items() {
+                        if dict_type == dtype.as_pointer() {
+                            helpers = self.dict_helpers.get(dict_key);
+                            if helpers is not None {
+                                value = self.builder.call(
+                                    helpers["new"], [], name="dict.new"
+                                );
+                                # RC: fresh allocation — caller owns it; skip RETAIN on assign.
+                                self._mark_owned(value);
+                            }
+                            break;
+                        }
                     }
                 }
             }
