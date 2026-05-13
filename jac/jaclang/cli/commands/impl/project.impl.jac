@@ -444,6 +444,10 @@ impl install(
             }
         }
 
+        if dry_run {
+            console.print("  ✔ Dry run complete (nothing installed).", style="success");
+            return 0;
+        }
         site_pkgs = Path(site.getsitepackages()[0]);
         WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
         console.print(f"  ✔ Linked {src_dir}", style="success");
@@ -495,6 +499,10 @@ impl install(
         }
     }
     # Install plugin dependencies (npm, etc.)
+    if dry_run {
+        console.print("  ✔ Dry run complete (nothing installed).", style="success");
+        return 0;
+    }
     plugin_failed = False;
     for (type_name, dep_type) in plugin_types.items() {
         plugin_deps = config.get_plugin_deps(type_name);
