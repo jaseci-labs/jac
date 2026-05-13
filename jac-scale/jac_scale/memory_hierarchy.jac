@@ -30,7 +30,11 @@ import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.config_loader { get_scale_config }
 import from jaclang { JacRuntimeInterface as Jac }
 
-glob logger = logging.getLogger(__name__);
+glob logger = logging.getLogger(__name__),
+     # Process-level singletons shared across all requests in a single server process.
+     # A single dict so cross-module mutation works without global declarations in each package.
+     # Keys: 'mongo_client', 'redis_client', 'mongo_available', 'redis_available', 'system_root'
+     _process_cache: dict[str, Any] = {};
 
 """Get fresh database config to support dynamic env var changes (e.g., testcontainers)."""
 def _get_db_config -> dict {
@@ -43,10 +47,14 @@ Replaces LocalCacheMemory when Redis is available.
 """
 obj RedisBackend(CacheMemory) {
     has redis_url: (str | None) = None,
-        redis_client: (redis.Redis | None) = None;
+        redis_client: (Any | None) = None,
+        _async_redis: (Any | None) = None,
+        fetch_count: int = 0,
+        put_count: int = 0;
 
     def postinit -> None;
     def is_available -> bool;
+    def reset_counters -> None;
     # CacheMemory interface (Memory methods + cache-specific)
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
@@ -68,10 +76,14 @@ obj RedisBackend(CacheMemory) {
 
     def commit(anchor: (Anchor | None) = None) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
+    def batch_put(anchors: list[Anchor]) -> None;
     # CacheMemory-specific
     def exists(id: UUID) -> bool;
     def put_if_exists(anchor: Anchor) -> bool;
     def invalidate(id: UUID) -> None;
+    # Async overrides — native redis.asyncio (no asyncio.to_thread)
+    async def aget(id: UUID) -> (Anchor | None);
+    async def aput(anchor: Anchor) -> None;
 }
 
 """
@@ -85,11 +97,14 @@ obj MongoBackend(PersistentMemory) {
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
-        _mem_ref: (dict[UUID, Anchor] | None) = None;
+        _mem_ref: (dict[UUID, Anchor] | None) = None,
+        fetch_count: int = 0,
+        put_count: int = 0;
 
     def postinit -> None;
     def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
     def is_available -> bool;
+    def reset_counters -> None;
     # PersistentMemory interface (Memory methods + persistence-specific)
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
@@ -132,6 +147,10 @@ obj MongoBackend(PersistentMemory) {
     ) -> None;
 
     def _write_to_db(anchor: Anchor) -> None;
+    # Async overrides — PyMongo AsyncMongoClient / redis.asyncio (no asyncio.to_thread)
+    async def aget(id: UUID) -> (Anchor | None);
+    async def aput(anchor: Anchor) -> None;
+    async def acommit(anchor: (Anchor | None) = None) -> None;
 }
 
 """
@@ -155,12 +174,14 @@ Storage configuration comes from environment variables or jac.toml.
 """
 obj ScaleTieredMemory(TieredMemory) {
     has _cache_available: bool = False,
+        _committed: bool = False,
         _persistence_type: PersistenceType = PersistenceType.NONE,
         use_cache:
             bool = True;  # Override parent default to enable Redis cache by default
 
     def postinit -> None;
     def commit(anchor: (Anchor | None) = None) -> None;
+    async def acommit(anchor: (Anchor | None) = None) -> None;
     def close -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
 }

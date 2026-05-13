@@ -9,20 +9,23 @@ import from jac_scale.microservices.service_registry {
     ServiceEntry,
     ServiceStatus
 }
-import from jac_scale.microservices.gateway {
-    MicroserviceGateway
-}
+import from jac_scale.microservices.gateway { MicroserviceGateway }
 
 # =============================================================================
 # resolve_target_url
 # =============================================================================
-
 test "resolve strips prefix and preserves walker path" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
 
     svc = reg.entries["orders"];
@@ -32,10 +35,16 @@ test "resolve strips prefix and preserves walker path" {
 
 test "resolve strips prefix and preserves function path" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
 
     svc = reg.entries["orders"];
@@ -45,10 +54,16 @@ test "resolve strips prefix and preserves function path" {
 
 test "resolve appends query string" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
 
     svc = reg.entries["orders"];
@@ -58,10 +73,16 @@ test "resolve appends query string" {
 
 test "resolve exact prefix returns root" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
 
     svc = reg.entries["orders"];
@@ -71,10 +92,16 @@ test "resolve exact prefix returns root" {
 
 test "resolve no query string omits question mark" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
 
     svc = reg.entries["orders"];
@@ -83,9 +110,8 @@ test "resolve no query string omits question mark" {
 }
 
 # =============================================================================
-# get_sv_registry hookspec dispatch (ROADMAP P3)
+# get_sv_registry hookspec dispatch
 # =============================================================================
-
 test "resolve_target_url prefers the sv_registry URL over service_entry.url" {
     # Simulates KubernetesDeployer: the registry says the service lives
     # somewhere that differs from whatever our local ServiceEntry knows.
@@ -94,10 +120,16 @@ test "resolve_target_url prefers the sv_registry URL over service_entry.url" {
     import from jaclang.runtimelib { sv_client }
 
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
 
     sv_client.register("orders", "http://override.test.local:9999");
@@ -112,10 +144,16 @@ test "resolve_target_url prefers the sv_registry URL over service_entry.url" {
 
 test "resolve_target_url falls back to service_entry.url when sv_registry has no entry" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
 
     svc = reg.entries["orders"];
@@ -148,7 +186,6 @@ test "JacRuntime.get_sv_registry returns a snapshot, not a live view" {
 # =============================================================================
 # Setup
 # =============================================================================
-
 test "setup creates fastapi app" {
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
@@ -160,13 +197,18 @@ test "setup creates fastapi app" {
 # =============================================================================
 # Routing via TestClient
 # =============================================================================
-
 test "health endpoint returns service summary" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -179,12 +221,88 @@ test "health endpoint returns service summary" {
     assert "orders" in data["services"];
 }
 
+test "/healthz/live returns 200 always (liveness, no drain check)" {
+    # Liveness gates restart; drain affects readiness only.
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/healthz/live");
+        assert resp.status_code == 200;
+        assert resp.json()["status"] == "alive";
+
+        start_drain(10.0);
+        resp2 = client.get("/healthz/live");
+        assert resp2.status_code == 200;
+    } finally {
+        reset_drain();
+    }
+}
+
+
+test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
+    # Readiness 503s during drain so kube-proxy removes pod from Endpoints.
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    try {
+        resp = client.get("/healthz/ready");
+        assert resp.status_code == 200;
+        assert resp.json()["status"] == "ready";
+
+        start_drain(10.0);
+        resp2 = client.get("/healthz/ready");
+        assert resp2.status_code == 503 , (
+            "readiness must 503 during drain so kube-proxy removes "
+            "the pod from Endpoints"
+        );
+        body = resp2.json();
+        assert body["ready"] is False;
+        assert body["status"] == "draining";
+    } finally {
+        reset_drain();
+    }
+}
+
+
+test "healthz returns 200 from gateway, not 404 from builtin passthrough" {
+    # Regression: /healthz was in _BUILTIN_EXACT and fanned out to backends;
+    # empty registry returned 404 so the gateway never went Ready.
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/healthz");
+    assert resp.status_code == 200 , (
+        f"/healthz must return 200 (gateway-local) even with empty registry, "
+        f"got {resp.status_code}"
+    );
+    data = resp.json();
+    assert data["status"] == "healthy";
+}
+
 test "unmatched path returns 404" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -195,9 +313,8 @@ test "unmatched path returns 404" {
 }
 
 # =============================================================================
-# Prometheus metrics (ROADMAP P8)
+# Prometheus metrics
 # =============================================================================
-
 test "build_gateway_metrics returns a fresh registry with both collectors" {
     import from jac_scale.microservices._metrics { build_gateway_metrics }
     (registry, requests, duration) = build_gateway_metrics();
@@ -237,15 +354,20 @@ test "gateway /metrics returns Prometheus exposition after a request" {
 }
 
 # =============================================================================
-# Standardized error envelope + graceful degradation (ROADMAP P10)
+# Standardized error envelope + graceful degradation
 # =============================================================================
-
 test "service-down returns standardized envelope with SERVICE_UNAVAILABLE + Retry-After" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.STOPPED
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.STOPPED
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -269,10 +391,16 @@ test "service-timeout returns GATEWAY_TIMEOUT (502) without Retry-After" {
     # advertise Retry-After for 502s: a deterministic transport error
     # on the same request won't change on retry.
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -312,8 +440,7 @@ test "error envelope carries the request's trace id for correlation" {
     import from fastapi.testclient { TestClient }
     client = TestClient(gw.app);
     resp = client.get(
-        "/this/does/not/match",
-        headers={"X-Trace-Id": "trace-for-error-corr"}
+        "/this/does/not/match", headers={"X-Trace-Id": "trace-for-error-corr"}
     );
     assert resp.status_code == 404;
     body = resp.json();
@@ -321,9 +448,8 @@ test "error envelope carries the request's trace id for correlation" {
 }
 
 # =============================================================================
-# Unified /docs Swagger aggregation (ROADMAP P9)
+# Unified /docs Swagger aggregation
 # =============================================================================
-
 test "_prefixed_paths prepends the service prefix to every key" {
     import from jac_scale.microservices._openapi_agg { _prefixed_paths }
     raw = {
@@ -340,8 +466,7 @@ test "_prefixed_paths prepends the service prefix to every key" {
 test "_prefixed_paths handles prefix with trailing slash" {
     import from jac_scale.microservices._openapi_agg { _prefixed_paths }
     out = _prefixed_paths(
-        {"/function/x": {"post": {}}},
-        "/api/products/"   # trailing slash
+        {"/function/x": {"post": {}}}, "/api/products/"  # trailing slash
     );
     # rstrip('/') normalizes -> no double slash in output
     assert "/api/products/function/x" in out;
@@ -366,11 +491,16 @@ test "gateway /openapi.json returns a minimal doc when no services reachable" {
     # aggregator skips it gracefully and we still get a document back
     # with the gateway's own /health + /metrics paths.
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="unreachable", file="x.jac", prefix="/api/x",
-        port=9, url="http://127.0.0.1:9",
-        status=ServiceStatus.HEALTHY  # marked healthy, but not actually up
-    ));
+    reg.register(
+        ServiceEntry(
+            name="unreachable",
+            file="x.jac",
+            prefix="/api/x",
+            port=9,
+            url="http://127.0.0.1:9",
+            status=ServiceStatus.HEALTHY  # marked healthy, but not actually up
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -386,13 +516,20 @@ test "gateway /openapi.json returns a minimal doc when no services reachable" {
 }
 
 test "gateway /openapi.json is its own route - not proxied to a service" {
-    # Pre-P9 /openapi.json fell through to handle_builtin_passthrough.
-    # With aggregation, /openapi.json is dispatched directly.
+    # Without dispatch, /openapi.json would fall through to
+    # handle_builtin_passthrough; the aggregation route dispatches it
+    # directly.
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -406,13 +543,20 @@ test "gateway /openapi.json is its own route - not proxied to a service" {
 }
 
 test "gateway /metrics is its own route - not proxied to a service" {
-    # Before P8, /metrics fell through to handle_builtin_passthrough.
-    # With gateway-level metrics, /metrics is dispatched directly.
+    # Without dispatch, /metrics would fall through to
+    # handle_builtin_passthrough; the gateway-level metrics route
+    # dispatches it directly.
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -420,17 +564,23 @@ test "gateway /metrics is its own route - not proxied to a service" {
     client = TestClient(gw.app);
     resp = client.get("/metrics");
     # Must succeed (200) without attempting a service passthrough;
-    # a pre-P8 gateway would 502 here (orders service unreachable).
+    # a passthrough would 502 here (orders service unreachable).
     assert resp.status_code == 200;
     assert "jac_scale_gateway_requests_total" in resp.text;
 }
 
 test "unhealthy service returns 503" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.UNHEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.UNHEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -442,10 +592,16 @@ test "unhealthy service returns 503" {
 
 test "stopped service returns 503" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.STOPPED
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.STOPPED
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -469,7 +625,6 @@ test "empty registry returns 404" {
 # =============================================================================
 # Static file serving
 # =============================================================================
-
 test "serve static returns file with correct mime type" {
     tmp = tempfile.mkdtemp();
     assets_dir = Path(tmp) / "assets";
@@ -535,7 +690,6 @@ test "serve static css file returns text content type" {
 # =============================================================================
 # static_mounts — declarative extra static directories
 # =============================================================================
-
 test "serve_extra_static serves a file from a configured local dir" {
     tmp = tempfile.mkdtemp();
     assets = Path(tmp) / "assets";
@@ -660,7 +814,7 @@ test "matched static_mount with missing file does not fall back to dist" {
     (dist / "static" / "assets").mkdir(parents=True);
     (dist / "static" / "assets" / "logo.png").write_bytes(b"FROM_DIST");
     assets = Path(tmp) / "assets";
-    assets.mkdir();   # empty — no logo.png here
+    assets.mkdir();  # empty — no logo.png here
 
     reg = ServiceRegistry();
     gw = MicroserviceGateway(
@@ -683,7 +837,6 @@ test "matched static_mount with missing file does not fall back to dist" {
 # =============================================================================
 # SPA fallback
 # =============================================================================
-
 test "spa fallback serves index.html" {
     tmp = tempfile.mkdtemp();
     index = Path(tmp) / "index.html";
@@ -716,7 +869,6 @@ test "spa fallback returns none when no index.html" {
 # =============================================================================
 # Static + SPA via TestClient (integration)
 # =============================================================================
-
 test "gateway serves static files for unmatched paths" {
     tmp = tempfile.mkdtemp();
     assets_dir = Path(tmp) / "assets";
@@ -771,10 +923,64 @@ test "gateway returns 404 for missing static and no spa" {
     shutil.rmtree(tmp);
 }
 
+
+test "Gateway serves index.html for GET / regardless of Accept" {
+    # The previous behavior 404'd `GET /` for any client that didn't
+    # send Accept: text/html (curl, monitoring probes, server-side
+    # fetches, crawlers). Browsers worked because they include
+    # text/html in Accept by default. The SPA root has to be reachable
+    # for everything - it's the entry point.
+    tmp = tempfile.mkdtemp();
+    (Path(tmp) / "index.html").write_text("<html><body>SPA App</body></html>");
+
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+
+    # No Accept header (matches `curl http://gateway/` and most non-browser
+    # clients).
+    resp = client.get("/", headers={"Accept": ""});
+    assert resp.status_code == 200 , (
+        f"GET / should serve index.html even without text/html Accept, "
+        f"got {resp.status_code}"
+    );
+    assert "SPA App" in resp.text;
+
+    # Browser-style request still works (existing behavior).
+    resp_browser = client.get("/", headers={"Accept": "text/html"});
+    assert resp_browser.status_code == 200;
+    assert "SPA App" in resp_browser.text;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
+
+test "Gateway returns 404 for GET / when no index.html exists" {
+    # Companion test - the new branch must not 200-on-empty for projects
+    # without a frontend (LLM-only / API-only apps). Those should still
+    # 404 the root request so callers can detect the absence.
+    tmp = tempfile.mkdtemp();
+    # NOTE: deliberately no index.html in tmp.
+    reg = ServiceRegistry();
+    gw = MicroserviceGateway(registry=reg, client_dist_dir=tmp);
+    gw.setup();
+
+    import from fastapi.testclient { TestClient }
+    client = TestClient(gw.app);
+    resp = client.get("/", headers={"Accept": ""});
+    assert resp.status_code == 404;
+
+    import shutil;
+    shutil.rmtree(tmp);
+}
+
 # =============================================================================
 # Admin UI serving
 # =============================================================================
-
 test "serve admin asset returns index.html for root" {
     tmp = tempfile.mkdtemp();
     admin_dir = Path(tmp) / "admin";
@@ -885,13 +1091,18 @@ test "admin index served at /admin/" {
 # =============================================================================
 # Auth - gateway is a pure passthrough; services handle auth via /user/login
 # =============================================================================
-
 test "api request to unreachable service returns 502" {
     reg = ServiceRegistry();
-    reg.register(ServiceEntry(
-        name="orders", file="orders.jac", prefix="/api/orders",
-        port=8001, url="http://127.0.0.1:8001", status=ServiceStatus.HEALTHY
-    ));
+    reg.register(
+        ServiceEntry(
+            name="orders",
+            file="orders.jac",
+            prefix="/api/orders",
+            port=8001,
+            url="http://127.0.0.1:8001",
+            status=ServiceStatus.HEALTHY
+        )
+    );
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
 
@@ -916,9 +1127,7 @@ test "health endpoint does not require auth" {
 }
 
 test "gateway drain 503s new requests with Retry-After + envelope" {
-    import from jac_scale.microservices._drain {
-        reset_drain, start_drain, is_draining
-    }
+    import from jac_scale.microservices._drain { reset_drain, start_drain, is_draining }
     reset_drain();
 
     reg = ServiceRegistry();
@@ -952,9 +1161,7 @@ test "gateway drain 503s new requests with Retry-After + envelope" {
 # Drain runs before the dispatcher (outermost middleware), so 503d
 # responses should not carry the X-Trace-Id header the dispatcher stamps.
 test "gateway drain does not burn metrics labels on 503d requests" {
-    import from jac_scale.microservices._drain {
-        reset_drain, start_drain
-    }
+    import from jac_scale.microservices._drain { reset_drain, start_drain }
     reset_drain();
 
     reg = ServiceRegistry();
@@ -973,23 +1180,31 @@ test "gateway drain does not burn metrics labels on 503d requests" {
 }
 
 
-# P16: CORS middleware. The gateway only installs CORSMiddleware when
+# CORS middleware. The gateway only installs CORSMiddleware when
 # `allow_origins` is configured; these tests patch the config resolver
 # so setup() sees the test config.
-
 obj _FakeScaleConfig {
     has _cors: dict = {};
 
     def get_microservices_config -> dict {
         return {
-            "enabled": True, "gateway_port": 8000, "gateway_host": "0.0.0.0",
-            "drain_timeout_seconds": 10.0, "routes": {}, "services": {},
-            "cors": self._cors, "client": {"entry": "", "dist_dir": "", "base_route": "/"}
+            "enabled": True,
+            "gateway_port": 8000,
+            "gateway_host": "0.0.0.0",
+            "drain_timeout_seconds": 10.0,
+            "routes": {},
+            "services": {},
+            "cors": self._cors,
+            "client": {"entry": "", "dist_dir": "", "base_route": "/"}
         };
     }
 
     def get_monitoring_config -> dict {
         return {"namespace": "jac_scale", "histogram_buckets": None};
+    }
+
+    def get_events_config -> dict {
+        return {"enabled": False};
     }
 }
 
@@ -1024,7 +1239,9 @@ test "CORS disabled when allow_origins is empty" {
     resp = client.get("/health", headers={"Origin": "http://example.com"});
     assert resp.status_code == 200;
     # No CORS headers emitted -> disabled.
-    assert "access-control-allow-origin" not in {k.lower() for k in resp.headers.keys()};
+    assert "access-control-allow-origin" not in {
+        k.lower() for k in resp.headers.keys()
+    };
 }
 
 
@@ -1071,8 +1288,11 @@ test "CORS simple request echoes Allow-Origin on the response" {
     }
     cors = {
         "allow_origins": ["http://app.example.com"],
-        "allow_methods": ["*"], "allow_headers": ["*"],
-        "allow_credentials": False, "expose_headers": [], "max_age": 600
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+        "allow_credentials": False,
+        "expose_headers": [],
+        "max_age": 600
     };
     gw = _with_cors_config(cors, build);
 
@@ -1094,8 +1314,11 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
     }
     cors = {
         "allow_origins": ["http://app.example.com"],
-        "allow_methods": ["*"], "allow_headers": ["*"],
-        "allow_credentials": False, "expose_headers": [], "max_age": 600
+        "allow_methods": ["*"],
+        "allow_headers": ["*"],
+        "allow_credentials": False,
+        "expose_headers": [],
+        "max_age": 600
     };
     gw = _with_cors_config(cors, build);
 
@@ -1129,7 +1352,6 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
 # =============================================================================
 # http_forward_timeout resolver (gateway-to-service forward; configurable)
 # =============================================================================
-
 test "http_forward_timeout falls back to 30s default when config read fails" {
     import from jac_scale.microservices._util { http_forward_timeout }
     # No working config -> the except branch in the resolver fires and
@@ -1144,6 +1366,7 @@ test "http_forward_timeout precedence: per-service > global > default" {
 
     obj _StubCfg {
         has data: dict[str, Any];
+
         def get_microservices_config -> dict[str, Any] {
             return self.data;
         }
@@ -1152,38 +1375,55 @@ test "http_forward_timeout precedence: per-service > global > default" {
     original = getattr(cfg_mod, "get_scale_config");
     try {
         # Case A: only global default set
-        setattr(cfg_mod, "get_scale_config", lambda: _StubCfg(
-            data={"http_forward_timeout": 45.0, "services": {}}
-        ));
+        setattr(
+            cfg_mod,
+            "get_scale_config",
+            lambda : _StubCfg(data={"http_forward_timeout": 45.0, "services": {}})
+        );
         assert http_forward_timeout(None) == 45.0;
         assert http_forward_timeout("any_service") == 45.0;
 
         # Case B: per-service override beats the global default
-        setattr(cfg_mod, "get_scale_config", lambda: _StubCfg(
-            data={
-                "http_forward_timeout": 45.0,
-                "services": {"llm_app": {"http_forward_timeout": 300.0}}
-            }
-        ));
+        setattr(
+            cfg_mod,
+            "get_scale_config",
+            lambda :
+                _StubCfg(
+                    data={
+                        "http_forward_timeout": 45.0,
+                        "services": {"llm_app": {"http_forward_timeout": 300.0}}
+                    }
+                )
+        );
         assert http_forward_timeout("llm_app") == 300.0;
         assert http_forward_timeout("other_service") == 45.0;
 
         # Case C: only per-service override; other services fall to default
-        setattr(cfg_mod, "get_scale_config", lambda: _StubCfg(
-            data={"services": {"llm_app": {"http_forward_timeout": 120.0}}}
-        ));
+        setattr(
+            cfg_mod,
+            "get_scale_config",
+            lambda :
+                _StubCfg(
+                    data={"services": {"llm_app": {"http_forward_timeout": 120.0}}}
+                )
+        );
         assert http_forward_timeout("llm_app") == 120.0;
         assert http_forward_timeout("other_service") == 30.0;
 
         # Case D: per-service entry has rpc_timeout but no http_forward_timeout
         # -> falls through to global default. Verifies the two knobs are
         # independent.
-        setattr(cfg_mod, "get_scale_config", lambda: _StubCfg(
-            data={
-                "http_forward_timeout": 45.0,
-                "services": {"llm_app": {"rpc_timeout": 120.0}}
-            }
-        ));
+        setattr(
+            cfg_mod,
+            "get_scale_config",
+            lambda :
+                _StubCfg(
+                    data={
+                        "http_forward_timeout": 45.0,
+                        "services": {"llm_app": {"rpc_timeout": 120.0}}
+                    }
+                )
+        );
         assert http_forward_timeout("llm_app") == 45.0;
     } finally {
         setattr(cfg_mod, "get_scale_config", original);

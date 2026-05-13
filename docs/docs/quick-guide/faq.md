@@ -115,13 +115,14 @@ Answers to common questions about Jac, organized by topic. Click a category to e
         The one-line installer uses [uv](https://docs.astral.sh/uv/) to install Jac in an isolated environment, separate from your system Python. This means `pip show` and `pip list` won't find Jac packages. Use `jac --version` instead -- it lists all installed plugins and their versions.
 
     ??? question "`jac clean --all` says 'No jac.toml found'."
-        `jac clean` requires a Jac project (a directory with `jac.toml`). If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac init` or `jac create <name>`.
+        `jac clean --all` (and the project-level cleanup flags it implies) needs a Jac project -- a directory with a `jac.toml`. Plain `jac clean` (no flags) only clears the local `.jac/data/` directory, but `--all`, `--cache`, and `--packages` operate on project artifacts and require the project root. If you're running standalone `.jac` scripts outside a project, delete the data directory manually: `rm -rf .jac/`. To create a project, run `jac create <name>`.
 
     ??? question "I see 'Address already in use' when running `jac start`."
         Another process is using the port (default 8000). Either stop the other process or use a different port: `jac start --port 3000`.
 
     ??? question "My frontend shows data but fields are empty or undefined."
         When returning node objects directly from `def:pub` endpoints, use `jid(node)` to access the node's unique identity. For reliable client-side access, return explicit dictionaries from your endpoints:
+        <!-- jac-skip -->
         ```jac
         # Instead of: return task;
         # Use:

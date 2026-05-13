@@ -70,15 +70,8 @@ def _sse_body(events: list[dict], trailer: str = "end") -> str {
 # =============================================================================
 # _parse_sse low-level parser
 # =============================================================================
-
 test "_parse_sse splits messages on blank lines and accumulates data" {
-    body = (
-        "data: hello\n"
-        "\n"
-        "data: line1\n"
-        "data: line2\n"
-        "\n"
-    );
+    body = "data: hello\n" "\n" "data: line1\n" "data: line2\n" "\n";
     out: list = [];
     for ev in _parse_sse(body.splitlines()) {
         out.append(ev);
@@ -105,10 +98,7 @@ test "_parse_sse picks up event: tags and trims one leading space" {
 
 test "_parse_sse ignores comment lines and unknown fields" {
     body = (
-        ": this is a heartbeat comment — ignore me\n"
-        "id: 42\n"
-        "data: keep_me\n"
-        "\n"
+        ": this is a heartbeat comment — ignore me\n" "id: 42\n" "data: keep_me\n" "\n"
     );
     out: list = [];
     for ev in _parse_sse(body.splitlines()) {
@@ -118,11 +108,7 @@ test "_parse_sse ignores comment lines and unknown fields" {
 }
 
 test "_parse_sse yields trailing message without final blank line" {
-    body = (
-        "data: a\n"
-        "\n"
-        "data: b\n"
-    );
+    body = "data: a\n" "\n" "data: b\n";
     out: list = [];
     for ev in _parse_sse(body.splitlines()) {
         out.append(ev);
@@ -144,9 +130,9 @@ test "_parse_sse decodes bytes input (httpx iter_lines() under raw mode)" {
 # =============================================================================
 # consume_sse_stream — orchestrates _parse_sse over an httpx Response
 # =============================================================================
-
 obj _FakeResp {
     has body: str;
+
     def iter_lines -> Any {
         for line in self.body.splitlines() {
             yield line;
@@ -168,7 +154,9 @@ test "consume_sse_stream raises RuntimeError on event: error" {
     resp = _FakeResp(body=_sse_body([], trailer="error"));
     raised_msg = "";
     try {
-        for _ in consume_sse_stream(resp, "test.func") { ; }
+        for _ in consume_sse_stream(resp, "test.func") {
+            ;
+        }
     } except RuntimeError as e {
         raised_msg = str(e);
     }
@@ -200,12 +188,12 @@ test "consume_sse_stream skips malformed JSON payload, keeps streaming" {
 # =============================================================================
 # sv_service_call end-to-end with an SSE-returning downstream
 # =============================================================================
-
 test "sv_service_call returns a generator when downstream emits SSE" {
     events_in = [
         {"type": "agent_started", "run_id": "r1"},
         {"type": "agent_text", "text": "hello"},
         {"type": "agent_done", "run_id": "r1"},
+
     ];
 
     def handler(request: httpx.Request) -> httpx.Response {
@@ -251,7 +239,9 @@ test "sv_service_call SSE path surfaces producer error as RuntimeError" {
         gen = JacScalePlugin.sv_service_call("stream_err_mod", "stream_events", {});
         raised_msg = "";
         try {
-            for _ in gen { ; }
+            for _ in gen {
+                ;
+            }
         } except RuntimeError as e {
             raised_msg = str(e);
         }
@@ -267,8 +257,7 @@ test "sv_service_call still unwraps JSON envelope when not SSE" {
     # Sanity check that the SSE branch didn't break the existing JSON path.
     def handler(request: httpx.Request) -> httpx.Response {
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "plain_json_ok"}}
+            status_code=200, json={"ok": True, "data": {"result": "plain_json_ok"}}
         );
     }
 

@@ -10,15 +10,10 @@ optimization used during backward CFG walks in type narrowing.
 """
 import from collections.abc { Sequence }
 import from threading { Event }
-import from typing { TYPE_CHECKING, cast }
+import from typing { cast }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import type from jaclang.jac0core.program { JacProgram }
 
 """CFG build pass using entry/exit visitor pattern."""
 obj CFGBuildPass(UniPass) {

@@ -9,6 +9,9 @@ This tutorial covers declaring reactive state, handling user input, sharing stat
 > - Completed: [React-Style Components](components.md)
 > - Time: ~30 minutes
 
+!!! note "Reactive state, hooks, and `jac check`"
+    Some blocks below mix reactive `has` state with React-flavored helpers (`createContext`, `useContext`, async effect blocks, `props.children`). Jac's bundler wires all of this up at build time, but the static checker has not yet shipped typed stubs for the React/JSX prop boundary, so isolated `jac check` runs flag the corresponding accesses as Unknown. The patterns work as written under `jac start`.
+
 ---
 
 ## Reactive State with `has`

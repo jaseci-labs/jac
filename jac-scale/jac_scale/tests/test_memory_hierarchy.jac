@@ -15,6 +15,9 @@ import requests;
 import from pymongo { MongoClient }
 import from testcontainers.mongodb { MongoDbContainer }
 import from testcontainers.redis { RedisContainer }
+import from jac_scale.context { JScaleExecutionContext }
+import from jac_scale.memory_hierarchy { _process_cache, MongoBackend }
+import from jac_scale.db { close_all_db_connections }
 
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
@@ -1302,4 +1305,240 @@ test "concurrent requests do not lose edges" {
             shutil.rmtree(data_dir);
         }
     }
+}
+
+"""Unit test for issue 5931 fix: acommit() forwards anchor to commit().
+
+Before the fix, acommit() called asyncio.to_thread(self.commit) — anchor
+was silently dropped. After the fix it calls asyncio.to_thread(self.commit, anchor),
+so commit() receives whatever was passed.
+"""
+test "acommit forwards anchor argument to commit()" {
+    import asyncio;
+    import from unittest.mock { patch }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+
+    received: list = [None];
+
+    def capture_commit(self: ScaleTieredMemory, anchor: Any = None) {
+        received[0] = anchor;
+    }
+
+    with patch.object(ScaleTieredMemory, 'commit', capture_commit) {
+        mem = object.__new__(ScaleTieredMemory);
+        # Case 1: no anchor — commit() must receive None.
+        asyncio.run(mem.acommit());
+        assert received[0] is None , (
+            f"acommit() with no anchor must pass None to commit(), got {received[0]}"
+        );
+        # Case 2: specific anchor — commit() must receive the same object.
+        sentinel = object();
+        asyncio.run(mem.acommit(sentinel));
+        assert received[0] is sentinel , (
+            "acommit(anchor) must forward the anchor to commit(); "
+            f"commit() received {received[0]!r} instead"
+        );
+    }
+}
+
+"""Unit test for issue 1g fix: ScaleTieredMemory._committed flag.
+
+After the first acommit() the flag is set True. A second call (the
+middleware's redundant pass) returns immediately — MongoBackend.sync()
+and its O(L1-size) hash computation are skipped entirely.
+"""
+test "acommit is idempotent — _committed flag prevents second sync pass" {
+    import asyncio;
+    import from unittest.mock { patch }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+
+    call_count = [0];
+
+    def mock_commit(self: ScaleTieredMemory, anchor: Any = None) {
+        call_count[0] += 1;
+    }
+
+    with patch.object(ScaleTieredMemory, 'commit', mock_commit) {
+        mem = object.__new__(ScaleTieredMemory);
+        mem._committed = False;
+        asyncio.run(mem.acommit());
+        assert call_count[0] == 1 , f"expected 1 commit call after first acommit, got {call_count[
+            0
+        ]}";
+        assert mem._committed is True , "_committed must be True after first acommit";
+        asyncio.run(mem.acommit());
+        assert call_count[0] == 1 , (
+            f"second acommit (middleware pass) must be a no-op via _committed flag, "
+            f"but commit() was called {call_count[0]} times"
+        );
+    }
+}
+
+"""Unit test for issue 1g fix: _committed stays False when commit() raises.
+
+If the thread pool commit raises (e.g. MongoDB unreachable), _committed must
+remain False so the middleware safety-net path can retry the commit.
+"""
+test "acommit leaves _committed False when commit() raises" {
+    import asyncio;
+    import from unittest.mock { patch }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+
+    def failing_commit(self: ScaleTieredMemory, anchor: Any = None) {
+        raise RuntimeError("simulated commit failure");
+    }
+
+    with patch.object(ScaleTieredMemory, 'commit', failing_commit) {
+        mem = object.__new__(ScaleTieredMemory);
+        mem._committed = False;
+        raised = False;
+        try {
+            asyncio.run(mem.acommit());
+        } except Exception {
+            raised = True;
+        }
+        assert raised , "acommit() must propagate the exception from commit()";
+        assert mem._committed is False , (
+            "_committed must stay False when commit() raises — "
+            "the middleware safety net must still be able to retry"
+        );
+    }
+}
+
+
+# =============================================================================
+# In-process system root cache tests (no server subprocess needed)
+# =============================================================================
+"""Wipe process-level singletons so each test starts with a cold process cache."""
+def _reset_process_cache {
+    _process_cache.clear();
+    with contextlib.suppress(Exception) {
+        close_all_db_connections();
+    }
+}
+
+"""Create a JScaleExecutionContext pointed at mongo_uri with no Redis."""
+def _new_jscale_ctx(mongo_uri: str) -> JScaleExecutionContext {
+    os.environ["MONGODB_URI"] = mongo_uri;
+    os.environ.pop("REDIS_URL", None);
+    return JScaleExecutionContext();
+}
+
+"""Return L3 (MongoDB) fetch count for this context, or 0 if not Mongo."""
+def _ctx_l3_fetch_count(ctx: JScaleExecutionContext) -> int {
+    l3 = ctx.mem.l3;
+    if isinstance(l3, MongoBackend) {
+        return l3.fetch_count;
+    }
+    return 0;
+}
+
+
+"""After the very first JScaleExecutionContext(), _process_cache['system_root']
+must hold a NodeAnchor whose id equals SUPER_ROOT_UUID."""
+test "system root cache: populated with NodeAnchor after first context init" {
+    import from uuid { UUID }
+    import from jaclang.jac0core.constant { Constants as Con }
+    import from jaclang.jac0core.archetype { NodeAnchor }
+
+    _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
+
+    assert "system_root" not in _process_cache;
+    _new_jscale_ctx(uri);
+
+    assert "system_root" in _process_cache , (
+        "_process_cache must contain 'system_root' after first context init"
+    );
+    cached = _process_cache["system_root"];
+    assert isinstance(cached, NodeAnchor) , (
+        f"Cached value must be a NodeAnchor, got {type(cached).__name__}"
+    );
+    assert cached.id == UUID(Con.SUPER_ROOT_UUID) , (
+        f"Cached anchor id {cached.id} != SUPER_ROOT_UUID"
+    );
+    _reset_process_cache();
+}
+
+
+"""First init must fetch the system root from MongoDB (fetch_count >= 1).
+Second init must find it in L1 from the process cache (fetch_count == 0).
+
+Each JScaleExecutionContext creates a fresh MongoBackend with fetch_count=0,
+so the count measured is per-context, not cumulative.
+"""
+test "system root cache: second context init skips MongoDB fetch" {
+    _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
+
+    ctx1 = _new_jscale_ctx(uri);
+    first_fetches = _ctx_l3_fetch_count(ctx1);
+    assert first_fetches >= 1 , (
+        f"First context init must fetch system root from MongoDB "
+        f"(got fetch_count={first_fetches})"
+    );
+    assert "system_root" in _process_cache , "Cache must be warm after first init";
+
+    ctx2 = _new_jscale_ctx(uri);
+    second_fetches = _ctx_l3_fetch_count(ctx2);
+    assert second_fetches == 0 , (
+        f"Second context init issued {second_fetches} MongoDB fetch(es) "
+        "for system root, expected 0. "
+        "_process_cache pre-injection into L1 is not working."
+    );
+    _reset_process_cache();
+}
+
+
+"""When _process_cache is empty (fresh process), context init must succeed
+and set system_root, user_root, and entry_node correctly."""
+test "system root cache: cold cache still produces a valid system root" {
+    import from uuid { UUID }
+    import from jaclang.jac0core.constant { Constants as Con }
+
+    _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
+
+    ctx = _new_jscale_ctx(uri);
+
+    assert ctx.system_root is not None , "system_root must not be None";
+    assert ctx.system_root.id == UUID(Con.SUPER_ROOT_UUID) , (
+        f"system_root.id {ctx.system_root.id} != SUPER_ROOT_UUID"
+    );
+    assert ctx.user_root is ctx.system_root , (
+        "user_root must default to system_root before auth"
+    );
+    assert ctx.entry_node is ctx.system_root , (
+        "entry_node must default to system_root before auth"
+    );
+    _reset_process_cache();
+}
+
+
+"""After the first init warms the cache, inits 2..N must each cost 0 fetches.
+Total MongoDB fetches for the system root across N inits equals the first
+init's fetch count, not N times that."""
+test "system root cache: N consecutive inits cost one MongoDB fetch total" {
+    N = 10;
+
+    _reset_process_cache();
+    _reset_mongo();
+    (_, uri) = _get_mongo();
+
+    ctx_first = _new_jscale_ctx(uri);
+    first_cost = _ctx_l3_fetch_count(ctx_first);
+    assert first_cost >= 1 , "First init must fetch from MongoDB";
+
+    for i in range(N - 1) {
+        ctx = _new_jscale_ctx(uri);
+        extra = _ctx_l3_fetch_count(ctx);
+        assert extra == 0 , (
+            f"Context init #{i + 2} of {N} issued {extra} MongoDB fetch(es) "
+            "for system root. Expected 0 — cache should be warm."
+        );
+    }
+    _reset_process_cache();
 }

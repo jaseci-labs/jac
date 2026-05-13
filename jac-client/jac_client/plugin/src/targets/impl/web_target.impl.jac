@@ -5,8 +5,7 @@ import from pathlib { Path }
 import from typing { Optional }
 import from jac_client.plugin.src.vite_bundler { ViteBundler }
 
-glob VITE_DEV_SERVER_PORT = 5173,
-     DEFAULT_FUNCTION_NAME = "app",
+glob DEFAULT_FUNCTION_NAME = "app",
      JAC_FILE_EXTENSION = ".jac",
      JAC_LANG_ID = "jac";
 
@@ -29,22 +28,24 @@ For web target, this delegates to the core jac start --dev behavior.
 The actual HMR implementation is in jaclang/cli/commands/impl/execution.impl.jac.
 This method is called when using non-default targets that inherit from WebTarget.
 """
-impl WebTarget.dev(entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
+impl WebTarget.dev(
+    entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
+) -> None {
     import from jaclang.cli.console { console }
+    # `port` = Vite dev server, `api_port` = API (0 = port+1), same as core `jac start --dev`.
+    api_p = api_port if api_port > 0 else port + 1;
     # Web dev mode is handled by core jac start --dev
     # When called directly (e.g., from PWATarget.dev() -> super().dev()),
     # we start the Vite dev server
     bundler = ViteBundler(project_dir=project_dir);
     client_dir = bundler._get_client_dir();
-    bundler.create_vite_config(entry_file, is_dev=True, api_port=api_port);
+    bundler.create_vite_config(entry_file, is_dev=True, api_port=api_p);
     if not (client_dir / 'configs' / 'package.json').exists() {
         bundler.create_package_json();
     }
     console.print("\n🌐 Starting web dev server (Vite + HMR)", style="bold");
     console.print("  Press Ctrl+C to stop\n", style="muted");
-    process = bundler.start_dev_server(
-        port=VITE_DEV_SERVER_PORT, suppress_initial_output=False
-    );
+    process = bundler.start_dev_server(port=port, suppress_initial_output=False);
     if process {
         try {
             process.wait();

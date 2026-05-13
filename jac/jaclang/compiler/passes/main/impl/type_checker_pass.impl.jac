@@ -124,7 +124,9 @@ impl TypeCheckPass.exit_return_stmt(self: TypeCheckPass, nd: uni.ReturnStmt) -> 
         );
     }
 
-    if not self.evaluator.assign_type(returning_type, return_type) {
+    if not self.evaluator.assign_type(
+        returning_type, return_type, strict=self.evaluator._is_strict_site(nd)
+    ) {
         self.emit(
             E1002,
             node_override=nd,
@@ -383,7 +385,9 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             }
         } elif (
             not is_unannotated_reassign
-            and not self.evaluator.assign_type(right_type, left_type)
+            and not self.evaluator.assign_type(
+                right_type, left_type, strict=self.evaluator._is_strict_site(nd)
+            )
         ) {
             self.emit(E1001, actual=str(right_type), expected=str(left_type));
         }
@@ -581,6 +585,80 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
             }
         }
     }
+    # Validate event-signature trigger matches the owning archetype kind:
+    # walker abilities fire on nodes/edges/Root; node and edge abilities
+    # fire on walkers. See JacWalker._execute_entries / _execute_exits.
+    if (
+        isinstance(nd.signature, uni.EventSignature)
+        and nd.signature.arch_tag_info is not None
+    ) {
+        self._check_event_trigger_archetype(nd);
+    }
+}
+
+"""Validate `can ... with X entry/exit` triggers against the owning
+archetype.
+
+The runtime contract (jac0core/runtime.jac `JacWalker._execute_entries`
+and `_execute_exits`) is:
+    walker._jac_entry_funcs_   trigger ⊆ NodeArchetype | EdgeArchetype
+    node/edge._jac_entry_funcs_  trigger ⊆ WalkerArchetype
+
+`with entry` / `with exit` (no trigger) is always valid — those handlers
+fire on every step. The trigger expression can be a single class, a
+tuple `(A, B)` (treated element-wise), or a `|` union; all elements /
+members must satisfy the rule. Any/Unknown is skipped to avoid
+duplicating W2001 / W1051 diagnostics on the same span."""
+impl TypeCheckPass._check_event_trigger_archetype(
+    self: TypeCheckPass, nd: uni.Ability
+) -> None {
+    import from jaclang.compiler.type_system { types }
+    sig = nd.signature;
+    if not isinstance(sig, uni.EventSignature) or sig.arch_tag_info is None {
+        return;
+    }
+    owner = nd.method_owner;
+    if not isinstance(owner, uni.Archetype) {
+        return;
+    }
+    owner_kind = owner.arch_type.value;
+    if owner_kind not in ("walker", "node", "edge") {
+        return;
+    }
+    walker_owner = owner_kind == "walker";
+
+    def is_valid(t: types.TypeBase) -> bool {
+        if t.is_any_type() or isinstance(t, types.UnknownType) {
+            return True;
+        }
+        if isinstance(t, types.UnionType) {
+            return all(is_valid(m) for m in t.types);
+        }
+        if isinstance(t, types.ClassType) {
+            if walker_owner {
+                return t.is_node_type() or t.is_edge_type();
+            }
+            return t.is_walker_type();
+        }
+        return False;
+    }
+
+    # Tuple form `(A, B)` desugars to a union annotation in pyast_gen —
+    # validate per element so each bad type gets its own diagnostic.
+    targets: list[uni.Expr] = (
+        list(sig.arch_tag_info.values)
+            if (
+                isinstance(sig.arch_tag_info, uni.TupleVal) and sig.arch_tag_info.values
+            )
+            else [sig.arch_tag_info]
+    );
+    err = E1116 if walker_owner else E1117;
+    for arg in targets {
+        ty = self.evaluator.get_type_of_expression(arg);
+        if not is_valid(ty) {
+            self.emit(err, node_override=arg, type=str(ty));
+        }
+    }
 }
 
 """Check if a code block always returns a value on all paths.
@@ -673,6 +751,7 @@ impl TypeCheckPass.before_pass(self: TypeCheckPass) -> None {
     self.evaluator._narrowing_cache = {};
 }
 
+
 """Set type on function/method parameters for hover info."""
 impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None {
     if (sym := nd.sym) {
@@ -732,7 +811,9 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
         # with the declared type (e.g., bad1: int = unknown_val;).
         if nd.value is not None and nd.type is not None {
             right_type = self.evaluator.get_type_of_expression(nd.value);
-            if not self.evaluator.assign_type(right_type, nd.type) {
+            if not self.evaluator.assign_type(
+                right_type, nd.type, strict=self.evaluator._is_strict_site(nd)
+            ) {
                 self.emit(
                     E1001,
                     node_override=nd,
@@ -994,7 +1075,9 @@ impl TypeCheckPass.exit_yield_expr(self: TypeCheckPass, nd: uni.YieldExpr) -> No
     );
 
     if not nd.with_from {
-        if not self.evaluator.assign_type(yielded_type, expected_yield) {
+        if not self.evaluator.assign_type(
+            yielded_type, expected_yield, strict=self.evaluator._is_strict_site(nd)
+        ) {
             self.emit(
                 E1093,
                 node_override=nd,
@@ -1010,38 +1093,52 @@ impl TypeCheckPass.exit_delete_stmt(self: TypeCheckPass, nd: uni.DeleteStmt) -> 
     self.evaluator.get_type_of_expression(nd.target);
 }
 
-"""Type-check visit statement target expression — must be a node type."""
+"""Type-check visit statement target expression.
+
+The runtime accepts (see `JacWalker.visit` in jac0core/runtime.jac):
+    Node | Edge | ObjectSpatialPath
+    | list/tuple/set/frozenset of (Node | Edge)
+
+The validator recurses into collection element types and union members so
+that the element type itself is constrained, not just the container kind.
+Unparameterized containers and Any/Unknown pass — there's not enough
+information to diagnose without false positives.
+"""
 impl TypeCheckPass.exit_visit_stmt(self: TypeCheckPass, nd: uni.VisitStmt) -> None {
     import from jaclang.compiler.type_system { types }
     target_type = self.evaluator.get_type_of_expression(nd.target);
-    # Validate the visit target is a node (or unknown/any which we can't check)
-    if (
-        not isinstance(target_type, types.UnknownType) and not target_type.is_any_type()
-    ) {
-        is_valid = False;
-        if isinstance(target_type, types.ClassType) {
-            if target_type.is_node_type() {
-                is_valid = True;
+    path_class = self.evaluator.prefetch.path_class;
+
+    def is_valid_visit_target(t: types.TypeBase) -> bool {
+        if t.is_any_type() or isinstance(t, types.UnknownType) {
+            return True;
+        }
+        if isinstance(t, types.ClassType) {
+            if t.is_node_type() or t.is_edge_type() {
+                return True;
             }
-            # Allow collections of nodes (e.g., list[NodeType])
+            if path_class is not None and t.shared == path_class.shared {
+                return True;
+            }
             if (
-                target_type.is_builtin()
-                and target_type.shared.class_name in (
-                    "list",
-                    "tuple",
-                    "set",
-                    "frozenset"
-                )
+                t.is_builtin()
+                and t.shared.class_name in ("list", "tuple", "set", "frozenset")
             ) {
-                is_valid = True;
+                if t.private.type_args and len(t.private.type_args) > 0 {
+                    return all(is_valid_visit_target(a) for a in t.private.type_args);
+                }
+                # Unparameterized collection — accept (matches connect operand).
+                return True;
             }
         }
-        if isinstance(target_type, types.UnionType) {
-            is_valid = True;  # Could contain nodes, don't over-diagnose
+        if isinstance(t, types.UnionType) {
+            return all(is_valid_visit_target(m) for m in t.types);
         }
-        if not is_valid {
-            self.emit(E1094, node_override=nd, type=str(target_type));
-        }
+        return False;
+    }
+
+    if not is_valid_visit_target(target_type) {
+        self.emit(E1094, node_override=nd, type=str(target_type));
     }
 }
 

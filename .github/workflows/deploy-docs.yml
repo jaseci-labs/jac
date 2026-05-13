@@ -124,13 +124,11 @@ jobs:
 
           RUN apt-get update && apt-get install -y \
               curl \
-              git \
               graphviz \
               && rm -rf /var/lib/apt/lists/*
 
           WORKDIR /app
 
-          COPY .git/ ./.git/
           COPY docs/ ./docs/
           COPY jac/ ./jac/
           COPY jac-client/ ./jac-client/

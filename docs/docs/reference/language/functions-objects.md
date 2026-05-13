@@ -212,7 +212,7 @@ obj Calculator {
 
 ### 6 Static Methods and Class Methods
 
-Jac provides three method modifiers: `def` (instance method, receives `self`), `static def` (no receiver), and `class def` (class method, receives `Self`).
+Jac provides three method modifiers: `def` (instance method, receives `self`), `static def` (no receiver), and `class def` (class method, receives the class itself).
 
 ```jac
 obj Counter {
@@ -223,9 +223,9 @@ obj Counter {
         return Counter.count;
     }
 
-    # Class method -- Self refers to the class itself
-    class def create() -> Self {
-        return Self();
+    # Static factory -- explicit class name keeps the return type clean
+    static def make() -> Counter {
+        return Counter();
     }
 
     # Instance method -- self is the instance
@@ -238,20 +238,20 @@ obj Counter {
 | Modifier | Receiver | Use case |
 |----------|----------|----------|
 | `def` | `self` (implicit) | Instance behavior |
-| `static def` | none | Utility functions |
-| `class def` | `Self` (implicit) | Factory methods, alternative constructors |
+| `static def` | none | Utility functions, named constructors |
+| `class def` | the class (implicit) | Class-bound methods that need access to the class object |
 
-#### Class Methods and `Self`
+#### Factory Methods
 
-`class def` declares a class method. Inside it, `Self` (capital S) refers to the class itself -- equivalent to Python's `cls` parameter, but auto-injected.
+The simplest way to expose a named constructor is a `static def` that returns the enclosing type:
 
 ```jac
 obj Animal {
     has name: str,
         sound: str = "...";
 
-    class def create(name: str) -> Self {
-        return Self(name=name);
+    static def named(name: str) -> Animal {
+        return Animal(name=name);
     }
 
     def speak() -> str {
@@ -264,18 +264,16 @@ obj Dog(Animal) {
 }
 
 with entry {
-    # Self resolves to Dog, not Animal -- polymorphic!
-    d = Dog.create("Rex");
+    a = Animal.named("Rex");
+    print(a.speak());         # Rex says ...
+    d = Dog(name="Rex");
     print(d.speak());         # Rex says woof
-    print(type(d).__name__);  # Dog
 }
 ```
 
-`Self` is polymorphic: when a subclass inherits a `class def`, `Self` resolves to the subclass. This makes factory methods work correctly across inheritance hierarchies without overriding.
-
 #### `Self` as a Type Annotation
 
-`Self` also works as a type annotation in instance methods, enabling fluent/builder patterns:
+`Self` works as a type annotation in instance methods, enabling fluent/builder patterns where each method returns the receiver:
 
 ```jac
 obj QueryBuilder {
@@ -300,9 +298,10 @@ with entry {
 
 | Context | `Self` resolves to |
 |---------|-------------------|
-| `class def` body | the class (`cls` in Python) |
-| `def` body | `type(self)` -- the runtime class |
-| Type annotation | the enclosing class name |
+| Instance `def` return annotation | `type(self)` -- the runtime class, used for fluent return-self |
+
+!!! note "Polymorphic `class def` factories"
+    A `class def` that returns `Self` and constructs `Self(...)` runs correctly today -- subclass calls return subclass instances -- but the static checker does not yet bind `Self` in `class def` return positions or as a callable target. For clean `jac check` output, prefer the `static def` factory above and name the concrete class explicitly. Tracking issue: polymorphic `Self` in `class def` is a planned type-checker enhancement.
 
 ### 7 Lambda Expressions
 
@@ -331,18 +330,95 @@ glob numbers = [1, 2, 3, 4, 5];
 glob squared = list(map(lambda x: int : x ** 2, numbers));
 glob evens = list(filter(lambda x: int : x % 2 == 0, numbers));
 
-# Lambda returning lambda
+# Lambda returning lambda (closure -- see callout below)
 glob make_adder = lambda x: int : (lambda y: int : x + y);
 glob add_five = make_adder(5);  # add_five(10) returns 15
 ```
 
-### 8 Immediately Invoked Function Expressions (IIFE)
+!!! info "Closures"
+    A lambda (or nested `def`) captures variables from its enclosing scope, producing a *closure*. Each call to the outer function creates a fresh binding, so independently configured callables don't share state:
+
+    ```jac
+    glob make_adder = lambda x: int : (lambda y: int : x + y);
+
+    with entry {
+        add_five = make_adder(5);
+        add_ten  = make_adder(10);
+        print(add_five(10));   # 15
+        print(add_ten(10));    # 20  (each closure keeps its own captured x)
+    }
+    ```
+
+    Captured values are read freely. To mutate state across calls, prefer returning a configured object (see [IIFE & Anonymous Factories](#8-iife-anonymous-factories) below) over rebinding a captured local.
+
+### 8 IIFE & Anonymous Factories
+
+An *Immediately Invoked Function Expression* defines a function and calls it in the same expression -- useful for inlining a one-shot computation, or for producing a configured value from a private scope.
+
+**Lambda IIFE** (single expression):
 
 ```jac
 with entry {
-    result = (lambda x: int -> int: x * 2)(5);  # result = 10
+    result = (lambda x: int -> int : x * 2)(5);   # result = 10
 }
 ```
+
+**`def` IIFE** (multi-statement, anonymous):
+
+```jac
+with entry {
+    config = (def () -> dict {
+        host = "localhost";
+        port = 8080;
+        return {"host": host, "port": port, "url": f"http://{host}:{port}"};
+    })();
+    print(config);
+}
+```
+
+**Anonymous factory** -- IIFE + closure to produce a configured callable. This is Jac's equivalent of the JS `x => y => x + y` factory idiom:
+
+```jac
+with entry {
+    adder = (def make_adder(x: int) {
+        return lambda y: int : x + y;
+    })(10);
+
+    print(adder(5));   # 15
+}
+```
+
+**Typed-product factory** -- when the product needs methods or a fixed shape, return an `obj` instance instead of a dict. The factory itself is an anonymous lambda that closes over its arguments:
+
+```jac
+obj Counter {
+    has count: int;
+    def inc -> None { self.count += 1; }
+    def get -> int  { return self.count; }
+}
+
+glob make_counter = lambda start: int -> Counter : Counter(count=start);
+
+with entry {
+    c = make_counter(10);
+    c.inc(); c.inc(); c.inc();
+    print(c.get());   # 13
+}
+```
+
+!!! note "Why no anonymous archetypes?"
+    Jac's `obj`, `node`, `edge`, and `walker` archetypes must be declared with a name at module scope -- there is no inline `obj { has x: int; }` expression. For one-off structural products use a `dict`; when you need methods or a stable type, declare a named `obj` once and have the factory return instances of it.
+
+!!! tip "Coming from JavaScript?"
+    | JS idiom | Jac equivalent |
+    |---|---|
+    | `x => x + 1` | `lambda x: int : x + 1` |
+    | `() => ({a: 1})` | `lambda : {"a": 1}` |
+    | `(() => 42)()` | `(def () -> int { return 42; })()` |
+    | `x => y => x + y` | `lambda x: int : (lambda y: int : x + y)` |
+    | anonymous `class { ... }` | not supported -- declare a named `obj` and return instances |
+
+    Jac lambdas require type annotations on parameters and a space before the body colon (`lambda x: int : x + 1`).
 
 ### 9 Decorators
 

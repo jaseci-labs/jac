@@ -29,7 +29,7 @@ obj PWATarget(WebTarget) {
 
     """Start PWA dev server."""
     override def dev(
-        entry_file: Path, project_dir: Path, api_port: int = 8000
+        entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
     ) -> None;
 
     """Start PWA server - build PWA bundle and serve with HTTP server."""

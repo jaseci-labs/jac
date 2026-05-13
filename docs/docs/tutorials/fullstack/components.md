@@ -142,9 +142,9 @@ def:pub UserGreeting(isLoggedIn: bool) -> JsxElement {
 ```jac
 to cl:
 
-def:pub TodoList(items: list[dict]) -> JsxElement {
+def:pub TodoList(items: list[dict[str, any]]) -> JsxElement {
     return <ul>
-        {[<li key={item.id}>{item.text}</li> for item in items]}
+        {[<li key={item["id"]}>{item["text"]}</li> for item in items]}
     </ul>;
 }
 

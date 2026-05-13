@@ -152,8 +152,7 @@ obj AssignmentTargetInfo {
         left: (es.Pattern | es.Expression),
         reference: (es.Expression | None),
         decl_name: (str | None),
-        pattern_names: list[tuple[(str, uni.Name)]],
-        is_first: bool;
+        pattern_names: list[tuple[(str, uni.Name)]];
 }
 
 """Describes the walker-side of a spawn expression."""
@@ -175,6 +174,12 @@ obj SpawnCallParts {
         target: SpawnTargetInfo;
 }
 
+"""Resolved function-call argument slot."""
+obj CallArgSlot {
+    has name: (str | None),
+        value: (es.Expression | es.SpreadElement | None);
+}
+
 """Jac to ECMAScript AST transpilation pass."""
 obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def before_pass -> None;
@@ -183,6 +188,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def sync_loc(es_node: _T, jac_node: (uni.UniNode | None) = None) -> _T;
     def _push_scope(nd: uni.UniScopeNode) -> None;
     def _pop_scope(nd: uni.UniScopeNode) -> None;
+    def _alt_branch_scope_to_finalize(nd: uni.UniNode) -> (uni.UniScopeNode | None);
     def _current_scope -> (ScopeInfo | None);
     def _is_declared_in_any_scope(name: str) -> bool;
     def _register_declaration(name: str) -> None;
@@ -261,6 +267,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def exit_jsx_text(nd: uni.JsxText) -> None;
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+    def exit_jsx_comment(nd: uni.JsxComment) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
     def exit_else_stmt(nd: uni.ElseStmt) -> None;
@@ -297,8 +304,67 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> tuple[(es.Pattern | es.Expression), (es.Expression | None), (str | None)];
 
     def _collect_pattern_names(target: uni.UniNode) -> list[tuple[(str, uni.Name)]];
-    def _is_name_first_definition(name_node: uni.Name) -> bool;
     def exit_assignment(nd: uni.Assignment) -> None;
+    def _resolve_source_module(nd: uni.Import) -> (uni.Module | None);
+    def _ability_from_symbol(sym: (uni.Symbol | None)) -> (uni.Ability | None);
+    def _resolve_sv_import_ability(name: str) -> (uni.Ability | None);
+    def _resolve_call_ability(nd: uni.FuncCall) -> (uni.Ability | None);
+    def _param_names_from_ability(ability_node: uni.Ability) -> list[str];
+    def _param_type_map_from_ability(ability_node: uni.Ability) -> dict[(str, str)];
+    def _wrap_to_wire_if_boundary(
+        expr: es.Expression,
+        type_name: str,
+        boundary_types: dict[(str, Any)],
+        jac_node: uni.UniNode
+    ) -> es.Expression;
+
+    def _extract_return_type(
+        ability_node: uni.Ability, func_name: str, manifest: Any
+    ) -> str;
+
+    def _wrap_return_with_boundary(
+        call_expr: es.Expression,
+        ret_type: str,
+        boundary_types: dict[(str, Any)],
+        jac_node: uni.UniNode,
+        pre_awaited: bool
+    ) -> es.Expression;
+
+    def _resolve_call_arg_slots(
+        nd: uni.FuncCall,
+        args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)],
+        param_names: list[str],
+        func_name: str,
+        spread_read_source: (es.Expression | None)
+    ) -> list[CallArgSlot];
+
+    def _call_args_from_slots(
+        slots: list[CallArgSlot]
+    ) -> (list[(es.Expression | es.SpreadElement)] | None);
+
+    def _kwargs_spread_arg(
+        props: list[(es.Property | es.SpreadElement)], nd: uni.FuncCall
+    ) -> (es.Expression | None);
+
+    def _kwargs_spread_needs_temp(
+        props: list[(es.Property | es.SpreadElement)]
+    ) -> bool;
+
+    def _make_kwargs_spread_context(
+        props: list[(es.Property | es.SpreadElement)], nd: uni.FuncCall
+    ) -> tuple[((es.Expression | None), (es.Expression | None))];
+
+    def _wrap_with_kwargs_temp(
+        expr: es.Expression, spread_arg: es.Expression, nd: uni.FuncCall
+    ) -> es.Expression;
+
+    def _try_lower_server_rpc_call(
+        nd: uni.FuncCall,
+        args: list[(es.Expression | es.SpreadElement)],
+        props: list[(es.Property | es.SpreadElement)]
+    ) -> (es.Expression | None);
+
     def exit_func_call(nd: uni.FuncCall) -> None;
     def exit_index_slice(nd: uni.IndexSlice) -> None;
     def exit_special_var_ref(nd: uni.SpecialVarRef) -> None;
