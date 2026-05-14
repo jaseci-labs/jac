@@ -7,6 +7,7 @@ import shutil;
 import from pathlib { Path }
 import from unittest.mock { MagicMock, patch }
 
+import from jaclang.cli.commands { project as proj_cmds }
 import from jaclang.project.config { JacConfig }
 import from jaclang.project.dependencies {
     DependencyInstaller,
@@ -1631,5 +1632,64 @@ test "DependencyInstaller _make_pip_spec special version values" {
     } finally {
         shutil.rmtree(tmp, ignore_errors=True);
         reset_config();
+    }
+}
+
+# ===== TestInstallFlags =====
+test "DependencyInstaller install_flags passed to pip" {
+    reset_config();
+    (tmp, project_dir) = make_temp_project();
+    try {
+        config = JacConfig.load(project_dir / "jac.toml");
+        installer = DependencyInstaller(
+            config=config, install_flags=["--no-cache-dir"]
+        );
+        with patch.object(installer, "ensure_venv") as _ev, patch.object(
+            installer, "_run_pip"
+        ) as mock_pip {
+            mock_pip.return_value = (0, "Successfully installed requests-2.31.0", "");
+            installer.install_package(["requests>=2.28.0"]);
+            call_args = mock_pip.call_args[0][0];
+            assert "install" in call_args;
+            assert "--upgrade" in call_args;
+            assert "--no-cache-dir" in call_args;
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+        reset_config();
+    }
+}
+
+test "update always uses upgrade flag" {
+    reset_config();
+    tmp = tempfile.mkdtemp(prefix="jac_test_");
+    try {
+        project_path = create_test_project(tmp);
+        os.makedirs(os.path.join(project_path, ".jac", "venv"), exist_ok=True);
+        original_cwd = os.getcwd();
+        os.chdir(project_path);
+        reset_config();
+        try {
+            with patch(
+                "jaclang.project.dependencies.DependencyInstaller.ensure_venv"
+            ) as _ev, patch(
+                "jaclang.project.dependencies.DependencyInstaller._run_pip"
+            ) as mock_pip {
+                mock_pip.side_effect = [
+                    (0, "Successfully installed requests-2.31.0 flask-3.1.0", ""),
+                    (0, "Name: requests\nVersion: 2.31.0", ""),
+                    (0, "Name: flask\nVersion: 3.1.0", "")
+                ];
+                result = proj_cmds.update();
+            }
+            assert result == 0;
+            first_call_args = mock_pip.call_args_list[0][0][0];
+            assert "--upgrade" in first_call_args;
+        } finally {
+            os.chdir(original_cwd);
+            reset_config();
+        }
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
     }
 }
