@@ -2214,22 +2214,7 @@ test "server startup - port fallback integration" {
 """Test HealthCheckFilter suppresses noisy health-check access log entries."""
 test "health check filter suppresses health endpoint log records" {
     import logging;
-
-    # Inline the filter class so we test the exact logic without needing
-    # to export it from the impl module.
-    class _HCF(logging.Filter) {
-        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP','"GET /healthz'};
-
-        def filter(self: _HCF, record: logging.LogRecord) -> bool {
-            msg = record.getMessage();
-            for pat in self._SUPPRESSED {
-                if pat in msg {
-                    return False;
-                }
-            }
-            return True;
-        }
-    }
+    import from jac_scale.jserver.impl.jfast_api { HealthCheckFilter }
 
     def make_record(msg: str) -> logging.LogRecord {
         return logging.LogRecord(
@@ -2243,7 +2228,7 @@ test "health check filter suppresses health endpoint log records" {
         );
     }
 
-    f = _HCF();
+    f = HealthCheckFilter();
 
     # These should be suppressed (filter returns False)
     suppressed = [
@@ -2277,20 +2262,7 @@ test "health check filter suppresses health endpoint log records" {
 """Test that HealthCheckFilter integrates correctly with Python's logging Handler."""
 test "health check filter blocks records when attached to a handler" {
     import logging;
-
-    class _HCF(logging.Filter) {
-        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP','"GET /healthz'};
-
-        def filter(self: _HCF, record: logging.LogRecord) -> bool {
-            msg = record.getMessage();
-            for pat in self._SUPPRESSED {
-                if pat in msg {
-                    return False;
-                }
-            }
-            return True;
-        }
-    }
+    import from jac_scale.jserver.impl.jfast_api { HealthCheckFilter }
 
     class _CapturingHandler(logging.Handler) {
         has captured: list = [];
@@ -2314,7 +2286,7 @@ test "health check filter blocks records when attached to a handler" {
 
     handler = _CapturingHandler();
     handler.setFormatter(logging.Formatter("%(message)s"));
-    handler.addFilter(_HCF());
+    handler.addFilter(HealthCheckFilter());
 
     records = [
         ('127.0.0.1 - "GET /health HTTP/1.1" 200', False),
