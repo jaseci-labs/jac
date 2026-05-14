@@ -334,12 +334,7 @@ node Ticket {
 }
 
 def analyze_priority(title: str, description: str) -> Priority by llm();
-```
 
-!!! warning "Graph Persistence"
-    Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
-
-```jac
 walker PrioritizeTickets {
     can with Root entry { visit [-->]; }
 
@@ -349,7 +344,12 @@ walker PrioritizeTickets {
         visit [-->];
     }
 }
+```
 
+!!! warning "Graph Persistence"
+    Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
+
+```jac
 with entry {
     root ++> Ticket(title="App crash", description="App crashes on startup");
     root ++> Ticket(title="Typo", description="Small typo on homepage");

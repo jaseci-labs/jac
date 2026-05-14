@@ -80,8 +80,8 @@ def create_or_update_configmap(
 def check_deployment_status(
     node_port: int,
     path: str = '/docs',
-    interval: int = 10,
-    max_retries: int = 60,
+    interval: int = 15,
+    max_retries: int = 48,
     nlb_url: (str | None) = None,
     namespace: str = "default",
     app_name: str = "jaseci",

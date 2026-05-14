@@ -227,6 +227,15 @@ impl ClassType.is_edge_type -> bool {
     return (arch.sym_category == SymbolType.EDGE_ARCH);
 }
 
+"""Return true if this class is a walker archetype."""
+impl ClassType.is_walker_type -> bool {
+    import jaclang.jac0core.unitree as uni;
+    import from jaclang.jac0core.constant { SymbolType }
+    arch = self.shared.symbol_table;
+    assert isinstance(arch, uni.Archetype);
+    return (arch.sym_category == SymbolType.WALKER_ARCH);
+}
+
 """Return true if this class is a data class."""
 impl ClassType.is_data_class -> bool {
     return self.shared.is_data_class;

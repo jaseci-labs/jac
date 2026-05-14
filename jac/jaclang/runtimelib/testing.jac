@@ -25,14 +25,9 @@ import json;
 import re;
 import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
-import from typing { TYPE_CHECKING, Any }
+import from typing { Any }
 import from urllib.parse { urlencode }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.runtimelib.server { JacAPIServer }
-    }
-}
+import type from jaclang.runtimelib.server { JacAPIServer }
 
 """HTTP response wrapper for test assertions."""
 obj TestResponse {

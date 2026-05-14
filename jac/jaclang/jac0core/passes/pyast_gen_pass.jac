@@ -162,6 +162,23 @@ ctypes.
         boundary_types: dict[str, BoundaryTypeInfo]
     ) -> str;
 
+    """Build a Python source string for an sv-to-sv walker stub.
+
+    A walker stub is a class whose constructor performs a remote spawn:
+    instantiating `Greet(name="x")` on the consumer issues a POST to
+    `/walker/Greet` on the provider, deserialises the response, and
+    returns an instance with `has` fields and a `reports` attribute
+    populated. The consumer-side class shape mirrors the provider's
+    walker so type identity and boundary-typed fields survive the trip.
+    """
+    def _gen_py_sv_walker_stub(
+        local_name: str,
+        walker_name: str,
+        module_name: str,
+        binding: InteropBinding,
+        boundary_types: dict[str, BoundaryTypeInfo]
+    ) -> str;
+
     """Build a Python source string for a boundary type stub class."""
     def _gen_py_boundary_stub_class(class_name: str, info: BoundaryTypeInfo) -> str;
 
@@ -175,6 +192,10 @@ needs_enum)
         and should not be added to builtin_imports.
         """
     def builtin_name(name: str) -> ast3.Name;
+
+    """True if `target` is (or transitively wraps) an edge-ref trailer whose
+    codegen produces a `Jac.refs(...)` call we can fuse a `slc=` kwarg into."""
+    def _is_edge_ref_target(target: uni.UniNode) -> bool;
 
     """Append an import statement to the preamble once."""
     def _add_preamble_once(key: str, nd: ast3.AST) -> None;
@@ -430,6 +451,9 @@ variables
 
     """Generate Python AST for JSX expression children."""
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+
+    """Generate Python AST for JSX block comments (no-op)."""
+    def exit_jsx_comment(nd: uni.JsxComment) -> None;
 
     def exit_semi(nd: uni.Semi) -> None;
     def exit_comment_token(nd: uni.CommentToken) -> None;
