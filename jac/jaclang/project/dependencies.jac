@@ -23,7 +23,8 @@ obj ResolvedDependency {
 obj DependencyInstaller {
     has config: JacConfig | None = None,
         venv_dir: Path | None = None,
-        verbose: bool = False;
+        verbose: bool = False,
+        install_flags: list[str] | None = None;
 
     def postinit -> None;
     def ensure_venv -> None;

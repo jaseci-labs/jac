@@ -1054,6 +1054,8 @@ Sync the project environment to `jac.toml`. Installs all Python (pip), git, and 
 
 ```bash
 jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
+            [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
+            [--no-deps] [--quiet] [--prefer-binary]
 ```
 
 | Option | Description | Default |
@@ -1062,6 +1064,13 @@ jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 | `-d, --dev` | Include dev dependencies | `False` |
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
+| `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
+| `--no-cache-dir` | Disable the pip download cache | `False` |
+| `--pre` | Include pre-release and development versions | `False` |
+| `--dry-run` | Show what would be installed without actually installing anything | `False` |
+| `--no-deps` | Don't install package dependencies | `False` |
+| `--quiet` | Suppress pip output | `False` |
+| `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
 
 **Examples:**
 
@@ -1086,9 +1095,23 @@ jac install -e .
 
 # Editable install from anywhere (no need to cd into the package)
 jac install -e /path/to/lib
+
+# Reinstall all packages from scratch (ignores cached state)
+jac install --force-reinstall
+
+# Include pre-release versions
+jac install --pre
+
+# Preview what would be installed without doing it
+jac install --dry-run
+
+# Install without using pip's download cache
+jac install --no-cache-dir
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
+
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 
