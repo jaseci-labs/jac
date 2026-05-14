@@ -134,12 +134,13 @@ test "param syntax" {
 }
 
 test "new keyword errors" {
-    # JS-style `new car(...)` is not Jac syntax: `new` is now an ambient
-    # builtin (callable as `new(Cls, ...args)`), so the parser treats the
-    # bare `new` as an identifier and the adjacent `car("honda", 2018)` as
-    # a second expression, producing `Missing ';'` on each of the two
-    # offending lines. The fixture is preserved as a regression guard that
-    # JS-style `new` usage still fails.
+    # `new` is an ambient builtin in Jac (callable as `new(Cls, ...args)`),
+    # so JS-style `new Cls(args)` usage no longer parses. The parser detects
+    # the offending shape ("bare `new` followed by another atom in
+    # statement-terminator position") and emits the migration-friendly
+    # `E0012` instead of the cascade of `Missing ';'` errors users used to
+    # see. Each of the two offending lines in the fixture should produce
+    # one `E0012`.
     captured_output = io.StringIO();
     sys.stdout = captured_output;
     prog = JacProgram();
@@ -147,8 +148,9 @@ test "new keyword errors" {
     sys.stdout = sys.__stdout__;
     assert len(prog.errors_had) == 2;
     for alrt in prog.errors_had {
+        assert alrt.code is not None and alrt.code.code == "E0012";
         pretty = alrt.pretty_print();
-        assert "Missing ';'" in pretty;
+        assert "`new(target, ...args)`" in pretty;
     }
 }
 

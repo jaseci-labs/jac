@@ -144,6 +144,8 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0027,
+    E0028,
     E0026,
     E0030,
     E0032,
@@ -1226,6 +1228,11 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid.append(conn_assign);
             }
         }
+        if not self.check(TokenKind.CARROW_R_P2) {
+            self.emit_diag(E0027);
+            self.synchronize();
+            return None;
+        }
         end_uni = self.consume_uni(TokenKind.CARROW_R_P2);
         kid.append(end_uni);
         return ConnectOp(
@@ -1290,7 +1297,8 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid=kid
             );
         } else {
-            self.emit_diag(E0021);
+            self.emit_diag(E0028);
+            self.synchronize();
             return None;
         }
     }
@@ -3355,6 +3363,13 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
+    # JSX block comment: {#* ... *#} — renders nothing, but kept in the AST
+    # so the formatter can round-trip it.
+    if self.check(TokenKind.JSX_COMMENT) {
+        cmt_tok = self.advance();
+        cmt_node = self.make_uni_token(cmt_tok);
+        return JsxComment(value=cmt_node, kid=[cmt_node]);
+    }
     # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
@@ -4127,6 +4142,12 @@ impl Parser.parse_statement{
     expr_kid: list = [expr];
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
+    } elif isinstance(expr, Name) and expr.value == "new" {
+        # `new` is an ambient builtin; a bare `new` followed by another atom
+        # is JS-style `new Foo(...)` usage. Emit the migration-friendly
+        # E0012 (which recommends `new(target, ...args)`) instead of the
+        # generic E0002 "Missing ';'".
+        self.emit_diag(E0012, loc=self.current().loc);
     } else {
         self.emit_diag(E0002, token=";");
     }
@@ -5115,7 +5136,17 @@ impl Parser.parse_assignment_with_target(
     }
     # Add Semi as child of Assignment (matching Lark structure)
     if require_semi {
-        self.expect(TokenKind.SEMI);
+        if not self.check(TokenKind.SEMI)
+        and value is not None
+        and isinstance(value, Name)
+        and value.value == "new" {
+            # JS-style `lhs = new Foo(...)`: emit E0012 instead of the
+            # generic E0002 from expect(SEMI). See parse_statement for
+            # the same detection on bare expressions.
+            self.emit_diag(E0012, loc=self.current().loc);
+        } else {
+            self.expect(TokenKind.SEMI);
+        }
         kid.append(self.make_semi());
     } elif self.match_tok(TokenKind.SEMI) {
         kid.append(self.make_semi());

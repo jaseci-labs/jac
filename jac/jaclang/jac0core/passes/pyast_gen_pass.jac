@@ -452,6 +452,9 @@ variables
     """Generate Python AST for JSX expression children."""
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
 
+    """Generate Python AST for JSX block comments (no-op)."""
+    def exit_jsx_comment(nd: uni.JsxComment) -> None;
+
     def exit_semi(nd: uni.Semi) -> None;
     def exit_comment_token(nd: uni.CommentToken) -> None;
 }

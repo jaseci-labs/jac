@@ -943,7 +943,44 @@ impl Lexer.scan_jsx_content -> Token {
     }
     # Opening brace for expression: {expr}
     if ch == "{" {
-        self.advance();
+        # JSX block-comment slot: `{#* ... *#}` is a Jac-native JSX comment
+        # that renders nothing. Look ahead from `{` over whitespace; if we
+        # find a `#*` block comment and the slot closes at `}` after it,
+        # emit a single JSX_COMMENT token spanning the whole `{...}` range.
+        # If anything else appears, restore and fall through to the regular
+        # LBRACE path so normal expression scanning takes over.
+        saved_pos = self.pos;
+        saved_line = self.line;
+        saved_col = self.col;
+        saved_comments_len = len(self.comments);
+        self.advance();  # consume {
+        self.skip_whitespace();
+        is_comment_slot = False;
+        if (not self.at_end() and self.current() == "#" and self.peek() == "*") {
+            if self.skip_block_comment() {
+                self.skip_whitespace();
+                if not self.at_end() and self.current() == "}" {
+                    self.advance();  # consume }
+                    is_comment_slot = True;
+                }
+            }
+        }
+        if is_comment_slot {
+            # Drop the comment we just recorded into self.comments — the
+            # JsxComment AST node owns it now, so leaving it in the sidecar
+            # would cause CommentInjectionPass to emit it twice on reformat.
+            self.comments = self.comments[:saved_comments_len];
+            value = self.source[start_pos:self.pos];
+            return self.make_token(
+                TokenKind.JSX_COMMENT, value, start_line, start_col, start_pos
+            );
+        }
+        # Not a comment-only slot — restore and emit LBRACE as normal.
+        self.pos = saved_pos;
+        self.line = saved_line;
+        self.col = saved_col;
+        self.comments = self.comments[:saved_comments_len];
+        self.advance();  # consume {
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
         self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode

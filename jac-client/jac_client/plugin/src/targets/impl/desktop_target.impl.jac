@@ -3021,11 +3021,14 @@ exec python3 -m jac_client.plugin.src.targets.desktop.sidecar.main "$@"
 
 """Start desktop dev server - start web dev server and launch tauri dev."""
 impl DesktopTarget.dev(
-    entry_file: Path, project_dir: Path, api_port: int = 8000
+    entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
     import from jac_client.plugin.src.vite_bundler { ViteBundler }
     import signal;
     import sys;
+    # `port` = Vite, `api_port` = Jac API (0 = port+1), same as core `jac start --dev`.
+    vite_port = port;
+    effective_api = api_port if api_port > 0 else port + 1;
     console.print("\n🖥️  Starting desktop dev server (Tauri)", style="bold");
     # Check if setup has been run
     tauri_dir = project_dir / "src-tauri";
@@ -3034,11 +3037,10 @@ impl DesktopTarget.dev(
     }
     # Step 1: Update tauri.conf.json for dev mode
     console.print("  Configuring Tauri for dev mode...", style="muted");
-    _update_tauri_config_for_dev(tauri_dir);
+    _update_tauri_config_for_dev(tauri_dir, vite_port);
     # Step 1.5: Prepare package.json and get compiler
     # We need compiled/_entry.js and compiled/main.js to exist before Vite can serve them
     console.print("  Preparing compilation setup...", style="muted");
-    vite_port = 5173;
     bundler = ViteBundler(
         project_dir=project_dir, output_dir=None, minify=False, config_path=None
     );
@@ -3075,9 +3077,9 @@ impl DesktopTarget.dev(
     # Desktop webview needs an explicit backend URL (same-origin doesn't work)
     dev_config_path = bundler.create_vite_config(
         entry_file,
-        api_base_url_override=_make_localhost_url(api_port),
+        api_base_url_override=_make_localhost_url(effective_api),
         is_dev=True,
-        api_port=api_port
+        api_port=effective_api
     );
     # Start Vite dev server (suppress initial output for cleaner startup)
     vite_process = bundler.start_dev_server(
@@ -3091,7 +3093,7 @@ impl DesktopTarget.dev(
     );
     # Step 3: Start backend API server
     toml_base_url = _get_toml_api_base_url(project_dir);
-    server_port = _resolve_server_port(toml_base_url, api_port);
+    server_port = _resolve_server_port(toml_base_url, effective_api);
     # Regenerate main.rs with the actual backend URL so sidecar is skipped
     _generate_main_rs(
         tauri_dir, api_base_url=toml_base_url or _make_localhost_url(server_port)
@@ -3148,8 +3150,8 @@ impl DesktopTarget.dev(
     }
 }
 
-"""Update tauri.conf.json for dev mode (point to dev server)."""
-def _update_tauri_config_for_dev(tauri_dir: Path) {
+"""Update tauri.conf.json for dev mode (point to Vite dev server on `vite_port`)."""
+def _update_tauri_config_for_dev(tauri_dir: Path, vite_port: int) {
     import json;
 
     config_path = tauri_dir / "tauri.conf.json";
@@ -3167,7 +3169,7 @@ def _update_tauri_config_for_dev(tauri_dir: Path) {
         config["build"] = {};
     }
     # Tauri v2 uses 'devUrl' instead of 'devPath'
-    config["build"]["devUrl"] = "http://localhost:5173";
+    config["build"]["devUrl"] = f"http://localhost:{vite_port}";
     # Remove distDir and other invalid properties
     if "distDir" in config["build"] {
         del config["build"]["distDir"];
