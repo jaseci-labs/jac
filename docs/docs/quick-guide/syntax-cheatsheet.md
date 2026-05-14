@@ -1269,6 +1269,7 @@ def:pub Counter() -> JsxElement {
 # <div>text</div>               HTML elements
 # <Component prop="val" />      Component with props
 # {expression}                  JavaScript expression
+# {#* comment *#}               JSX comment (renders nothing)
 # {condition and <p>Show</p>}   Conditional render
 # {[<li>...</li> for x in xs]}  List rendering
 # <div {...props}>               Spread props
