@@ -194,7 +194,8 @@ def _build_css_link(bundler: ViteBundler) -> str {
     }
     if css_file.exists() {
         css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
-        return f'<link rel="stylesheet" href="/styles.css?hash={css_hash}"/>';
+        base_path = bundler.config_loader.get_base_path();
+        return f'<link rel="stylesheet" href="{base_path}styles.css?hash={css_hash}"/>';
     }
     return '';
 }
@@ -246,6 +247,7 @@ def _generate_index_html(
     # Escape </ to prevent closing script tag early (don't use html.escape - breaks JSON)
     init_json = json.dumps(init_payload).replace('</', '<\\/');
     bundle_filename = bundle_path.name;
+    base_path = bundler.config_loader.get_base_path();
 
     html_content = f'''<!DOCTYPE html>
 <html lang="en">
@@ -255,7 +257,7 @@ def _generate_index_html(
   <body>
     <div id="root"></div>
     <script id="__jac_init__" type="application/json">{init_json}</script>
-    <script type="module" src="/{bundle_filename}"></script>
+    <script type="module" src="{base_path}{bundle_filename}"></script>
   </body>
 </html>''';
     index_html = dist_dir / 'index.html';
