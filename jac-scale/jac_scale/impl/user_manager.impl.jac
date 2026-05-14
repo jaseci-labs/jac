@@ -301,7 +301,8 @@ impl JacScaleUserManager.validate_jwt_token(token: str) -> str | None {
             );
             return None;
         }
-        valid_from_ts = float(user_doc.get('tokens_valid_from', 0.0));
+        _raw_vf = user_doc.get('tokens_valid_from');
+        valid_from_ts = 0.0 if _raw_vf is None else float(_raw_vf);
         _revocation_ts_cache[user_id] = (valid_from_ts, now_m + _REVOCATION_CACHE_TTL);
         rev_entry = (valid_from_ts, now_m + _REVOCATION_CACHE_TTL);
     }

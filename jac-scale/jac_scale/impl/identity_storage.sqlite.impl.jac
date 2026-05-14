@@ -21,7 +21,8 @@ impl SqliteIdentityStorage.postinit -> None {
         Column('requires_password_reset', Integer, default=0),
         Column('profile', JSON, default=dict),
         Column('created_at', String),
-        Column('updated_at', String)
+        Column('updated_at', String),
+        Column('tokens_valid_from', String, nullable=True)
     );
     self._identity_lookups = Table(
         'identity_lookups',
@@ -50,14 +51,26 @@ impl SqliteIdentityStorage.postinit -> None {
     self.ensure_indexes();
 }
 
-"""Create tables."""
+"""Create tables and migrate schema for existing databases."""
 impl SqliteIdentityStorage.ensure_indexes -> None {
+    import from sqlalchemy { text }
     self._table.metadata.create_all(self._engine);
+    # Add tokens_valid_from to existing databases that predate this column.
+    # SQLite raises OperationalError if the column already exists; ignore it.
+    try {
+        with self._engine.begin() as conn {
+            conn.execute(
+                text('ALTER TABLE identity_users ADD COLUMN tokens_valid_from TEXT')
+            );
+        }
+    } except Exception as e {
+        logger.debug(f"tokens_valid_from migration skipped: {e}");
+    }
 }
 
 """Convert a row to a dict (excludes credentials)."""
 def _row_to_dict(row: Any) -> dict[str, Any] {
-    return {
+    d: dict[str, Any] = {
         'user_id': row.user_id,
         'status': row.status,
         'identities': row.identities or [],
@@ -68,6 +81,11 @@ def _row_to_dict(row: Any) -> dict[str, Any] {
         'created_at': row.created_at,
         'updated_at': row.updated_at
     };
+    raw_vf = row?.tokens_valid_from;
+    if raw_vf is not None {
+        d['tokens_valid_from'] = float(raw_vf);
+    }
+    return d;
 }
 
 """Insert a user document and sync lookup tables."""

@@ -1,7 +1,14 @@
 """Compact test for MongoDB user operations using testcontainers."""
 
 import os;
-import from jac_scale.user_manager { JacScaleUserManager }
+import time;
+import tempfile;
+import from jac_scale.user_manager {
+    JacScaleUserManager,
+    _decoded_token_cache,
+    _revocation_ts_cache,
+    _user_token_hashes
+}
 import from jac_scale.config_loader { reset_scale_config }
 
 """Test MongoDB user CRUD operations with testcontainers."""
@@ -406,6 +413,201 @@ test "JAC_DATA_PATH redirects SQLite identity store away from base_path" {
                 }
                 reset_scale_config();
             }
+        }
+    }
+}
+
+# ============================================================================
+# JWT cache + credential-epoch revocation tests (SQLite backend, no containers)
+# ============================================================================
+glob _JWT_TEST_TOML = (
+         "[project]\nname = \"test-jwt-cache\"\nversion = \"1.0.0\"\n"
+         "[plugins.scale.jwt]\nsecret = \"test_jwt_secret_x\"\n"
+         "algorithm = \"HS256\"\nexp_delta_days = 1\n"
+         "[plugins.scale.sso]\nhost = \"http://localhost:8000\"\n"
+         "[plugins.scale.admin]\nenabled = false\n"
+     );
+
+def _jwt_make_manager(tmpdir: any) -> JacScaleUserManager {
+    with open(os.path.join(str(tmpdir), "jac.toml"), "w") as f {
+        f.write(_JWT_TEST_TOML);
+    }
+    os.environ.pop("MONGODB_URI", None);
+    reset_scale_config();
+    return JacScaleUserManager(base_path=str(tmpdir));
+}
+
+def _jwt_clear_caches {
+    _decoded_token_cache.clear();
+    _revocation_ts_cache.clear();
+    _user_token_hashes.clear();
+}
+
+def _jwt_make_user(um: JacScaleUserManager, username: str) -> str {
+    result = um.create_user(
+        identities=[{'type': 'username', 'value': username}],
+        credential={'type': 'password', 'password': 'pw_test_123'}
+    );
+    assert "user_id" in result , f"create_user failed: {result}";
+    return str(result["user_id"]);
+}
+
+
+test "token issued before invalidate_user_tokens is rejected" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        um = _jwt_make_manager(tmpdir);
+        try {
+            user_id = _jwt_make_user(um, "rev_before");
+            _jwt_clear_caches();
+
+            token = um.create_jwt_token(user_id);
+            time.sleep(0.02);  # ensure iat strictly precedes tokens_valid_from
+            um.invalidate_user_tokens(user_id);
+
+            assert um.validate_jwt_token(token) is None , (
+                "Token issued before invalidate_user_tokens() must be rejected"
+            );
+        } finally {
+            um.close();
+            reset_scale_config();
+        }
+    }
+}
+
+
+test "token issued after invalidate_user_tokens is accepted" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        um = _jwt_make_manager(tmpdir);
+        try {
+            user_id = _jwt_make_user(um, "rev_after");
+            _jwt_clear_caches();
+
+            um.invalidate_user_tokens(user_id);
+            time.sleep(0.02);  # ensure new iat strictly follows tokens_valid_from
+            token = um.create_jwt_token(user_id);
+
+            result = um.validate_jwt_token(token);
+            assert result == user_id , (
+                f"Token issued after invalidate_user_tokens() must be accepted, got {result}"
+            );
+        } finally {
+            um.close();
+            reset_scale_config();
+        }
+    }
+}
+
+
+test "password change immediately invalidates old token in same worker" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        um = _jwt_make_manager(tmpdir);
+        try {
+            user_id = _jwt_make_user(um, "pw_revoke");
+            _jwt_clear_caches();
+
+            old_token = um.create_jwt_token(user_id);
+            # Seed L1 decode cache to verify eager eviction (not just L3 path)
+            assert um.validate_jwt_token(old_token) == user_id;
+
+            time.sleep(0.02);
+            um.update_password(user_id, "pw_test_123", "new_pw_456");
+
+            assert um.validate_jwt_token(old_token) is None , (
+                "Token from before password change must be rejected"
+            );
+
+            time.sleep(0.02);
+            new_token = um.create_jwt_token(user_id);
+            assert um.validate_jwt_token(new_token) == user_id , (
+                "Token issued after password change must be accepted"
+            );
+        } finally {
+            um.close();
+            reset_scale_config();
+        }
+    }
+}
+
+
+test "deleted user token is rejected immediately in same worker" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        um = _jwt_make_manager(tmpdir);
+        try {
+            user_id = _jwt_make_user(um, "del_revoke");
+            _jwt_clear_caches();
+
+            token = um.create_jwt_token(user_id);
+            # Seed L1 decode cache to verify eager eviction on delete
+            assert um.validate_jwt_token(token) == user_id;
+
+            um.delete_user(user_id);
+
+            assert um.validate_jwt_token(token) is None , (
+                "Token for a deleted user must be rejected immediately in the same worker"
+            );
+        } finally {
+            um.close();
+            reset_scale_config();
+        }
+    }
+}
+
+
+test "cache overflow above TOKEN_CACHE_MAX_SIZE does not panic" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        um = _jwt_make_manager(tmpdir);
+        try {
+            user_id = _jwt_make_user(um, "cache_overflow");
+            _jwt_clear_caches();
+
+            # Fill cache past eviction threshold with synthetic entries
+            fake_exp = time.monotonic() + 3600.0;
+            for i in range(50001) {
+                fake_hash = f"deadbeef{i:08d}";
+                _decoded_token_cache[fake_hash] = (user_id, fake_exp);
+                _user_token_hashes.setdefault(user_id, set()).add(fake_hash);
+            }
+            assert len(_decoded_token_cache) == 50001;
+
+            token = um.create_jwt_token(user_id);
+            validated = um.validate_jwt_token(token);
+            assert validated == user_id , (
+                f"Real token must validate after cache eviction, got {validated}"
+            );
+            assert len(_decoded_token_cache) == 1 , (
+                f"Cache should hold exactly 1 entry after eviction, got {len(
+                    _decoded_token_cache
+                )}"
+            );
+        } finally {
+            um.close();
+            reset_scale_config();
+        }
+    }
+}
+
+
+test "tokens_valid_from absent on legacy user document is backward-compatible" {
+    with tempfile.TemporaryDirectory() as tmpdir {
+        um = _jwt_make_manager(tmpdir);
+        try {
+            user_id = _jwt_make_user(um, "legacy_user");
+            _jwt_clear_caches();
+
+            token = um.create_jwt_token(user_id);
+
+            # Simulate a legacy doc where the field was never set (set to None)
+            um._identity_storage.update_user_fields(
+                user_id, {'tokens_valid_from': None}
+            );
+
+            # Token must still be accepted: None coerces to 0.0, all iat values pass
+            assert um.validate_jwt_token(token) == user_id , (
+                "Token must be accepted when tokens_valid_from is None (legacy user doc)"
+            );
+        } finally {
+            um.close();
+            reset_scale_config();
         }
     }
 }
