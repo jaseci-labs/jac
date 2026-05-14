@@ -265,6 +265,47 @@ obj KubernetesTarget(DeploymentTarget) {
         return ['bash', '-c', full_command];
     }
 
+    """Build the Deployment body dict for create/replace_namespaced_deployment."""
+    def _build_deployment_body(
+        app_name: str,
+        namespace: str,
+        app_sa_name: str,
+        container_config: dict,
+        init_containers: list,
+        volumes: list,
+        pull_secret_name: (str | None) = None
+    ) -> dict {
+        return {
+            'apiVersion': 'apps/v1',
+            'kind': 'Deployment',
+            'metadata': {
+                'name': app_name,
+                'namespace': namespace,
+                'labels': {'app': app_name, 'managed': 'jac-scale'}
+            },
+            'spec': {
+                'replicas': 1,
+                'selector': {'matchLabels': {'app': app_name}},
+                'template': {
+                    'metadata': {'labels': {'app': app_name}},
+                    'spec': {
+                        'automountServiceAccountToken': False,
+                        'serviceAccountName': app_sa_name,
+                        'securityContext': {
+                            'seccompProfile': {'type': 'RuntimeDefault'}
+                        },
+                        'imagePullSecrets': [{'name': pull_secret_name}]
+                            if pull_secret_name
+                            else [],
+                        'initContainers': init_containers,
+                        'containers': [container_config],
+                        'volumes': volumes
+                    }
+                }
+            }
+        };
+    }
+
     """Build a kubernetes.io/dockerconfigjson Secret body for DockerHub pulls."""
     def _build_registry_pull_secret(
         namespace: str, username: str, password: str, secret_name: str
@@ -1415,35 +1456,15 @@ obj KubernetesTarget(DeploymentTarget) {
             service = self._build_service_config(
                 app_name, cluster_env, health_check_path
             );
-            deployment = {
-                'apiVersion': 'apps/v1',
-                'kind': 'Deployment',
-                'metadata': {
-                    'name': app_name,
-                    'namespace': namespace,
-                    'labels': {'app': app_name, 'managed': 'jac-scale'}
-                },
-                'spec': {
-                    'replicas': 1,
-                    'selector': {'matchLabels': {'app': app_name}},
-                    'template': {
-                        'metadata': {'labels': {'app': app_name}},
-                        'spec': {
-                            'automountServiceAccountToken': False,
-                            'serviceAccountName': app_sa_name,
-                            'securityContext': {
-                                'seccompProfile': {'type': 'RuntimeDefault'}
-                            },
-                            'imagePullSecrets': [{'name': pull_secret_name}]
-                                if pull_secret_name
-                                else [],
-                            'initContainers': init_containers,
-                            'containers': [container_config],
-                            'volumes': volumes
-                        }
-                    }
-                }
-            };
+            deployment = self._build_deployment_body(
+                app_name,
+                namespace,
+                app_sa_name,
+                container_config,
+                init_containers,
+                volumes,
+                pull_secret_name
+            );
 
             # 12. Delete existing resources if they exist
             delete_if_exists(

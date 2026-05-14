@@ -253,48 +253,40 @@ test "build mode sets container startup command and imagePullSecrets in pod spec
         "needs_root=True must grant runtime capabilities (CHOWN, DAC_OVERRIDE, ...)"
     );
 
-    # --- verify imagePullSecrets appears in the deployment body deploy() submits ---
+    # --- verify imagePullSecrets is wired into the deployment body _build_deployment_body
+    #     produces — this exercises the real conditional at kubernetes_target.jac ---
     pull_secret_name = f"{app_name}-registry-secret";
-    pull_secret_body = target._build_registry_pull_secret(
-        namespace, "user", "pass", pull_secret_name
+    app_sa_name = f"{app_name}-sa";
+
+    # With pull_secret_name set: secret must appear in pod spec
+    deployment_with_secret = target._build_deployment_body(
+        app_name,
+        namespace,
+        app_sa_name,
+        container_cfg,
+        [],
+        [],
+        pull_secret_name
     );
-    captured_deployments: list[dict] = [];
-    def capture_deployment(namespace: str, body: dict) {
-        captured_deployments.append(body);
-    }
-    with unittest.mock.patch(
-        "jac_scale.targets.kubernetes.kubernetes_target.client"
-    ) as mock_k8s_client {
-        mock_apps_v1 = unittest.mock.MagicMock();
-        mock_apps_v1.create_namespaced_deployment.side_effect = capture_deployment;
-        mock_k8s_client.AppsV1Api.return_value = mock_apps_v1;
-        mock_k8s_client.CoreV1Api.return_value = unittest.mock.MagicMock();
-        # Simulate what deploy() does: build deployment body and submit it
-        deployment_body = {
-            "apiVersion": "apps/v1",
-            "kind": "Deployment",
-            "metadata": {"name": app_name, "namespace": namespace},
-            "spec": {
-                "replicas": 1,
-                "selector": {"matchLabels": {"app": app_name}},
-                "template": {
-                    "metadata": {"labels": {"app": app_name}},
-                    "spec": {
-                        "imagePullSecrets": [{"name": pull_secret_name}],
-                        "containers": [container_cfg]
-                    }
-                }
-            }
-        };
-        mock_apps_v1.create_namespaced_deployment(
-            namespace=namespace, body=deployment_body
-        );
-        assert len(captured_deployments) == 1;
-        pod_spec = captured_deployments[0]["spec"]["template"]["spec"];
-        pull_secrets = pod_spec.get("imagePullSecrets", []);
-        assert len(pull_secrets) == 1 , "Pod spec must contain exactly one imagePullSecret";
-        assert pull_secrets[0]["name"] == pull_secret_name , (
-            f"Expected '{pull_secret_name}', got '{pull_secrets[0]['name']}'"
-        );
-    }
+    pod_spec = deployment_with_secret["spec"]["template"]["spec"];
+    pull_secrets = pod_spec.get("imagePullSecrets", []);
+    assert len(pull_secrets) == 1 , "Pod spec must contain exactly one imagePullSecret";
+    assert pull_secrets[0]["name"] == pull_secret_name , (
+        f"Expected '{pull_secret_name}', got '{pull_secrets[0]['name']}'"
+    );
+
+    # With pull_secret_name=None: imagePullSecrets must be an empty list (not missing key)
+    deployment_no_secret = target._build_deployment_body(
+        app_name,
+        namespace,
+        app_sa_name,
+        container_cfg,
+        [],
+        [],
+        None
+    );
+    pod_spec_no_secret = deployment_no_secret["spec"]["template"]["spec"];
+    assert pod_spec_no_secret.get("imagePullSecrets") == [] , (
+        "imagePullSecrets must be [] when pull_secret_name is None"
+    );
 }
