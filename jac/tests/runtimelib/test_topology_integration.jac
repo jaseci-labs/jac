@@ -5,12 +5,79 @@ import shutil;
 import from tempfile { mkdtemp }
 import from uuid { uuid4 }
 import from jaclang.runtimelib.topology_index { TopologyIndex }
+import from jaclang.jac0core.runtime { JacRuntime }
+import from jaclang.runtimelib.context { ExecutionContext }
+import from jaclang.project.config { JacConfig, set_config }
+
+
+node _SliceLead {
+    has idx: int = 0;
+}
+
+node _SliceOther {
+    has idx: int = 0;
+}
+
+# Multi-hop fixture: bucket -> leaf, so we can test 2-hop sliced traversal.
+node _MultiHopBucket {
+    has idx: int = 0;
+}
+
+node _MultiHopLeaf {
+    has idx: int = 0;
+}
 
 test "topology index config from toml" {
     import from jaclang.project.config { JacConfig }
     toml_str = "[project]\nname = \"test\"\n\n[run]\ntopology_index = false\n";
     cfg = JacConfig.from_toml_str(toml_str);
     assert cfg.run.topology_index is False;
+}
+
+test "JAC_TOPOLOGY_INDEX env var overrides toml" {
+    # Eval workflows want to flip the index on/off without editing jac.toml.
+    # JAC_TOPOLOGY_INDEX, when set, is authoritative; the config flag is the
+    # fallback. Truthy values: 1 / true / yes / on (case-insensitive).
+    import from jaclang.project.config { JacConfig, set_config }
+    import from jaclang.runtimelib.topo_utils { _is_enabled }
+
+    cfg_on = JacConfig();
+    cfg_on.run.topology_index = True;
+    cfg_off = JacConfig();
+    cfg_off.run.topology_index = False;
+
+    prev_env = os.environ.get("JAC_TOPOLOGY_INDEX");
+    try {
+        # No env → falls through to config.
+        if "JAC_TOPOLOGY_INDEX" in os.environ {
+            del os.environ["JAC_TOPOLOGY_INDEX"];
+        }
+        set_config(cfg_on);
+        assert _is_enabled();
+        set_config(cfg_off);
+        assert not _is_enabled();
+
+        # Env "off" overrides config=True.
+        set_config(cfg_on);
+        for off_val in ["0", "false", "FALSE", "off", "no", ""] {
+            os.environ["JAC_TOPOLOGY_INDEX"] = off_val;
+            assert not _is_enabled() , f"expected off for env={off_val!r}";
+        }
+
+        # Env "on" overrides config=False.
+        set_config(cfg_off);
+        for on_val in ["1", "true", "TRUE", "on", "yes", "On"] {
+            os.environ["JAC_TOPOLOGY_INDEX"] = on_val;
+            assert _is_enabled() , f"expected on for env={on_val!r}";
+        }
+    } finally {
+        if prev_env is None {
+            os.environ.pop("JAC_TOPOLOGY_INDEX", None);
+        } else {
+            os.environ["JAC_TOPOLOGY_INDEX"] = prev_env;
+        }
+        set_config(JacConfig());
+    }
 }
 
 test "l3 fetch counter" {
@@ -115,6 +182,121 @@ test "concurrent edge adds merged in sqlite sync" {
         assert len(ids) == 3 , f"Expected 3, got {len(ids)}";
         mem_c.close();
     } finally {
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+"""Slicing on edge-ref `[-->][?:T][a:b]` must push the bound down to the storage
+layer — only the sliced subset should hit SQLite, not every neighbor."""
+test "edge-ref slice bounds sqlite l3 fetches" {
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+
+        # --- Phase 1: build graph (100 leads + 20 others), persist to SQLite ---
+        ctx1 = ExecutionContext();
+        JacRuntime.set_context(ctx1);
+
+        for i in range(100) {
+            root ++> _SliceLead(idx=i);
+        }
+        for i in range(20) {
+            root ++> _SliceOther(idx=i);
+        }
+        root_id = root.__jac__.id;
+        ctx1.mem.commit();
+        ctx1.close();
+
+        # --- Phase 2: fresh ctx (cold L1), run sliced query ---
+        ctx2 = ExecutionContext();
+        JacRuntime.set_context(ctx2);
+
+        # Warm just the root so we measure traversal-only fetches.
+        root_anchor = ctx2.mem.get(root_id);
+        assert root_anchor is not None;
+        r2 = root_anchor.archetype;
+
+        ctx2.mem.reset_l3_fetch_count();
+
+        leads = [r2-->][?:_SliceLead][0:50];
+
+        fetch_count = ctx2.mem.get_l3_fetch_count();
+        assert len(leads) == 50 , f"Expected 50 leads, got {len(leads)}";
+        # Production-grade pushdown: only the 50 sliced anchors should be loaded
+        # (allow small overhead for any incidental fetches). Today this fails
+        # because all 100 leads + ~120 edges are loaded.
+        assert fetch_count <= 60 , (
+            f"Slice should bound L3 fetches; got {fetch_count} fetches for [0:50]"
+        );
+
+        ctx2.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+        shutil.rmtree(tmpdir, ignore_errors=True);
+    }
+}
+
+"""Multi-hop slicing must also push the bound down to storage.
+
+Builds `root -> 20 buckets -> 10 leaves each` (200 leaves total). A sliced
+two-hop query `[r-->-->[?:_MultiHopLeaf]][0:50]` should only fetch ~slice
+size from SQLite. Pre-fix this fell through to `plan_query`, which loaded
+all 200 leaves before slicing in Python."""
+test "edge-ref multi-hop slice bounds sqlite l3 fetches" {
+    tmpdir = mkdtemp();
+    orig_base = JacRuntime.base_path_dir;
+    try {
+        cfg = JacConfig();
+        cfg.run.topology_index = True;
+        set_config(cfg);
+        JacRuntime.set_base_path(tmpdir);
+
+        # --- Phase 1: build graph (20 buckets × 10 leaves), persist ---
+        ctx1 = ExecutionContext();
+        JacRuntime.set_context(ctx1);
+
+        for i in range(20) {
+            bucket = _MultiHopBucket(idx=i);
+            root ++> bucket;
+            for j in range(10) {
+                bucket ++> _MultiHopLeaf(idx=(i * 10 + j));
+            }
+        }
+        root_id = root.__jac__.id;
+        ctx1.mem.commit();
+        ctx1.close();
+
+        # --- Phase 2: fresh ctx (cold L1), run sliced multi-hop query ---
+        ctx2 = ExecutionContext();
+        JacRuntime.set_context(ctx2);
+
+        root_anchor = ctx2.mem.get(root_id);
+        assert root_anchor is not None;
+        r2 = root_anchor.archetype;
+
+        ctx2.mem.reset_l3_fetch_count();
+
+        leaves = [r2-->-->[?:_MultiHopLeaf]][0:50];
+
+        fetch_count = ctx2.mem.get_l3_fetch_count();
+        assert len(leaves) == 50 , f"Expected 50 leaves, got {len(leaves)}";
+        # Pushdown should bound L3 reads to roughly the slice size. Phase-1
+        # pushdown bailed on multi-hop, loading all 200 leaves through the
+        # fast-fallback `plan_query` path.
+        assert fetch_count <= 80 , (
+            "Multi-hop slice should bound L3 fetches; "
+            f"got {fetch_count} fetches for [0:50]"
+        );
+
+        ctx2.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
         shutil.rmtree(tmpdir, ignore_errors=True);
     }
 }

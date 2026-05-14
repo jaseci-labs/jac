@@ -696,13 +696,15 @@ impl PWATarget.build(
 
 Service worker is disabled in dev mode for better developer experience.
 """
-impl PWATarget.dev(entry_file: Path, project_dir: Path, api_port: int = 8000) -> None {
+impl PWATarget.dev(
+    entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
+) -> None {
     console.print("\n📱 Starting PWA dev server", style="bold");
     console.print(
         "  Note: Service worker is disabled in dev mode for better DX", style="muted"
     );
     # Delegate to inherited WebTarget.dev()
-    super.dev(entry_file, project_dir, api_port);
+    super.dev(entry_file, project_dir, port, api_port);
 }
 
 """Start PWA in production preview mode - builds PWA then serves.

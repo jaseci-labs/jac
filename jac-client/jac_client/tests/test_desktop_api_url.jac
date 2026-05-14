@@ -255,13 +255,11 @@ test "desktop target interface has api port" {
 
     content = desktop_target_jac.read_text();
 
-    # Both dev and start should accept api_port
-    assert "api_port: int = 8000" in content , (
-        "desktop_target.jac should declare api_port parameter"
-    );
-    # Should appear twice (once for dev, once for start)
-    assert content.count("api_port: int = 8000") == 2 , (
-        "api_port should be declared in both dev() and start() methods"
+    # dev: --port = Vite, --api-port = API (0 = port+1); start: single --port = API
+    assert "port: int = 8000" in content , "desktop dev() should declare port (Vite)";
+    assert "api_port: int = 0" in content , "desktop dev() should declare api_port (0 = port+1)";
+    assert content.count("api_port: int = 8000") == 1 , (
+        "start() should use api_port for the production/preview server port"
     );
 
     print("[DEBUG] Desktop target interface verification passed!");
@@ -496,20 +494,17 @@ test "cli passes port to desktop target" {
 
     content = cli_jac_path.read_text();
 
-    # Verify port is extracted from CLI context
+    # Verify port / api_port extracted (same as core `jac start`)
     assert 'ctx.get_arg("port"' in content , (
         "cli.jac should extract port from CLI context"
     );
-
-    # Verify it's passed to target.dev and target.start
-    assert "api_port=api_port" in content , (
-        "cli.jac should pass api_port to target methods"
+    assert 'ctx.get_arg("api_port"' in content , (
+        "cli.jac should extract api_port for --dev (Jac API; 0 = port+1)"
     );
 
-    # Should appear at least twice (once for dev, once for start)
-    assert content.count("api_port=api_port") >= 2 , (
-        "api_port should be passed in both dev and start calls"
-    );
+    assert "port=start_port" in content , "cli should pass Vite port to target.dev()";
+    assert "api_port=start_api" in content , "cli should pass API port to target.dev()";
+    assert "api_port=start_port" in content , "cli should pass server port to target.start()";
 
     print("[DEBUG] CLI port passthrough verification passed!");
 }

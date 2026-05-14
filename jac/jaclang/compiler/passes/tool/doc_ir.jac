@@ -1,11 +1,6 @@
 """Document Intermediate Representation (DocIR) classes."""
-import from typing { TYPE_CHECKING, Union }
-
-with entry {
-    if TYPE_CHECKING {
-        import jaclang.jac0core.unitree as uni;
-    }
-}
+import from typing { Union }
+import type jaclang.jac0core.unitree as uni;
 
 # Define DocType for self-referential typing
 glob DocType = Union[
