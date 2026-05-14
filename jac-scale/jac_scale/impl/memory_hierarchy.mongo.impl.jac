@@ -13,14 +13,18 @@ impl MongoBackend.postinit -> None {
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if self.client is None and self.mongo_url {
-        try {
-            self.client = MongoClient(self.mongo_url);
+    if self.mongo_url {
+        if 'mongo_client' not in _process_cache {
+            try {
+                _process_cache['mongo_client'] = MongoClient(self.mongo_url);
+            } except Exception as e {
+                logger.warning(f"MongoDB connection failed: {e}");
+            }
+        }
+        self.client = _process_cache.get('mongo_client');
+        if self.client {
             self.db = self.client[self.db_name];
             self.collection = self.db[self.collection_name];
-        } except Exception as e {
-            logger.warning(f"MongoDB connection failed: {e}");
-            self.client = None;
         }
     }
     if self.client is not None {
@@ -167,28 +171,29 @@ impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
 
 """Check if MongoDB is available and connected."""
 impl MongoBackend.is_available -> bool {
+    # Only cache a confirmed True — caching False would prevent later contexts
+    # (e.g. test files that configure MongoDB after others that don't) from ever
+    # reaching MongoDB in the same process.
+    if _process_cache.get('mongo_available') is True {
+        return True;
+    }
     if not self.mongo_url {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if not self.mongo_url {
+    if not self.mongo_url or self.client is None {
         return False;
     }
-    client = None;
     try {
-        client = MongoClient(self.mongo_url);
-        client.admin.command('ping', maxTimeMS=100);
+        self.client.admin.command('ping', maxTimeMS=100);
+        _process_cache['mongo_available'] = True;
         return True;
     } except ConnectionFailure {
+        _process_cache['mongo_available'] = False;
         return False;
     } except Exception as e {
         logger.debug(f"MongoDB availability check failed: {e}");
+        _process_cache['mongo_available'] = False;
         return False;
-    } finally {
-        if client {
-            try {
-                client.close();
-            } except Exception { }
-        }
     }
 }
 
@@ -203,6 +208,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     if self.client is None {
         return None;
     }
+    self.fetch_count += 1;
     _id = to_uuid(id);
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
@@ -283,6 +289,7 @@ impl MongoBackend._write_to_db(anchor: Anchor) -> None {
     if self.client is None or not anchor.persistent {
         return;
     }
+    self.put_count += 1;
     _id = to_uuid(anchor.id);
     arch = anchor.archetype if anchor.is_populated() else None;
     try {
@@ -338,22 +345,15 @@ impl MongoBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Flush pending writes and close MongoDB connection."""
+"""Flush pending writes and release local reference to the shared client."""
 impl MongoBackend.close -> None {
-    # Persist any pending L1 changes before closing
     try {
         self.sync();
     } except Exception as e {
         logger.warning(f"MongoBackend.close sync failed: {e}");
     }
-    if self.client {
-        try {
-            self.client.close();
-        } except Exception as e {
-            logger.warning(f"Error closing MongoDB connection: {e}");
-        }
-        self.client = None;
-    }
+    # Don't close the shared process-level client; just drop local reference.
+    self.client = None;
     self._mem_ref = None;
 }
 
@@ -577,6 +577,7 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     if self.client is None or not ids {
         return result;
     }
+    self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
@@ -589,6 +590,12 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         logger.debug(f"MongoDB batch_get failed: {e}");
     }
     return result;
+}
+
+"""Reset get/put counters (for instrumentation/tests)."""
+impl MongoBackend.reset_counters -> None {
+    self.fetch_count = 0;
+    self.put_count = 0;
 }
 
 """Load anchor from raw MongoDB document, quarantining on failure."""
@@ -913,6 +920,66 @@ impl MongoBackend.remove_alias(old_name: str) -> bool {
     return removed;
 }
 
+
+"""Get anchor by UUID using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
+        return await super.aget(id);
+    }
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    try {
+        db_obj = await coll.find_one({'_id': str(to_uuid(id))});
+        if not db_obj {
+            return None;
+        }
+        return self._load_anchor(db_obj);
+    } except Exception as e {
+        logger.debug(f"Async aget failed: {e}");
+        return None;
+    }
+}
+
+"""Store anchor using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.aput(anchor: Anchor) -> None { }
+
+"""Flush dirty anchors using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
+        await super.acommit(anchor);
+        return;
+    }
+    if self._mem_ref is None {
+        await super.acommit(anchor);
+        return;
+    }
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    dirty = [];
+    targets = [anchor] if anchor is not None else list(self._mem_ref.values());
+    for a in targets {
+        if a.persistent and Jac.check_write_access(a) {
+            dirty.append(a);
+        }
+    }
+    if dirty {
+        ops = [
+            UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
+            for a in dirty
+        ];
+        try {
+            await coll.bulk_write(ops, ordered=False);
+        } except Exception as e {
+            logger.warning(f"Async acommit bulk_write failed: {e}");
+        }
+    }
+}
 
 """Load DB-resident aliases into the in-process Serializer registry."""
 impl MongoBackend._load_db_aliases -> int {

@@ -143,6 +143,24 @@ def call(module_name: str, func_name: str, args: dict) -> Any {
     return jaclang.JacRuntime.sv_service_call(module_name, func_name, args);
 }
 
+"""Spawn an sv-imported walker on the provider service.
+
+Mirrors `call()` but routes through `/walker/<name>` and rehydrates
+the returned envelope into a consumer-side walker stub instance via
+`stub_cls._from_wire`. The transport is delegated to
+JacAPIServer.sv_walker_call so plugins (auth, retry, tracing, circuit
+breaker) can override it the same way they override sv_service_call.
+
+The returned object satisfies `isinstance(result, stub_cls)`, exposes
+the walker's `has` fields as attributes, and carries a `reports`
+attribute populated from the `data.reports` envelope key.
+"""
+def spawn_walker(module_name: str, walker_name: str, args: dict, stub_cls: Any) -> Any {
+    _ensure_available(module_name);
+    import jaclang;
+    return jaclang.JacRuntime.sv_walker_call(module_name, walker_name, args, stub_cls);
+}
+
 """Eagerly resolve every named provider before serving traffic.
 
 Walks providers in parallel through a bounded ThreadPoolExecutor (max 8

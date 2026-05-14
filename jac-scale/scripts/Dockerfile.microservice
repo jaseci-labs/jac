@@ -1,0 +1,44 @@
+# Dockerfile template for jac-scale microservice mode.
+#
+# Single image, fanned out to one pod per service via JAC_SV_NAME env.
+# KubernetesMicroserviceTarget sets the pod-spec command:
+#   __gateway__ -> `jac scale gateway`
+#   <svc>       -> `jac start <name>.jac` (with JAC_SV_SIBLING=1)
+#
+# Build + load into minikube:
+#   eval $(minikube docker-env)
+#   docker build -f Dockerfile.microservice -t myapp:dev .
+#   jac start main.jac --scale
+
+FROM python:3.12-slim
+
+# git for pip VCS installs; curl for in-pod probe debug.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Shared volumes (P0.25) may be owned by a UID that doesn't match the
+# pod's UID (EFS CSI access points). Marking '*' safe bypasses git's
+# CVE-2022-24765 dubious-ownership check on mounted dirs.
+RUN git config --system --add safe.directory '*'
+
+# Pin versions to match your CI to avoid dev/prod skew.
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+        jaclang \
+        "jac-scale[deploy,data]" \
+        jac-client
+
+WORKDIR /app
+COPY . /app
+
+# Install project pip deps from jac.toml [dependencies]; tolerate apps
+# without any declared deps.
+RUN if [ -f jac.toml ]; then jac install || true; fi
+
+# Fail-loud check that the CLI is on PATH (runtime jaclang compiles .jac
+# on first import anyway, so no pre-compile needed).
+RUN jac --version
+
+# Pod-spec sets command + args; no ENTRYPOINT needed.
+EXPOSE 8000

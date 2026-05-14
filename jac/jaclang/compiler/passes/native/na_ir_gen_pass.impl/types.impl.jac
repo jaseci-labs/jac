@@ -1199,6 +1199,11 @@ impl NaIRGenPass._emit_binary_op(
     if op == Tok.KW_OR {
         return self.builder.or_(left, right, name="or");
     }
+    # Unknown operator — surface a loud error instead of silently emitting
+    # a function body that reads garbage at runtime. Catches walrus (`:=`,
+    # WALRUS_EQ), pipe-forward (`|>`), and any other binary operator the
+    # NA pass doesn't lower yet.
+    self.emit(E5090, node_override=self.cur_node, kind="binary operator", name=op);
     return None;
 }
 
