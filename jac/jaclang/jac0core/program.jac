@@ -49,7 +49,7 @@ class JacProgram {
         file_path: str,
         use_str: (str | None) = None,
         no_cgen: bool = False,
-        type_check: bool = False,
+        type_check: (bool | None) = None,
         symtab_ir_only: bool = False,
         cancel_token: (Event | None) = None,
         options: (CompileOptions | None) = None
@@ -59,7 +59,7 @@ class JacProgram {
         self: JacProgram,
         file_path: str,
         use_str: (str | None) = None,
-        type_check: bool = False
+        type_check: (bool | None) = None
     ) -> uni.Module;
 
     def run_schedule(

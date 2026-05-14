@@ -177,12 +177,18 @@ impl JacProgram.compile(
     file_path: str,
     use_str: (str | None) = None,
     no_cgen: bool = False,
-    type_check: bool = False,
+    type_check: (bool | None) = None,
     symtab_ir_only: bool = False,
     cancel_token: (Event | None) = None,
     options: (CompileOptions | None) = None
 ) -> uni.Module {
     if (options is None) {
+        # Default policy: type-check whenever we're generating code. Pure
+        # symbol-table loads (no_cgen=True, including annex / import-resolver
+        # paths) skip it. Callers can still force either way explicitly.
+        if type_check is None {
+            type_check = not no_cgen and not symtab_ir_only;
+        }
         options = CompileOptions(
             type_check=type_check,
             symtab_ir_only=symtab_ir_only,
@@ -199,8 +205,12 @@ impl JacProgram.build(
     self: JacProgram,
     file_path: str,
     use_str: (str | None) = None,
-    type_check: bool = False
+    type_check: (bool | None) = None
 ) -> uni.Module {
+    # build() always generates code, so type-check by default.
+    if type_check is None {
+        type_check = True;
+    }
     return self._get_compiler().build(file_path, self, use_str, type_check=type_check);
 }
 

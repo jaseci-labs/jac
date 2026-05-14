@@ -69,7 +69,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     _ir_sched_loading = True;
     try {
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
-        import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
         import from jaclang.compiler.passes.main.unitree_enrich_pass {
             UniTreeEnrichPass
@@ -77,6 +76,9 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
+        # MTIRGenPass moved into get_type_check_sched so its type-shape
+        # extraction can read the evaluator's results instead of doing its
+        # own ad-hoc AST walking.
         return [
             ASTValidationPass,
             SymTabBuildPass,
@@ -84,7 +86,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             SemanticAnalysisPass,
             SemDefMatchPass,
             CFGBuildPass,
-            MTIRGenPass,
             UniTreeEnrichPass
         ];
     } except ImportError {
@@ -121,14 +122,19 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         import from jaclang.compiler.passes.main.portability_check_pass {
             PortabilityCheckPass
         }
+        import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.unitree_enrich_pass {
             UniTreeEnrichPass
         }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
+        # MTIRGenPass needs evaluator-populated type info, so it runs after
+        # TypeCheckPass (was previously in get_ir_gen_sched, before any types
+        # were known, forcing it to re-derive shapes from AST text).
         return [
             TypeCheckPass,
             StaticAnalysisPass,
             PortabilityCheckPass,
+            MTIRGenPass,
             UniTreeEnrichPass,
             JacLintCheckPass
         ];
@@ -394,7 +400,7 @@ obj JacCompiler {
         file_path: str,
         target_program: JacProgram,
         use_str: (str | None) = None,
-        type_check: bool = False
+        type_check: bool = True
     ) -> uni.Module;
 
     def run_schedule(

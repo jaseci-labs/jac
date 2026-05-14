@@ -24,7 +24,9 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
 """Test TypeVar validation errors (Pyright: createTypeVarType, assignTypeToExpression)."""
 test "typevar1_validation_errors" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar1.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "typeVar1.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     assert len(program.errors_had) == 3 , f"Expected 3 errors, got {len(
@@ -43,7 +45,9 @@ test "typevar1_validation_errors" {
 """Test TypeVar scope validation errors (Pyright: typeVar3.py)."""
 test "typevar3_scope_errors" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar3.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "typeVar3.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     assert len(program.errors_had) == 12 , f"Expected 12 TypeVar scope errors, got {len(
@@ -60,7 +64,9 @@ test "typevar3_scope_errors" {
 """Test TypeVar variance validation (Pyright: covariant/contravariant checks)."""
 test "typevar4_variance_validation" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar4.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "typeVar4.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     # 5 errors: covariant in param, contravariant in returns (explicit + inferred)
@@ -81,7 +87,9 @@ test "typevar4_variance_validation" {
 """Test unbounded TypeVar operation validation (Pyright: typeVar5)."""
 test "typevar5_unbounded_operations" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar5.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "typeVar5.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     # 18 errors: 9 per function (attribute, call, subscript, attribute, binary,
@@ -120,7 +128,9 @@ test "typevar5_unbounded_operations" {
 """Test bounded TypeVar operation validation (Pyright: typeVar6)."""
 test "typevar6_bounded_operations" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar6.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "typeVar6.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     error_messages = [e.pretty_print() for e in program.errors_had];
@@ -139,7 +149,9 @@ test "typevar6_bounded_operations" {
 """Test constrained TypeVar operation validation."""
 test "typevar7_constrained_operations" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar7.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "typeVar7.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     error_messages = [e.pretty_print() for e in program.errors_had];
@@ -168,7 +180,9 @@ test "typevar7_constrained_operations" {
 """Test that ParamSpec and TypeVarTuple in Callable annotations produce no false E1071 errors."""
 test "paramspec_callable_no_false_e1071" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "paramspec.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "paramspec.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     errors = [e.pretty_print() for e in program.errors_had];
@@ -185,7 +199,9 @@ test "paramspec_callable_no_false_e1071" {
 """Test constrained TypeVars with ellipsis stub bodies (Pyright: typeVar10.py)."""
 test "typevar10_ellipsis_stub_no_error" {
     program = JacProgram();
-    mod = program.compile(os.path.join(TYPEVAR_FIXTURES, "typeVar10.jac"));
+    mod = program.compile(
+        os.path.join(TYPEVAR_FIXTURES, "typeVar10.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     errors = [e.pretty_print() for e in program.errors_had];
@@ -203,7 +219,9 @@ test "typevar10_ellipsis_stub_no_error" {
 """Test that module-level dunder variables (__name__, __file__, etc.) type-check cleanly."""
 test "module_dunders_no_errors" {
     program = JacProgram();
-    mod = program.compile(os.path.join(CHECKER_FIXTURES, "module_dunders.jac"));
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "module_dunders.jac"), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
 
     errors = [e.pretty_print() for e in program.errors_had];

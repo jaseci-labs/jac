@@ -18,10 +18,22 @@ glob FIXTURES = str(
          Path(jaclang.__file__).parent.parent / "tests" / "compiler" / "passes" / "native" / "fixtures"
      );
 
-"""Compile a .na.jac fixture and return the JIT engine."""
-def compile_native(fixture: str) -> tuple[ExecutionEngine, uni.Module] {
+"""Compile a .na.jac fixture and return the JIT engine.
+
+Type checking defaults to off here because .na.jac fixtures exercise the
+native pathway, which has its own type semantics (e.g. `dict.remove`,
+`d.get(k)` returning non-Optional, native struct method resolution) that
+the central type evaluator does not yet model. Closing this gap is part
+of the type-analysis centralization effort; in the meantime these tests
+are codegen-mechanics regressions and don't need the central evaluator.
+"""
+def compile_native(
+    fixture: str, type_check: bool = False
+) -> tuple[ExecutionEngine, uni.Module] {
     prog = JacProgram();
-    ir = prog.compile(file_path=str(os.path.join(FIXTURES, fixture)));
+    ir = prog.compile(
+        file_path=str(os.path.join(FIXTURES, fixture)), type_check=type_check
+    );
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors in {fixture}: {errors}";
     eng = ir.gen.native_engine;
@@ -120,7 +132,9 @@ test "recursion fibonacci" {
 # --- TestNativeContextIsolation ---
 test "context isolation native excluded from python" {
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "mixed_contexts.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "mixed_contexts.jac")), type_check=False
+    );
     # Python source should NOT contain native_add
     py_src = ir.gen.py;
     assert "native_add" not in py_src;
@@ -1339,7 +1353,7 @@ test "runtime errors error in loop" {
 test "py interop interop module compiles" {
     # Module with na block, Python functions, and entry compiles.
     prog = JacProgram();
-    prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")), type_check=False);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
 }
@@ -1354,7 +1368,9 @@ test "py interop native function exists in engine" {
 test "py interop py function not defined in native ir" {
     # py_double should be declared (external) but NOT defined in LLVM IR.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")), type_check=False
+    );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
     # Must not have a define (body) for py_double -- it lives in Python
@@ -1366,7 +1382,9 @@ test "py interop py function not defined in native ir" {
 test "py interop py functions in python codegen" {
     # py_double and call_native should appear in Python codegen output.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")), type_check=False
+    );
     py_src = ir.gen.py;
     assert "py_double" in py_src;
     assert "call_native" in py_src;
@@ -1375,7 +1393,9 @@ test "py interop py functions in python codegen" {
 test "py interop native function has stub in python" {
     # Native function should have a ctypes stub in Python codegen output.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")), type_check=False
+    );
     py_src = ir.gen.py;
     # Stub for the native function should exist
     assert "native_add_one_to_doubled" in py_src;
@@ -1389,7 +1409,9 @@ test "py interop native function has stub in python" {
 test "py interop interop manifest built" {
     # InteropAnalysisPass should detect cross-boundary calls.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")), type_check=False
+    );
     manifest = ir.gen.interop_manifest;
     assert manifest is not None;
     # py_double: defined in SERVER, called from NATIVE
@@ -1405,7 +1427,9 @@ test "py interop interop manifest built" {
 test "py interop native calls python function" {
     # Native->Python: native_add_one_to_doubled calls py_double.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")), type_check=False
+    );
     eng = ir.gen.native_engine;
     assert eng is not None;
     # Register the Python function in the interop callback table
@@ -1424,7 +1448,9 @@ test "py interop full entry chain" {
     import io;
 
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop.jac")), type_check=False
+    );
     assert not prog.errors_had;
     # Execute the compiled module with interop context injected
     py_code = compile(
@@ -1446,7 +1472,9 @@ test "py interop full entry chain" {
 test "multi module na module compiles" {
     # A standalone .na.jac module compiles to LLVM IR.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_math_utils.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_math_utils.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
@@ -1457,7 +1485,9 @@ test "multi module na module compiles" {
 test "multi module module level na import" {
     # Module-level import of .na.jac file is recognized.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")), type_check=False
+    );
     # Should compile without errors
     assert ir is not None;
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
@@ -1470,7 +1500,9 @@ test "multi module module level na import" {
 test "multi module na scoped import" {
     # Import inside na {} block is recognized.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     # The na-scoped import should be tracked in manifest
     manifest = ir.gen.interop_manifest;
@@ -1482,7 +1514,9 @@ test "multi module na scoped import" {
 test "multi module native module linking" {
     # Functions from imported .na.jac modules are callable.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     eng = ir.gen.native_engine;
     assert eng is not None , "No native engine created";
@@ -1497,7 +1531,9 @@ test "multi module full multi module chain" {
     import io;
 
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_py_interop_multi.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_py_interop_multi.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine created";
 
@@ -1520,7 +1556,9 @@ test "multi module full multi module chain" {
 test "cross module struct compile" {
     # Importing a struct type from another .na.jac module compiles without errors.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_struct_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
     assert ir.gen.native_engine is not None , "No native engine created";
@@ -1529,7 +1567,9 @@ test "cross module struct compile" {
 test "cross module struct function call" {
     # Imported function returning a struct and function accepting a struct work correctly.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_struct_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     eng = ir.gen.native_engine;
     assert eng is not None;
@@ -1543,7 +1583,9 @@ test "cross module struct function call" {
 test "cross module struct execution" {
     # Call use_imported_point via ctypes to verify cross-module struct passing works.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_struct_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_struct_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     eng = ir.gen.native_engine;
     assert eng is not None;
@@ -1567,7 +1609,9 @@ test "cross module global linkage compile" {
     # Importing a module that directly reads globals from another .na.jac module
     # must compile and JIT without errors.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_glob_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
     assert ir.gen.native_engine is not None , "No native engine created";
@@ -1577,7 +1621,9 @@ test "cross module global direct read" {
     # read_magic() directly accesses the imported MAGIC global.
     # With internal linkage this segfaulted; with public linkage it must return 42.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_glob_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     eng = ir.gen.native_engine;
     assert eng is not None;
@@ -1589,7 +1635,9 @@ test "cross module global direct read" {
 test "cross module global via function" {
     # read_magic_via_func() delegates to get_magic() from the exporting module.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_glob_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had;
     eng = ir.gen.native_engine;
     assert eng is not None;
@@ -1602,7 +1650,9 @@ test "cross module global arithmetic" {
     # sum_globals() reads both MAGIC and BASE from the exporting module and adds
     # them; read_base_plus(n) delegates to add_base(n).
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "na_glob_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "na_glob_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had;
     eng = ir.gen.native_engine;
     assert eng is not None;
@@ -1666,7 +1716,9 @@ test "cache marker non native file has no llvmir section in jir" {
 # --- TestNativeLLVMIR ---
 test "llvmir ir has function definitions" {
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "arithmetic.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "arithmetic.na.jac")), type_check=False
+    );
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
     assert 'define i64 @"add"' in llvm_ir_str;
@@ -1678,7 +1730,9 @@ test "llvmir ir has function definitions" {
 # --- TestCLibImportSyntax ---
 test "clib import produces extern declares" {
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "clib_import.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
@@ -1696,7 +1750,9 @@ test "clib import produces extern declares" {
 
 test "clib import inside na block" {
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "clib_import_na_block.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "clib_import_na_block.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
@@ -1712,7 +1768,9 @@ test "clib import inside na block" {
 
 test "clib struct value-type coercion" {
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "clib_struct_coerce.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "clib_struct_coerce.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.llvm_ir is not None , "No LLVM IR generated";
     llvm_ir_str = str(ir.gen.llvm_ir);
@@ -1931,12 +1989,18 @@ glob CHESS_JAC = str(
          Path(jaclang.__file__).parent.parent / "examples" / "chess" / "chess.jac"
      );
 
-"""Compile a regular .jac file with auto-promotion and return the engine."""
+"""Compile a regular .jac file with auto-promotion and return the engine.
+
+Type checking is disabled for the same reason as [compile_native]: the
+native pathway has type semantics the central evaluator doesn't yet
+model. These auto-promotion tests verify the native compatibility
+detection + codegen, not type correctness.
+"""
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
     prog = JacProgram();
     prog._auto_promote_native = True;
     prog._auto_promote_target = os.path.abspath(file_path);
-    ir = prog.compile(file_path=file_path);
+    ir = prog.compile(file_path=file_path, type_check=False);
     errors = [str(e) for e in prog.errors_had] if prog.errors_had else [];
     assert not prog.errors_had , f"Compilation errors: {errors}";
     return (ir, prog);
@@ -2534,7 +2598,9 @@ test "fnptr call_via_local stores and calls pointer" {
 test "cross module glob init compiles without errors" {
     # Importing a module with a glob list initializer must compile cleanly.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "cross_module_glob_init.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "cross_module_glob_init.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
     assert ir.gen.native_engine is not None , "No native engine created";
@@ -2572,7 +2638,9 @@ test "transitive import: compiles without errors" {
     # fix_transitive_entry imports fix_transitive_mid which imports fix_transitive_leaf.
     # All three modules must be linked for compilation to succeed.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_transitive_entry.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_transitive_entry.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
     assert ir.gen.native_engine is not None , "No native engine created";
@@ -2673,7 +2741,9 @@ test "third module struct: compiles without type errors" {
     # fix_third_entry imports from fix_third_a and fix_third_b.
     # fix_third_b's read_value takes a DataA from fix_third_a — third-module struct.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_third_entry.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_third_entry.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine";
 }
@@ -2700,7 +2770,9 @@ test "third module struct: both fields correct after cross-module call" {
 
 test "cross-module subscript: compiles without errors" {
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_subscript_entry.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_subscript_entry.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine";
 }
@@ -2739,7 +2811,10 @@ test "transitive glob init: compiles without errors" {
     # fix_transitive_glob_entry → fix_transitive_glob_mid → fix_transitive_glob_deep
     # deep has a glob list; its init must be called even though entry only imports mid.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_transitive_glob_entry.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_transitive_glob_entry.na.jac")),
+        type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir is not None;
     assert ir.gen.native_engine is not None , "No native engine created";
@@ -2773,7 +2848,10 @@ test "transitive glob init: push through mid updates deep glob list" {
 # the main module and calls llvm.load_library_permanently for each entry.
 test "transitive clib: compiles without errors when dep imports a .so" {
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")),
+        type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine created";
 }
@@ -2782,7 +2860,10 @@ test "transitive clib: _clib_paths of dep module propagated to entry module" {
     # The entry's _clib_paths must include libm even though only the lib module
     # directly imports it.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_clib_transitive_entry.na.jac")),
+        type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     clib_paths = ir.gen._clib_paths;
     assert clib_paths , "_clib_paths not set on entry module IR";
@@ -2810,7 +2891,9 @@ test "transitive clib: JIT call through dep-module extern returns correct value"
 test "dup clib: importing compiler-internal symbols compiles without DuplicatedNameError" {
     # Imports strlen, memcpy, calloc, free — all pre-declared by the compiler.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_dup_clib.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_dup_clib.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors (expected none, DuplicatedNameError before fix): {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine created";
 }
@@ -2842,7 +2925,9 @@ test "ptr-to-int coerce: compiles without IR type mismatch" {
     # strlen declared with int param, called with str — triggers ptrtoint.
     # Before the fix this crashed at IR verification time.
     prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_ptr_int_coerce.na.jac")));
+    ir = prog.compile(
+        str(os.path.join(FIXTURES, "fix_ptr_int_coerce.na.jac")), type_check=False
+    );
     assert not prog.errors_had , f"Errors: {prog.errors_had}";
     assert ir.gen.native_engine is not None , "No native engine created";
 }

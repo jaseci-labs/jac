@@ -112,10 +112,14 @@ impl run(
         if filename.endswith('.na.jac') {
             # Native files: compile directly and call jac_entry.
             # Skip jac_import to avoid resolving a .jac file with the same name.
+            # Type check is off here: the native pathway has its own type
+            # semantics (dict.remove, struct/method resolution) that the
+            # central evaluator does not yet model. Once those gaps close
+            # in the centralization effort, this can flip back to default.
             import ctypes;
             full_path = os.path.abspath(filename);
             program = Jac.get_program();
-            ir_mod = program.compile(file_path=full_path);
+            ir_mod = program.compile(file_path=full_path, type_check=False);
             if program.errors_had {
                 for _err in program.errors_had {
                     console.error(_err.pretty_print());
@@ -148,7 +152,10 @@ impl run(
                     na_program = JacProgram();
                     na_program._auto_promote_native = True;
                     na_program._auto_promote_target = full_path;
-                    ir_mod = na_program.compile(file_path=full_path);
+                    # Auto-promotion uses the native pathway; same caveat as
+                    # .na.jac above — type-check the standard .jac route, not
+                    # the native one (it has unmodeled type semantics).
+                    ir_mod = na_program.compile(file_path=full_path, type_check=False);
                     if (
                         ir_mod and ir_mod.gen.native_compat and ir_mod.gen.native_engine
                     ) {

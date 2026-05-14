@@ -21,29 +21,15 @@ import from jaclang.jac0core.mtp {
 
 import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
+import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
-glob PRIMITIVE_TYPES: list[str] = [
-         'int',
-         'float',
-         'str',
-         'bool',
-         'None',
-         'bytes',
-         'list',
-         'dict',
-         'set',
-         'tuple',
-         'i8',
-         'u8',
-         'i16',
-         'u16',
-         'i32',
-         'u32',
-         'i64',
-         'u64',
-         'f32',
-         'f64'
-     ];
+# Primitives recognized by the LLM metadata serializer. Sourced from the
+# central type registry (single source of truth) so this set can't drift
+# from what other backends and the type evaluator consider primitive.
+# 'None' is added explicitly because the registry tracks instantiable
+# primitive types only; for MTIR purposes 'None' is also a valid
+# type-info string when an enum/field has a None literal.
+glob PRIMITIVE_TYPES: set[str] = JAC_TYPE_REGISTRY.primitive_names() | {'None'};
 
 """Jac MTIR Generation Pass.
 

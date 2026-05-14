@@ -674,7 +674,7 @@ impl JacCompiler.build(
     file_path: str,
     target_program: JacProgram,
     use_str: (str | None) = None,
-    type_check: bool = False
+    type_check: bool = True
 ) -> uni.Module {
     actual_program = self._resolve_program(file_path, target_program);
     options = CompileOptions(type_check=type_check);

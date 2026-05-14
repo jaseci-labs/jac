@@ -44,7 +44,11 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
 """Compile a checker fixture and run the type check pass."""
 def compile_and_check(fixture_name: str) -> JacProgram {
     program = JacProgram();
-    mod = program.compile(os.path.join(CHECKER_FIXTURES, fixture_name));
+    # Disable the compile() default type-check so we run TypeCheckPass exactly
+    # once below (it's what these regression tests want to inspect).
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, fixture_name), type_check=False
+    );
     TypeCheckPass(ir_in=mod, prog=program);
     return program;
 }

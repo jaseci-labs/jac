@@ -17,16 +17,14 @@ impl _typebase_to_tag(t: Any) -> (str | None) {
     if t is None {
         return None;
     }
-    try {
-        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
-        _prim_names = {
-            e.name
-            for e in JAC_TYPE_REGISTRY._entries.values()
-            if e.na_type_spec is not None
-        };
-    } except ImportError {
-        _prim_names = {"int","float","bool","str","i8","u8","i16","u16","i32","u32","i64","u64","f32","f64"};
-    }
+    # Single source of truth for which primitives have a backend tag form —
+    # delegates to type_registry rather than maintaining its own list.
+    import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
+    _prim_names = {
+        e.name
+        for e in JAC_TYPE_REGISTRY._entries.values()
+        if e.na_type_spec is not None
+    };
     try {
         import from jaclang.compiler.type_system.types {
             ClassType as _ClassType,
