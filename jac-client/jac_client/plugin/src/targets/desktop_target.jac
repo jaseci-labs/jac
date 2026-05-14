@@ -25,7 +25,7 @@ obj DesktopTarget(WebTarget) {
 
     """Start desktop dev server - start web dev server and launch tauri dev."""
     override def dev(
-        entry_file: Path, project_dir: Path, api_port: int = 8000
+        entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
     ) -> None;
 
     """Start desktop app - build web bundle and launch Tauri with built bundle."""

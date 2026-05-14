@@ -504,15 +504,17 @@ The same mechanism works with any C-compatible shared library. For example, usin
 <!-- jac-skip -->
 ```jac
 import from "libraylib.so" {
-    def InitWindow(width: i32, height: i32, title: i8*) -> c_void;
+    def InitWindow(width: i32, height: i32, title: str) -> c_void;
     def WindowShouldClose() -> i32;
     def BeginDrawing() -> c_void;
     def EndDrawing() -> c_void;
     def CloseWindow() -> c_void;
     def ClearBackground(color: i32) -> c_void;
-    def DrawText(text: i8*, x: i32, y: i32, fontSize: i32, color: i32) -> c_void;
+    def DrawText(text: str, x: i32, y: i32, fontSize: i32, color: i32) -> c_void;
 }
 ```
+
+C-string parameters use `str` in the declaration; the compiler lowers `str` to the `i8*` ABI shape shown in the [primitive-type table](#primitive-type-mappings) above. The `i8*` form is an internal LLVM type and is not part of Jac's surface syntax.
 
 Any library that exposes a C ABI can be called this way -- just point to the shared library path and declare the function signatures.
 
@@ -703,7 +705,7 @@ HELLO, WORLD!
 # mixed.jac
 
 # Python side -- full ecosystem access
-import:py from json { dumps }
+import from json { dumps }
 
 def serialize(data: dict) -> str {
     return dumps(data);

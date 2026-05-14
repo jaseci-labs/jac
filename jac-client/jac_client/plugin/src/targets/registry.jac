@@ -10,7 +10,8 @@ import from pathlib { Path }
 enum TargetType {
     WEB = "web",
     DESKTOP = "desktop",
-    PWA = "pwa"
+    PWA = "pwa",
+    MOBILE = "mobile"
 }
 
 """Get TargetType from string name."""
@@ -24,6 +25,9 @@ def get_target_type(name: str) -> TargetType {
     }
     if name_lower == "pwa" {
         return TargetType.PWA;
+    }
+    if name_lower == "mobile" {
+        return TargetType.MOBILE;
     }
     raise ValueError(
         f"Unknown target: {name}. Available: {', '.join([t.value for t in TargetType])}"
@@ -54,9 +58,14 @@ class ClientTarget {
         platform: Optional[str] = None
     ) -> Path abs;
 
-    """Start dev server for the target."""
+    """Start dev server for the target. Matches core `jac start --dev`: `port` is the Vite
+    dev server port, `api_port` is the Jac API (0 means port+1)."""
     def dev(
-        self: ClientTarget, entry_file: Path, project_dir: Path, api_port: int = 8000
+        self: ClientTarget,
+        entry_file: Path,
+        project_dir: Path,
+        port: int = 8000,
+        api_port: int = 0
     ) -> None abs;
 
     """Start the target (production mode - build and run)."""

@@ -260,6 +260,10 @@ obj MockScaleConfig {
     def get_monitoring_config -> dict {
         return {"enabled": False};
     }
+
+    def get_events_config -> dict {
+        return {"enabled": False};
+    }
 }
 
 """Extract body content from JSONResponse or TransportResponse."""

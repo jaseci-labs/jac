@@ -1462,3 +1462,185 @@ test "fstring format spec invokes runtime format helper" {
         os.unlink(temp_path);
     }
 }
+
+test "issue 5930 sibling if else branches each get block scoped let" {
+    # BUG: when the same local name is declared (e.g. `x: int = 1;`) in both
+    # an if-branch and its sibling else-branch, codegen emitted `let x = ...`
+    # only in the first branch and a bare `x = ...` in the second. Under
+    # strict mode (every ES module) the else-branch threw
+    # `ReferenceError: x is not defined`.
+    #
+    # Root cause: `_is_name_first_definition` is symbol-table based and treats
+    # the else-branch occurrence as a non-first definition, so the existing
+    # `is_first AND not _is_declared_in_any_scope` predicate downgraded the
+    # emit to bare assignment even though the if-branch's block scope had
+    # already been popped. The fix drops the `is_first` half of the guard;
+    # block-scope membership is the authoritative signal for whether a JS
+    # `let` is still in flight.
+    jac_code = "\"\"\"Test #5930 sibling block let.\"\"\"\n\ncl def test(mode: bool) -> int {\n    if mode {\n        x: int = 1;\n        x = 2;\n    } else {\n        x: int = 3;\n        x = 4;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+
+        # Both branches must introduce x with `let` — the else-branch is the
+        # one that regressed prior to the fix.
+        assert "let x = 1" in js_code , (
+            f"if-branch must declare `let x = 1`, got:\n{js_code}"
+        );
+        assert "let x = 3" in js_code , (
+            f"else-branch must declare `let x = 3` (#5930), got:\n{js_code}"
+        );
+
+        # And follow-up reassignments inside each branch must NOT redeclare.
+        # We assert the absence of `let x = 2` / `let x = 4` to lock that in.
+        assert "let x = 2" not in js_code , (
+            f"in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
+        );
+        assert "let x = 4" not in js_code , (
+            f"in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
+        );
+
+        # And the emitted JS must actually execute in strict mode without
+        # tripping the ReferenceError from the original bug report. We pipe
+        # the bundle through node with `"use strict";` prepended and call
+        # both branches.
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (typeof test !== 'function')" + " { throw new Error('test() not exported'); }" + "\nif (test(true) !== 0 || test(false) !== 0)" + " { throw new Error('branches must return 0'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            f"strict-mode node run failed (#5930 regression):\n"
+            f"stdout={result.stdout!r}\nstderr={result.stderr!r}\n"
+            f"js:\n{js_code}"
+        );
+        assert "ok" in result.stdout , (
+            f"node run did not reach the success print:\n"
+            f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+        );
+
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "sibling block scopes — elif chain each branch gets its own let" {
+    # Generalizes #5930: every alternate-branch (elif as well as else) must
+    # re-declare a same-named local with `let`, since each is an independent
+    # JS lexical block.
+    jac_code = "\"\"\"Test elif chain sibling-block lets.\"\"\"\n\ncl def test_elif(mode: int) -> int {\n    if mode == 1 {\n        x: int = 1;\n        x = 2;\n    } elif mode == 2 {\n        x: int = 3;\n        x = 4;\n    } elif mode == 3 {\n        x: int = 5;\n        x = 6;\n    } else {\n        x: int = 7;\n        x = 8;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        for _expected_init in ["let x = 1", "let x = 3", "let x = 5", "let x = 7"] {
+            assert _expected_init in js_code , (
+                f"elif chain must declare `{_expected_init}` in its own "
+                f"branch, got:\n{js_code}"
+            );
+        }
+        # Run under strict mode through node to catch any
+        # ReferenceError-shaped regression.
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (test_elif(1) !== 0 || test_elif(2) !== 0" + " || test_elif(3) !== 0 || test_elif(99) !== 0)" + " { throw new Error('branches must return 0'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            f"strict-mode elif chain run failed:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "walrus in if-condition still hoists its let despite alt-branch scope finalization" {
+    # Regression guard for the alt-branch scope-finalization change made
+    # alongside #5930. The compound statement's ScopeInfo collects walrus
+    # / hoisted declarations during condition processing and is consumed
+    # by `_prepend_hoisted(IfStmt, ...)` inside `exit_if_stmt`. Because
+    # the if-body's scope is *finalized* (popped from the stack) when
+    # entering the else-branch, `_pop_scope` must only pop the stack and
+    # leave the `scope_map[IfStmt]` entry alone — otherwise the hoisted
+    # `let n;` is lost and the resulting JS leaves `n` undeclared, which
+    # is its own strict-mode ReferenceError.
+    #
+    # Note: the *location* of the hoist (currently inside the if-body)
+    # has a pre-existing accuracy issue separate from this PR — `n`
+    # should be visible after the if per Python semantics. This test
+    # locks in the current behavior so a future correctness fix is a
+    # deliberate change, not an accidental regression.
+    jac_code = "\"\"\"Test walrus hoist preservation across alt-branch finalization.\"\"\"\n\ncl def check(getter: int) -> int {\n    if (n := getter) > 5 {\n        x: int = 1;\n    } else {\n        x: int = 2;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # The hoisted `let n;` must survive. Without the split between
+        # stack-pop and map-pop in `_pop_scope`, this declaration was
+        # silently dropped when the if had an else branch.
+        assert "let n" in js_code , (
+            f"walrus name `n` from the if-condition must still be hoisted "
+            f"as a `let` declaration when an else branch is present, "
+            f"got:\n{js_code}"
+        );
+        # And both branches must still get their per-branch `let x`
+        # (the #5930 sibling-block fix continues to apply).
+        assert "let x = 1" in js_code;
+        assert "let x = 2" in js_code;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "sibling block scopes — try except finally each get their own let" {
+    # Same structural bug as #5930 in a different compound statement: the
+    # try-body's UniScopeNode covers its body, and the except / finally
+    # blocks are AST children of the TryStmt — so the try-body's `let x`
+    # would leak into except / finally and downgrade them to bare
+    # assignment. Generalized sibling-block fix.
+    jac_code = "\"\"\"Test try/except/finally sibling-block lets.\"\"\"\n\ncl def test_try(mode: bool) -> int {\n    try {\n        x: int = 1;\n        x = 2;\n        if mode {\n            raise Exception(\"force-except\");\n        }\n    } except Exception {\n        x: int = 3;\n        x = 4;\n    } finally {\n        x: int = 5;\n        x = 6;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        for _expected_init in ["let x = 1", "let x = 3", "let x = 5"] {
+            assert _expected_init in js_code , (
+                f"try/except/finally must declare `{_expected_init}` in its "
+                f"own block, got:\n{js_code}"
+            );
+        }
+        # Run under strict mode through node to confirm no
+        # `ReferenceError: x is not defined` in the except or finally branch.
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (test_try(false) !== 0)" + " { throw new Error('no-throw path must return 0'); }" + "\nif (test_try(true) !== 0)" + " { throw new Error('throw path must return 0'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            f"strict-mode try/except/finally run failed:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}

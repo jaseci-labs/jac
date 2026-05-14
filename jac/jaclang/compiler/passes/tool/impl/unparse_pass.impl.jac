@@ -245,6 +245,9 @@ impl UnparsePass.exit_import(nd: uni.Import) -> None {
     } else {
         parts.append("import");
     }
+    if nd.is_typed {
+        parts.append("type");
+    }
     items = self._comma_sep(nd.items);
     if nd.from_loc {
         parts.append("from");
@@ -1156,6 +1159,11 @@ impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
+}
+
+"""JsxComment: emit the raw `{#* ... *#}` text verbatim."""
+impl UnparsePass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.jac = nd.value.value if isinstance(nd.value, uni.Token) else str(nd.value);
     # ── Match / Switch ───────────────────────────────────────────────────
 }
 

@@ -48,6 +48,10 @@ require_password_reset = true
 [plugins.scale.kubernetes]
 redis_dashboard = true
 mongodb_dashboard = true
+# 5-min probe grace so the pod can git-clone + pip install + jac compile
+# + jac start before the kubelet votes on it.
+readiness_initial_delay = 300
+liveness_initial_delay = 300
 
 [dependencies.npm]
 antd = "^6.0.0"

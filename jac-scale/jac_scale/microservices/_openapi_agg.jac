@@ -1,4 +1,4 @@
-"""OpenAPI schema aggregation for the microservice gateway (ROADMAP P9).
+"""OpenAPI schema aggregation for the microservice gateway.
 
 Each microservice exposes its own `/openapi.json` via jac-scale's
 FastAPI machinery. Individually those are useful only to callers who

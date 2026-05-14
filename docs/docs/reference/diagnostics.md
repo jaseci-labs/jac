@@ -62,7 +62,7 @@ Emitted by the parser and lexer during source code parsing.
 |------|---------|
 | `E0010` | '{keyword}' is not supported in Jac |
 | `E0011` | Jac does not allow this keyword in any syntactic position |
-| `E0012` | Use `Reflect.construct(target, argumentsList)` method to create new instances |
+| `E0012` | Use the `new(target, ...args)` ambient builtin to create new instances |
 | `E0013` | '{keyword}' is a keyword and cannot be used as a {context} name |
 
 ### Operator / Expression Errors
