@@ -341,6 +341,8 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_STATIC,
         TokenKind.KW_OVERRIDE,
         TokenKind.KW_IMPL,
+        TokenKind.KW_GET,
+        TokenKind.KW_FIELD,
         TokenKind.KW_SEM,
         TokenKind.KW_TEST,
         TokenKind.KW_GLOBAL,
@@ -5686,7 +5688,15 @@ impl Parser.parse_has_stmt -> ArchHas {
         has_comma_unis.append(self.make_uni_token(self.previous()));
         vars.append(self.parse_has_var());
     }
-    self.expect(TokenKind.SEMI);
+    # `;` is optional when the last var ends with an accessor brace `}`
+    last_had_accessors = vars and (vars[len(vars) - 1].accessors is not None);
+    saw_semi = False;
+    if last_had_accessors {
+        saw_semi = self.match_tok(TokenKind.SEMI) is not None;
+    } else {
+        self.expect(TokenKind.SEMI);
+        saw_semi = True;
+    }
     kid: list = [];
     if is_static {
         kid.append(self.make_uni_token(static_tok));
@@ -5702,21 +5712,23 @@ impl Parser.parse_has_stmt -> ArchHas {
         }
         kid.append(v);
     }
-    # Add trailing Semi
-    prev = self.previous();
-    kid.append(
-        Semi(
-            orig_src=self.get_source(),
-            name=Tok.SEMI.value,
-            value=";",
-            line=prev.loc.line,
-            end_line=prev.loc.end_line,
-            col_start=prev.loc.col_start,
-            col_end=prev.loc.col_end,
-            pos_start=prev.loc.pos_start,
-            pos_end=prev.loc.pos_end
-        )
-    );
+    # Add trailing Semi (synthetic if elided after accessor brace)
+    if saw_semi {
+        prev = self.previous();
+        kid.append(
+            Semi(
+                orig_src=self.get_source(),
+                name=Tok.SEMI.value,
+                value=";",
+                line=prev.loc.line,
+                end_line=prev.loc.end_line,
+                col_start=prev.loc.col_start,
+                col_end=prev.loc.col_end,
+                pos_start=prev.loc.pos_start,
+                pos_end=prev.loc.pos_end
+            )
+        );
+    }
     return ArchHas(
         is_static=is_static,
         access=access,
@@ -5766,6 +5778,18 @@ impl Parser.parse_has_var -> HasVar {
         self.expect(TokenKind.KW_POST_INIT);
         defer = True;
     }
+    # Optional accessor block: { get/set/del ... }
+    accessors: (list | None) = None;
+    acc_lb_uni: UniToken | None = None;
+    acc_rb_uni: UniToken | None = None;
+    if self.check(TokenKind.LBRACE) {
+        acc_lb_uni = self.consume_uni(TokenKind.LBRACE);
+        accessors = [];
+        while not self.check(TokenKind.RBRACE) {
+            accessors.append(self.parse_accessor());
+        }
+        acc_rb_uni = self.consume_uni(TokenKind.RBRACE);
+    }
     kid: list = [name, type_tag];
     if value {
         kid.append(eq_uni);
@@ -5775,7 +5799,101 @@ impl Parser.parse_has_var -> HasVar {
         kid.append(by_uni);
         kid.append(self.make_special_name(self.previous()));
     }
-    return HasVar(name=name, type_tag=type_tag, value=value, defer=defer, kid=kid);
+    if accessors is not None {
+        kid.append(acc_lb_uni);
+        for acc in accessors {
+            kid.append(acc);
+        }
+        kid.append(acc_rb_uni);
+    }
+    return HasVar(
+        name=name,
+        type_tag=type_tag,
+        value=value,
+        defer=defer,
+        accessors=accessors,
+        kid=kid
+    );
+}
+
+"""Recognize `get`/`set`/`del` as a property-accessor-kind keyword and consume it.
+
+All four accessor keywords are real lexer-level keywords (KW_GET, TYP_SET,
+KW_DELETE, KW_FIELD). They are allowed as identifiers in normal positions via
+the same `is_keyword_token`/`_make_attr_from_keyword` mechanism that lets you
+write `def get(self): ...` or `obj.field` despite `int`, `set`, `static`, etc.
+being reserved words.
+
+  - `del`    -> KW_DELETE
+  - `set`    -> TYP_SET  (overlaps the built-in `set` type)
+  - `get`    -> KW_GET
+"""
+impl Parser._consume_accessor_kind -> tuple[str, Token] {
+    if self.check(TokenKind.KW_DELETE) {
+        return ("deleter", self.advance());
+    }
+    if self.check(TokenKind.TYP_SET) {
+        return ("setter", self.advance());
+    }
+    if self.check(TokenKind.KW_GET) {
+        return ("property", self.advance());
+    }
+    self.emit_diag(E0001);
+    return ("property", self.advance());
+}
+
+"""Parse one property accessor: `get`, `set`, or `del`, with optional signature and body."""
+impl Parser.parse_accessor -> Ability {
+    (kind_str, kind_tok) = self._consume_accessor_kind();
+    name = self.make_name(kind_tok);
+    # Optional () params and -> return-type
+    signature: FuncSignature | None = self.parse_func_signature();
+    has_sig_content = not (
+        len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
+    );
+    if not has_sig_content {
+        signature = None;
+    }
+    # Body: `{ ... }` or `;`
+    body: list | None = None;
+    body_lb_uni: UniToken | None = None;
+    body_rb_uni: UniToken | None = None;
+    if self.match_tok(TokenKind.LBRACE) {
+        body_lb_uni = self.make_uni_token(self.previous());
+        body = self.parse_code_block_stmts();
+        body_rb_uni = self.consume_uni(TokenKind.RBRACE);
+    } else {
+        self.expect(TokenKind.SEMI);
+    }
+    kid: list = [name];
+    if signature is not None {
+        kid.append(signature);
+    }
+    if body is not None {
+        kid.append(body_lb_uni);
+        for s in body {
+            kid.append(s);
+        }
+        kid.append(body_rb_uni);
+    } else {
+        kid.append(self.make_semi());
+    }
+    return Ability(
+        name_ref=name,
+        is_async=False,
+        is_override=False,
+        is_static=False,
+        is_classmethod=False,
+        is_abstract=False,
+        access=None,
+        signature=signature,
+        body=body,
+        kid=kid,
+        doc=None,
+        decorators=None,
+        type_params=None,
+        accessor_kind=kind_str
+    );
 }
 
 impl Parser.parse_ability -> Ability {

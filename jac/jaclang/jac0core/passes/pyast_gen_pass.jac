@@ -283,6 +283,9 @@ variables
         attribute_list: list[str], sync_node_list: Sequence[uni.UniNode]
     ) -> ast3.AST;
 
+    """Resolve `field` to its property's backing-storage attribute name."""
+    def _resolve_accessor_field_backing(nd: uni.Name) -> (str | None);
+
     """Resolve Self to the appropriate Python construct based on context."""
     def _resolve_self_type(nd: uni.Name) -> (ast3.expr | None);
 

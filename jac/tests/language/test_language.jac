@@ -871,3 +871,11 @@ test "bidirectional edge traversal" {
     assert "Backward from f:\nFollower found: 5" in output;
     assert "Backward from e:\nDone." in output;
 }
+
+test "native property get/set/del with impl separation" {
+    # Target test for proposed `has <name>: <type> { get; set; del; }` syntax
+    # using the `field` contextual keyword. Currently FAILS: the parser does
+    # not recognize accessor blocks on `has`, nor dotted-impl on properties.
+    output = run_jac(os.path.join(FIXTURES, "prop_native.jac"));
+    assert output == "ok\n";
+}
