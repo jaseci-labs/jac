@@ -7,14 +7,9 @@ import from pathlib { Path }
 
 
 class ImageDistributor {
-    """Make `image_tag` reachable to nodes in the target cluster.
-    Returns the image tag as it should be referenced from pod manifests
-    (may differ from input when the distributor rewrites the reference)."""
-    def distribute(self: ImageDistributor, image_tag: str) -> str;
-
-    """Build the image from `project_dir` and distribute it. Distributors
-    that share the cluster's docker daemon override this to build directly
-    in-cluster."""
+    """Build the image from `project_dir` and make it reachable to nodes
+    in the target cluster. Returns the image tag as referenced from pod
+    manifests (may differ from input when the distributor rewrites it)."""
     def build_and_distribute(
         self: ImageDistributor, project_dir: Path, image_tag: str
     ) -> str;

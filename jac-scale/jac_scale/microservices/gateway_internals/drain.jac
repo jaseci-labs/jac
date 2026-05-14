@@ -38,10 +38,6 @@ obj DrainCoordinator {
         return self._is_draining;
     }
 
-    def drain_started_ts -> float | None {
-        return self._drain_started_ts;
-    }
-
     def drain_timeout_s -> float {
         return self._drain_timeout_s;
     }
@@ -132,16 +128,8 @@ obj DrainCoordinator {
 glob _default_coordinator: DrainCoordinator = DrainCoordinator();
 
 
-def default_coordinator -> DrainCoordinator {
-    return _default_coordinator;
-}
-
 def is_draining -> bool {
     return _default_coordinator.is_draining();
-}
-
-def drain_started_ts -> float | None {
-    return _default_coordinator.drain_started_ts();
 }
 
 def drain_timeout_s -> float {
