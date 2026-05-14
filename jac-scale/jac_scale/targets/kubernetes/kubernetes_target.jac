@@ -2148,7 +2148,9 @@ obj KubernetesTarget(DeploymentTarget) {
             }
 
             provider = get_cluster_provider();
-            lb_endpoint = self._get_lb_endpoint(app_name) if provider.needs_nlb_wait() else None;
+            lb_endpoint = self._get_lb_endpoint(app_name)
+                if provider.needs_nlb_wait()
+                else None;
             url = provider.service_url(lb_endpoint, self.k8s_config.ingress_node_port);
             if url {
                 return url;
