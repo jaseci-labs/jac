@@ -992,6 +992,22 @@ test "desktop build generates index.html with correct paths" {
         import shutil;
         shutil.copytree(app_dir, project_dir);
         jac_cmd = get_jac_command();
+        env = get_env_with_npm();
+        # Setup desktop target first
+        (returncode, stdout, stderr) = run_jac_setup_desktop(project_dir);
+        assert returncode == 0 , f"Desktop setup failed: {stderr}";
+        # Install npm packages
+        npm_result = run(
+            [*jac_cmd, "add", "--npm"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=180,
+        );
+        if npm_result.returncode != 0 {
+            pytest.skip(f"npm install failed: {npm_result.stderr}");
+        }
         # We try to build. It might fail at the Tauri step if Rust is missing,
         # but it should have generated index.html by then.
         build_result = run(
@@ -999,8 +1015,24 @@ test "desktop build generates index.html with correct paths" {
             cwd=project_dir,
             capture_output=True,
             text=True,
+            env=env,
             timeout=300,
         );
+        print(f"[DEBUG] Build returncode={build_result.returncode}");
+        print(f"[DEBUG] Build STDOUT:\n{build_result.stdout}");
+        print(f"[DEBUG] Build STDERR:\n{build_result.stderr}");
+        client_dir = project_dir / ".jac" / "client";
+        if client_dir.exists() {
+            print(f"[DEBUG] .jac/client/ contents: {list(client_dir.iterdir())}");
+            dist_dir = client_dir / "dist";
+            if dist_dir.exists() {
+                print(
+                    f"[DEBUG] .jac/client/dist/ contents: {list(dist_dir.iterdir())}"
+                );
+            }
+        } else {
+            print("[DEBUG] .jac/client/ does not exist");
+        }
         dist_dir = project_dir / ".jac" / "client" / "dist";
         index_html = dist_dir / "index.html";
         assert index_html.exists() , "index.html should be generated";
