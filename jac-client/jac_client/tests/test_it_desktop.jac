@@ -1090,8 +1090,42 @@ test "desktop build generates index.html with custom base_path" {
         index_html = dist_dir / "index.html";
         assert index_html.exists() , "index.html should be generated";
         html_content = index_html.read_text();
+        # Assert JS script uses base path
         assert "/myapp/client." in html_content , (
-            f"index.html should use custom base path. Content:\n{html_content}"
+            f"index.html should use custom base path for JS. Content:\n{html_content}"
+        );
+        # Check Vite config
+        vite_config_path = project_dir / ".jac" / "client" / "configs" / "vite.config.js";
+        assert vite_config_path.exists() , "vite.config.js should be generated";
+        vite_config_content = vite_config_path.read_text();
+        assert 'base: "/myapp/"' in vite_config_content , (
+            f"vite.config.js should have base set to /myapp/. Content:\n{vite_config_content}"
+        );
+        # Test 2: base_path = "./"
+        # Update jac.toml again
+        jac_toml_content = jac_toml_path.read_text();
+        jac_toml_content = jac_toml_content.replace(
+            'base_path = "/myapp/"', 'base_path = "./"'
+        );
+        jac_toml_path.write_text(jac_toml_content);
+        # Run build again (should be fast as node_modules exist)
+        build_result2 = run(
+            [*jac_cmd, "build", "main.jac", "--client", "desktop"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=300,
+        );
+        assert index_html.exists() , "index.html should still be generated";
+        html_content2 = index_html.read_text();
+        assert "./client." in html_content2 , (
+            f"index.html should use relative base path for JS. Content:\n{html_content2}"
+        );
+        # Check Vite config for Test 2
+        vite_config_content2 = vite_config_path.read_text();
+        assert 'base: "./"' in vite_config_content2 , (
+            f"vite.config.js should have base set to ./. Content:\n{vite_config_content2}"
         );
     }
 }
