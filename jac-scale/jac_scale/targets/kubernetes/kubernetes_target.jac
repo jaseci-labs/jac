@@ -130,7 +130,7 @@ obj KubernetesTarget(DeploymentTarget) {
         liveness_probe['initialDelaySeconds'] = self.k8s_config.liveness_initial_delay;
         liveness_probe['periodSeconds'] = self.k8s_config.liveness_period;
         liveness_probe['timeoutSeconds'] = self.k8s_config.liveness_timeout;
-        liveness_probe['successThreshold'] = self.k8s_config.liveness_success_threshold;
+        liveness_probe['successThreshold'] = 1;
         liveness_probe['failureThreshold'] = self.k8s_config.liveness_failure_threshold;
 
         return {'readiness': probe_config, 'liveness': liveness_probe};
