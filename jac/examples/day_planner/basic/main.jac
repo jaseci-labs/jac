@@ -1,11 +1,9 @@
 """AI Day Planner -- single-file full-stack with composed components."""
 
-# --- Enums ---
 enum Category { WORK, PERSONAL, SHOPPING, HEALTH, FITNESS, OTHER }
 
 enum Unit { PIECE, LB, OZ, CUP, TBSP, TSP, BUNCH }
 
-# --- AI Types ---
 obj Ingredient {
     has name: str,
         quantity: float,
@@ -23,7 +21,6 @@ sem categorize = "Categorize a task based on its title";
 def generate_shopping_list(meal_description: str) -> list[Ingredient] by llm();
 sem generate_shopping_list = "Generate a shopping list of ingredients needed for a described meal";
 
-# --- Data Nodes ---
 node Task {
     has title: str,
         done: bool = False,
@@ -38,7 +35,6 @@ node ShoppingItem {
         carby: bool;
 }
 
-# --- Task Endpoints ---
 """Add a task with AI categorization."""
 def:pub add_task(title: str) -> Task {
     category = str(categorize(title)).split(".")[-1].lower();
@@ -73,7 +69,6 @@ def:pub delete_task(id: str) -> dict[str, str] {
     return {};
 }
 
-# --- Shopping List Endpoints ---
 """Generate a shopping list from a meal description."""
 def:pub generate_list(meal: str) -> list[ShoppingItem] {
     for item in [root-->][?:ShoppingItem] {
@@ -105,7 +100,6 @@ def:pub clear_shopping_list -> dict[str, bool] {
     return {"cleared": True};
 }
 
-# --- Frontend ---
 to cl:
 
 import "./styles.css";

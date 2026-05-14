@@ -56,6 +56,64 @@ def resolve_jac_binary -> str {
 """Hardcoded fallback if config read fails (no jac.toml, malformed schema)."""
 glob _DEFAULT_HTTP_FORWARD_TIMEOUT: float = 30.0;
 
+# Microservice-mode defaults shared by gateway, orchestrator, and the K8s
+# runtime adapter. Centralizing avoids drift if the gateway's listen
+# port/host ever changes — the local-mode banner, K8s DNS map, and
+# in-pod default were all hardcoding the same values independently.
+glob DEFAULT_GATEWAY_PORT: int = 8000,
+     DEFAULT_GATEWAY_HOST: str = "0.0.0.0",
+     DEFAULT_CLIENT_DIST_DIR: str = ".jac/client/dist",
+     # K8s in-cluster DNS suffix. Constant across every standard K8s
+     # install; only changes if the cluster admin overrides
+     # `--cluster-domain` on the kubelet, which we don't try to support.
+     K8S_CLUSTER_DNS_SUFFIX: str = "svc.cluster.local";
+
+
+"""Build the in-cluster DNS URL for a microservice's ClusterIP Service.
+
+The naming convention `<safe_name>-service` mirrors what
+`KubernetesMicroserviceTarget._build_service_manifest` emits, so the
+caller is responsible for passing an already-DNS-1123-safe name (use
+`k8s_target.k8s_safe_name` upstream). Used by:
+  - `KubernetesMicroserviceTarget._peer_dns_url` (manifest-time
+    `JAC_SV_<PEER>_URL` env injection)
+  - `KubernetesDeployer.url_for` (gateway -> service forwarding)
+  - `build_k8s_registry` (full registry map for `get_sv_registry`)
+"""
+def k8s_service_dns_url(safe_name: str, namespace: str, port: int) -> str {
+    return f"http://{safe_name}-service.{namespace}.{K8S_CLUSTER_DNS_SUFFIX}:{port}";
+}
+
+
+"""Resolve the namespace this pod is running in.
+
+Lookup order:
+  1. `POD_NAMESPACE` env var (set via downward API on the pod spec)
+  2. `/var/run/secrets/kubernetes.io/serviceaccount/namespace` (mounted
+     by K8s on every pod that uses a ServiceAccount)
+  3. fall back to `default`
+
+Centralized here so the registry builder, the `ensure_sv_service`
+hookimpl, and any future cross-pod resolver all read namespace the
+same way. Without this, the three callers had independent copies and
+the in-cluster-secret-file fallback would silently diverge.
+"""
+def in_cluster_namespace -> str {
+    import os;
+    ns: str = os.environ.get("POD_NAMESPACE", "");
+    if ns {
+        return ns;
+    }
+    try {
+        ns_file = "/var/run/secrets/kubernetes.io/serviceaccount/namespace";
+        with open(ns_file) as f {
+            return f.read().strip() or "default";
+        }
+    } except Exception {
+        return "default";
+    }
+}
+
 
 """Resolve gateway-to-service forward timeout (seconds).
 

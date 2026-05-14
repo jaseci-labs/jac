@@ -955,16 +955,17 @@ Typed context blocks let you conditionally execute code based on the runtime typ
 The syntax uses `->Type{code}` with no space between the arrow and type name:
 
 ```jac
+node Animal { has name: str = ""; }
+node Dog(Animal) {}
+node Cat(Animal) {}
+
 walker AnimalVisitor {
     can visit with Animal entry {
         # Typed context block for Dog (subtype of Animal)
-        ->Dog{print(f"{here.name} is a {here.breed} dog");}
+        ->Dog{print(f"{here.name} is a dog");}
 
         # Typed context block for Cat (subtype of Animal)
         ->Cat{print(f"{here.name} says meow");}
-
-        # Default case (any other Animal type)
-        ->_{print(f"{here.name} is some animal");}
     }
 }
 ```
@@ -974,36 +975,38 @@ walker AnimalVisitor {
 - No space between `->` and the type name: `->Dog{` not `-> Dog {`
 - Opening brace immediately follows the type
 - Code typically on same line with closing brace
-- Use `->_` for default/catch-all case
+- For a default/catch-all branch, add a final ability triggered on the base type (e.g. `can default with Animal entry { ... }`) or use an `else` branch on an `if isinstance(...)` chain. The `->_{}` wildcard form is not supported.
 
-!!! warning "Known Limitation"
-    The `->_{}` wildcard/default case is not currently supported at runtime and will produce a `name '_' is not defined` error. Use an explicit base type or `else` branch instead.
+### 2 Union-Based Dispatch
 
-### 2 Tuple-Based Dispatch
+A single ability can fire on multiple node types using the `|` union syntax:
 
 ```jac
+node Node1 { has v: int = 0; }
+node Node2 { has v: int = 0; }
+
 walker Processor {
-    can process with (Node1, Node2) entry {
-        # Handle when visiting involves both types
+    can process with Node1 | Node2 entry {
+        # Handles either node type; here is typed as Node1 | Node2
+        print(here.v);
     }
 }
 ```
 
 ### 3 Context Blocks in Nodes
 
-Nodes reacting to different walker types:
+Nodes can react to a specific walker by naming the walker type as the trigger. To handle *any* walker, use the anonymous form (`can handle with entry { ... }`) -- there is no built-in `Walker` catch-all type.
 
 ```jac
+walker Reader {}
+walker Writer { has new_value: int = 0; }
+
 node DataNode {
-    has value: int;
+    has value: int = 0;
 
-    can handle with Walker entry {
-        ->Reader{print(f"Read value: {self.value}");}
-
-        ->Writer{
-            self.value = visitor.new_value;
-            print(f"Updated to: {self.value}");
-        }
+    # Anonymous ability fires for every walker that visits this node
+    can handle with entry {
+        print(f"Visited by {type(visitor).__name__}, value={self.value}");
     }
 }
 ```

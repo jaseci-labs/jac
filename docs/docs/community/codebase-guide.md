@@ -298,4 +298,4 @@ Pre-commit hooks run formatting and linting on every commit locally. See `.pre-c
 
 - **Discord:** [discord.gg/6j3QNdtcN6](https://discord.gg/6j3QNdtcN6) -- the main community channel for questions and discussion
 - **Issues:** [github.com/Jaseci-Labs/jaseci/issues](https://github.com/Jaseci-Labs/jaseci/issues) -- check for unassigned issues to pick up
-- **Internals docs:** See the [Internals](internals/jac_import_patterns.md) section for deeper dives into specific subsystems
+- **Internals docs:** See the [Internals](../internals/abstractions.md) section for deeper dives into specific subsystems

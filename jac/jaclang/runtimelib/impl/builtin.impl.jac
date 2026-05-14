@@ -177,6 +177,16 @@ impl _get_jac -> type[JacRuntimeInterface] {
     return JacRuntimeInterface;
 }
 
+"""Portable constructor: server-side spelling of `Cls(*args)`.
+
+The cl backend rewrites `new(...)` calls at compile time into
+`Reflect.construct(...)` (see ESBuiltinEmitter.emit_new), so this runtime
+implementation is only invoked when the call survives to the server target.
+"""
+impl new(cls: Any, *args: Any) -> Any {
+    return cls(*args);
+}
+
 """REST API decorator factory."""
 impl restspec(**specs: Any) -> Callable {
     import from jaclang { JacRuntimeInterface as Jac }

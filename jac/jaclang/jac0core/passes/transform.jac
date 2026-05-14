@@ -2,17 +2,12 @@
 import time;
 import from abc { ABC, abstractmethod }
 import from threading { Event }
-import from typing { Any, TYPE_CHECKING }
+import from typing { Any }
 import from jaclang.jac0core.codeinfo { CodeLocInfo }
 import from jaclang.jac0core.diagnostics { DiagnosticInfo, Severity, E9001 }
 import from jaclang.jac0core.log { logging }
 import from jaclang.jac0core.unitree { UniNode }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.jac0core.program { JacProgram }
-    }
-}
+import type from jaclang.jac0core.program { JacProgram }
 
 """Alert interface."""
 obj Alert {

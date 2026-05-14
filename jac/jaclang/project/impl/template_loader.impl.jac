@@ -19,8 +19,8 @@ The [jacpackk.options] section contains:
 import from typing { Any, Callable }
 import from pathlib { Path }
 import from jaclang.project.template_registry { ProjectTemplate }
+import from jaclang.jac0core.helpers { read_toml_with_encoding }
 import json;
-import tomllib;
 import importlib;
 import base64;
 import from jaclang.cli.console { console }
@@ -31,7 +31,7 @@ import from jaclang.cli.console { console }
 """Read a file's content, returning text or base64-encoded binary."""
 def _read_file_content(file_path: Path) -> str {
     try {
-        return file_path.read_text();
+        return file_path.read_text(encoding="utf-8");
     } except UnicodeDecodeError {
         # Binary file - read as bytes and base64 encode
         binary_content = file_path.read_bytes();
@@ -56,9 +56,7 @@ impl load_template_from_directory(
     if not jac_toml_path.exists() {
         raise ValueError(f"No jac.toml found in {template_dir}");
     }
-    with open(jac_toml_path, "rb") as f {
-        jac_config = tomllib.load(f);
-    }
+    jac_config = read_toml_with_encoding(str(jac_toml_path));
     # Extract template metadata from [jacpack] section
     jacpackk_section = jac_config.get("jacpack", {});
     if not jacpackk_section {
@@ -88,7 +86,7 @@ impl load_template_from_directory(
     gitignore_path = template_dir / ".gitignore";
     if gitignore_path.exists() {
         try {
-            gitignore_content = gitignore_path.read_text().strip();
+            gitignore_content = gitignore_path.read_text(encoding="utf-8").strip();
             if gitignore_content {
                 for line in gitignore_content.split("\n") {
                     line = line.strip();
@@ -162,9 +160,7 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
     if not jac_toml_path.exists() {
         raise ValueError(f"No jac.toml found in {template_dir}");
     }
-    with open(jac_toml_path, "rb") as f {
-        jac_config = tomllib.load(f);
-    }
+    jac_config = read_toml_with_encoding(str(jac_toml_path));
     jacpackk_section = jac_config.get("jacpack", {});
     if not jacpackk_section {
         raise ValueError(f"jac.toml must have [jacpack] section to be packable");
@@ -186,7 +182,7 @@ impl bundle_template(template_dir: Path, output_path: Path) -> None {
         template_data["post_create_hook"] = options["post_create_hook"];
     }
     # Write bundled JSON
-    with open(output_path, "w") as f {
+    with open(output_path, "w", encoding="utf-8") as f {
         json.dump(template_data, f, indent=2);
     }
     console.print(f"Bundled template '{template.name}' to {output_path}");
@@ -203,7 +199,7 @@ impl load_template_from_json(
     if not json_path.exists() {
         raise ValueError(f"Template JSON not found: {json_path}");
     }
-    with open(json_path, "r") as f {
+    with open(json_path, "r", encoding="utf-8") as f {
         data = json.load(f);
     }
     # Unwrap jac-scale TransportResponse envelope if present

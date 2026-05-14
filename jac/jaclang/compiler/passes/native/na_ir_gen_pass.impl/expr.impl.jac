@@ -92,6 +92,24 @@ impl NaIRGenPass._codegen_expr(nd: (uni.UniNode | None)) -> (ir.Value | None) {
         # a function pointer to it.
     } elif isinstance(nd, uni.LambdaExpr) {
         _result = self._codegen_lambda(nd);
+    } elif (
+        isinstance(nd, uni.Slice)
+        or isinstance(nd, uni.IndexSlice)
+        or isinstance(nd, uni.KVPair)
+        or isinstance(nd, uni.KWPair)
+        or isinstance(nd, uni.InnerCompr)
+        or isinstance(nd, uni.FormattedValue)
+    ) {
+        # Container/wrapper nodes — callers walk into them and call
+        # _codegen_expr on the inner pieces (e.g. slice.start). When
+        # one of these flows in directly, the convention is to return
+        # None so the caller can fall back. NOT an error.
+    } else {
+        # Catch-all: any expression node we didn't recognize is a real
+        # gap, not a no-op. Emit a structured error so silent-failure
+        # bugs (yield, await, flow/wait, edge refs, JSX, ...) become
+        # loud at compile time instead of returning 0 at runtime.
+        self.emit(E5090, node_override=nd, kind="expression", name=type(nd).__name__);
     }
     # Stamp source location on every produced value so downstream helpers
     # (_coerce_type clib.box path, _box_value_tuple) can attribute RC
@@ -265,12 +283,22 @@ impl NaIRGenPass._codegen_name(nd: uni.Name) -> (ir.Value | None) {
 
 """Generate binary expression."""
 impl NaIRGenPass._codegen_binary(nd: uni.BinaryExpr) -> (ir.Value | None) {
+    op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
+    # Inspect the op before recursing into operands. Some operators
+    # (walrus `:=`, pipe-forward `|>`) have non-standard evaluation
+    # semantics: their left side is a binding target, not an rvalue.
+    # Trying to evaluate `nd.left` first would return None, and the
+    # function would silently exit returning None — masking the real
+    # gap. Catch known-unsupported ops here so the error is loud.
+    if op in (Tok.WALRUS_EQ, Tok.PIPE_FWD) {
+        self.emit(E5090, node_override=nd, kind="binary operator", name=op);
+        return None;
+    }
     left = self._codegen_expr(nd.left);
     right = self._codegen_expr(nd.right);
     if left is None or right is None {
         return None;
     }
-    op = nd.op.name if isinstance(nd.op, uni.Token) else str(nd.op);
     result = self._emit_binary_op(op, left, right);
     # RC: for string concatenation (i8* + i8*), _emit_binary_op creates a new
     # owned buffer and returns it.  The input operands are borrowed — if the
