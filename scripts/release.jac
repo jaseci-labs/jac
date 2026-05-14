@@ -36,16 +36,12 @@ def update_dependency_version(
     data = tomlkit.loads(jac_toml_path.read_text());
     dependencies = data["dependencies"];
     modified = False;
-    for (i, dep) in enumerate(dependencies) {
-        dep_str = str(dep);
-        if dep_str.startswith(f"{dep_pypi_name}>=") {
-            dependencies[i] = f"{dep_pypi_name}>={new_version}";
-            modified = True;
-            break;
-        }
+    if dep_pypi_name in dependencies {
+        dependencies[dep_pypi_name] = f">={new_version}";
+        modified = True;
     }
     if modified {
-        pyproject_path.write_text(tomlkit.dumps(data));
+        jac_toml_path.write_text(tomlkit.dumps(data));
     }
     return modified;
 }
