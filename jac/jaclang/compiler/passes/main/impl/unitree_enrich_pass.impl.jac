@@ -17,8 +17,6 @@ impl _typebase_to_tag(t: Any) -> (str | None) {
     if t is None {
         return None;
     }
-    # Single source of truth for which primitives have a backend tag form —
-    # delegates to type_registry rather than maintaining its own list.
     import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
     _prim_names = {
         e.name

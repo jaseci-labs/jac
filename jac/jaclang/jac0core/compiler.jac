@@ -76,9 +76,6 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
-        # MTIRGenPass moved into get_type_check_sched so its type-shape
-        # extraction can read the evaluator's results instead of doing its
-        # own ad-hoc AST walking.
         return [
             ASTValidationPass,
             SymTabBuildPass,
@@ -127,9 +124,8 @@ def get_type_check_sched -> list[type[Transform[uni.Module, uni.Module]]] {
             UniTreeEnrichPass
         }
         import from jaclang.compiler.passes.tool.jac_auto_lint_pass { JacLintCheckPass }
-        # MTIRGenPass needs evaluator-populated type info, so it runs after
-        # TypeCheckPass (was previously in get_ir_gen_sched, before any types
-        # were known, forcing it to re-derive shapes from AST text).
+        # MTIRGenPass runs after TypeCheckPass so it can read evaluator-
+        # populated types instead of re-deriving shapes from AST text.
         return [
             TypeCheckPass,
             StaticAnalysisPass,

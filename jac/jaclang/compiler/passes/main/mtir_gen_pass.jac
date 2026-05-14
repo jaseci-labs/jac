@@ -23,12 +23,8 @@ import from jaclang.jac0core.passes { UniPass }
 import from jaclang.jac0core.passes.transform { Transform }
 import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY }
 
-# Primitives recognized by the LLM metadata serializer. Sourced from the
-# central type registry (single source of truth) so this set can't drift
-# from what other backends and the type evaluator consider primitive.
-# 'None' is added explicitly because the registry tracks instantiable
-# primitive types only; for MTIR purposes 'None' is also a valid
-# type-info string when an enum/field has a None literal.
+# 'None' is added because the registry only tracks instantiable primitives;
+# MTIR also treats None literals (in enum/field values) as primitive type-info.
 glob PRIMITIVE_TYPES: set[str] = JAC_TYPE_REGISTRY.primitive_names() | {'None'};
 
 """Jac MTIR Generation Pass.

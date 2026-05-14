@@ -20,12 +20,9 @@ glob FIXTURES = str(
 
 """Compile a .na.jac fixture and return the JIT engine.
 
-Type checking defaults to off here because .na.jac fixtures exercise the
-native pathway, which has its own type semantics (e.g. `dict.remove`,
-`d.get(k)` returning non-Optional, native struct method resolution) that
-the central type evaluator does not yet model. Closing this gap is part
-of the type-analysis centralization effort; in the meantime these tests
-are codegen-mechanics regressions and don't need the central evaluator.
+type_check defaults to False: the native pathway has type semantics
+(`dict.remove`, struct method resolution, etc.) the central evaluator
+does not yet model, and these tests are codegen-mechanics regressions.
 """
 def compile_native(
     fixture: str, type_check: bool = False
@@ -1991,10 +1988,8 @@ glob CHESS_JAC = str(
 
 """Compile a regular .jac file with auto-promotion and return the engine.
 
-Type checking is disabled for the same reason as [compile_native]: the
-native pathway has type semantics the central evaluator doesn't yet
-model. These auto-promotion tests verify the native compatibility
-detection + codegen, not type correctness.
+type_check=False for the same reason as [compile_native] -- auto-promotion
+goes through the native pathway.
 """
 def compile_auto_native(file_path: str) -> tuple[uni.Module, JacProgram] {
     prog = JacProgram();
