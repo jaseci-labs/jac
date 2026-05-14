@@ -177,6 +177,63 @@ Configure deployment via environment variables in `.env`:
 
 ---
 
+## Remote Clusters and Image Registry
+
+Local clusters (Docker Desktop, Minikube, k3d, kind) load the built image directly into the cluster's container runtime. **Remote clusters (EKS, GKE, AKS, anything you reach over the network) cannot do this** -- they pull images from a registry the cluster has IAM/auth to read.
+
+For a remote cluster, set `image_registry` in `jac.toml` so the build pipeline pushes there before applying manifests:
+
+```toml
+[plugins.scale.kubernetes]
+image_registry = "${ECR_REGISTRY}"   # e.g. 123456789012.dkr.ecr.us-east-2.amazonaws.com
+```
+
+`${ENV_VAR}` interpolation lets you keep the registry URL out of source control -- export it from `.env` or your CI runner. The build pipeline tags the image as `<registry>/<app_name>:dev-<sha12>` and pushes before `kubectl apply`. Image tags are content-addressed (the `<sha12>` suffix changes whenever the source does), so subsequent rebuilds trigger an automatic rolling update.
+
+You also need to give your CI runner or developer machine permission to push to the registry. For ECR, that's typically `aws ecr get-login-password | docker login` plus an IAM policy granting `ecr:*` on the repo.
+
+---
+
+## Cross-Service Shared Filesystem
+
+When two services need to read and write the same files (e.g. an IDE backend and a build worker that both touch a project workspace), declare a shared volume that gets mounted on both pods:
+
+```toml
+[[plugins.scale.microservices.shared_volumes]]
+name = "workspace"
+mount_path = "/data/workspace"
+services = ["builder_sv", "build_worker"]
+
+# Cloud K8s (RWX storage class - EFS / Filestore / Azure Files):
+size = "10Gi"
+access_mode = "ReadWriteMany"
+storage_class = "efs-sc"
+
+# OR for local dev clusters (k3d/kind/minikube), use a hostPath instead:
+# host_path = "/var/lib/myapp-workspace"
+```
+
+Each entry is an array-of-tables (note the double brackets), so you can declare multiple shared volumes in the same project. The microservice target creates one PersistentVolumeClaim per entry and adds the corresponding `volumeMount` to every service named in `services`. PVCs and mounts come up in the right order during `apply_manifests`, so pods do not crash-loop with "PVC not found".
+
+> **Note on EFS access points.** EFS CSI access points enforce a POSIX UID on every file. The shipped image marks `*` as a [git safe.directory](https://git-scm.com/docs/git-config#Documentation/git-config.txt-safedirectory) so in-pod `git` commands inside the shared volume do not trip CVE-2022-24765 ownership checks when the EFS UID differs from the pod's running UID. If you bake your own image, add `RUN git config --system --add safe.directory '*'`.
+
+---
+
+## Pre-Bound ServiceAccount
+
+By default microservice + gateway pods run as the namespace's `default` ServiceAccount, which has no RBAC. Apps that talk to the cluster API at runtime (sandbox-spawning, operator-style controllers, K8s Job / CronJob managers) need a ServiceAccount pre-bound with the right Role / ClusterRole. The microservice target does not create the SA -- it only references one you provide:
+
+```toml
+[plugins.scale.kubernetes]
+service_account_name = "myapp-sa"
+```
+
+The SA must already exist in the target namespace, and any RoleBindings or ClusterRoleBindings it needs must already be applied (typically by your platform team or a separate Helm/Terraform run that owns cluster-scoped policy). Once set, every microservice pod and the gateway pod run under that SA, and any in-pod K8s API client picks up the SA's token automatically from the projected volume at `/var/run/secrets/kubernetes.io/serviceaccount/`.
+
+Auto-creating the SA + RoleBindings from `jac.toml` is on the roadmap but not yet shipped -- treat the SA as a prerequisite that lives outside the project repo for now.
+
+---
+
 ## Managing Your Deployment
 
 ### Check Status

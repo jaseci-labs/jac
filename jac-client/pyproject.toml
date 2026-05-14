@@ -37,6 +37,7 @@ plugin_config = "jac_client.plugin.plugin_config:JacClientPluginConfig"
 dev = [
     "python-dotenv==1.0.1",
     "pytest==8.3.5",
+    "watchdog>=3.0.0",
 ]
 
 [tool.setuptools.packages.find]

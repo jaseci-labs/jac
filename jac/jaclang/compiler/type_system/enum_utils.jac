@@ -3,15 +3,9 @@ Utilities for enum type checking.
 
 PyrightReference: packages/pyright-internal/src/analyzer/enums.ts
 """
-import from typing { TYPE_CHECKING }
 import jaclang.jac0core.unitree as uni;
 import from . { types }
-
-with entry {
-    if TYPE_CHECKING {
-        import from .type_evaluator { TypeEvaluator, PrefetchedTypes }
-    }
-}
+import type from .type_evaluator { TypeEvaluator, PrefetchedTypes }
 
 # Names that are excluded from enum membership
 glob ENUM_RESERVED_NAMES: set[str] = {'name','value','_name_','_value_','_ignore_','_order_','__order__','_missing_','_generate_next_value_'};

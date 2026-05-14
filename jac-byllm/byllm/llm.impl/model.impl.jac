@@ -22,8 +22,13 @@ impl Model.postinit -> None {
     # LocalLLM lives alongside MockLLM in byllm.llm so both delegates share
     # the same module and avoid a circular import via local_runtime.jac.
     if self.model_name.startswith("local:") {
+        # Forward ctx_window so user overrides on the outer Model reach the
+        # compaction layer running inside the delegate.
         self._local_delegate = LocalLLM(
-            model_name=self.model_name, config=self.config, call_params=self.call_params
+            model_name=self.model_name,
+            ctx_window=self.ctx_window,
+            config=self.config,
+            call_params=self.call_params
         );
     }
     if not self._mock_delegate and not self._local_delegate {

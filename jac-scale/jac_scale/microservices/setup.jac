@@ -14,6 +14,7 @@ names to gateway prefixes. Services are discovered automatically via
 import os;
 import tomllib;
 import from pathlib { Path }
+import from jaclang.cli.console { console }
 
 """Scan the project for .jac files, excluding build artifacts."""
 def scan_jac_files(project_root: str = ".") -> list[str] {
@@ -64,20 +65,20 @@ def run_setup(project_root: str = ".") -> None {
 
     jac_files = scan_jac_files(project_root);
     if not jac_files {
-        print("No .jac files found in project.");
+        console.print("No .jac files found in project.");
         return;
     }
 
-    print("\nFound .jac files:");
+    console.print("\nFound .jac files:");
     for (i, f) in enumerate(jac_files) {
-        print(f"  {i + 1}. {f}");
+        console.print(f"  {i + 1}. {f}");
     }
 
     selection = input(
         "\nSelect files to run as microservices (comma-separated numbers): "
     ).strip();
     if not selection {
-        print("No services selected. Exiting.");
+        console.print("No services selected. Exiting.");
         return;
     }
 
@@ -97,7 +98,7 @@ def run_setup(project_root: str = ".") -> None {
     }
 
     if not selected_files {
-        print("No valid files selected. Exiting.");
+        console.print("No valid files selected. Exiting.");
         return;
     }
 
@@ -149,34 +150,55 @@ def run_setup(project_root: str = ".") -> None {
         lines.append("");
     }
 
-    # Reference blocks for production-hardening knobs. Left commented so
-    # the default stance is safe: no CORS, no rate limiting. Uncomment
-    # and tune per deployment.
+    # Reference blocks (commented; default stance is safe).
     lines.extend(
         [
-            "# Graceful drain window on SIGTERM (seconds). Matches K8s",
-            "# terminationGracePeriodSeconds. Default: 10.",
+            "# Graceful drain window (default 10s).",
             "# [plugins.scale.microservices]",
             "# drain_timeout_seconds = 10",
             "",
-            "# Per-service RPC timeout override (seconds). Raise for LLM /",
-            "# long-running services. `rpc_timeout` controls inter-service",
-            "# `sv import` calls; `http_forward_timeout` controls the gateway's",
-            "# proxy to the service.",
+            "# Per-service overrides at [plugins.scale.microservices.services.<name>]",
+            "# (gateway uses key '__gateway__'). All keys optional.",
             "# [plugins.scale.microservices.services.llm_app]",
-            "# rpc_timeout = 120.0",
-            "# http_forward_timeout = 300.0",
+            "# replicas = 2",
+            "# cpu_request = \"500m\"",
+            "# cpu_limit = \"2000m\"",
+            "# memory_request = \"1Gi\"",
+            "# memory_limit = \"4Gi\"",
+            "# rpc_timeout = 120.0              # sv import (httpx)",
+            "# http_forward_timeout = 300.0     # gateway proxy (aiohttp)",
+            "# image_tag = \"v2.0-canary\"        # canary override",
+            "# env = { LOG_LEVEL = \"DEBUG\" }",
+            "#",
+            "# HPA defaults: min=1, max=3, cpu_target=70%. Disable for",
+            "# fixed-replica services (leader-only / stateful).",
+            "# [plugins.scale.microservices.services.llm_app.hpa]",
+            "# min = 3",
+            "# max = 20",
+            "# cpu_target = 60",
+            "# enabled = true",
+            "#",
+            "# PDB defaults: maxUnavailable=1.",
+            "# [plugins.scale.microservices.services.llm_app.pdb]",
+            "# max_unavailable = 1",
+            "# enabled = true",
             "",
-            "# Global gateway-to-service forward timeout (seconds). Applies to",
-            "# both the built-in passthrough fan-out and the path-routed proxy.",
-            "# Per-service overrides above take precedence. Default: 30.",
+            "# Global gateway-to-service forward timeout (default 30s);",
+            "# per-service overrides above take precedence.",
             "# [plugins.scale.microservices]",
             "# http_forward_timeout = 30.0",
             "",
-            "# CORS middleware. Open by default (any origin; allow_origins",
-            "# defaults to [\"*\"]). Uncomment to restrict, or set",
-            "# allow_origins = [] to disable entirely. Note: allow_credentials",
-            "# = true requires a concrete allow_origins list per CORS spec.",
+            "# Optional K8s Ingress (HTTP only; TLS is deployment-specific).",
+            "# [plugins.scale.microservices.ingress]",
+            "# enabled = true",
+            '# host = "shop.example.com"          # optional; match-any-host if unset',
+            '# ingress_class_name = "nginx"       # or "alb", "gce", "traefik"',
+            "# annotations = {",
+            '#     "nginx.ingress.kubernetes.io/proxy-body-size" = "10m",',
+            "# }",
+            "",
+            "# CORS middleware. Open by default; restrict via allow_origins.",
+            "# allow_credentials = true requires a concrete list per CORS spec.",
             "# [plugins.scale.microservices.cors]",
             '# allow_origins = ["https://app.example.com"]',
             '# allow_methods = ["GET", "POST", "OPTIONS"]',
@@ -197,22 +219,22 @@ def run_setup(project_root: str = ".") -> None {
 
     toml_path.write_text("\n".join(lines));
 
-    print(f"\nAdded microservice config to jac.toml:");
+    console.print(f"\nAdded microservice config to jac.toml:");
     for file_path in selected_files {
         module = derive_module_name(file_path);
-        print(f"  - {module:18s} -> {derive_prefix(module):20s} ({file_path})");
+        console.print(f"  - {module:18s} -> {derive_prefix(module):20s} ({file_path})");
     }
     if client_entry {
-        print(f"  - {'client':18s} -> {client_entry}");
+        console.print(f"  - {'client':18s} -> {client_entry}");
     }
-    print(f"\nRun `jac start main.jac` to launch locally.");
+    console.print(f"\nRun `jac start main.jac` to launch locally.");
 }
 
 """Add a single service to existing config."""
 def add_service(project_root: str, file_path: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
-        print("No jac.toml found. Run `jac setup microservice` first.");
+        console.print("No jac.toml found. Run `jac setup microservice` first.");
         return;
     }
 
@@ -225,7 +247,9 @@ def add_service(project_root: str, file_path: str) -> None {
     ms = doc.get("plugins", {}).get("scale", {}).get("microservices", {});
     routes = ms.get("routes", {});
     if module in routes {
-        print(f"Route '{module}' already exists. Remove it first with --remove.");
+        console.print(
+            f"Route '{module}' already exists. Remove it first with --remove."
+        );
         return;
     }
 
@@ -249,14 +273,14 @@ def add_service(project_root: str, file_path: str) -> None {
     }
     toml_path.write_text(content);
 
-    print(f"Added route: {module} -> {prefix} ({file_path})");
+    console.print(f"Added route: {module} -> {prefix} ({file_path})");
 }
 
 """Remove a route from config by module name."""
 def remove_service(project_root: str, module_name: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
-        print("No jac.toml found.");
+        console.print("No jac.toml found.");
         return;
     }
 
@@ -283,19 +307,19 @@ def remove_service(project_root: str, module_name: str) -> None {
     }
 
     if not found {
-        print(f"Route '{module_name}' not found in config.");
+        console.print(f"Route '{module_name}' not found in config.");
         return;
     }
 
     toml_path.write_text("\n".join(new_lines));
-    print(f"Removed route: {module_name}");
+    console.print(f"Removed route: {module_name}");
 }
 
 """List currently configured routes."""
 def list_services(project_root: str) -> None {
     toml_path = Path(project_root) / "jac.toml";
     if not toml_path.exists() {
-        print("No jac.toml found.");
+        console.print("No jac.toml found.");
         return;
     }
 
@@ -308,21 +332,21 @@ def list_services(project_root: str) -> None {
     routes = ms.get("routes", {});
     client = ms.get("client", {});
 
-    print(f"Microservice mode: {'ENABLED' if enabled else 'DISABLED'}");
-    print(
+    console.print(f"Microservice mode: {'ENABLED' if enabled else 'DISABLED'}");
+    console.print(
         f"Gateway: {ms.get('gateway_host', '0.0.0.0')}:{ms.get('gateway_port', 8000)}"
     );
 
     if routes {
-        print(f"\nRoutes ({len(routes)}):");
+        console.print(f"\nRoutes ({len(routes)}):");
         for (module, prefix) in routes.items() {
-            print(f"  {module:18s} -> {prefix}");
+            console.print(f"  {module:18s} -> {prefix}");
         }
     } else {
-        print("\nNo routes configured.");
+        console.print("\nNo routes configured.");
     }
 
     if client.get("entry") {
-        print(f"\nClient: {client['entry']}");
+        console.print(f"\nClient: {client['entry']}");
     }
 }

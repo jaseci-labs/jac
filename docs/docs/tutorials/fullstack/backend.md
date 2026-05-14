@@ -10,6 +10,9 @@ This tutorial shows how to call backend functions from the frontend, use walkers
 > - Familiar with: [What Makes Jac Different](../../quick-guide/what-makes-jac-different.md) (core concepts)
 > - Time: ~30 minutes
 
+!!! note "Walker spawn results and `jac check`"
+    Snippets that read `result.reports` from `root spawn MyWalker()` runs work at runtime, but the static checker has no typed shape for the walker spawn-result yet. Many blocks below also call `sv import from ...main { ... }` for cross-module walkers; until those server-export stubs land, isolated `jac check` runs on these excerpts surface `E1032` warnings.
+
 ---
 
 ## How It Works

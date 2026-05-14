@@ -111,12 +111,23 @@ def reset_drain {
 }
 
 
-"""Build the drain HTTP middleware. `service_label` goes into the 503
-envelope (e.g. "__gateway__", "cart_app")."""
+"""Build the drain HTTP middleware. K8s probe paths bypass the drain
+short-circuit (liveness must stay 200 mid-drain; readiness has its own
+draining-aware handler)."""
+glob _DRAIN_EXEMPT_PATHS: set[str] = {"/healthz/live","/healthz/ready"};
+
+
 def build_drain_middleware(service_label: str = "service") -> Any {
     import from jac_scale.microservices._errors { service_unavailable }
 
     async def drain_middleware(request: Any, call_next: Any) -> Any {
+        # `getattr` (vs attr access) keeps the unit-test bare-`object()`
+        # request shape working alongside production Starlette Requests.
+        url = request?.url;
+        path = getattr(url, "path", "") if url is not None else "";
+        if path in _DRAIN_EXEMPT_PATHS {
+            return await call_next(request);
+        }
         if not _is_draining {
             incr_inflight();
             try {

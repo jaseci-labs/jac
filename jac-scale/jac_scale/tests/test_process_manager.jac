@@ -296,7 +296,7 @@ test "restart stops then starts service" {
 }
 
 # =============================================================================
-# Pidfile-backed cross-process stop (ROADMAP P4)
+# Pidfile-backed cross-process stop
 # =============================================================================
 test "stop_service with pidfile only kills by pid when Popen handle is absent" {
     # Simulates `jac scale stop` running in a fresh CLI process: the pm

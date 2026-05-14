@@ -142,7 +142,7 @@ def search_web(query: str) -> str {
 
 """Evaluate a mathematical expression."""
 def calculate(expression: str) -> float {
-    return eval(expression);
+    return float(str(eval(expression)));
 }
 
 """Get today's date."""
@@ -240,7 +240,7 @@ def summarize(content: str) -> str by llm();
 sem summarize = "Summarize this document in 2-3 sentences.";
 
 """Search documents for matching content."""
-def search_documents(query: str, docs: list) -> list {
+def search_documents(query: str, docs: list[Document]) -> list[str] {
     results = [];
     for doc in docs {
         if query.lower() in doc.content.lower() {
@@ -249,12 +249,7 @@ def search_documents(query: str, docs: list) -> list {
     }
     return results;
 }
-```
 
-!!! warning "Graph Persistence"
-    Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
-
-```jac
 walker DocumentAgent {
     has query: str;
 
@@ -273,7 +268,12 @@ walker DocumentAgent {
         }
     }
 }
+```
 
+!!! warning "Graph Persistence"
+    Walker examples use persistent graph state. Run `jac clean --all` before re-running to avoid `NodeAnchor` errors.
+
+```jac
 with entry {
     root ++> Document(
         title="AI Overview",
@@ -332,29 +332,27 @@ with entry {
 import json;
 
 # Knowledge base
-glob kb: dict = {
-    "products": ["Widget A", "Widget B", "Service X"],
-    "prices": {"Widget A": 99, "Widget B": 149, "Service X": 29},
-    "inventory": {"Widget A": 50, "Widget B": 0, "Service X": 999}
-};
+glob products: list[str] = ["Widget A", "Widget B", "Service X"];
+glob prices: dict[str, int] = {"Widget A": 99, "Widget B": 149, "Service X": 29};
+glob inventory: dict[str, int] = {"Widget A": 50, "Widget B": 0, "Service X": 999};
 
 """List all available products."""
 def list_products() -> list[str] {
-    return kb["products"];
+    return products;
 }
 
 """Get the price of a product."""
 def get_price(product: str) -> str {
-    if product in kb["prices"] {
-        return f"${kb['prices'][product]}";
+    if product in prices {
+        return f"${prices[product]}";
     }
     return "Product not found";
 }
 
 """Check if a product is in stock."""
 def check_inventory(product: str) -> str {
-    if product in kb["inventory"] {
-        qty = kb["inventory"][product];
+    if product in inventory {
+        qty = inventory[product];
         if qty > 0 {
             return f"In stock ({qty} available)";
         }
@@ -365,13 +363,13 @@ def check_inventory(product: str) -> str {
 
 """Place an order for a product."""
 def place_order(product: str, quantity: int) -> str {
-    if product not in kb["inventory"] {
+    if product not in inventory {
         return "Product not found";
     }
-    if kb["inventory"][product] < quantity {
+    if inventory[product] < quantity {
         return "Insufficient inventory";
     }
-    kb["inventory"][product] -= quantity;
+    inventory[product] -= quantity;
     return f"Order placed: {quantity}x {product}";
 }
 
