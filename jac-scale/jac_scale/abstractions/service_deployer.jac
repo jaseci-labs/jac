@@ -1,11 +1,7 @@
-"""Combined ServiceDeployer interface = RuntimeServiceResolver +
-ServiceLifecycleManager. Kept for back-compat during the M-track
-refactor; new code should depend on the smaller interfaces directly.
-
-Concrete subclasses (LocalDeployer, K8sRuntimeServiceResolver) declare
-their own `has registry: ServiceRegistry` field; this ABC stays
-interface-only to avoid the abstractions -> microservices layering
-inversion."""
+"""ServiceDeployer ABC. Concrete subclasses (LocalDeployer,
+K8sRuntimeServiceResolver) declare their own `has registry: ServiceRegistry`
+field; this ABC stays interface-only to avoid abstractions -> microservices
+layering inversion."""
 
 class ServiceDeployer {
     """Single source of truth for service URLs.
