@@ -178,13 +178,11 @@ cache miss (within _REVOCATION_CACHE_TTL).  For stricter guarantees, reduce
 _REVOCATION_CACHE_TTL or centralise the revocation timestamp in Redis.
 """
 impl JacScaleUserManager.invalidate_user_tokens(user_id: str) -> None {
-    global _decoded_token_cache, _revocation_ts_cache, _user_token_hashes;
+    global _decoded_token_cache,_revocation_ts_cache,_user_token_hashes;
 
     # Persist revocation boundary so other workers (and restarts) pick it up
     now_unix = time.time();
-    self._identity_storage.update_user_fields(
-        user_id, {'tokens_valid_from': now_unix}
-    );
+    self._identity_storage.update_user_fields(user_id, {'tokens_valid_from': now_unix});
 
     # Eagerly evict this worker's decode-cache entries for this user
     for token_hash in list(_user_token_hashes.get(user_id, set())) {
@@ -258,7 +256,7 @@ Revocation propagates to other workers within _REVOCATION_CACHE_TTL seconds
 invalidated user are eagerly evicted in the same worker via invalidate_user_tokens.
 """
 impl JacScaleUserManager.validate_jwt_token(token: str) -> str | None {
-    global _decoded_token_cache, _revocation_ts_cache, _user_token_hashes;
+    global _decoded_token_cache,_revocation_ts_cache,_user_token_hashes;
     now_m = time.monotonic();
 
     # Layer 1: process-local decode cache — avoids jwt.decode() on repeated hits
@@ -297,7 +295,10 @@ impl JacScaleUserManager.validate_jwt_token(token: str) -> str | None {
         if user_doc is None {
             # User has been deleted — reject and cache the sentinel so we
             # don't hit the DB on every request for the remaining TTL.
-            _revocation_ts_cache[user_id] = (float('inf'), now_m + _REVOCATION_CACHE_TTL);
+            _revocation_ts_cache[user_id] = (
+                float('inf'),
+                now_m + _REVOCATION_CACHE_TTL
+            );
             return None;
         }
         valid_from_ts = float(user_doc.get('tokens_valid_from', 0.0));
