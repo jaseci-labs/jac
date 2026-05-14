@@ -92,8 +92,6 @@ def cluster_type -> str;
 
 def get_cluster_provider -> ClusterProvider;
 
-def check_node_ports_available(node_port: int, current_namespace: str) -> None;
-
 def ensure_pvc_exists(
     core_v1: client.CoreV1Api,
     namespace: str,
