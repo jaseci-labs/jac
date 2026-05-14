@@ -92,7 +92,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'plugin_versions': {},
             # Domain / TLS
             'domain': '',
-            'cert_manager_email': ''
+            'cert_manager_email': '',
             # Probe timings (aligned with microservice drain semantics;
             # see kubernetes_config.jac probe-default comment).
             'readiness_initial_delay': 5,

@@ -2098,6 +2098,122 @@ test "redis ingress rule must not set host before TLS is enabled" {
 }
 
 # ---------------------------------------------------------------------------
+# Unit tests for _compute_hpa_inputs — the cascade that reads k8s_config and
+# produces the (cpu_target, memory_target, critical_missing, non_critical_missing)
+# tuple passed to _emit_hpa_warnings and create_hpa.  These tests catch bugs
+# like a missing `cpu_target = None` nullification that the formatter tests below
+# cannot detect.
+# ---------------------------------------------------------------------------
+test "compute hpa inputs happy path both requests and limits set" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': '500m',
+            'memory_request': '256Mi',
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target == 70;
+    assert memory_target == 70;
+    assert critical == [];
+    assert non_critical == [];
+}
+
+test "compute hpa inputs cpu request missing nullifies cpu target" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': '500m',
+            'memory_request': '256Mi',
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target is None , "cpu_target must be nullified when cpu_request is missing";
+    assert memory_target == 70;
+    assert "cpu_request (cpu_utilization_target will be ignored)" in critical;
+    assert non_critical == [];
+}
+
+test "compute hpa inputs memory request missing nullifies memory target" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': '500m',
+            'memory_request': None,
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target == 70;
+    assert memory_target is None , "memory_target must be nullified when memory_request is missing";
+    assert "memory_request (memory_utilization_target will be ignored)" in critical;
+    assert non_critical == [];
+}
+
+test "compute hpa inputs both requests missing nullifies both targets" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': '500m',
+            'memory_request': None,
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target is None;
+    assert memory_target is None;
+    assert len(critical) == 2;
+    assert non_critical == [];
+}
+
+test "compute hpa inputs missing limits go to non critical not critical" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': '250m',
+            'cpu_limit': None,
+            'memory_request': '256Mi',
+            'memory_limit': None,
+            'cpu_utilization_target': 70,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target == 70;
+    assert memory_target == 70;
+    assert critical == [];
+    assert "cpu_limit" in non_critical;
+    assert "memory_limit" in non_critical;
+}
+
+test "compute hpa inputs cpu target disabled skips cpu request check" {
+    (target, _) = _make_hpa_target(
+        {
+            'cpu_request': None,
+            'cpu_limit': None,
+            'memory_request': '256Mi',
+            'memory_limit': '512Mi',
+            'cpu_utilization_target': None,
+            'memory_utilization_target': 70
+        }
+    );
+    (cpu_target, memory_target, critical, non_critical) = target._compute_hpa_inputs();
+    assert cpu_target is None;
+    assert memory_target == 70;
+    assert critical == [] , "no critical entry when cpu_target was already None";
+    assert non_critical == [];
+}
+
+# ---------------------------------------------------------------------------
 # Unit tests for HPA warning cascade (_emit_hpa_warnings).
 # These tests do not require a live Kubernetes cluster.
 # ---------------------------------------------------------------------------
