@@ -51,12 +51,10 @@ impl SqliteIdentityStorage.postinit -> None {
     self.ensure_indexes();
 }
 
-"""Create tables and migrate schema for existing databases."""
+"""Create tables and add any missing columns to existing databases."""
 impl SqliteIdentityStorage.ensure_indexes -> None {
     import from sqlalchemy { text }
     self._table.metadata.create_all(self._engine);
-    # Add tokens_valid_from to existing databases that predate this column.
-    # SQLite raises OperationalError if the column already exists; ignore it.
     try {
         with self._engine.begin() as conn {
             conn.execute(
@@ -64,7 +62,7 @@ impl SqliteIdentityStorage.ensure_indexes -> None {
             );
         }
     } except Exception as e {
-        logger.debug(f"tokens_valid_from migration skipped: {e}");
+        logger.debug(f"schema migration skipped: {e}");
     }
 }
 

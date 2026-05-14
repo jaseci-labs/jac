@@ -30,14 +30,9 @@ glob _jwt_config = get_scale_config().get_jwt_config(),
      _root_id_request_cache: ContextVar[dict[str, str] | None] = ContextVar(
          '_jac_scale_root_id_cache', default=None
      ),
-     # --- JWT validation caches (process-local, not shared across workers) ---
-     # token_hash -> (user_id, monotonic_expiry)
-     _decoded_token_cache: dict = {},
-     # user_id -> (tokens_valid_from_unix_ts, monotonic_expiry)
-     _revocation_ts_cache: dict = {},
-     # user_id -> set[token_hash]  (reverse index for eager eviction)
-     _user_token_hashes: dict = {},
-     # Tune via env or leave at these production defaults
+     _decoded_token_cache: dict = {},  # token_hash -> (user_id, monotonic_expiry)
+     _revocation_ts_cache: dict = {},  # user_id -> (tokens_valid_from_ts, monotonic_expiry)
+     _user_token_hashes: dict = {},  # user_id -> set[token_hash] reverse index
      _TOKEN_CACHE_TTL: float = 30.0,
      _REVOCATION_CACHE_TTL: float = 60.0,
      _TOKEN_CACHE_MAX_SIZE: int = 50000;
