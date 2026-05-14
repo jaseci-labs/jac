@@ -260,13 +260,7 @@ test "build mode sets container startup command and imagePullSecrets in pod spec
 
     # With pull_secret_name set: secret must appear in pod spec
     deployment_with_secret = target._build_deployment_body(
-        app_name,
-        namespace,
-        app_sa_name,
-        container_cfg,
-        [],
-        [],
-        pull_secret_name
+        app_name, namespace, app_sa_name, container_cfg, [], [], pull_secret_name
     );
     pod_spec = deployment_with_secret["spec"]["template"]["spec"];
     pull_secrets = pod_spec.get("imagePullSecrets", []);
@@ -277,13 +271,7 @@ test "build mode sets container startup command and imagePullSecrets in pod spec
 
     # With pull_secret_name=None: imagePullSecrets must be an empty list (not missing key)
     deployment_no_secret = target._build_deployment_body(
-        app_name,
-        namespace,
-        app_sa_name,
-        container_cfg,
-        [],
-        [],
-        None
+        app_name, namespace, app_sa_name, container_cfg, [], [], None
     );
     pod_spec_no_secret = deployment_no_secret["spec"]["template"]["spec"];
     assert pod_spec_no_secret.get("imagePullSecrets") == [] , (
