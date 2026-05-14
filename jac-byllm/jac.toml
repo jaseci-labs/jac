@@ -10,7 +10,7 @@ keywords = ["llm", "jaclang", "jaseci", "byLLM"]
 requires-python = ">=3.12"
 
 [project.urls]
-repository = "https://github.com/Jaseci-Labs/jaseci"
+repository = "https://github.com/jaseci-labs/jaseci"
 homepage = "https://jaseci.org"
 documentation = "https://jac-lang.org"
 source = "https://github.com/jaseci-labs/jaseci/tree/main/jac-byllm"

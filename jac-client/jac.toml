@@ -29,6 +29,7 @@ jaclang = ">=0.15.0"
 [dev-dependencies]
 "python-dotenv" = "==1.0.1"
 pytest = "==8.3.5"
+watchdog = ">=3.0.0"
 
 [entrypoints.jac]
 serve = "jac_client.plugin.client:JacClient"
