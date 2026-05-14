@@ -16,7 +16,7 @@ import from subprocess { PIPE, STDOUT, Popen, run }
 import from urllib.error { HTTPError, URLError }
 import from urllib.request { Request, urlopen }
 
-import from .test_helpers {
+import from test_helpers {
     get_env_with_npm,
     get_free_port,
     get_jac_command,
@@ -41,8 +41,11 @@ def _wait_for_endpoint(
 
     while time.time() < deadline {
         try {
-            with urlopen(url, timeout=request_timeout) as resp {
+            resp = urlopen(url, timeout=request_timeout);
+            try {
                 return resp.read();
+            } finally {
+                resp.close();
             }
         } except HTTPError as exc {
             if exc.code == 503 {
@@ -63,6 +66,10 @@ def _wait_for_endpoint(
         } except RemoteDisconnected as exc {
             last_err = exc;
             print(f"[DEBUG] Endpoint {url} remote disconnected: {exc}, retrying...");
+            time.sleep(poll_interval);
+        } except TimeoutError as exc {
+            last_err = exc;
+            print(f"[DEBUG] Endpoint {url} request timed out: {exc}, retrying...");
             time.sleep(poll_interval);
         }
     }
@@ -2094,5 +2101,98 @@ jac-client-node = "1.0.7"
         assert "jac-client-node" not in deps2 , "legacy meta-package should be removed after migration";
         assert "react" in deps2 , "react should be present after migration";
         assert "react-dom" in deps2 , "react-dom should be present after migration";
+    }
+}
+
+# ===========================================================================
+# Multi-Segment Route Asset Resolution Tests
+# ===========================================================================
+"""Verify that assets are resolved correctly on multi-segment SPA routes."""
+test "multi_segment_route_asset_resolution" {
+    print("[DEBUG] Starting multi_segment_route_asset_resolution test");
+
+    # Resolve paths
+    tests_dir = os.path.dirname(__file__);
+    fixture_path = os.path.join(tests_dir, "fixtures", "multi_segment_app");
+    assert os.path.isdir(fixture_path) , f"Fixture directory missing at {fixture_path}";
+
+    original_cwd = os.getcwd();
+    try {
+        os.chdir(fixture_path);
+
+        # 1. Build the project
+        print("[DEBUG] Running 'jac build --client web'");
+        run(
+            get_jac_command() + ["build", "--client", "web"],
+            check=True,
+            capture_output=True,
+            text=True
+        );
+
+        # 2. Assert build artifacts in .jac/client/dist/index.html
+        dist_dir = os.path.join(fixture_path, ".jac", "client", "dist");
+        index_html_path = os.path.join(dist_dir, "index.html");
+        assert os.path.exists(index_html_path) , "index.html was not generated";
+
+        with open(index_html_path, "r") as f {
+            html_content = f.read();
+        }
+
+        # Verify leading slash for JS bundle
+        assert 'src="/client.' in html_content , "JS bundle path missing leading slash in index.html";
+
+        # 3. Integration Check: Start server and verify assets are accessible
+        port = get_free_port();
+        server = None;
+        try {
+            print(f"[DEBUG] Starting server on port {port}");
+            server = Popen(
+                get_jac_command() + ["start", "main.jac", "--port", str(port)],
+                stdout=None,
+                stderr=None,
+                text=True,
+                env=get_env_with_npm()
+            );
+
+            base_url = f"http://localhost:{port}";
+            # Wait for port first (TCP check)
+            print(f"[DEBUG] Waiting for port {port} to open...");
+            wait_for_port("127.0.0.1", port, timeout=60.0);
+
+            # Wait for dynamic index (HTTP check)
+            print(f"[DEBUG] Waiting for HTTP endpoint {base_url}...");
+            _wait_for_endpoint(base_url, timeout=120.0);
+
+            # Request a multi-segment route
+            nested_url = f"{base_url}/dashboard/settings";
+            print(f"[DEBUG] Requesting nested route {nested_url}...");
+            nested_html = _wait_for_endpoint(nested_url, timeout=60.0).decode("utf-8");
+
+            # Find the client JS path from the HTML
+            # Using regex to find src="/client.<hash>.js" or dev mode /static/client.js
+            matched = re.search(r'src="(/client\.[a-zA-Z0-9_-]+\.js)"', nested_html);
+            if not matched {
+                matched = re.search(
+                    r'src="(/static/client\.js\?hash=[a-f0-9]+)"', nested_html
+                );
+            }
+
+            assert matched , f"Could not find client JS script tag in response from {nested_url}. HTML: {nested_html}";
+            asset_path = matched.group(1);
+            asset_url = f"{base_url}{asset_path}";
+
+            print(f"[DEBUG] Verifying asset access at {asset_url}");
+            asset_resp = _wait_for_endpoint(asset_url);
+            assert len(asset_resp) > 0 , f"Asset at {asset_url} returned empty response";
+
+            print("[DEBUG] Multi-segment route asset resolution test passed!");
+        } finally {
+            if server {
+                server.terminate();
+                server.wait(timeout=5);
+            }
+        }
+    } finally {
+        os.chdir(original_cwd);
     }
 }
