@@ -2218,7 +2218,7 @@ test "health check filter suppresses health endpoint log records" {
     # Inline the filter class so we test the exact logic without needing
     # to export it from the impl module.
     class _HCF(logging.Filter) {
-        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP'};
+        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP','"GET /healthz'};
 
         def filter(self: _HCF, record: logging.LogRecord) -> bool {
             msg = record.getMessage();
@@ -2251,6 +2251,9 @@ test "health check filter suppresses health endpoint log records" {
         '127.0.0.1:12345 - "GET /docs HTTP/1.1" 200',
         '127.0.0.1:12345 - "GET / HTTP/1.1" 200',
         '127.0.0.1:12345 - "GET /openapi.json HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz/ready HTTP/1.1" 200',
+        '127.0.0.1:12345 - "GET /healthz/live HTTP/1.1" 200',
 
     ];
     for msg in suppressed {
@@ -2263,7 +2266,6 @@ test "health check filter suppresses health endpoint log records" {
         '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
         '127.0.0.1:12345 - "GET /graph HTTP/1.1" 200',
         '127.0.0.1:12345 - "POST /function/add_numbers HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /healthz HTTP/1.1" 200',  # /healthz is NOT suppressed
         '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',  # sub-path not matched by prefix alone
 
     ];
@@ -2277,7 +2279,7 @@ test "health check filter blocks records when attached to a handler" {
     import logging;
 
     class _HCF(logging.Filter) {
-        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP'};
+        _SUPPRESSED = {'"GET /docs HTTP','"GET / HTTP','"GET /openapi.json HTTP','"GET /health HTTP','"GET /healthz'};
 
         def filter(self: _HCF, record: logging.LogRecord) -> bool {
             msg = record.getMessage();
@@ -2319,9 +2321,11 @@ test "health check filter blocks records when attached to a handler" {
         ('127.0.0.1 - "GET /docs HTTP/1.1" 200', False),
         ('127.0.0.1 - "GET / HTTP/1.1" 200', False),
         ('127.0.0.1 - "GET /openapi.json HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz/ready HTTP/1.1" 200', False),
+        ('127.0.0.1 - "GET /healthz/live HTTP/1.1" 200', False),
         ('127.0.0.1 - "POST /user/login HTTP/1.1" 200', True),
         ('127.0.0.1 - "GET /walker/Foo HTTP/1.1" 200', True),
-        ('127.0.0.1 - "GET /healthz HTTP/1.1" 200', True),
 
     ];
 
