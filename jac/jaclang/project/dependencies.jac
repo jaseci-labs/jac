@@ -32,6 +32,7 @@ obj DependencyInstaller {
     def _make_git_spec(name: str, git_url: str, branch: str = "") -> str;
     def get_pip_package_specs(include_dev: bool = False) -> list[str];
     def get_git_package_specs -> list[str];
+    def get_extra_package_specs(groups: list[str]) -> list[str];
     def install_package(specs: list[str]) -> bool;
     def uninstall_package(name: str) -> bool;
     def is_installed(name: str) -> bool;

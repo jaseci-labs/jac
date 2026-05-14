@@ -5,6 +5,7 @@ Migrated from test_js_generation.py to native Jac test format.
 
 import os;
 import subprocess;
+import sys;
 import tempfile;
 import from pathlib { Path }
 import jaclang;
@@ -67,6 +68,23 @@ def compile_fixture_to_js(fixture_name: str, fixture_dir: str = "") -> str {
     result = es_to_js(es_ast);
     _js_compile_cache[cache_key] = result;
     return result;
+}
+
+"""Compile a fixture through the normal production codegen path."""
+def compile_fixture_to_js_production(fixture_name: str, fixture_dir: str = "") -> str {
+    fixture_path = fixture_name;
+    if not Path(fixture_path).exists() and fixture_dir {
+        fixture_path = os.path.join(fixture_dir, fixture_name);
+    }
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture_path);
+    assert not prog.errors_had , (
+        f"Compilation errors in {fixture_name}: {[str(e) for e in prog.errors_had]}"
+    );
+    assert ir.gen.js and ir.gen.js.strip() , (
+        f"Production JS codegen produced no output for {fixture_name}"
+    );
+    return ir.gen.js;
 }
 
 """Ensure generated JavaScript has balanced delimiters."""
@@ -263,7 +281,7 @@ test "cli js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        ["python3", "-m", "jaclang.cli.cli", "js", fixture_file_path],
+        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path],
         capture_output=True,
         text=True,
         env=env,
@@ -283,7 +301,7 @@ test "cl only js command outputs js" {
     env["PYTHONPATH"] = f"{project_root}:{existing}" if existing else project_root;
 
     result = subprocess.run(
-        ["python3", "-m", "jaclang.cli.cli", "js", fixture_file_path, ],
+        [sys.executable, "-m", "jaclang.cli.cli", "js", fixture_file_path, ],
         capture_output=True,
         text=True,
         env=env,
@@ -293,7 +311,7 @@ test "cl only js command outputs js" {
         f"CLI failed to compile cl only file: {result.stderr}"
     );
     assert len(result.stdout) > 0;
-    assert "function greet(name) {" in result.stdout;
+    assert 'function greet(name = "World") {' in result.stdout;
 }
 
 test "empty file generates minimal js" {
@@ -706,6 +724,175 @@ test "separated defpub generates rpc stubs" {
     }
 
     assert_balanced_syntax(js_code, fixture);
+}
+
+test "sv import kwargs preserve names in jac call function" {
+    # Regression for issue #5852.  Calling an sv-imported def:pub function
+    # with kwargs syntax (e.g. ``greet(name=x)``) must compile to the same
+    # ``__jacCallFunction("greet", {"name": x})`` shape that the positional
+    # form produces.  Previously the kwargs were silently dropped, emitting
+    # ``__jacCallFunction("greet", {})`` and causing a server 422.
+    fixture = "sv_import_kwargs_client.cl.jac";
+    js_code = compile_fixture_to_js(fixture, FIXTURES);
+
+    # Pure-kwargs single arg: ``greet(name=input_text)``
+    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+        "Single-kwarg call must propagate the name into the args object;\n" + "got:\n" + js_code
+    );
+
+    # Pure-kwargs out-of-order: ``add_pair(b=2, a=1)`` — both keys must be
+    # present in the args object regardless of source order.
+    assert (
+        '__jacCallFunction("add_pair", {"b": 2, "a": 1})' in js_code
+        or '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code
+    ) , (
+        "Kwargs-only call must include all kwarg keys in the args object;\n" + "got:\n" + js_code
+    );
+
+    # Mixed positional + kwarg: ``add_pair(1, b=2)`` — first param mapped
+    # by position to its server-side name, second carried by kwarg key.
+    assert '__jacCallFunction("add_pair", {"a": 1, "b": 2})' in js_code , (
+        "Mixed positional/kwarg call must merge both into the args object;\n" + "got:\n" + js_code
+    );
+
+    # ``**dict`` spread against a known signature can lower to declared
+    # parameter-key reads, avoiding the old single-object positional shape.
+    assert '__jacCallFunction("add_pair", {"a": kw["a"], "b": kw["b"]})' in js_code , (
+        "**dict spread against known signature must compile to keyed parameter reads;\n" + "got:\n" + js_code
+    );
+
+    # Sanity: the obvious bug-shape — empty args object — must not appear
+    # for any of these named calls.
+    assert '__jacCallFunction("greet", {})' not in js_code , (
+        "Bug regression: kwargs were dropped, emitting empty args object."
+    );
+    assert '__jacCallFunction("add_pair", {})' not in js_code , (
+        "Bug regression: kwargs were dropped, emitting empty args object."
+    );
+
+    assert_balanced_syntax(js_code, fixture);
+}
+
+test "sv import kwargs preserve names in production jac2js path" {
+    fixture = "sv_import_kwargs_client.cl.jac";
+    js_code = compile_fixture_to_js_production(fixture, FIXTURES);
+
+    assert '__jacCallFunction("greet", {"name": input_text})' in js_code , (
+        "Production jac2js path must lower sv-import kwargs directly into the RPC args object;\n" + "got:\n" + js_code
+    );
+    assert "await greet({name: input_text})" not in js_code , (
+        "Production jac2js path must not pass kwargs object into the generated RPC wrapper;\n" + "got:\n" + js_code
+    );
+    assert '__jacCallFunction("greet", {})' not in js_code , (
+        "Production jac2js path must not emit an empty RPC args object for kwargs calls."
+    );
+}
+
+test "sv import wrapper covers posonly and kwonly params" {
+    # Regression for the latent stub-generation bug: ``_generate_sv_import_stubs``
+    # used to walk only ``sig.params`` (regular non-posonly non-kwonly), so
+    # posonly/kwonly params silently disappeared from the generated wrapper —
+    # both from its JS function signature and from the ``__jacCallFunction``
+    # args object.  After unifying on ``_param_names_from_ability``, all three
+    # buckets are walked and the wrapper's shape matches the source ability.
+    fixture = "sv_import_posonly_kwonly_client.cl.jac";
+    js_code = compile_fixture_to_js_production(fixture, FIXTURES);
+    compact_js = js_code.replace("\n", "").replace(" ", "");
+
+    # Wrapper signature must list params in declared order — filter (posonly),
+    # query (regular), scope (kwonly).
+    assert "asyncfunctionquery(filter,query,scope)" in compact_js , (
+        "sv-import wrapper must include posonly + kwonly params in its JS " + "signature, not silently drop them;\ngot:\n" + js_code
+    );
+    # All three params must appear in the RPC args object the wrapper posts.
+    assert (
+        '__jacCallFunction("query",{"filter":filter,"query":query,"scope":scope})' in compact_js
+    ) , (
+        "sv-import wrapper must forward posonly + kwonly params in the RPC " + "args object;\ngot:\n" + js_code
+    );
+    # Pre-fix bug shape: a one-arg wrapper that posts only the regular param.
+    assert "asyncfunctionquery(query)" not in compact_js , (
+        "Wrapper must not regress to walking only sig.params (which would drop " + "posonly + kwonly);\ngot:\n" + js_code
+    );
+}
+
+test "plain client kwargs lower to ordered js arguments" {
+    fixture = "plain_kwargs_client.cl.jac";
+    js_code = compile_fixture_to_js_production(fixture, FIXTURES);
+    compact_js = js_code.replace("\n", "").replace(" ", "");
+
+    assert "setTotal(add(5, 10));" in js_code , (
+        "Known Jac function kwargs must lower to ordered JS positional args;\n" + "got:\n" + js_code
+    );
+    assert "setMixed(add(1, 2));" in js_code , (
+        "Mixed positional/kwarg call must preserve positional args and order kwargs by signature;\n" + "got:\n" + js_code
+    );
+    assert "function add_defaults(a = 1, b = 2)" in js_code , (
+        "Jac default parameter values must be preserved in emitted JS function signatures;\n" + "got:\n" + js_code
+    );
+    assert "setDefaulted(add_defaults(undefined, 99));" in js_code , (
+        "Skipping an earlier defaulted param must emit an undefined placeholder, not collapse positions;\n" + "got:\n" + js_code
+    );
+    assert 'setSpread_total(add(kw["a"], kw["b"]));' in js_code , (
+        "Known **kwargs calls must lower to declared-parameter property reads;\n" + "got:\n" + js_code
+    );
+    assert compact_js.count(")(get_kw()))") == 1 , (
+        "Complex **kwargs source must be evaluated exactly once;\n" + "got:\n" + js_code
+    );
+    assert (
+        'setSpread_call_total((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))(get_kw()));' in compact_js
+    ) , (
+        "Known **function_call() spread must lower through a single-evaluation temp IIFE;\n" + "got:\n" + js_code
+    );
+    assert (
+        'setSpread_merge_total((__jac_kwargs=>add3(__jac_kwargs["a"],__jac_kwargs["b"],__jac_kwargs["c"]))({...kw1,...kw2}));' in compact_js
+    ) , (
+        "Multiple **kwargs spreads must merge earlier and later sources before keyed reads;\n" + "got:\n" + js_code
+    );
+    assert (
+        'setSpread_override_total((__jac_kwargs=>add3(__jac_kwargs["a"],99,__jac_kwargs["c"]))({...kw1,...kw2}));' in compact_js
+    ) , (
+        "Explicit kwargs must override **spread values while preserving other merged keys;\n" + "got:\n" + js_code
+    );
+    assert "setMethod_total(counter.bump(5, 3));" in js_code , (
+        "Known method kwargs must lower to ordered JS positional args;\n" + "got:\n" + js_code
+    );
+    assert "add({b: 10, a: 5})" not in js_code , (
+        "Plain kwargs must not be passed as one positional object argument;\n" + "got:\n" + js_code
+    );
+    assert "add_defaults(99)" not in js_code , (
+        "Defaulted kwargs must not collapse missing earlier params;\n" + "got:\n" + js_code
+    );
+    assert "counter.bump({amount: 5, mul: 3})" not in js_code , (
+        "Method kwargs must not be passed as one positional object argument;\n" + "got:\n" + js_code
+    );
+}
+
+test "sv import duplicate kwarg is a compile error" {
+    # Calling ``greet(input_text, name=other)`` gives the ``name`` parameter
+    # twice — once positionally and once by keyword.  This mirrors Python's
+    # ``TypeError: got multiple values for argument 'name'`` and must be
+    # reported as a compile-time error so the build fails fast rather than
+    # silently emitting a JS object with a duplicated key.
+    import from jaclang.jac0core.program { JacProgram }
+    import from jaclang.compiler.passes.ecmascript { EsastGenPass }
+
+    fixture = os.path.join(FIXTURES, "sv_import_kwargs_dup.cl.jac");
+    prog = JacProgram();
+    ir = prog.compile(file_path=fixture, no_cgen=True, type_check=True);
+    EsastGenPass(ir_in=ir, prog=prog);
+
+    dup_errs = [
+        e
+        for e in prog.errors_had
+        if "given both positionally and by keyword" in str(e)
+    ];
+    assert len(dup_errs) == 1 , (
+        "Expected exactly one E5080 collision diagnostic, got " + str(
+            [str(e) for e in prog.errors_had]
+        )
+    );
+    assert "name" in str(dup_errs[0]) and "greet" in str(dup_errs[0]);
 }
 
 test "cl.jac with impl.jac does not duplicate __jacCallFunction import" {
@@ -1270,6 +1457,188 @@ test "fstring format spec invokes runtime format helper" {
         assert "${x}" in js_code , (
             f"Bare `f\"{{x}}\"` should still use plain `${{x}}`, got:\n{js_code}"
         );
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "issue 5930 sibling if else branches each get block scoped let" {
+    # BUG: when the same local name is declared (e.g. `x: int = 1;`) in both
+    # an if-branch and its sibling else-branch, codegen emitted `let x = ...`
+    # only in the first branch and a bare `x = ...` in the second. Under
+    # strict mode (every ES module) the else-branch threw
+    # `ReferenceError: x is not defined`.
+    #
+    # Root cause: `_is_name_first_definition` is symbol-table based and treats
+    # the else-branch occurrence as a non-first definition, so the existing
+    # `is_first AND not _is_declared_in_any_scope` predicate downgraded the
+    # emit to bare assignment even though the if-branch's block scope had
+    # already been popped. The fix drops the `is_first` half of the guard;
+    # block-scope membership is the authoritative signal for whether a JS
+    # `let` is still in flight.
+    jac_code = "\"\"\"Test #5930 sibling block let.\"\"\"\n\ncl def test(mode: bool) -> int {\n    if mode {\n        x: int = 1;\n        x = 2;\n    } else {\n        x: int = 3;\n        x = 4;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+
+        # Both branches must introduce x with `let` — the else-branch is the
+        # one that regressed prior to the fix.
+        assert "let x = 1" in js_code , (
+            f"if-branch must declare `let x = 1`, got:\n{js_code}"
+        );
+        assert "let x = 3" in js_code , (
+            f"else-branch must declare `let x = 3` (#5930), got:\n{js_code}"
+        );
+
+        # And follow-up reassignments inside each branch must NOT redeclare.
+        # We assert the absence of `let x = 2` / `let x = 4` to lock that in.
+        assert "let x = 2" not in js_code , (
+            f"in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
+        );
+        assert "let x = 4" not in js_code , (
+            f"in-branch reassignment must stay a bare assignment, " f"got:\n{js_code}"
+        );
+
+        # And the emitted JS must actually execute in strict mode without
+        # tripping the ReferenceError from the original bug report. We pipe
+        # the bundle through node with `"use strict";` prepended and call
+        # both branches.
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (typeof test !== 'function')" + " { throw new Error('test() not exported'); }" + "\nif (test(true) !== 0 || test(false) !== 0)" + " { throw new Error('branches must return 0'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            f"strict-mode node run failed (#5930 regression):\n"
+            f"stdout={result.stdout!r}\nstderr={result.stderr!r}\n"
+            f"js:\n{js_code}"
+        );
+        assert "ok" in result.stdout , (
+            f"node run did not reach the success print:\n"
+            f"stdout={result.stdout!r}\nstderr={result.stderr!r}"
+        );
+
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "sibling block scopes — elif chain each branch gets its own let" {
+    # Generalizes #5930: every alternate-branch (elif as well as else) must
+    # re-declare a same-named local with `let`, since each is an independent
+    # JS lexical block.
+    jac_code = "\"\"\"Test elif chain sibling-block lets.\"\"\"\n\ncl def test_elif(mode: int) -> int {\n    if mode == 1 {\n        x: int = 1;\n        x = 2;\n    } elif mode == 2 {\n        x: int = 3;\n        x = 4;\n    } elif mode == 3 {\n        x: int = 5;\n        x = 6;\n    } else {\n        x: int = 7;\n        x = 8;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        for _expected_init in ["let x = 1", "let x = 3", "let x = 5", "let x = 7"] {
+            assert _expected_init in js_code , (
+                f"elif chain must declare `{_expected_init}` in its own "
+                f"branch, got:\n{js_code}"
+            );
+        }
+        # Run under strict mode through node to catch any
+        # ReferenceError-shaped regression.
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (test_elif(1) !== 0 || test_elif(2) !== 0" + " || test_elif(3) !== 0 || test_elif(99) !== 0)" + " { throw new Error('branches must return 0'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            f"strict-mode elif chain run failed:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "walrus in if-condition still hoists its let despite alt-branch scope finalization" {
+    # Regression guard for the alt-branch scope-finalization change made
+    # alongside #5930. The compound statement's ScopeInfo collects walrus
+    # / hoisted declarations during condition processing and is consumed
+    # by `_prepend_hoisted(IfStmt, ...)` inside `exit_if_stmt`. Because
+    # the if-body's scope is *finalized* (popped from the stack) when
+    # entering the else-branch, `_pop_scope` must only pop the stack and
+    # leave the `scope_map[IfStmt]` entry alone — otherwise the hoisted
+    # `let n;` is lost and the resulting JS leaves `n` undeclared, which
+    # is its own strict-mode ReferenceError.
+    #
+    # Note: the *location* of the hoist (currently inside the if-body)
+    # has a pre-existing accuracy issue separate from this PR — `n`
+    # should be visible after the if per Python semantics. This test
+    # locks in the current behavior so a future correctness fix is a
+    # deliberate change, not an accidental regression.
+    jac_code = "\"\"\"Test walrus hoist preservation across alt-branch finalization.\"\"\"\n\ncl def check(getter: int) -> int {\n    if (n := getter) > 5 {\n        x: int = 1;\n    } else {\n        x: int = 2;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        # The hoisted `let n;` must survive. Without the split between
+        # stack-pop and map-pop in `_pop_scope`, this declaration was
+        # silently dropped when the if had an else branch.
+        assert "let n" in js_code , (
+            f"walrus name `n` from the if-condition must still be hoisted "
+            f"as a `let` declaration when an else branch is present, "
+            f"got:\n{js_code}"
+        );
+        # And both branches must still get their per-branch `let x`
+        # (the #5930 sibling-block fix continues to apply).
+        assert "let x = 1" in js_code;
+        assert "let x = 2" in js_code;
+        assert_balanced_syntax(js_code, temp_path);
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "sibling block scopes — try except finally each get their own let" {
+    # Same structural bug as #5930 in a different compound statement: the
+    # try-body's UniScopeNode covers its body, and the except / finally
+    # blocks are AST children of the TryStmt — so the try-body's `let x`
+    # would leak into except / finally and downgrade them to bare
+    # assignment. Generalized sibling-block fix.
+    jac_code = "\"\"\"Test try/except/finally sibling-block lets.\"\"\"\n\ncl def test_try(mode: bool) -> int {\n    try {\n        x: int = 1;\n        x = 2;\n        if mode {\n            raise Exception(\"force-except\");\n        }\n    } except Exception {\n        x: int = 3;\n        x = 4;\n    } finally {\n        x: int = 5;\n        x = 6;\n    }\n    return 0;\n}\n";
+
+    temp_path = write_temp_jac(jac_code);
+    try {
+        js_code = compile_fixture_to_js(temp_path);
+        for _expected_init in ["let x = 1", "let x = 3", "let x = 5"] {
+            assert _expected_init in js_code , (
+                f"try/except/finally must declare `{_expected_init}` in its "
+                f"own block, got:\n{js_code}"
+            );
+        }
+        # Run under strict mode through node to confirm no
+        # `ReferenceError: x is not defined` in the except or finally branch.
+        wrapper = (
+            '"use strict";\n' + js_code + "\nif (test_try(false) !== 0)" + " { throw new Error('no-throw path must return 0'); }" + "\nif (test_try(true) !== 0)" + " { throw new Error('throw path must return 0'); }" + "\nconsole.log('ok');\n"
+        );
+        result = subprocess.run(
+            ["node", "--input-type=module", "-e", wrapper],
+            capture_output=True,
+            text=True,
+            timeout=30
+        );
+        assert result.returncode == 0 , (
+            f"strict-mode try/except/finally run failed:\n"
+            f"stderr={result.stderr!r}\njs:\n{js_code}"
+        );
+        assert "ok" in result.stdout;
         assert_balanced_syntax(js_code, temp_path);
     } finally {
         os.unlink(temp_path);

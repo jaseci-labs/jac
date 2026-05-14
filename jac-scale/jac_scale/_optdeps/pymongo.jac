@@ -2,7 +2,7 @@
 
 with entry {
     try {
-        import from pymongo { MongoClient, UpdateOne }
+        import from pymongo { AsyncMongoClient, MongoClient, UpdateOne }
         import from pymongo.collection { Collection }
         import from pymongo.cursor { Cursor }
         import from pymongo.errors { ConnectionFailure }
@@ -15,6 +15,7 @@ with entry {
         HAS_PYMONGO = True;
     } except ImportError {
         MongoClient = None;
+        AsyncMongoClient = None;
         UpdateOne = None;
         PyMongoInsertOneResult = None;
         PyMongoInsertManyResult = None;

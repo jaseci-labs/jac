@@ -1,7 +1,4 @@
-"""Implementation of project commands.
-
-Direct implementations - no delegation.
-"""
+"""Direct implementations of project CLI commands."""
 
 import subprocess;
 import shlex;
@@ -343,16 +340,77 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 }
 
 """Install all dependencies from jac.toml."""
-impl install(dev: bool = False, verbose: bool = False) -> int {
+impl install(
+    editable: str = "", dev: bool = False, extras: list = [], verbose: bool = False
+) -> int {
+    import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
     import from jaclang.project.dep_registry { get_dependency_registry }
-    config = get_config();
+
+    # force_discover bypasses the module-level cache, which may already hold
+    # the calling project's config when invoked from outside the target dir.
+    if editable {
+        src_dir: Path = Path(editable).resolve();
+        config = get_config(start_path=src_dir, force_discover=True);
+    } else {
+        config = get_config();
+    }
     if config is None {
-        console.error(
-            "No jac.toml found", hint="Run 'jac create' to create a project."
-        );
+        hint = "Clone the library repo and run 'jac install -e .' inside it."
+            if editable
+            else "Run 'jac create' to create a project first.";
+        console.error("No jac.toml found", hint=hint);
         return 1;
+    }
+    installer = DependencyInstaller(config=config, verbose=verbose);
+    # ── Editable install ──────────────────────────────────────────────────────
+    if editable {
+        import sys;
+        import site;
+        import subprocess;
+        import from jaclang.publish.builder { WheelBuilder }
+        console.print(
+            f"\n📦 Editable install: [cyan]{config.project.name}[/cyan] "
+            f"from [dim]{src_dir}[/dim]",
+            style="bold"
+        );
+
+        dep_specs = installer.get_pip_package_specs(include_dev=dev);
+        if extras {
+            try {
+                extra_specs = installer.get_extra_package_specs(extras);
+            } except ValueError as e {
+                console.error(str(e));
+                return 1;
+            }
+            if extra_specs {
+                console.print(f"  Extras: {', '.join(extras)}", style="muted");
+            }
+            dep_specs.extend(extra_specs);
+        }
+        if dep_specs {
+            console.print(
+                f"  Installing {len(dep_specs)} dependencies...", style="muted"
+            );
+            result = subprocess.run(
+                [sys.executable, "-m", "pip", "install"] + dep_specs,
+                capture_output=not verbose,
+                text=True,
+            );
+            if result.returncode != 0 {
+                console.error(
+                    f"Dependency install failed:\n{result.stderr or result.stdout}"
+                );
+                return 1;
+            }
+        }
+
+        site_pkgs = Path(site.getsitepackages()[0]);
+        WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
+        console.print(f"  ✔ Linked {src_dir}", style="success");
+        console.print("  ✔ Editable install complete.", style="success");
+        return 0;
     }
     console.print(
         f"\n📦 Installing dependencies for [cyan]{config.project.name}[/cyan]",
@@ -360,9 +418,20 @@ impl install(dev: bool = False, verbose: bool = False) -> int {
     );
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
-    installer = DependencyInstaller(config=config, verbose=verbose);
     pip_packages = installer.get_pip_package_specs(include_dev=dev);
     git_packages = installer.get_git_package_specs();
+    if extras {
+        try {
+            extra_specs = installer.get_extra_package_specs(extras);
+        } except ValueError as e {
+            console.error(str(e));
+            return 1;
+        }
+        if extra_specs {
+            console.print(f"  Extras: {', '.join(extras)}", style="muted");
+        }
+        pip_packages.extend(extra_specs);
+    }
     # Check for plugin dependencies (npm, etc.)
     dep_registry = get_dependency_registry();
     plugin_types = dep_registry.get_all();
@@ -716,7 +785,9 @@ impl script(name: str = '', list_scripts: bool = False) -> int {
     import from jaclang.project.config { get_config }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found. Run 'jac create <name>' to create a project."
+        );
         return 1;
     }
     if list_scripts or not name {
@@ -773,7 +844,9 @@ impl clean(
     import from jaclang.project.config { get_config }
     config = get_config();
     if config is None {
-        console.error("No jac.toml found. Run 'jac init' to create a project.");
+        console.error(
+            "No jac.toml found. Run 'jac create <name>' to create a project."
+        );
         return 1;
     }
     # Determine which directories to clean
@@ -888,10 +961,8 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
             # Default to <template-name>.jacpack in current directory
             jac_toml_path = template_dir / "jac.toml";
             if jac_toml_path.exists() {
-                import tomllib;
-                with open(jac_toml_path, "rb") as f {
-                    jac_config = tomllib.load(f);
-                }
+                import from jaclang.jac0core.helpers { read_toml_with_encoding }
+                jac_config = read_toml_with_encoding(str(jac_toml_path));
                 name = jac_config.get("jacpack", {}).get("name", template_dir.name);
             } else {
                 name = template_dir.name;
@@ -943,4 +1014,50 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     console.error(f"Unknown action: {action}");
     console.print("Available actions: list, pack, info");
     return 1;
+}
+
+impl bundle(output: str = "dist") -> int {
+    import from pathlib { Path }
+    import from jaclang.project.config { get_config }
+    import from jaclang.publish.builder { WheelBuilder }
+    import from jaclang.publish.wheel_meta { wheel_filename }
+
+    config = get_config();
+    if config is None {
+        console.error(
+            "No jac.toml found", hint="Run 'jac create' to create a project."
+        );
+        return 1;
+    }
+    if config.project.name is None {
+        console.error(
+            "No project name in jac.toml",
+            hint="Add 'name' under [project] to use jac bundle."
+        );
+        return 1;
+    }
+
+    console.print(
+        f"\n📦 Publishing [cyan]{config.project.name}[/cyan] "
+        f"v{config.project.version}",
+        style="bold"
+    );
+
+    out_dir = Path(output);
+    out_dir.mkdir(parents=True, exist_ok=True);
+    console.print("\n  Pre-compiling .jac → .jir + building wheel...", style="muted");
+    try {
+        builder = WheelBuilder(config=config, project_root=config.project_root);
+        whl_path = builder.build_to(out_dir);
+    } except Exception as e {
+        console.error(f"Build failed: {e}");
+        return 1;
+    }
+    console.print(
+        f"  ✔ Built [bold]{whl_path.name}[/bold] "
+        f"({whl_path.stat().st_size:,} bytes)",
+        style="success"
+    );
+    console.print(f"\n  Wheel written to: [cyan]{whl_path}[/cyan]", style="bold");
+    return 0;
 }

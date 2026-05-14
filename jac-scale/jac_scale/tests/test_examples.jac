@@ -40,14 +40,14 @@ obj JacScaleTestRunner {
         token: str | None = None,
         root_id: str | None = None;
 
-    def postinit -> None {
+    def postinit {
         self.port = get_free_port();
         self.base_url = f"http://localhost:{self.port}";
         self.session_file = self.example_file.parent / f"{self.session_name}_{self.port}.session";
     }
 
     """Start the jac-scale server."""
-    def start_server(timeout: int = 30) -> None {
+    def start_server(timeout: int = 30) {
         project_root_result = find_project_root(self.example_file.parent);
         if project_root_result {
             (example_dir, _) = project_root_result;
@@ -66,10 +66,7 @@ obj JacScaleTestRunner {
         if self.setup_npm {
             print(f"Setting up example directory: {example_dir}");
             npm_install = subprocess.run(
-                ["jac", "add", "--npm"],
-                cwd=example_dir,
-                capture_output=True,
-                text=True
+                ["jac", "add", "--npm"], cwd=example_dir, capture_output=True, text=True
             );
             if npm_install.returncode != 0 {
                 print(f"npm install warning: {npm_install.stderr}");
@@ -128,7 +125,7 @@ obj JacScaleTestRunner {
     }
 
     """Stop the jac-scale server and clean up session files."""
-    def stop_server -> None {
+    def stop_server {
         if self.server_process {
             self.server_process.terminate();
             try {
@@ -396,7 +393,7 @@ obj JacScaleTestRunner {
     """Context manager exit."""
     def __exit__(
         exc_type: type | None, exc_val: BaseException | None, exc_tb: object | None
-    ) -> None {
+    ) {
         self.stop_server();
     }
 }

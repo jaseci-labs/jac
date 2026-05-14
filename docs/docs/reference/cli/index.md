@@ -28,9 +28,10 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project dependencies |
+| `jac install` | Install project dependencies (or `-e <path>` for an editable install) |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
+| `jac bundle` | Build a distributable `.whl` from `jac.toml` |
 | `jac jacpack` | Manage project templates (.jacpack files) |
 | `jac eject` | Compile a project to standalone Python + JavaScript (zero `.jac` files) |
 | `jac grammar` | Extract and print the Jac grammar |
@@ -169,7 +170,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa}] [--scale] [--no-scale] [-b] [--no-build] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa,mobile}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-b] [--no-build] [filename]
 ```
 
 | Option | Description | Default |
@@ -182,7 +183,9 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--api_port` | Separate API port for HMR mode (0=same as port) | `0` |
 | `--no_client` | Skip client bundling/serving (API only) | `False` |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
-| `--client` | Client build target (`web`, `desktop`, `pwa`) | None |
+| `--client` | Client build target (`web`, `desktop`, `pwa`, `mobile`) | None |
+| `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
+| `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
@@ -200,6 +203,15 @@ jac start --dev
 
 # HMR mode without client bundling (API only)
 jac start --dev --no_client
+
+# Mobile dev (Android default)
+jac start main.jac --client mobile --dev
+
+# Mobile dev on iOS simulator
+jac start main.jac --client mobile --dev --platform ios
+
+# Mobile dev with explicit host override
+jac start main.jac --client mobile --dev --host 192.168.1.25
 
 # Deploy to Kubernetes (requires jac-scale plugin)
 jac start --scale
@@ -1041,12 +1053,14 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 Sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`.
 
 ```bash
-jac install [-h] [-d] [-v]
+jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. | `""` |
 | `-d, --dev` | Include dev dependencies | `False` |
+| `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
 
 **Examples:**
@@ -1058,9 +1072,23 @@ jac install
 # Install including dev dependencies
 jac install --dev
 
+# Install optional dependency groups defined in jac.toml
+jac install --extras data monitoring
+
+# Editable install with an optional group
+jac install -e . --extras all
+
 # Install with verbose output
 jac install -v
+
+# Editable install of the current package
+jac install -e .
+
+# Editable install from anywhere (no need to cd into the package)
+jac install -e /path/to/lib
 ```
+
+Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
 
 ---
 
@@ -1189,6 +1217,53 @@ jac purge
 |---------|-------|
 | `jac clean --cache` | Local project (`.jac/cache/`) |
 | `jac purge` | Global system cache |
+
+---
+
+### jac bundle
+
+Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`.
+
+```bash
+jac bundle [-h] [-o OUTPUT]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-o, --output` | Directory to write the `.whl` file | `dist` |
+
+**What it does:**
+
+1. Reads `[package]` from `jac.toml` and validates required fields (`name`, `version`).
+2. Discovers source files under the package directory (defaults to the directory named after the package). Includes `*.jac`, `*.py`, `*.pyi`, `*.lark`, `py.typed`, and `*.jir` by default.
+3. Generates a PEP 427-compliant `.whl` archive with a `METADATA`, `WHEEL`, `RECORD`, and optional `entry_points.txt`.
+4. Writes `<name>-<version>-py3-none-any.whl` to the output directory.
+
+**Examples:**
+
+```bash
+# Build wheel into dist/ (default)
+jac bundle
+
+# Build to a custom directory
+jac bundle -o /tmp/wheels
+
+# Upload to PyPI after building
+jac bundle && twine upload dist/*
+
+# Install locally to test before publishing
+pip install dist/mylib-1.0.0-py3-none-any.whl
+```
+
+**Requirements:**
+
+A `[package]` section must exist in `jac.toml`. At minimum:
+
+```toml
+[package]
+name = "mylib"
+version = "1.0.0"
+```
 
 ---
 
@@ -1614,8 +1689,8 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`) | `web` |
-| `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+| `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
+| `-p, --platform` | Platform for desktop (`windows`, `macos`, `linux`, `all`) or mobile (`android`, `ios`) builds | Current platform |
 
 **Examples:**
 
@@ -1628,6 +1703,12 @@ jac build --client desktop
 
 # Build for Windows
 jac build --client desktop --platform windows
+
+# Build mobile app for Android
+jac build --client mobile --platform android
+
+# Build mobile app for iOS
+jac build --client mobile --platform ios
 ```
 
 #### jac setup
@@ -1635,14 +1716,25 @@ jac build --client desktop --platform windows
 One-time initialization for a build target.
 
 ```bash
-jac setup <target>
+jac setup <target> [-p PLATFORM]
 ```
+
+For `target=mobile`, `--platform` supports `android`, `ios`, or `all`.
 
 **Examples:**
 
 ```bash
 # Setup Tauri for desktop builds
 jac setup desktop
+
+# Setup Capacitor for mobile builds
+jac setup mobile
+
+# Setup iOS scaffold only (macOS only)
+jac setup mobile --platform ios
+
+# Setup both Android and iOS scaffolds (macOS)
+jac setup mobile --platform all
 ```
 
 #### Extended Flags
@@ -1676,14 +1768,45 @@ jac test -v
 jac lint . --fix
 ```
 
+### Publishing a Package
+
+Expected project layout:
+
+```
+mylib/
+├── jac.toml          ← must contain [package] section
+├── README.md
+└── mylib/            ← source dir (matches [package] name)
+    ├── __init__.jac
+    └── utils.jac
+```
+
+```bash
+# Build wheel from jac.toml
+jac bundle
+
+# Test locally in a clean environment before uploading
+python -m venv test_env && source test_env/bin/activate
+pip install dist/mylib-1.0.0-py3-none-any.whl
+
+# Upload to TestPyPI first to verify metadata
+twine upload --repository testpypi dist/*
+
+# Then publish to PyPI
+twine upload dist/*
+```
+
 ### Production
+
+!!! note
+    `main.jac` is the default entry point for `jac start`. If your entry point differs (e.g., `app.jac`), pass it explicitly: `jac start app.jac --scale`.
 
 ```bash
 # Start locally
 jac start -p 8000
 
 # Deploy to Kubernetes
-jac start main.jac --scale
+jac start --scale
 
 # Check deployment status
 jac status main.jac

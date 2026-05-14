@@ -11,7 +11,9 @@ import httpx;
 import from typing { Any }
 import from jaclang.runtimelib { sv_client }
 import from jac_scale.microservices._auth_ctx {
-    set_current_auth, reset_current_auth, get_current_auth
+    set_current_auth,
+    reset_current_auth,
+    get_current_auth
 }
 import from jac_scale.plugin { JacScalePlugin }
 
@@ -27,7 +29,6 @@ import from jac_scale.plugin { JacScalePlugin }
 # and .post() on the Client go through the transport, so a single helper
 # covers every existing test pattern (plain JSON, ConnectError on retry,
 # call counting, timeout capture).
-
 def _mock_client_class(handler: Any, on_init: Any = None) -> Any {
     # Returns a *factory callable* (not a class) so the plugin's
     # `httpx.Client(timeout=...)` substitution still works. Subclassing
@@ -55,7 +56,6 @@ def _mock_client_class(handler: Any, on_init: Any = None) -> Any {
 # =============================================================================
 # _auth_ctx
 # =============================================================================
-
 test "set/get/reset auth context round-trips" {
     tok = set_current_auth("Bearer abc");
     assert get_current_auth() == "Bearer abc";
@@ -72,15 +72,13 @@ test "set_current_auth None stores empty string" {
 # =============================================================================
 # Plugin sv_service_call override forwards Authorization header
 # =============================================================================
-
 test "sv_service_call forwards Authorization header when auth set" {
     captured: dict = {};
 
     def handler(request: httpx.Request) -> httpx.Response {
         captured["auth"] = request.headers.get("Authorization", "");
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "echoed"}}
+            status_code=200, json={"ok": True, "data": {"result": "echoed"}}
         );
     }
 
@@ -110,8 +108,7 @@ test "sv_service_call omits Authorization when no auth context" {
     def handler(request: httpx.Request) -> httpx.Response {
         captured["auth"] = request.headers.get("Authorization", "");
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "ok"}}
+            status_code=200, json={"ok": True, "data": {"result": "ok"}}
         );
     }
 
@@ -157,9 +154,8 @@ test "sv_service_call surfaces application-level error from envelope" {
 }
 
 # =============================================================================
-# Retry with exponential backoff (ROADMAP P5)
+# Retry with exponential backoff
 # =============================================================================
-
 test "sv_service_call retries on transport error and succeeds on 2nd attempt" {
     # Simulates: pod is coming up, first connect fails; second succeeds.
     # We count how many times the handler was called - should be 2.
@@ -219,11 +215,13 @@ test "sv_service_call gives up after max_attempts on persistent transport error"
 }
 
 # =============================================================================
-# X-Trace-Id propagation (ROADMAP P7)
+# X-Trace-Id propagation
 # =============================================================================
-
 import from jac_scale.microservices._trace_ctx {
-    set_current_trace, reset_current_trace, get_current_trace, ensure_trace_id
+    set_current_trace,
+    reset_current_trace,
+    get_current_trace,
+    ensure_trace_id
 }
 
 test "trace_ctx set/get/reset round-trips" {
@@ -306,12 +304,14 @@ test "sv_service_call omits X-Trace-Id when no trace context is set" {
 }
 
 # =============================================================================
-# Circuit breaker (ROADMAP P6)
+# Circuit breaker
 # =============================================================================
-
 import from jac_scale.plugin {
-    _breaker_reset, _breaker_record_success, _breaker_record_failure,
-    _breaker_should_skip, _BREAKER_TRIP_THRESHOLD
+    _breaker_reset,
+    _breaker_record_success,
+    _breaker_record_failure,
+    _breaker_should_skip,
+    _BREAKER_TRIP_THRESHOLD
 }
 
 test "breaker trips OPEN after N consecutive transport failures and fails fast" {
@@ -368,9 +368,7 @@ test "breaker success recorder resets failure count" {
 test "HALF_OPEN probe success closes the breaker" {
     # Simulate: breaker OPEN, cooldown elapses, probe succeeds.
     # Without waiting 30s we use _breaker_force_cooldown_elapsed.
-    import from jac_scale.plugin {
-        _breaker_peek, _breaker_force_cooldown_elapsed
-    }
+    import from jac_scale.plugin { _breaker_peek, _breaker_force_cooldown_elapsed }
 
     mod = "breaker_half_open_test";
     _breaker_reset(mod);
@@ -470,12 +468,11 @@ test "sv_service_call uses the default 10s timeout when no per-service override"
 
     def handler(request: httpx.Request) -> httpx.Response {
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "done"}}
+            status_code=200, json={"ok": True, "data": {"result": "done"}}
         );
     }
 
-    def on_init(kwargs: dict) -> None {
+    def on_init(kwargs: dict) {
         captured["timeout"] = kwargs.get("timeout");
     }
 
@@ -499,12 +496,11 @@ test "sv_service_call honors per-service rpc_timeout from config" {
 
     def handler(request: httpx.Request) -> httpx.Response {
         return httpx.Response(
-            status_code=200,
-            json={"ok": True, "data": {"result": "done"}}
+            status_code=200, json={"ok": True, "data": {"result": "done"}}
         );
     }
 
-    def on_init(kwargs: dict) -> None {
+    def on_init(kwargs: dict) {
         captured["timeout"] = kwargs.get("timeout");
     }
 
@@ -534,4 +530,169 @@ test "_sv_rpc_timeout returns default when config lookup fails" {
     import from jac_scale.plugin { _sv_rpc_timeout }
     t: float = _sv_rpc_timeout("module_that_has_no_override");
     assert t == 10.0;
+}
+
+
+# sv_service_call URL resolution via get_sv_registry hookspec
+test "sv_service_call uses URL from get_sv_registry hookspec when present" {
+    # No sv_client._registry entry + no JAC_SV_*_URL env; hookspec alone resolves.
+    import jaclang;
+
+    captured: dict = {};
+    def handler(request: httpx.Request) -> httpx.Response {
+        captured["url"] = str(request.url);
+        return httpx.Response(
+            status_code=200, json={"ok": True, "data": {"result": "via-hookspec"}}
+        );
+    }
+
+    original_client = httpx.Client;
+    original_get_registry = jaclang.JacRuntime.get_sv_registry;
+    httpx.Client = _mock_client_class(handler);
+
+    # Stub: hookspec returns a DNS-like URL.
+    def fake_registry -> dict[str, str] {
+        return {
+            "k9_test_mod": "http://k9-test-mod-service.prod.svc.cluster.local:8000"
+        };
+    }
+    jaclang.JacRuntime.get_sv_registry = staticmethod(fake_registry);
+
+    try {
+        if "k9_test_mod" in sv_client._registry {
+            sv_client.unregister("k9_test_mod");
+        }
+
+        result = JacScalePlugin.sv_service_call("k9_test_mod", "do", {});
+        assert result == "via-hookspec";
+        # Captured URL must be the DNS one, not a sv_client._registry loopback.
+        assert "k9-test-mod-service.prod.svc.cluster.local" in captured["url"];
+    } finally {
+        jaclang.JacRuntime.get_sv_registry = original_get_registry;
+        httpx.Client = original_client;
+    }
+}
+
+
+test "sv_service_call falls back to sv_client.resolve_url when hookspec empty" {
+    # If module is registered locally but not in the hookspec snapshot,
+    # the fallback to sv_client.resolve_url should still work.
+    import jaclang;
+
+    captured: dict = {};
+    def handler(request: httpx.Request) -> httpx.Response {
+        captured["url"] = str(request.url);
+        return httpx.Response(
+            status_code=200, json={"ok": True, "data": {"result": "via-fallback"}}
+        );
+    }
+
+    original_client = httpx.Client;
+    original_get_registry = jaclang.JacRuntime.get_sv_registry;
+    httpx.Client = _mock_client_class(handler);
+
+    # Empty hookspec forces the fallback branch.
+    jaclang.JacRuntime.get_sv_registry = staticmethod(lambda : {});
+
+    try {
+        sv_client.register("k9_fallback_mod", "http://fallback.invalid:9999");
+        result = JacScalePlugin.sv_service_call("k9_fallback_mod", "do", {});
+        assert result == "via-fallback";
+        assert "fallback.invalid:9999" in captured["url"];
+    } finally {
+        jaclang.JacRuntime.get_sv_registry = original_get_registry;
+        httpx.Client = original_client;
+        sv_client.unregister("k9_fallback_mod");
+    }
+}
+
+
+# ensure_sv_service registers DNS URLs in K8s mode (no subprocess spawn).
+test "ensure_sv_service registers DNS URL when in K8s mode" {
+    import os;
+    import jac_scale.config_loader as cfg_mod;
+    import from jac_scale.plugin { JacScalePlugin }
+
+    # Stub config so we don't need a jac.toml.
+    obj _StubMsCfg {
+        has data: dict[str, Any];
+
+        def get_microservices_config -> dict[str, Any] {
+            return self.data;
+        }
+    }
+
+    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
+    orig_ns = os.environ.get("POD_NAMESPACE");
+    original_cfg = getattr(cfg_mod, "get_scale_config");
+
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";  # signal "in cluster"
+    os.environ["POD_NAMESPACE"] = "prod";
+    setattr(
+        cfg_mod,
+        "get_scale_config",
+        lambda :
+            _StubMsCfg(
+                data={"routes": {"k9_2_peer": "/api/peer"}, "gateway_port": 8000}
+            )
+    );
+
+    # Make sure registry is empty for our module so the early-return
+    # branch doesn't fire.
+    if "k9_2_peer" in sv_client._registry {
+        sv_client.unregister("k9_2_peer");
+    }
+
+    try {
+        # No subprocess spawn; just registers DNS URL and returns.
+        JacScalePlugin.ensure_sv_service("k9_2_peer", ".");
+        url = sv_client._registry.get("k9_2_peer", "");
+        assert url == "http://k9-2-peer-service.prod.svc.cluster.local:8000" , (
+            f"expected DNS URL, got '{url}'"
+        );
+    } finally {
+        if "k9_2_peer" in sv_client._registry {
+            sv_client.unregister("k9_2_peer");
+        }
+        if orig_k8s_host is None {
+            del os.environ["KUBERNETES_SERVICE_HOST"];
+        } else {
+            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
+        }
+        if orig_ns is None {
+            del os.environ["POD_NAMESPACE"];
+        } else {
+            os.environ["POD_NAMESPACE"] = orig_ns;
+        }
+        setattr(cfg_mod, "get_scale_config", original_cfg);
+    }
+}
+
+
+test "ensure_sv_service early-returns when peer already registered" {
+    # Regression guard: even in K8s mode, the existing idempotency
+    # check (registered? -> early return) must fire BEFORE the K8s
+    # peer-DNS-registration branch tries to register again.
+    import os;
+    import from jac_scale.plugin { JacScalePlugin }
+
+    orig_k8s_host = os.environ.get("KUBERNETES_SERVICE_HOST");
+    os.environ["KUBERNETES_SERVICE_HOST"] = "10.0.0.1";
+
+    sv_client.register("k9_2_already_registered", "http://prior-url.example.com:8000");
+
+    try {
+        # Should early-return without touching the registry.
+        JacScalePlugin.ensure_sv_service("k9_2_already_registered", ".");
+        assert sv_client._registry["k9_2_already_registered"] == (
+            "http://prior-url.example.com:8000"
+        );
+    } finally {
+        sv_client.unregister("k9_2_already_registered");
+        if orig_k8s_host is None {
+            del os.environ["KUBERNETES_SERVICE_HOST"];
+        } else {
+            os.environ["KUBERNETES_SERVICE_HOST"] = orig_k8s_host;
+        }
+    }
 }

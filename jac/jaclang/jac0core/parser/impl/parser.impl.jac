@@ -144,6 +144,9 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0027,
+    E0028,
+    E0026,
     E0030,
     E0032,
     E0034,
@@ -1125,11 +1128,35 @@ impl Parser.parse_connect -> Expr {
         if conn_op is None {
             break;
         }
+        if self._recover_missing_connect_rhs() {
+            break;
+        }
         right = self.parse_atomic_pipe();
         kid: list = [left, conn_op, right];
         left = BinaryExpr(left=left, op=conn_op, right=right, kid=kid);
     }
     return left;
+}
+
+# Issue #5885 gap 10: surface a clear "missing RHS" diagnostic when a
+# connect/disconnect operator is followed by a statement-level terminator
+# instead of a right operand. Without this, the cascading parse failure
+# inside `parse_atomic_pipe` produces a misleading "Unexpected token in
+# expression: ';'" trail. Returns True when recovery emitted a diagnostic
+# and the caller should stop trying to parse the right-hand side.
+impl Parser._recover_missing_connect_rhs -> bool {
+    if not self.check_any(
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.EOF
+    ) {
+        return False;
+    }
+    self.emit_diag(E0026);
+    return True;
 }
 
 """Parse edge op ref inline (-->, <--, <-->, or typed variants like ->:Type:->)."""
@@ -1201,6 +1228,11 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid.append(conn_assign);
             }
         }
+        if not self.check(TokenKind.CARROW_R_P2) {
+            self.emit_diag(E0027);
+            self.synchronize();
+            return None;
+        }
         end_uni = self.consume_uni(TokenKind.CARROW_R_P2);
         kid.append(end_uni);
         return ConnectOp(
@@ -1265,7 +1297,8 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid=kid
             );
         } else {
-            self.emit_diag(E0021);
+            self.emit_diag(E0028);
+            self.synchronize();
             return None;
         }
     }
@@ -3330,6 +3363,13 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
+    # JSX block comment: {#* ... *#} — renders nothing, but kept in the AST
+    # so the formatter can round-trip it.
+    if self.check(TokenKind.JSX_COMMENT) {
+        cmt_tok = self.advance();
+        cmt_node = self.make_uni_token(cmt_tok);
+        return JsxComment(value=cmt_node, kid=[cmt_node]);
+    }
     # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
@@ -3534,7 +3574,10 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_IMPL,
         TokenKind.TYP_TYPE,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_WITH
+        TokenKind.KW_WITH,
+        TokenKind.KW_CLIENT,
+        TokenKind.KW_SERVER,
+        TokenKind.KW_NATIVE
     ) {
         return self.parse_docstring_target();
     }
@@ -3686,6 +3729,17 @@ impl Parser.parse_docstring_target{
         result = self.parse_module_code();
         result.doc = elem_doc;
         result.add_kids_left([elem_doc]);
+        return result;
+    }
+    # cl / sv / na single-stmt prefix: recurse into parse_element_stmt so the
+    # prefix is consumed and code_context is tagged on the inner element. The
+    # docstring attaches to that inner element, not to the context prefix.
+    if self.check_any(TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE) {
+        result = self.parse_element_stmt();
+        if result is not None {
+            result.doc = elem_doc;
+            result.add_kids_left([elem_doc]);
+        }
         return result;
     }
     # Complex case: decorators/async/ability/archetype — dispatch via lookahead
@@ -4088,6 +4142,12 @@ impl Parser.parse_statement{
     expr_kid: list = [expr];
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
+    } elif isinstance(expr, Name) and expr.value == "new" {
+        # `new` is an ambient builtin; a bare `new` followed by another atom
+        # is JS-style `new Foo(...)` usage. Emit the migration-friendly
+        # E0012 (which recommends `new(target, ...args)`) instead of the
+        # generic E0002 "Missing ';'".
+        self.emit_diag(E0012, loc=self.current().loc);
     } else {
         self.emit_diag(E0002, token=";");
     }
@@ -4929,10 +4989,38 @@ impl Parser.parse_assert_stmt -> AssertStmt {
 impl Parser.parse_delete_stmt -> DeleteStmt {
     del_uni = self.consume_uni(TokenKind.KW_DELETE);
     target = self.parse_expression();
+    self._recover_misplaced_disconnect();
     kid: list = [del_uni, target];
     self.expect(TokenKind.SEMI);
     kid.append(self.make_semi());
     return DeleteStmt(target=target, kid=kid);
+}
+
+# Issue #5885 gap 10: a stray edge-op-ref (`-->`, `<--`, `<-->`, or a
+# typed-edge variant `->:T:->` / `<-:T:<-`) right after a `del <expr>`
+# target means the user wrote the non-canonical disconnect form
+# `del <lhs>--><rhs>?;` and likely forgot the right operand (or wrote it
+# with the canonical form moved). Surface E0026 about the missing RHS
+# rather than the cascade of `Missing ';'` / `Unexpected token` that the
+# default recovery would emit, then skip ahead to the next terminator so
+# the trailing `;` / `}` is consumed cleanly.
+impl Parser._recover_misplaced_disconnect -> None {
+    if not self.check_any(
+        TokenKind.ARROW_R,
+        TokenKind.ARROW_L,
+        TokenKind.ARROW_BI,
+        TokenKind.ARROW_R_P1,
+        TokenKind.ARROW_L_P1
+    ) {
+        return;
+    }
+    self.emit_diag(E0026);
+    while not self.at_end()
+    and not self.check_any(
+        TokenKind.SEMI, TokenKind.RBRACE, TokenKind.RPAREN, TokenKind.RSQUARE
+    ) {
+        self.advance();
+    }
 }
 
 impl Parser.parse_global_stmt -> GlobalStmt {
@@ -5048,7 +5136,17 @@ impl Parser.parse_assignment_with_target(
     }
     # Add Semi as child of Assignment (matching Lark structure)
     if require_semi {
-        self.expect(TokenKind.SEMI);
+        if not self.check(TokenKind.SEMI)
+        and value is not None
+        and isinstance(value, Name)
+        and value.value == "new" {
+            # JS-style `lhs = new Foo(...)`: emit E0012 instead of the
+            # generic E0002 from expect(SEMI). See parse_statement for
+            # the same detection on bare expressions.
+            self.emit_diag(E0012, loc=self.current().loc);
+        } else {
+            self.expect(TokenKind.SEMI);
+        }
         kid.append(self.make_semi());
     } elif self.match_tok(TokenKind.SEMI) {
         kid.append(self.make_semi());
@@ -5072,6 +5170,12 @@ impl Parser.parse_import_stmt -> Import {
         self.expect(TokenKind.KW_IMPORT);
     }
     kid: list = [self.make_uni_token(self.previous())];
+    # Check for 'import type ...' (type-only import; lowers to TYPE_CHECKING in Python)
+    is_typed = False;
+    if not is_include and self.match_tok(TokenKind.TYP_TYPE) {
+        is_typed = True;
+        kid.append(self.make_uni_token(self.previous()));
+    }
     # Check for 'import from X { Y }' syntax
     from_loc: ModulePath | None = None;
     is_clib_import = False;
@@ -5146,6 +5250,7 @@ impl Parser.parse_import_stmt -> Import {
         from_loc=from_loc,
         items=items,
         is_absorb=is_include,
+        is_typed=is_typed,
         kid=kid,
         doc=None,
         clib_decls=clib_decls

@@ -164,6 +164,23 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
                 }
             }
         }
+    } elif isinstance(nd, uni.Semi) {
+        # Bare `;` — no codegen needed.
+    } elif isinstance(nd, uni.GlobalStmt) {
+        # `global`/`nonlocal` are declarations consumed by the symbol
+        # table; the corresponding Name/Assignment nodes do the actual
+        # codegen, so emitting nothing here is correct.
+    } elif isinstance(nd, uni.PyInlineCode) {
+        # ::py:: blocks are intentionally stripped from native output —
+        # they target the Python pathway only.
+    } else {
+        # Catch-all: any statement node we didn't recognize is a real
+        # gap, not a no-op. Emit a structured error so the failure is
+        # loud at compile time instead of silently producing an empty
+        # function body. Without this, features like match/iter-for/
+        # visit/disengage/report/nested-def used to compile clean and
+        # then return 0 at runtime.
+        self.emit(E5090, node_override=nd, kind="statement", name=type(nd).__name__);
     }
 }
 

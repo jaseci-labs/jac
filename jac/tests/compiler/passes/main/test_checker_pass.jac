@@ -647,6 +647,21 @@ test "checker_jac_runtime_alias" {
     ]}";
 }
 
+test "checker_react_router_props" {
+    # Regression for #5847: `@jac/runtime` exposes a React Router v6-shaped
+    # surface (`<Route element=...>`, `<Link to=...>`, `Routes`, `Navigate`,
+    # `Outlet`, `useNavigate` / `useLocation` / `useParams`) in both runtimes —
+    # bare-serve implements it natively, jac-client wraps React Router. The
+    # type checker validates JSX props against bare-serve's declarations.
+    path = os.path.join(CHECKER_FIXTURES, "checker_react_router_props.cl.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 0 , f"unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
 test "cyclic_symbol" {
     path = os.path.join(CHECKER_FIXTURES, "checker_cyclic_symbol.jac");
     program = JacProgram();
@@ -867,6 +882,52 @@ test "connect_filter" {
     }
 }
 
+test "filter_compr_compare_types" {
+    # Filter comparisons inside edge-ref filters must validate operand
+    # types, not just field existence (issue #5885 gap 5). Matches the
+    # statement-level CompareExpr behavior — `==` / `!=` are not flagged
+    # for cross-type operands (Python returns False, not TypeError), but
+    # ordered comparisons `<`, `<=`, `>`, `>=` are flagged with E1110.
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_filter_compr_compare.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 4;
+
+    expected_errors = [
+        """
+        Operator ">=" not supported between types "int" and "Literal["x"]"
+            # for `int >= str` etc. These should be flagged with E1110.
+            [a_inst ->:MyEdge:weight>="x":-> ];              # Error: int >= str
+                              ^^^^^^^^^^^
+        """,
+        """
+        Operator "<" not supported between types "str" and "int"
+            [a_inst ->:MyEdge:weight>="x":-> ];              # Error: int >= str
+            [a_inst ->:MyEdge:label<1:-> ];                  # Error: str <  int
+                              ^^^^^^^
+        """,
+        """
+        Operator ">" not supported between types "int" and "Literal["x"]"
+            [a_inst ->:MyEdge:label<1:-> ];                  # Error: str <  int
+            [a_inst ->:MyEdge:weight>"x":-> ];               # Error: int >  str
+                              ^^^^^^^^^^
+        """,
+        """
+        Operator "<=" not supported between types "int" and "Literal["x"]"
+            [a_inst ->:MyEdge:weight>"x":-> ];               # Error: int >  str
+            a_inst del ->:MyEdge:weight<="x":-> b_inst;      # Error inside del
+                                 ^^^^^^^^^^^
+        """
+    ];
+
+    for i in range(len(expected_errors)) {
+        assert_error_pretty_found(
+            expected_errors[i], program.errors_had[i].pretty_print()
+        );
+    }
+}
+
 test "connect_any_type" {
     program = JacProgram();
     path = os.path.join(CHECKER_FIXTURES, "checker_connect_any_type.jac");
@@ -881,6 +942,215 @@ test "connect_node_collection" {
     mod = program.compile(path, options=NO_TC);
     TypeCheckPass(ir_in=mod, prog=program);
     assert len(program.errors_had) == 0;
+}
+
+test "visit_collection_element_type" {
+    # `visit` accepts node | edge | path | collection of (node | edge),
+    # or any/unknown. Parameterized collections must have valid element
+    # types; unions must have all members valid.
+    # The `Bad` walker has 9 visits whose target is invalid (E1094).
+    # The `Good` walker has only valid visits and must produce no E1094.
+    path = os.path.join(CHECKER_FIXTURES, "checker_visit_collection_element.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1094 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1094"
+    ];
+    assert len(e1094) == 9 , f"Expected 9 E1094 (invalid visit target), got {len(
+        e1094
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1094);
+    other = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code != "E1094"
+    ];
+    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in other
+    );
+}
+
+test "spawn_validation" {
+    # `a spawn b` requires exactly one operand to be a walker; the other
+    # operand must be a node, edge, or collection thereof.
+    # The fixture has 4 cases where neither side is a walker (E1114) and
+    # 5 cases where the non-walker side is not a valid spawn target
+    # (E1115). The good cases must not emit either diagnostic.
+    path = os.path.join(CHECKER_FIXTURES, "checker_spawn_validation.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1114 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1114"
+    ];
+    assert len(e1114) == 4 , f"Expected 4 E1114 (no walker in spawn), got {len(
+        e1114
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1114);
+    e1115 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1115"
+    ];
+    assert len(e1115) == 5 , f"Expected 5 E1115 (invalid spawn target), got {len(
+        e1115
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1115);
+}
+
+test "disconnect_typed" {
+    # `del a ->:T:-> b` requires T to be an edge type (or instance) — same
+    # rule as connect's `+>: T :+>`. The fixture has 2 typed-disconnect
+    # statements where T is a node (E1098). The Ok cases must not emit
+    # E1098.
+    path = os.path.join(CHECKER_FIXTURES, "checker_disconnect_typed.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1098 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1098"
+    ];
+    assert len(e1098) == 2 , f"Expected 2 E1098 (typed-disconnect not edge), got {len(
+        e1098
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1098);
+}
+
+test "disconnect_op_no_w1051" {
+    # Issue #5885 gap 9: `del a --> b` (and its typed/reverse forms) used
+    # to fall through `apply_connect_or_disconnect` without setting a
+    # result type, so every disconnect site emitted a spurious W1051.
+    # The runtime returns `bool`, so the typed result is `bool` — and bare
+    # disconnect statements must produce no W1051 noise.
+    path = os.path.join(CHECKER_FIXTURES, "checker_disconnect_op_no_w1051.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on disconnect ops, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+    # Disconnect must type as `bool` so that `removed: bool = a del --> b`
+    # is a clean assignment, not E1001 (Unknown -> bool).
+    assert len(program.errors_had) == 0 , f"Unexpected errors: {[
+        e.pretty_print() for e in program.errors_had
+    ]}";
+}
+
+test "ability_trigger_archetype" {
+    # Walker abilities must trigger on a node/edge/Root; node/edge
+    # abilities must trigger on a walker. Tuple and union triggers are
+    # validated element-wise. Untyped triggers (`with entry`) are valid.
+    # The fixture has 6 walker-side bad cases (E1116) and 5 node/edge
+    # bad cases (E1117); the good cases must produce neither diagnostic.
+    path = os.path.join(CHECKER_FIXTURES, "checker_ability_trigger_archetype.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1116 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1116"
+    ];
+    assert len(e1116) == 6 , f"Expected 6 E1116 (invalid walker trigger), got {len(
+        e1116
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1116);
+    e1117 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1117"
+    ];
+    assert len(e1117) == 5 , f"Expected 5 E1117 (invalid node/edge trigger), got {len(
+        e1117
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1117);
+}
+
+test "undefined_osp_position" {
+    # Issue #5885 gap 7: undefined names in OSP-shape positions
+    # (connect/disconnect typed-edge, ability trigger) must promote
+    # from `W2001` to `E2018`. The fixture has 5 such positions —
+    # 3 ability triggers (one bare, one tuple element, one union
+    # member) and 2 typed edge ops. The Ok cases must not emit
+    # E2018, and W2001 must not duplicate any of the promoted spans.
+    path = os.path.join(CHECKER_FIXTURES, "checker_undefined_osp_position.jac");
+    program = JacProgram();
+    program.compile(path, type_check=True);
+    e2018 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E2018"
+    ];
+    assert len(e2018) == 5 , f"Expected 5 E2018 (undefined name in OSP position), got {len(
+        e2018
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e2018);
+    promoted_spans = {(e.loc.first_line, e.loc.col_start) for e in e2018};
+    duplicate_w2001 = [
+        w
+        for w in program.warnings_had
+        if w.code
+        and w.code.code == "W2001"
+        and (w.loc.first_line, w.loc.col_start) in promoted_spans
+    ];
+    assert len(duplicate_w2001) == 0 , f"W2001 must not duplicate promoted E2018 spans, got: {[
+        w.pretty_print() for w in duplicate_w2001
+    ]}";
+}
+
+test "connect_unparameterized_collection" {
+    # Issue #5885 gap 8: `a ++> b` (and disconnect / typed-edge forms)
+    # used to silently accept bare `list` / `tuple` / `set` / `frozenset`
+    # operands because the runtime accepts any collection of nodes; the
+    # checker can't verify the element types. Each unparameterized
+    # operand now reports `E1118`. The fixture has 13 such positions
+    # (8 right-side connect, 2 left-side connect, 3 disconnect — one of
+    # which uses the typed-edge form). Good cases (parameterized list,
+    # list literal, single node) must produce no E1118.
+    path = os.path.join(CHECKER_FIXTURES, "checker_connect_unparameterized.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1118 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1118"
+    ];
+    assert len(e1118) == 13 , f"Expected 13 E1118 (unparameterized connect operand), got {len(
+        e1118
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1118);
+}
+
+test "edge_ref_typed_result" {
+    # Issue #5885 gap 6: typed `[edge ... ->:T:-> ...]` traversals must
+    # propagate `T` as the list element type instead of degrading to
+    # `list[<Any>]`. The Ok line assigns into list[MyEdge]; the Error
+    # line assigns the same expression into list[OtherEdge] so the
+    # checker can prove the propagated element type at the use site.
+    program = JacProgram();
+    path = os.path.join(CHECKER_FIXTURES, "checker_edge_ref_typed_result.jac");
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1001 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1001"
+    ];
+    assert len(e1001) == 1 , f"Expected 1 E1001 (typed edge-ref result mismatch), got {len(
+        e1001
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1001);
+    expected_error = """
+        Cannot assign list[MyEdge] to list[OtherEdge]
+            # list[MyEdge], not list[OtherEdge].
+            bad_edges: list[OtherEdge] = [edge a ->:MyEdge:-> b];         # Error
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        """;
+    assert_error_pretty_found(expected_error, e1001[0].pretty_print());
 }
 
 test "root_type" {
@@ -4201,6 +4471,82 @@ test "generator_yield_return_type_check" {
     );
 }
 
+test "strict_any_in_jac_modules" {
+    # Layer 2: in `.jac` files, `Any` can no longer be silently assigned to a
+    # declared non-Any destination. The rule applies uniformly at every
+    # "destination has a declared type" site: annotated assignments,
+    # has-var initializers, function arguments, and return statements,
+    # and recurses into containers (list[any] -> list[T] errors).
+    # Inferred destinations and explicit `any` annotations remain
+    # permissive — that is the user's escape valve.
+    path = os.path.join(CHECKER_FIXTURES, "checker_strict_any_jac.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    # The four expected strict-Any sites:
+    #   1. `t: Task = a;`              -- annotated assignment
+    #   2. `ts: list[Task] = xs;`      -- annotated assignment (nested any)
+    #   3. `needs_task(a);`            -- function arg
+    #   4. `return make_any();`        -- typed return
+    # Each emits one type-mismatch error (E1001/E1002/E1053). We assert
+    # the *total* count rather than the per-code split, since the
+    # specific code depends on which checker site catches the violation.
+    strict_codes = ("E1001", "E1002", "E1053");
+    strict_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in strict_codes
+    ];
+    assert len(strict_errors) == 4 , f"Expected 4 strict-Any errors (Any -> declared T at 4 sites), got {len(
+        strict_errors
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in strict_errors);
+    # No errors should fire on the `inferred destination` or `explicit any`
+    # paths above.
+    other = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code not in strict_codes
+    ];
+    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in other
+    );
+}
+
+test "walker_typed_reports_validation" {
+    # `has reports: list[T]` on a walker should:
+    #   1. Reject non-list shapes (E1112).
+    #   2. Type-check `report X` against the element type T (E1113).
+    path = os.path.join(CHECKER_FIXTURES, "checker_walker_typed_reports.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+    e1112 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1112"
+    ];
+    e1113 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1113"
+    ];
+    assert len(e1112) == 1 , f"Expected 1 E1112 (non-list reports shape), got {len(
+        e1112
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1112);
+    assert len(e1113) == 1 , f"Expected 1 E1113 (mismatched report element), got {len(
+        e1113
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1113);
+    # No spurious errors on the GoodWalker case.
+    other = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code not in ("E1112", "E1113")
+    ];
+    assert len(other) == 0 , f"Expected no other errors, got {len(other)}:\n" + "\n---\n".join(
+        e.pretty_print() for e in other
+    );
+}
+
 test "isinstance_and_narrowing" {
     # isinstance(x, T) in LHS of AND should narrow x to T for RHS operands.
     path = os.path.join(CHECKER_FIXTURES, "checker_isinstance_and_narrowing.jac");
@@ -4223,4 +4569,28 @@ test "isinstance_and_narrowing" {
     assert len(w1051) == 0 , f"Expected no W1051 warnings, got {len(w1051)}:\n" + "\n---\n".join(
         w.pretty_print() for w in w1051
     );
+}
+
+test "pipe_forward_typing_matches_call_form" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_pipe_forward_typing.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on pipe expressions, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+
+    assert len(program.errors_had) == 1 , f"Expected exactly 1 error (the intentional negative case), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    err = program.errors_had[0];
+    assert err.code and err.code.code == "E1053" , f"Expected E1053, got {err.code.code
+        if err.code
+        else 'no-code'}:\n{err.pretty_print()}";
 }
