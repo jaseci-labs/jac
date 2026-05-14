@@ -1,1 +1,0 @@
-"""Microservice mode lifecycle orchestrator."""
