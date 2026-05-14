@@ -1307,6 +1307,40 @@ test "concurrent requests do not lose edges" {
     }
 }
 
+"""Unit test for issue 5931 fix: acommit() forwards anchor to commit().
+
+Before the fix, acommit() called asyncio.to_thread(self.commit) — anchor
+was silently dropped. After the fix it calls asyncio.to_thread(self.commit, anchor),
+so commit() receives whatever was passed.
+"""
+test "acommit forwards anchor argument to commit()" {
+    import asyncio;
+    import from unittest.mock { patch }
+    import from jac_scale.memory_hierarchy { ScaleTieredMemory }
+
+    received: list = [None];
+
+    def capture_commit(self: ScaleTieredMemory, anchor: Any = None) {
+        received[0] = anchor;
+    }
+
+    with patch.object(ScaleTieredMemory, 'commit', capture_commit) {
+        mem = object.__new__(ScaleTieredMemory);
+        # Case 1: no anchor — commit() must receive None.
+        asyncio.run(mem.acommit());
+        assert received[0] is None , (
+            f"acommit() with no anchor must pass None to commit(), got {received[0]}"
+        );
+        # Case 2: specific anchor — commit() must receive the same object.
+        sentinel = object();
+        asyncio.run(mem.acommit(sentinel));
+        assert received[0] is sentinel , (
+            "acommit(anchor) must forward the anchor to commit(); "
+            f"commit() received {received[0]!r} instead"
+        );
+    }
+}
+
 """Unit test for issue 1g fix: ScaleTieredMemory._committed flag.
 
 After the first acommit() the flag is set True. A second call (the
