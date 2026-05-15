@@ -138,7 +138,16 @@ jac scale stop orders_app                # stop one service
 jac scale restart cart_app               # restart one service
 jac scale logs products_app              # view logs
 jac scale destroy                        # stop everything
+
+# Preview before applying (no cluster contact, no docker build)
+jac start main.jac --scale --dry-run     # print manifests + image plan
 ```
+
+`--dry-run` runs the same manifest generation as the real deploy but
+exits before any side effect. Sub-second; emits a valid multi-doc YAML
+stream. Use it on any `jac.toml` change before paying the 5-10 minute
+build+apply cycle, in PR review to surface manifest diffs, or as a
+prefix to `kubectl apply -f -` for manual control.
 
 ## Inter-Service Communication
 

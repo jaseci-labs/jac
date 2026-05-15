@@ -363,6 +363,56 @@ If you need a sibling sv-to-sv call to leave the cluster (e.g. point at a vendor
 
 For the full deploy pipeline (image building, ingress, autoscaling, secrets, shared volumes), see the [Kubernetes tutorial](kubernetes.md).
 
+### Previewing a deploy with `--dry-run`
+
+`jac start --scale` builds an image, pushes it to a registry, and applies manifests to your cluster. That is 5-10 minutes of work and several side effects (registry tags, rolling pod restarts, namespace state). If your config is wrong, you find out at the end.
+
+`jac start --scale --dry-run` does the same planning step in under a second and prints the YAML it would apply, without touching anything.
+
+```bash
+jac start main.jac --scale --dry-run
+```
+
+Output (truncated):
+
+```text
+=== jac scale plan: dry-run ===
+Cluster type detected: minikube
+Namespace: my-app
+Services: orders_app, users_app
+
+--- Resources (12 manifests, NOT applied) ---
+  Deployments: orders_app, users_app, __gateway__
+  Services:    orders_app, users_app, __gateway__
+  HPAs:        orders_app, users_app, __gateway__
+  PDBs:        orders_app, users_app, __gateway__
+  Ingress:     no
+
+--- YAML (would be applied) ---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orders-app-deployment
+  ...
+```
+
+The preview is cheap enough that there is almost no reason not to run it. Pay the second to save the hours.
+
+**Use `--dry-run` whenever you:**
+
+- Edit `jac.toml` (routes, resources, ingress, secrets, HPA, PDB)
+- Add or remove a service from `routes`
+- Deploy to a shared/staging/prod cluster
+- Want a reviewer to see the manifest in a PR
+- Want to pipe the YAML through `kubectl apply -f -` yourself
+
+The output is a valid multi-doc YAML stream, so it composes:
+
+```bash
+jac start main.jac --scale --dry-run | sed -n '/^---$/,$p' > planned.yaml
+diff <(kubectl get -n my-app deployment,service,hpa,pdb,ingress -o yaml) planned.yaml
+```
+
 ---
 
 ## Common Pitfalls
