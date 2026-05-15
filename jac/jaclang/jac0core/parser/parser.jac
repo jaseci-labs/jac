@@ -592,6 +592,8 @@ obj Parser {
     def _make_view_assign(acc: str, jsx: Expr, anchor: Token) -> Assignment;
     def _make_view_fragment(acc: str, anchor: Token) -> JsxElement;
     def _synth_name(value: str, anchor: Token) -> Name;
+    def _synth_tok(tok_type: str, value: str, anchor: Token) -> UniToken;
+    def _synth_semi(anchor: Token) -> Semi;
     def _skip_semicolons;
     def _error_unexpected_member;
     def parse_has_stmt -> ArchHas;

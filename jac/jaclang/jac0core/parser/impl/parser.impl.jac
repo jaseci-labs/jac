@@ -6237,25 +6237,61 @@ impl Parser._synth_name(value: str, anchor: Token) -> Name {
     );
 }
 
+"""Build a synthetic UniToken anchored at the given token's location.
+
+Unlike gen_token (which anchors at the parser cursor), this anchors at an
+explicit token, so diagnostics on the view's lowered code point at the view
+rather than at wherever parsing happened to stop."""
+impl Parser._synth_tok(tok_type: str, value: str, anchor: Token) -> UniToken {
+    tok = UniToken(
+        orig_src=self.get_source(),
+        name=tok_type,
+        value=value,
+        line=anchor.loc.line,
+        end_line=anchor.loc.end_line,
+        col_start=anchor.loc.col_start,
+        col_end=anchor.loc.col_end,
+        pos_start=anchor.loc.pos_start,
+        pos_end=anchor.loc.pos_end
+    );
+    tok._is_synthetic = True;
+    return tok;
+}
+
+"""Build a synthetic Semi node anchored at the given token's location."""
+impl Parser._synth_semi(anchor: Token) -> Semi {
+    return Semi(
+        orig_src=self.get_source(),
+        name=Tok.SEMI.value,
+        value=";",
+        line=anchor.loc.line,
+        end_line=anchor.loc.end_line,
+        col_start=anchor.loc.col_start,
+        col_end=anchor.loc.col_end,
+        pos_start=anchor.loc.pos_start,
+        pos_end=anchor.loc.pos_end
+    );
+}
+
 """Build `acc = [*acc, <jsx>];` — append one template element to the view's
 child accumulator. A plain reassignment (not `.append`) keeps the lowering
 target-neutral: it emits `acc = [...acc, jsx]` on the client and
 `acc = [*acc, jsx]` on a Python target, with no list-method dispatch."""
 impl Parser._make_view_assign(acc: str, jsx: Expr, anchor: Token) -> Assignment {
-    star = self.gen_token("STAR_MUL", "*");
+    star = self._synth_tok("STAR_MUL", "*", anchor);
     spread_ref = self._synth_name(acc, anchor);
     spread = UnaryExpr(op=star, operand=spread_ref, kid=[star, spread_ref]);
-    lsq = self.gen_token("LSQUARE", "[");
-    comma = self.gen_token("COMMA", ",");
-    rsq = self.gen_token("RSQUARE", "]");
+    lsq = self._synth_tok("LSQUARE", "[", anchor);
+    comma = self._synth_tok("COMMA", ",", anchor);
+    rsq = self._synth_tok("RSQUARE", "]", anchor);
     new_list = ListVal(values=[spread, jsx], kid=[lsq, spread, comma, jsx, rsq]);
     acc_target = self._synth_name(acc, anchor);
-    eq_uni = self.gen_token("EQ", "=");
+    eq_uni = self._synth_tok("EQ", "=", anchor);
     return Assignment(
         target=[acc_target],
         value=new_list,
         type_tag=None,
-        kid=[acc_target, eq_uni, new_list, self.make_semi()],
+        kid=[acc_target, eq_uni, new_list, self._synth_semi(anchor)],
         mutable=True,
         aug_op=None,
         is_enum_stmt=False
@@ -6264,12 +6300,12 @@ impl Parser._make_view_assign(acc: str, jsx: Expr, anchor: Token) -> Assignment 
 
 """Build `<>{acc}</>` — the fragment of all template content emitted so far."""
 impl Parser._make_view_fragment(acc: str, anchor: Token) -> JsxElement {
-    lb = self.gen_token("LBRACE", "{");
+    lb = self._synth_tok("LBRACE", "{", anchor);
     acc_ref = self._synth_name(acc, anchor);
-    rb = self.gen_token("RBRACE", "}");
+    rb = self._synth_tok("RBRACE", "}", anchor);
     jsx_expr = JsxExpression(expr=acc_ref, kid=[lb, acc_ref, rb]);
-    frag_open = self.gen_token("JSX_FRAG_OPEN", "<>");
-    frag_close = self.gen_token("JSX_FRAG_CLOSE", "</>");
+    frag_open = self._synth_tok("JSX_FRAG_OPEN", "<>", anchor);
+    frag_close = self._synth_tok("JSX_FRAG_CLOSE", "</>", anchor);
     return JsxElement(
         name=None,
         attributes=[],
@@ -6336,9 +6372,9 @@ impl Parser._lower_view_one(stmt: object, acc: str, anchor: Token) -> object {
     if isinstance(s, ReturnStmt) {
         if s.expr is None {
             frag = self._make_view_fragment(acc, anchor);
-            ret_uni = self.gen_token("KW_RETURN", "return");
+            ret_uni = self._synth_tok("KW_RETURN", "return", anchor);
             s.expr = frag;
-            s.set_kids([ret_uni, frag, self.make_semi()]);
+            s.set_kids([ret_uni, frag, self._synth_semi(anchor)]);
         }
         return s;
     }
@@ -6413,23 +6449,23 @@ impl Parser._lower_view_body(stmts: list, anchor: Token) -> list {
     lowered = self._lower_view_stmt_list(stmts, None, acc, anchor);
     # acc = [];
     acc_name = self._synth_name(acc, anchor);
-    eq_uni = self.gen_token("EQ", "=");
-    init_lsq = self.gen_token("LSQUARE", "[");
-    init_rsq = self.gen_token("RSQUARE", "]");
+    eq_uni = self._synth_tok("EQ", "=", anchor);
+    init_lsq = self._synth_tok("LSQUARE", "[", anchor);
+    init_rsq = self._synth_tok("RSQUARE", "]", anchor);
     empty_list = ListVal(values=[], kid=[init_lsq, init_rsq]);
     init_assign = Assignment(
         target=[acc_name],
         value=empty_list,
         type_tag=None,
-        kid=[acc_name, eq_uni, empty_list, self.make_semi()],
+        kid=[acc_name, eq_uni, empty_list, self._synth_semi(anchor)],
         mutable=True,
         aug_op=None,
         is_enum_stmt=False
     );
     # return <>{acc}</>;
     frag = self._make_view_fragment(acc, anchor);
-    ret_uni = self.gen_token("KW_RETURN", "return");
-    ret_stmt = ReturnStmt(expr=frag, kid=[ret_uni, frag, self.make_semi()]);
+    ret_uni = self._synth_tok("KW_RETURN", "return", anchor);
+    ret_stmt = ReturnStmt(expr=frag, kid=[ret_uni, frag, self._synth_semi(anchor)]);
     return [init_assign] + lowered + [ret_stmt];
 }
 
@@ -6458,7 +6494,7 @@ impl Parser.parse_view -> Ability {
     # A view always returns JsxElement; synthesize the annotation when the
     # author omitted it (the common case).
     if signature.return_type is None {
-        ret_hint = self.gen_token("RETURN_HINT", "->");
+        ret_hint = self._synth_tok("RETURN_HINT", "->", name_tok);
         ret_type = self._synth_name("JsxElement", name_tok);
         signature.return_type = ret_type;
         signature.add_kids_right([ret_hint, ret_type]);
@@ -6470,11 +6506,11 @@ impl Parser.parse_view -> Ability {
     body_rb_uni = self.consume_uni(TokenKind.RBRACE);
     body = self._lower_view_body(raw_stmts, name_tok);
     # A view is a public component — synthesize a `:pub` access tag.
-    colon_uni = self.gen_token("COLON", ":");
-    pub_uni = self.gen_token("KW_PUB", "pub");
+    colon_uni = self._synth_tok("COLON", ":", name_tok);
+    pub_uni = self._synth_tok("KW_PUB", "pub", name_tok);
     access = SubTag(tag=pub_uni, kid=[colon_uni, pub_uni]);
     # Present the result as a plain `def` so every pass treats it uniformly.
-    def_uni = self.gen_token("KW_DEF", "def");
+    def_uni = self._synth_tok("KW_DEF", "def", name_tok);
     kid: list = [def_uni, access, name];
     if type_params is not None {
         kid.append(tp_lb_uni);

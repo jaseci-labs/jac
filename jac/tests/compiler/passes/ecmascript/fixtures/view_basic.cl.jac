@@ -1,8 +1,8 @@
-"""Phase 1 `view` declarator — statement templates and control flow.
+"""Phase 1 `view` declarator: statement templates and control flow.
 
-Exercises: the `view` keyword as sugar for `def:pub -> JsxElement`, a
-statement-based body with sibling JSX statements, nested JSX elements,
-a view calling another view, a `has`-field with a nested `def` handler,
+Exercises the `view` keyword as sugar for `def:pub -> JsxElement`: a
+statement-based body with sibling JSX statements, nested JSX elements, a
+view calling another view, a `has`-field with a nested `def` handler,
 view-body-level `if`/`else` and `for`, and a bare `return;` guard.
 """
 
@@ -17,9 +17,13 @@ view Badge(text: str) {
 }
 
 view ItemRow(item: Item) {
+    if item.done {
+        <Badge text="done" />
+    } else {
+        <Badge text="todo" />
+    }
     <div class="row">
         <span class="label">{item.label}</span>
-        <Badge text={item.label} />
     </div>
 }
 
@@ -34,9 +38,8 @@ view ItemList(items: list[Item]) {
     if len(items) == 0 {
         <p class="empty">Nothing here.</p>
         return;
-    } else {
-        <p class="status">Showing items.</p>
     }
+    <p class="status">Showing items.</p>
     for it in items {
         <ItemRow key={jid(it)} item={it} />
     }

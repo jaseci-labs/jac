@@ -7,7 +7,7 @@ brace-wrapped expression (`<@{expr}>`).
 """
 
 """A box whose host element is chosen by the caller."""
-view Box(as_: str, children: any) {
+view Box(as_: str, children: any = None) {
     <@as_ class="box">{children}</@as_>
 }
 
