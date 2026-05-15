@@ -118,14 +118,15 @@ def type_to_str(t: object) -> str {
     }
     try {
         import from dataclasses { is_dataclass }
-        if (is_dataclass(t) and t?.name) {
-            return t.name;
+        dc_name = t?.name;
+        if (is_dataclass(t) and dc_name is not None) {
+            return str(dc_name);
         }
     } except Exception {
         ;
     }
     if isinstance(t, `tuple) {
-        head = t[0];
+        head = str(t[0]);
         if (head == 'list') {
             return f"list[{type_to_str(t[1])}]";
         }

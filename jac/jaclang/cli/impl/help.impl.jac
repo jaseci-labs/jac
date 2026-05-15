@@ -96,7 +96,7 @@ impl HelpFormatter.format_main_help(
         lines.append(f"{display_name}:");
 
         # Sort commands alphabetically within group
-        cmds.sort(key=lambda c: str : c.name);
+        cmds.sort(key=lambda c: CommandSpec : c.name);
         for cmd in cmds {
             # Format: "  name        description"
             padding = " " * (12 - len(cmd.name));
@@ -190,7 +190,7 @@ impl HelpFormatter.format_arguments(
             }
             # Add type hint for non-bool
             if arg.typ != bool and arg.kind != ArgKind.FLAG {
-                type_name = arg.typ?.__name__ or str(arg.typ);
+                type_name = str(getattr(arg.typ, '__name__', arg.typ));
                 flag_str += f" {type_name.upper()}";
             }
 
@@ -227,7 +227,7 @@ impl HelpFormatter.format_arguments(
                     flag_str = f"--{arg.name}";
                 }
                 if arg.typ != bool and arg.kind != ArgKind.FLAG {
-                    type_name = arg.typ?.__name__ or str(arg.typ);
+                    type_name = str(getattr(arg.typ, '__name__', arg.typ));
                     flag_str += f" {type_name.upper()}";
                 }
 
@@ -294,18 +294,22 @@ impl HelpFormatter.format_usage(spec: CommandSpec, prog: str = "jac") -> str {
 impl get_command_groups -> CommandGroups {
     import from jaclang.cli.help { CommandGroups }
     global _groups;
-    if _groups is None {
-        _groups = CommandGroups();
+    if _groups is not None {
+        return _groups;
     }
-    return _groups;
+    new_groups = CommandGroups();
+    _groups = new_groups;
+    return new_groups;
 }
 
 """Get the global HelpFormatter instance."""
 impl get_help_formatter -> HelpFormatter {
     import from jaclang.cli.help { HelpFormatter }
     global _formatter;
-    if _formatter is None {
-        _formatter = HelpFormatter();
+    if _formatter is not None {
+        return _formatter;
     }
-    return _formatter;
+    new_formatter = HelpFormatter();
+    _formatter = new_formatter;
+    return new_formatter;
 }

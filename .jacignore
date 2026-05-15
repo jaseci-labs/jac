@@ -9,7 +9,6 @@ config.impl.jac
 jac/jaclang/cli/commands/config.jac
 jac/jaclang/project/config.jac
 console.jac
-constant.jac
 # context.impl.jac / context.jac — jac-scale passes, jaclang runtimelib fails
 jac/jaclang/runtimelib/impl/context.impl.jac
 jac/jaclang/runtimelib/context.jac
@@ -31,13 +30,11 @@ es_unparse.impl.jac
 es_unparse.jac
 execution.impl.jac
 execution.jac
-executor.jac
 fantasy_trading_game.jac
 game_obj.jac
 grammar_extract_pass.jac
 guess_game6.jac
 helpers.jac
-help.jac
 interop_analysis_pass.jac
 jac_auto_lint_pass.impl.jac
 jac_auto_lint_pass.jac
@@ -55,7 +52,6 @@ memory.jac
 modresolver.jac
 mtir_gen_pass.impl.jac
 mtir_gen_pass.jac
-mtp.jac
 nacompile.impl.jac
 nacompile.jac
 na_compile_pass.jac
