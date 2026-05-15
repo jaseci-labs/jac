@@ -41,7 +41,7 @@ Error generating stack: `+f.message+`
             })));
           }
         }
-        
+
         if (${ne}.value === undefined) {
           if (${ee} in input) {
             newResult[${ee}] = undefined;
@@ -49,7 +49,7 @@ Error generating stack: `+f.message+`
         } else {
           newResult[${ee}] = ${ne}.value;
         }
-        
+
       `):ke?P.write(`
         if (${ne}.issues.length) {
           payload.issues = payload.issues.concat(${ne}.issues.map(iss => ({
@@ -57,7 +57,7 @@ Error generating stack: `+f.message+`
             path: iss.path ? [${ee}, ...iss.path] : [${ee}]
           })));
         }
-        
+
         if (${ne}.value === undefined) {
           if (${ee} in input) {
             newResult[${ee}] = undefined;
@@ -65,7 +65,7 @@ Error generating stack: `+f.message+`
         } else {
           newResult[${ee}] = ${ne}.value;
         }
-        
+
       `):P.write(`
         const ${ne}_present = ${ee} in input;
         if (${ne}.issues.length) {
