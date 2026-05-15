@@ -354,8 +354,8 @@ view ThemedPage(dark: bool) {
 ```
 
 The context manager's entry value is lexically scoped to the block, the same
-as any Jac `with`. Per-target lowering maps this to the runtime's provider
-primitive (React `<Context.Provider>`, Solid context, Vue `provide`).
+as any Jac `with`. It lowers to the runtime's provider primitive
+(React `<Context.Provider>`).
 
 ### `try` / `pending` / `except` / `else`
 
@@ -466,14 +466,14 @@ view RefDemo() {
 }
 ```
 
-Dispatch by value type (already what the per-target lowering does):
+Dispatch by value type:
 
 | `ref={…}` value type | Lowering |
 |----------------------|----------|
 | `(T) -> ()` lambda | callback ref |
-| `Ref[T]` (from `useRef`) | handle: `r.current = node` (React) / native ref binding (Solid/Vue/Ripple) |
-| `T \| None` mutable var | reactive-target only: bind variable to node, trigger on mount/unmount |
-| `list[…]` of the above | composite: `mergeRefs(...)` on React, native array `ref={[a,b,c]}` on Solid, compile-error on Vue |
+| `Ref[T]` (from `useRef`) | handle ref: `r.current = node` |
+| `T \| None` mutable var | bind variable to node, trigger on mount/unmount |
+| `list[…]` of the above | composite: `mergeRefs(...)` |
 
 Why one form rather than three: the original draft used `{ref EXPR}` as a
 JSX attribute-brace prefix and `ref EXPR` as a general-expression prefix
@@ -483,9 +483,8 @@ sub-grammars (JSX-attribute mode and the general expression grammar), plus
 an attribute-brace form `{KEYWORD EXPR}` that no other JSX dialect uses
 and that collides with JSX shorthand `{name}`, costs more parser/LSP/
 formatter surface than the composite-array form saves the user. Composite
-refs become `ref={[a, b, c]}` - exactly what Solid emits natively, what
-React 19 supports, and what the Solid lowering in this doc was already
-producing. Passing a binding through a prop becomes ordinary value-passing
+refs become `ref={[a, b, c]}` - what React 19 supports directly. Passing a
+binding through a prop becomes ordinary value-passing
 (`<Child myRef={inputRef} />`) typed at the receiving boundary.
 
 ## Scoped Styles
@@ -532,11 +531,11 @@ view (or each `.cl.jac` module that contains views), the styling pass:
 
 Properties of this choice:
 
-- **Identical lowering across all targets.** React, Preact, Solid, Vue
-  Vapor, and Ripple all consume `<div class="card_a3b9c1d2">` the same
-  way. No per-target CSS-engine bridge; Vue's scoped-attr is an
-  implementation Vue uses internally, not a requirement Vue imposes on
-  consumers.
+- **Framework-agnostic emit.** The output is a plain
+  `<div class="card_a3b9c1d2">` plus a plain `.css` file - no CSS-engine
+  bridge, no CSS-in-JS runtime. This keeps the styling layer target-neutral
+  even though the only shipped emitter is react/preact, so the SSR path and
+  any future emitter consume it unchanged.
 - **No bundler config.** `.css` side-effect imports work in Vite, webpack,
   Rspack, Turbopack, Bun, Parcel, esbuild without any plugin. CSS Modules
   would require the loader to recognize `.module.css` and emit a JS export
@@ -558,9 +557,9 @@ Rejected alternatives:
   styled-components support; React docs warn against runtime CSS-in-JS
   for RSC); locking the emit format to a model that's losing momentum
   would age badly.
-- **Scoped-attr (Vue-style `data-v-*`)** - Vue's *internal* scoping
-  mechanism, not a portable emit format. Adopting it would require
-  reimplementing Vue's runtime attr-injection on React/Solid for no win.
+- **Scoped-attr (Vue-style `data-v-*`)** - a framework-internal scoping
+  mechanism, not a portable emit format. Adopting it would mean
+  reimplementing runtime attr-injection for no win over compile-time hashing.
 
 ## Dynamic Tags
 
@@ -675,11 +674,8 @@ view CartActions(cart: Cart) {
 ```
 
 Pass the same `Cart` instance to both views and they observe the same fields.
-The lowering (per target):
-
-- React/Preact: emit a `useSyncExternalStore` subscription per accessed field.
-- Solid/Ripple: wrap the field with the target's signal/tracked primitive.
-- Vue Vapor: `shallowRef` on each reactive field.
+The lowering emits a `useSyncExternalStore` subscription per accessed field
+on the react/preact target.
 
 **Mutation rule: reassign, don't mutate in place.** Tracking is keyed on the
 field reference, so `cart.items = cart.items + [x]` triggers re-render,
@@ -736,39 +732,38 @@ careful thought.
 
 Jac already has an ecmascript codegen pass
 ([esast_gen_pass.jac](../jac/jaclang/compiler/passes/ecmascript/esast_gen_pass.jac))
-that emits JSX-flavored JS from `.cl.jac` files. The default target stays
-the same - `view` compiles through the same pipeline. The new statement-
-based body, scoped styles, and boundary clauses are lowered to the JSX-AST
-the existing pass already understands.
+that emits JSX-flavored JS from `.cl.jac` files. `view` compiles through that
+same pipeline - the new statement-based body, scoped styles, and boundary
+clauses are lowered to the JSX-AST the existing pass already understands.
 
-Beyond the existing default emitter, additional targets can be added later:
+**One client emitter: react/preact.** `view` does not ship emitters for
+other JS frameworks (Solid, Vue, Ripple). The existing ecmascript codegen +
+`@jac/runtime` is the single client target. A multi-framework emitter zoo is
+a large, speculative maintenance surface - a whole codegen pass, runtime
+mapping, and capability gating per target - for no current user. It is
+explicitly out of scope.
 
-| Target | Status | Notes |
-|--------|--------|-------|
-| react / preact (current default) | exists | via existing ecmascript codegen + `@jac/runtime` |
-| solid | proposed | `<Show>` / `<For>` / `<Switch>` / `<Errored>` / `<Suspense>` mapping |
-| vue (Vapor) | proposed | `defineVaporComponent`; `pending` blocks compile-fail with hint |
-| ripple | proposed | closest semantic match - `try/pending/except` passes through |
-| python | proposed | server-side render to `VNode` tree |
+What *is* preserved is the *option*. The `view` lowering stays target-neutral
+where that costs nothing: the scoped-CSS emit is plain pre-hashed CSS (see
+[Scoped Styles](#scoped-styles)) and the intermediate form is not
+gratuitously React-shaped. A future emitter remains possible without a
+rewrite; it is simply not built now.
 
-A **capability table** in the compiler gates features per target - e.g.
-`pending` blocks compile-fail on Vue with a hint. Per-target emitters would
-live under `jac/jaclang/compiler/passes/views/` alongside the existing
-ecmascript pass.
+**Server-side rendering is a different axis.** Rendering a `view` on the
+server is not "another framework target" - it is the `sv` half of Jac's
+existing `cl` / `sv` split-compile. The Python SSR path renders a view to a
+`VNode` tree in a `to sv:` context, and is where the `pending` clause lowers
+to streaming SSR (see [Control Flow](#try--pending--except--else)). It is in
+scope as part of the cl/sv story, not as a competing backend.
 
-### JIR Integration
-
-A new TLV section `SEC_VIEW_TARGET = 0x06` caches the per-target emit in the
-existing `.jir` (format v8, see `jac/jaclang/jac0core/jir.jac`). Section body
-carries `(target_id, emit_source, sourcemap)`. The JIR reader picks the
-section matching the active `--view-target`. Multiple targets coexist in one
-JIR file - useful when a library is consumed by apps targeting different
-runtimes.
+| Path | Status | Notes |
+|------|--------|-------|
+| react / preact (`cl`) | exists | existing ecmascript codegen + `@jac/runtime` |
+| Python SSR (`sv`) | proposed | server-side render of a view to a `VNode` tree; `pending` streams |
 
 ## Bundler Integration
 
-A single Vite/Rspack/Turbopack/Bun plugin (`@jaclang/view-plugin`)
-parametrized by target:
+A single Vite/Rspack/Turbopack/Bun plugin, `@jaclang/vite-plugin-view`:
 
 ```ts
 // vite.config.ts
@@ -777,13 +772,14 @@ import jacView from '@jaclang/vite-plugin-view';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-    plugins: [jacView({ target: 'react' }), react()],
+    plugins: [jacView(), react()],
 });
 ```
 
 The plugin shells out to `jac build`, gets back JSON
 (`{code, css, sourcemap, diagnostics}`), and hands the result to the
-downstream JSX plugin. CSS sidecars are emitted as `.jac.module.css`.
+downstream JSX plugin. CSS sidecars are emitted as plain `.css` files (see
+[Scoped Styles](#scoped-styles)).
 
 ## Worked Example: Todo App
 
@@ -915,9 +911,9 @@ What's worth pointing out:
 - **Early `return;`** - clean empty-state guard inside the `try`.
 - **All lambdas use block-body** - Jac's existing `lambda { … }` form, no
   new closure syntax invented.
-- The same file emits to React (`useState` + `useSyncExternalStore`), Solid
-  (`createSignal`), Vue Vapor (`shallowRef`), or Ripple (`track`) - chosen at
-  build time.
+- **Reactive wiring is the existing client codegen** - `has`-fields use
+  `useState`, `by view` fields use `useSyncExternalStore`. The same file can
+  also render server-side via the Python SSR path.
 
 ## Static Checks
 
@@ -931,6 +927,99 @@ A new pass `view_body_check` (after typecheck) enforces:
 | `try / finally` in a template `try` | E_VIEW_FINALLY_NOT_ALLOWED |
 | `pending` clause whose `try` block has no `await` / `wait` | E_VIEW_PENDING_UNREACHABLE |
 | `while` emitting keyless JSX | W_VIEW_WHILE_KEYLESS (warning) |
-| `{html …}` not sole child (Vue/Solid host-only) | E_VIEW_HTML_NOT_SOLE_CHILD |
+| `{html …}` not sole child (host element only) | E_VIEW_HTML_NOT_SOLE_CHILD |
 | `<@expr />` with non-`str | view`-typed expr | E_VIEW_DYN_TAG_TYPE |
-| Composite refs targeting Vue | E_VIEW_COMPOSITE_REF_UNSUPPORTED |
+
+## Implementation Plan
+
+The whole design lands in **three phases**, each ending in a single,
+independently-mergeable pull request. The ordering is chosen so that every
+PR is shippable on its own: PR 1 makes `view` usable, PR 2 completes the
+single-target feature surface, PR 3 generalizes across runtimes. Throughout,
+`def:pub Name -> JsxElement` keeps working unchanged - `view` is additive.
+
+The work builds on the existing pipeline (parser at
+[jac/jaclang/jac0core/parser/](../jac/jaclang/jac0core/parser/), ecmascript
+codegen at
+[esast_gen_pass.jac](../jac/jaclang/compiler/passes/ecmascript/esast_gen_pass.jac),
+runtime at
+[jac_runtime_js.jac](../jac/jaclang/compiler/passes/ecmascript/jac_runtime_js.jac)),
+not parallel to it.
+
+### Phase 1 - Declarator, statement templates, control flow
+
+The structural core: a `view` is parsed, type-checked, and lowered as a
+`def:pub -> JsxElement` whose body is statements instead of one `return`.
+
+- **Grammar / parser** - add `[access] view Name[generics](params) { body }`,
+  reusing the existing archetype/`def` parse path so the result shares the
+  internal AST with `def -> JsxElement`. Body statements lower into an
+  implicit return-fragment.
+- **Statement-position control flow** - implement the inverted rule: every
+  block-bodied construct (`if/elif/else`, both `for` forms, `while`,
+  `match`, `switch`, `with`) emits its block as a fragment in template
+  position. `with` lowers to the default target's context-provider
+  primitive.
+- **Per-element lexical scoping** - reuse Jac's existing `{ }` block
+  scoping; opening a template tag opens a scope.
+- **`{text …}` / `{html …}`** contextual keywords in JSX child position.
+- **`view_body_check` pass** (after typecheck) - guard-return rules and the
+  loop diagnostics: `E_VIEW_VALUE_RETURN`, `E_VIEW_RETURN_IN_LOOP`,
+  `E_VIEW_BREAK_IN_LOOP`, `W_VIEW_WHILE_KEYLESS`.
+- **Codegen** - lower to the existing ecmascript pass; no new emitter.
+- **Tests** - parser tests for the declarator; golden ecmascript output for
+  each control-flow construct; `view_body_check` diagnostic tests.
+
+> **PR 1** - `view` is a drop-in for `def:pub -> JsxElement` with
+> statement bodies, control flow, and lexical scoping, emitting to the
+> current react/preact default target. Acceptance: a `view` port of an
+> existing `day_planner` component compiles and renders identically.
+
+### Phase 2 - Boundaries, scoped styles, refs, dynamic tags
+
+Completes the single-target feature surface from the design.
+
+- **`try / pending / except / else`** - template-position clauses.
+  `pending` is keyed on `flow`/`wait` (see
+  [Control Flow](#try--pending--except--else)); the cl lowering targets the
+  `@jac/runtime` Suspense/ErrorBoundary equivalents. Implement the tri-state
+  *expression* form too, since it is language-level, not view-only.
+  Diagnostics: `E_VIEW_FINALLY_NOT_ALLOWED`, `E_VIEW_PENDING_UNREACHABLE`.
+- **Scoped `<style>`** - syntactic `<style>`-block capture, `blake2s`
+  class-name hashing, `:global(…)` escape, `{style "name"}` attribute form,
+  and the pre-hashed-CSS sidecar emit with a side-effect `import`.
+- **`ref={EXPR}`** - single attribute, dispatch by value type
+  (callback / `Ref[T]` / mutable var / composite list).
+- **`<@expr />`** dynamic tags, with `E_VIEW_DYN_TAG_TYPE`.
+- **Tests** - boundary-clause golden output and runtime behavior; CSS
+  hashing stability across builds; ref dispatch per value type; dynamic-tag
+  type checks.
+
+> **PR 2** - the full `view` feature set on the default target: async/error
+> boundaries, scoped styles, refs, dynamic tags. Acceptance: the
+> [Todo App worked example](#worked-example-todo-app) compiles, renders, and
+> passes its suspense/error paths.
+
+### Phase 3 - Shared reactivity, SSR, and tooling
+
+Completes the design: shared state across views, server-side rendering, and
+toolchain integration. There are no multi-framework emitters - react/preact
+stays the single client target (see
+[Compilation Targets](#compilation-targets)).
+
+- **`by view` shared state** - extend the `by`-clause family on `obj`
+  fields; field codegen wraps reads/writes with `useSyncExternalStore`.
+  `view_body_check` lints in-place mutation of `by view` fields and rejects
+  `by view` outside client-targeted code.
+- **Python SSR** - render a `view` to a `VNode` tree in a `to sv:` context;
+  this is where the `pending` clause lowers to streaming SSR.
+- **Bundler plugin** - `@jaclang/vite-plugin-view`.
+- **Advanced** - generic views end-to-end, lazy loading + Suspense pairing,
+  and the `useWalker(MyWalker, …)` data-fetching primitive.
+- **Tests** - `by view` subscription and mutation-lint tests; SSR
+  round-trip; bundler-plugin integration smoke test.
+
+> **PR 3** - shared reactivity, server-side rendering, and bundler
+> integration on the single react/preact target. Acceptance: the
+> [Todo App worked example](#worked-example-todo-app) runs with `by view`
+> shared state and renders server-side via the SSR path.
