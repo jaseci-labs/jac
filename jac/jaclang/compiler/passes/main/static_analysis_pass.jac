@@ -42,7 +42,6 @@ obj StaticAnalysisPass(Transform[uni.Module, uni.Module]) {
     def transform(ir_in: uni.Module) -> uni.Module;
     def _check_unused_symbols(scope: uni.UniScopeNode) -> None;
     def _check_undefined_names(mod: uni.Module) -> None;
-    def _is_in_accessor_body(nd: uni.UniNode) -> bool;
     def _osp_shape_position(name_nd: uni.Name) -> (str | None);
     def _check_unreachable_code(mod: uni.Module) -> None;
     def _check_semantic_patterns(mod: uni.Module) -> None;

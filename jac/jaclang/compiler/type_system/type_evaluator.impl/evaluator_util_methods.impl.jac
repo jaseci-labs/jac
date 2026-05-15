@@ -382,27 +382,6 @@ impl TypeEvaluator._get_enclosing_return_scope(
 }
 
 
-impl TypeEvaluator._get_type_of_accessor_field(expr: uni.Name) -> TypeBase | None {
-    accessor: uni.Ability | None = expr.find_parent_of_type(uni.Ability);
-    if (accessor is None) or (accessor.accessor_kind == "") {
-        impl_def = expr.find_parent_of_type(uni.ImplDef);
-        if impl_def
-        and impl_def.decl_link
-        and isinstance(impl_def.decl_link, uni.Ability)
-        and (impl_def.decl_link.accessor_kind != "") {
-            accessor = impl_def.decl_link;
-        }
-    }
-    if (accessor is None) or (accessor.accessor_kind == "") {
-        return None;
-    }
-    hv = accessor.find_parent_of_type(uni.HasVar);
-    if hv is None or hv.type_tag is None {
-        return None;
-    }
-    return self._convert_to_instance(self.get_type_of_expression(hv.type_tag.tag));
-}
-
 impl TypeEvaluator._get_declared_return_type(
     scope: uni.Ability | uni.LambdaExpr
 ) -> TypeBase | None {

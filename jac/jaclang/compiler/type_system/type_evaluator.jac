@@ -428,7 +428,6 @@ obj TypeEvaluator {
         scope: uni.Ability | uni.LambdaExpr
     ) -> TypeBase | None;
 
-    def _get_type_of_accessor_field(expr: uni.Name) -> TypeBase | None;
     def _infer_lambda_block_return_type(body: list[uni.CodeBlockStmt]) -> TypeBase;
     def _collect_return_types(
         stmts: list[uni.CodeBlockStmt], out: list[TypeBase]

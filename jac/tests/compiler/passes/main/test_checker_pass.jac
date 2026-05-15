@@ -1876,7 +1876,7 @@ test "property_cfg_narrowing" {
 
 test "native_property_setter_type_checking" {
     # Fulfills the deferred-test TODO in checker_property_assignment.jac.
-    # Native `has x: T { get; set; }` syntax bypasses the @<name>.setter
+    # Native `has x: T { getter; setter; }` syntax bypasses the @<name>.setter
     # path entirely, so setter assignment + read-only enforcement should
     # both type-check cleanly via the HasVar.accessors codepath.
     program = JacProgram();

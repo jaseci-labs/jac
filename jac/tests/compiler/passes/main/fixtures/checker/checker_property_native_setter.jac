@@ -1,18 +1,23 @@
 """Native-property setter type-check coverage.
 
-Using the `has x: T { get; set; }` form (which avoids the @<name>.setter
+Using the `has x: T { getter; setter; }` form (which avoids the @<name>.setter
 decorator-resolution path entirely), assignment must validate against the
-property's declared type. Read-only properties (no `set` accessor) must
+property's declared type. Read-only properties (no `setter` accessor) must
 emit E1005 on assignment.
 """
 
 obj Circle {
+    has _radius: float = 1.0;
+
     # writable: declared type is float — assignment must validate against it
-    has radius: float = 1.0 { get; set; };
+    has radius: float {
+        getter -> float { return self._radius; }
+        setter(value: float) { self._radius = value; }
+    }
 
     # read-only: no setter declared — assignment must emit E1005
     has area: float {
-        get { return self.radius * self.radius * 3.14159; }
+        getter { return self._radius * self._radius * 3.14159; }
     }
 }
 

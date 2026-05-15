@@ -66,15 +66,6 @@ impl StaticAnalysisPass._check_unused_symbols(scope: uni.UniScopeNode) -> None {
         if name in ("self", "super", "init", "postinit") {
             continue;
         }
-        # `field` assignments inside property accessor bodies aren't local-var
-        # definitions — they write the property's backing storage. Static
-        # analysis would otherwise flag every backed setter as unused.
-        if name == "field"
-        and sym.decl
-        and isinstance(sym.decl, uni.Name)
-        and self._is_in_accessor_body(sym.decl) {
-            continue;
-        }
         # Skip parameters of abstract abilities and by-llm abilities
         if sym.sym_type == SymbolType.VAR and isinstance(scope, uni.Ability) {
             if scope.needs_impl or scope.is_genai_ability {
@@ -106,12 +97,6 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
         # Skip well-known Python builtins and special names
         import builtins;
         if name_nd.value in dir(builtins) or name_nd.value in ("self", "super") {
-            continue;
-        }
-        # `field` is a contextual keyword inside property accessor bodies — it
-        # resolves to the parent property's backing storage at type-check and
-        # codegen time, not via the lexical symbol table.
-        if name_nd.value == "field" and self._is_in_accessor_body(name_nd) {
             continue;
         }
         # Skip dunder names
@@ -154,21 +139,6 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
     }
 }
 
-
-impl StaticAnalysisPass._is_in_accessor_body(nd: uni.UniNode) -> bool {
-    accessor = nd.find_parent_of_type(uni.Ability);
-    if accessor is not None and (accessor.accessor_kind != "") {
-        return True;
-    }
-    impl_def = nd.find_parent_of_type(uni.ImplDef);
-    if impl_def
-    and impl_def.decl_link
-    and isinstance(impl_def.decl_link, uni.Ability)
-    and (impl_def.decl_link.accessor_kind != "") {
-        return True;
-    }
-    return False;
-}
 
 impl StaticAnalysisPass._osp_shape_position(name_nd: uni.Name) -> (str | None) {
     cur = name_nd;

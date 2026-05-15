@@ -872,10 +872,9 @@ test "bidirectional edge traversal" {
     assert "Backward from e:\nDone." in output;
 }
 
-test "native property get/set/del with impl separation" {
-    # Target test for proposed `has <name>: <type> { get; set; del; }` syntax
-    # using the `field` contextual keyword. Currently FAILS: the parser does
-    # not recognize accessor blocks on `has`, nor dotted-impl on properties.
+test "native property getter/setter/deleter with impl separation" {
+    # `has <name>: <type> { getter; setter; deleter; }` declares a property
+    # over explicitly-declared backing storage; no `field` keyword is used.
     output = run_jac(os.path.join(FIXTURES, "prop_native.jac"));
     assert output == "ok\n";
 }

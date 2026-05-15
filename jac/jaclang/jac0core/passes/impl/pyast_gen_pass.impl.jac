@@ -1465,12 +1465,10 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
     # Property accessor context (resolved from parent HasVar if applicable).
     is_prop_acc = nd.accessor_kind != "";
     prop_owner_name: str | None = None;
-    prop_backing: str = "";
     if is_prop_acc {
         hv = nd.find_parent_of_type(uni.HasVar);
         if hv and isinstance(hv.name, uni.Name) {
             prop_owner_name = hv.name.value;
-            prop_backing = "_" + prop_owner_name;
         }
     }
     has_by_in_return = (
@@ -1507,64 +1505,6 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
                 );
     if (nd.is_abstract and nd.body) {
         self.emit(E5004, node_override=nd, name=str(nd.sym_name));
-    }
-    # Auto-body synthesis for property accessors using `get;`/`set;`/`del;` shorthand.
-    if is_prop_acc
-    and (nd.signature is None)
-    and (nd.body is None)
-    and (prop_owner_name is not None) {
-        if nd.accessor_kind == "property" {
-            body = [
-                self.sync(
-                    ast3.Return(
-                        value=self.sync(
-                            ast3.Attribute(
-                                value=self.sync(ast3.Name(id='self', ctx=ast3.Load())),
-                                attr=prop_backing,
-                                ctx=ast3.Load()
-                            )
-                        )
-                    )
-                )
-            ];
-        } elif nd.accessor_kind == "setter" {
-            body = [
-                self.sync(
-                    ast3.Assign(
-                        targets=[
-                            self.sync(
-                                ast3.Attribute(
-                                    value=self.sync(
-                                        ast3.Name(id='self', ctx=ast3.Load())
-                                    ),
-                                    attr=prop_backing,
-                                    ctx=ast3.Store()
-                                )
-                            )
-                        ],
-                        value=self.sync(ast3.Name(id='value', ctx=ast3.Load()))
-                    )
-                )
-            ];
-        } elif nd.accessor_kind == "deleter" {
-            body = [
-                self.sync(
-                    ast3.Delete(
-                        targets=[
-                            self.sync(
-                                ast3.Attribute(
-                                    value=self.sync(
-                                        ast3.Name(id='self', ctx=ast3.Load())
-                                    ),
-                                    attr=prop_backing,
-                                    ctx=ast3.Del()
-                                )
-                            )
-                        ]
-                    )
-                )
-            ];
-        }
     }
     decorator_list = [cast(ast3.expr, self.py_ast_val(i)) for i in nd.decorators]
         if nd.decorators
@@ -1871,70 +1811,11 @@ impl PyastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 
 impl PyastGenPass.exit_has_var(nd: uni.HasVar) -> None {
     annotation = self.py_ast_val(nd.type_tag) if nd.type_tag else None;
-    # Property with accessor block: emit backing field (if needed) + accessor methods.
+    # Property with accessor block: emit only the accessor methods. Properties
+    # have no implicit backing storage — users declare their own backing field
+    # with `has _x: T = value;` and reference `self._x` from accessor bodies.
     if (nd.accessors is not None) and (len(nd.accessors) > 0) {
         result_stmts: list = [];
-        needs_backing = nd.value is not None;
-        if not needs_backing {
-            for acc in nd.accessors {
-                if (acc.signature is None) and (acc.body is None) {
-                    needs_backing = True;
-                    break;
-                }
-            }
-        }
-        if needs_backing and isinstance(nd.name, uni.Name) {
-            backing_id = "_" + nd.name.value;
-            back_value: ast3.expr | None = None;
-            if nd.value {
-                py_val = self.py_ast_val(nd.value);
-                if isinstance(py_val, ast3.Constant) {
-                    back_value = cast(ast3.expr, py_val);
-                } else {
-                    back_value = self.sync(
-                        ast3.Call(
-                            func=self.jaclib_obj('field'),
-                            args=[],
-                            keywords=[
-                                self.sync(
-                                    ast3.keyword(
-                                        arg='factory',
-                                        value=self.sync(
-                                            ast3.Lambda(
-                                                args=self.sync(
-                                                    ast3.arguments(
-                                                        posonlyargs=[],
-                                                        args=[],
-                                                        kwonlyargs=[],
-                                                        vararg=None,
-                                                        kwarg=None,
-                                                        kw_defaults=[],
-                                                        defaults=[]
-                                                    )
-                                                ),
-                                                body=cast(ast3.expr, py_val)
-                                            )
-                                        )
-                                    )
-                                )
-                            ]
-                        )
-                    );
-                }
-            }
-            result_stmts.append(
-                self.sync(
-                    ast3.AnnAssign(
-                        target=self.sync(ast3.Name(id=backing_id, ctx=ast3.Store())),
-                        annotation=cast(ast3.expr, annotation)
-                            if annotation
-                            else self.sync(ast3.Constant(value=None)),
-                        value=back_value,
-                        simple=1
-                    )
-                )
-            );
-        }
         for acc in nd.accessors {
             if acc.gen.py_ast {
                 for stmt in acc.gen.py_ast {
@@ -3982,21 +3863,6 @@ impl PyastGenPass.exit_token(nd: uni.Token) -> None {
 
 impl PyastGenPass.exit_name(nd: uni.Name) -> None {
     name = nd.sym_name;
-    if name == "field" {
-        backing_attr = self._resolve_accessor_field_backing(nd);
-        if backing_attr is not None {
-            nd.gen.py_ast = [
-                self.sync(
-                    ast3.Attribute(
-                        value=self.sync(ast3.Name(id='self', ctx=ast3.Load())),
-                        attr=backing_attr,
-                        ctx=nd.py_ctx_func()
-                    )
-                )
-            ];
-            return;
-        }
-    }
     if name == "Self" {
         resolved = self._resolve_self_type(nd);
         if resolved is not None {
@@ -4013,27 +3879,6 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
     nd.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=nd.py_ctx_func()))];
 }
 
-
-impl PyastGenPass._resolve_accessor_field_backing(nd: uni.Name) -> str | None {
-    accessor: uni.Ability | None = nd.find_parent_of_type(uni.Ability);
-    if (accessor is None) or (accessor.accessor_kind == "") {
-        impl_def = nd.find_parent_of_type(uni.ImplDef);
-        if impl_def
-        and impl_def.decl_link
-        and isinstance(impl_def.decl_link, uni.Ability)
-        and (impl_def.decl_link.accessor_kind != "") {
-            accessor = impl_def.decl_link;
-        }
-    }
-    if (accessor is None) or (accessor.accessor_kind == "") {
-        return None;
-    }
-    hv = accessor.find_parent_of_type(uni.HasVar);
-    if (hv is None) or (not isinstance(hv.name, uni.Name)) {
-        return None;
-    }
-    return "_" + hv.name.value;
-}
 
 impl PyastGenPass._resolve_self_type(nd: uni.Name) -> ast3.expr | None {
     # Find enclosing archetype or enum

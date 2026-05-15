@@ -1,42 +1,49 @@
-"""Native property syntax — get / set / del with impl separation.
+"""Native property syntax — getter / setter / deleter with impl separation.
 
-Exercises the proposed `has <name>: <type> { get; set; del; }` form:
-  - inline auto-property (trivial get + set)
-  - read-only computed property (no backing field — `field` never appears)
+Exercises the `has <name>: <type> { getter; setter; deleter; }` form:
+  - inline property over explicit backing storage
+  - read-only computed property (no backing field)
   - full custom property whose accessor *signatures* live here and whose
     *bodies* live in prop_native.impl.jac, mirroring Jac's def/impl split.
 
-Inside any accessor body, `field` is the contextual keyword for the property's
-auto-generated backing storage. Its presence/absence determines whether a
-backing slot is allocated.
+Properties are pure computed accessors: they never allocate backing storage
+implicitly. Users declare backing fields explicitly via `has _x: T = value;`
+and reference them as `self._x` from accessor bodies.
 """
 
 obj Circle {
-    # 1. Inline auto-property: storage synthesized, both accessors trivial.
-    has color: str = "black" { get; set; };
+    # Backing storage for `color` and `radius` (explicit, just normal fields).
+    has _color: str = "black",
+        _radius: float = 1.0;
 
-    # 2. Read-only computed property: no `field` reference -> no storage.
+    # 1. Property over explicit backing storage: inline bodies.
+    has color: str {
+        getter -> str { return self._color; }
+        setter(value: str) { self._color = value; }
+    }
+
+    # 2. Read-only computed: no backing needed, getter computes from other fields.
     has diameter: float {
-        get { return self.radius * 2.0; }
+        getter { return self._radius * 2.0; }
     }
 
     # 3. Full custom property — signatures only; bodies in prop_native.impl.jac.
-    has radius: float = 1.0 {
-        get -> float;
-        set(value: float);
-        del;
+    has radius: float {
+        getter -> float;
+        setter(value: float);
+        deleter;
     }
 }
 
 with entry {
     c = Circle();
 
-    # --- inline auto-property: color ---
+    # --- writable property over backing: color ---
     assert c.color == "black";
     c.color = "red";
     assert c.color == "red";
 
-    # --- computed read-only: diameter (default radius is 1.0) ---
+    # --- read-only computed: diameter (default _radius is 1.0) ---
     assert c.diameter == 2.0;
     c.radius = 5.0;
     assert c.diameter == 10.0;

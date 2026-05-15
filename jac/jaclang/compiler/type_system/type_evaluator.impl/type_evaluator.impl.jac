@@ -1848,16 +1848,6 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return self._get_type_of_super(expr);
             }
 
-            # `field` inside a property accessor body resolves to the property's
-            # declared type (the backing storage's type). It is a contextual
-            # reserved word in this position.
-            if (isinstance(expr, uni.Name) and (expr.value == "field")) {
-                field_ty = self._get_type_of_accessor_field(expr);
-                if field_ty is not None {
-                    return field_ty;
-                }
-            }
-
             if scope := self._resolution_scope_for(expr) {
                 if symbol := type_utils.lookup_symtab(
                     scope, expr.value, self.builtins_module

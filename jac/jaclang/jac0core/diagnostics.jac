@@ -220,6 +220,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
      E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
+     E0080 = _err(
+         "E0080",
+         Category.SYNTAX,
+         "Property declarations cannot have an initializer",
+         help="Declare backing storage as a separate `has` field (e.g. `has _x: T = value;`) and reference it from your accessors."
+     ),
+     E0081 = _err(
+         "E0081",
+         Category.SYNTAX,
+         "Property declaration must contain at least one of `getter`, `setter`, `deleter`"
+     ),
      # Parser: warnings
      W0060 = _warn(
          "W0060",

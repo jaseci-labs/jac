@@ -153,6 +153,8 @@ import from jaclang.jac0core.diagnostics {
     E0045,
     E0046,
     E0047,
+    E0080,
+    E0081,
     W0060,
     W0061,
     W0063
@@ -341,8 +343,9 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_STATIC,
         TokenKind.KW_OVERRIDE,
         TokenKind.KW_IMPL,
-        TokenKind.KW_GET,
-        TokenKind.KW_FIELD,
+        TokenKind.KW_GETTER,
+        TokenKind.KW_SETTER,
+        TokenKind.KW_DELETER,
         TokenKind.KW_SEM,
         TokenKind.KW_TEST,
         TokenKind.KW_GLOBAL,
@@ -5778,17 +5781,26 @@ impl Parser.parse_has_var -> HasVar {
         self.expect(TokenKind.KW_POST_INIT);
         defer = True;
     }
-    # Optional accessor block: { get/set/del ... }
+    # Optional accessor block: { getter/setter/deleter ... }.
+    # In Jac, `has x: T { ... }` declares a *property* (pure computed accessors);
+    # storage is never allocated implicitly. Initializers (`= value`) are reserved
+    # for the storage form `has x: T = value;` and are rejected on property blocks.
     accessors: (list | None) = None;
     acc_lb_uni: UniToken | None = None;
     acc_rb_uni: UniToken | None = None;
     if self.check(TokenKind.LBRACE) {
+        if value is not None {
+            self.emit_diag(E0080);
+        }
         acc_lb_uni = self.consume_uni(TokenKind.LBRACE);
         accessors = [];
         while not self.check(TokenKind.RBRACE) {
             accessors.append(self.parse_accessor());
         }
         acc_rb_uni = self.consume_uni(TokenKind.RBRACE);
+        if len(accessors) == 0 {
+            self.emit_diag(E0081);
+        }
     }
     kid: list = [name, type_tag];
     if value {
@@ -5816,33 +5828,28 @@ impl Parser.parse_has_var -> HasVar {
     );
 }
 
-"""Recognize `get`/`set`/`del` as a property-accessor-kind keyword and consume it.
+"""Recognize `getter`/`setter`/`deleter` as a property-accessor-kind keyword and consume it.
 
-All four accessor keywords are real lexer-level keywords (KW_GET, TYP_SET,
-KW_DELETE, KW_FIELD). They are allowed as identifiers in normal positions via
-the same `is_keyword_token`/`_make_attr_from_keyword` mechanism that lets you
-write `def get(self): ...` or `obj.field` despite `int`, `set`, `static`, etc.
-being reserved words.
-
-  - `del`    -> KW_DELETE
-  - `set`    -> TYP_SET  (overlaps the built-in `set` type)
-  - `get`    -> KW_GET
+All three accessor keywords are real lexer-level keywords (KW_GETTER, KW_SETTER,
+KW_DELETER). They are allowed as identifiers in normal positions via the same
+`is_keyword_token`/`_make_attr_from_keyword` mechanism that lets `int`, `set`,
+`static`, etc. be used as identifiers despite being reserved words.
 """
 impl Parser._consume_accessor_kind -> tuple[str, Token] {
-    if self.check(TokenKind.KW_DELETE) {
+    if self.check(TokenKind.KW_DELETER) {
         return ("deleter", self.advance());
     }
-    if self.check(TokenKind.TYP_SET) {
+    if self.check(TokenKind.KW_SETTER) {
         return ("setter", self.advance());
     }
-    if self.check(TokenKind.KW_GET) {
+    if self.check(TokenKind.KW_GETTER) {
         return ("property", self.advance());
     }
     self.emit_diag(E0001);
     return ("property", self.advance());
 }
 
-"""Parse one property accessor: `get`, `set`, or `del`, with optional signature and body."""
+"""Parse one property accessor: `getter`, `setter`, or `deleter`, with optional signature and body."""
 impl Parser.parse_accessor -> Ability {
     (kind_str, kind_tok) = self._consume_accessor_kind();
     name = self.make_name(kind_tok);

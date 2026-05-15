@@ -1,21 +1,21 @@
 """Accessor bodies for Circle.radius declared in prop_native.jac.
 
-Demonstrates that the property's three accessors can be implemented in a
-sibling .impl.jac file using dotted-impl syntax, just like regular methods.
-`field` inside these bodies refers to the property's auto-generated
-backing storage.
+Demonstrates that property accessors can be implemented in a sibling
+.impl.jac file using dotted-impl syntax, just like regular methods.
+Storage is accessed via the explicit backing field `self._radius` —
+there is no `field` keyword.
 """
-impl Circle.radius.get -> float {
-    return field;
+impl Circle.radius.getter -> float {
+    return self._radius;
 }
 
-impl Circle.radius.set(value: float) {
+impl Circle.radius.setter(value: float) {
     if value < 0.0 {
         raise ValueError("radius must be non-negative");
     }
-    field = value;
+    self._radius = value;
 }
 
-impl Circle.radius.del{
-    field = 0.0;
+impl Circle.radius.deleter {
+    self._radius = 0.0;
 }
