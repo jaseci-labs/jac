@@ -341,7 +341,17 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 
 """Install all dependencies from jac.toml."""
 impl install(
-    editable: str = "", dev: bool = False, extras: list = [], verbose: bool = False
+    editable: str = "",
+    dev: bool = False,
+    extras: list = [],
+    verbose: bool = False,
+    force_reinstall: bool = False,
+    no_cache_dir: bool = False,
+    pre: bool = False,
+    dry_run: bool = False,
+    no_deps: bool = False,
+    quiet: bool = False,
+    prefer_binary: bool = False
 ) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
@@ -363,7 +373,24 @@ impl install(
         console.error("No jac.toml found", hint=hint);
         return 1;
     }
-    installer = DependencyInstaller(config=config, verbose=verbose);
+    flag_defs: list = [
+        (force_reinstall, "--force-reinstall"),
+        (no_cache_dir, "--no-cache-dir"),
+        (pre, "--pre"),
+        (dry_run, "--dry-run"),
+        (no_deps, "--no-deps"),
+        (quiet, "--quiet"),
+        (prefer_binary, "--prefer-binary"),
+
+    ];
+    install_flags: list[str] = [
+        flag
+        for (enabled, flag) in flag_defs
+        if enabled
+    ];
+    installer = DependencyInstaller(
+        config=config, verbose=verbose, install_flags=install_flags
+    );
     # ── Editable install ──────────────────────────────────────────────────────
     if editable {
         import sys;
@@ -394,7 +421,7 @@ impl install(
                 f"  Installing {len(dep_specs)} dependencies...", style="muted"
             );
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install"] + dep_specs,
+                [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
                 capture_output=not verbose,
                 text=True,
             );
@@ -406,6 +433,10 @@ impl install(
             }
         }
 
+        if dry_run {
+            console.print("  ✔ Dry run complete (nothing installed).", style="success");
+            return 0;
+        }
         site_pkgs = Path(site.getsitepackages()[0]);
         WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
         console.print(f"  ✔ Linked {src_dir}", style="success");
@@ -457,6 +488,9 @@ impl install(
         }
     }
     # Install plugin dependencies (npm, etc.)
+    if dry_run {
+        return 0 if install_success else 1;
+    }
     plugin_failed = False;
     for (type_name, dep_type) in plugin_types.items() {
         plugin_deps = config.get_plugin_deps(type_name);

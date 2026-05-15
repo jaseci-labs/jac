@@ -1583,7 +1583,7 @@ test "walrus in if-condition still hoists its let despite alt-branch scope final
     # should be visible after the if per Python semantics. This test
     # locks in the current behavior so a future correctness fix is a
     # deliberate change, not an accidental regression.
-    jac_code = "\"\"\"Test walrus hoist preservation across alt-branch finalization.\"\"\"\n\ncl def check(getter: int) -> int {\n    if (n := getter) > 5 {\n        x: int = 1;\n    } else {\n        x: int = 2;\n    }\n    return 0;\n}\n";
+    jac_code = "\"\"\"Test walrus hoist preservation across alt-branch finalization.\"\"\"\n\ncl def check(seed: int) -> int {\n    if (n := seed) > 5 {\n        x: int = 1;\n    } else {\n        x: int = 2;\n    }\n    return 0;\n}\n";
 
     temp_path = write_temp_jac(jac_code);
     try {

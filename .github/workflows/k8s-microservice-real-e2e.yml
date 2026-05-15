@@ -40,7 +40,7 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -e jac
-          pip install -e "jac-scale[deploy]"
+          jac install -e jac-scale --extras deploy
 
       - name: Set up minikube
         uses: medyagh/setup-minikube@latest
