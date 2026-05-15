@@ -420,8 +420,8 @@ test "deploy all in one" {
         ),
         None
     );
-    assert ri_username_env is not None, "RI_REDIS_USERNAME env var must be set";
-    assert ri_username_env.value_from is not None, "RI_REDIS_USERNAME must use secretKeyRef";
+    assert ri_username_env is not None , "RI_REDIS_USERNAME env var must be set";
+    assert ri_username_env.value_from is not None , "RI_REDIS_USERNAME must use secretKeyRef";
     assert ri_username_env.value_from.secret_key_ref.key == "username";
     ri_password_env = next(
         (
@@ -431,8 +431,8 @@ test "deploy all in one" {
         ),
         None
     );
-    assert ri_password_env is not None, "RI_REDIS_PASSWORD env var must be set";
-    assert ri_password_env.value_from is not None, "RI_REDIS_PASSWORD must use secretKeyRef";
+    assert ri_password_env is not None , "RI_REDIS_PASSWORD env var must be set";
+    assert ri_password_env.value_from is not None , "RI_REDIS_PASSWORD must use secretKeyRef";
     assert ri_password_env.value_from.secret_key_ref.key == "password";
     print(
         f"RedisInsight Deployment '{insight_name}' exists with RI_REDIS_HOST/PORT pre-configured, "
