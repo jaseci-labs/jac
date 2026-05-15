@@ -114,7 +114,15 @@ impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
         # level and runs the optimization pipeline, but skips MCJIT engine
         # creation (which would consume the module). The resulting linked+optimised
         # module is stored in ir_module.gen.llvm_ir for us to emit as object code.
-        options = CompileOptions(aot_mode=True);
+        #
+        # type_check=False: native compilation has its own type discipline (the
+        # backend treats `int`, `str`, function refs and `obj` instances as
+        # 64-bit pointers), so the strict Jac type checker produces false
+        # positives that would otherwise abort the build at the errors_had
+        # gate below. This matches the JIT native path (`prog.compile` without
+        # options also defaults type_check off); `jac check` remains the way to
+        # type-check a native module strictly.
+        options = CompileOptions(aot_mode=True, type_check=False);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
         console.error(f"Jac compilation failed: {e}");
