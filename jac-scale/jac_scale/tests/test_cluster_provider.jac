@@ -12,7 +12,6 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils { get_cluster_pr
 # One test covers all deterministic, pure-function behaviour for both providers.
 # These methods have no I/O: they receive plain values and return plain values,
 # so no mocking is needed.
-
 test "AWSProvider and LocalProvider honour their per-provider contracts" {
     aws = AWSProvider();
     local = LocalProvider();
@@ -45,7 +44,6 @@ test "AWSProvider and LocalProvider honour their per-provider contracts" {
 #
 # Three scenarios in one test: they all exercise validate_ports so grouping
 # them avoids repeating the mock-setup boilerplate three times.
-
 test "validate_ports: AWS skips the API; Local raises on conflict and excludes own namespace" {
     def make_svc(ns: str, name: str, node_ports: list) -> object {
         ports = [SimpleNamespace(node_port=p) for p in node_ports];
@@ -58,7 +56,7 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
     # Scenario 1 — AWSProvider must never touch CoreV1Api.
     # NLB does not use NodePorts, so there is nothing to check.
     api_spy = unittest.mock.MagicMock();
-    with unittest.mock.patch.object(cp_module.client, "CoreV1Api", lambda: api_spy) {
+    with unittest.mock.patch.object(cp_module.client, "CoreV1Api", lambda : api_spy ) {
         AWSProvider().validate_ports(30080, "my-ns");
     }
     api_spy.list_service_for_all_namespaces.assert_not_called();
@@ -74,7 +72,9 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
     raised = False;
     error_msg = "";
     try {
-        with unittest.mock.patch.object(cp_module.client, "CoreV1Api", lambda: fake_v1_conflict) {
+        with unittest.mock.patch.object(
+            cp_module.client, "CoreV1Api", lambda : fake_v1_conflict
+        ) {
             LocalProvider().validate_ports(30080, "my-ns");
         }
     } except ValueError as e {
@@ -93,7 +93,9 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
     fake_v1_same_ns.list_service_for_all_namespaces.return_value = SimpleNamespace(
         items=[same_ns_svc]
     );
-    with unittest.mock.patch.object(cp_module.client, "CoreV1Api", lambda: fake_v1_same_ns) {
+    with unittest.mock.patch.object(
+        cp_module.client, "CoreV1Api", lambda : fake_v1_same_ns
+    ) {
         LocalProvider().validate_ports(30080, "my-ns");
     }
 }
@@ -104,7 +106,6 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
 # provider. We probe via behaviour (service_type / needs_nlb_wait) rather than
 # isinstance so the test stays valid if class names are ever renamed.
 # Mirrors the class-based fake-node pattern from the existing cluster_type test.
-
 test "get_cluster_provider returns the correct provider based on cluster node metadata" {
     class FakeNode {
         def init(self, provider_id: str) {
@@ -125,13 +126,15 @@ test "get_cluster_provider returns the correct provider based on cluster node me
         }
     }
 
-    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda: FakeApiAws()) {
+    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda : FakeApiAws()) {
         provider = get_cluster_provider();
         assert provider.service_type() == 'LoadBalancer' , "AWS nodes must yield a LoadBalancer provider";
         assert provider.needs_nlb_wait() is True;
     }
 
-    with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda: FakeApiLocal()) {
+    with unittest.mock.patch.object(
+        utils.client, "CoreV1Api", lambda : FakeApiLocal()
+    ) {
         provider = get_cluster_provider();
         assert provider.service_type() == 'NodePort' , "Non-AWS nodes must yield a NodePort provider";
         assert provider.needs_nlb_wait() is False;
