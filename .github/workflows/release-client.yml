@@ -21,7 +21,7 @@ jobs:
       - name: Install jaclang and jac-client
         run: |
           pip install -e ./jac
-          pip install -e ./jac-client
+          jac install -e ./jac-client
       - name: Precompile bytecode
         run: jac run jac/scripts/precompile_bytecode.jac ./jac-client
       - name: Upload precompiled artifacts
@@ -55,8 +55,9 @@ jobs:
           merge-multiple: true
       - name: Install build tools
         run: |
-          pip install build twine
+          pip install -e ../jac
+          pip install twine
       - name: Build and publish package
         run: |
-          python -m build
+          jac bundle
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

@@ -18,8 +18,8 @@ test "nested function closures" {
 
     # Check that inner functions are present
     assert "function increment()" in bundle.code;
-    assert "function getter()" in bundle.code;
-    assert "function setter(" in bundle.code;
+    assert "function readVal()" in bundle.code;
+    assert "function writeVal(" in bundle.code;
     assert "function get_value()" in bundle.code;
 
     # Check that closures can access outer variables
