@@ -2096,3 +2096,61 @@ test "redis ingress rule must not set host before TLS is enabled" {
     redis_rule = redis_created_body["spec"]["rules"][0];
     assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
 }
+# ---------------------------------------------------------------------------
+# Startup probe + resilient experimental runtime setup (no live cluster)
+# Covers: startup-probe gating, SSH->HTTPS clone normalization, and the
+# deb822-aware, non-blocking apt-get update.
+# ---------------------------------------------------------------------------
+test "startup probe gates liveness and experimental setup is resilient" {
+    scale_config = get_scale_config();
+    logger = UtilityFactory.create_logger('standard');
+
+    # --- startup probe: present, on the health path, generous window so the
+    # slow experimental install can't trip liveness into a crash loop ---
+    base_cfg = scale_config.get_kubernetes_config();
+    base_cfg['app_name'] = 'test-app';
+    target = DeploymentTargetFactory.create('kubernetes', base_cfg, logger);
+    probes = target._build_probe_config('/docs');
+    assert 'startup' in probes , "startup probe must be built";
+    sp = probes['startup'];
+    assert sp['httpGet']['path'] == '/docs';
+    assert sp['httpGet']['port'] == target.k8s_config.container_port;
+    assert sp['failureThreshold'] >= 60 , "startup window too small for experimental install";
+    container = target._build_container_config(
+        'test-app', 'example/image:latest', probes,
+        target._build_resource_config()
+    );
+    assert container['startupProbe'] == sp , "container must carry the startup probe";
+
+    # --- experimental runtime setup: SSH urls normalized to anonymous HTTPS
+    # (pod has no SSH key) and apt-get update is deb822-aware + non-fatal ---
+    app_config = AppConfig(
+        code_folder='/tmp', file_name='main.jac', build=False, experimental=True
+    );
+    # _build_runtime_setup_command returns ['bash', '-c', '<cmd && cmd && ...>']
+    for (repo_in, expected) in [
+        ('git@github.com:owner/repo.git', 'https://github.com/owner/repo.git'),
+        ('ssh://git@github.com/owner/repo.git', 'https://github.com/owner/repo.git'),
+        ('https://github.com/owner/repo.git', 'https://github.com/owner/repo.git')
+    ] {
+        cfg = scale_config.get_kubernetes_config();
+        cfg['app_name'] = 'test-app';
+        cfg['jaseci_repo_url'] = repo_in;
+        t = DeploymentTargetFactory.create('kubernetes', cfg, logger);
+        cmds = t._build_runtime_setup_command(app_config);
+        assert cmds[0] == 'bash' and cmds[1] == '-c' , "runtime setup must be a bash -c script";
+        steps = cmds[2].split(' && ');
+        clone = next((s for s in steps if s.startswith('git clone')), '');
+        assert expected in clone , f"{repo_in} not normalized: {clone}";
+        assert 'git@' not in clone and 'ssh://' not in clone , f"SSH url leaked: {clone}";
+    }
+    # apt assertions are repo-independent; check once on the last script
+    assert any(
+        'sources.list.d/*.sources' in s and 'trixie-updates' in s for s in steps
+    ) , "deb822 .sources trixie-updates strip missing";
+    assert any(
+        s.startswith('apt-get') and 'Acquire::Retries' in s and '|| true' in s
+        for s in steps
+    ) , "resilient (bounded, non-fatal) apt-get update missing";
+    assert 'apt-get update' not in steps , "bare blocking apt-get update must be replaced";
+}
