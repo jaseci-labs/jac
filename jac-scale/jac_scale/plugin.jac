@@ -141,6 +141,36 @@ def _scale_pre_hook(context: HookContext) -> None {
         } else {
             console.print("Installing Jaseci packages from PyPI...");
         }
+        # --dry-run: print the manifest bundle + image plan that WOULD
+        # be applied, then cancel execution without touching the cluster.
+        # Leaves auto_build / guard_fallback_image at their defaults
+        # (False) so generate_manifests falls through to parent behavior
+        # and never tries to build an image.
+        dry_run = context.get_arg("dry-run", False);
+        if dry_run {
+            if target != "kubernetes-microservice" {
+                console.print(
+                    f"\n[yellow]--dry-run only supported with "
+                    f"kubernetes-microservice target (got {target!r}).[/yellow]"
+                );
+                context.set_data("cancel_execution", True);
+                context.set_data("cancel_return_code", 1);
+                return;
+            }
+            try {
+                import from jac_scale.microservices.cli.plan { print_plan }
+                print_plan(deployment_target, app_config);
+            } except Exception as e {
+                console.print(f"\n[red]--dry-run failed:[/red] {e}");
+                context.set_data("cancel_execution", True);
+                context.set_data("cancel_return_code", 1);
+                return;
+            }
+            context.set_data("cancel_execution", True);
+            context.set_data("cancel_return_code", 0);
+            return;
+        }
+
         # Opt into the python_image-fallback guard + auto-build only
         # on the production `jac start --scale` path. Tests using
         # build=False for manifest-shape assertions construct the
@@ -301,6 +331,13 @@ class JacCmd {
                     typ=bool,
                     default=False,
                     help="Enable HTTPS via Let's Encrypt (run after pointing your domain CNAME to the NLB)",
+                    short=""
+                ),
+                Arg.create(
+                    "dry-run",
+                    typ=bool,
+                    default=False,
+                    help="Print manifests + image plan that would be applied; touch nothing (no cluster contact, no build, no DB provisioning)",
                     short=""
                 ),
 
