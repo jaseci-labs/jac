@@ -2154,3 +2154,44 @@ test "startup probe gates liveness and experimental setup is resilient" {
     ) , "resilient (bounded, non-fatal) apt-get update missing";
     assert 'apt-get update' not in steps , "bare blocking apt-get update must be replaced";
 }
+# ---------------------------------------------------------------------------
+# RedisInsight (cache-dashboard) spec construction (no live cluster)
+# Covers the PR's EULA auto-accept + encryption key, the sub-path proxy
+# config, and secret-backed (never inlined) Redis credentials.
+# ---------------------------------------------------------------------------
+test "redis insight cache dashboard spec is correctly built" {
+    provider = DatabaseProviderFactory.create(
+        'kubernetes_redis', None, {'app_name': 'test-app'}
+    );
+    dash = provider.deploy_dashboard();
+    assert dash['deployment_name'] == 'test-app-redis-insight';
+    assert dash['service_name'] == 'test-app-redis-insight-service';
+
+    container = dash['deployment']['spec']['template']['spec']['containers'][0];
+    assert container['image'] == 'redis/redisinsight:3.2.0';
+    assert container['ports'][0]['containerPort'] == 5540;
+    sc = container['securityContext'];
+    assert sc['runAsNonRoot'] is True;
+    assert sc['readOnlyRootFilesystem'] is True;
+    assert sc['allowPrivilegeEscalation'] is False;
+    assert sc['capabilities']['drop'] == ['ALL'];
+
+    env = {e['name']: e for e in container['env']};
+    # EULA auto-accept + explicit encryption key (container has no OS keyring)
+    assert env['RI_ACCEPT_TERMS_AND_CONDITIONS']['value'] == 'true';
+    assert env['RI_ENCRYPTION_KEY']['value'] , "RI_ENCRYPTION_KEY must be set";
+    # Pre-seeded connection to the in-cluster Redis service, served under the
+    # ingress sub-path
+    assert env['RI_REDIS_HOST']['value'] == 'test-app-redis-service';
+    assert env['RI_REDIS_PORT']['value'] == '6379';
+    assert env['RIPROXYPATH']['value'] == '/cache-dashboard';
+    # Credentials come from the redis secret, never inlined as plaintext
+    u = env['RI_REDIS_USERNAME']['valueFrom']['secretKeyRef'];
+    p = env['RI_REDIS_PASSWORD']['valueFrom']['secretKeyRef'];
+    assert u['name'] == 'test-app-redis-secret' and u['key'] == 'username';
+    assert p['name'] == 'test-app-redis-secret' and p['key'] == 'password';
+    assert 'value' not in env['RI_REDIS_PASSWORD'] , "password must not be inlined";
+
+    assert dash['service']['spec']['ports'][0]['port'] == 5540;
+    assert dash['service_account']['automountServiceAccountToken'] is False;
+}
