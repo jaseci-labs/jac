@@ -2214,7 +2214,7 @@ test "server startup - port fallback integration" {
 """Test HealthCheckFilter suppresses noisy health-check access log entries."""
 test "health check filter suppresses health endpoint log records" {
     import logging;
-    import from jac_scale.jserver.impl.jfast_api { HealthCheckFilter }
+    import from jac_scale.jserver.jfast_api { HealthCheckFilter }
 
     def make_record(msg: str) -> logging.LogRecord {
         return logging.LogRecord(
@@ -2262,7 +2262,7 @@ test "health check filter suppresses health endpoint log records" {
 """Test that HealthCheckFilter integrates correctly with Python's logging Handler."""
 test "health check filter blocks records when attached to a handler" {
     import logging;
-    import from jac_scale.jserver.impl.jfast_api { HealthCheckFilter }
+    import from jac_scale.jserver.jfast_api { HealthCheckFilter }
 
     class _CapturingHandler(logging.Handler) {
         has captured: list = [];
