@@ -103,37 +103,37 @@ test "validate_ports: AWS skips the API; Local raises on conflict and excludes o
 # Verifies that the factory reads node metadata and returns the right concrete
 # provider. We probe via behaviour (service_type / needs_nlb_wait) rather than
 # isinstance so the test stays valid if class names are ever renamed.
+# Mirrors the class-based fake-node pattern from the existing cluster_type test.
 
 test "get_cluster_provider returns the correct provider based on cluster node metadata" {
-    def make_node_response(provider_id: str) -> object {
-        node = SimpleNamespace(
-            spec=SimpleNamespace(provider_id=provider_id),
-            metadata=SimpleNamespace(labels={})
-        );
-        return SimpleNamespace(items=[node]);
+    class FakeNode {
+        def init(self, provider_id: str) {
+            self.spec = SimpleNamespace(provider_id=provider_id);
+            self.metadata = SimpleNamespace(labels={});
+        }
     }
 
     class FakeApiAws {
         def list_node(self) -> object {
-            return make_node_response("aws://us-east-1/i-0abc12345");
+            return SimpleNamespace(items=[FakeNode("aws://us-east-1/i-0abc12345")]);
         }
     }
 
     class FakeApiLocal {
         def list_node(self) -> object {
-            return make_node_response("");
+            return SimpleNamespace(items=[FakeNode("")]);
         }
     }
 
     with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda: FakeApiAws()) {
         provider = get_cluster_provider();
-        assert provider.service_type() == 'LoadBalancer' , "AWS nodes must yield an AWSProvider (LoadBalancer)";
+        assert provider.service_type() == 'LoadBalancer' , "AWS nodes must yield a LoadBalancer provider";
         assert provider.needs_nlb_wait() is True;
     }
 
     with unittest.mock.patch.object(utils.client, "CoreV1Api", lambda: FakeApiLocal()) {
         provider = get_cluster_provider();
-        assert provider.service_type() == 'NodePort' , "Non-AWS nodes must yield a LocalProvider (NodePort)";
+        assert provider.service_type() == 'NodePort' , "Non-AWS nodes must yield a NodePort provider";
         assert provider.needs_nlb_wait() is False;
     }
 }
