@@ -151,6 +151,7 @@ impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
 impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any] {
     return {
         'api': {'base_url': ''},
+        'base_path': '/',
         'vite': {
             'plugins': [],
             'lib_imports': [],
@@ -229,6 +230,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     # Build user config in the expected internal format
     user_config: dict[str, Any] = {
         'api': client_config.get('api', {}),
+        'base_path': client_config.get('base_path', '/'),
         'vite': client_config.get('vite', {}),
         'ts': client_config.get('ts', {}),
         'configs': client_config.get('configs', {}),
@@ -257,6 +259,12 @@ impl JacClientConfig.get_package_config(self: JacClientConfig) -> dict[str, Any]
 impl JacClientConfig.get_api_config(self: JacClientConfig) -> dict[str, Any] {
     config = self.load();
     return config.get('api', {});
+}
+
+"""Get base path for HTML generation and Vite."""
+impl JacClientConfig.get_base_path(self: JacClientConfig) -> str {
+    config = self.load();
+    return str(config.get('base_path', '/'));
 }
 
 """Get Vite-specific configuration."""

@@ -675,3 +675,74 @@ test "bug_comprehension_narrowing" {
         f"Got errors: {[str(e) for e in program.errors_had]}"
     );
 }
+
+# =========================================================================
+# Bug #PROP-SETTER: @<name>.setter flagged as duplicate method
+#
+# ASTValidationPass.enter_archetype scans archetype bodies for duplicate
+# method names to emit E0076. It correctly skips `@overload` methods but
+# did not skip property accessor decorators (`@<name>.setter`,
+# `@<name>.deleter`, `@<name>.getter`). Those decorators extend an existing
+# `@property` definition by reusing the same method name — the canonical
+# Python property pattern — and must not be reported as duplicates.
+#
+# Impact: any archetype declaring a property setter (e.g. JacProgram.doc_ir
+# in jac0core/codeinfo.jac) triggered a spurious E0076 syntax error.
+#
+# The fix is *semantic*, not just structural: the dup-check first collects
+# names declared with `@property` in the class body, then skips a method
+# only when its decorator is `@<name>.setter`/`.getter`/`.deleter`, the
+# decorator's target Name matches the method name, AND `<name>` was
+# declared `@property` in this class. This preserves dup detection for:
+#   (a) accessors targeting non-properties (`@bar.setter def foo`)
+#   (b) duplicate accessors of the same kind (two `@x.setter def x`)
+# =========================================================================
+"""Return E0076 errors emitted while checking a fixture."""
+def _e0076_errors_of(fixture_name: str) -> list {
+    program = compile_and_check(fixture_name);
+    return [
+        e
+        for e in program.errors_had
+        if (e.code is not None and e.code.code == "E0076")
+    ];
+}
+
+test "bug_property_setter_not_duplicate_method" {
+    # Canonical property + setter + deleter + multi-property fixture: no E0076.
+    errs = _e0076_errors_of("checker_bug_property_setter.jac");
+    assert len(errs) == 0 , (
+        "Bug #PROP-SETTER: `@<name>.setter`/`.deleter`/`.getter` decorators "
+        "extend a property and must not be flagged as duplicate methods. "
+        f"Got E0076 errors: {[str(e) for e in errs]}"
+    );
+}
+
+test "bug_property_setter_strict_masked_dup_still_reported" {
+    # `@bar.setter def foo` where `bar` is not a @property must NOT mask
+    # a real duplicate of `def foo`. A purely structural skip (any decorator
+    # ending in `.setter`/`.getter`/`.deleter`) would silently swallow this;
+    # the semantic skip only triggers when the decorator target is a
+    # property declared in this class, so the second `def foo` still flags.
+    errs = _e0076_errors_of("checker_bug_property_setter_masked_dup.jac");
+    assert len(errs) == 1 , (
+        "Bug #PROP-SETTER strict: a duplicate `def foo` whose second "
+        "occurrence carries `@bar.setter` (with no `@property def bar` in "
+        "this class) must still raise E0076 — the property-accessor skip "
+        "must be semantic, not just structural. "
+        f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+test "bug_property_setter_duplicate_accessor_reported" {
+    # Two `@val.setter def val` for the same property is a real dup: a
+    # property can have at most one setter, getter, or deleter. The dup-
+    # detector tracks `(name, accessor_kind)` pairs alongside plain
+    # method names so this case still raises E0076.
+    errs = _e0076_errors_of("checker_bug_property_setter_dup_accessor.jac");
+    assert len(errs) == 1 , (
+        "Bug #PROP-SETTER strict: declaring two `@val.setter def val` for "
+        "the same property must raise E0076 — a property has at most one "
+        "setter (or getter, or deleter). "
+        f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}

@@ -2,7 +2,22 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.5 (Latest Release)
+## byllm 0.6.6 (Latest Release)
+
+### New Features
+
+- **Add: Universal schema-hint injection for structured-output prompts**: byLLM now extracts the `response_format` schema's enum/description metadata and appends a human-readable hint (e.g. `Schema requirements: - field must be one of: 1=WORK, 2=PERSONAL, ...`) to the last user message inside `BaseLLM.make_model_params`, so every backend sees the same explicit name-to-value mapping cloud frontier providers' server-side prompt builders inject for free. Fixes systematic miscategorization on Ollama, vLLM, and other local-style backends where small open-weight models (Gemma 4 E4B, Llama 3.x 8B class) were defaulting to the first allowed enum value because the schema description never reached the prompt. Empirical impact on the day_planner mini-bench: Ollama `gemma4:e4b` jumps from 1/6 (17%) to 6/6 (100%) on the categorize fixture; in-process `local:gemma-4-e4b` stays at 24/24 (100%). The previously LocalLLM-only `attach_schema_hint` is now `byllm.schema.inject_schema_hint`; LocalLLM's `filter_params` is reduced to llama.cpp-specific concerns (multimodal-content flatten and `json_schema` -> `json_object` rewrite) since the hint is already applied upstream.
+
+### Bug Fixes
+
+- **Fix: `local:` model ctx_window propagation to compaction layer**: `LocalLLM._get_ctx_window` (introduced in #5830) returned only `self.spec["n_ctx"]`, ignoring every user override. The proactive-compaction threshold then fired against the alias's hardcoded spec value (8192 for all bundled aliases) regardless of `by llm(ctx_window=N)`, `LocalLLM(ctx_window=N)`, `[plugins.byllm.compaction] ctx_window` in `jac.toml`, or `config={"n_ctx": N}`. Worst case: a user who built the engine with `config={"n_ctx": 2048}` got engine overflow at ~2048 tokens because compaction was waiting for 80% of 8192.
+- **Fix: `Message.to_dict()` crashing on media params with `sem` declarations**: An explicit `sem foo.img = "..."` on an `Image` (or any other `Media`) parameter crashed byllm with `TypeError: list indices must be integers or slices, not str`. The semstr-handling branch assumed `media.to_dict()` returns a single dict, but all `Media` subclasses return `list[dict]` (one entry per content block). The branch is now correct, and the sem string is emitted as a standard `{"type": "text", "text": ...}` block immediately before the media - replacing the previous non-standard `"description"` key that LLM provider APIs (OpenAI/Anthropic) would have rejected anyway. Surfaces in JacCoder image uploads through JacBuilder.
+
+### Refactors
+
+- **Refactor: Auto-compaction test suite**: Replaced the auto-compaction test suite (introduced in #5722) with 13 focused integration tests that drive the real `by llm()` pipeline end-to-end. The new suite asserts on observable outcomes (result correctness, exception type, message-list shape, hook-call counts) and never patches `_default_compact`, `_compact_messages`, `_copy_for_compaction`, `_get_ctx_window`, or `model_call_no_stream`; they all run as real implementations.
+
+## byllm 0.6.5
 
 ### New Features
 
