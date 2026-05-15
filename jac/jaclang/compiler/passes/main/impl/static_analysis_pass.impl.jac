@@ -139,19 +139,7 @@ impl StaticAnalysisPass._check_undefined_names(mod: uni.Module) -> None {
     }
 }
 
-"""Return the OSP-shape position label for an unresolved Name, or None.
 
-Walks up the parent chain through transparent containers (tuple, union,
-attr-trailer) and reports the structural position when the chain
-reaches one of:
-
-    1. ConnectOp.conn_type            -> "connect typed-edge position"
-    2. DisconnectOp's edge_spec       -> "disconnect typed-edge position"
-       FilterCompr.f_type
-    3. EventSignature.arch_tag_info   -> "ability trigger position"
-
-These positions require a defined edge or archetype type — leaving the
-name unresolved breaks the program's runtime shape, not just hygiene."""
 impl StaticAnalysisPass._osp_shape_position(name_nd: uni.Name) -> (str | None) {
     cur = name_nd;
     parent = cur.parent;

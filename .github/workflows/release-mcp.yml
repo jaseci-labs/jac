@@ -22,7 +22,7 @@ jobs:
       - name: Install jaclang and jac-mcp
         run: |
           pip install -e ./jac
-          pip install -e ./jac-mcp
+          jac install -e ./jac-mcp
       - name: Precompile bytecode
         run: jac run jac/scripts/precompile_bytecode.jac ./jac-mcp
       - name: Upload precompiled artifacts
@@ -56,13 +56,13 @@ jobs:
       - name: Install jaclang and jac-mcp
         run: |
           pip install -e ../jac
-          pip install -e .
+          jac install -e .
       - name: Bundle documentation
         run: jac run scripts/bundle_docs.jac
       - name: Install build tools
         run: |
-          pip install build twine
+          pip install twine
       - name: Build and publish package
         run: |
-          python -m build
+          jac bundle
           twine upload dist/* -u __token__ -p ${{ secrets.PYPI_TOKEN }}

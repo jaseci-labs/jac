@@ -1,0 +1,28 @@
+[project]
+name = "jac-highlighter"
+version = "0.0.1"
+description = "A Pygments lexer for the Jac programming language."
+authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
+license = "MIT"
+readme = "README.md"
+
+[project.include]
+modules = ["jac_syntax_highlighter"]
+
+[dependencies]
+"pygments" = "<2.20"
+mkdocs = "*"
+mkdocs-material = "*"
+mkdocs-redirects = "*"
+pymdown-extensions = "*"
+mkdocs-video = "*"
+mkdocs-open-in-new-tab = "*"
+starlette = "*"
+uvicorn = "*"
+watchdog = "*"
+mkdocs-graphviz = "*"
+mkdocs-material-extensions = "*"
+pluggy = "*"
+
+[entrypoints."pygments.lexers"]
+jaclexer = "jac_syntax_highlighter:JacLexer"
