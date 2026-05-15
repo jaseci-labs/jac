@@ -1072,14 +1072,14 @@ impl bundle(output: str = "dist") -> int {
     }
 
     console.print(
-        f"\n📦 Publishing [cyan]{config.project.name}[/cyan] "
+        f"\n📦 Bundling [cyan]{config.project.name}[/cyan] "
         f"v{config.project.version}",
         style="bold"
     );
 
     out_dir = Path(output);
     out_dir.mkdir(parents=True, exist_ok=True);
-    console.print("\n  Pre-compiling .jac → .jir + building wheel...", style="muted");
+    console.print("\n  Building wheel...", style="muted");
     try {
         builder = WheelBuilder(config=config, project_root=config.project_root);
         whl_path = builder.build_to(out_dir);
