@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (reads from jaseci pyproject.toml if empty)"
+        description: "Release version (reads from jaseci jac.toml if empty)"
         required: false
         type: string
 
@@ -34,7 +34,7 @@ jobs:
           else
             VERSION=$(python3 -c "
           import tomllib
-          with open('jaseci-package/pyproject.toml', 'rb') as f:
+          with open('jaseci-package/jac.toml', 'rb') as f:
               print(tomllib.load(f)['project']['version'])
           ")
           fi

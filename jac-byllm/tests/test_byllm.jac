@@ -123,6 +123,15 @@ test "image input" {
     assert "The image shows a hot air balloon shaped like a heart" in stdout_value;
 }
 
+test "image param with sem string doesn't crash Message.to_dict" {
+    captured_output = io.StringIO();
+    sys.stdout = captured_output;
+    jac_import("image_with_sem", base_path=FIXTURE_DIR + "/");
+    sys.stdout = sys.__stdout__;
+    stdout_value = captured_output.getvalue();
+    assert "IMAGE_SEM_PASS" in stdout_value;
+}
+
 test "streaming output" {
     captured_output = io.StringIO();
     sys.stdout = captured_output;

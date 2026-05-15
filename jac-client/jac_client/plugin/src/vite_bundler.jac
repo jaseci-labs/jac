@@ -64,6 +64,7 @@ class ViteBundler {
         is_dev: bool,
         entry_file: Path,
         api_base_url: str,
+        base_path: str,
         api_port: int = 8000,
         for_mobile_dev: bool = False,
         mobile_hmr_host: str = "",

@@ -1477,6 +1477,17 @@ minify = true
 
 Defaults to `true` for `jac build` and `false` for `jac start --dev`.
 
+### Base Path
+
+Control the base path for asset resolution (JS/CSS) in the generated `index.html`. Useful for deploying the app on a subpath (e.g., `https://example.com/myapp/`).
+
+```toml
+[plugins.client]
+base_path = "/myapp/"
+```
+
+Defaults to `"/"`. Can also be set to `"./"` for relative path resolution if needed.
+
 ---
 
 ## CLI Commands

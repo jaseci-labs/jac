@@ -104,6 +104,13 @@ Emitted by the parser and lexer during source code parsing.
 | `E0050` | Duplicate '{param}' in parameter list |
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
 
+### Property Declaration Errors
+
+| Code | Message |
+|------|---------|
+| `E0080` | Property declarations cannot have an initializer (declare backing storage as a separate `has` field) |
+| `E0081` | Property declaration must contain at least one of `getter`, `setter`, `deleter` |
+
 ### Parser Warnings
 
 | Code | Message |
