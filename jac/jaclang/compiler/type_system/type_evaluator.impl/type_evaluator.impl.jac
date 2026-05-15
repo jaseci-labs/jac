@@ -3039,6 +3039,45 @@ impl TypeEvaluator.assign_type(
                 }
             }
         }
+        # Function reference → int: a function value is a 64-bit pointer in
+        # native code, so let it be passed where an int parameter is expected
+        # (e.g. clib callback slots `def cb(...) -> ...; uv_poll_start(..., cb)`).
+        # Restricted to the builtin int class so this doesn't open a back
+        # door for arbitrary user types.
+        if isinstance(dest_type, types.ClassType) and dest_type.is_builtin("int") {
+            return True;
+        }
+    }
+    # Native pointer-bitcast escape hatches. In Jac native, `int`, `str`,
+    # and user-defined `obj` instances are all 64-bit pointer-sized values,
+    # so the runtime treats assignment between them as a no-op bitcast.
+    # The type checker historically diverges from that — these rules let
+    # ABI-shaped wrappers like `obj UVBuf { has base: str, ... }` continue
+    # to compile where `reader: UVBuf = ptr_int` would otherwise fail.
+    if isinstance(src_type, types.ClassType)
+    and isinstance(dest_type, types.ClassType)
+    and src_type.is_class_instance()
+    and dest_type.is_class_instance() {
+        src_is_ptr = (
+            src_type.is_builtin("int")
+            or src_type.is_builtin("str")
+            or not src_type.is_builtin()
+        );
+        dest_is_ptr = (
+            dest_type.is_builtin("int")
+            or dest_type.is_builtin("str")
+            or not dest_type.is_builtin()
+        );
+        if src_is_ptr
+        and dest_is_ptr
+        and (
+            src_type.is_builtin("int")
+            or src_type.is_builtin("str")
+            or dest_type.is_builtin("int")
+            or dest_type.is_builtin("str")
+        ) {
+            return True;
+        }
     }
     # Everything is assignable to Any or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
