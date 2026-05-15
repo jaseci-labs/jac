@@ -1462,6 +1462,15 @@ impl Ability.method_owner -> Archetype | Enum | None {
             )
             else None
     );
+    if (found is None) and (self.accessor_kind != "") {
+        nodew = self.parent;
+        while nodew is not None {
+            if isinstance(nodew, (Archetype, Enum)) {
+                return nodew;
+            }
+            nodew = nodew.parent;
+        }
+    }
     return found;
 }
 
@@ -2135,6 +2144,11 @@ impl JsxText.get_normalized_text -> str {
 }
 
 impl JsxExpression.postinit -> None {
+    JsxChild.postinit(self);
+}
+
+
+impl JsxComment.postinit -> None {
     JsxChild.postinit(self);
 }
 

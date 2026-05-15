@@ -94,6 +94,23 @@ impl NaIRGenPass._register_archetypes(module: uni.Module) -> None {
                             self.method_funcs[full_name] = func;
                             self.has_native_code = True;
                         }
+                    } else {
+                        # Walker `can ... with N entry/exit` abilities use
+                        # EventSignature — NA can't lower the OSP traversal
+                        # model yet, so the body would silently be skipped.
+                        # Surface a clear error instead of dropping it.
+                        _sig_kind = (
+                            type(stmt.signature).__name__
+                                if stmt.signature is not None
+                                else "no-signature"
+                        );
+                        _m_name = stmt.name_ref.sym_name if stmt.name_ref else "?";
+                        self.emit(
+                            E5090,
+                            node_override=stmt,
+                            kind="archetype method",
+                            name=f"{arch_name}.{_m_name} ({_sig_kind})"
+                        );
                     }
                 }
             }

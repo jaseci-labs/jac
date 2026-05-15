@@ -28,7 +28,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac destroy` | Remove Kubernetes deployment (jac-scale) |
 | `jac status` | Show deployment status of Kubernetes resources (jac-scale) |
 | `jac add` | Add packages to project |
-| `jac install` | Install project/project dependencies |
+| `jac install` | Install project dependencies (or `-e <path>` for an editable install) |
 | `jac remove` | Remove packages from project |
 | `jac update` | Update dependencies to latest compatible versions |
 | `jac bundle` | Build a distributable `.whl` from `jac.toml` |
@@ -170,7 +170,7 @@ jac run greet.jac --name Alice
 Start a Jac application as an HTTP API server. With the jac-scale plugin installed, use `--scale` to deploy to Kubernetes. Use `--dev` for Hot Module Replacement (HMR) during development.
 
 ```bash
-jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa}] [--scale] [--no-scale] [-b] [--no-build] [filename]
+jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a API_PORT] [-n] [--no-no_client] [--profile PROFILE] [--client {web,desktop,pwa,mobile}] [--host HOST] [--platform {auto,android,ios}] [--scale] [--no-scale] [-b] [--no-build] [filename]
 ```
 
 | Option | Description | Default |
@@ -183,7 +183,9 @@ jac start [-h] [-p PORT] [-m] [--no-main] [-f] [--no-faux] [-d] [--no-dev] [-a A
 | `--api_port` | Separate API port for HMR mode (0=same as port) | `0` |
 | `--no_client` | Skip client bundling/serving (API only) | `False` |
 | `--profile` | Configuration profile to load (e.g. prod, staging) | `""` |
-| `--client` | Client build target (`web`, `desktop`, `pwa`) | None |
+| `--client` | Client build target (`web`, `desktop`, `pwa`, `mobile`) | None |
+| `--host` | Mobile dev (`--client mobile --dev`) optional live-reload host/IP override | `""` |
+| `--platform` | Mobile start/dev platform selector for `--client mobile` (`auto`, `android`, `ios`) | `auto` |
 | `--scale` | Deploy to Kubernetes (requires jac-scale) | `False` |
 | `-b, --build` | Build Docker image before deploy (with `--scale`) | `False` |
 
@@ -201,6 +203,15 @@ jac start --dev
 
 # HMR mode without client bundling (API only)
 jac start --dev --no_client
+
+# Mobile dev (Android default)
+jac start main.jac --client mobile --dev
+
+# Mobile dev on iOS simulator
+jac start main.jac --client mobile --dev --platform ios
+
+# Mobile dev with explicit host override
+jac start main.jac --client mobile --dev --host 192.168.1.25
 
 # Deploy to Kubernetes (requires jac-scale plugin)
 jac start --scale
@@ -1042,13 +1053,24 @@ For private packages from custom registries (e.g., GitHub Packages), configure s
 Sync the project environment to `jac.toml`. Installs all Python (pip), git, and plugin-provided (npm, etc.) dependencies in one command. Creates or validates the project virtual environment at `.jac/venv/`.
 
 ```bash
-jac install [-h] [-d] [-v]
+jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
+            [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
+            [--no-deps] [--quiet] [--prefer-binary]
 ```
 
 | Option | Description | Default |
 |--------|-------------|---------|
+| `-e, --editable PATH` | Install the Jac package at `PATH` in editable mode (analogous to `pip install -e`). `jac.toml` is read from `PATH`, not the current directory. | `""` |
 | `-d, --dev` | Include dev dependencies | `False` |
+| `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
+| `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
+| `--no-cache-dir` | Disable the pip download cache | `False` |
+| `--pre` | Include pre-release and development versions | `False` |
+| `--dry-run` | Show what would be installed without actually installing anything | `False` |
+| `--no-deps` | Don't install package dependencies | `False` |
+| `--quiet` | Suppress pip output | `False` |
+| `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
 
 **Examples:**
 
@@ -1059,9 +1081,37 @@ jac install
 # Install including dev dependencies
 jac install --dev
 
+# Install optional dependency groups defined in jac.toml
+jac install --extras data monitoring
+
+# Editable install with an optional group
+jac install -e . --extras all
+
 # Install with verbose output
 jac install -v
+
+# Editable install of the current package
+jac install -e .
+
+# Editable install from anywhere (no need to cd into the package)
+jac install -e /path/to/lib
+
+# Reinstall all packages from scratch (ignores cached state)
+jac install --force-reinstall
+
+# Include pre-release versions
+jac install --pre
+
+# Preview what would be installed without doing it
+jac install --dry-run
+
+# Install without using pip's download cache
+jac install --no-cache-dir
 ```
+
+Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
+
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 
@@ -1662,8 +1712,8 @@ jac build [filename] [--client TARGET] [-p PLATFORM]
 | Option | Description | Default |
 |--------|-------------|---------|
 | `filename` | Path to .jac file | `main.jac` |
-| `--client` | Build target (`web`, `desktop`) | `web` |
-| `-p, --platform` | Desktop platform (`windows`, `macos`, `linux`, `all`) | Current platform |
+| `--client` | Build target (`web`, `desktop`, `pwa`, `mobile`) | `web` |
+| `-p, --platform` | Platform for desktop (`windows`, `macos`, `linux`, `all`) or mobile (`android`, `ios`) builds | Current platform |
 
 **Examples:**
 
@@ -1676,6 +1726,12 @@ jac build --client desktop
 
 # Build for Windows
 jac build --client desktop --platform windows
+
+# Build mobile app for Android
+jac build --client mobile --platform android
+
+# Build mobile app for iOS
+jac build --client mobile --platform ios
 ```
 
 #### jac setup
@@ -1683,14 +1739,25 @@ jac build --client desktop --platform windows
 One-time initialization for a build target.
 
 ```bash
-jac setup <target>
+jac setup <target> [-p PLATFORM]
 ```
+
+For `target=mobile`, `--platform` supports `android`, `ios`, or `all`.
 
 **Examples:**
 
 ```bash
 # Setup Tauri for desktop builds
 jac setup desktop
+
+# Setup Capacitor for mobile builds
+jac setup mobile
+
+# Setup iOS scaffold only (macOS only)
+jac setup mobile --platform ios
+
+# Setup both Android and iOS scaffolds (macOS)
+jac setup mobile --platform all
 ```
 
 #### Extended Flags

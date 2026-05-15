@@ -340,13 +340,32 @@ def _create_root_gitignore(project_path: Path, entries: list[str]) {
 }
 
 """Install all dependencies from jac.toml."""
-impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> int {
+impl install(
+    editable: str = "",
+    dev: bool = False,
+    extras: list = [],
+    verbose: bool = False,
+    force_reinstall: bool = False,
+    no_cache_dir: bool = False,
+    pre: bool = False,
+    dry_run: bool = False,
+    no_deps: bool = False,
+    quiet: bool = False,
+    prefer_binary: bool = False
+) -> int {
     import from pathlib { Path }
     import from jaclang.project.config { get_config }
     import from jaclang.project.dependencies { DependencyInstaller }
     import from jaclang.project.dep_registry { get_dependency_registry }
 
-    config = get_config();
+    # force_discover bypasses the module-level cache, which may already hold
+    # the calling project's config when invoked from outside the target dir.
+    if editable {
+        src_dir: Path = Path(editable).resolve();
+        config = get_config(start_path=src_dir, force_discover=True);
+    } else {
+        config = get_config();
+    }
     if config is None {
         hint = "Clone the library repo and run 'jac install -e .' inside it."
             if editable
@@ -354,35 +373,55 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
         console.error("No jac.toml found", hint=hint);
         return 1;
     }
+    flag_defs: list = [
+        (force_reinstall, "--force-reinstall"),
+        (no_cache_dir, "--no-cache-dir"),
+        (pre, "--pre"),
+        (dry_run, "--dry-run"),
+        (no_deps, "--no-deps"),
+        (quiet, "--quiet"),
+        (prefer_binary, "--prefer-binary"),
 
+    ];
+    install_flags: list[str] = [
+        flag
+        for (enabled, flag) in flag_defs
+        if enabled
+    ];
+    installer = DependencyInstaller(
+        config=config, verbose=verbose, install_flags=install_flags
+    );
     # ── Editable install ──────────────────────────────────────────────────────
     if editable {
         import sys;
         import site;
         import subprocess;
         import from jaclang.publish.builder { WheelBuilder }
-
-        src_dir: Path = Path(editable).resolve();
         console.print(
             f"\n📦 Editable install: [cyan]{config.project.name}[/cyan] "
             f"from [dim]{src_dir}[/dim]",
             style="bold"
         );
 
-        all_deps: dict[str, str] = dict(config.dependencies);
-        if dev {
-            all_deps.update(config.dev_dependencies);
-        }
-        if all_deps {
-            dep_specs: list[str] = [];
-            for (name, ver) in all_deps.items() {
-                dep_specs.append(f"{name}{ver}" if ver and ver != "*" else name);
+        dep_specs = installer.get_pip_package_specs(include_dev=dev);
+        if extras {
+            try {
+                extra_specs = installer.get_extra_package_specs(extras);
+            } except ValueError as e {
+                console.error(str(e));
+                return 1;
             }
+            if extra_specs {
+                console.print(f"  Extras: {', '.join(extras)}", style="muted");
+            }
+            dep_specs.extend(extra_specs);
+        }
+        if dep_specs {
             console.print(
                 f"  Installing {len(dep_specs)} dependencies...", style="muted"
             );
             result = subprocess.run(
-                [sys.executable, "-m", "pip", "install"] + dep_specs,
+                [sys.executable, "-m", "pip", "install", "--upgrade"] + installer.install_flags + dep_specs,
                 capture_output=not verbose,
                 text=True,
             );
@@ -394,6 +433,10 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
             }
         }
 
+        if dry_run {
+            console.print("  ✔ Dry run complete (nothing installed).", style="success");
+            return 0;
+        }
         site_pkgs = Path(site.getsitepackages()[0]);
         WheelBuilder(config=config).install_editable(src_dir, site_pkgs);
         console.print(f"  ✔ Linked {src_dir}", style="success");
@@ -406,9 +449,20 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
     );
     console.print(f"  Virtual environment: {config.get_venv_dir()}", style="muted");
     console.print();
-    installer = DependencyInstaller(config=config, verbose=verbose);
     pip_packages = installer.get_pip_package_specs(include_dev=dev);
     git_packages = installer.get_git_package_specs();
+    if extras {
+        try {
+            extra_specs = installer.get_extra_package_specs(extras);
+        } except ValueError as e {
+            console.error(str(e));
+            return 1;
+        }
+        if extra_specs {
+            console.print(f"  Extras: {', '.join(extras)}", style="muted");
+        }
+        pip_packages.extend(extra_specs);
+    }
     # Check for plugin dependencies (npm, etc.)
     dep_registry = get_dependency_registry();
     plugin_types = dep_registry.get_all();
@@ -434,6 +488,9 @@ impl install(editable: str = "", dev: bool = False, verbose: bool = False) -> in
         }
     }
     # Install plugin dependencies (npm, etc.)
+    if dry_run {
+        return 0 if install_success else 1;
+    }
     plugin_failed = False;
     for (type_name, dep_type) in plugin_types.items() {
         plugin_deps = config.get_plugin_deps(type_name);

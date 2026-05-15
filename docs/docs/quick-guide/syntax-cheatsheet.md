@@ -364,6 +364,32 @@ obj Example {
 
 
 # ============================================================
+# Properties (getter / setter / deleter)
+# ============================================================
+
+# A `has` with an accessor block is a property. It never allocates
+# backing storage -- declare backing fields explicitly and reference
+# them with `self._<name>`.
+
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+            deleter { self._balance = 0.0; }
+        }
+
+    # Pure computed (no backing): read-only by omitting `setter`.
+    has doubled: float {
+        getter { return self._balance * 2.0; }
+    }
+}
+
+# Accessor bodies can live in an impl block, like regular methods:
+#   impl Account.balance.getter -> float { return self._balance; }
+
+
+# ============================================================
 # Access Modifiers
 # ============================================================
 
@@ -1269,6 +1295,7 @@ def:pub Counter() -> JsxElement {
 # <div>text</div>               HTML elements
 # <Component prop="val" />      Component with props
 # {expression}                  JavaScript expression
+# {#* comment *#}               JSX comment (renders nothing)
 # {condition and <p>Show</p>}   Conditional render
 # {[<li>...</li> for x in xs]}  List rendering
 # <div {...props}>               Spread props

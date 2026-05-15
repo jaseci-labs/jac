@@ -1874,6 +1874,28 @@ test "property_cfg_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+test "native_property_setter_type_checking" {
+    # Fulfills the deferred-test TODO in checker_property_assignment.jac.
+    # Native `has x: T { getter; setter; }` syntax bypasses the @<name>.setter
+    # path entirely, so setter assignment + read-only enforcement should
+    # both type-check cleanly via the HasVar.accessors codepath.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_property_native_setter.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    # 1. assignment of str to a float-typed writable property
+    assert "wrong" in program.errors_had[0].pretty_print();
+    assert "float" in program.errors_had[0].pretty_print();
+    # 2. read-only diagnostic for the setterless `area` property
+    assert "read-only" in program.errors_had[1].pretty_print();
+    assert "area" in program.errors_had[1].pretty_print();
+}
+
 test "type_narrowing" {
     program = JacProgram();
     mod = program.compile(
@@ -4569,4 +4591,28 @@ test "isinstance_and_narrowing" {
     assert len(w1051) == 0 , f"Expected no W1051 warnings, got {len(w1051)}:\n" + "\n---\n".join(
         w.pretty_print() for w in w1051
     );
+}
+
+test "pipe_forward_typing_matches_call_form" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_pipe_forward_typing.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    w1051 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051"
+    ];
+    assert len(w1051) == 0 , f"Expected no W1051 on pipe expressions, got {len(
+        w1051
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051);
+
+    assert len(program.errors_had) == 1 , f"Expected exactly 1 error (the intentional negative case), got {len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in program.errors_had);
+    err = program.errors_had[0];
+    assert err.code and err.code.code == "E1053" , f"Expected E1053, got {err.code.code
+        if err.code
+        else 'no-code'}:\n{err.pretty_print()}";
 }

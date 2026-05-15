@@ -144,6 +144,8 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0027,
+    E0028,
     E0026,
     E0030,
     E0032,
@@ -151,6 +153,8 @@ import from jaclang.jac0core.diagnostics {
     E0045,
     E0046,
     E0047,
+    E0080,
+    E0081,
     W0060,
     W0061,
     W0063
@@ -339,6 +343,9 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_STATIC,
         TokenKind.KW_OVERRIDE,
         TokenKind.KW_IMPL,
+        TokenKind.KW_GETTER,
+        TokenKind.KW_SETTER,
+        TokenKind.KW_DELETER,
         TokenKind.KW_SEM,
         TokenKind.KW_TEST,
         TokenKind.KW_GLOBAL,
@@ -1226,6 +1233,11 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid.append(conn_assign);
             }
         }
+        if not self.check(TokenKind.CARROW_R_P2) {
+            self.emit_diag(E0027);
+            self.synchronize();
+            return None;
+        }
         end_uni = self.consume_uni(TokenKind.CARROW_R_P2);
         kid.append(end_uni);
         return ConnectOp(
@@ -1290,7 +1302,8 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid=kid
             );
         } else {
-            self.emit_diag(E0021);
+            self.emit_diag(E0028);
+            self.synchronize();
             return None;
         }
     }
@@ -3355,6 +3368,13 @@ impl Parser.parse_jsx_child -> Expr {
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
     }
+    # JSX block comment: {#* ... *#} — renders nothing, but kept in the AST
+    # so the formatter can round-trip it.
+    if self.check(TokenKind.JSX_COMMENT) {
+        cmt_tok = self.advance();
+        cmt_node = self.make_uni_token(cmt_tok);
+        return JsxComment(value=cmt_node, kid=[cmt_node]);
+    }
     # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
@@ -3559,7 +3579,10 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_IMPL,
         TokenKind.TYP_TYPE,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_WITH
+        TokenKind.KW_WITH,
+        TokenKind.KW_CLIENT,
+        TokenKind.KW_SERVER,
+        TokenKind.KW_NATIVE
     ) {
         return self.parse_docstring_target();
     }
@@ -3711,6 +3734,17 @@ impl Parser.parse_docstring_target{
         result = self.parse_module_code();
         result.doc = elem_doc;
         result.add_kids_left([elem_doc]);
+        return result;
+    }
+    # cl / sv / na single-stmt prefix: recurse into parse_element_stmt so the
+    # prefix is consumed and code_context is tagged on the inner element. The
+    # docstring attaches to that inner element, not to the context prefix.
+    if self.check_any(TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE) {
+        result = self.parse_element_stmt();
+        if result is not None {
+            result.doc = elem_doc;
+            result.add_kids_left([elem_doc]);
+        }
         return result;
     }
     # Complex case: decorators/async/ability/archetype — dispatch via lookahead
@@ -4113,6 +4147,12 @@ impl Parser.parse_statement{
     expr_kid: list = [expr];
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
+    } elif isinstance(expr, Name) and expr.value == "new" {
+        # `new` is an ambient builtin; a bare `new` followed by another atom
+        # is JS-style `new Foo(...)` usage. Emit the migration-friendly
+        # E0012 (which recommends `new(target, ...args)`) instead of the
+        # generic E0002 "Missing ';'".
+        self.emit_diag(E0012, loc=self.current().loc);
     } else {
         self.emit_diag(E0002, token=";");
     }
@@ -5101,7 +5141,17 @@ impl Parser.parse_assignment_with_target(
     }
     # Add Semi as child of Assignment (matching Lark structure)
     if require_semi {
-        self.expect(TokenKind.SEMI);
+        if not self.check(TokenKind.SEMI)
+        and value is not None
+        and isinstance(value, Name)
+        and value.value == "new" {
+            # JS-style `lhs = new Foo(...)`: emit E0012 instead of the
+            # generic E0002 from expect(SEMI). See parse_statement for
+            # the same detection on bare expressions.
+            self.emit_diag(E0012, loc=self.current().loc);
+        } else {
+            self.expect(TokenKind.SEMI);
+        }
         kid.append(self.make_semi());
     } elif self.match_tok(TokenKind.SEMI) {
         kid.append(self.make_semi());
@@ -5641,7 +5691,15 @@ impl Parser.parse_has_stmt -> ArchHas {
         has_comma_unis.append(self.make_uni_token(self.previous()));
         vars.append(self.parse_has_var());
     }
-    self.expect(TokenKind.SEMI);
+    # `;` is optional when the last var ends with an accessor brace `}`
+    last_had_accessors = vars and (vars[len(vars) - 1].accessors is not None);
+    saw_semi = False;
+    if last_had_accessors {
+        saw_semi = self.match_tok(TokenKind.SEMI) is not None;
+    } else {
+        self.expect(TokenKind.SEMI);
+        saw_semi = True;
+    }
     kid: list = [];
     if is_static {
         kid.append(self.make_uni_token(static_tok));
@@ -5657,21 +5715,23 @@ impl Parser.parse_has_stmt -> ArchHas {
         }
         kid.append(v);
     }
-    # Add trailing Semi
-    prev = self.previous();
-    kid.append(
-        Semi(
-            orig_src=self.get_source(),
-            name=Tok.SEMI.value,
-            value=";",
-            line=prev.loc.line,
-            end_line=prev.loc.end_line,
-            col_start=prev.loc.col_start,
-            col_end=prev.loc.col_end,
-            pos_start=prev.loc.pos_start,
-            pos_end=prev.loc.pos_end
-        )
-    );
+    # Add trailing Semi (synthetic if elided after accessor brace)
+    if saw_semi {
+        prev = self.previous();
+        kid.append(
+            Semi(
+                orig_src=self.get_source(),
+                name=Tok.SEMI.value,
+                value=";",
+                line=prev.loc.line,
+                end_line=prev.loc.end_line,
+                col_start=prev.loc.col_start,
+                col_end=prev.loc.col_end,
+                pos_start=prev.loc.pos_start,
+                pos_end=prev.loc.pos_end
+            )
+        );
+    }
     return ArchHas(
         is_static=is_static,
         access=access,
@@ -5721,6 +5781,27 @@ impl Parser.parse_has_var -> HasVar {
         self.expect(TokenKind.KW_POST_INIT);
         defer = True;
     }
+    # Optional accessor block: { getter/setter/deleter ... }.
+    # In Jac, `has x: T { ... }` declares a *property* (pure computed accessors);
+    # storage is never allocated implicitly. Initializers (`= value`) are reserved
+    # for the storage form `has x: T = value;` and are rejected on property blocks.
+    accessors: (list | None) = None;
+    acc_lb_uni: UniToken | None = None;
+    acc_rb_uni: UniToken | None = None;
+    if self.check(TokenKind.LBRACE) {
+        if value is not None {
+            self.emit_diag(E0080);
+        }
+        acc_lb_uni = self.consume_uni(TokenKind.LBRACE);
+        accessors = [];
+        while not self.check(TokenKind.RBRACE) {
+            accessors.append(self.parse_accessor());
+        }
+        acc_rb_uni = self.consume_uni(TokenKind.RBRACE);
+        if len(accessors) == 0 {
+            self.emit_diag(E0081);
+        }
+    }
     kid: list = [name, type_tag];
     if value {
         kid.append(eq_uni);
@@ -5730,7 +5811,96 @@ impl Parser.parse_has_var -> HasVar {
         kid.append(by_uni);
         kid.append(self.make_special_name(self.previous()));
     }
-    return HasVar(name=name, type_tag=type_tag, value=value, defer=defer, kid=kid);
+    if accessors is not None {
+        kid.append(acc_lb_uni);
+        for acc in accessors {
+            kid.append(acc);
+        }
+        kid.append(acc_rb_uni);
+    }
+    return HasVar(
+        name=name,
+        type_tag=type_tag,
+        value=value,
+        defer=defer,
+        accessors=accessors,
+        kid=kid
+    );
+}
+
+"""Recognize `getter`/`setter`/`deleter` as a property-accessor-kind keyword and consume it.
+
+All three accessor keywords are real lexer-level keywords (KW_GETTER, KW_SETTER,
+KW_DELETER). They are allowed as identifiers in normal positions via the same
+`is_keyword_token`/`_make_attr_from_keyword` mechanism that lets `int`, `set`,
+`static`, etc. be used as identifiers despite being reserved words.
+"""
+impl Parser._consume_accessor_kind -> tuple[str, Token] {
+    if self.check(TokenKind.KW_DELETER) {
+        return ("deleter", self.advance());
+    }
+    if self.check(TokenKind.KW_SETTER) {
+        return ("setter", self.advance());
+    }
+    if self.check(TokenKind.KW_GETTER) {
+        return ("property", self.advance());
+    }
+    self.emit_diag(E0001);
+    return ("property", self.advance());
+}
+
+"""Parse one property accessor: `getter`, `setter`, or `deleter`, with optional signature and body."""
+impl Parser.parse_accessor -> Ability {
+    (kind_str, kind_tok) = self._consume_accessor_kind();
+    name = self.make_name(kind_tok);
+    # Optional () params and -> return-type
+    signature: FuncSignature | None = self.parse_func_signature();
+    has_sig_content = not (
+        len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
+    );
+    if not has_sig_content {
+        signature = None;
+    }
+    # Body: `{ ... }` or `;`
+    body: list | None = None;
+    body_lb_uni: UniToken | None = None;
+    body_rb_uni: UniToken | None = None;
+    if self.match_tok(TokenKind.LBRACE) {
+        body_lb_uni = self.make_uni_token(self.previous());
+        body = self.parse_code_block_stmts();
+        body_rb_uni = self.consume_uni(TokenKind.RBRACE);
+    } else {
+        self.expect(TokenKind.SEMI);
+    }
+    kid: list = [name];
+    if signature is not None {
+        kid.append(signature);
+    }
+    if body is not None {
+        kid.append(body_lb_uni);
+        for s in body {
+            kid.append(s);
+        }
+        kid.append(body_rb_uni);
+    } else {
+        kid.append(self.make_semi());
+    }
+    return Ability(
+        name_ref=name,
+        is_async=False,
+        is_override=False,
+        is_static=False,
+        is_classmethod=False,
+        is_abstract=False,
+        access=None,
+        signature=signature,
+        body=body,
+        kid=kid,
+        doc=None,
+        decorators=None,
+        type_params=None,
+        accessor_kind=kind_str
+    );
 }
 
 impl Parser.parse_ability -> Ability {

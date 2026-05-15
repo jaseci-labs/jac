@@ -16,6 +16,9 @@ impl DependencyInstaller.postinit -> None {
         );
     }
     self.venv_dir = self.config.get_venv_dir();
+    if self.install_flags is None {
+        self.install_flags = [];
+    }
 }
 
 impl DependencyInstaller.ensure_venv -> None {
@@ -116,9 +119,50 @@ impl DependencyInstaller.get_git_package_specs -> list[str] {
     return specs;
 }
 
+impl DependencyInstaller.get_extra_package_specs(groups: list[str]) -> list[str] {
+    if self.config is None {
+        return [];
+    }
+    opt_deps = self.config.optional_dependencies;
+    unknown: list[str] = [
+        g
+        for g in groups
+        if g not in opt_deps
+    ];
+    if unknown {
+        available: str = ", ".join(sorted(opt_deps.keys())) if opt_deps else "none";
+        raise ValueError(
+            f"Unknown extras: {', '.join(unknown)}. Available: {available}"
+        );
+    }
+    pkg_key: str = self.config.project.name.lower().replace("_", "-");
+    resolved: dict[str, str] = {};
+    seen: set[str] = set();
+    queue: list[str] = list(groups);
+    while queue {
+        group: str = queue.pop(0);
+        if group in seen or group not in opt_deps {
+            continue;
+        }
+        seen.add(group);
+        for (name, ver) in opt_deps[group].items() {
+            if "[" in name and name.endswith("]") {
+                bracket: int = name.index("[");
+                dep_pkg: str = name[:bracket].lower().replace("_", "-").strip();
+                if dep_pkg == pkg_key {
+                    queue.extend([g.strip() for g in name[bracket + 1:-1].split(",")]);
+                    continue;
+                }
+            }
+            resolved[name] = ver;
+        }
+    }
+    return [self._make_pip_spec(name, ver) for (name, ver) in resolved.items()];
+}
+
 """Create pip spec from package name and version."""
 impl DependencyInstaller._make_pip_spec(name: str, version: str) -> str {
-    if not version {
+    if not version or version in ("*", "latest") {
         return name;
     }
     if version.startswith(("=", ">", "<", "~", "!")) {
@@ -143,12 +187,19 @@ impl DependencyInstaller.install_package(specs: list[str]) -> bool {
     }
     self.ensure_venv();
     import re;
-    (returncode, stdout, stderr) = self._run_pip(["install", "--upgrade"] + specs);
+    (returncode, stdout, stderr) = self._run_pip(
+        ["install", "--upgrade"] + self.install_flags + specs
+    );
     if returncode == 0 {
+        if "--dry-run" in self.install_flags {
+            if stdout {
+                console.print(stdout, style="dim");
+            }
+            return True;
+        }
         # Parse and display what was actually installed
         if "Successfully installed" in stdout {
             console.print("✔ Installation complete:", style="success");
-            # Extract installed packages from pip output
             installed = re.search(r"Successfully installed (.+)", stdout);
             if installed {
                 packages = installed.group(1).split();

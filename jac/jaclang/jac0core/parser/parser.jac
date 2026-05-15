@@ -32,6 +32,8 @@ import from jaclang.jac0core.diagnostics {
     E0023,
     E0025,
     E0026,
+    E0027,
+    E0028,
     E0030,
     E0031,
     E0032,
@@ -181,7 +183,7 @@ import from jaclang.jac0core.unitree {
     JsxSpreadAttribute,
     JsxNormalAttribute
 }
-import from jaclang.jac0core.unitree { JsxText, JsxExpression }
+import from jaclang.jac0core.unitree { JsxText, JsxExpression, JsxComment }
 
 import from jaclang.jac0core.constant {
     Tokens as Tok,
@@ -580,6 +582,8 @@ obj Parser {
     def _error_unexpected_member;
     def parse_has_stmt -> ArchHas;
     def parse_has_var -> HasVar;
+    def parse_accessor -> Ability;
+    def _consume_accessor_kind -> tuple[(str, Token)];
     def parse_ability -> Ability;
     def _parse_post_async_modifiers(
         is_override: bool, override_tok: Any, is_static: bool, static_tok: Any

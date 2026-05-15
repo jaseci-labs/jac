@@ -2823,6 +2823,116 @@ This eliminates the need for manual `kubectl create secret` commands after deplo
 
 ---
 
+## Remote Image Registry
+
+Remote Kubernetes clusters (EKS, GKE, AKS, etc.) pull images from a registry rather than loading them from a local container runtime. Set `image_registry` in `jac.toml` to push there before manifest apply:
+
+```toml
+[plugins.scale.kubernetes]
+image_registry = "${ECR_REGISTRY}"
+```
+
+Behavior:
+
+- **Local clusters** (Minikube, Docker Desktop, k3d, kind): if `image_registry` is unset, the built image is loaded directly into the cluster's runtime (`minikube image load`, `k3d image import`, `kind load docker-image`).
+- **Remote clusters**: `image_registry` must be set. The image is tagged as `<image_registry>/<app_name>:dev-<sha12>` and pushed before `kubectl apply`. The `<sha12>` suffix is a content hash of the source tree -- rebuilds change the tag, which triggers an automatic rolling update.
+- The registry value supports `${ENV_VAR}` interpolation so you can keep registry URLs out of source control. The local environment is read at deploy time.
+- Authentication to the registry is up to you (`docker login`, ECR `get-login-password`, GCR service account, etc.). `jac-scale` does not manage registry credentials.
+
+---
+
+## Pre-Bound ServiceAccount
+
+By default microservice + gateway pods run as the namespace's `default` ServiceAccount. Apps that need to call the Kubernetes API at runtime (creating/watching pods or namespaces, listing custom resources, etc.) need a ServiceAccount pre-bound with the right RBAC. Configure with `service_account_name`:
+
+```toml
+[plugins.scale.kubernetes]
+service_account_name = "myapp-sa"
+```
+
+`jac-scale` references the SA but does not create it. Both the SA itself and any RoleBindings or ClusterRoleBindings it needs must already exist in the target namespace before deploy -- typically managed by your platform layer (Helm chart, Terraform module, or `kubectl apply` of cluster-scoped policy). When the field is unset (or empty), pods fall back to the namespace's `default` SA.
+
+Once set, every microservice pod and the gateway pod runs under that SA, and any in-pod Kubernetes client (e.g. `kubernetes` Python package's `load_incluster_config()`) picks up the SA token automatically from `/var/run/secrets/kubernetes.io/serviceaccount/token`.
+
+---
+
+## Cross-Service Shared Volumes
+
+Microservice apps that share filesystem state across pods (an IDE backend that writes a project workspace and a build worker that reads it, a job queue that drops files for a worker pool) declare shared volumes in `jac.toml`:
+
+```toml
+[[plugins.scale.microservices.shared_volumes]]
+name = "workspace"
+mount_path = "/data/workspace"
+services = ["builder_sv", "build_worker"]
+size = "10Gi"
+access_mode = "ReadWriteMany"
+storage_class = "efs-sc"
+```
+
+Each entry is an [array of tables](https://toml.io/en/v1.0.0#array-of-tables) (note the double brackets); declare multiple by repeating the block.
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `name` | yes | PVC name. Must be DNS-1123 (lowercase alphanumeric and `-`). |
+| `mount_path` | yes | Where the volume mounts inside each pod. |
+| `services` | yes | Module names from `[plugins.scale.microservices.routes]` that get this mount. The gateway can also be listed (use `__gateway__`) but rarely needs to. |
+| `size` | yes (PVC mode) | Requested storage, e.g. `10Gi`. |
+| `access_mode` | yes (PVC mode) | One of `ReadWriteMany` (most common for cross-pod), `ReadWriteOnce`, `ReadOnlyMany`. ReadWriteMany requires an RWX-capable storage class. |
+| `storage_class` | yes (PVC mode) | The StorageClass to bind to. Cloud providers' RWX classes: AWS `efs-sc`, GCP Filestore CSI, Azure Files. |
+| `host_path` | yes (hostPath mode) | Local-cluster-only alternative; binds the volume to a directory on the host node. Use only on k3d / kind / Minikube; will not survive a pod move on multi-node clusters. |
+
+PVC mode and hostPath mode are mutually exclusive per entry. K-track applies PVCs before Deployments so pods do not crash-loop on "PVC not found".
+
+> **EFS gotcha.** AWS EFS CSI access points enforce a POSIX UID on every file. The shipped microservice image sets `git config --system --add safe.directory '*'` so in-pod `git` commands against the shared volume do not trip CVE-2022-24765 dubious-ownership checks when the EFS UID differs from the pod's running UID. If you bake your own image, add the same line, or set a matching `securityContext` on the pod (`runAsUser` / `fsGroup` -- not yet exposed in `[plugins.scale.kubernetes]`, on the roadmap).
+
+---
+
+## Microservice Mode in Kubernetes
+
+When `[plugins.scale.microservices].enabled = true` and you run `jac start --scale` against a Kubernetes cluster, every entry in `[plugins.scale.microservices.routes]` becomes its own Deployment + Service + HPA + PodDisruptionBudget. The gateway runs as a separate pod that fronts every microservice via its routes prefix.
+
+### Auto-Injected Peer URLs
+
+Outside Kubernetes, sv-to-sv calls find peer providers via auto-spawn (single-process mode) or `JAC_SV_<MODULE>_URL` env vars (manual multi-host setup). Inside `--scale` Kubernetes mode, K-track auto-injects those env vars on every pod, derived from the routes table:
+
+```text
+JAC_SV_<PEER_MODULE>_URL=http://<peer>-service.<namespace>.svc.cluster.local:<container_port>
+```
+
+The env-var key uses the raw module name (the value to the right of `sv import from`) upper-cased and joined with `JAC_SV_…_URL`. The URL host uses the Kubernetes Service name with DNS-1123 normalization (so `jac_coder_sv` becomes `jac-coder-sv-service`). Self is skipped (no service points env at itself).
+
+You do not write these env vars by hand in `--scale` K8s mode; K-track derives them from `[plugins.scale.microservices.routes]` and the configured namespace.
+
+Per-service env overrides under `[plugins.scale.microservices.services.<name>.env]` cannot shadow these keys. A stale override would silently route sv-to-sv calls to a wrong backend, and the right way to point a peer at a non-cluster URL (e.g. a vendor SaaS) is to edit the Deployment env spec directly after deploy.
+
+### Per-Service Configuration
+
+Each microservice entry takes optional per-service overrides under `[plugins.scale.microservices.services.<name>]`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `replicas` | int | Initial replica count (default 1; HPA can scale higher). |
+| `rpc_timeout` | float (seconds) | Per-service sv-to-sv RPC timeout. Default 10s, fine for CRUD; bump to 120-300s for LLM workers. |
+| `image_tag` | str | Override the image tag for just this service (rare; most apps use the same image and select via `JAC_SV_NAME`). |
+| `env` | dict | Extra env vars merged into the pod spec. `JAC_SV_NAME` and `JAC_SV_*_URL` are protected (cannot be overridden). |
+| `hpa.enabled` | bool | Set to `false` to fix replicas at the configured `replicas` count. |
+| `hpa.min` / `hpa.max` | int | HPA replica bounds. |
+| `hpa.cpu_target` | int (percent) | Target CPU utilization for HPA. Default 70%. |
+
+```toml
+# Example: scale jac_coder_sv hot during LLM workloads, fix the gateway at 2.
+[plugins.scale.microservices.services.jac_coder_sv]
+rpc_timeout = 300.0
+hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
+
+[plugins.scale.microservices.services.__gateway__]
+replicas = 2
+hpa = { enabled = false }
+```
+
+---
+
 ## Setting Up Kubernetes
 
 ### Docker Desktop (Easiest)
