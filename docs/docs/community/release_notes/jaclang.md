@@ -2,7 +2,13 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.15.0 (Latest Release)
+## jaclang 0.15.1 (Latest Release)
+
+### New Features
+
+- **Feature: Native property syntax with `getter`/`setter`/`deleter` accessor blocks**: Adds first-class property declarations on `has` bindings: `has x: T { getter; setter; deleter; }`. Properties are pure computed accessors -- backing storage is always declared explicitly via a separate `has _x: T = value;` field and referenced as `self._x` from accessor bodies. Supports dotted-impl bodies (`impl Cls.x.getter`, etc.), read-only enforcement when `setter` is omitted (`E1005`), and write-type checking against the property's declared type. Combining an initializer with an accessor block emits `E0080`; an empty accessor block emits `E0081`.
+
+## jaclang 0.15.0
 
 ### Breaking Changes
 
