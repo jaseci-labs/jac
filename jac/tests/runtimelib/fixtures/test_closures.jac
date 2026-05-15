@@ -17,15 +17,15 @@ cl {
     def create_signal_simple(initialValue: Any) -> list {
         value = initialValue;
 
-        def getter()  -> Any {
+        def readVal()  -> Any {
             return value;
         }
 
-        def setter(newValue: Any) -> None {
+        def writeVal(newValue: Any) -> None {
             value = newValue;
         }
 
-        return [getter, setter];
+        return [readVal, writeVal];
     }
 
     # Test 3: Lambda closures

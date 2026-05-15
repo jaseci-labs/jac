@@ -582,6 +582,8 @@ obj Parser {
     def _error_unexpected_member;
     def parse_has_stmt -> ArchHas;
     def parse_has_var -> HasVar;
+    def parse_accessor -> Ability;
+    def _consume_accessor_kind -> tuple[(str, Token)];
     def parse_ability -> Ability;
     def _parse_post_async_modifiers(
         is_override: bool, override_tok: Any, is_static: bool, static_tok: Any

@@ -871,3 +871,10 @@ test "bidirectional edge traversal" {
     assert "Backward from f:\nFollower found: 5" in output;
     assert "Backward from e:\nDone." in output;
 }
+
+test "native property getter/setter/deleter with impl separation" {
+    # `has <name>: <type> { getter; setter; deleter; }` declares a property
+    # over explicitly-declared backing storage; no `field` keyword is used.
+    output = run_jac(os.path.join(FIXTURES, "prop_native.jac"));
+    assert output == "ok\n";
+}

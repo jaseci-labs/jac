@@ -205,10 +205,10 @@ obj KubernetesTarget(DeploymentTarget) {
             commands.append('git submodule update --init --recursive');
             commands.append('pip install pluggy');
             commands.append('pip install -e ./jac');
-            commands.append('pip install -e "./jac-scale[all]"');
-            commands.append('pip install -e ./jac-client');
-            commands.append('pip install -e ./jac-byllm');
-            commands.append('pip install -e ./jac-mcp');
+            commands.append('jac install -e ./jac-scale --extras all');
+            commands.append('jac install -e ./jac-client');
+            commands.append('jac install -e ./jac-byllm');
+            commands.append('jac install -e ./jac-mcp');
             commands.append('cd ..');
         } else {
             packages = config.plugin_versions or {};
