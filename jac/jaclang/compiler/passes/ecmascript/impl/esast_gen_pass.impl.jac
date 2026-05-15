@@ -727,7 +727,22 @@ impl EsastGenPass.exit_set_val(nd: uni.SetVal) -> None {
 impl EsastGenPass.exit_list_val(nd: uni.ListVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in nd.values {
-        if item.gen.es_ast {
+        # `[*xs, y]` — a star-unary element is an array spread, not a `!`
+        # unary. Emit a SpreadElement over the operand.
+        if (
+            isinstance(item, uni.UnaryExpr)
+            and item.op.name == Tok.STAR_MUL.value
+            and item.operand.gen.es_ast
+        ) {
+            elements.append(
+                self.sync_loc(
+                    es.SpreadElement(
+                        argument=cast(es.Expression, item.operand.gen.es_ast)
+                    ),
+                    jac_node=item
+                )
+            );
+        } elif item.gen.es_ast {
             elements.append(cast(es.Expression, item.gen.es_ast));
         }
     }

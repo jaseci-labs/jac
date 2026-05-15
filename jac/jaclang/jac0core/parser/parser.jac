@@ -407,7 +407,8 @@ obj Parser {
         file_path: str = "<input>",
         source_code: str = "",
         source: Source | None = None,
-        prog: object | None = None;
+        prog: object | None = None,
+        _view_body_depth: int = 0;  # > 0 while parsing inside a `view` body
 
     def current -> Token;
     def peek(offset: int = 1) -> Token;
@@ -578,6 +579,17 @@ obj Parser {
     def parse_import_items(kid: list, is_clib_import: bool) -> tuple;
     def parse_archetype -> Archetype;
     def parse_archetype_member;
+    def parse_view -> Ability;
+    def _is_view_decl(offset: int = 0) -> bool;
+    def _lower_view_body(stmts: list, anchor: Token) -> list;
+    def _lower_view_stmt_list(
+        stmts: list, owner: object, acc: str, anchor: Token
+    ) -> list;
+
+    def _lower_view_one(stmt: object, acc: str, anchor: Token) -> object;
+    def _make_view_assign(acc: str, jsx: Expr, anchor: Token) -> Assignment;
+    def _make_view_fragment(acc: str, anchor: Token) -> JsxElement;
+    def _synth_name(value: str, anchor: Token) -> Name;
     def _skip_semicolons;
     def _error_unexpected_member;
     def parse_has_stmt -> ArchHas;

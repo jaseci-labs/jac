@@ -249,6 +249,7 @@ element_stmt ::=
     | enum
     | test
     | docstring_target
+    | view
     | ability
     | global_var
     | impl_def
@@ -264,6 +265,7 @@ docstring_target ::=
         | global_var
         | "impl" impl_def
         | module_code
+        | view
         | ("cl" | "sv" | "na") element_stmt
     )?
 
@@ -282,6 +284,7 @@ ctrl_stmt ::= ("break" | "continue" | "skip") ";" | "disengage" ";"
 
 statement ::=
     ";"
+    | jsx_element ";"?
     | import_stmt
     | if_stmt
     | while_stmt
@@ -456,6 +459,8 @@ ability ::=
     ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag
     (NAME | KWESC_NAME)? ("[" type_params "]")? ("with" expression | func_signature)
     ("{" code_block_stmts "}" | "by" expression ";" | "abs"? ";")
+
+view ::= ("[" type_params "]")? func_signature "{" code_block_stmts "}"
 
 func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 

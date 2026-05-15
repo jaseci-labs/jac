@@ -529,3 +529,61 @@ test "single-`props` component definition warns W5015" {
         f"SingleKeyStyle (typed single-key bundle) should not warn, got: {msgs}"
     );
 }
+
+test "view declarator compiles to a jsx component" {
+    # Phase 1 of the `view` design: `view Name(...) { ... }` is sugar for
+    # `def:pub Name(...) -> JsxElement { ... }` with a statement-based body.
+    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Each `view` lowers to a plain function declaration.
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "Badge" in func_names , "view Badge should lower to a function";
+    assert "ItemRow" in func_names , "view ItemRow should lower to a function";
+    assert "ItemList" in func_names , "view ItemList should lower to a function";
+
+    # The statement body is lowered to a children accumulator that the view
+    # returns as a single JSX fragment.
+    assert "__jac_view_kids" in js_code , (
+        "view body should lower to a `__jac_view_kids` accumulator"
+    );
+    assert "__jac_view_kids = []" in js_code , "accumulator should be initialized";
+    assert "...__jac_view_kids" in js_code , (
+        "each JSX statement should append via array spread"
+    );
+    assert "__jacJsx" in js_code , "JSX should still lower to __jacJsx calls";
+
+    # `has` fields inside a view keep the existing auto-`useState` wiring.
+    assert 'const [heading, setHeading] = useState("Items")' in js_code , (
+        "has field in a view should generate useState"
+    );
+    assert "setHeading(" in js_code , (
+        "assignment to a view has-field should use the generated setter"
+    );
+
+    # Public components are exported.
+    assert "export {" in js_code , "views should be exported";
+    export_line = js_code.strip().split("\n")[-1];
+    assert "Badge" in export_line
+    and "ItemRow" in export_line
+    and "ItemList" in export_line , "all three views should be exported";
+}
+
+test "view statement-position control flow lowers to statements" {
+    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # `if`/`else` at view-body level yields content in both branches.
+    assert "Nothing here." in js_code , "the if-branch content should render";
+    assert "Showing items." in js_code , "the else-branch content should render";
+
+    # A statement `for` over the params lowers to a real loop (not a .map
+    # comprehension) that appends each element to the accumulator.
+    assert "items" in js_code , "the for loop should iterate the items param";
+    has_loop = ("for (" in js_code) or ("for(" in js_code);
+    assert has_loop , "a statement `for` in a view should emit a JS loop";
+}
