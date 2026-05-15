@@ -690,7 +690,8 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         is_abstract: bool,
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
-        type_params: (Sequence[TypeParam] | None) = None;
+        type_params: (Sequence[TypeParam] | None) = None,
+        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
 
     def postinit -> None;
     @property
@@ -777,7 +778,8 @@ obj ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
 obj HasVar(AstSymbolNode, AstTypedVarNode) {
     has name: Name,
         value: (Expr | None),
-        defer: bool;
+        defer: bool,
+        accessors: (Sequence[Ability] | None) = None;
 
     def postinit -> None;
 }
