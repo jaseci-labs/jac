@@ -2,7 +2,15 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jaclang**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jaclang 0.15.1 (Latest Release)
+## jaclang 0.15.2 (Latest Release)
+
+### Bug Fixes
+
+- **Native: Bug Fixes**: Fixed multiple bugs in the `jac-native` AOT/JIT compiler, including symbol-collision detection at link time (E5026) with promotion of import compile/link failures from warnings to errors (E5024/E5025), and type-safe handling of typed variable re-declarations (`x: T = ...`) where the new type differs from the previous alloca's type.
+- **Native: Incremental Compilation**: `jac nacompile` now caches per-module LLVM IR under `.jac_ir/` keyed by source SHA-256 hash and skips recompilation of unchanged modules. A new `--scrub` flag wipes the cache for a clean rebuild, and `jac run --no-cache` now also clears `.jac_ir/` directories under the cwd.
+- **Fix: Cross-user root discovery**: `allroots()` now returns every root across all memory tiers instead of only the requesting user's own root.
+
+## jaclang 0.15.1
 
 ### New Features
 
