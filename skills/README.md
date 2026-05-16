@@ -6,6 +6,57 @@ Each skill is a self-contained `SKILL.md` with YAML frontmatter, kept as the aut
 
 > Why this exists: training-time impressions of Jac are frequently wrong (the syntax has changed; Jac is easily confused with Python or JSX). These skills are the corrective spec.
 
+## Install
+
+These follow the [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) open format (`SKILL.md` + YAML frontmatter), which Claude Code, Claude.ai, the Claude Agent SDK, and Cursor all read directly — no conversion needed.
+
+### Claude Code — as a plugin (recommended)
+
+Install and update all skills with one command:
+
+```
+/plugin marketplace add jaseci-labs/jaseci
+/plugin install jac-skills@jaseci
+```
+
+Run `/plugin marketplace update jaseci` to pull later revisions.
+
+### Claude Code — manual
+
+Copy the skill folders into a skills directory Claude Code scans:
+
+```sh
+# Personal (all projects)
+cp -r skills/jac-* ~/.claude/skills/
+
+# Project-scoped (this repo only)
+mkdir -p .claude/skills && cp -r skills/jac-* .claude/skills/
+```
+
+Each `skills/jac-<name>/` directory is self-contained — copy as many or as few as you want.
+
+### Claude.ai
+
+Upload any individual `skills/jac-<name>/` folder in **Settings → Capabilities → Skills**.
+
+### Claude Agent SDK
+
+Point the SDK at a skills directory containing the `jac-*` folders (e.g. via `settingSources` / the `--skills` option), or vendor the folders into your agent's `.claude/skills/`.
+
+### Cursor
+
+Cursor reads the same `SKILL.md` format. Copy the skill folders into a directory Cursor scans:
+
+```sh
+# Personal (all projects)
+cp -r skills/jac-* ~/.cursor/skills/
+
+# Project-scoped (this repo only)
+mkdir -p .cursor/skills && cp -r skills/jac-* .cursor/skills/
+```
+
+Reload the workspace (`Cmd/Ctrl+Shift+P` → **Developer: Reload Window**) to pick them up. Discovered skills appear under **Cursor Settings → Rules** in the *Agent Decides* section, and can be invoked from the `/` menu in Agent chat.
+
 ## Skills
 
 Start with **`jac-core-cheatsheet`** (language baseline) and **`jac-types`** (the type system) - most other skills build on them.
