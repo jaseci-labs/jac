@@ -8,9 +8,9 @@ Each skill is a self-contained `SKILL.md` with YAML frontmatter, kept as the aut
 
 ## Install
 
-These follow the [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) open format (`SKILL.md` + YAML frontmatter), which Claude Code, Claude.ai, the Claude Agent SDK, and Cursor all read directly — no conversion needed.
+These follow the [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) open format (`SKILL.md` + YAML frontmatter), which Claude Code, Claude.ai, the Claude Agent SDK, and Cursor all read directly - no conversion needed.
 
-### Claude Code — as a plugin (recommended)
+### Claude Code - as a plugin (recommended)
 
 Install and update all skills with one command:
 
@@ -21,7 +21,7 @@ Install and update all skills with one command:
 
 Run `/plugin marketplace update jaseci` to pull later revisions.
 
-### Claude Code — manual
+### Claude Code - manual
 
 Copy the skill folders into a skills directory Claude Code scans:
 
@@ -33,7 +33,7 @@ cp -r skills/jac-* ~/.claude/skills/
 mkdir -p .claude/skills && cp -r skills/jac-* .claude/skills/
 ```
 
-Each `skills/jac-<name>/` directory is self-contained — copy as many or as few as you want.
+Each `skills/jac-<name>/` directory is self-contained - copy as many or as few as you want.
 
 ### Claude.ai
 
