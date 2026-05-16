@@ -22,7 +22,7 @@ error[E1001]: Cannot assign Literal["hello"] to int
   → run 'jac guide jac-types' for guidance
 ```
 
-Run the suggested command for the relevant reference material. See [`jac guide`](../cli/index.md#jac-guide).
+Run the suggested command for the relevant reference material. See [`jac guide`](cli/index.md#jac-guide).
 
 ## Suppressing Diagnostics
 
