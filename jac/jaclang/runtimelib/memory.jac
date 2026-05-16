@@ -293,6 +293,7 @@ obj TieredMemory(VolatileMemory) {
     # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
+    def get_roots -> Generator[Root, None, None];
     def delete(id: UUID) -> None;
     def close -> None;
     def `has(id: UUID) -> bool;
