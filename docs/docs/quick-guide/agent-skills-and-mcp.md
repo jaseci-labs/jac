@@ -1,53 +1,54 @@
 # Agent Skills and MCP
 
-AI coding assistants are good at Jac's *ideas* but often wrong about its *syntax* -- the language has evolved, and models routinely confuse Jac with Python or JSX. Two tools correct that, and they work together:
+AI coding assistants are good at Jac's *ideas* but often wrong about its *syntax* -- the language has evolved, and models routinely confuse Jac with Python or JSX. The `jac` CLI ships the corrective reference built in, so there is nothing to install.
 
-- **Agent Skills** -- a curated set of reference guides ([`Jac-Skills`](https://github.com/jaseci-labs/Jac-Skills)) that load into your assistant's context so it writes correct, idiomatic Jac.
-- **The `jac-mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs.
+- **`jac guide`** -- curated reference guides bundled with the compiler. They are the authoritative spec for writing correct, idiomatic Jac, and any agent that can run a shell command can read them.
+- **The `jac-mcp` server** -- a [Model Context Protocol](https://modelcontextprotocol.io/) server that gives your assistant live compiler tools: validate, format, lint, run, transpile, and search the docs. It also serves the same guides as MCP resources.
 
-Set up whichever your tool of choice supports -- or both.
+The two are complementary: the guides tell the model *how* Jac works; MCP lets it *verify* what it wrote against the real compiler.
 
-| | Agent Skills | MCP (`jac-mcp`) |
-|---|---|---|
-| What it provides | Reference knowledge -- *how* to write Jac | Live tools -- validate / format / run / search |
-| How it helps | Corrects the model's stale syntax assumptions | Lets the model check its work against the real compiler |
-| Supported by | Claude Code | Any MCP client -- Claude Code, Claude Desktop, Cursor, Windsurf, VS Code |
-| Setup | Copy skill folders into a directory | Run a server, add it to your client config |
+## `jac guide` -- the built-in reference
 
-The two are complementary: Skills tell the model *how* Jac works; MCP lets it *verify* what it wrote. Using both gives the best results.
+The guides ship inside the `jac` CLI -- one per topic (`jac-core-cheatsheet`, `jac-types`, `jac-walker-patterns`, `jac-by-llm`, the `jac-sv-*` server guides, the `jac-cl-*` client guides, and more). They are always version-matched to the compiler you have installed.
 
-## Agent Skills (Claude Code)
+```bash
+jac guide                      # list every available guide
+jac guide jac-types            # print a specific guide
+jac guide --search walker      # find guides by keyword
+jac guide --json               # machine-readable list (for tools and agents)
+```
 
-[`Jac-Skills`](https://github.com/jaseci-labs/Jac-Skills) is a collection of focused skills -- one per topic (`jac-core-cheatsheet`, `jac-types`, `jac-walker-patterns`, `jac-by-llm`, the `jac-sv-*` server guides, the `jac-cl-*` client guides, and more). Each skill is a directory containing a single `SKILL.md`. Claude Code loads the relevant skill automatically when you work on matching code.
+Because the guides are part of the CLI, an AI agent working in your project can self-serve them with no setup -- it just runs `jac guide`. Two things reinforce this:
 
-Claude Code discovers skills exactly one level deep -- `<skills-dir>/<skill-name>/SKILL.md` -- so copy the individual `jac-*` folders into your skills directory rather than nesting the whole repo inside it.
+- **`jac create` seeds an `AGENTS.md`** in every new project, telling agents to consult `jac guide`.
+- **`jac check` diagnostics link to guides.** When the type checker flags an error it points at the relevant guide -- e.g. a type error prints `→ run 'jac guide jac-types' for guidance` -- so the model is pulled to the fix at the moment it is wrong.
+
+## Export as Agent Skills (Claude Code, Cursor)
+
+Claude Code, Cursor, and the Claude Agent SDK can *auto-load* [Agent Skills](https://docs.claude.com/en/docs/agents-and-tools/agent-skills) -- reading a skill's frontmatter and pulling in the full guide when a task matches. To get that automatic behaviour, export the guides as a skills directory:
 
 === "Personal (all projects)"
 
     ```bash
-    git clone https://github.com/jaseci-labs/Jac-Skills.git /tmp/jac-skills
-    mkdir -p ~/.claude/skills
-    cp -r /tmp/jac-skills/jac-* ~/.claude/skills/
+    jac guide --export ~/.claude/skills
     ```
 
 === "Project (this repo only)"
 
     ```bash
-    git clone https://github.com/jaseci-labs/Jac-Skills.git /tmp/jac-skills
-    mkdir -p .claude/skills
-    cp -r /tmp/jac-skills/jac-* .claude/skills/
+    jac guide --export .claude/skills
     ```
 
     Commit `.claude/skills/` to version control so everyone on the project gets the same Jac guidance.
 
-Claude Code picks the skills up immediately -- no restart needed. To confirm, ask your assistant to list its available skills; the `jac-*` entries should appear. To update later, re-run the clone-and-copy.
+`jac guide --export` writes each guide as `<dir>/<name>/SKILL.md` -- the dir-per-skill layout Claude Code and Cursor discover. Re-run it after upgrading Jac to refresh the guides. The same command works for Cursor (`jac guide --export ~/.cursor/skills`).
 
-!!! note "Skills are a Claude Code feature"
-    Agent Skills are read by Claude Code. If your tool of choice is Cursor, Windsurf, or another assistant, use the MCP route below -- it delivers Jac knowledge through tools instead.
+!!! note "Export is optional"
+    You only need to export if you want *automatic* skill loading. Any agent that can run `jac guide` already has the full reference on demand.
 
 ## MCP server (any MCP client)
 
-The `jac-mcp` plugin runs a Model Context Protocol server that exposes the Jac compiler -- grammar, documentation, examples, and tools to validate, format, lint, run, and transpile Jac -- to any MCP-capable assistant.
+The `jac-mcp` plugin runs a Model Context Protocol server that exposes the Jac compiler -- grammar, documentation, examples, the bundled guides, and tools to validate, format, lint, run, and transpile Jac -- to any MCP-capable assistant.
 
 Start it with:
 
@@ -66,9 +67,16 @@ Other clients (Claude Desktop, Cursor, Windsurf, VS Code) use a JSON configurati
 !!! tip
     Already installed Jaseci via PyPI or the install script? `jac-mcp` is likely bundled -- run `jac --version` to check. If it is missing, install it with `pip install jac-mcp`.
 
-## Using both
+## Which to use
 
-Skills and MCP solve different halves of the problem, so the strongest setup combines them: install the Jac-Skills so your assistant *writes* idiomatic Jac, and connect `jac-mcp` so it can *validate and run* what it writes against the real compiler before handing the code back to you.
+| | `jac guide` | `jac guide --export` | MCP (`jac-mcp`) |
+|---|---|---|---|
+| Provides | Reference knowledge, on demand | Auto-loading Agent Skills | Reference + live compiler tools |
+| Discovery | Agent runs the CLI | Assistant loads by frontmatter | Client lists MCP resources/tools |
+| Setup | None -- built in | One `--export` command | Run a server, register it |
+| Best for | Any agent that runs a shell | Claude Code, Cursor, Agent SDK | Any MCP client; verifying code |
+
+For the strongest setup, export the guides so your assistant *writes* idiomatic Jac, and connect `jac-mcp` so it can *validate and run* what it writes against the real compiler before handing the code back to you.
 
 ---
 

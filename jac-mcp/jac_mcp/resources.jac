@@ -22,6 +22,9 @@ obj ResourceProvider {
     """Index bundled content (pitfalls, patterns)."""
     def _index_bundled -> None;
 
+    """Index the curated guides from the jaclang compiler's shared guide store."""
+    def _index_shared_guides -> None;
+
     """Index bundled docs copied at release time."""
     def _index_bundled_docs -> None;
 
