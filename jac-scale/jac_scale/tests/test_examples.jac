@@ -554,3 +554,74 @@ test "storage api" {
         runner.spawn_walker("delete_file", path=move_dest);
     }
 }
+
+# TestLittleXMultiUser
+"""littleX cross-user directory under jac-scale.
+
+littleX's `load_user_profiles` walker enumerates `allroots()` to build a
+directory of every registered user. Under a served jac-scale runtime,
+`allroots()` / `get_all_root` must span the L3 persistent tier — not just
+the roots loaded into the current request's session.
+
+Regression test for that tiered-memory `get_all_root` fix. It runs littleX
+WITH jac-scale — the configuration CI otherwise never exercises — and
+asserts a served user sees every registered user, not only their own root.
+"""
+test "littlex user directory across users (jac-scale)" {
+    # JacClientExamples is <repo>/jac-client/jac_client/examples; walk up to <repo>.
+    repo_root = JacClientExamples.parent.parent.parent;
+    littlex_file = (
+        repo_root / "jac" / "examples" / "littleX" / "littleX_single_nodeps.jac"
+    );
+    with JacScaleTestRunner(
+        littlex_file, session_name="littlex_mu_test", setup_npm=False
+    ) as runner {
+        # --- alice: register + login, then create her profile ---
+        runner.request(
+            "POST",
+            "/user/register",
+            data={
+                "identities": [{"type": "username", "value": "alice_mu"}],
+                "credential": {"type": "password", "password": "alicepass123"}
+            }
+        );
+        alice_login = runner.request(
+            "POST",
+            "/user/login",
+            data={
+                "identity": {"type": "username", "value": "alice_mu"},
+                "credential": {"type": "password", "password": "alicepass123"}
+            }
+        );
+        runner.token = str(alice_login["token"]);
+        runner.spawn_walker("update_profile", new_username="alice_mu");
+        # --- bob: register + login (token switches to bob), then his profile ---
+        runner.request(
+            "POST",
+            "/user/register",
+            data={
+                "identities": [{"type": "username", "value": "bob_mu"}],
+                "credential": {"type": "password", "password": "bobpass123"}
+            }
+        );
+        bob_login = runner.request(
+            "POST",
+            "/user/login",
+            data={
+                "identity": {"type": "username", "value": "bob_mu"},
+                "credential": {"type": "password", "password": "bobpass123"}
+            }
+        );
+        runner.token = str(bob_login["token"]);
+        runner.spawn_walker("update_profile", new_username="bob_mu");
+        # bob asks for the global user directory
+        result = runner.spawn_walker("load_user_profiles");
+        reports = result.get("reports", []);
+        profiles = reports[0] if (reports and isinstance(reports[0], list)) else [];
+        names = sorted([str(p.get("name")) for p in profiles]);
+        # A served user's directory must list every registered user — both
+        # alice and bob — proving `get_all_root` spans the persistent tier
+        # rather than only the caller's own session.
+        assert names == ["alice_mu", "bob_mu"] , f"expected both users in the directory, got {names} (raw: {result})";
+    }
+}

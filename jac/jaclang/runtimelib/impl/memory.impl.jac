@@ -662,10 +662,45 @@ impl SqliteMemory.query(
     }
 }
 
-"""Get all root anchors."""
+"""Get all root anchors — from the L1 cache AND the persistent store.
+
+Iterating only `__mem__` returns just the roots loaded into the current
+session/process. Under a served runtime (jac-scale) each request loads
+only its own caller's root, so `allroots()` would be wrongly
+session-scoped even though every root is persisted in the DB. This walks
+both: cached roots first (covers not-yet-synced ones), then any further
+roots from the `anchors` table.
+"""
 impl SqliteMemory.get_roots -> Generator[Root, None, None] {
+    seen: set[UUID] = set();
     for anchor in self.__mem__.values() {
         if isinstance(anchor.archetype, Root) {
+            seen.add(anchor.id);
+            yield cast(Root, anchor.archetype);
+        }
+    }
+    root_ids: list[str] = [];
+    with self.__lock__ {
+        # Lazily connect if the DB file exists (read path).
+        if not self.__conn__ and os.path.exists(self.path) {
+            self._ensure_connection();
+        }
+        if self.__conn__ {
+            # `arch_type` stores the archetype class name (see _anchor_to_row);
+            # every Root anchor is the `Root` archetype.
+            cursor = self.__conn__.execute(
+                "SELECT id FROM anchors WHERE arch_type = ?", ("Root", )
+            );
+            root_ids = [cast(str, r[0]) for r in cursor.fetchall()];
+        }
+    }
+    for id_str in root_ids {
+        uid = UUID(id_str);
+        if uid in seen {
+            continue;
+        }
+        seen.add(uid);
+        if (anchor := self.get(uid)) and isinstance(anchor.archetype, Root) {
             yield cast(Root, anchor.archetype);
         }
     }

@@ -1665,9 +1665,23 @@ impl JacBasics.root -> Root {
     return JacRuntime.get_context().get_root();
 }
 
-"""Get all the roots."""
+"""Get all the roots.
+
+`jmem.get_roots()` alone only sees the in-memory (L1) tier — under a
+tiered/served runtime that is just the roots loaded into the current
+session, so `allroots()` would be wrongly session-scoped. When a
+persistent L3 tier exists, enumerate it instead so `allroots()` reflects
+every root in the database.
+"""
 impl JacBasics.get_all_root -> list[Root] {
+    import from jaclang.runtimelib.memory { TieredMemory }
     jmem = JacRuntimeInterface.get_context().mem;
+    if isinstance(jmem, TieredMemory) {
+        l3 = jmem.l3;
+        if l3 is not None {
+            return `list(l3.get_roots());
+        }
+    }
     return `list(jmem.get_roots());
 }
 
