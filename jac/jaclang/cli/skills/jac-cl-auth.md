@@ -7,12 +7,12 @@ Client auth uses four helpers from `@jac/runtime`. **Return types differ - get t
 
 | Helper | Async? | Returns | Pre-declare as |
 |---|---|---|---|
-| `jacSignup(email, password)` | yes | `dict` (account info) | `result: dict \| None = None` |
+| `jacSignup(email, password)` | yes | `dict` - `{"success": bool, ...}` | `result: dict \| None = None` |
 | `jacLogin(email, password)` | yes | `bool` | `ok: bool = False` |
 | `jacLogout()` | no | `None` | - (call it, no assign) |
 | `jacIsLoggedIn()` | no | `bool` | - (use inline) |
 
-Both async helpers' return values are truthy on success / falsy on failure, so `if not result { ... }` works for both. But the **types** differ - typing a `jacSignup` result as `bool` fails `jac check` with `E1001: Cannot assign dict to bool`.
+The two return types behave differently for failure checks. `jacLogin` returns a plain `bool` - `if not ok { ... }` detects a failed login directly. `jacSignup` returns a **`dict`** shaped `{"success": bool, "user_id" | "error": ...}`, and it is *always* a non-empty (truthy) dict - so `if not signup_result` can **never** catch a failed signup. Check the `success` key instead: `if not signup_result["success"] { ... }`. (Typing a `jacSignup` result as `bool` also fails `jac check` with `E1001: Cannot assign dict to bool`.)
 
 ## ⚠ Read first - signup + first `def:priv` call must be 3 awaited steps
 
@@ -33,7 +33,7 @@ async def handle_register(name: str, email: str, password: str) -> str {
     profile_result: Any = None;
 
     signup_result = await jacSignup(email, password);
-    if not signup_result { return "registration failed"; }
+    if not signup_result["success"] { return "registration failed"; }
 
     login_ok = await jacLogin(email, password);
     if not login_ok { return "login after signup failed"; }
@@ -76,7 +76,7 @@ async def try_signup(email: str, password: str) -> str {
     login_ok: bool = False;                  # jacLogin returns bool
     try {
         signup_result = await jacSignup(email, password);
-        if not signup_result {
+        if not signup_result["success"] {
             return "signup failed (email may be in use)";
         }
         login_ok = await jacLogin(email, password);

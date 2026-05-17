@@ -46,13 +46,13 @@ Same code split: `shapes.jac` holds everything EXCEPT the two `impl` blocks; `sh
 | `can event with NodeType entry;` | `impl Walker.event { body }` |
 | `enum Color;` | `impl Color { RED = "r", GREEN = "g" }` |
 | `override def method;` (subclass) | `impl Subclass.method { body }` |
-| `def method -> T abs;` (abstract) | (none on base - every subclass MUST `impl`) |
+| `def method -> T abs;` (abstract) | (none on base - every subclass *should* `impl`; not compiler-enforced - see Rules) |
 
 ## Rules
 
 - **Same basename, same directory.** `foo.jac` pairs with `foo.impl.jac` only if they sit together.
 - **No `import` between the pair.** Compiler auto-pairs. Adding `import from foo.impl { ... }` is wrong.
 - **Signature must match exactly.** `impl fn(x: int) -> str` paired with `def fn(y: str);` fails. Bare `impl fn { ... }` only matches bare `def fn;`.
-- **`abs` = abstract.** `def area -> float abs;` on the base means every subclass must `impl Subclass.area`. Missing impl fails at instantiation, not at compile.
+- **`abs` = abstract.** `def area -> float abs;` on the base marks `area` as expected on every subclass. **This is not enforced** - a subclass with no `impl Subclass.area` still passes `jac check`, still instantiates, and calling the un-implemented method silently returns `None` (no error at compile, instantiation, or call). Treat `abs` as intent-signalling; make sure every subclass actually supplies its `impl`.
 - **`override def` is required on subclass overrides.** Without it, `def play;` in a subclass is a NEW method that shadows - doesn't override.
 - **Bodies in `.impl.jac` see the `.jac` file's imports.** Don't re-import inside the impl file.

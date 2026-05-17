@@ -22,8 +22,10 @@ Handles conditional + merged Tailwind classes. Write in Jac - no TypeScript need
 import from "clsx" { clsx }
 import from "tailwind-merge" { twMerge }
 
-def:pub cn(classes: list) -> Any {
-    return twMerge(clsx(classes));
+# Variadic positional args (the clsx / tailwind-merge convention, and how
+# jac-shadcn components call cn) - NOT a single list argument.
+def:pub cn(*inputs: Any) -> Any {
+    return twMerge(clsx(inputs));
 }
 ```
 
@@ -31,12 +33,12 @@ Required in `jac.toml`: `clsx = "*"` and `tailwind-merge = "*"` under `[dependen
 
 > **jac-shadcn projects**: `lib/utils.cl.jac` already exports `cn()` - use `import from .lib.utils { cn }`. Don't recreate it and don't add these packages to jac.toml (pre-installed).
 
-Usage (import `cn` from `lib/utils.cl.jac`, then pass a list):
+Usage (import `cn` from `lib/utils.cl.jac`, then pass each class as a separate argument):
 
 ```
 import from ...lib.utils { cn }
 
-className={cn(["base-class", props.className, "extra" if condition else ""])}
+className={cn("base-class", props.className, "extra" if condition else "")}
 ```
 
 ## Semantic Color Tokens

@@ -3,7 +3,7 @@ name: jac-npm-packages
 description: How to add npm packages to jac.toml and import them in .cl.jac files, including React hooks (useRef, useCallback, useMemo). Load when a task uses third-party npm libraries.
 ---
 
-> **jac-shadcn projects** (has `[jac-shadcn]` in jac.toml): all npm packages are pre-configured - tailwindcss, radix-ui, clsx, tailwind-merge, hugeicons, recharts, and more. Do **NOT** add packages to `[dependencies.npm]` manually; they ship with the template.
+> **jac-shadcn projects** (has `[jac-shadcn]` in jac.toml): the template ships only `clsx`, `tailwind-merge`, and `tw-animate-css` in `[dependencies.npm]`. Each shadcn component's own peer deps (radix-ui, etc.) are added automatically when you run `jac add --shadcn <component>` - don't add those by hand. Any *other* npm package (charts, icons, ...) you still add yourself, as below.
 
 ## Adding npm Packages
 
