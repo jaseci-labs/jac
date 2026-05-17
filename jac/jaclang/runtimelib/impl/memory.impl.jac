@@ -172,7 +172,13 @@ def _load_db_aliases(conn: sqlite3.Connection) -> int {
     return count;
 }
 
-"""Quarantine a row that failed to deserialize. Never raises."""
+"""Quarantine a row that failed to deserialize. Never raises.
+
+When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
+whose data.source or data.target references this node, then strip those
+edge IDs from all remaining live NodeAnchor data.edges arrays. This
+prevents dangling edge references after schema drift removes a node type.
+"""
 def _quarantine(
     conn: sqlite3.Connection,
     id: str,
@@ -185,6 +191,7 @@ def _quarantine(
     from_format_version: (int | None) = None
 ) {
     try {
+        now_ts = datetime.now(timezone.utc).isoformat();
         conn.execute(
             """
             INSERT OR REPLACE INTO anchors_quarantine
@@ -200,11 +207,91 @@ def _quarantine(
                 fingerprint,
                 data,
                 error,
-                datetime.now(timezone.utc).isoformat(),
+                now_ts,
                 from_format_version
             )
         );
         conn.execute("DELETE FROM anchors WHERE id = ?", (id, ));
+        # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
+        if anchor_type == 'NodeAnchor' {
+            cursor = conn.execute(
+                """
+                SELECT id, type, arch_module, arch_type, fingerprint,
+                       data, format_version
+                FROM anchors
+                WHERE type = 'EdgeAnchor'
+                  AND (json_extract(data, '$.source') = ?
+                       OR json_extract(data, '$.target') = ?)
+                """,
+                (id, id)
+            );
+            orphaned = cursor.fetchall();
+            if orphaned {
+                cascade_error = f"cascade quarantine: connected node {id} was quarantined";
+                orphaned_ids = [];
+                for row in orphaned {
+                    (e_id, e_type, e_mod, e_atype, e_fp, e_data, e_fv) = row;
+                    orphaned_ids.append(e_id);
+                    conn.execute(
+                        """
+                        INSERT OR REPLACE INTO anchors_quarantine
+                            (id, type, arch_module, arch_type, fingerprint, data,
+                             error, quarantined_at, from_format_version)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            e_id,
+                            e_type,
+                            e_mod,
+                            e_atype,
+                            e_fp,
+                            e_data,
+                            cascade_error,
+                            now_ts,
+                            e_fv
+                        )
+                    );
+                    conn.execute("DELETE FROM anchors WHERE id = ?", (e_id, ));
+                }
+                # Strip the orphaned edge IDs from live NodeAnchors' data.edges.
+                placeholders = ','.join('?' * len(orphaned_ids));
+                live_nodes = conn.execute(
+                    f"""
+                    SELECT id, data FROM anchors
+                    WHERE type = 'NodeAnchor'
+                      AND EXISTS (
+                          SELECT 1 FROM json_each(json_extract(data, '$.edges')) je
+                          WHERE je.value IN ({placeholders})
+                      )
+                    """,
+                    orphaned_ids
+                ).fetchall();
+                for (node_id, node_data_str) in live_nodes {
+                    try {
+                        node_data = json.loads(node_data_str);
+                        old_edges = node_data.get('edges', []);
+                        orphaned_set = set(orphaned_ids);
+                        node_data['edges'] = [
+                            e
+                            for e in old_edges
+                            if e not in orphaned_set
+                        ];
+                        conn.execute(
+                            "UPDATE anchors SET data = ? WHERE id = ?",
+                            (json.dumps(node_data), node_id)
+                        );
+                    } except Exception as patch_err {
+                        logger.error(
+                            f"Failed to strip orphaned edges from node {node_id}: {patch_err}"
+                        );
+                    }
+                }
+                logger.info(
+                    f"SqliteMemory: cascade-quarantined {len(orphaned_ids)} edge(s) "
+                    f"connected to quarantined node {id}."
+                );
+            }
+        }
         conn.commit();
     } except Exception as e {
         logger.error(f"Failed to quarantine anchor {id}: {e}");
