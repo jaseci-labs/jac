@@ -4667,3 +4667,30 @@ test "pipe_forward_typing_matches_call_form" {
         if err.code
         else 'no-code'}:\n{err.pretty_print()}";
 }
+
+test "as_cast_resolves_any_assignment" {
+    # The `as` cast re-types an Any source so it lands in a declared concrete
+    # type without tripping the strict-gradual rule (E1001).
+    path = os.path.join(CHECKER_FIXTURES, "checker_as_cast.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    e1001 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1001"
+    ];
+    assert len(e1001) == 0 , f"Expected no E1001 — the `as` casts should satisfy the declared types, got {len(
+        e1001
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1001);
+
+    parse_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E0002"
+    ];
+    assert len(parse_errs) == 0 , f"`expr as Type` should parse, got E0002:\n" + "\n---\n".join(
+        e.pretty_print() for e in parse_errs
+    );
+}

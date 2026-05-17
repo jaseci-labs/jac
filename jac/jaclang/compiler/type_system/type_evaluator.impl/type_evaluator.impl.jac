@@ -1519,6 +1519,16 @@ impl TypeEvaluator._get_type_of_expression_core(
             # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
             return target_type;
 
+        case uni.CastExpr():
+            # `value as cast_type` -- an unchecked, type-erased cast. Evaluate
+            # the operand so errors inside it still surface, then report the
+            # named type as the expression's type (same resolution used for
+            # annotations).
+            self.get_type_of_expression(expr.value);
+            return self._convert_to_instance(
+                self.get_type_of_expression(expr.cast_type)
+            );
+
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
 

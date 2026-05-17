@@ -2477,6 +2477,11 @@ impl PyastGenPass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     ];
 }
 
+"""CastExpr: `value as Type` is type-erased — emit only the operand's code."""
+impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    nd.gen.py_ast = nd.value.gen.py_ast;
+}
+
 impl PyastGenPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
     py_nodes = [];
     for x in nd.target {
