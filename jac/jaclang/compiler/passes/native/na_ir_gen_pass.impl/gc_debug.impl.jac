@@ -377,9 +377,14 @@ impl NaIRGenPass._emit_raw_free_bbs(
     log_raw_bb = func.append_basic_block("log_raw");
     live_rm_bb = func.append_basic_block("live_rm");
     actual_free_bb = func.append_basic_block("actual_free");
-    # log_free_raw: call malloc_usable_size, check debug flag
+    # log_free_raw: call the platform malloc-size intrinsic, check debug flag.
+    # glibc exports malloc_usable_size; macOS libSystem only has malloc_size
+    # (same i64(i8*) signature). Picking the wrong one fails at dyld load with
+    # "Symbol not found: _malloc_usable_size".
     b = ir.IRBuilder(log_free_bb);
-    _msz_fn = self._get_or_declare_extern("malloc_usable_size", i64, [i8_ptr]);
+    import platform;
+    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
+    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
     _raw_msz = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.msz");
     _msz = b.call(_msz_fn, [_raw_msz], name="msz");
     dbg_flag3 = b.load(self.rc_debug_gv, name="rc.dbg3");
@@ -444,9 +449,12 @@ impl NaIRGenPass._emit_struct_free_log(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     log_struct_line_bb = func.append_basic_block("log_struct_line");
-    # log_free_struct: compute msz, check debug flag
+    # log_free_struct: compute msz, check debug flag.
+    # macOS libSystem has malloc_size, not glibc's malloc_usable_size.
     b = ir.IRBuilder(log_free_struct_bb);
-    _msz_fn = self._get_or_declare_extern("malloc_usable_size", i64, [i8_ptr]);
+    import platform;
+    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
+    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
     _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");
     dbg_flag_s = b.load(self.rc_debug_gv, name="rc.dbg.s");
     b.cbranch(
