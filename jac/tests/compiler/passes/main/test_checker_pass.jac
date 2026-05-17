@@ -4210,6 +4210,60 @@ test "jsx_reserved_props_key_ref" {
     ].pretty_print()}";
 }
 
+test "jsx_props_bag_untyped_and_typed" {
+    # A component with a single `props` parameter is the props-bag pattern.
+    # Untyped (`props: any`) accepts arbitrary JSX attributes (no E1101) but
+    # is flagged with W1052; a typed props bag is validated against the
+    # members of the props object's type.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_props_bag.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Only the typed bag's unknown 'bogus' prop should raise E1101 — the
+    # untyped bag must accept its arbitrary attributes silently.
+    e1101_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1101"
+    ];
+    assert len(e1101_errors) == 1 , f"Expected exactly 1 E1101 (TypedComp 'bogus'), got {len(
+        e1101_errors
+    )}:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+    assert "bogus" in e1101_errors[0].pretty_print() , f"Expected E1101 for 'bogus', got: {e1101_errors[
+        0
+    ].pretty_print()}";
+
+    # The typed props bag validates attribute types — count="nope" is E1100.
+    e1100_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1100"
+    ];
+    assert len(e1100_errors) >= 1 , f"Expected E1100 for TypedComp count type mismatch, got {len(
+        e1100_errors
+    )} E1100 errors. All errors:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+
+    # W1052 fires exactly once — for the untyped UntypedComp, not TypedComp.
+    w1052 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1052"
+    ];
+    assert len(w1052) == 1 , f"Expected exactly 1 W1052 (UntypedComp), got {len(
+        w1052
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1052);
+    assert "UntypedComp" in w1052[0].pretty_print() , f"Expected W1052 for 'UntypedComp', got: {w1052[
+        0
+    ].pretty_print()}";
+}
+
 test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
     # Regression: Name nodes under a JsxElementName are resolved against the
     # _JsxIntrinsicElements registry by the JsxElement handler, not against

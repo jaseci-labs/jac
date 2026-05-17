@@ -594,6 +594,56 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     ) {
         self._check_event_trigger_archetype(nd);
     }
+    # Warn on a JSX component defined with an untyped props bag (`props: any`).
+    # A single parameter named `props` is the props-bag pattern (see the
+    # codegen heuristic in esast_gen_pass); when that parameter is untyped,
+    # every JSX prop on the component is unchecked — flag it once here (W1052).
+    if (
+        isinstance(nd.signature, uni.FuncSignature)
+        and nd.signature.return_type is not None
+        and nd.find_parent_of_type(uni.ImplDef) is None
+    ) {
+        comp_params = [
+            p
+            for p in nd.signature.get_parameters()
+            if isinstance(p.name, uni.Name) and p.name.value not in ("self", "cls")
+        ];
+        if (
+            len(comp_params) == 1
+            and isinstance(comp_params[0].name, uni.Name)
+            and comp_params[0].name.value == "props"
+        ) {
+            props_param = comp_params[0];
+            any_cls = self.evaluator.prefetch.any_class
+                if self.evaluator.prefetch
+                else None;
+            # `props: any` resolves to the prefetched `any` ClassType, not
+            # AnyType — an unannotated param has no type_tag.
+            is_untyped_bag = (
+                props_param.type_tag is None
+                or isinstance(props_param.type, types.AnyType)
+                or (
+                    any_cls is not None
+                    and isinstance(props_param.type, types.ClassType)
+                    and props_param.type.shared == any_cls.shared
+                )
+            );
+            jsx_cls = self.evaluator.prefetch.jsx_element_class
+                if self.evaluator.prefetch
+                else None;
+            ret_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
+            is_jsx_component = (
+                jsx_cls is not None
+                and isinstance(ret_type, types.ClassType)
+                and ret_type.shared == jsx_cls.shared
+            );
+            if is_untyped_bag and is_jsx_component {
+                self.emit(
+                    W1052, node_override=props_param, component=nd.name_spec.sym_name
+                );
+            }
+        }
+    }
 }
 
 """Validate `can ... with X entry/exit` triggers against the owning
