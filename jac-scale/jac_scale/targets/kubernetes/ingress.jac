@@ -425,10 +425,14 @@ obj IngressDeployer {
 
     Polls every 5 seconds for up to max_wait seconds. This avoids burning the
     longer app health-check intervals (15 s each) while NGINX is still starting.
+    No-op when shared_ingress=True (controller is externally managed).
     """
     def _wait_for_nginx_ready(
         app_name: str, namespace: str, apps_v1: Any, max_wait: int = 180
     ) -> None {
+        if self.k8s_config.shared_ingress {
+            return;
+        }
         controller_name = f"{app_name}-ingress-nginx";
         elapsed = 0;
         poll = 5;
@@ -525,12 +529,19 @@ obj IngressDeployer {
             );
         }
 
-        # Always deploy with a wildcard rule (no host).
-        # The domain is stored in the jac-scale/domain annotation so that
-        # --enable-tls can read it and add the host + TLS together in one step.
-        # Setting host here without TLS causes nginx to restrict routing to that
-        # domain before the cert exists, making the app unreachable via IP/NLB.
-        main_rule: dict = {'http': {'paths': paths}};
+        # Dedicated ingress: wildcard rule (no host). Domain is stored in the
+        # jac-scale/domain annotation so --enable-tls can add host + TLS together.
+        # Setting host without TLS would make the app unreachable via IP/NLB.
+        #
+        # Shared ingress: host is set immediately. The shared controller sees
+        # Ingress resources from many namespaces; without a host field it cannot
+        # differentiate two apps that both claim path '/'. Domain is mandatory
+        # when shared_ingress=True (validated in start_controller).
+        if self.k8s_config.shared_ingress {
+            main_rule: dict = {'host': self.k8s_config.domain, 'http': {'paths': paths}};
+        } else {
+            main_rule: dict = {'http': {'paths': paths}};
+        }
 
         ingress_annotations: dict = {
             'nginx.ingress.kubernetes.io/proxy-body-size': '0',
@@ -675,8 +686,12 @@ obj IngressDeployer {
                     }
                 }
             ];
-            # Same as main ingress: always wildcard rule; host added by --enable-tls.
-            redis_rule: dict = {'http': {'paths': redis_paths}};
+            # Same host logic as main ingress: set immediately for shared, wildcard for dedicated.
+            if self.k8s_config.shared_ingress {
+                redis_rule: dict = {'host': self.k8s_config.domain, 'http': {'paths': redis_paths}};
+            } else {
+                redis_rule: dict = {'http': {'paths': redis_paths}};
+            }
 
             redis_ingress = {
                 'apiVersion': 'networking.k8s.io/v1',
@@ -723,7 +738,10 @@ obj IngressDeployer {
     }
 
     """Start the NGINX controller (non-blocking). Call finish_ingress() later once other
-    deployment steps are done to minimise wall-clock wait time."""
+    deployment steps are done to minimise wall-clock wait time.
+
+    When shared_ingress=True the dedicated controller is skipped; the app's
+    Ingress resources will reference the pre-existing shared controller instead."""
     def start_controller(
         app_name: str,
         namespace: str,
@@ -733,9 +751,23 @@ obj IngressDeployer {
         rbac_v1: Any,
         networking_v1: Any
     ) {
-        self._deploy_nginx_controller(
-            app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
-        );
+        if self.k8s_config.shared_ingress and not self.k8s_config.domain {
+            raise Exception(
+                "shared_ingress=True requires 'domain' to be set so the shared controller "
+                "can route requests by host. Set 'domain' in KubernetesConfig "
+                "(e.g. myapp.example.com)."
+            );
+        }
+        if not self.k8s_config.shared_ingress {
+            self._deploy_nginx_controller(
+                app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
+            );
+        } elif self.logger {
+            self.logger.info(
+                f"shared_ingress=True: skipping dedicated controller for '{app_name}', "
+                f"using ingress class '{self.k8s_config.shared_ingress_class}'"
+            );
+        }
     }
 
     """Wait for the NGINX controller to be ready and then deploy routing rules.
@@ -751,11 +783,16 @@ obj IngressDeployer {
         core_v1: Any,
         networking_v1: Any
     ) {
+        if self.k8s_config.shared_ingress {
+            ingress_class = self.k8s_config.shared_ingress_class;
+        } else {
+            ingress_class = f"{namespace}-{app_name}-nginx";
+        }
         self._wait_for_nginx_ready(app_name, namespace, apps_v1);
         self._deploy_ingress_resource(
             app_name,
             namespace,
-            f"{namespace}-{app_name}-nginx",
+            ingress_class,
             service_port,
             grafana_enabled,
             redis_dashboard,
@@ -891,7 +928,11 @@ obj IngressDeployer {
         }
 
         # Create namespace-scoped Issuer
-        ingress_class_name = f"{namespace}-{app_name}-nginx";
+        if self.k8s_config.shared_ingress {
+            ingress_class_name = self.k8s_config.shared_ingress_class;
+        } else {
+            ingress_class_name = f"{namespace}-{app_name}-nginx";
+        }
         issuer_body = {
             'apiVersion': 'cert-manager.io/v1',
             'kind': 'Issuer',
@@ -1159,46 +1200,51 @@ obj IngressDeployer {
             }
         }
 
-        # Delete controller namespaced resources
-        delete_if_exists(
-            apps_v1.delete_namespaced_deployment,
-            controller_name,
-            namespace,
-            'Deployment'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service, service_name, namespace, 'Service'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_service_account,
-            controller_name,
-            namespace,
-            'ServiceAccount'
-        );
-        delete_if_exists(
-            core_v1.delete_namespaced_config_map, configmap_name, namespace, 'ConfigMap'
-        );
-
-        # Delete cluster-scoped resources (no namespace parameter)
-        try {
-            rbac_v1.delete_cluster_role(name=cluster_resource_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
+        # Delete controller namespaced resources and cluster-scoped RBAC/IngressClass.
+        # Skipped when shared_ingress=True — those resources belong to the shared
+        # controller and must not be torn down by an individual app.
+        if not self.k8s_config.shared_ingress {
+            delete_if_exists(
+                apps_v1.delete_namespaced_deployment,
+                controller_name,
+                namespace,
+                'Deployment'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_service, service_name, namespace, 'Service'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_service_account,
+                controller_name,
+                namespace,
+                'ServiceAccount'
+            );
+            delete_if_exists(
+                core_v1.delete_namespaced_config_map,
+                configmap_name,
+                namespace,
+                'ConfigMap'
+            );
+            try {
+                rbac_v1.delete_cluster_role(name=cluster_resource_name);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
-        }
-        try {
-            rbac_v1.delete_cluster_role_binding(name=cluster_resource_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
+            try {
+                rbac_v1.delete_cluster_role_binding(name=cluster_resource_name);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
-        }
-        try {
-            networking_v1.delete_ingress_class(name=ingress_class_name);
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
+            try {
+                networking_v1.delete_ingress_class(name=ingress_class_name);
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
             }
         }
 
