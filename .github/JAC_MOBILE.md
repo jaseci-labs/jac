@@ -81,12 +81,12 @@ builds APKs on a GitHub Actions runner - no Expo Application Services
 ### Key components
 
 **`mobile/` (generated, gitignored)** - The React Native shell. `jac
-setup mobile` generates this fresh — it is **not committed**. Contains
+setup mobile` generates this fresh; it is **not committed**. Contains
 `app/index.tsx` (the WebView screen), `app.json` (Expo config),
 `package.json`, placeholder icon PNGs, and
 `assets/jac-app/create-bundle.js` (the script that packs the web bundle
 into a single HTML string). Running `jac setup mobile` a second time is
-safe — it skips if `mobile/` already exists.
+safe; it skips if `mobile/` already exists.
 
 **`.jac/mobile/` (build artifacts, gitignored)** - Built by `jac build
 --client mobile`. Contains a copy of `mobile/`, installed `node_modules`,
@@ -130,7 +130,7 @@ runner (Tauri/Cargo) and this brings mobile to parity.
 ## Configuration - `jac.toml`
 
 The `[mobile]` section drives everything. It is **not pre-committed** in
-the example — `jac setup mobile` appends it to your `jac.toml` the first
+the example; `jac setup mobile` appends it to your `jac.toml` the first
 time you run it. Edit to taste after that.
 
 ```toml
@@ -307,7 +307,7 @@ same build steps as the local release path above, on `ubuntu-latest`.
 
 ### Triggers
 
-**On-demand only** (`workflow_dispatch`) — the pipeline is an integration
+**On-demand only** (`workflow_dispatch`): the pipeline is an integration
 test, not a per-PR gate. Trigger it manually from the Actions tab when
 you want to validate a mobile build or produce an APK for QA.
 
@@ -656,8 +656,8 @@ of the normal `pytest -x jac-client` suite on every PR. It covers:
 | `jac setup mobile generates placeholder icon files` | `icon.png`, `splash.png`, `adaptive-icon.png`, `favicon.png` exist and are non-empty |
 | `jac setup mobile appends [mobile] section to jac.toml` | `name`, `bundle_id`, `platforms`, `features.api_url`, `expo` keys are written |
 | `jac setup mobile is idempotent` | Running twice does not duplicate `[mobile]` in `jac.toml` |
-| `all-in-one jac.toml has no pre-committed [mobile] section` | Regression guard — fails if `[mobile]` is accidentally committed |
-| `all-in-one .gitignore excludes mobile/` | Regression guard — fails if `mobile/` is accidentally unignored |
+| `all-in-one jac.toml has no pre-committed [mobile] section` | Regression guard; fails if `[mobile]` is accidentally committed |
+| `all-in-one .gitignore excludes mobile/` | Regression guard; fails if `mobile/` is accidentally unignored |
 
 The first four tests run `jac setup mobile` against a temp directory so
 they are self-contained and fast (~2 s total).
