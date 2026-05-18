@@ -77,6 +77,12 @@ with entry {
     #   raw: any = py_call();   # opt in to permissive flow
     #   raw = py_call();        # inferred -- raw becomes any, no error
 
+    # `as` cast: re-type a value (unchecked, type-erased -- runtime no-op).
+    # Use it as the escape hatch when you know more than the type checker.
+    raw: any = 41;
+    count = raw as int;          # statically int; parenthesize to cast more:
+    bumped = (raw as int) + 1;   # (x if c else y) as T  /  with (x as T) as f
+
     # Union types
     maybe: str | None = None;
 
@@ -361,6 +367,32 @@ obj Example {
 
 # NOTE: All instance fields MUST be declared with `has`.
 # Dynamic assignment (e.g., `obj.new_attr = val`) is an anti-pattern.
+
+
+# ============================================================
+# Properties (getter / setter / deleter)
+# ============================================================
+
+# A `has` with an accessor block is a property. It never allocates
+# backing storage -- declare backing fields explicitly and reference
+# them with `self._<name>`.
+
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+            deleter { self._balance = 0.0; }
+        }
+
+    # Pure computed (no backing): read-only by omitting `setter`.
+    has doubled: float {
+        getter { return self._balance * 2.0; }
+    }
+}
+
+# Accessor bodies can live in an impl block, like regular methods:
+#   impl Account.balance.getter -> float { return self._balance; }
 
 
 # ============================================================

@@ -1135,7 +1135,7 @@ impl JFastApiServer.init(
 
         if user_id {
             try {
-                ctx.set_user_root(user_id);
+                await ctx.aset_user_root(user_id);
             } except ValueError {
                 logger.warning(f"Invalid user_root_id: {user_id}, using system root");
             }

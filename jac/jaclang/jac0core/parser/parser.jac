@@ -160,7 +160,7 @@ import from jaclang.jac0core.unitree {
     MultiString,
     LambdaExpr
 }
-import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
+import from jaclang.jac0core.unitree { AwaitExpr, CastExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
 import from jaclang.jac0core.unitree {
@@ -458,7 +458,7 @@ obj Parser {
     def synchronize;
     def parse -> Module;
     def parse_module -> Module;
-    def parse_expression -> Expr;
+    def parse_expression(allow_cast: bool = True) -> Expr;
     def _check_js_arrow_fault -> bool;
     def _recover_js_arrow_fault(left: Expr) -> Expr;
     def _recover_missing_connect_rhs -> bool;
@@ -466,6 +466,7 @@ obj Parser {
     def parse_concurrent_expr -> Expr;
     def parse_walrus_assign -> Expr;
     def parse_by_expr -> Expr;
+    def parse_cast -> Expr;
     def parse_pipe -> Expr;
     def parse_pipe_back -> Expr;
     def parse_bitwise_or -> Expr;
@@ -582,6 +583,8 @@ obj Parser {
     def _error_unexpected_member;
     def parse_has_stmt -> ArchHas;
     def parse_has_var -> HasVar;
+    def parse_accessor -> Ability;
+    def _consume_accessor_kind -> tuple[(str, Token)];
     def parse_ability -> Ability;
     def _parse_post_async_modifiers(
         is_override: bool, override_tok: Any, is_static: bool, static_tok: Any

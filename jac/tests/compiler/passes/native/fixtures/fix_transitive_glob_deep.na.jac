@@ -15,5 +15,3 @@ def:pub table_len() -> int {
 def:pub table_push(v: int) -> None {
     _TABLE.append(v);
 }
-
-with entry {}

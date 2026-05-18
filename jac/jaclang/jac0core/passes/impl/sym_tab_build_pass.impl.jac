@@ -86,6 +86,38 @@ impl SymTabBuildPass.exit_global_vars(
     }
 }
 
+impl SymTabBuildPass.enter_global_stmt(
+    self: SymTabBuildPass, nd: uni.GlobalStmt
+) -> None {
+    # `global x;` from inside a function: pull the module-level symbol into
+    # the enclosing python scope so subsequent assignments rebind the global
+    # instead of creating a shadow local that bind_assignment_targets would
+    # type as Unknown.
+    py_scope = find_python_scope_node_of(nd);
+    if py_scope is None or isinstance(py_scope, uni.Module) {
+        return;
+    }
+    for name_atom in nd.target {
+        sym_name = name_atom.sym_name if name_atom?.sym_name else None;
+        if not sym_name {
+            continue;
+        }
+        if sym_name in py_scope.names_in_scope {
+            continue;
+        }
+        module = py_scope.find_parent_of_type(uni.Module);
+        if module is None {
+            continue;
+        }
+        global_sym = module.names_in_scope.get(sym_name);
+        if global_sym is None {
+            continue;
+        }
+        py_scope.names_in_scope[sym_name] = global_sym;
+        global_sym.add_use(name_atom.name_spec);
+    }
+}
+
 impl SymTabBuildPass.exit_assignment(
     self: SymTabBuildPass, nd: uni.Assignment
 ) -> None {
@@ -632,6 +664,18 @@ impl SymTabBuildPass.exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -
     self.pop_scope();
 }
 
+impl SymTabBuildPass.enter_switch_case(
+    self: SymTabBuildPass, nd: uni.SwitchCase
+) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_switch_case(
+    self: SymTabBuildPass, nd: uni.SwitchCase
+) -> None {
+    self.pop_scope();
+}
+
 impl find_python_scope_node_of(nd: uni.UniNode) -> (UniScopeNode | None) {
     scope_types = uni.UniScopeNode.get_python_scoping_nodes();
     while nd.parent {
@@ -715,11 +759,41 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                     ) {
                         outer.add_use(i.name_spec);
                     } else {
-                        py_scope.def_insert(i, single_decl='local var');
+                        # No local binding yet — if the name exists at module
+                        # scope, treat this as a global assignment instead of
+                        # creating a function-local that shadows it.
+                        module_a = i.find_parent_of_type(uni.Module);
+                        if (
+                            module_a is not None
+                            and i.sym_name in module_a.names_in_scope
+                            and not isinstance(py_scope, uni.Module)
+                        ) {
+                            module_a.names_in_scope[i.sym_name].add_use(i.name_spec);
+                            py_scope.names_in_scope[i.sym_name] = module_a.names_in_scope[
+                                i.sym_name
+                            ];
+                        } else {
+                            py_scope.def_insert(i, single_decl='local var');
+                        }
                     }
                 } else {
                     i.sym_tab.def_insert(i, single_decl='local var');
                 }
+            } elif (
+                (nd.type_tag is None)
+                and isinstance(i.sym_tab, uni.Ability)
+                and (module := i.find_parent_of_type(uni.Module)) is not None
+                and i.sym_name in module.names_in_scope
+            ) {
+                # Function-scope unannotated assignment to a name that already
+                # exists at module scope: rebind the global rather than
+                # creating a shadow local. Mirrors the behaviour the user
+                # gets by writing `global x;` first, but lets long-standing
+                # native code skip the redundant declaration.
+                module.names_in_scope[i.sym_name].add_use(i.name_spec);
+                i.sym_tab.names_in_scope[i.sym_name] = module.names_in_scope[
+                    i.sym_name
+                ];
             } else {
                 # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {

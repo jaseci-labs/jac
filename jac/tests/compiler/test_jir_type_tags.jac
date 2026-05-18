@@ -1,13 +1,34 @@
-"""JIR round-trip tests for SEC_TYPE_TAGS section.
+"""JIR round-trip tests.
 
 Verifies that backend_type_tag values set by UniTreeEnrichPass are
 serialized into the SEC_TYPE_TAGS section during JIR write and correctly
-restored to Expr nodes during JIR read.
+restored to Expr nodes during JIR read. Also verifies that AST invariants
+required by downstream passes (e.g. name_spec on AstSymbolStubNode) survive
+JIR deserialization.
 """
 
+import os;
+import from pathlib { Path }
+import jaclang;
 import from jaclang.jac0core.jir_passes { JirWriter, JirReader }
 import from jaclang.jac0core.jir { SEC_TYPE_TAGS }
+import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.unitree {
+    MultiString,
+    FString,
+    ListVal,
+    SetVal,
+    DictVal,
+    TupleVal,
+    ListCompr,
+    SetCompr,
+    DictCompr,
+    IndexSlice
+}
 import from unittest.mock { MagicMock }
+
+glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+     JIR_FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "fixtures");
 
 # ── Section constant ──────────────────────────────────────────────────────────
 test "SEC_TYPE_TAGS constant is 0x07" {
@@ -82,4 +103,91 @@ test "_serialize_type_tags encodes (nid, pool_idx) pairs for tagged Expr nodes" 
     (tag_idx, pos) = _read_varint(result, pos);
     assert tag_idx >= 0;
     assert writer._pool.get(tag_idx) == "int";
+}
+
+# ── AstSymbolStubNode name_spec preservation ─────────────────────────────────
+# Bug: JirReader._read_node did not fabricate name_spec for AstSymbolStubNode
+# subclasses (MultiString, FString, ListVal, SetVal, DictVal, TupleVal,
+# {List,Set,Dict,Filter,Assign}Compr, IndexSlice, EdgeOpRef, JsxElement).
+#
+# In the normal compile path, each stub class's postinit calls
+# AstSymbolStubNode._init_stub() which fabricates a stub Name via
+# Name.gen_stub_from_node and wires it as `self.name_spec`. JIR serialization
+# does not persist this fabricated Name (the writer only emits declared
+# fields), and the reader's existing name_spec fallbacks (checking 'name'/
+# 'name_ref' fields and scanning kids for a NameAtom) all miss for these
+# stub-symbol nodes because their declared field names don't match and their
+# child trees don't contain a top-level NameAtom.
+#
+# Without the fix, DeclImplMatchPass._resolve_symbols_in_subtree (run by
+# TypeEvaluator._reattach_impl_modules after a JIR cache hit) walks all
+# AtomTrailer nodes, calls `chain[0].sym` on the head of each chain, and the
+# `.sym` getter (`return self.name_spec.sym`) raises
+#   AttributeError: 'MultiString' object has no attribute 'name_spec'
+# whenever a literal sits at the head of an attribute chain (e.g. "x".upper()).
+# This corrupts type checking of any cached module containing such patterns,
+# which is why several files in the repo's .jacignore couldn't run `jac check`.
+test "name_spec restored on AstSymbolStubNode after JIR round-trip" {
+    fixture = os.path.join(JIR_FIXTURES, "jir_stub_name_spec.jac");
+    program = JacProgram();
+    mod = program.compile(fixture, no_cgen=True);
+    assert mod is not None;
+
+    stub_classes = (
+        MultiString,
+        FString,
+        ListVal,
+        SetVal,
+        DictVal,
+        TupleVal,
+        ListCompr,
+        SetCompr,
+        DictCompr,
+        IndexSlice
+    );
+
+    # Sanity check: postinit-driven fresh AST has name_spec on every stub node.
+    fresh_counts: dict = {};
+    for cls in stub_classes {
+        nodes = mod.get_all_sub_nodes(cls);
+        fresh_counts[cls.__name__] = len(nodes);
+        assert len(nodes) > 0 , (
+            f"Fixture should contain at least one {cls.__name__}; "
+            f"adjust jir_stub_name_spec.jac"
+        );
+        for n in nodes {
+            assert n.name_spec is not None , (
+                f"Fresh {cls.__name__} has no name_spec — postinit chain "
+                f"is broken (this is not a JIR bug, fixture or class is misdefined)"
+            );
+        }
+    }
+
+    # Round-trip the module through JIR.
+    writer = JirWriter();
+    data = writer.write_module(mod);
+    reader = JirReader();
+    restored = reader.read_module(data);
+    assert restored is not None , "JIR round-trip returned None";
+
+    # name_spec must survive deserialization for every stub-symbol node.
+    for cls in stub_classes {
+        nodes = restored.get_all_sub_nodes(cls);
+        assert len(nodes) == fresh_counts[cls.__name__] , (
+            f"JIR round-trip lost {cls.__name__} nodes: "
+            f"fresh={fresh_counts[cls.__name__]} restored={len(nodes)}"
+        );
+        for n in nodes {
+            assert n.name_spec is not None , (
+                f"JIR deserializer dropped name_spec on {cls.__name__}. "
+                f"JirReader._read_node must fabricate a stub Name for "
+                f"AstSymbolStubNode subclasses the same way "
+                f"AstSymbolStubNode._init_stub does — otherwise "
+                f"DeclImplMatchPass._resolve_symbols_in_subtree crashes with "
+                f"AttributeError on chain[0].sym after a JIR cache hit."
+            );
+            # `.sym` reads self.name_spec.sym — must not raise.
+            _ = n.sym;
+        }
+    }
 }

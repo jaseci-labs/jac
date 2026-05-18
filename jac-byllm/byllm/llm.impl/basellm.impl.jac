@@ -310,6 +310,32 @@ impl BaseLLM._compact_messages(
 }
 
 
+"""Async invoke: uses native async dispatch for simple cases, thread pool for react loops.
+
+Non-streaming with no tools uses adispatch_no_streaming (→ model_call_no_stream_async).
+Streaming with no tools uses adispatch_streaming (→ model_call_with_stream_async).
+React loop (tools present) offloads the full sync invoke() to a thread pool, because
+the ReAct iteration logic is synchronous and making it fully async is out of scope here.
+"""
+impl BaseLLM.ainvoke(mt_run: MTRuntime) -> object {
+    import asyncio;
+    logging_stream = mt_run.stream and mt_run.call_params.get("logging", False);
+    no_tools = len(mt_run.tools) == 0;
+    if not mt_run.stream and no_tools and not logging_stream {
+        try {
+            resp = await self.adispatch_no_streaming(mt_run);
+        } finally {
+            mt_run.write_back_conversation();
+        }
+        return resp.output;
+    }
+    if mt_run.stream and no_tools and not logging_stream {
+        return self.adispatch_streaming(mt_run);
+    }
+    return await asyncio.to_thread(self.invoke, mt_run);
+}
+
+
 """Construct the call parameters and return self (factory pattern).
 
 Allows chaining like: `model(temperature=0.5).invoke(mt_run)`.
@@ -822,6 +848,68 @@ impl BaseLLM.dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None]
     }
 }
 
+"""Async dispatch: mirrors dispatch_no_streaming but calls model_call_no_stream_async."""
+impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
+    params = self.make_model_params(mt_run);
+    log_params = self.format_prompt(params);
+    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    params.pop("api_key", None);
+    try {
+        response = await self.model_call_no_stream_async(params);
+    } except Exception {
+        self.log_info(f"Calling LLM: {self.model_name} with params: {log_params}");
+        raise;
+    }
+    actual_model = response.get("model", self.model_name);
+    self.log_info(f"Calling LLM: {actual_model} with params: {log_params}");
+    message: LiteLLMMessage = response.get("choices", [])[0].get(
+        "message"
+    );  # type: ignore
+    mt_run.add_message(message);
+    output_content: str = message.get("content") or "";  # type: ignore
+    self.log_info(f"LLM call completed with response: {output_content}");
+    tool_calls: list[ToolCall] = [];
+    tool_calls_list = (message or {}).get("tool_calls") or [];
+    for tool_call in tool_calls_list {
+        if tool := mt_run.get_tool(tool_call.function.name) {
+            args_json = json.loads(tool_call.function.arguments);
+            args = tool.parse_arguments(args_json);
+            tool_calls.append(ToolCall(call_id=tool_call.id, tool=tool, args=args));
+        } else {
+            raise UnknownToolError(
+                f"Attempted to call tool: '{tool_call.function.name}' which was not present."
+            );
+        }
+    }
+    output_value = mt_run.parse_response(output_content)
+        if not tool_calls_list
+        else output_content;
+    usage_data = response.get("usage", {});
+    return CompletionResult(
+        output=output_value, tool_calls=tool_calls, usage=usage_data
+    );
+}
+
+"""Async dispatch: mirrors dispatch_streaming but calls model_call_with_stream_async."""
+impl BaseLLM.adispatch_streaming(mt_run: MTRuntime) {
+    params = self.make_model_params(mt_run);
+    log_params = self.format_prompt(params);
+    self.log_info(f"Calling LLM: {self.model_name} with params:\n{log_params}");
+    self.api_base = params.pop("api_base", DEFAULT_BASE_URL);
+    params.pop("api_key", None);
+    response = await self.model_call_with_stream_async(params);
+    async for chunk in response {
+        chunk_usage = chunk?.usage;
+        if chunk_usage {
+            self._usage_history.append(chunk_usage);
+        }
+        if chunk?.choices and chunk?.choices?[0]?.delta {
+            delta = chunk.choices[0].delta;
+            yield delta.content or "";
+        }
+    }
+}
+
 """Make a direct model call without streaming.
 
 Subclasses must implement this to define how the actual LLM API is called.
@@ -842,6 +930,41 @@ impl BaseLLM.model_call_with_stream(params: dict) -> Generator[str, None, None] 
     raise NotImplementedError(
         "Subclasses must implement this method for LLM call with streaming."
     );
+}
+
+"""Async fallback: wraps sync model_call_no_stream in a thread.
+
+Subclasses with native async support (e.g. Model) override this.
+"""
+impl BaseLLM.model_call_no_stream_async(params: dict) -> dict {
+    import asyncio;
+    return await asyncio.to_thread(self.model_call_no_stream, params);
+}
+
+"""Async fallback: drives the sync streaming generator step-by-step in a thread pool.
+
+asyncio.to_thread(model_call_with_stream, params) would only off-thread generator
+creation — actual chunk I/O still runs on the event loop during iteration. This impl
+calls next() inside the thread for each chunk so every blocking step is off-loop.
+Subclasses with native async support (e.g. Model) override this.
+"""
+impl BaseLLM.model_call_with_stream_async(params: dict) {
+    import asyncio;
+    def _next_chunk(gen: object) -> tuple[bool, object] {
+        try {
+            return (True, next(gen));
+        } except StopIteration {
+            return (False, None);
+        }
+    }
+    gen = self.model_call_with_stream(params);
+    while True {
+        (has_value, chunk) = await asyncio.to_thread(_next_chunk, gen);
+        if not has_value {
+            break;
+        }
+        yield chunk;
+    }
 }
 
 """Force LLM to produce a final answer (non-streaming). Restricts tools to finish_tool only."""
