@@ -3,6 +3,10 @@ name: Build Mobile Apps
 
 
 on:
+  push:
+    branches:
+      - feature/mobile-cicd-pipeline
+
   workflow_dispatch:
     inputs:
       app_path:
