@@ -37,6 +37,17 @@ def _prepare_build_dir(mobile_src_dir: Path, mobile_build_dir: Path) {
     }
     console.print("  ✔ Source files copied to .jac/mobile/", style="success");
 
+    # Icons are gitignored in the source tree; regenerate them in the build dir
+    # if any are missing (e.g. fresh CI clone or first build after setup).
+    _icon_names = ["icon.png", "splash.png", "adaptive-icon.png", "favicon.png"];
+    _assets_dir = mobile_build_dir / "assets";
+    if any(not (_assets_dir / _n).exists() for _n in _icon_names) {
+        import from jac_client.plugin.src.targets.mobile.setup_helpers {
+            _generate_placeholder_icons
+        }
+        _generate_placeholder_icons(mobile_build_dir);
+    }
+
     if not (mobile_build_dir / "node_modules").exists() {
         console.print("  Installing dependencies in .jac/mobile/...", style="muted");
         try {
