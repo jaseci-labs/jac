@@ -1342,7 +1342,7 @@ test "deploy all in one" {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    # PVC is not cascade-deleted with the StatefulSet — must be explicitly removed
+    # persistentVolumeClaimRetentionPolicy(whenDeleted=Delete) triggers async GC; poll until gone.
     pvc_deleted = False;
     for _ in range(30) {
         try {

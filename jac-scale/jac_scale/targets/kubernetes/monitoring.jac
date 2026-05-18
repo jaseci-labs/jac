@@ -7,7 +7,8 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     delete_if_exists,
-    delete_k8s_secret
+    delete_k8s_secret,
+    resize_pvc_if_needed
 }
 
 """Deploys and destroys a Prometheus + Grafana monitoring stack scoped to an app namespace.
@@ -28,7 +29,8 @@ obj MonitoringDeployer {
     """Deploy Prometheus ConfigMap with scrape config + StatefulSet + ClusterIP Service.
 
     Uses a StatefulSet with a PersistentVolumeClaim so TSDB data survives pod restarts.
-    The PVC (prometheus-data-<name>-0) is explicitly deleted on destroy.
+    persistentVolumeClaimRetentionPolicy (K8s 1.27+) is set to Delete on both whenDeleted
+    and whenScaled so all replica PVCs are cleaned up by Kubernetes on destroy or scale-down.
 
     Scrape targets include:
       - Jaseci application metrics at /metrics
@@ -41,6 +43,20 @@ obj MonitoringDeployer {
         prometheus_name = f"{app_name}-prometheus";
         ksm_name = f"{app_name}-kube-state-metrics";
         ne_name = f"{app_name}-node-exporter";
+
+        # Migration: delete the legacy Deployment if it still exists from a pre-StatefulSet
+        # deploy. Both objects share the same name and app label so the Service would route
+        # to both pods, doubling scrapes. Must happen before the StatefulSet is created.
+        try {
+            apps_v1.delete_namespaced_deployment(
+                name=prometheus_name, namespace=namespace
+            );
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
         # Use the service port (80 on AWS LoadBalancer, container_port on local NodePort)
         service_port = 80 if cluster_env == 'aws' else self.k8s_config.container_port;
 
@@ -166,6 +182,10 @@ obj MonitoringDeployer {
             'spec': {
                 'replicas': 1,
                 'serviceName': f"{prometheus_name}-service",
+                'persistentVolumeClaimRetentionPolicy': {
+                    'whenDeleted': 'Delete',
+                    'whenScaled': 'Delete'
+                },
                 'selector': {'matchLabels': {'app': prometheus_name}},
                 'template': {
                     'metadata': {
@@ -227,7 +247,7 @@ obj MonitoringDeployer {
                         'metadata': {'name': 'prometheus-data'},
                         'spec': {
                             'accessModes': ['ReadWriteOnce'],
-                            'resources': {'requests': {'storage': '2Gi'}}
+                            'resources': {'requests': {'storage': self.k8s_config.prometheus_storage_size}}
                         }
                     }
                 ]
@@ -235,6 +255,7 @@ obj MonitoringDeployer {
         };
         # Always patch so the config-hash annotation propagates and triggers a rollout
         # when the scrape config changes. Fall back to create on first deploy.
+        # Storage size and serviceName are immutable StatefulSet fields — never patch them.
         try {
             apps_v1.patch_namespaced_stateful_set(
                 name=prometheus_name, namespace=namespace, body=prometheus_statefulset
@@ -248,6 +269,12 @@ obj MonitoringDeployer {
                 raise;
             }
         }
+        resize_pvc_if_needed(
+            core_v1,
+            namespace,
+            f"prometheus-data-{prometheus_name}-0",
+            self.k8s_config.prometheus_storage_size
+        );
 
         if self.logger {
             self.logger.info(f"Prometheus deployed for '{app_name}'");
@@ -1240,17 +1267,6 @@ obj MonitoringDeployer {
             namespace,
             'StatefulSet'
         );
-        # Explicitly delete the PVC created by the StatefulSet volumeClaimTemplate.
-        # Kubernetes does not cascade-delete PVCs when a StatefulSet is deleted.
-        try {
-            core_v1.delete_namespaced_persistent_volume_claim(
-                name=f"prometheus-data-{prometheus_name}-0", namespace=namespace
-            );
-        } except ApiException as e {
-            if e.status != 404 {
-                raise;
-            }
-        }
         delete_if_exists(
             core_v1.delete_namespaced_service,
             f"{prometheus_name}-service",
