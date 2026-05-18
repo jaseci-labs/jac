@@ -2371,7 +2371,7 @@ mongodb_storage_size = "10Gi"
 prometheus_storage_size = "10Gi"
 ```
 
-Increasing `mongodb_storage_size` or `prometheus_storage_size` on redeploy automatically patches the existing PVC (data preserved). Decreasing is rejected by Kubernetes — an explicit error is raised and the deploy is aborted.
+Increasing `mongodb_storage_size` or `prometheus_storage_size` on redeploy automatically patches the existing PVC (data preserved). Decreasing is rejected by Kubernetes; an explicit error is raised and the deploy is aborted.
 
 > **Note:** PVC resize requires the StorageClass to have `allowVolumeExpansion: true`. Most cloud providers and MicroK8s enable this by default.
 
@@ -2491,7 +2491,7 @@ enabled = true
 prometheus_admin_password = "StrongPassword123!"
 
 [plugins.scale.kubernetes]
-prometheus_storage_size = "10Gi"  # optional, default 2Gi — see Persistent Storage
+prometheus_storage_size = "10Gi"  # optional, default 2Gi (see Persistent Storage)
 ```
 
 After deployment, access:
