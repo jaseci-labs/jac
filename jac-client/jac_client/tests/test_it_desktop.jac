@@ -997,6 +997,7 @@ name = "test-app"
         assert target2.requires_setup == False , "Target should not require setup after src-tauri is created";
     }
 }
+
 test "desktop build generates index.html with correct paths" {
     import from subprocess { run }
 
