@@ -41,6 +41,7 @@ import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }
 import from byllm.parallel { dispatch_batch, _index_by_identity, _PARALLEL_TOOL_HINT }
 import from byllm.schema { inject_schema_hint }
+import from byllm.tool_protocol { inject_tool_hint, recover_tool_calls }
 
 # Load configuration purely from jac.toml
 glob _byllm_config = get_byllm_config(),
@@ -73,6 +74,10 @@ obj BaseLLM {
         api_key: str = "",
         call_params: dict[(str, object)] = {},
         ctx_window: int = 0,
+        # False for backends without server-side tool calling (in-process
+        # llama.cpp): byllm renders the tool protocol into the prompt and
+        # recovers tool calls from the reply itself. See `byllm.tool_protocol`.
+        supports_native_tools: bool = True,
         _usage_history: list = [];
 
     def __call__(**kwargs: object) -> BaseLLM;

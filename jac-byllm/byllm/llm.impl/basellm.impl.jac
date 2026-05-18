@@ -709,6 +709,13 @@ impl BaseLLM.make_model_params(mt_run: MTRuntime) -> dict {
     # default to the first allowed enum value for every input. No-op when
     # response_format has no enum-typed properties.
     params = inject_schema_hint(params);
+    # Backends without server-side tool calling (in-process llama.cpp) get the
+    # tool schemas + call protocol rendered straight into the system prompt;
+    # the structured `tools` field is dropped so their unreliable native tool
+    # template is not engaged. The cloud/litellm path keeps `tools` untouched.
+    if not self.supports_native_tools {
+        params = inject_tool_hint(params);
+    }
     return params;
 }
 
@@ -794,6 +801,12 @@ impl BaseLLM.dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     message: LiteLLMMessage = response.get("choices", [])[0].get(
         "message"
     );  # type: ignore
+    # For backends without native tool calling, lift any tool call the model
+    # emitted as plain text into the structured `tool_calls` field so the
+    # ReAct loop below sees it. No-op once `tool_calls` is already populated.
+    if not self.supports_native_tools {
+        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+    }
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");
@@ -865,6 +878,12 @@ impl BaseLLM.adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult {
     message: LiteLLMMessage = response.get("choices", [])[0].get(
         "message"
     );  # type: ignore
+    # For backends without native tool calling, lift any tool call the model
+    # emitted as plain text into the structured `tool_calls` field so the
+    # ReAct loop below sees it. No-op once `tool_calls` is already populated.
+    if not self.supports_native_tools {
+        recover_tool_calls(message, [t.get_name() for t in mt_run.tools]);
+    }
     mt_run.add_message(message);
     output_content: str = message.get("content") or "";  # type: ignore
     self.log_info(f"LLM call completed with response: {output_content}");

@@ -9,6 +9,7 @@ and `llm.impl/local.impl.jac`.
 """
 
 import logging;
+import json;
 import from typing { Any }
 
 glob _logger: logging.Logger = logging.getLogger("byllm.local_runtime"),
@@ -128,12 +129,58 @@ def _flatten_message_content(msg: dict) -> dict {
     return new_msg;
 }
 
+"""Coerce object-shaped tool_calls on an assistant message into plain dicts.
+
+`wrap_tool_call` (and byllm's text-tool-call recovery) attach `SimpleNamespace`
+tool calls so `BaseLLM.dispatch_*` can read `.function.name`. But once that
+assistant turn is replayed into the next request, llama-cpp's Jinja chat
+template iterates `message.tool_calls` expecting OpenAI-shaped dicts and calls
+`.get` on each -- which blows up on a `SimpleNamespace`. Rewrite them to dicts
+here, at the llama-cpp boundary.
+"""
+def _coerce_tool_calls(msg: dict) -> dict {
+    tcs = msg.get("tool_calls");
+    if not isinstance(tcs, list) or not tcs {
+        return msg;
+    }
+    changed = False;
+    coerced: list = [];
+    for tc in tcs {
+        if isinstance(tc, dict) {
+            coerced.append(tc);
+            continue;
+        }
+        fn = tc?.function;
+        fn_args = getattr(fn, "arguments", "") or "";
+        if not isinstance(fn_args, str) {
+            fn_args = json.dumps(fn_args);
+        }
+        coerced.append(
+            {
+                "id": str(getattr(tc, "id", "") or ""),
+                "type": "function",
+                "function": {
+                    "name": str(getattr(fn, "name", "") or ""),
+                    "arguments": fn_args
+                }
+            }
+        );
+        changed = True;
+    }
+    if not changed {
+        return msg;
+    }
+    new_msg: dict = dict(msg);
+    new_msg["tool_calls"] = coerced;
+    return new_msg;
+}
+
 """Normalize a list of LiteLLM messages for llama-cpp consumption."""
 def normalize_messages(messages: list) -> list {
     out: list = [];
     for m in messages {
         if isinstance(m, dict) {
-            out.append(_flatten_message_content(m));
+            out.append(_coerce_tool_calls(_flatten_message_content(m)));
         } else {
             out.append(m);
         }
