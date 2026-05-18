@@ -76,6 +76,12 @@ class JacRuntime {
         return model.invoke(mt_run=mt_run);
     }
 
+    """Async variant of call_llm; routes through BaseLLM.ainvoke (asyncio.to_thread)."""
+    @hookimpl
+    static async def acall_llm(model: Model, mt_run: MTRuntime) -> object {
+        return await model.ainvoke(mt_run=mt_run);
+    }
+
     """Python library mode decorator for Jac's by llm() syntax."""
     @hookimpl
     static def by(model: Model) -> Callable {

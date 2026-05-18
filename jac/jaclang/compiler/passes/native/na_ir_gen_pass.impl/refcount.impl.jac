@@ -51,15 +51,13 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     self._emit_rc_debug_globals();
 
     # --- GC on/off switch ---
-    # __rc_gc_disabled (i8, internal): 0 = RC active (default), 1 = no-op all
-    # retain/release calls.  When disabled, every allocation still gets a header
-    # (rc=1, dtor=0) but retain/release are no-ops → memory is never freed.
-    # Use this mode to compare "with RC overhead" vs "without" in benchmarks.
-    # Toggle via __rc_gc_disable() / __rc_gc_enable(), or set JAC_NO_GC=1 env var.
+    # __rc_gc_disabled (i8, weak): 0 = RC active, 1 = no-op all retain/release.
+    # weak (not internal) so all linked modules share one flag after link_in().
+    # Toggle via __rc_gc_disable() / __rc_gc_enable(), or set JAC_NO_GC=1.
     rc_gc_disabled_gv = ir.GlobalVariable(
         self.llvm_module, i8, name="__rc_gc_disabled"
     );
-    rc_gc_disabled_gv.linkage = "internal";
+    rc_gc_disabled_gv.linkage = "weak";
     rc_gc_disabled_gv.initializer = ir.Constant(i8, 0);
     self.rc_gc_disabled_gv = rc_gc_disabled_gv;
     # __rc_gc_disable() -> void
@@ -79,6 +77,26 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     _b_en_gc.store(ir.Constant(i8, 0), rc_gc_disabled_gv);
     _b_en_gc.ret_void();
     self.rc_gc_enable_fn = en_gc_fn;
+
+    # __rc_safe_free(i8* ptr): free() gated by __rc_gc_disabled.
+    # All compiler-emitted frees go here so JAC_NO_GC=1 suppresses every free.
+    sf_fnty = ir.FunctionType(ir.VoidType(), [i8_ptr]);
+    sf_fn = ir.Function(self.llvm_module, sf_fnty, name="__rc_safe_free");
+    sf_fn.linkage = "internal";
+    sf_fn.args[0].name = "ptr";
+    _sf_entry = sf_fn.append_basic_block("entry");
+    _sf_do = sf_fn.append_basic_block("do_free");
+    _sf_done = sf_fn.append_basic_block("done");
+    _sf_b = ir.IRBuilder(_sf_entry);
+    _sf_flag = _sf_b.load(rc_gc_disabled_gv, name="sf.gc.dis");
+    _sf_dis = _sf_b.icmp_unsigned("!=", _sf_flag, ir.Constant(i8, 0), name="sf.dis");
+    _sf_b.cbranch(_sf_dis, _sf_done, _sf_do);
+    _sf_b = ir.IRBuilder(_sf_do);
+    _sf_b.call(self.free_fn, [sf_fn.args[0]]);
+    _sf_b.branch(_sf_done);
+    _sf_b = ir.IRBuilder(_sf_done);
+    _sf_b.ret_void();
+    self.rc_safe_free_fn = sf_fn;
 
     # Pre-declare all libc functions that the compiler uses internally.
     # This must happen BEFORE _process_clib_imports so that user imports
@@ -105,7 +123,7 @@ impl NaIRGenPass._emit_rc_helpers -> None {
     alloc_id_gv = ir.GlobalVariable(
         self.llvm_module, i64, name="__rc_alloc_id_counter"
     );
-    alloc_id_gv.linkage = "internal";
+    alloc_id_gv.linkage = "weak";  # shared across modules so ids are globally unique
     alloc_id_gv.initializer = ir.Constant(i64, 0);
     self.rc_alloc_id_gv = alloc_id_gv;
 
@@ -750,7 +768,7 @@ impl NaIRGenPass._emit_struct_release_fn(arch_name: str) -> None {
         _sf_tag
     );
     b = ir.IRBuilder(actual_free_struct_bb);
-    b.call(self.free_fn, [obj_raw]);
+    b.call(self.rc_safe_free_fn, [obj_raw]);
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();

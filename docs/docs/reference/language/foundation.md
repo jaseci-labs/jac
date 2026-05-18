@@ -392,12 +392,13 @@ The check recurses element-wise into containers, so `list[any] -> list[Task]` is
 !!! note "`.py` and `.pyi` files keep PEP 484 semantics"
     `Any` propagates freely inside Python modules. The strict rule only fires at the `.jac` consumption site. A typed `.pyi` stub for a Python utility removes the `any` return type at the boundary, so the strict rule never engages downstream.
 
-**Migration patterns.** Two ways to clear a strict-`any` error at a boundary:
+**Migration patterns.** Three ways to clear a strict-`any` error at a boundary:
 
 | Approach | When to use |
 |----------|-------------|
 | Type the source | The function has a stable signature. Add a `.pyi` stub for a Python utility, a return annotation on a `def`, or a typed [`has reports: list[T]`](walker-responses.md#typing-your-reports) declaration on a walker. The boundary becomes strongly typed and downstream `.jac` code stays clean. |
-| Accept `any` at the boundary | The source is intentionally untyped. Annotate the receiving local as `any`, then narrow with `isinstance` or `cast` before flowing into typed destinations. |
+| Accept `any` at the boundary | The source is intentionally untyped. Annotate the receiving local as `any`, then narrow with `isinstance` before flowing into typed destinations. |
+| Cast at the use site | You know the runtime type the checker cannot prove. Use the [`as` cast operator](#10-the-as-cast-operator) -- `value as Type` -- to re-type the value explicitly, e.g. `result.reports[0] as list[TweetView]`. The cast is unchecked, so use it only when the assumption is sound. |
 
 ```jac
 import json;
@@ -1407,7 +1408,34 @@ sem plan_shopping.recipe = "A description of the meal to prepare";
 
 See [Part V: AI Integration](../plugins/byllm.md) for detailed LLM usage.
 
-### 10 Operator Precedence
+### 10 The `as` Cast Operator
+
+The `as` operator performs a type cast: `value as Type` tells the type checker to treat `value` as `Type`. It is *unchecked* and *type-erased* -- at runtime it does nothing and evaluates to `value` unchanged; only its static type changes. The semantics match `typing.cast`, but the syntax reads left-to-right and needs no import.
+
+```jac
+def example(raw: any) {
+    count = raw as int;          # statically an int; no runtime check
+    items = raw as list[str];    # cast to a generic type
+}
+```
+
+Its primary use is as the escape hatch for the strict gradual-typing rule (see [The `any` Type and Gradual Typing](#the-any-type-and-gradual-typing)): an `any` value -- such as a walker report -- cannot flow silently into a declared concrete type, and the cast makes that re-typing explicit:
+
+```jac
+with entry {
+    result = root spawn load_feed();
+    tweets: list[TweetView] = result.reports[0] as list[TweetView];
+}
+```
+
+**Precedence.** The cast binds just below the ternary and above every binary operator, so `a + b as T` parses as `(a + b) as T`. To cast a ternary, parenthesize it: `(x if c else y) as T`. Casts chain left-associatively, so `x as A as B` is `(x as A) as B`.
+
+**Interaction with `with` / `except`.** Because `with <ctx> as <name>` and `except <type> as <name>` use `as` for their own alias, a top-level cast is not recognized in those positions -- parenthesize it instead: `with (x as T) as f`.
+
+!!! warning
+    The cast is unchecked. `"abc" as int` compiles without complaint; a wrong cast surfaces only as a later type error or a runtime failure. Use it when you genuinely know more than the checker, not to silence diagnostics blindly.
+
+### 11 Operator Precedence
 
 Complete precedence table from **lowest** (evaluated last) to **highest** (evaluated first):
 
@@ -1415,26 +1443,27 @@ Complete precedence table from **lowest** (evaluated last) to **highest** (evalu
 |------------|-----------|---------------|-------------|
 | 1 (lowest) | `lambda` | - | Lambda expression |
 | 2 | `if else` | Right | Ternary conditional |
-| 3 | `by` | Right | By operator (LLM delegation) |
-| 4 | `:=` | Right | Walrus operator |
-| 5 | `or`, `\|\|` | Left | Logical OR |
-| 6 | `and`, `&&` | Left | Logical AND |
-| 7 | `not` | - | Logical NOT (unary) |
-| 8 | `in`, `not in`, `is`, `is not`, `<`, `<=`, `>`, `>=`, `!=`, `==` | Left | Comparison/membership |
-| 9 | `\|` | Left | Bitwise OR |
-| 10 | `^` | Left | Bitwise XOR |
-| 11 | `&` | Left | Bitwise AND |
-| 12 | `<<`, `>>` | Left | Bit shifts |
-| 13 | `\|>`, `<\|` | Left | Pipe operators |
-| 14 | `+`, `-` | Left | Addition, subtraction |
-| 15 | `*`, `/`, `//`, `%`, `@` | Left | Multiplication, division, modulo, matmul |
-| 16 | `+x`, `-x`, `~` | - | Unary plus, minus, bitwise NOT |
-| 17 | `**` | Right | Exponentiation |
-| 18 | `await` | - | Await expression |
-| 19 | `spawn` | Left | Walker spawn |
-| 20 | `:>`, `<:` | Left | Atomic pipes |
-| 21 | `++>`, `<++`, connection ops | Left | Graph connection |
-| 22 (highest) | `x[i]`, `x.attr`, `x()`, `x?.attr` | Left | Subscript, attribute, call |
+| 3 | `as` | Left | Type cast |
+| 4 | `by` | Right | By operator (LLM delegation) |
+| 5 | `:=` | Right | Walrus operator |
+| 6 | `or`, `\|\|` | Left | Logical OR |
+| 7 | `and`, `&&` | Left | Logical AND |
+| 8 | `not` | - | Logical NOT (unary) |
+| 9 | `in`, `not in`, `is`, `is not`, `<`, `<=`, `>`, `>=`, `!=`, `==` | Left | Comparison/membership |
+| 10 | `\|` | Left | Bitwise OR |
+| 11 | `^` | Left | Bitwise XOR |
+| 12 | `&` | Left | Bitwise AND |
+| 13 | `<<`, `>>` | Left | Bit shifts |
+| 14 | `\|>`, `<\|` | Left | Pipe operators |
+| 15 | `+`, `-` | Left | Addition, subtraction |
+| 16 | `*`, `/`, `//`, `%`, `@` | Left | Multiplication, division, modulo, matmul |
+| 17 | `+x`, `-x`, `~` | - | Unary plus, minus, bitwise NOT |
+| 18 | `**` | Right | Exponentiation |
+| 19 | `await` | - | Await expression |
+| 20 | `spawn` | Left | Walker spawn |
+| 21 | `:>`, `<:` | Left | Atomic pipes |
+| 22 | `++>`, `<++`, connection ops | Left | Graph connection |
+| 23 (highest) | `x[i]`, `x.attr`, `x()`, `x?.attr` | Left | Subscript, attribute, call |
 
 **Examples showing precedence:**
 

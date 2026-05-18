@@ -1874,6 +1874,28 @@ test "property_cfg_narrowing" {
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
 
+test "native_property_setter_type_checking" {
+    # Fulfills the deferred-test TODO in checker_property_assignment.jac.
+    # Native `has x: T { getter; setter; }` syntax bypasses the @<name>.setter
+    # path entirely, so setter assignment + read-only enforcement should
+    # both type-check cleanly via the HasVar.accessors codepath.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_property_native_setter.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 2 , f"Expected 2 errors, got " + f"{len(
+        program.errors_had
+    )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
+    # 1. assignment of str to a float-typed writable property
+    assert "wrong" in program.errors_had[0].pretty_print();
+    assert "float" in program.errors_had[0].pretty_print();
+    # 2. read-only diagnostic for the setterless `area` property
+    assert "read-only" in program.errors_had[1].pretty_print();
+    assert "area" in program.errors_had[1].pretty_print();
+}
+
 test "type_narrowing" {
     program = JacProgram();
     mod = program.compile(
@@ -4212,6 +4234,57 @@ test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
     ]}";
 }
 
+test "dom_browser_globals_resolve_to_storage" {
+    # `localStorage` / `sessionStorage` are ambient browser globals typed as
+    # `Storage` (dom_types.pyi). Their real API surface must type-check with
+    # no E1032 (access on Unknown) and no W1051. The deliberate `getItm` typo
+    # must raise exactly one E1030 (known type, missing attribute) — proving
+    # the global is genuinely typed, not silenced as Unknown.
+    path = os.path.join(CHECKER_FIXTURES, "checker_dom_browser_globals.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    e1032_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032"
+    ];
+    assert len(e1032_errors) == 0 , f"Expected no E1032 (browser globals must not be Unknown), got {len(
+        e1032_errors
+    )}. All errors:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+
+    e1030_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1030"
+    ];
+    assert len(e1030_errors) == 1 , f"Expected exactly 1 E1030 (the `getItm` typo), got {len(
+        e1030_errors
+    )}. All errors:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+    assert "getItm" in e1030_errors[0].pretty_print() , f"Expected E1030 for `getItm`, got: {e1030_errors[
+        0
+    ].pretty_print()}";
+
+    # The valid Storage API lines must be fully resolved. W1051 on the typo
+    # line is expected downstream fallout of the E1030 above, so exclude it.
+    typo_line = e1030_errors[0].loc.first_line;
+    w1051_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051" and w.loc and w.loc.first_line != typo_line
+    ];
+    assert len(w1051_warnings) == 0 , f"Expected no W1051 on the valid Storage API surface, got {len(
+        w1051_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051_warnings);
+}
+
 test "lambda_block_body_return_type_inference" {
     path = os.path.join(CHECKER_FIXTURES, "checker_lambda_block_body_return.jac");
     program = JacProgram();
@@ -4593,4 +4666,31 @@ test "pipe_forward_typing_matches_call_form" {
     assert err.code and err.code.code == "E1053" , f"Expected E1053, got {err.code.code
         if err.code
         else 'no-code'}:\n{err.pretty_print()}";
+}
+
+test "as_cast_resolves_any_assignment" {
+    # The `as` cast re-types an Any source so it lands in a declared concrete
+    # type without tripping the strict-gradual rule (E1001).
+    path = os.path.join(CHECKER_FIXTURES, "checker_as_cast.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    e1001 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1001"
+    ];
+    assert len(e1001) == 0 , f"Expected no E1001 — the `as` casts should satisfy the declared types, got {len(
+        e1001
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1001);
+
+    parse_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E0002"
+    ];
+    assert len(parse_errs) == 0 , f"`expr as Type` should parse, got E0002:\n" + "\n---\n".join(
+        e.pretty_print() for e in parse_errs
+    );
 }

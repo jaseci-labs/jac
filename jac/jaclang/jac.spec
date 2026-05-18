@@ -2,13 +2,16 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
+expression ::=
+    lambda_expr | (cast | concurrent_expr) ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 
 walrus_assign ::= by_expr (":=" by_expr)?
 
 by_expr ::= pipe ("by" by_expr)?
+
+cast ::= concurrent_expr ("as" pipe)*
 
 pipe ::= pipe_back ("|>" pipe_back)*
 
@@ -446,7 +449,11 @@ archetype_member ::=
 
 has_stmt ::= "static"? "has" access_tag has_var ("," has_var)* ";"
 
-has_var ::= (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
+has_var ::=
+    (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
+    ("{" accessor* "}")?
+
+accessor ::= func_signature ("{" code_block_stmts "}" | ";")
 
 ability ::=
     ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag

@@ -220,6 +220,17 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0071 = _err("E0071", Category.SYNTAX, "Default 'except' clause must be last"),
      E0075 = _err("E0075", Category.SYNTAX, "Duplicate base class '{name}'"),
      E0076 = _err("E0076", Category.SYNTAX, "Duplicate method '{name}' in class body"),
+     E0080 = _err(
+         "E0080",
+         Category.SYNTAX,
+         "Property declarations cannot have an initializer",
+         help="Declare backing storage as a separate `has` field (e.g. `has _x: T = value;`) and reference it from your accessors."
+     ),
+     E0081 = _err(
+         "E0081",
+         Category.SYNTAX,
+         "Property declaration must contain at least one of `getter`, `setter`, `deleter`"
+     ),
      # Parser: warnings
      W0060 = _warn(
          "W0060",
@@ -916,11 +927,24 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5022", Category.CODEGEN, "Failed to load C library '{path}': {error}"
      ),
      W5023 = _warn("W5023", Category.CODEGEN, "Native module not found: {path}"),
-     W5024 = _warn(
-         "W5024", Category.CODEGEN, "Failed to compile native module {path}: {error}"
+     E5024 = _err(
+         "E5024",
+         Category.CODEGEN,
+         "Failed to compile native module {path}: {error}. "
+         "Fix the error in the imported module or nacompile will produce a broken binary."
      ),
-     W5025 = _warn(
-         "W5025", Category.CODEGEN, "Failed to link native module {path}: {error}"
+     E5025 = _err(
+         "E5025",
+         Category.CODEGEN,
+         "Failed to link native module {path}: {error}. "
+         "Fix the error in the imported module or nacompile will produce a broken binary."
+     ),
+     E5026 = _err(
+         "E5026",
+         Category.CODEGEN,
+         "Symbol collision during native link: '{symbol}' is defined in both "
+         "'{existing_module}' and '{new_module}'. "
+         "Mark one as :priv or rename to avoid a runtime crash."
      ),
      # Layout pass
      E5030 = _err(
