@@ -552,6 +552,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Expression type could not be resolved (Unknown)",
          "Often fixed by adding a more specific type annotation to the relevant declaration (e.g., 'list[Task]' instead of bare 'list', or annotating an unannotated parameter or attribute). Can also indicate an unresolved import, a forward reference the checker cannot bind, or fallout from an upstream error."
      ),
+     W1052 = _warn(
+         "W1052",
+         Category.TYPE,
+         "JSX component '{component}' uses an untyped props bag ('props: any');"
+         " its JSX props cannot be type-checked",
+         "Declare explicit typed parameters (e.g. 'def MyComp(title: str, count: int) -> JsxElement'), or annotate 'props' with a typed object. An untyped 'props: any' parameter opts the component out of all prop name and type validation."
+     ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      W1101 = _warn(
