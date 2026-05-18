@@ -8,7 +8,7 @@ dependency on the byLLM plugin.
 import from jaclang.cli.console { console }
 
 """Launch an interactive Jac coding agent powered by a byLLM model."""
-impl ai(prompt: str = "", model: str = "", n_ctx: int = 0, yolo: bool = False) -> int {
+impl ai(prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False) -> int {
     try {
         import from jaclang.cli.ai_agent { run_agent }
     } except ImportError {
@@ -18,5 +18,5 @@ impl ai(prompt: str = "", model: str = "", n_ctx: int = 0, yolo: bool = False) -
         );
         return 1;
     }
-    return run_agent(prompt, model, n_ctx, yolo);
+    return run_agent(prompt, model, n_ctx, safe);
 }

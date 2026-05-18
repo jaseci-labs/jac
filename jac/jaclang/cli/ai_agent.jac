@@ -32,8 +32,9 @@ import from jaclang.cli.guide_store {
 # MODEL & SESSION STATE
 #===============================================================================
 
-# Skip confirmation prompts; set by `run_agent` from the `--yolo` flag.
-glob yolo_mode: bool = False,
+# Skip confirmation prompts for file writes and code execution. On by default;
+# `run_agent` clears it when the `--safe` flag asks to confirm every action.
+glob yolo_mode: bool = True,
      # Resolved CPU thread count for local inference; shown in the banner. Set by
      # `build_model`; 0 means "not a local model / leave it to the backend".
      agent_threads: int = 0,
@@ -535,6 +536,12 @@ def print_banner {
     if agent_threads > 0 {
         console.print(f"  inference threads: {agent_threads}", style="muted");
     }
+    if yolo_mode {
+        console.print(
+            "  file writes and commands run without confirmation (use --safe to confirm each)",
+            style="yellow"
+        );
+    }
     console.print("  type a request, /help for commands, /exit to quit", style="muted");
     console.print("");
 }
@@ -648,16 +655,18 @@ def run_turn(message: str) {
 
 """Entry point for `jac ai`.
 
-Applies the resolved `--model`, `--n_ctx`, and `--yolo` flags, then runs.
+Applies the resolved `--model`, `--n_ctx`, and `--safe` flags, then runs.
 With `initial_prompt`, runs a single turn and exits; otherwise starts an
 interactive read-eval-print loop. Always returns 0 -- a failed turn reports
 its error but does not abort the session.
 """
 def run_agent(
-    initial_prompt: str = "", model: str = "", n_ctx: int = 0, yolo: bool = False
+    initial_prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False
 ) -> int {
     global agent_model,yolo_mode;
-    yolo_mode = yolo;
+    # File writes and code execution run without prompting unless `--safe`
+    # asks to confirm each one.
+    yolo_mode = not safe;
     # The import-time `agent_model` already covers jac.toml/default; only
     # rebuild when a flag actually changes the model or its context window.
     if model or n_ctx > 0 {

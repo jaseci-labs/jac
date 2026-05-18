@@ -43,11 +43,11 @@ glob registry = get_registry();
             help="Context-window size for local models (tokens)"
         ),
         Arg.create(
-            "yolo",
+            "safe",
             kind=ArgKind.FLAG,
             typ=bool,
             default=False,
-            help="Skip confirmation prompts for file writes and code execution"
+            help="Confirm every file write and code execution (off by default)"
         ),
 
     ],
@@ -57,8 +57,9 @@ glob registry = get_registry();
         ("jac ai -m openai/gpt-4o", "Use a cloud model (key from jac.toml or env)"),
         ("jac ai -m local:gemma-4-e2b", "Use a smaller/faster local model"),
         ("jac ai --n_ctx 32768", "Give the local model a larger context window"),
+        ("jac ai --safe", "Approve each file write and command before it runs"),
 
     ],
     group="general"
 )
-def ai(prompt: str = "", model: str = "", n_ctx: int = 0, yolo: bool = False) -> int;
+def ai(prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False) -> int;
