@@ -1924,13 +1924,23 @@ test "probe config defaults include timeoutSeconds and successThreshold" {
     liveness = probes['liveness'];
 
     # Readiness: all four new fields must be present with their defaults
-    assert readiness['timeoutSeconds'] == 1 , f"Expected readiness timeoutSeconds=1, got {readiness['timeoutSeconds']}";
-    assert readiness['successThreshold'] == 1 , f"Expected readiness successThreshold=1, got {readiness['successThreshold']}";
-    assert readiness['failureThreshold'] == 3 , f"Expected readiness failureThreshold=3, got {readiness['failureThreshold']}";
+    assert readiness['timeoutSeconds'] == 1 , f"Expected readiness timeoutSeconds=1, got {readiness[
+        'timeoutSeconds'
+    ]}";
+    assert readiness['successThreshold'] == 1 , f"Expected readiness successThreshold=1, got {readiness[
+        'successThreshold'
+    ]}";
+    assert readiness['failureThreshold'] == 3 , f"Expected readiness failureThreshold=3, got {readiness[
+        'failureThreshold'
+    ]}";
 
     # Liveness: timeoutSeconds must be present; successThreshold is hardcoded 1
-    assert liveness['timeoutSeconds'] == 1 , f"Expected liveness timeoutSeconds=1, got {liveness['timeoutSeconds']}";
-    assert liveness['successThreshold'] == 1 , f"Expected liveness successThreshold=1, got {liveness['successThreshold']}";
+    assert liveness['timeoutSeconds'] == 1 , f"Expected liveness timeoutSeconds=1, got {liveness[
+        'timeoutSeconds'
+    ]}";
+    assert liveness['successThreshold'] == 1 , f"Expected liveness successThreshold=1, got {liveness[
+        'successThreshold'
+    ]}";
 }
 
 # Verify custom probe values flow through KubernetesConfig into _build_probe_config.
@@ -1963,10 +1973,18 @@ test "probe config honours custom timeoutSeconds and successThreshold" {
     readiness = probes['readiness'];
     liveness = probes['liveness'];
 
-    assert readiness['timeoutSeconds'] == 5 , f"Expected readiness timeoutSeconds=5, got {readiness['timeoutSeconds']}";
-    assert readiness['successThreshold'] == 2 , f"Expected readiness successThreshold=2, got {readiness['successThreshold']}";
-    assert readiness['failureThreshold'] == 4 , f"Expected readiness failureThreshold=4, got {readiness['failureThreshold']}";
-    assert liveness['timeoutSeconds'] == 3 , f"Expected liveness timeoutSeconds=3, got {liveness['timeoutSeconds']}";
+    assert readiness['timeoutSeconds'] == 5 , f"Expected readiness timeoutSeconds=5, got {readiness[
+        'timeoutSeconds'
+    ]}";
+    assert readiness['successThreshold'] == 2 , f"Expected readiness successThreshold=2, got {readiness[
+        'successThreshold'
+    ]}";
+    assert readiness['failureThreshold'] == 4 , f"Expected readiness failureThreshold=4, got {readiness[
+        'failureThreshold'
+    ]}";
+    assert liveness['timeoutSeconds'] == 3 , f"Expected liveness timeoutSeconds=3, got {liveness[
+        'timeoutSeconds'
+    ]}";
 }
 
 # Verify KubernetesConfig.from_dict round-trips the new probe fields correctly.
