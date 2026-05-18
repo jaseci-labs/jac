@@ -3,6 +3,13 @@ name: Build Mobile Apps
 
 
 on:
+  push:
+    branches:
+      - feature/mobile-cicd-pipeline
+    paths:
+      - '.github/workflows/build-mobile.yml'
+      - 'jac-client/**'
+
   pull_request:
     paths:
       - '.github/workflows/build-mobile.yml'
