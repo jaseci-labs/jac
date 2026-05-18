@@ -1619,7 +1619,7 @@ obj KubernetesTarget(DeploymentTarget) {
             if self.k8s_config.monitoring_enabled {
                 prometheus_name = f"{app_name}-prometheus";
                 try {
-                    apps_v1.read_namespaced_deployment(
+                    apps_v1.read_namespaced_stateful_set(
                         name=prometheus_name, namespace=namespace
                     );
                     resources_exist = True;

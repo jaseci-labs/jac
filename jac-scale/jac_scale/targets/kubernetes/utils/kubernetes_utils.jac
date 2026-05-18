@@ -23,7 +23,7 @@ glob COMPANION_DEFS: list = [
          ("", "Jaseci App", False),
          ("-redis", "Redis", False),
          ("-mongodb", "MongoDB", True),
-         ("-prometheus", "Prometheus", False),
+         ("-prometheus", "Prometheus", True),
          ("-grafana", "Grafana", False),
          ("-redis-insight", "RedisInsight", False),
          ("-mongo-express", "Mongo Express", False),
