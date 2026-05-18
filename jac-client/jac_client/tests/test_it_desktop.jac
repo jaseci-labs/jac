@@ -995,6 +995,8 @@ name = "test-app"
         factory.clear_cache();
         target2 = factory.create("desktop", project_dir);
         assert target2.requires_setup == False , "Target should not require setup after src-tauri is created";
+    }
+}
 test "desktop build generates index.html with correct paths" {
     import from subprocess { run }
 
