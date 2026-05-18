@@ -533,24 +533,13 @@ impl ViteCompiler.init(
     vite_output_dir: (Path | None) = None,
     vite_minify: bool = False,
     runtime_path: (Path | None) = None,
-    compile_to_js_func:
-        (Callable[([Path], tuple[(str, (ModuleType | None))])] | None) = None,
-    extract_exports_func: (Callable[([Any], list[str])] | None) = None,
-    extract_globals_func:
-        (Callable[([Any, ModuleType], dict[(str, Any)])] | None) = None
+    compile_to_js_func: Callable[([Path], tuple[(str, (ModuleType | None))])],
+    extract_exports_func: Callable[([Any], list[str])],
+    extract_globals_func: Callable[([Any, ModuleType], dict[(str, Any)])]
 ) {
     if (not vite_package_json or not vite_package_json.exists()) {
         raise ClientBundleError(
             'Vite package.json not found. Set vite_package_json when using ViteCompiler'
-        );
-    }
-    if (
-        (compile_to_js_func is None)
-        or (extract_exports_func is None)
-        or (extract_globals_func is None)
-    ) {
-        raise ClientBundleError(
-            'compile_to_js_func, extract_exports_func, and extract_globals_func are required'
         );
     }
     self.vite_package_json = vite_package_json;

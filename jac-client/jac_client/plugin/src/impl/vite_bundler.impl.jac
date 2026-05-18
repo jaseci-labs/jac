@@ -264,7 +264,7 @@ impl ViteBundler._resolve_api_base_url(
     return toml_base_url or api_base_url_override or env_override;
 }
 
-"""Get a valid JavaScript variable name from plugin module name."""
+
 impl ViteBundler._get_plugin_var_name(self: ViteBundler, plugin_name: str) -> str {
     name = plugin_name.split('/')[-1];
     name = name.replace('-', '_').replace('.', '_');
@@ -327,12 +327,10 @@ impl ViteBundler._format_define_entries(
     # Only add API base URL if explicitly set - skip for desktop builds where
     # Tauri injects it at runtime via initialization_script
     if api_base_url {
-        entries.append(
-            "    '" + JAC_API_BASE_URL_KEY + "': " + _to_js_expr(api_base_url)
-        );
+        entries.append(f"    '{JAC_API_BASE_URL_KEY}': {_to_js_expr(api_base_url)}");
     }
     for (key, value) in custom_defines.items() {
-        entries.append("    '" + key + "': " + _to_js_expr(value));
+        entries.append(f"    '{key}': {_to_js_expr(value)}");
     }
     return ',\n'.join(entries);
 }
@@ -343,7 +341,11 @@ impl ViteBundler._generate_vite_config_content(
     is_dev: bool,
     entry_file: Path,
     api_base_url: str,
-    api_port: int = 8000
+    base_path: str,
+    api_port: int = 8000,
+    for_mobile_dev: bool = False,
+    mobile_hmr_host: str = "",
+    mobile_hmr_port: int = 0
 ) -> str {
     build_dir = self._get_client_dir();
     vite_config_data = self.config_loader.get_vite_config();
@@ -428,6 +430,85 @@ impl ViteBundler._generate_vite_config_content(
         server_config_str = self._format_config_object(server_config, indent=2)
             if (isinstance(server_config, dict) and server_config)
             else '';
+        # Capacitor WebView: keep the HMR WebSocket alive so the full-reload plugin
+        # can push page reloads, but set explicit host/port so the device can connect.
+        if for_mobile_dev and mobile_hmr_host {
+            hmr_host = mobile_hmr_host;
+            hmr_port = mobile_hmr_port or 5173;
+            mobile_hmr_str = (
+                f'\n    hmr: {{ protocol: "ws", host: "{hmr_host}", port: {hmr_port}, clientPort: {hmr_port}, overlay: false }},'
+            );
+        } elif for_mobile_dev {
+            mobile_hmr_str = "\n    hmr: { overlay: false },";
+        } else {
+            mobile_hmr_str = "";
+        }
+        mobile_plug_in: str = "\n    jacMobileCompiledReload(),"
+            if for_mobile_dev
+            else "";
+        # After Jac writes compiled/*.js, push full-reload to the Capacitor WebView
+        mobile_compiled_block: str = (
+            r'''
+
+// When Jac recompiles, push full-reload to the WebView (Capacitor does not watch project files)
+function sendFullReload(server) {
+  let sent = false;
+  // Broadcast over the websocket first (works for both Vite 5 and Vite 6 clients).
+  try {
+    if (server.ws && typeof server.ws.send === "function") {
+      server.ws.send({ type: "full-reload", path: "*" });
+      sent = true;
+    }
+  } catch (e) {}
+  // Vite 6 environment fallback for runners that expose environment hot channels.
+  try {
+    const envs = server.environments;
+    if (envs && typeof envs === "object") {
+      for (const k of Object.keys(envs)) {
+        const env = envs[k];
+        if (env && env.hot && typeof env.hot.send === "function") {
+          env.hot.send({ type: "full-reload", path: "*" });
+          sent = true;
+        }
+      }
+    }
+  } catch (e) {}
+  return sent;
+}
+
+function jacMobileCompiledReload() {
+  return {
+    name: "jac-mobile-compiled-reload",
+    configureServer(server) {
+      const compiled = path.resolve(buildDir, "compiled");
+      try { server.watcher.add(compiled); } catch (e) {}
+      let timer = null;
+      const fire = (file) => {
+        if (typeof file !== "string") return;
+        const norm = file.split(path.sep).join("/");
+        if (!norm.includes("/compiled/") || !norm.endsWith(".js")) return;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          sendFullReload(server);
+        }, 300);
+      };
+      server.watcher.on("change", fire);
+      server.watcher.on("add", fire);
+    },
+    // Intercept hot updates for compiled files and force full-reload instead of module HMR
+    handleHotUpdate(ctx) {
+      const norm = ctx.file.split(path.sep).join("/");
+      if (norm.includes("/compiled/") && norm.endsWith(".js")) {
+        sendFullReload(ctx.server);
+        return [];
+      }
+    },
+  };
+}
+'''
+                if for_mobile_dev
+                else ""
+        );
         config_content = f'''import {{ defineConfig }} from "vite";
 import path from "path";
 import {{ fileURLToPath }} from "url";
@@ -463,17 +544,18 @@ function jacErrorReporter() {{
     }},
   }};
 }}
-
+{mobile_compiled_block}
 /**
  * Vite DEV configuration for HMR mode
  * Proxies API routes to Python server at localhost:{api_port}
  */
 export default defineConfig({{
+  base: "{base_path}",
   define: {{
 {define_str}
   }},
   plugins: [
-    jacErrorReporter(),{(newline + plugins_str + newline + '  ')
+    jacErrorReporter(),{mobile_plug_in}{(newline + plugins_str + newline + '  ')
             if plugins_str
             else ''}],
   root: buildDir,
@@ -484,7 +566,9 @@ export default defineConfig({{
     sourcemap: true, // Enable source maps for better error messages{build_overrides_str}
   }},
   server: {{
-    host: true,
+    host: {f'"{mobile_hmr_host}"'
+            if (for_mobile_dev and mobile_hmr_host)
+            else 'true'},
     watch: {{
       usePolling: true,
       interval: 100,
@@ -536,7 +620,7 @@ export default defineConfig({{
         changeOrigin: true,
       }},
     }},
-{server_config_str}
+{server_config_str}{mobile_hmr_str}
   }},
   resolve: {{
     alias: {{
@@ -632,6 +716,7 @@ function jacSourceMapper() {{
  */
 
 export default defineConfig({{
+  base: "{base_path}",
   define: {{
 {define_str}
   }},
@@ -679,13 +764,17 @@ api_base_url_override: overrides jac.toml base_url for desktop targets
     where the CLI knows the backend port at startup time.
 is_dev: if True, creates dev config with HMR proxy, else build config.
 api_port: port for API proxy in dev mode.
+for_mobile_dev: if True, configure Vite HMR for Capacitor WebView full-reload.
 """
 impl ViteBundler.create_vite_config(
     self: ViteBundler,
     entry_file: Path,
     api_base_url_override: str = "",
     is_dev: bool = False,
-    api_port: int = 8000
+    api_port: int = 8000,
+    for_mobile_dev: bool = False,
+    mobile_hmr_host: str = "",
+    mobile_hmr_port: int = 0
 ) -> Path {
     build_dir = self._get_client_dir();
     build_dir.mkdir(parents=True, exist_ok=True);
@@ -694,11 +783,16 @@ impl ViteBundler.create_vite_config(
     api_base_url = self._resolve_api_base_url(api_base_url_override);
     config_filename = 'vite.dev.config.js' if is_dev else 'vite.config.js';
     config_path = configs_dir / config_filename;
+    base_path = self.config_loader.get_base_path();
     config_content = self._generate_vite_config_content(
         is_dev=is_dev,
         entry_file=entry_file,
         api_base_url=api_base_url,
-        api_port=api_port
+        base_path=base_path,
+        api_port=api_port,
+        for_mobile_dev=for_mobile_dev,
+        mobile_hmr_host=mobile_hmr_host,
+        mobile_hmr_port=mobile_hmr_port
     );
     config_path.write_text(config_content, encoding='utf-8');
     return config_path;
@@ -985,18 +1079,16 @@ def _toml_config_from_raw(config_data: dict) -> str {
 }
 
 """Build the Vite dev server command."""
-def _build_vite_dev_command(config_rel: Path, port: int) -> list[str] {
+def _build_vite_dev_command(config_rel: Path, port: int, host: str = "") -> list[str] {
     bun = _require_bun();
-    return [
-        bun,
-        'x',
-        'vite',
-        '--config',
-        str(config_rel),
-        '--port',
-        str(port),
-        '--host'
-    ];
+    cmd = [bun, 'x', 'vite', '--config', str(config_rel), '--port', str(port)];
+    if host {
+        cmd.append('--host');
+        cmd.append(host);
+    } else {
+        cmd.append('--host');
+    }
+    return cmd;
 }
 
 """Check if a line indicates Vite server is ready."""
@@ -1055,7 +1147,10 @@ def _forward_vite_output(
 
 """Start Vite dev server as a subprocess."""
 impl ViteBundler.start_dev_server(
-    self: ViteBundler, port: int = 3000, suppress_initial_output: bool = False
+    self: ViteBundler,
+    port: int = 3000,
+    suppress_initial_output: bool = False,
+    host: str = ""
 ) -> Any {
     import sys;
     import time;
@@ -1083,8 +1178,7 @@ impl ViteBundler.start_dev_server(
         # Config is outside build_dir, use absolute path
         config_rel = dev_config;
     }
-    command = _build_vite_dev_command(config_rel, port);
-    logger.debug(f"Starting Vite dev server on port {port}");
+    command = _build_vite_dev_command(config_rel, port, host=host);
     if suppress_initial_output {
         process = self._start_vite_with_output_capture(command, build_dir, sys);
     } else {

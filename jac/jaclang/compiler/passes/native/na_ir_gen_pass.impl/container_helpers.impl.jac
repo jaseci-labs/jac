@@ -107,7 +107,13 @@ impl NaIRGenPass._emit_container_release_fn(
             name=f"data{field_idx}.ptr.f"
         );
         data_f = b.load(data_p, name=f"data{field_idx}.f");
-        b.call(free_fn, [b.bitcast(data_f, i8_ptr, name=f"data{field_idx}.cast")]);
+        if self.rc_safe_free_fn is None {
+            self._emit_rc_helpers();
+        }
+        b.call(
+            self.rc_safe_free_fn,
+            [b.bitcast(data_f, i8_ptr, name=f"data{field_idx}.cast")]
+        );
     }
     # Remove from live-objects list, then log and free the container struct.
     if self.rc_alloc_fn is None {
@@ -142,7 +148,10 @@ impl NaIRGenPass._emit_container_release_fn(
         _cl_tag
     );
     b = ir.IRBuilder(actual_free_cont_bb);
-    b.call(free_fn, [_cont_raw]);
+    if self.rc_safe_free_fn is None {
+        self._emit_rc_helpers();
+    }
+    b.call(self.rc_safe_free_fn, [_cont_raw]);
     b.branch(done_bb);
     b = ir.IRBuilder(done_bb);
     b.ret_void();
@@ -369,7 +378,10 @@ impl NaIRGenPass._emit_grow_array(
     old_i8 = b.bitcast(old_data, i8_ptr, name="old.i8");
     new_i8 = b.bitcast(new_data, i8_ptr, name="new.i8");
     b.call(memcpy_fn, [new_i8, old_i8, old_bytes]);
-    b.call(free_fn, [old_i8]);
+    if self.rc_safe_free_fn is None {
+        self._emit_rc_helpers();
+    }
+    b.call(self.rc_safe_free_fn, [old_i8]);
     b.store(new_data, arr_ptr);
     return new_data;
 }

@@ -767,6 +767,11 @@ impl UnparsePass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     nd.gen.jac = "await " + nd.target.gen.jac;
 }
 
+"""CastExpr: value as cast_type"""
+impl UnparsePass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    nd.gen.jac = nd.value.gen.jac + " as " + nd.cast_type.gen.jac;
+}
+
 """GlobalStmt: global names ;"""
 impl UnparsePass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
     nd.gen.jac = "global " + self._comma_sep(nd.target) + ";";
@@ -1159,6 +1164,11 @@ impl UnparsePass.exit_jsx_text(nd: uni.JsxText) -> None {
 """JsxExpression."""
 impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
+}
+
+"""JsxComment: emit the raw `{#* ... *#}` text verbatim."""
+impl UnparsePass.exit_jsx_comment(nd: uni.JsxComment) -> None {
+    nd.gen.jac = nd.value.value if isinstance(nd.value, uni.Token) else str(nd.value);
     # ── Match / Switch ───────────────────────────────────────────────────
 }
 

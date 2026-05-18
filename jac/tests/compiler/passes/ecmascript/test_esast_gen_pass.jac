@@ -457,6 +457,21 @@ test "jsx html entity decoding in text and attributes" {
     assert "&#x3e;" not in js_code , ("Raw hex entity should NOT appear in emitted JS");
 }
 
+test "jsx block comment is a no-op child" {
+    # `{#* ... *#}` inside JSX children must compile cleanly and produce no
+    # rendered output — the comment body must not leak into the generated JS,
+    # and surrounding sibling elements must render normally.
+    es_ast = compile_to_esast(fixture_path("jsx_block_comment.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    assert "JSX_COMMENT_PROBE" not in js_code , (
+        "Block-comment body must not appear in emitted JS"
+    );
+    assert "__jacJsx" in js_code , "Surrounding JSX should still compile to __jacJsx";
+    assert "Hello" in js_code , "Sibling text before the comment should render";
+    assert "Click" in js_code , "Sibling text after the comment should render";
+}
+
 test "stale has read emits W3041" {
     # Compile with type_check=True so the lint schedule (JacLintCheckPass)
     # runs and W3041 surfaces in prog.warnings_had.

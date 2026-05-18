@@ -1535,6 +1535,27 @@ test "serve blocking sync walkers run concurrently via to_thread" {
     }
 }
 
+test "endpoint effect classifier follows helper calls" {
+    # A walker whose only graph mutation happens inside a plain `def` helper
+    # must still be classified as a writer -- otherwise the client cache is
+    # never invalidated after the mutation. The classifier has to follow the
+    # call into the helper to see the write.
+    import from jaclang.runtimelib.server { ModuleIntrospector }
+
+    jac_file = fixture_abs_path("serve_helper_effects.jac");
+    introspector = ModuleIntrospector(
+        module_name="serve_helper_effects", base_path=str(Path(jac_file).parent)
+    );
+    introspector.load();
+    effects = introspector._client_manifest.get("endpoint_effects", {});
+
+    assert "walker:tag_item" in effects , "tag_item should be classified";
+    assert effects["walker:tag_item"]["is_writer"] , "tag_item mutates the graph via the _add_tag helper -- must be a writer";
+
+    assert "walker:list_items" in effects , "list_items should be classified";
+    assert not effects["walker:list_items"]["is_writer"] , "list_items only reports -- must be a reader";
+}
+
 test "spawn_walker_sync and spawn_walker_async dispatch to explicit paths" {
     # Verifies the explicit sync/async entrypoints on ExecutionManager work
     # standalone (not via the back-compat dispatcher). The handler seam

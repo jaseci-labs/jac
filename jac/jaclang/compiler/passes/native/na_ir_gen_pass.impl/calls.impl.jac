@@ -61,6 +61,38 @@ impl NaIRGenPass._codegen_call(nd: uni.FuncCall) -> (ir.Value | None) {
         self.builder.call(self.rc_gc_enable_fn, []);
         return None;
     }
+    # __float_bits(d: float)->int64 / __bits_float(b: int64)->float: IEEE-754 bitcast intrinsics.
+    # Each compiles to a single LLVM bitcast (used by NaN-boxed JSValue helpers in jac-bun).
+    if func_name == "__float_bits" {
+        params_l = nd.params or [];
+        if params_l {
+            arg_val = self._codegen_expr(params_l[0]);
+            if arg_val is not None {
+                if not isinstance(arg_val.type, ir.DoubleType) {
+                    arg_val = self._coerce_type(arg_val, ir.DoubleType());
+                }
+                return self.builder.bitcast(arg_val, ir.IntType(64), name="float_bits");
+            }
+        }
+        return ir.Constant(ir.IntType(64), 0);
+    }
+    if func_name == "__bits_float" {
+        params_l = nd.params or [];
+        if params_l {
+            arg_val = self._codegen_expr(params_l[0]);
+            if arg_val is not None {
+                if not isinstance(arg_val.type, ir.IntType) {
+                    arg_val = self._coerce_type(arg_val, ir.IntType(64));
+                } elif arg_val.type.width != 64 {
+                    arg_val = self._coerce_type(arg_val, ir.IntType(64));
+                }
+                return self.builder.bitcast(
+                    arg_val, ir.DoubleType(), name="bits_float"
+                );
+            }
+        }
+        return ir.Constant(ir.DoubleType(), 0.0);
+    }
     # Handle len() builtin for lists, dicts, sets, and strings
     if func_name == "len" {
         params_l = nd.params or [];
