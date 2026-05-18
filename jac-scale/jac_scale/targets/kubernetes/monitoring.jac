@@ -247,7 +247,11 @@ obj MonitoringDeployer {
                         'metadata': {'name': 'prometheus-data'},
                         'spec': {
                             'accessModes': ['ReadWriteOnce'],
-                            'resources': {'requests': {'storage': self.k8s_config.prometheus_storage_size}}
+                            'resources': {
+                                'requests': {
+                                    'storage': self.k8s_config.prometheus_storage_size
+                                }
+                            }
                         }
                     }
                 ]
