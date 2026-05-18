@@ -538,7 +538,10 @@ obj IngressDeployer {
         # differentiate two apps that both claim path '/'. Domain is mandatory
         # when shared_ingress=True (validated in start_controller).
         if self.k8s_config.shared_ingress {
-            main_rule: dict = {'host': self.k8s_config.domain, 'http': {'paths': paths}};
+            main_rule: dict = {
+                'host': self.k8s_config.domain,
+                'http': {'paths': paths}
+            };
         } else {
             main_rule: dict = {'http': {'paths': paths}};
         }
@@ -688,7 +691,10 @@ obj IngressDeployer {
             ];
             # Same host logic as main ingress: set immediately for shared, wildcard for dedicated.
             if self.k8s_config.shared_ingress {
-                redis_rule: dict = {'host': self.k8s_config.domain, 'http': {'paths': redis_paths}};
+                redis_rule: dict = {
+                    'host': self.k8s_config.domain,
+                    'http': {'paths': redis_paths}
+                };
             } else {
                 redis_rule: dict = {'http': {'paths': redis_paths}};
             }
@@ -760,7 +766,13 @@ obj IngressDeployer {
         }
         if not self.k8s_config.shared_ingress {
             self._deploy_nginx_controller(
-                app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
+                app_name,
+                namespace,
+                cluster_env,
+                apps_v1,
+                core_v1,
+                rbac_v1,
+                networking_v1
             );
         } elif self.logger {
             self.logger.info(

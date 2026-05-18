@@ -2155,7 +2155,7 @@ By default each app deploys its own NGINX controller (one Deployment, one NodePo
 **Requirements:**
 
 - A running NGINX ingress controller must already exist in the cluster
-- `domain` **must** be set — the shared controller sees Ingress resources from all namespaces, so host-based routing is the only way to differentiate two apps. jac-scale raises an error at deploy time if `domain` is empty when `shared_ingress = true`
+- `domain` **must** be set. The shared controller sees Ingress resources from all namespaces, so host-based routing is the only way to differentiate two apps. jac-scale raises an error at deploy time if `domain` is empty when `shared_ingress = true`
 
 **Configuration:**
 
@@ -2167,7 +2167,7 @@ By default each app deploys its own NGINX controller (one Deployment, one NodePo
 ```toml
 [plugins.scale.kubernetes]
 shared_ingress = true
-domain = "myapp.example.com"          # required — used as the Ingress host field
+domain = "myapp.example.com"          # required: used as the Ingress host field
 
 # Override if your shared controller uses a non-default class
 # shared_ingress_class = "nginx"
@@ -2177,11 +2177,11 @@ domain = "myapp.example.com"          # required — used as the Ingress host fi
 
 | Behaviour | Dedicated (default) | Shared |
 |-----------|---------------------|--------|
-| Controller deployed | Yes — one per app | No — uses existing controller |
+| Controller deployed | Yes (one per app) | No (uses existing controller) |
 | IngressClass | `{namespace}-{app_name}-nginx` | Value of `shared_ingress_class` |
 | Routing rules | Wildcard (host set by `--enable-tls`) | Host set immediately to `domain` |
-| On destroy | Removes controller, RBAC, IngressClass, Ingress rules | Removes Ingress rules only — controller is untouched |
-| TLS (`--enable-tls`) | Works — cert-manager Issuer uses app-specific class | Works — cert-manager Issuer uses shared class |
+| On destroy | Removes controller, RBAC, IngressClass, and Ingress rules | Removes Ingress rules only; controller is untouched |
+| TLS (`--enable-tls`) | Works (cert-manager Issuer uses app-specific class) | Works (cert-manager Issuer uses shared class) |
 
 !!! note
     Because the shared controller routes by the `Host:` header, each app in the cluster must have a unique domain. Two apps named `jaseci` in `dev` and `prod` namespaces are fully isolated as long as they have different domains (`dev.example.com` vs `prod.example.com`).
