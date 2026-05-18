@@ -2,7 +2,25 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Client**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-client 0.3.13 (Latest Release)
+## jac-client 0.3.14 (Latest Release)
+
+### New Features
+
+- **Feature: Mobile target with Capacitor (Android + iOS)**: Adds `jac build --client mobile`, `jac start --client mobile`, and `jac setup mobile` -- wraps the Jac client (Vite) web app in a Capacitor native shell. Reuses the WebTarget pipeline for HTML/JS/CSS; auto-selects the dev host for Android emulator (10.0.2.2), iOS Simulator (127.0.0.1), and LAN for physical devices; supports HMR via Vite + Capacitor live-reload; checks Android/iOS toolchain prerequisites; auto-configures `adb reverse` for USB-connected Android devices. Closes #5460.
+
+### Bug Fixes
+
+- **Fix: Desktop sidecar bundles all PyPI dependencies correctly**: PyPI packages whose installation name differs from their import name no longer get silently dropped from the frozen desktop sidecar. `.jac` source files shipped inside Python packages are bundled alongside the `.py` files.
+- **Fix: Correct assert string in `test_client_only_requires_base_url`**: The test was checking for `"client_only = true requires"` which never existed in the implementation. Updated to match the actual error message `"client_only mode requires"` in `desktop_target.impl.jac`.
+- **Fix: `jacSignup` surfaces JSON parse errors instead of swallowing them**: On a 200 response with a malformed body, `jacSignup` previously returned `{success: True, user_id: None}`, hiding the failure from callers. It now returns `{success: False, error: ...}` when the response body cannot be parsed as JSON.
+- **jac-client: Multi-segment SPA routes**: Fixed an issue where asset paths (JS/CSS) in the generated `index.html` were relative, causing 404 errors when refreshing on nested routes. Asset paths now use a configurable `base_path` (defaulting to `/`), which also enables deploying the app on a subpath.
+- **Fix: use `{**field}` instead of `{...field}` in JacForm input JSX**: jac-client's form-input components spread the `react-hook-form` `field` registration into JSX with `{...field}`, which is JS-idiomatic but emits W0063 (`prefer-double-star-spread`) once the type checker reaches them. Switched to Jac's `{**field}` so the lint stays clean as `@jac/runtime` consumers gain stricter type checking. No runtime behavior change.
+
+### Refactors
+
+- **Refactor: Convert `.map(lambda)` to JSX List Comprehension in Client Runtime**: Replaced `.map(lambda → JSX)` patterns in `client_runtime.impl.jac` with native Jac JSX list comprehension syntax (`[<jsx> for item in collection]`), aligning the runtime code with idiomatic Jac style.
+
+## jac-client 0.3.13
 
 ### New Features
 

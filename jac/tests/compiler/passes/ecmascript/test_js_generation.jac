@@ -1583,7 +1583,7 @@ test "walrus in if-condition still hoists its let despite alt-branch scope final
     # should be visible after the if per Python semantics. This test
     # locks in the current behavior so a future correctness fix is a
     # deliberate change, not an accidental regression.
-    jac_code = "\"\"\"Test walrus hoist preservation across alt-branch finalization.\"\"\"\n\ncl def check(getter: int) -> int {\n    if (n := getter) > 5 {\n        x: int = 1;\n    } else {\n        x: int = 2;\n    }\n    return 0;\n}\n";
+    jac_code = "\"\"\"Test walrus hoist preservation across alt-branch finalization.\"\"\"\n\ncl def check(seed: int) -> int {\n    if (n := seed) > 5 {\n        x: int = 1;\n    } else {\n        x: int = 2;\n    }\n    return 0;\n}\n";
 
     temp_path = write_temp_jac(jac_code);
     try {
@@ -1642,5 +1642,43 @@ test "sibling block scopes — try except finally each get their own let" {
         assert_balanced_syntax(js_code, temp_path);
     } finally {
         os.unlink(temp_path);
+    }
+}
+
+
+test "in/not in on unknown-typed containers matches Python semantics" {
+    import json;
+    # `opaque()` returns `any`, so the backend cannot statically prove the
+    # container types. Membership must still behave like Python: substring
+    # search for strings, element search for lists, key search for dicts.
+    js_code = compile_fixture_to_js("dynamic_membership.jac", FIXTURES);
+    wrapper = js_code + "\nconsole.log(JSON.stringify(membership()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "dynamic `in` membership crashed in Node "
+        "(raw JS `in` rejects string/array operands):\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got: dict = json.loads(result.stdout.strip());
+    expected = {
+        "str_hit": True,
+        "str_miss": False,
+        "str_not_in_hit": True,
+        "list_hit": True,
+        "list_miss": False,
+        "list_index_trap": False,
+        "dict_hit": True,
+        "dict_miss": False
+    };
+    for (key, want) in expected.items() {
+        assert key in got , f"missing key '{key}' in result {got}";
+        assert got[key] == want , (
+            f"membership '{key}': got {got[key]!r}, expected {want!r}"
+        );
     }
 }

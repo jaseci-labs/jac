@@ -662,10 +662,54 @@ impl SqliteMemory.query(
     }
 }
 
-"""Get all root anchors."""
+"""Get all root anchors — the in-process working set plus rows on disk.
+
+Scanning only `__mem__` would make a freshly-opened SqliteMemory (e.g. the L3
+tier of a new server request) report only the roots it had itself loaded,
+silently hiding every root persisted by other requests/users. The disk scan
+reads anchor metadata cheaply, resolves Root (sub)classes without
+deserializing payloads, and only loads the rows that are actually roots.
+"""
 impl SqliteMemory.get_roots -> Generator[Root, None, None] {
-    for anchor in self.__mem__.values() {
+    seen: set[UUID] = set();
+    # In-process working set: includes roots not yet synced to disk.
+    for anchor in list(self.__mem__.values()) {
         if isinstance(anchor.archetype, Root) {
+            seen.add(anchor.id);
+            yield cast(Root, anchor.archetype);
+        }
+    }
+    # Persisted rows on disk that have not been loaded into this session.
+    candidate_ids: list[UUID] = [];
+    with self.__lock__ {
+        if not self.__conn__ and os.path.exists(self.path) {
+            self._ensure_connection();
+        }
+        if self.__conn__ is not None {
+            cursor = self.__conn__.execute(
+                "SELECT id, arch_module, arch_type FROM anchors WHERE type = ?",
+                ("NodeAnchor", )
+            );
+            for row in cursor.fetchall() {
+                arch_module = row[1];
+                arch_type = row[2];
+                uid = UUID(row[0]);
+                if uid in seen or not arch_module or not arch_type {
+                    continue;
+                }
+                cls = Serializer._get_class(arch_module, arch_type);
+                if cls is not None
+                and isinstance(cls, type)
+                and issubclass(cls, Root) {
+                    candidate_ids.append(uid);
+                }
+            }
+        }
+    }
+    for uid in candidate_ids {
+        anchor = self.get(uid);
+        if anchor is not None and isinstance(anchor.archetype, Root) {
+            seen.add(uid);
             yield cast(Root, anchor.archetype);
         }
     }
@@ -1380,6 +1424,36 @@ impl TieredMemory.put(anchor: Anchor) -> None {
     if self.l3 and anchor.persistent {
         if Jac.check_write_access(anchor, op_hint="field_write") {
             self.l3.put(anchor);
+        }
+    }
+}
+
+"""Enumerate roots across every tier — the basis for the `allroots()` builtin.
+
+L1 (this request's working set) holds roots created or mutated in-flight; L3
+(the shared persistent store) holds every root ever committed by any
+request/user. Without merging L3 in, `allroots()` would see only the caller's
+own root and every cross-user query would silently degrade to single-user.
+
+L2 is intentionally skipped: it is a partial cache whose entries are always
+also present in L1 or L3. Results are de-duplicated by archetype identity —
+when a root is resident in more than one tier every tier hands back the same
+anchor object, so the L1 copy (with any uncommitted mutations) wins.
+"""
+impl TieredMemory.get_roots -> Generator[Root, None, None] {
+    seen: set[int] = set();
+    for anchor in list(self.__mem__.values()) {
+        if isinstance(anchor.archetype, Root) {
+            seen.add(id(anchor.archetype));
+            yield cast(Root, anchor.archetype);
+        }
+    }
+    if self.l3 is not None {
+        for l3_root in self.l3.get_roots() {
+            if id(l3_root) not in seen {
+                seen.add(id(l3_root));
+                yield l3_root;
+            }
         }
     }
 }

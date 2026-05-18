@@ -24,7 +24,7 @@ obj WebTarget(ClientTarget) {
 
     """Start web dev server."""
     override def dev(
-        entry_file: Path, project_dir: Path, api_port: int = 8000
+        entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
     ) -> None;
 
     """Start web target (production preview mode)."""

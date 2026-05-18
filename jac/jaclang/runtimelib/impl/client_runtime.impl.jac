@@ -84,28 +84,28 @@ impl createSignal(initialValue: Any) -> list {
     signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialValue, "subscribers": []};
     __jacReactiveContext.signals.append(signalData);
-    def getter -> Any {
+    def readVal -> Any {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
     }
-    def setter(newValue: Any) {
+    def writeVal(newValue: Any) {
         if newValue != signalData.value {
             signalData.value = newValue;
             __jacNotifySubscribers(signalData.subscribers);
         }
     }
-    return [getter, setter];
+    return [readVal, writeVal];
 }
 
 impl createState(initialState: dict) -> list {
     signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialState, "subscribers": []};
     __jacReactiveContext.signals.append(signalData);
-    def getter -> dict {
+    def readVal -> dict {
         __jacTrackDependency(signalData.subscribers);
         return signalData.value;
     }
-    def setter(updates: dict) {
+    def writeVal(updates: dict) {
         # Shallow merge
         newState = {};
         stateValue = signalData.value;
@@ -118,7 +118,7 @@ impl createState(initialState: dict) -> list {
         signalData.value = newState;
         __jacNotifySubscribers(signalData.subscribers);
     }
-    return [getter, setter];
+    return [readVal, writeVal];
 }
 
 impl createEffect(effectFn: Any) -> None {
@@ -1015,7 +1015,7 @@ impl useState(initialValue: Any) -> list {
     # First render: create new state
     signalData = {"value": initialValue};
     # Setter that updates value and triggers re-render
-    def setter(newValue: Any) {
+    def writeVal(newValue: Any) {
         if newValue != signalData.value {
             signalData.value = newValue;
             # Schedule re-render of root component
@@ -1023,11 +1023,11 @@ impl useState(initialValue: Any) -> list {
         }
     }
     # Store in hooks array for subsequent renders
-    signalData["setter"] = setter;
+    signalData["setter"] = writeVal;
     hooks.append(signalData);
     __jacReactiveContext.hookIndex = hookIndex + 1;
     # Return current value and setter
-    return [signalData.value, setter];
+    return [signalData.value, writeVal];
 }
 
 """useEffect - React-compatible effect hook.

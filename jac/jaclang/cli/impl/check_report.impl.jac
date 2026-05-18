@@ -1,5 +1,24 @@
 """Impl of Formatting utilities for jac check output"""
 
+"""Print a 'jac guide' pointer when a diagnostic maps to a reference guide.
+
+`alert` is an Alert from the compiler; its `code` field carries the
+DiagnosticInfo (code string + Category). When the code maps to a bundled
+guide, a one-line hint nudges the reader -- human or AI agent -- to the fix.
+"""
+def print_guide_hint(alert: any) -> None {
+    import from jaclang.cli.console { console }
+    import from jaclang.cli.guide_store { guide_for_diagnostic }
+    info = alert.code;
+    if info is None {
+        return;
+    }
+    name = guide_for_diagnostic(info.code, info.category.value);
+    if name is not None {
+        console.print(f"  → run 'jac guide {name}' for guidance", style="muted");
+    }
+}
+
 impl separator(text: str, char: str = '=', total_width: int = 80) -> str {
     text_part = f" {text} ";
     remaining = total_width - len(text_part);
@@ -22,10 +41,12 @@ impl print_failures(failed_results: list, nowarn: bool = False) -> None {
         console.print(separator(r['path'], char='_'));
         for e in r['errors'] {
             console.error(e.pretty_print());
+            print_guide_hint(e);
         }
         if not nowarn and r['warnings'] {
             for w in r['warnings'] {
                 console.warning(w.pretty_print());
+                print_guide_hint(w);
             }
         }
         console.print("");
