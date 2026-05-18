@@ -13,11 +13,13 @@ directly and builds the model from them before the session starts.
 import os;
 import re;
 import sys;
+import time;
 import subprocess;
 import from pathlib { Path }
 
 import from byllm.lib { Model }
 import from byllm.config_loader { get_byllm_config }
+import from byllm.parallel { mark_serialize }
 
 import from jaclang.cli.console { console }
 import from jaclang.cli.guide_store {
@@ -297,35 +299,114 @@ def run_jac_cli(subcommand: str, path: str) -> str {
 }
 
 
-def run_jac(path: str) -> str {
-    if not confirm(f"run `jac run {path}`") {
-        return "DENIED: the user declined to run this file.";
+def run_command(command: str) -> str {
+    if not confirm(f"run shell command: {command}") {
+        return "DENIED: the user declined to run this command.";
     }
-    return run_jac_cli("run", path);
+    # Put the running interpreter's bin directory first on PATH so `jac` (and
+    # other console scripts installed alongside it) resolve even when the
+    # session was launched without the environment activated.
+    env = dict(os.environ);
+    bin_dir = os.path.dirname(sys.executable);
+    if bin_dir {
+        env["PATH"] = bin_dir + os.pathsep + env.get("PATH", "");
+    }
+    try {
+        result = subprocess.run(
+            command, shell=True, capture_output=True, text=True, timeout=180, env=env
+        );
+        combined = ((result.stdout or "") + (result.stderr or "")).strip();
+        return truncate(combined or f"(no output; exit code {result.returncode})");
+    } except subprocess.TimeoutExpired {
+        return f"ERROR: `{command}` timed out after 180s.";
+    } except Exception as e {
+        return f"ERROR running `{command}`: {e}";
+    }
 }
 
-sem run_jac = "Execute a .jac file with `jac run` and return its output.";
-sem run_jac.path = "Path of the .jac file to run.";
+sem run_command = "Run a shell command in the project directory and return its combined output. Use this to scaffold a new project (`jac create --use fullstack <name>`), install dependencies (`jac install`), run a file (`jac run <file>`), run tests, or any other shell task. `jac create` templates: default, client, fullstack.";
+sem run_command.command = "The shell command to run.";
 
 
 def jac_check(path: str) -> str {
-    return run_jac_cli("check", path);
+    return run_jac_cli("check", path or ".");
 }
 
-sem jac_check = "Type-check and compile a .jac file with `jac check`; use this after writing or editing Jac code to confirm it is valid.";
-sem jac_check.path = "Path of the .jac file to check.";
+sem jac_check = "Type-check and compile Jac code with `jac check`. Pass a single file, or a directory (`.` for the whole project) to check everything at once. Use this after writing or editing Jac code to confirm it is valid.";
+sem jac_check.path = "File or directory to check; '.' or empty string checks the whole project.";
+
+
+def start_app(entry_file: str) -> str {
+    entry_path = entry_file or "main.jac";
+    if not confirm(f"start the app with `jac start {entry_path}`") {
+        return "DENIED: the user declined to start the app.";
+    }
+    # `jac start` resolves the project (and its installed deps) from the entry
+    # file's own directory, so run it there -- not wherever the session was
+    # launched -- which matters when the app was scaffolded into a subfolder.
+    work_dir = os.path.dirname(entry_path) or ".";
+    target = os.path.basename(entry_path);
+    try {
+        proc = subprocess.Popen(
+            [sys.executable, "-m", "jaclang", "start", target],
+            cwd=work_dir,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True
+        );
+    } except Exception as e {
+        return f"ERROR launching `jac start {entry_path}`: {e}";
+    }
+    # Let it boot, then stop it -- we only want the startup diagnostics, not a
+    # server left running after the tool returns.
+    time.sleep(12);
+    proc.terminate();
+    try {
+        output = proc.communicate(timeout=10)[0];
+    } except Exception {
+        proc.kill();
+        output = proc.communicate()[0];
+    }
+    return truncate(str(output) if output else "(no startup output)");
+}
+
+sem start_app = "Start the app with `jac start` for ~12 seconds to confirm it boots, then stop it; returns the startup logs. Use this after building an app to catch errors that `jac check` cannot.";
+sem start_app.entry_file = "Entry .jac file to start; empty string means 'main.jac'.";
 
 
 def search_guides(keyword: str) -> str {
-    matches = gs_search(keyword);
-    if not matches {
+    words = [
+        w
+        for w in keyword.lower().split()
+        if w
+    ];
+    if not words {
+        return "(empty search)";
+    }
+    scored: list[tuple[int, str]] = [];
+    for g in gs_list() {
+        haystack = f"{g.name}\n{g.description}\n{g.body}".lower();
+        hits = sum(
+            [
+                1
+                for w in words
+                if w in haystack
+            ]
+        );
+        if hits > 0 {
+            # Negative hit count sorts most-relevant-first under a plain sort.
+            scored.append((-hits, f"{g.name}: {g.description}"));
+        }
+    }
+    if not scored {
         return f"(no guides match '{keyword}')";
     }
-    return "\n".join([f"{g.name}: {g.description}" for g in matches]);
+    scored.sort();
+    return "\n".join([line for (_, line) in scored]);
 }
 
-sem search_guides = "Search the bundled Jac reference guides by keyword; returns matching guide names and descriptions.";
-sem search_guides.keyword = "Keyword or phrase to search guide titles and bodies for.";
+sem search_guides = "Search the bundled Jac reference guides; returns matching guide names and descriptions ranked by relevance. Matches any word in the query, so several keywords broaden the search.";
+sem search_guides.keyword = "Keywords to search guide names, descriptions, and bodies for.";
 
 
 def read_guide(name: str) -> str {
@@ -340,6 +421,16 @@ def read_guide(name: str) -> str {
 sem read_guide = "Read a bundled Jac reference guide in full -- the authoritative spec for writing correct, idiomatic Jac.";
 sem read_guide.name = "Exact guide name, e.g. 'jac-walker-patterns'.";
 
+
+# Side-effecting tools must never run concurrently; byLLM keeps any parallel
+# batch that contains one of these sequential.
+with entry {
+    mark_serialize(write_file);
+    mark_serialize(edit_file);
+    mark_serialize(run_command);
+    mark_serialize(start_app);
+}
+
 #===============================================================================
 # SYSTEM PROMPT & THE AGENT TURN
 #===============================================================================
@@ -348,16 +439,36 @@ You are Jac AI, a coding agent working inside the user's terminal in their Jac
 project. You help the user read, write, and debug Jac code.
 
 Work like this:
-- Use the tools to inspect the project. Never guess a file's contents -- read
-  it first. Never guess Jac syntax -- consult the guides.
-- When unsure how to write something in Jac, call search_guides then read_guide.
-  The bundled guides are the authoritative spec for correct, idiomatic Jac.
+- Plan first. For any multi-file task, open with a short plan -- the files you
+  will create or change and what each is for -- then carry it out.
+- Scaffold, don't hand-build. For a new project or app, run `jac create --use
+  <template> <name>` with run_command instead of writing the project layout by
+  hand. Templates: default, client, fullstack. Then adapt the generated files.
+- Batch aggressively. Independent tool calls run in parallel, so issue them
+  together in ONE step -- never one at a time. Reading five files is one step
+  with five read_file calls. Loading the guides you need is one step. Grepping
+  or checking several paths is one step. Writes to different files go in one
+  step. Sequence a call only when it truly needs an earlier call's output.
+- Decide and commit. When two or more approaches would both work, pick the
+  simplest and build it. Do not re-litigate a choice you have already acted on,
+  and never write a file just to delete it -- think the choice through first.
+- Never guess. Read a file before editing it; consult the guides before
+  writing unfamiliar Jac. The bundled guides are the authoritative spec for
+  correct, idiomatic Jac.
+- Keep files focused and modest in size; split large archetypes into impl
+  files. For a large file, write a skeleton first, then fill it with edit_file.
 - Make minimal, targeted changes. Prefer edit_file over rewriting a whole file.
-- After you write or edit a .jac file, call jac_check on it and fix any errors
-  before moving on.
-- Call exactly one tool at a time and read its result before the next step.
+- Verify. After writing code, run `jac check .` to type-check the whole
+  project and fix every error. For an app, use start_app to confirm it boots.
 - When the task is complete, finish with a short plain-language summary of what
   you changed and why.
+
+Jac gotchas -- the type checker rejects all of these, so never write them:
+- There is no `pass` statement. For an empty block, write empty braces: `{}`.
+- A docstring (`\"\"\"...\"\"\"`) goes immediately BEFORE a declaration, never as
+  the first statement inside a function body -- in a body it is a parse error.
+- The gradual / untyped type is lowercase `any`, with no import. Never write
+  capital `Any`, and never `import from typing { Any }`.
 """;
 
 
@@ -391,8 +502,9 @@ def ask(message: str) -> str by agent_model(
         edit_file,
         list_dir,
         grep,
-        run_jac,
+        run_command,
         jac_check,
+        start_app,
         search_guides,
         read_guide
     ],
@@ -400,7 +512,12 @@ def ask(message: str) -> str by agent_model(
     stream=True,
     logging=True,
     temperature=agent_temperature,
-    max_react_iterations=40
+    max_tokens=8192,
+    parallelize=True,
+    max_react_iterations=80
+    # A generous output ceiling: without it the provider default (~4096 for
+    # Anthropic) truncates large `write_file` tool-call arguments mid-stream,
+    # so the `content` argument never arrives intact.
 );
 
 sem ask = "Continue the coding session by handling the user's latest message.";
@@ -506,7 +623,7 @@ def run_turn(message: str) {
                 # byLLM's echo of the final reasoning, so drop it.
                 pending_thought = "";
                 answering = True;
-                console.print(str(data.get("content", "")), end="", flush=True);
+                console.print(str(data.get("content", "")), end="");
             }
         }
         if answering {
