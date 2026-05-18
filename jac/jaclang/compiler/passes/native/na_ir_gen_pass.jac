@@ -173,6 +173,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Both are reset at the start of each function/method.
         _param_store_instr: dict[str, object] = {},
         _param_promoted: set[str] = set(),
+        # Python-scoping for module globals (keeps na ⊆ sv): only module-level
+        # code (_in_module_scope) or a name pulled in by an explicit `global x;`
+        # (_declared_globals) may rebind a module global. A bare function-scope
+        # assignment to a glob-named variable allocates a function-local
+        # instead — matching CPython and the sv (.sv.jac) pathway. Both are
+        # reset per function.
+        _declared_globals: set[str] = set(),
+        _in_module_scope: bool = False,
         # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
         di_file: object = None,
         di_cu: object = None,
