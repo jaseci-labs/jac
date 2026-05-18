@@ -53,13 +53,9 @@ obj KubernetesRedisProvider(DatabaseProvider) {
         }
         # The 'default' user gets the password; a custom username adds a
         # second ACL user with the same grants.
-        acl_lines: list[str] = [
-            f"user default on >{redis_password} ~* &* +@all"
-        ];
+        acl_lines: list[str] = [f"user default on >{redis_password} ~* &* +@all"];
         if redis_username != 'default' {
-            acl_lines.append(
-                f"user {redis_username} on >{redis_password} ~* &* +@all"
-            );
+            acl_lines.append(f"user {redis_username} on >{redis_password} ~* &* +@all");
         }
         return '\n'.join(acl_lines) + '\n';
     }
@@ -415,9 +411,7 @@ obj KubernetesRedisProvider(DatabaseProvider) {
                                 'name': 'redis-acl',
                                 'secret': {
                                     'secretName': redis_secret_name,
-                                    'items': [
-                                        {'key': 'users.acl', 'path': 'users.acl'}
-                                    ]
+                                    'items': [{'key': 'users.acl', 'path': 'users.acl'}]
                                 }
                             },
                             {'name': 'tmp', 'emptyDir': {}}

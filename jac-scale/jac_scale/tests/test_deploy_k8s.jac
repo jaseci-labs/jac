@@ -2218,7 +2218,12 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     # ACL is mounted from the Secret on its own path, read-only
     pod = dep['deployment']['spec']['template']['spec'];
     acl_vol = next(
-        (v for v in pod['volumes'] if v['name'] == 'redis-acl'), None
+        (
+            v
+            for v in pod['volumes']
+            if v['name'] == 'redis-acl'
+        ),
+        None
     );
     assert acl_vol is not None , "redis-acl volume missing";
     assert acl_vol['secret']['secretName'] == dep['secret_name'];
@@ -2226,8 +2231,7 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     assert any(
         m['name'] == 'redis-acl'
         and m['mountPath'] == '/etc/redis-acl'
-        and m.get('readOnly') is True
-        for m in pod['containers'][0]['volumeMounts']
+        and m.get('readOnly') is True for m in pod['containers'][0]['volumeMounts']
     ) , "redis-acl must be mounted read-only at /etc/redis-acl";
 
     raised = False;
@@ -2245,11 +2249,7 @@ test "redis ACL is secret mounted not in configmap and creds validated" {
     }
     assert raised2 , "ACL-significant chars in username must be rejected";
 
-    assert provider._build_connection_string(
-        'default', 'pw', 'h'
-    ) == 'redis://default:pw@h:6379/0';
-    assert provider._build_connection_string(
-        'admin', 'pw', 'h'
-    ) == 'redis://admin:pw@h:6379/0';
+    assert provider._build_connection_string('default', 'pw', 'h') == 'redis://default:pw@h:6379/0';
+    assert provider._build_connection_string('admin', 'pw', 'h') == 'redis://admin:pw@h:6379/0';
     assert secret_sd['connection-string'] == provider.get_connection_string();
 }
