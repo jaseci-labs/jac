@@ -12,7 +12,7 @@ import from llvmlite { ir }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes.module_codegen_pass { ModuleCodegenPass }
 import from jaclang.jac0core.constant { CodeContext, Tokens as Tok }
-import from jaclang.jac0core.diagnostics { E5060, E5090 }
+import from jaclang.jac0core.diagnostics { E5026, E5060, E5090 }
 
 # ── Sentinel refcount value for static (immortal) strings.
 # INT64_MAX = 0x7FFFFFFFFFFFFFFF — never reaches 0 even if accidentally decremented.
@@ -157,6 +157,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
         rc_ctx_loc_gv: object = None,
         malloc_fn: (ir.Function | None) = None,
         free_fn: (ir.Function | None) = None,
+        rc_safe_free_fn: (ir.Function | None) = None,
         struct_release_fns: dict[str, ir.Function] = {},
         list_release_fns: dict[str, ir.Function] = {},
         dict_release_fns: dict[str, ir.Function] = {},
@@ -164,8 +165,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Lazily initialized tracking sets
         _struct_bodies_done: set[str] = set(),
         _native_stdlib_modules: set[str] = set(),
+        _global_origins: dict[str, str] = {},
         _clib_paths: list[str] = [],
         _native_emit_ctx_class: (type | None) = None,
+        # Per-function tracking for borrowed-param promotion: entry-block store instruction
+        # per param (for position_after retain insertion) and set of already-promoted params.
+        # Both are reset at the start of each function/method.
+        _param_store_instr: dict[str, object] = {},
+        _param_promoted: set[str] = set(),
         # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
         di_file: object = None,
         di_cu: object = None,
@@ -266,7 +273,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _walk_imported_module_abilities(imported_mod: uni.Module) -> None;
     def _register_imported_archetype(arch: uni.Archetype) -> None;
     def _forward_declare_archetype_methods(arch: uni.Archetype) -> None;
-    def _register_imported_globals(nd: uni.GlobalVars) -> None;
+    def _register_imported_globals(nd: uni.GlobalVars, source_path: str = "") -> None;
     def _forward_declare_imported_ability(nd: uni.Ability) -> None;
     def _register_archetypes(module: uni.Module) -> None;
     def _codegen_archetype(nd: uni.Archetype) -> None;

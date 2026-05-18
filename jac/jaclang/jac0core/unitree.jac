@@ -952,6 +952,16 @@ obj AwaitExpr(Expr) {
     def postinit -> None;
 }
 
+"""CastExpr node type for Jac Ast.
+Represents `value as cast_type` -- an unchecked, type-erased cast. At runtime
+it evaluates to `value` unchanged; statically its type is `cast_type`."""
+obj CastExpr(Expr) {
+    has value: Expr,
+        cast_type: Expr;
+
+    def postinit -> None;
+}
+
 """GlobalStmt node type for Jac Ast."""
 obj GlobalStmt(CodeBlockStmt) {
     has target: Sequence[NameAtom];

@@ -110,7 +110,12 @@ impl NaIRGenPass.post_transform -> None {
     ir_str = str(self.llvm_module);
 
     # ── Auto-save to .jac_ir/<stem>.ll when JAC_DEBUG_IR is set ─────────────
-    if os.environ.get("JAC_DEBUG_IR", False) {
+    if os.environ.get("JAC_DEBUG_IR", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on"
+    ) {
         src_path = self.ir_in.loc.mod_path;
         if src_path {
             src_dir = os.path.dirname(os.path.abspath(src_path));
@@ -122,21 +127,6 @@ impl NaIRGenPass.post_transform -> None {
                 f.write(ir_str);
             }
             console.print(f"[JAC_DEBUG_IR] IR saved to: {auto_ir_path}");
-        }
-    }
-
-    # ── Validate via parse_assembly ──────────────────────────────────────────
-    if os.environ.get("JAC_VERIFY_IR", False) {
-        console.print("[JAC_VERIFY_IR] Verifying LLVM IR ...");
-        try {
-            llvm.initialize();
-            llvm.initialize_native_target();
-            llvm.initialize_native_asmprinter();
-            mod = llvm.parse_assembly(ir_str);
-            mod.verify();
-            console.print("[JAC_VERIFY_IR] OK — IR verified successfully.");
-        } except Exception as exc {
-            console.print(f"[JAC_VERIFY_IR] VERIFICATION FAILED: {exc}");
         }
     }
 }

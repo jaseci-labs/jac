@@ -326,6 +326,8 @@ obj TypeEvaluator {
     def is_any_type(ty: TypeBase) -> bool;
     def is_explicit_any(ty: TypeBase) -> bool;
     def _is_strict_site(nd: uni.UniNode) -> bool;
+    """True when the pass is currently checking a native (.na.jac) module."""
+    def _in_native_context -> bool;
     # Check if a type is the TypeVar class itself (the callable used to create TypeVars).
     def is_typevar_class(ty: TypeBase) -> bool;
     # Check if a type is the ParamSpec class itself (not a TypeVarType instance).

@@ -94,7 +94,8 @@ obj ElfLinker {
         symbols: list[ElfSymbol],
         relocations: list[ElfRela],
         needed_libs: list[str],
-        arch: (ArchConfig | None) = None;
+        arch: (ArchConfig | None) = None,
+        sym_vaddrs: dict[str, int] = {};
 
     static def link(
         obj_bytes: bytes,

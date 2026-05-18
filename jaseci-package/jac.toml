@@ -1,6 +1,6 @@
 [project]
 name = "jaseci"
-version = "2.3.15"
+version = "2.3.17"
 description = "Jaseci - A complete AI-native programming ecosystem with Jac language, LLM integration, and full-stack web apps"
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -34,9 +34,9 @@ changelog = "https://github.com/jaseci-labs/jaseci/releases"
 packages = ["jaseci*"]
 
 [dependencies]
-jaclang = ">=0.15.0"
-byllm = ">=0.6.6"
-jac-client = ">=0.3.14"
-jac-scale = ">=0.2.16"
-jac-super = ">=0.1.12"
-jac-mcp = ">=0.1.13"
+jaclang = ">=0.15.2"
+byllm = ">=0.6.8"
+jac-client = ">=0.3.16"
+jac-scale = ">=0.2.18"
+jac-super = ">=0.1.14"
+jac-mcp = ">=0.1.15"

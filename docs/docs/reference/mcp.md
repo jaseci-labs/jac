@@ -327,11 +327,12 @@ Resources are read-only reference materials that AI models can load for context.
 
 ### Guides & Examples
 
-| URI                    | Description                            |
-| ---------------------- | -------------------------------------- |
-| `jac://guide/pitfalls` | Common AI mistakes when writing Jac    |
-| `jac://guide/patterns` | Idiomatic Jac code patterns            |
-| `jac://examples/*`     | Example Jac projects (auto-discovered) |
+| URI                    | Description                                                                  |
+| ---------------------- | ---------------------------------------------------------------------------- |
+| `jac://guide/pitfalls` | Common AI mistakes when writing Jac                                          |
+| `jac://guide/patterns` | Idiomatic Jac code patterns                                                  |
+| `jac://guide/*`        | Curated reference guides, served from the compiler's bundled guide store (the same guides as `jac guide`) |
+| `jac://examples/*`     | Example Jac projects (auto-discovered)                                       |
 
 ## Tools (19)
 

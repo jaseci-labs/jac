@@ -240,7 +240,7 @@ glob DOC_MAPPINGS: dict[str, tuple] = {
              "Code Organization - Project structure guide"
          ),
          "jac://docs/mcp": (
-             "quick-guide/mcp.md",
+             "reference/mcp.md",
              "mcp.md",
              "MCP Server - Model Context Protocol reference"
          ),
@@ -292,6 +292,7 @@ impl ResourceProvider.index_resources -> None {
     if self._repo_root is None {
         # PyPI install — bundled content + bundled docs
         self._index_bundled();
+        self._index_shared_guides();
         self._index_bundled_docs();
         # Examples fetched lazily from GitHub on first access
         self._resources["jac://examples/index"] = {
@@ -342,6 +343,7 @@ impl ResourceProvider.index_resources -> None {
     }
     # Bundled content (always available)
     self._index_bundled();
+    self._index_shared_guides();
     # Examples — prefer local repo, fall back to lazy GitHub
     examples_dir = repo_root / "jac" / "examples";
     if examples_dir.exists() {
@@ -389,6 +391,30 @@ impl ResourceProvider._index_bundled -> None {
             "description": "Orientation map: what Jac and Jaseci are, the 3 core paradigms, and which resource URI to fetch for any task",
             "mimeType": "text/markdown",
             "path": str(understand_path)
+        };
+    }
+}
+
+"""Index the curated guides from the jaclang compiler's shared guide store.
+
+These are the same Agent Skill guides served by the `jac guide` CLI command;
+reading them through `jaclang.cli.guide_store` keeps a single source of truth
+instead of vendoring a second copy into jac-mcp.
+"""
+impl ResourceProvider._index_shared_guides -> None {
+    try {
+        import from jaclang.cli.guide_store { list_guides }
+    } except ImportError {
+        return;  # Older jaclang without the shared guide store
+    }
+    for g in list_guides() {
+        uri = f"jac://guide/{g.name}";
+        self._resources[uri] = {
+            "uri": uri,
+            "name": g.name,
+            "description": g.description,
+            "mimeType": "text/markdown",
+            "path": g.path
         };
     }
 }

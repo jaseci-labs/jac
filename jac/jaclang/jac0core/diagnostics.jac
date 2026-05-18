@@ -927,11 +927,24 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "W5022", Category.CODEGEN, "Failed to load C library '{path}': {error}"
      ),
      W5023 = _warn("W5023", Category.CODEGEN, "Native module not found: {path}"),
-     W5024 = _warn(
-         "W5024", Category.CODEGEN, "Failed to compile native module {path}: {error}"
+     E5024 = _err(
+         "E5024",
+         Category.CODEGEN,
+         "Failed to compile native module {path}: {error}. "
+         "Fix the error in the imported module or nacompile will produce a broken binary."
      ),
-     W5025 = _warn(
-         "W5025", Category.CODEGEN, "Failed to link native module {path}: {error}"
+     E5025 = _err(
+         "E5025",
+         Category.CODEGEN,
+         "Failed to link native module {path}: {error}. "
+         "Fix the error in the imported module or nacompile will produce a broken binary."
+     ),
+     E5026 = _err(
+         "E5026",
+         Category.CODEGEN,
+         "Symbol collision during native link: '{symbol}' is defined in both "
+         "'{existing_module}' and '{new_module}'. "
+         "Mark one as :priv or rename to avoid a runtime crash."
      ),
      # Layout pass
      E5030 = _err(

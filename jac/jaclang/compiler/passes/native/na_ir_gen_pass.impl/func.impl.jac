@@ -115,6 +115,9 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     self.local_vars = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
+    # Reset per-function borrowed-param promotion state (see _codegen_assignment).
+    self._param_store_instr = {};
+    self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
@@ -125,9 +128,10 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
-        self.builder.store(arg_val, alloca);
+        _store_instr = self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
         self.param_vars.add(param_name);
+        self._param_store_instr[param_name] = _store_instr;  # for entry-block retain on reassign
         # Track type annotations for parameters
         if p.type_tag and p.type_tag.tag {
             self.var_type_node[param_name] = p.type_tag.tag;
@@ -195,6 +199,14 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
         func, self._func_loc.get(name, nd.loc.first_line if nd.loc else 1)
     );
 
+    # Explicitly :priv abilities get internal linkage so they don't collide
+    # when two modules with identically-named private functions are linked.
+    # Default (no modifier) and :pub both remain external.
+    _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
+    if _is_priv {
+        func.linkage = "internal";
+    }
+
     (nd).gen.llvm_ir = func;
     self.builder = None;
 }
@@ -212,12 +224,15 @@ impl NaIRGenPass._emit_glob_init_func -> None {
     # Save outer builder context (may be None when called from post_transform)
     saved_builder = self.builder;
     saved_locals = self.local_vars if self?.local_vars else {};
+    saved_di_sp = self._di_current_sp;
     # Emit void __jac_glob_init()
     fnty = ir.FunctionType(ir.VoidType(), []);
     func = ir.Function(self.llvm_module, fnty, name="__jac_glob_init");
     block = func.append_basic_block(name="entry");
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
+    # DWARF debug info (JAC_NATIVE_DEBUG=1)
+    self._attach_di_subprogram(func, "__jac_glob_init", 0);
     if self?._global_init_nodes and self._global_init_nodes {
         for init_tuple in self._global_init_nodes {
             var_name = init_tuple[0];
@@ -262,10 +277,13 @@ impl NaIRGenPass._emit_glob_init_func -> None {
         }
     }
     self.builder.ret_void();
+    # DWARF post-pass: tag untagged instructions with fallback line
+    self._finalize_di_locations(func, 0);
     self.func_symtab["__jac_glob_init"] = func;
     # Restore outer builder context
     self.builder = saved_builder;
     self.local_vars = saved_locals;
+    self._di_current_sp = saved_di_sp;
 }
 
 """Generate jac_entry() function for with entry { ... } blocks."""
@@ -282,17 +300,16 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     self.local_vars = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
+    # DWARF debug info (JAC_NATIVE_DEBUG=1)
+    entry_line = nd.loc.first_line if nd.loc else 0;
+    self._attach_di_subprogram(func, "jac_entry", entry_line);
     # Emit __jac_glob_init() (current module) and call it first.
     # This initialises all list/dict globs declared in THIS module before any
     # imported module's code can observe them.
     self._emit_glob_init_func();
     glob_init_fn = self.func_symtab.get("__jac_glob_init");
-    if glob_init_fn is not None {
-        self.builder.call(glob_init_fn, []);
-    }
-    # JAC_NO_GC env-var: if set (non-empty), disable RC on startup so that
-    # retain/release are no-ops for the duration of the process.  This lets
-    # benchmarks compare "with GC overhead" vs "without" without recompiling.
+    # JAC_NO_GC env-var: disable RC on startup (retain/release become no-ops).
+    # Must run before glob_init so module-init releases are also suppressed.
     _i8p = ir.IntType(8).as_pointer();
     _i32 = ir.IntType(32);
     _getenv_fn = self._get_or_declare_extern("getenv", _i8p, [_i8p]);
@@ -317,6 +334,9 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     b_nogc.call(self.rc_gc_disable_fn, []);
     b_nogc.branch(_nogc_cont);
     self.builder = ir.IRBuilder(_nogc_cont);
+    if glob_init_fn is not None {
+        self.builder.call(glob_init_fn, []);
+    }
     # Call __jac_glob_init_<safe_name>() for every imported .na.jac module,
     # including transitive deps.  native_transitive_sources is populated by
     # _register_imported_struct_types (DFS over all import trees) on the
@@ -408,6 +428,8 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
         }
         self.builder.ret_void();
     }
+    # DWARF post-pass: tag untagged instructions with fallback line
+    self._finalize_di_locations(func, entry_line);
     self.has_native_code = True;
     self.builder = None;
 }

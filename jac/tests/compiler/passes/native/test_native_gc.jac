@@ -52,19 +52,30 @@ def _run_with_time(
             env[k] = v;
         }
     }
+    # GNU coreutils `time` (Linux) uses `-v` and reports RSS in kbytes; BSD
+    # `time` (macOS) uses `-l` and reports "maximum resident set size" in bytes.
+    is_bsd_time = sys.platform == "darwin";
+    time_flag = "-l" if is_bsd_time else "-v";
     proc = subprocess.run(
-        [time_bin, "-v", binary],
+        [time_bin, time_flag, binary],
         input=stdin_data,
         capture_output=True,
         text=True,
         timeout=timeout,
         env=env,
     );
-    # /usr/bin/time -v writes its summary to stderr after the child's own stderr.
+    # `/usr/bin/time` writes its summary to stderr after the child's own stderr.
     rss_kb = 0;
-    m = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", proc.stderr);
-    if m {
-        rss_kb = int(m.group(1));
+    if is_bsd_time {
+        m = re.search(r"(\d+)\s+maximum resident set size", proc.stderr);
+        if m {
+            rss_kb = int(m.group(1)) // 1024;  # BSD reports bytes
+        }
+    } else {
+        m = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", proc.stderr);
+        if m {
+            rss_kb = int(m.group(1));
+        }
     }
     head = proc.stdout[:200] if proc.stdout else "";
     return (rss_kb, proc.returncode, head);

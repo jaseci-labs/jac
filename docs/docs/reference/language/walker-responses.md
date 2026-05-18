@@ -103,6 +103,8 @@ When `has reports` is declared, two rules are checked:
 
 If you omit the declaration, the walker falls back to `reports: list[any]` and any value can be reported -- but downstream code that receives those values into typed destinations will hit Jac's strict-`any` rule. See [The `any` Type and Gradual Typing](foundation.md#the-any-type-and-gradual-typing) for the consumer side.
 
+When you cannot type the walker (for example, a third-party walker) but know the shape of a particular report, the [`as` cast operator](foundation.md#10-the-as-cast-operator) re-types it at the call site: `tasks = result.reports[0] as list[Task];`. The cast is unchecked -- prefer a typed `has reports: list[T]` declaration whenever the walker is yours to change.
+
 ## Common Patterns
 
 ### Pattern 1: Single Report (Recommended)

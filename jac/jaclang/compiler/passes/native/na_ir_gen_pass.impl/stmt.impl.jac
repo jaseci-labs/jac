@@ -542,22 +542,55 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
     self._dict_val_type_hint = None;
     # Handle empty dict literal {} with type annotation
     if value is None and isinstance(nd.value, uni.DictVal) {
-        if not nd.value.kv_pairs and nd.type_tag and nd.type_tag.tag {
-            # Empty dict with type hint - create empty dict of correct type
-            dict_type = self._resolve_jac_type(nd.type_tag.tag);
-            if isinstance(dict_type, ir.PointerType) {
-                # Find the dict helpers for this type
-                for (dict_key, dtype) in self.dict_types.items() {
-                    if dict_type == dtype.as_pointer() {
-                        helpers = self.dict_helpers.get(dict_key);
-                        if helpers is not None {
-                            value = self.builder.call(
-                                helpers["new"], [], name="dict.new"
-                            );
-                            # RC: fresh allocation — caller owns it; skip RETAIN on assign.
-                            self._mark_owned(value);
+        if not nd.value.kv_pairs {
+            _edict_type_tag = nd.type_tag.tag
+                if nd.type_tag and nd.type_tag.tag
+                else None;
+            # Fallback: no explicit type annotation but target is obj.field = {} —
+            # infer the dict type from field_type_node so we emit __dict_new_*().
+            if _edict_type_tag is None {
+                _check_targets = nd.target
+                    if isinstance(nd.target, (list, tuple))
+                    else [(nd.target)];
+                for _ct in _check_targets {
+                    if isinstance(_ct, uni.AtomTrailer) and _ct.is_attr {
+                        _ct_target_name = self._get_name(_ct.target);
+                        _ct_field_name = self._get_name(_ct.right);
+                        if _ct_target_name is not None and _ct_field_name is not None {
+                            _ct_type_name = self.type_var_map.get(_ct_target_name);
+                            if _ct_type_name is not None
+                            and _ct_type_name in self.field_type_node {
+                                _ftn = self.field_type_node[_ct_type_name].get(
+                                    _ct_field_name
+                                );
+                                if _ftn is not None {
+                                    _edict_type_tag = _ftn;
+                                }
+                            }
                         }
+                    }
+                    if _edict_type_tag is not None {
                         break;
+                    }
+                }
+            }
+            if _edict_type_tag is not None {
+                # Empty dict with type hint - create empty dict of correct type
+                dict_type = self._resolve_jac_type(_edict_type_tag);
+                if isinstance(dict_type, ir.PointerType) {
+                    # Find the dict helpers for this type
+                    for (dict_key, dtype) in self.dict_types.items() {
+                        if dict_type == dtype.as_pointer() {
+                            helpers = self.dict_helpers.get(dict_key);
+                            if helpers is not None {
+                                value = self.builder.call(
+                                    helpers["new"], [], name="dict.new"
+                                );
+                                # RC: fresh allocation — caller owns it; skip RETAIN on assign.
+                                self._mark_owned(value);
+                            }
+                            break;
+                        }
                     }
                 }
             }
@@ -699,6 +732,28 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
         if var_name in self.local_vars {
             # Update existing variable
             alloca = self.local_vars[var_name];
+            # If this is a typed re-declaration (x: T = ...) whose declared type
+            # differs from the existing alloca's type, allocate a fresh alloca with
+            # the correct type rather than silently storing through a wrongly-typed
+            # pointer (e.g. x: bool in one branch and x: SomeStruct in another).
+            if nd.type_tag and nd.type_tag.tag and nd.aug_op is None {
+                _redecl_tag = nd.type_tag.tag;
+                bare_redecl: (str | None) = None;
+                if isinstance(_redecl_tag, uni.Name) {
+                    bare_redecl = _redecl_tag.value;
+                } elif uni?.BuiltinType and isinstance(_redecl_tag, uni.BuiltinType) {
+                    bare_redecl = _redecl_tag.value;
+                }
+                _skip_redecl = bare_redecl in {"list","dict","set","frozenset"};
+                if not _skip_redecl {
+                    _declared_type = self._resolve_jac_type(_redecl_tag);
+                    if _declared_type is not None
+                    and _declared_type != alloca.type.pointee {
+                        alloca = self._entry_alloca(_declared_type, var_name);
+                        self.local_vars[var_name] = alloca;
+                    }
+                }
+            }
             is_inplace_set_op = False;  # Track set |= to skip RC release
             # Handle augmented assignment: +=, -=, *=, //=, %=
             if nd.aug_op is not None {
@@ -1065,6 +1120,33 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                                 if nd.loc
                                 else 0}"
                         );
+                    }
+                    # First reassignment of a borrowed param: emit an entry-block retain
+                    # so the alloca becomes owned and the release-of-old below is balanced
+                    # (avoids double-free with the caller's own scope-exit release).
+                    if var_name in self.param_vars {
+                        if var_name not in self._param_promoted {
+                            _anchor = self._param_store_instr.get(var_name);
+                            if _anchor is not None
+                            and isinstance(alloca.type, ir.PointerType)
+                            and isinstance(alloca.type.pointee, ir.PointerType) {
+                                _saved_block = self.builder.block;
+                                self.builder.position_after(_anchor);
+                                _borrowed = self.builder.load(
+                                    alloca, name=f"{var_name}.borrowed"
+                                );
+                                self._emit_rc_retain(
+                                    _borrowed,
+                                    op="param_promote",
+                                    loc=f"{os.path.basename(self.ir_in.loc.mod_path)}:{nd.loc.first_line
+                                        if nd.loc
+                                        else 0}"
+                                );
+                                self.builder.position_at_end(_saved_block);
+                            }
+                            self._param_promoted.add(var_name);
+                        }
+                        self.param_vars.discard(var_name);
                     }
                     old_val = self.builder.load(alloca, name=f"{var_name}.old");
                     self._emit_rc_release_typed(

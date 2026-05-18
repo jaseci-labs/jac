@@ -19,7 +19,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 |---------|----------|-------------|
 | `abs` | Modifier | Abstract ability declaration (postfix, e.g., `def area() -> float abs;`) |
 | `and` | Operator | Logical AND (also `&&`) |
-| `as` | Import | Alias |
+| `as` | Operator / Alias | Type-cast operator (`expr as Type`); also the alias in `import`/`with`/`except`/`match` |
 | `assert` | Statement | Assertion |
 | `async` | Modifier | Async function/walker |
 | `await` | Expression | Await async |
@@ -158,6 +158,12 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `<\|` | Backward pipe |
 | `:>` | Atomic forward |
 | `<:` | Atomic backward |
+
+### Type Cast
+
+| Operator | Description |
+|----------|-------------|
+| `expr as Type` | Unchecked, type-erased cast -- re-types `expr` as `Type` (runtime no-op) |
 
 ---
 
