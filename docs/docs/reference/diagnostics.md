@@ -12,6 +12,18 @@ Diagnostic codes follow the pattern `{severity}{category}{sequence}`:
 
 For example, `E1030` is a **type error** about attribute access, and `W3005` is a **lint warning** about empty parentheses.
 
+## Guide Pointers
+
+When a diagnostic maps to a topic covered by the bundled reference guides, `jac check` prints a one-line pointer beneath it:
+
+```text
+error[E1001]: Cannot assign Literal["hello"] to int
+  --> example.jac:2:5
+  → run 'jac guide jac-types' for guidance
+```
+
+Run the suggested command for the relevant reference material. See [`jac guide`](cli/index.md#jac-guide).
+
 ## Suppressing Diagnostics
 
 ### Inline Suppression
@@ -104,6 +116,13 @@ Emitted by the parser and lexer during source code parsing.
 | `E0050` | Duplicate '{param}' in parameter list |
 | `E0051` | '{first}' must appear before '{second}' in parameter list |
 
+### Property Declaration Errors
+
+| Code | Message |
+|------|---------|
+| `E0080` | Property declarations cannot have an initializer (declare backing storage as a separate `has` field) |
+| `E0081` | Property declaration must contain at least one of `getter`, `setter`, `deleter` |
+
 ### Parser Warnings
 
 | Code | Message |
@@ -140,7 +159,7 @@ Emitted by the type checker and type evaluator.
 | `E1004` | Function '{name}' declared return type {ret_type} but may implicitly return None |
 
 !!! tip "`E1001`/`E1002` with `any` on the right-hand side"
-    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Three ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), or annotate `any` explicitly (`x: any = src()`) and narrow before downstream use. See [The `any` Type and Gradual Typing](language/foundation.md#the-any-type-and-gradual-typing).
+    A common trigger for `E1001` and `E1002` is Jac's strict gradual-typing rule: in `.jac` source, an `any` value cannot silently flow into a declared non-`any`, non-`object` destination. Ways to clear it -- type the source (e.g. `has reports: list[T]` on a walker, `.pyi` stub on a Python utility), drop the annotation (`x = src()` makes `x` inferred-`any`), annotate `any` explicitly (`x: any = src()`) and narrow before downstream use, or re-type at the use site with the [`as` cast](language/foundation.md#10-the-as-cast-operator) (`src() as list[T]`) when you know more than the checker. See [The `any` Type and Gradual Typing](language/foundation.md#the-any-type-and-gradual-typing).
 
 ### Operator Errors
 

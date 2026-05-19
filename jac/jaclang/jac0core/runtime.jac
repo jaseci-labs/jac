@@ -351,6 +351,15 @@ class JacBuiltin {
 class JacCmd {
     """Create Jac CLI cmds."""
     static def create_cmd -> None;
+
+    """Run the `jac ai` interactive coding agent.
+
+        A hook so the agent engine is pluggable: the core ships a built-in
+        byLLM agent as the default implementation, and a plugin can register
+        its own implementation to replace it. `req` is an `AgentRequest`
+        carrying the resolved flags plus a `CodeIntelligence` handle.
+        """
+    static def run_ai_agent(req: object) -> int;
 }
 
 """Jac Feature."""
@@ -724,6 +733,9 @@ class JacByLLM {
     """Call the LLM model."""
     static def call_llm(model: LLMModel, mt_run: MTRuntime) -> Any;
 
+    """Async variant of call_llm; offloads the LLM call so the event loop stays free."""
+    static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> Any;
+
     """Python library mode decorator for Jac's by llm() syntax."""
     static def `by(model: LLMModel) -> Callable;
 
@@ -1019,7 +1031,22 @@ def generate_plugin_helpers(
             }
         }
         """Create a proxy method for the proxy class.""";
-        def make_proxy(name: str, sig: inspect.Signature) -> Callable {
+        def make_proxy(name: str, sig: inspect.Signature, is_coro: bool) -> Callable {
+            if is_coro {
+                async def async_proxy(*args: object, **kwargs: object) -> object {
+                    bound = sig.bind_partial(*args, **kwargs);
+                    bound.apply_defaults();
+                    hookcaller = getattr(plugin_manager.hook, name);
+                    result = hookcaller(**bound.arguments);
+                    if inspect.iscoroutine(result) {
+                        return await result;
+                    }
+                    return result;
+                }
+                async_proxy.__name__ = name;
+                async_proxy.__signature__ = sig;
+                return async_proxy;
+            }
             def proxy(*args: object, **kwargs: object) -> object {
                 bound = sig.bind_partial(*args, **kwargs);
                 bound.apply_defaults();
@@ -1030,7 +1057,9 @@ def generate_plugin_helpers(
             proxy.__signature__ = sig;
             return proxy;
         }
-        proxy_methods[name] = make_proxy(name, sig);
+        proxy_methods[name] = make_proxy(
+            name, sig, inspect.iscoroutinefunction(method)
+        );
     }
     spec_cls = `type(f"{plugin_class.__name__}Spec", (object, ), spec_methods);
     impl_cls = `type(f"{plugin_class.__name__}Impl", (object, ), impl_methods);

@@ -432,7 +432,7 @@ removes us from Endpoints during graceful shutdown.
 """
 impl JacAPIServerCore.register_health_endpoint -> None {
     import from fastapi.responses { JSONResponse }
-    import from jac_scale.microservices._drain { is_draining }
+    import from jac_scale.microservices.gateway_internals.drain { is_draining }
 
     async def health_live -> dict {
         return {"status": "alive"};

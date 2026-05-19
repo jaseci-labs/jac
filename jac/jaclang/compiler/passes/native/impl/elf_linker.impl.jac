@@ -1093,6 +1093,17 @@ impl ElfLinker.build_executable -> bytes {
     if len(data_bytes) > 0 {
         output[data_foff:data_foff + len(data_bytes)] = bytes(data_bytes);
     }
+
+    # Populate sym_vaddrs so callers can write a symmap for profiling tools.
+    for (sname, place) in local_sym_map.items() {
+        va = _resolve_seg_vaddr(
+            place[0], place[1], text_vaddr, rodata_vaddr, data_vaddr
+        );
+        if sname {
+            self.sym_vaddrs[sname] = va;
+        }
+    }
+
     return bytes(output);
 }
 
@@ -1281,5 +1292,20 @@ impl ElfLinker.link(
         f.write(exe_bytes);
     }
     os.chmod(output_path, 0o755);
+
+    # Write a <binary>.symmap alongside the binary when JAC_SYMMAP=1 so that
+    # profiling post-processors (e.g. scripts/cg-annotate) can map raw
+    # callgrind addresses to real function names.
+    if os.environ.get("JAC_SYMMAP", "") {
+        symmap_path = output_path + ".symmap";
+        with open(symmap_path, "w") as smf {
+            for (sname, va) in sorted(
+                linker.sym_vaddrs.items(), key=lambda kv : kv[1]
+            ) {
+                smf.write(f"{sname} 0x{va:016x}\n");
+            }
+        }
+    }
+
     return True;
 }

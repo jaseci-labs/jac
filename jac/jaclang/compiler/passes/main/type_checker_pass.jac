@@ -34,6 +34,7 @@ import from jaclang.jac0core.diagnostics {
     E1116,
     E1117,
     W1036,
+    W1052,
     W2014,
     E2015
 }

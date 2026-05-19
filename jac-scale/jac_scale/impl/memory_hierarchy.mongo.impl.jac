@@ -129,6 +129,11 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
 
 Never raises: we'd rather fail loud on load (caller quarantines + None)
 than leak exceptions into walker traversal.
+
+When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
+whose data.source or data.target references this node, then strip those
+edge IDs from all remaining live NodeAnchor data.edges arrays. This
+prevents dangling edge references after schema drift removes a node type.
 """
 def _mongo_quarantine(
     backend: MongoBackend,
@@ -142,7 +147,9 @@ def _mongo_quarantine(
     from_format_version: (int | None) = None
 ) {
     try {
-        _mongo_q_collection(backend).update_one(
+        q_col = _mongo_q_collection(backend);
+        now_ts = datetime.now(timezone.utc).isoformat();
+        q_col.update_one(
             {'_id': id_str},
             {
                 '$set': {
@@ -152,13 +159,56 @@ def _mongo_quarantine(
                     'fingerprint': fingerprint,
                     'data': data,
                     'error': error,
-                    'quarantined_at': datetime.now(timezone.utc).isoformat(),
+                    'quarantined_at': now_ts,
                     'from_format_version': from_format_version
                 }
             },
             upsert=True
         );
         backend.collection.delete_one({'_id': id_str});
+        # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
+        if anchor_type == 'NodeAnchor' {
+            orphaned_edges = list(
+                backend.collection.find(
+                    {
+                        'type': 'EdgeAnchor',
+                        '$or': [{'data.source': id_str}, {'data.target': id_str}]
+                    }
+                )
+            );
+            if orphaned_edges {
+                orphan_edge_ids = [e['_id'] for e in orphaned_edges];
+                cascade_error = f"cascade quarantine: connected node {id_str} was quarantined";
+                cascade_ops = [
+                    UpdateOne(
+                        {'_id': edge_doc['_id']},
+                        {
+                            '$set': {
+                                'type': edge_doc.get('type'),
+                                'arch_module': edge_doc.get('arch_module'),
+                                'arch_type': edge_doc.get('arch_type'),
+                                'fingerprint': edge_doc.get('fingerprint'),
+                                'data': edge_doc.get('data'),
+                                'error': cascade_error,
+                                'quarantined_at': now_ts,
+                                'from_format_version': edge_doc.get('format_version')
+                            }
+                        },
+                        upsert=True
+                    ) for edge_doc in orphaned_edges
+                ];
+                q_col.bulk_write(cascade_ops, ordered=False);
+                backend.collection.delete_many({'_id': {'$in': orphan_edge_ids}});
+                backend.collection.update_many(
+                    {'type': 'NodeAnchor', 'data.edges': {'$in': orphan_edge_ids}},
+                    {'$pullAll': {'data.edges': orphan_edge_ids}}
+                );
+                logger.info(
+                    f"MongoBackend: cascade-quarantined {len(orphan_edge_ids)} edge(s) "
+                    f"connected to quarantined node {id_str}."
+                );
+            }
+        }
     } except Exception as e {
         logger.error(f"MongoBackend: failed to quarantine {id_str}: {e}");
     }
@@ -453,15 +503,15 @@ impl MongoBackend.sync -> None {
             continue;
         }
         try {
-            # NodeAnchors with a load snapshot: atomic edge-merge pipeline
-            # preserves edge changes from sibling walkers.
             if isinstance(anchor, NodeAnchor) {
                 delta = anchor.edge_delta();
                 if delta is not None {
                     added = [str(eid) for eid in delta[0]];
                     removed = [str(eid) for eid in delta[1]];
-                    self._put_node_atomic(anchor, added, removed);
-                    continue;
+                    if added or removed {
+                        self._put_node_atomic(anchor, added, removed);
+                        continue;
+                    }
                 }
             }
             # Union __setattr__-tracked fields (direct assignments) with
@@ -490,7 +540,8 @@ impl MongoBackend.sync -> None {
     }
 }
 
-"""Atomically update a NodeAnchor, merging edge changes with DB state."""
+"""Atomically update a NodeAnchor, merging only dirty archetype fields and
+edge delta with DB state."""
 impl MongoBackend._put_node_atomic(
     anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
 ) -> None {
@@ -499,45 +550,55 @@ impl MongoBackend._put_node_atomic(
     }
     _id = str(to_uuid(anchor.id));
     try {
-        data: dict[str, object] = dict(Serializer.serialize(anchor, include_type=True));
-        # Separate edge list from the rest of the serialized data
-        data_no_edges = {
+        arch = anchor.archetype if anchor.is_populated() else None;
+
+        # Compute dirty archetype fields: union of __setattr__-tracked writes
+        # and hash-derived in-place mutations (mirrors sync() → put_partial).
+        setattr_dirty: set[str] = (
+            arch.__dict__.get('__jac_dirty_fields__') or set()
+        ).copy()
+            if arch is not None
+            else set();
+        hash_dirty = _derive_dirty_from_field_hashes(anchor);
+        dirty = setattr_dirty | hash_dirty;
+
+        # Serialize only the dirty archetype fields.
+        partial_data = Serializer.serialize_fields(anchor, dirty) if dirty else {};
+
+        # Non-archetype, non-edge top-level data fields (e.g. access control).
+        full = dict(Serializer.serialize(anchor, include_type=True));
+        non_arch_top = {
             k: v
-            for (k, v) in data.items()
-            if k != 'edges'
+            for (k, v) in full.items()
+            if k not in ('edges', 'archetype')
         };
-        # Single atomic operation: merge non-edge fields + apply edge delta
-        self.collection.update_one(
-            {'_id': _id},
-            [
-                {
-                    '$set': {
-                        'data': {
-                            '$mergeObjects': [
-                                '$data',
-                                data_no_edges,
-                                {
-                                    'edges': {
-                                        '$setUnion': [
-                                            {
-                                                '$setDifference': [
-                                                    {'$ifNull': ['$data.edges', []]},
-                                                    edges_removed
-                                                ]
-                                            },
-                                            edges_added
-                                        ]
-                                    }
-                                }
-                            ]
-                        },
-                        'type': 'NodeAnchor'
-                    }
-                }
-            ],
-            upsert=True
-        );
+
+        # Build a flat $set document:
+        #   data.<k>               — non-arch top-level fields (e.g. access)
+        #   data.archetype.<field> — only dirty scalar fields (concurrent-safe)
+        #   data.edges             — atomic $setUnion/$setDifference expression
+        set_doc: dict[str, object] = {
+            'type': 'NodeAnchor',
+            'updated_at': datetime.now(timezone.utc).isoformat()
+        };
+        for (k, v) in non_arch_top.items() {
+            set_doc[f"data.{k}"] = v;
+        }
+        for (k, v) in partial_data.items() {
+            set_doc[f"data.archetype.{k}"] = v;
+        }
+        set_doc['data.edges'] = {
+            '$setUnion': [
+                {'$setDifference': [{'$ifNull': ['$data.edges', []]}, edges_removed]},
+                edges_added
+            ]
+        };
+
+        self.collection.update_one({'_id': _id}, [{'$set': set_doc}], upsert=True);
         anchor.hash = Serializer._compute_hash(anchor);
+        if arch is not None {
+            arch.__dict__.pop('__jac_dirty_fields__', None);
+        }
         _snapshot_field_hashes(anchor);
     } except Exception as e {
         logger.error(f"MongoDB _put_node_atomic failed: {e}");
@@ -682,6 +743,35 @@ def _mongo_attempt_recover(backend: MongoBackend, doc: dict) -> tuple {
         _mongo_q_collection(backend).delete_one({'_id': doc_id});
     } except Exception as e {
         return (False, f"write-back failed: {type(e).__name__}: {e}");
+    }
+    # Re-link: when recovering an EdgeAnchor that was cascade-quarantined, the
+    # connected node(s)' data.edges was stripped. Re-add the edge ID to the
+    # source (always) and also to the target for undirected edges.
+    if doc.get('type') == 'EdgeAnchor' and isinstance(data, dict) {
+        source_id = data.get('source');
+        target_id = data.get('target');
+        is_undirected = bool(data.get('is_undirected', False));
+        relink_ids: list = [
+            n
+            for n in [source_id]
+            if n
+        ];
+        if is_undirected and target_id and target_id != source_id {
+            relink_ids.append(target_id);
+        }
+        for node_id in relink_ids {
+            try {
+                backend.collection.update_one(
+                    {'_id': node_id, 'type': 'NodeAnchor'},
+                    {'$addToSet': {'data.edges': doc_id}}
+                );
+            } except Exception as relink_err {
+                logger.warning(
+                    f"MongoBackend: recover re-link of edge {doc_id} "
+                    f"to node {node_id} failed: {relink_err}"
+                );
+            }
+        }
     }
     return (True, "recovered");
 }

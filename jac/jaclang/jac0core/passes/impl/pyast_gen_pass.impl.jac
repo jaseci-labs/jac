@@ -1361,10 +1361,10 @@ impl PyastGenPass.enter_ability(nd: uni.Ability) -> None {
     }
 }
 
-"""Reusable method to codegen call_llm(model, caller, args)."""
+"""Reusable method to codegen call_llm / acall_llm; returns Await when is_async."""
 impl PyastGenPass._invoke_llm_call(
-    model: ast3.expr, caller: ast3.expr, args: ast3.Dict
-) -> ast3.Call {
+    model: ast3.expr, caller: ast3.expr, args: ast3.Dict, is_async: bool = False
+) -> ast3.expr {
     mtir_ast = self.sync(
         ast3.Call(
             func=self.jaclib_obj('get_mtir'),
@@ -1385,9 +1385,10 @@ impl PyastGenPass._invoke_llm_call(
             ]
         )
     );
-    return self.sync(
+    hook_name = 'acall_llm' if is_async else 'call_llm';
+    call = self.sync(
         ast3.Call(
-            func=self.jaclib_obj('call_llm'),
+            func=self.jaclib_obj(hook_name),
             args=[],
             keywords=[
                 self.sync(ast3.keyword(arg='model', value=model)),
@@ -1395,6 +1396,10 @@ impl PyastGenPass._invoke_llm_call(
             ]
         )
     );
+    if is_async {
+        return self.sync(ast3.Await(value=call));
+    }
+    return call;
 }
 
 """Generate the by LLM body."""
@@ -1443,7 +1448,9 @@ impl PyastGenPass.gen_llm_body(nd: uni.Ability) -> list[ast3.stmt] {
             ]
         )
     );
-    llm_call = self._invoke_llm_call(model=model_expr, caller=caller, args=args);
+    llm_call = self._invoke_llm_call(
+        model=model_expr, caller=caller, args=args, is_async=nd.is_async
+    );
     statements: list[ast3.stmt] = [];
     if nd.doc {
         statements.append(
@@ -1462,6 +1469,15 @@ impl PyastGenPass.gen_llm_body(nd: uni.Ability) -> list[ast3.stmt] {
 
 impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
     func_type = ast3.AsyncFunctionDef if nd.is_async else ast3.FunctionDef;
+    # Property accessor context (resolved from parent HasVar if applicable).
+    is_prop_acc = nd.accessor_kind != "";
+    prop_owner_name: str | None = None;
+    if is_prop_acc {
+        hv = nd.find_parent_of_type(uni.HasVar);
+        if hv and isinstance(hv.name, uni.Name) {
+            prop_owner_name = hv.name.value;
+        }
+    }
     has_by_in_return = (
         isinstance(nd.signature, uni.FuncSignature)
         and nd.signature.return_type
@@ -1538,6 +1554,35 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
             0, self.sync(ast3.Name(id='classmethod', ctx=ast3.Load()))
         );
     }
+    if is_prop_acc and (prop_owner_name is not None) {
+        if nd.accessor_kind == "property" {
+            decorator_list.insert(
+                0, self.sync(ast3.Name(id='property', ctx=ast3.Load()))
+            );
+        } elif nd.accessor_kind == "setter" {
+            decorator_list.insert(
+                0,
+                self.sync(
+                    ast3.Attribute(
+                        value=self.sync(ast3.Name(id=prop_owner_name, ctx=ast3.Load())),
+                        attr='setter',
+                        ctx=ast3.Load()
+                    )
+                )
+            );
+        } elif nd.accessor_kind == "deleter" {
+            decorator_list.insert(
+                0,
+                self.sync(
+                    ast3.Attribute(
+                        value=self.sync(ast3.Name(id=prop_owner_name, ctx=ast3.Load())),
+                        attr='deleter',
+                        ctx=ast3.Load()
+                    )
+                )
+            );
+        }
+    }
     if (not body and not isinstance(nd.body, uni.Expr)) {
         self.emit(E5005, node_override=nd);
         body = [self.sync(ast3.Pass(), nd)];
@@ -1556,26 +1601,61 @@ impl PyastGenPass.exit_ability(nd: uni.Ability) -> None {
             ast_returns = cast(ast3.expr, self.py_ast_val(nd.signature.return_type));
         }
     }
+    # Property getter without an explicit return type takes the property's declared type.
+    if is_prop_acc
+    and (nd.accessor_kind == "property")
+    and (nd.signature is None)
+    and (prop_owner_name is not None) {
+        hv2 = nd.find_parent_of_type(uni.HasVar);
+        if hv2 and hv2.type_tag {
+            ast_returns = cast(ast3.expr, self.py_ast_val(hv2.type_tag));
+        }
+    }
+    # Accessor name override: property accessors use the property's name, not get/set/del.
+    func_name_out = (
+        prop_owner_name
+            if (is_prop_acc and (prop_owner_name is not None))
+            else self._py_name(nd.name_ref)
+    );
+    # Accessor arg synthesis: shorthand accessors get (self) or (self, value) automatically.
+    func_args_out: ast3.arguments;
+    if is_prop_acc and (nd.signature is None) {
+        acc_args = [self.sync(ast3.arg(arg='self', annotation=None))];
+        if nd.accessor_kind == "setter" {
+            acc_args.append(self.sync(ast3.arg(arg='value', annotation=None)));
+        }
+        func_args_out = self.sync(
+            ast3.arguments(
+                posonlyargs=[],
+                args=acc_args,
+                vararg=None,
+                kwonlyargs=[],
+                kw_defaults=[],
+                kwarg=None,
+                defaults=[]
+            )
+        );
+    } elif nd.signature {
+        func_args_out = cast(ast3.arguments, self.py_ast_val(nd.signature));
+    } else {
+        func_args_out = self.sync(
+            ast3.arguments(
+                posonlyargs=[],
+                args=[self.sync(ast3.arg(arg='self', annotation=None))]
+                    if nd.is_method and not nd.is_static and not nd.is_classmethod
+                    else [],
+                vararg=None,
+                kwonlyargs=[],
+                kw_defaults=[],
+                kwarg=None,
+                defaults=[]
+            )
+        );
+    }
     func_def = self.sync(
         func_type(
-            name=self._py_name(nd.name_ref),
-            args=cast(ast3.arguments, self.py_ast_val(nd.signature))
-                if nd.signature
-                else self.sync(
-                    ast3.arguments(
-                        posonlyargs=[],
-                        args=[self.sync(ast3.arg(arg='self', annotation=None))]
-                            if nd.is_method
-                            and not nd.is_static
-                            and not nd.is_classmethod
-                            else [],
-                        vararg=None,
-                        kwonlyargs=[],
-                        kw_defaults=[],
-                        kwarg=None,
-                        defaults=[]
-                    )
-                ),
+            name=func_name_out,
+            args=func_args_out,
             body=[cast(ast3.stmt, i) for i in body],
             decorator_list=[cast(ast3.expr, i) for i in decorator_list],
             returns=ast_returns,
@@ -1738,6 +1818,21 @@ impl PyastGenPass.exit_arch_has(nd: uni.ArchHas) -> None {
 
 impl PyastGenPass.exit_has_var(nd: uni.HasVar) -> None {
     annotation = self.py_ast_val(nd.type_tag) if nd.type_tag else None;
+    # Property with accessor block: emit only the accessor methods. Properties
+    # have no implicit backing storage — users declare their own backing field
+    # with `has _x: T = value;` and reference `self._x` from accessor bodies.
+    if (nd.accessors is not None) and (len(nd.accessors) > 0) {
+        result_stmts: list = [];
+        for acc in nd.accessors {
+            if acc.gen.py_ast {
+                for stmt in acc.gen.py_ast {
+                    result_stmts.append(stmt);
+                }
+            }
+        }
+        nd.gen.py_ast = result_stmts;
+        return;
+    }
     is_static_var = (
         (haspar := nd.find_parent_of_type(uni.ArchHas)) and haspar and haspar.is_static
     );
@@ -2380,6 +2475,11 @@ impl PyastGenPass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     nd.gen.py_ast = [
         self.sync(ast3.Await(value=cast(ast3.expr, self.py_ast_val(nd.target))))
     ];
+}
+
+"""CastExpr: `value as Type` is type-erased — emit only the operand's code."""
+impl PyastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    nd.gen.py_ast = nd.value.gen.py_ast;
 }
 
 impl PyastGenPass.exit_global_stmt(nd: uni.GlobalStmt) -> None {
@@ -3791,7 +3891,7 @@ impl PyastGenPass.exit_name(nd: uni.Name) -> None {
     nd.gen.py_ast = [self.sync(ast3.Name(id=name, ctx=nd.py_ctx_func()))];
 }
 
-"""Resolve Self to the appropriate Python construct based on context."""
+
 impl PyastGenPass._resolve_self_type(nd: uni.Name) -> ast3.expr | None {
     # Find enclosing archetype or enum
     arch = nd.find_parent_of_type(uni.Archetype);

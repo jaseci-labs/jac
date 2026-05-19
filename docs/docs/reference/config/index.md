@@ -44,32 +44,45 @@ You typically don't need to modify this file until you add dependencies or custo
 
 ### [project]
 
-Project metadata:
+Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac bundle` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
 
 ```toml
 [project]
 name = "myapp"
 version = "1.0.0"
 description = "My Jac application"
-authors = ["Your Name <you@example.com>"]
-license = "MIT"
 entry-point = "main.jac"
-jac-version = ">=0.9.0"
+jac-version = ">=0.15.0"
+
+# Publishing metadata -- only needed to run `jac bundle`
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.12"
+keywords = ["jac", "ai"]
+authors = [{ name = "Your Name", email = "you@example.com" }]
+maintainers = [{ name = "Another Person", email = "them@example.com" }]
 
 [project.urls]
 homepage = "https://example.com"
 repository = "https://github.com/user/repo"
 ```
 
-| Field | Description |
-|-------|-------------|
-| `name` | Project name (required) |
-| `version` | Semantic version |
-| `description` | Brief description |
-| `authors` | List of authors |
-| `license` | License identifier |
-| `entry-point` | Main file (default: `main.jac`) |
-| `jac-version` | Required Jac version |
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Project / PyPI package name (required) |
+| `version` | string | Semantic version (default: `0.1.0`) |
+| `description` | string | One-line summary (also shown on PyPI) |
+| `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
+| `jac-version` | string | Required Jac compiler version |
+| `license` | string | SPDX license identifier (e.g. `"MIT"`) |
+| `readme` | string | Path to README file (default: `README.md`) |
+| `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
+| `keywords` | list | Search keywords shown on PyPI |
+| `authors` | list of `{name, email}` | Package authors |
+| `maintainers` | list of `{name, email}` | Package maintainers |
+| `urls` | table | Links shown on PyPI (declared under `[project.urls]`) |
+
+> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what every plugin `jac.toml` uses and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
 
 ---
 
@@ -561,61 +574,19 @@ base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 
 ---
 
-### [package]
+### [project.include]
 
-PyPI-publishable package metadata. This section is required to run `jac bundle`. It is separate from `[project]` so that application-level metadata (entry point, run settings) does not pollute the distributed package manifest.
+Controls which files and directories `jac bundle` collects into the wheel.
 
-```toml
-[package]
-name = "mylib"
-version = "1.0.0"
-description = "A Jac library"
-license = "MIT"
-readme = "README.md"
-requires-python = ">=3.12"
-keywords = ["jac", "ai"]
-
-[[package.authors]]
-name = "Your Name"
-email = "you@example.com"
-
-[[package.maintainers]]
-name = "Another Person"
-email = "them@example.com"
-
-[package.urls]
-homepage = "https://example.com"
-repository = "https://github.com/user/mylib"
-```
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `name` | string | Package name on PyPI (required) |
-| `version` | string | Semantic version (required) |
-| `description` | string | One-line summary shown on PyPI |
-| `license` | string | SPDX license identifier (e.g. `"MIT"`) |
-| `readme` | string | Path to README file (default: `README.md`) |
-| `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
-| `keywords` | list | Search keywords on PyPI |
-| `authors` | list of `{name, email}` | Package authors |
-| `maintainers` | list of `{name, email}` | Package maintainers |
-| `urls` | table | Links shown on PyPI (homepage, repository, etc.) |
-
-> **Note:** `[project]` fields like `entry-point` and `jac-version` are for running your app. `[package]` fields are for distributing a library. A publishable project can have both.
-
----
-
-### [package.include]
-
-Controls which files and directories are bundled into the wheel.
+> **Note:** Earlier releases used a separate `[package]` / `[package.include]` section for publishing metadata. As of jaclang 0.15, `[package]` has been merged into `[project]` -- all publishing fields now live under `[project]` (see above), and file-inclusion rules live under `[project.include]`. Plain `[package]` tables are no longer read.
 
 ```toml
-[package.include]
+[project.include]
 # Explicit list of package directories to include.
 # Defaults to a directory matching the package name (hyphens replaced with underscores).
 packages = ["mylib", "mylib_utils"]
 
-[package.include.data]
+[project.include.data]
 # "*" sets global file patterns for all packages.
 "*" = ["**/*.jac", "**/*.py", "**/*.pyi", "py.typed"]
 
@@ -623,7 +594,14 @@ packages = ["mylib", "mylib_utils"]
 mylib = ["**/*.lark", "data/*.json", "templates/**/*"]
 ```
 
-**Default included patterns** (when `[package.include.data]` is absent):
+| Key | Description |
+|-----|-------------|
+| `packages` | Glob list of package directories to ship. Defaults to one directory named after the project (hyphens → underscores). |
+| `data` | Map of file-glob patterns. The `"*"` key sets global patterns for every package; a per-package key adds extra patterns on top. |
+
+Simple patterns without a path separator (e.g. `"*.jac"`) are matched recursively, so sub-packages are covered automatically.
+
+**Default included patterns** (when `[project.include.data]` is absent):
 
 | Pattern | Description |
 |---------|-------------|
@@ -632,7 +610,8 @@ mylib = ["**/*.lark", "data/*.json", "templates/**/*"]
 | `**/*.pyi` | Type stub files |
 | `**/*.lark` | Lark grammar files |
 | `**/py.typed` | PEP 561 type marker |
-| `**/*.jir` | Pre-compiled JIR bytecode |
+| `**/*.jir` | Pre-compiled JIR bytecode (collected if already present -- see [`jac bundle`](../cli/index.md#jac-bundle)) |
+| `_precompiled/manifest.json` | JIR precompile manifest |
 
 **Always excluded** (regardless of patterns):
 
@@ -815,4 +794,5 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 ## See Also
 
 - [CLI Reference](../cli/index.md) - Command-line interface documentation
+- [Publishing Packages](../publishing.md) - Building and uploading wheels to PyPI
 - [Plugin Management](../cli/index.md#plugin-management) - Managing plugins

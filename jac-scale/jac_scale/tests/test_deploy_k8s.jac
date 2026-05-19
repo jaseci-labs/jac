@@ -412,8 +412,31 @@ test "deploy all in one" {
         None
     );
     assert ri_proxy_path_env == "/cache-dashboard";
+    ri_username_env = next(
+        (
+            e
+            for e in insight_container.env
+            if e.name == "RI_REDIS_USERNAME"
+        ),
+        None
+    );
+    assert ri_username_env is not None , "RI_REDIS_USERNAME env var must be set";
+    assert ri_username_env.value_from is not None , "RI_REDIS_USERNAME must use secretKeyRef";
+    assert ri_username_env.value_from.secret_key_ref.key == "username";
+    ri_password_env = next(
+        (
+            e
+            for e in insight_container.env
+            if e.name == "RI_REDIS_PASSWORD"
+        ),
+        None
+    );
+    assert ri_password_env is not None , "RI_REDIS_PASSWORD env var must be set";
+    assert ri_password_env.value_from is not None , "RI_REDIS_PASSWORD must use secretKeyRef";
+    assert ri_password_env.value_from.secret_key_ref.key == "password";
     print(
-        f"RedisInsight Deployment '{insight_name}' exists with RI_REDIS_HOST/PORT pre-configured and RIPROXYPATH=/cache-dashboard"
+        f"RedisInsight Deployment '{insight_name}' exists with RI_REDIS_HOST/PORT pre-configured, "
+        f"RI_REDIS_USERNAME/PASSWORD from secret, and RIPROXYPATH=/cache-dashboard"
     );
 
     insight_service = core_v1.read_namespaced_service(
@@ -2072,4 +2095,161 @@ test "redis ingress rule must not set host before TLS is enabled" {
     # Redis rule must NOT have a host — same requirement as the main ingress
     redis_rule = redis_created_body["spec"]["rules"][0];
     assert "host" not in redis_rule , "Redis ingress rule must not set host before TLS is enabled";
+}
+# ---------------------------------------------------------------------------
+# Startup probe + resilient experimental runtime setup (no live cluster)
+# Covers: startup-probe gating, SSH->HTTPS clone normalization, and the
+# deb822-aware, non-blocking apt-get update.
+# ---------------------------------------------------------------------------
+test "startup probe gates liveness and experimental setup is resilient" {
+    scale_config = get_scale_config();
+    logger = UtilityFactory.create_logger('standard');
+
+    # --- startup probe: present, on the health path, generous window so the
+    # slow experimental install can't trip liveness into a crash loop ---
+    base_cfg = scale_config.get_kubernetes_config();
+    base_cfg['app_name'] = 'test-app';
+    target = DeploymentTargetFactory.create('kubernetes', base_cfg, logger);
+    probes = target._build_probe_config('/docs');
+    assert 'startup' in probes , "startup probe must be built";
+    sp = probes['startup'];
+    assert sp['httpGet']['path'] == '/docs';
+    assert sp['httpGet']['port'] == target.k8s_config.container_port;
+    assert sp['failureThreshold'] >= 60 , "startup window too small for experimental install";
+    container = target._build_container_config(
+        'test-app', 'example/image:latest', probes, target._build_resource_config()
+    );
+    assert container['startupProbe'] == sp , "container must carry the startup probe";
+
+    # --- experimental runtime setup: SSH urls normalized to anonymous HTTPS
+    # (pod has no SSH key) and apt-get update is deb822-aware + non-fatal ---
+    app_config = AppConfig(
+        code_folder='/tmp', file_name='main.jac', build=False, experimental=True
+    );
+    # _build_runtime_setup_command returns ['bash', '-c', '<cmd && cmd && ...>']
+    for (repo_in, expected) in [
+        ('git@github.com:owner/repo.git', 'https://github.com/owner/repo.git'),
+        ('ssh://git@github.com/owner/repo.git', 'https://github.com/owner/repo.git'),
+        ('https://github.com/owner/repo.git', 'https://github.com/owner/repo.git')
+    ] {
+        cfg = scale_config.get_kubernetes_config();
+        cfg['app_name'] = 'test-app';
+        cfg['jaseci_repo_url'] = repo_in;
+        t = DeploymentTargetFactory.create('kubernetes', cfg, logger);
+        cmds = t._build_runtime_setup_command(app_config);
+        assert cmds[0] == 'bash' and cmds[1] == '-c' , "runtime setup must be a bash -c script";
+        steps = cmds[2].split(' && ');
+        clone = next(
+            (
+                s
+                for s in steps
+                if s.startswith('git clone')
+            ),
+            ''
+        );
+        assert expected in clone , f"{repo_in} not normalized: {clone}";
+        assert 'git@' not in clone and 'ssh://' not in clone , f"SSH url leaked: {clone}";
+    }
+    # apt assertions are repo-independent; check once on the last script
+    assert any(
+        'sources.list.d/*.sources' in s and 'trixie-updates' in s for s in steps
+    ) , "deb822 .sources trixie-updates strip missing";
+    assert any(
+        s.startswith('apt-get') and 'Acquire::Retries' in s and '|| true' in s
+        for s in steps
+    ) , "resilient (bounded, non-fatal) apt-get update missing";
+    assert 'apt-get update' not in steps , "bare blocking apt-get update must be replaced";
+}
+# ---------------------------------------------------------------------------
+# RedisInsight (cache-dashboard) spec construction (no live cluster)
+# Covers the PR's EULA auto-accept + encryption key, the sub-path proxy
+# config, and secret-backed (never inlined) Redis credentials.
+# ---------------------------------------------------------------------------
+test "redis insight cache dashboard spec is correctly built" {
+    provider = DatabaseProviderFactory.create(
+        'kubernetes_redis', None, {'app_name': 'test-app'}
+    );
+    dash = provider.deploy_dashboard();
+    assert dash['deployment_name'] == 'test-app-redis-insight';
+    assert dash['service_name'] == 'test-app-redis-insight-service';
+
+    container = dash['deployment']['spec']['template']['spec']['containers'][0];
+    assert container['image'] == 'redis/redisinsight:3.2.0';
+    assert container['ports'][0]['containerPort'] == 5540;
+    sc = container['securityContext'];
+    assert sc['runAsNonRoot'] is True;
+    assert sc['readOnlyRootFilesystem'] is True;
+    assert sc['allowPrivilegeEscalation'] is False;
+    assert sc['capabilities']['drop'] == ['ALL'];
+
+    env = {e['name']: e for e in container['env']};
+    # EULA auto-accept + explicit encryption key (container has no OS keyring)
+    assert env['RI_ACCEPT_TERMS_AND_CONDITIONS']['value'] == 'true';
+    assert env['RI_ENCRYPTION_KEY']['value'] , "RI_ENCRYPTION_KEY must be set";
+    # Pre-seeded connection to the in-cluster Redis service, served under the
+    # ingress sub-path
+    assert env['RI_REDIS_HOST']['value'] == 'test-app-redis-service';
+    assert env['RI_REDIS_PORT']['value'] == '6379';
+    assert env['RIPROXYPATH']['value'] == '/cache-dashboard';
+    # Credentials come from the redis secret, never inlined as plaintext
+    u = env['RI_REDIS_USERNAME']['valueFrom']['secretKeyRef'];
+    p = env['RI_REDIS_PASSWORD']['valueFrom']['secretKeyRef'];
+    assert u['name'] == 'test-app-redis-secret' and u['key'] == 'username';
+    assert p['name'] == 'test-app-redis-secret' and p['key'] == 'password';
+    assert 'value' not in env['RI_REDIS_PASSWORD'] , "password must not be inlined";
+
+    assert dash['service']['spec']['ports'][0]['port'] == 5540;
+    assert dash['service_account']['automountServiceAccountToken'] is False;
+}
+
+test "redis ACL is secret mounted not in configmap and creds validated" {
+    provider = DatabaseProviderFactory.create(
+        'kubernetes_redis', None, {'app_name': 'test-app'}
+    );
+    dep = provider.deploy();
+
+    conf = dep['configmap']['data']['redis.conf'];
+    assert 'aclfile /etc/redis-acl/users.acl' in conf;
+    assert 'user default on >' not in conf , "ACL (with password) inlined into ConfigMap";
+    secret_sd = dep['secret']['stringData'];
+    assert 'users.acl' in secret_sd , "ACL file must be in the Secret";
+    assert secret_sd['users.acl'].startswith('user default on >password');
+
+    # ACL is mounted from the Secret on its own path, read-only
+    pod = dep['deployment']['spec']['template']['spec'];
+    acl_vol = next(
+        (
+            v
+            for v in pod['volumes']
+            if v['name'] == 'redis-acl'
+        ),
+        None
+    );
+    assert acl_vol is not None , "redis-acl volume missing";
+    assert acl_vol['secret']['secretName'] == dep['secret_name'];
+    assert acl_vol['secret']['items'][0]['key'] == 'users.acl';
+    assert any(
+        m['name'] == 'redis-acl'
+        and m['mountPath'] == '/etc/redis-acl'
+        and m.get('readOnly') is True for m in pod['containers'][0]['volumeMounts']
+    ) , "redis-acl must be mounted read-only at /etc/redis-acl";
+
+    raised = False;
+    try {
+        provider._build_acl_file('admin', "pw\nuser eve on nopass ~* +@all");
+    } except ValueError {
+        raised = True;
+    }
+    assert raised , "newline in password must be rejected";
+    raised2 = False;
+    try {
+        provider._build_acl_file("ad min", 'password');
+    } except ValueError {
+        raised2 = True;
+    }
+    assert raised2 , "ACL-significant chars in username must be rejected";
+
+    assert provider._build_connection_string('default', 'pw', 'h') == 'redis://default:pw@h:6379/0';
+    assert provider._build_connection_string('admin', 'pw', 'h') == 'redis://admin:pw@h:6379/0';
+    assert secret_sd['connection-string'] == provider.get_connection_string();
 }

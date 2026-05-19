@@ -962,6 +962,27 @@ impl JacBuiltin.printgraph(
 """Create Jac CLI cmds."""
 impl JacCmd.create_cmd -> None { }
 
+"""Run the `jac ai` coding agent -- the built-in byLLM implementation.
+
+This is the default hook implementation: it lazily imports the bundled
+byLLM-powered agent so the core CLI keeps no hard dependency on byLLM. A
+plugin that registers its own `run_ai_agent` hook outranks this one and
+replaces the agent entirely.
+"""
+impl JacCmd.run_ai_agent(req: object) -> int {
+    try {
+        import from jaclang.cli.ai_agent { run_agent }
+    } except ImportError {
+        import from jaclang.cli.console { console }
+        console.error(
+            "`jac ai` needs the byLLM plugin, which is not installed.",
+            hint="Install it with:  pip install byllm"
+        );
+        return 1;
+    }
+    return run_agent(req);
+}
+
 """Set Class References."""
 impl JacBasics.setup -> None { }
 
@@ -2265,6 +2286,38 @@ impl JacByLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
 """Call the LLM model."""
 impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
     import from jaclang.utils { NonGPT }
+    try {
+        random_value_for_type = cast(
+            Callable[([Any], Any)], NonGPT.random_value_for_type
+        );
+    } except AttributeError {
+        def random_value_for_type(_t: object) -> object {
+            return None;
+        }
+    }
+    try {
+        type_hints = get_type_hints(
+            mt_run.caller,
+            globalns=getattr(mt_run.caller, '__globals__', {}),
+            localns=None,
+            include_extras=True
+        );
+    } except Exception {
+        type_hints = getattr(mt_run.caller, '__annotations__', {});
+    }
+    return_type = type_hints.get('return', Any);
+    return random_value_for_type(return_type);
+}
+
+"""Base stub for acall_llm — returns random value. byllm overrides with native async dispatch.
+
+Uses await so this impl compiles to an async def, matching the static async def declaration
+and ensuring inspect.iscoroutinefunction returns True even when byllm is not installed.
+"""
+impl JacByLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
+    import asyncio;
+    import from jaclang.utils { NonGPT }
+    await asyncio.sleep(0);
     try {
         random_value_for_type = cast(
             Callable[([Any], Any)], NonGPT.random_value_for_type

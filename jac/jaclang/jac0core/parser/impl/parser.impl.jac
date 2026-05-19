@@ -103,7 +103,7 @@ import from jaclang.jac0core.unitree {
     MultiString,
     LambdaExpr
 }
-import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
+import from jaclang.jac0core.unitree { AwaitExpr, CastExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
 import from jaclang.jac0core.unitree {
@@ -153,6 +153,8 @@ import from jaclang.jac0core.diagnostics {
     E0045,
     E0046,
     E0047,
+    E0080,
+    E0081,
     W0060,
     W0061,
     W0063
@@ -341,6 +343,9 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_STATIC,
         TokenKind.KW_OVERRIDE,
         TokenKind.KW_IMPL,
+        TokenKind.KW_GETTER,
+        TokenKind.KW_SETTER,
+        TokenKind.KW_DELETER,
         TokenKind.KW_SEM,
         TokenKind.KW_TEST,
         TokenKind.KW_GLOBAL,
@@ -814,19 +819,23 @@ impl Parser.parse_module -> Module {
     return module;
 }
 
-impl Parser.parse_expression -> Expr {
+impl Parser.parse_expression(allow_cast: bool = True) -> Expr {
     if self.check(TokenKind.KW_LAMBDA) {
         return self.parse_lambda_expr();
     }
-    expr = self.parse_concurrent_expr();
+    # `allow_cast=False` parses one level below the `as`-cast so a trailing
+    # `as` stays available to the caller (the `with`/`except` alias). It is
+    # threaded through the ternary branches so the whole expression — not just
+    # its first operand — is cast-free; a parenthesized `(x as T)` still casts.
+    expr = self.parse_cast() if allow_cast else self.parse_concurrent_expr();
     if self._check_js_arrow_fault() {
         expr = self._recover_js_arrow_fault(expr);
     }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
-        condition = self.parse_expression();
+        condition = self.parse_expression(allow_cast);
         else_uni = self.consume_uni(TokenKind.KW_ELSE);
-        else_value = self.parse_expression();
+        else_value = self.parse_expression(allow_cast);
         cond_cfg = CfgExpr(expr=condition, kid=[condition]);
         val_cfg = CfgExpr(expr=expr, kid=[expr]);
         else_cfg = CfgExpr(expr=else_value, kid=[else_value]);
@@ -910,6 +919,24 @@ impl Parser.parse_by_expr -> Expr {
         return BinaryExpr(left=left, op=by_uni, right=right, kid=[left, by_uni, right]);
     }
     return left;
+}
+
+"""Parse type-cast expressions: expr as Type.
+
+An unchecked, type-erased cast — at runtime it evaluates to the operand; its
+static type is the named type. The cast sits just below the ternary: `a + b as T`
+is `(a + b) as T`, and a ternary must be parenthesized to be cast. `as` chains
+left-associatively, so `x as A as B` is `(x as A) as B`. `with`/`except` parse
+their context expression via `parse_concurrent_expr` (below this level), so the
+statement's own `as` alias is never swallowed here."""
+impl Parser.parse_cast -> Expr {
+    expr = self.parse_concurrent_expr();
+    while self.match_tok(TokenKind.KW_AS) {
+        as_uni = self.make_uni_token(self.previous());
+        cast_type = self.parse_pipe();
+        expr = CastExpr(value=expr, cast_type=cast_type, kid=[expr, as_uni, cast_type]);
+    }
+    return expr;
 }
 
 impl Parser.parse_pipe -> Expr {
@@ -4387,7 +4414,11 @@ impl Parser.parse_try_stmt -> TryStmt {
 
 impl Parser.parse_except_handler -> Except {
     except_uni = self.consume_uni(TokenKind.KW_EXCEPT);
-    exc_type = self.parse_expression();
+    # Parse with the cast disabled so this handler's own `except ... as name`
+    # alias is not swallowed into a CastExpr; ternary/lambda stay supported.
+    # A parenthesized `(x as T)` still casts (paren contents re-enter the
+    # full expression parser).
+    exc_type = self.parse_expression(allow_cast=False);
     name = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
@@ -4418,7 +4449,9 @@ impl Parser.parse_with_stmt -> WithStmt {
     }
     with_uni = self.consume_uni(TokenKind.KW_WITH);
     exprs: list = [];
-    expr = self.parse_expression();
+    # Parse with the cast disabled so `with <expr> as <alias>` keeps its own
+    # `as`; ternary/lambda contexts still parse, and `(x as T)` still casts.
+    expr = self.parse_expression(allow_cast=False);
     alias = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
@@ -4433,7 +4466,7 @@ impl Parser.parse_with_stmt -> WithStmt {
     comma_unis: list = [];
     while self.match_tok(TokenKind.COMMA) {
         comma_unis.append(self.make_uni_token(self.previous()));
-        expr = self.parse_expression();
+        expr = self.parse_expression(allow_cast=False);
         alias = None;
         as_uni = None;
         if self.match_tok(TokenKind.KW_AS) {
@@ -5686,7 +5719,15 @@ impl Parser.parse_has_stmt -> ArchHas {
         has_comma_unis.append(self.make_uni_token(self.previous()));
         vars.append(self.parse_has_var());
     }
-    self.expect(TokenKind.SEMI);
+    # `;` is optional when the last var ends with an accessor brace `}`
+    last_had_accessors = vars and (vars[len(vars) - 1].accessors is not None);
+    saw_semi = False;
+    if last_had_accessors {
+        saw_semi = self.match_tok(TokenKind.SEMI) is not None;
+    } else {
+        self.expect(TokenKind.SEMI);
+        saw_semi = True;
+    }
     kid: list = [];
     if is_static {
         kid.append(self.make_uni_token(static_tok));
@@ -5702,21 +5743,23 @@ impl Parser.parse_has_stmt -> ArchHas {
         }
         kid.append(v);
     }
-    # Add trailing Semi
-    prev = self.previous();
-    kid.append(
-        Semi(
-            orig_src=self.get_source(),
-            name=Tok.SEMI.value,
-            value=";",
-            line=prev.loc.line,
-            end_line=prev.loc.end_line,
-            col_start=prev.loc.col_start,
-            col_end=prev.loc.col_end,
-            pos_start=prev.loc.pos_start,
-            pos_end=prev.loc.pos_end
-        )
-    );
+    # Add trailing Semi (synthetic if elided after accessor brace)
+    if saw_semi {
+        prev = self.previous();
+        kid.append(
+            Semi(
+                orig_src=self.get_source(),
+                name=Tok.SEMI.value,
+                value=";",
+                line=prev.loc.line,
+                end_line=prev.loc.end_line,
+                col_start=prev.loc.col_start,
+                col_end=prev.loc.col_end,
+                pos_start=prev.loc.pos_start,
+                pos_end=prev.loc.pos_end
+            )
+        );
+    }
     return ArchHas(
         is_static=is_static,
         access=access,
@@ -5766,6 +5809,27 @@ impl Parser.parse_has_var -> HasVar {
         self.expect(TokenKind.KW_POST_INIT);
         defer = True;
     }
+    # Optional accessor block: { getter/setter/deleter ... }.
+    # In Jac, `has x: T { ... }` declares a *property* (pure computed accessors);
+    # storage is never allocated implicitly. Initializers (`= value`) are reserved
+    # for the storage form `has x: T = value;` and are rejected on property blocks.
+    accessors: (list | None) = None;
+    acc_lb_uni: UniToken | None = None;
+    acc_rb_uni: UniToken | None = None;
+    if self.check(TokenKind.LBRACE) {
+        if value is not None {
+            self.emit_diag(E0080);
+        }
+        acc_lb_uni = self.consume_uni(TokenKind.LBRACE);
+        accessors = [];
+        while not self.check(TokenKind.RBRACE) {
+            accessors.append(self.parse_accessor());
+        }
+        acc_rb_uni = self.consume_uni(TokenKind.RBRACE);
+        if len(accessors) == 0 {
+            self.emit_diag(E0081);
+        }
+    }
     kid: list = [name, type_tag];
     if value {
         kid.append(eq_uni);
@@ -5775,7 +5839,96 @@ impl Parser.parse_has_var -> HasVar {
         kid.append(by_uni);
         kid.append(self.make_special_name(self.previous()));
     }
-    return HasVar(name=name, type_tag=type_tag, value=value, defer=defer, kid=kid);
+    if accessors is not None {
+        kid.append(acc_lb_uni);
+        for acc in accessors {
+            kid.append(acc);
+        }
+        kid.append(acc_rb_uni);
+    }
+    return HasVar(
+        name=name,
+        type_tag=type_tag,
+        value=value,
+        defer=defer,
+        accessors=accessors,
+        kid=kid
+    );
+}
+
+"""Recognize `getter`/`setter`/`deleter` as a property-accessor-kind keyword and consume it.
+
+All three accessor keywords are real lexer-level keywords (KW_GETTER, KW_SETTER,
+KW_DELETER). They are allowed as identifiers in normal positions via the same
+`is_keyword_token`/`_make_attr_from_keyword` mechanism that lets `int`, `set`,
+`static`, etc. be used as identifiers despite being reserved words.
+"""
+impl Parser._consume_accessor_kind -> tuple[str, Token] {
+    if self.check(TokenKind.KW_DELETER) {
+        return ("deleter", self.advance());
+    }
+    if self.check(TokenKind.KW_SETTER) {
+        return ("setter", self.advance());
+    }
+    if self.check(TokenKind.KW_GETTER) {
+        return ("property", self.advance());
+    }
+    self.emit_diag(E0001);
+    return ("property", self.advance());
+}
+
+"""Parse one property accessor: `getter`, `setter`, or `deleter`, with optional signature and body."""
+impl Parser.parse_accessor -> Ability {
+    (kind_str, kind_tok) = self._consume_accessor_kind();
+    name = self.make_name(kind_tok);
+    # Optional () params and -> return-type
+    signature: FuncSignature | None = self.parse_func_signature();
+    has_sig_content = not (
+        len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
+    );
+    if not has_sig_content {
+        signature = None;
+    }
+    # Body: `{ ... }` or `;`
+    body: list | None = None;
+    body_lb_uni: UniToken | None = None;
+    body_rb_uni: UniToken | None = None;
+    if self.match_tok(TokenKind.LBRACE) {
+        body_lb_uni = self.make_uni_token(self.previous());
+        body = self.parse_code_block_stmts();
+        body_rb_uni = self.consume_uni(TokenKind.RBRACE);
+    } else {
+        self.expect(TokenKind.SEMI);
+    }
+    kid: list = [name];
+    if signature is not None {
+        kid.append(signature);
+    }
+    if body is not None {
+        kid.append(body_lb_uni);
+        for s in body {
+            kid.append(s);
+        }
+        kid.append(body_rb_uni);
+    } else {
+        kid.append(self.make_semi());
+    }
+    return Ability(
+        name_ref=name,
+        is_async=False,
+        is_override=False,
+        is_static=False,
+        is_classmethod=False,
+        is_abstract=False,
+        access=None,
+        signature=signature,
+        body=body,
+        kid=kid,
+        doc=None,
+        decorators=None,
+        type_params=None,
+        accessor_kind=kind_str
+    );
 }
 
 impl Parser.parse_ability -> Ability {

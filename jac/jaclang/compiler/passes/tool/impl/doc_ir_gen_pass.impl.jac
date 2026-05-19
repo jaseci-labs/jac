@@ -1212,6 +1212,11 @@ impl DocIRGenPass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     self._assign_space_group(nd);
 }
 
+"""Generate DocIR for type-cast expressions."""
+impl DocIRGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    self._assign_space_group(nd);
+}
+
 """Generate DocIR for keyword arguments."""
 impl DocIRGenPass.exit_k_w_pair(nd: uni.KWPair) -> None {
     self._assign_group_concat(nd);

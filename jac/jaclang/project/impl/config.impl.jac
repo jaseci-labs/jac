@@ -101,6 +101,10 @@ impl JacConfig.discover(
     }
     (project_root, toml_path) = result;
     config = JacConfig.load(toml_path);
+    # Record whether discovery had to climb out of the starting directory, so
+    # a later write can warn before modifying an ancestor project's jac.toml.
+    base = start_path if start_path is not None else Path.cwd();
+    config.discovered_from_ancestor = project_root.resolve() != base.resolve();
     if profile {
         config.apply_profile_overlay(profile);
     }
@@ -550,19 +554,49 @@ impl JacConfig.save -> None {
     # so we only update the disabled list, not the entire plugin configs.
     # Plugin configs are updated via plugin-specific save methods when needed.
     if self.plugins_config.disabled is not None {
-        if "plugins" not in doc {
-            doc["plugins"] = {};
-        }
-        # Persist disabled plugins list - handle both setting and clearing
+        # Persist disabled plugins list - handle both setting and clearing.
+        # Only materialize the [plugins] table when there is something to
+        # write, so an empty disabled list never leaves a stray empty table.
         if self.plugins_config.disabled {
+            if "plugins" not in doc {
+                doc["plugins"] = {};
+            }
             doc["plugins"]["disabled"] = self.plugins_config.disabled;
         } elif "disabled" in doc.get("plugins", {}) {
-            del doc["plugins"]["disabled"];  # Remove if empty
+            del doc["plugins"]["disabled"];
+            if not doc["plugins"] {
+                del doc["plugins"];  # Drop the table if it is now empty
+            }
         }
     }
-    # Write using simple TOML serializer
+    # Route the write through the single chokepoint (handles the ancestor warning).
+    self.persist_doc(doc);
+}
+
+"""Serialize `doc` to `self.toml_path` -- the one jac.toml write chokepoint.
+
+Every code path that persists jac.toml (JacConfig.save and the `jac config`
+set/unset helpers) goes through here, so the ancestor-directory guard cannot be
+silently skipped by a future mutating command: warn once, here, whenever this
+config was discovered by climbing out of the current directory.
+"""
+impl JacConfig.persist_doc(doc: dict[str, Any]) -> None {
+    if self.toml_path is None {
+        raise ValueError("No toml_path set, cannot save configuration");
+    }
+    if self.discovered_from_ancestor {
+        import from jaclang.cli.console { console }
+        console.warning(
+            f"No jac.toml in the current directory -- modifying {self.toml_path}"
+        );
+        console.print(
+            "  Run this command from the project root, "
+            "or 'jac create' here to start a new project.",
+            style="muted"
+        );
+    }
     with open(self.toml_path, "w") as f {
-        f.write(_serialize_toml(doc));
+        f.write(serialize_toml(doc));
     }
 }
 
@@ -581,8 +615,9 @@ def _quote_key(key: str) -> str {
     return key;
 }
 
-# Simple TOML serializer (does not preserve comments)
-def _serialize_toml(data: dict, prefix: str = "") -> str {
+# Simple TOML serializer (does not preserve comments). This is the single
+# canonical writer -- callers that need dict-to-TOML use this, never a copy.
+impl serialize_toml(data: dict[str, Any], prefix: str = "") -> str {
     lines: list[str] = [];
     tables: list[tuple[str, dict]] = [];
 
@@ -594,7 +629,7 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
             table_key = f"{prefix}{quoted_key}" if prefix else quoted_key;
             tables.append((table_key, value));
         } else {
-            lines.append(f"{_quote_key(key)} = {_toml_value(value)}");
+            lines.append(f"{_quote_key(key)} = {toml_value(value)}");
         }
     }
 
@@ -621,12 +656,12 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
             if simple_values {
                 lines.append(f"[{table_key}]");
                 for (k, v) in simple_values {
-                    lines.append(f"{_quote_key(k)} = {_toml_value(v)}");
+                    lines.append(f"{_quote_key(k)} = {toml_value(v)}");
                 }
                 lines.append("");
             }
             for (nested_key, nested_data) in nested_tables {
-                nested_content = _serialize_toml(
+                nested_content = serialize_toml(
                     {nested_key: nested_data}, f"{table_key}."
                 );
                 lines.append(nested_content);
@@ -634,7 +669,7 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
         } else {
             lines.append(f"[{table_key}]");
             for (k, v) in table_data.items() {
-                lines.append(f"{_quote_key(k)} = {_toml_value(v)}");
+                lines.append(f"{_quote_key(k)} = {toml_value(v)}");
             }
             lines.append("");
         }
@@ -643,9 +678,12 @@ def _serialize_toml(data: dict, prefix: str = "") -> str {
     return "\n".join(lines);
 }
 
-# Convert a Python value to TOML representation
-def _toml_value(value: Any) -> str {
-    if isinstance(value, bool) {
+# Convert a Python value to its TOML literal representation.
+impl toml_value(value: Any) -> str {
+    if value is None {
+        # TOML has no null literal; mirror the legacy writer and use "".
+        return '""';
+    } elif isinstance(value, bool) {
         return "true" if value else "false";
     } elif isinstance(value, int) {
         return str(value);
@@ -656,8 +694,15 @@ def _toml_value(value: Any) -> str {
         escaped = value.replace("\\", "\\\\").replace('"', '\\"');
         return f'"{escaped}"';
     } elif isinstance(value, list) {
-        items = [_toml_value(item) for item in value];
+        items = [toml_value(item) for item in value];
         return f"[{', '.join(items)}]";
+    } elif isinstance(value, dict) {
+        # Inline table, e.g. authors/maintainers entries: { key = value, ... }
+        if not value {
+            return "{}";
+        }
+        pairs = [f"{_quote_key(k)} = {toml_value(v)}" for (k, v) in value.items()];
+        return "{ " + ", ".join(pairs) + " }";
     } else {
         # Fallback: convert to string
         return f'"{value}"';

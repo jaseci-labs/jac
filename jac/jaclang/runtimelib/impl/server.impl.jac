@@ -695,8 +695,26 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
     import from jaclang.jac0core.constructs { WalkerArchetype }
     import from jaclang.jac0core.constant { Tokens as Tok }
     endpoint_effects: dict = {};
-    # Recursively check if an AST subtree contains write operations
-    def has_write_ops(`node: Any) -> bool {
+    # Find a module-level ability (a `def`) by name within a module AST.
+    def find_ability_in_ast(ast_mod: Any, fname: str) -> Any {
+        if not ast_mod {
+            return None;
+        }
+        for item in ast_mod.body {
+            if (
+                isinstance(item, uni.Ability)
+                and item.name_ref is not None
+                and item.name_ref.sym_name == fname
+            ) {
+                return item;
+            }
+        }
+        return None;
+    }
+    # Recursively check if an AST subtree contains write operations. Follows
+    # calls into module-level helper defs (interprocedural) so a graph
+    # mutation hidden behind a helper still marks the caller as a writer.
+    def has_write_ops(`node: Any, ast_mod: Any, seen: set) -> bool {
         if isinstance(`node, uni.DeleteStmt) {
             return True;
         }
@@ -708,10 +726,43 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
                 return True;
             }
         }
+        # Field mutation on a non-self target (`n.attr = ...`) writes to a
+        # node/edge attribute. `self.x` is walker-local state, so excluded.
+        if isinstance(`node, uni.Assignment) and `node.target {
+            for tgt in `node.target {
+                if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
+                    root_expr = tgt.target;
+                    while isinstance(root_expr, uni.AtomTrailer) {
+                        root_expr = root_expr.target;
+                    }
+                    if not (
+                        isinstance(root_expr, uni.SpecialVarRef)
+                        and root_expr.sym_name == 'self'
+                    ) {
+                        return True;
+                    }
+                }
+            }
+        }
+        # Interprocedural: follow a call into a module-level helper def.
+        if isinstance(`node, uni.FuncCall) and isinstance(`node.target, uni.Name) {
+            fname = `node.target.sym_name;
+            if fname not in seen {
+                seen.add(fname);
+                callee = find_ability_in_ast(ast_mod, fname);
+                if callee and callee.body and hasattr(callee.body, '__iter__') {
+                    for stmt in callee.body {
+                        if has_write_ops(stmt, ast_mod, seen) {
+                            return True;
+                        }
+                    }
+                }
+            }
+        }
         # Recurse into children
         if `node?.kid and `node.kid {
             for child in `node.kid {
-                if has_write_ops(child) {
+                if has_write_ops(child, ast_mod, seen) {
                     return True;
                 }
             }
@@ -739,7 +790,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
             body = item._get_impl_resolved_body();
             is_writer = False;
             for body_item in body {
-                if has_write_ops(body_item) {
+                if has_write_ops(body_item, mod_ast, set()) {
                     is_writer = True;
                     break;
                 }
@@ -799,7 +850,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
                     is_writer = False;
                     if item.body and hasattr(item.body, '__iter__') {
                         for body_item in item.body {
-                            if has_write_ops(body_item) {
+                            if has_write_ops(body_item, mod_ast, set()) {
                                 is_writer = True;
                                 break;
                             }
