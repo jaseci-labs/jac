@@ -227,7 +227,7 @@ def _load_project_config {
 
 """Print actionable red banner and exit 2 on malformed jac.toml. Called
 from _load_project_config when the CLI encounters a parse failure."""
-def _exit_on_malformed_jac_toml(exc: 'Any') -> None {
+def _exit_on_malformed_jac_toml(exc: 'Any') {
     import sys;
     sys.stderr.write(
         f"\n\033[31mERROR: jac.toml is malformed: {exc.original}\033[0m\n"

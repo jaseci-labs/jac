@@ -330,8 +330,8 @@ attributes for actionable error messages. Library callers (jaclang
 import time, get_disabled_plugins) typically log + continue; CLI
 callers (`jac start`, etc.) print a banner and exit 2."""
 class MalformedJacTomlError(tomllib.TOMLDecodeError) {
-    has file_path: str;
-    has original: tomllib.TOMLDecodeError;
+    has file_path: str,
+        original: tomllib.TOMLDecodeError;
 
     def init(
         self: MalformedJacTomlError, file_path: str, original: tomllib.TOMLDecodeError
