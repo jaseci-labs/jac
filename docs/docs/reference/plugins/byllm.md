@@ -1336,6 +1336,45 @@ with entry {
 
 - Only supports `str` return type
 
+### Streaming to a Frontend
+
+To stream byLLM tokens or `StreamEvent` objects to a browser, wrap the call in a walker (or `def:pub` function) and `report` the generator. `jac-scale` auto-serves it as Server-Sent Events; on the client, `useJacStream` from jac-client consumes the frames into reactive state. See [Streaming Pattern (SSE)](../../tutorials/fullstack/backend.md#streaming-pattern-sse) and the [jac-client streaming reference](jac-client.md#streaming-with-server-sent-events) for the full client-side API.
+
+**Token streaming (basic):**
+
+```jac
+def chat_tokens(prompt: str) -> str by llm(stream=True);
+
+walker:pub chat {
+    has prompt: str = "";
+    can run with Root entry {
+        report ({"token": t} for t in chat_tokens(self.prompt));
+    }
+}
+```
+
+**Structured streaming (with `logging=True`):**
+
+```jac
+import from byllm.lib { StreamEvent }
+
+def agent(question: str) -> str by llm(
+    tools=[get_weather], stream=True, logging=True
+);
+
+walker:pub agent_run {
+    has question: str = "";
+    can run with Root entry {
+        report (
+            {"type": e.event_type, "data": e.data}
+            for e in agent(self.question)
+        );
+    }
+}
+```
+
+The client uses the same `useJacStream` hook for both; the difference is purely in the shape of the yielded dict and how the component renders `stream.events`.
+
 ---
 
 ## Multimodal Inputs
