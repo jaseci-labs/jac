@@ -543,16 +543,7 @@ impl MongoBackend.sync -> None {
 """Atomically update a NodeAnchor, merging only dirty archetype fields and
 edge delta with DB state.
 
-Per-field dot-notation ($set with data.archetype.<field> keys) ensures
-concurrent walkers on sibling pods only overwrite the archetype fields they
-actually modified. The atomic $setUnion/$setDifference pipeline for edges
-from PR #5644 is preserved — both guarantees are active in the same
-update_one call.
 
-The old implementation used $mergeObjects on the full serialized archetype
-blob, which wholesale-replaced data.archetype on every commit and silently
-reverted any scalar a sibling walker had committed between this walker's
-load and its commit (issue #5997).
 """
 impl MongoBackend._put_node_atomic(
     anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]

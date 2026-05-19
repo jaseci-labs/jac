@@ -1542,3 +1542,79 @@ test "system root cache: N consecutive inits cost one MongoDB fetch total" {
     }
     _reset_process_cache();
 }
+
+test "mongodb pipeline: _put_node_atomic does not clobber sibling scalar writes (issue #5997)" {
+    # Pipeline-level regression for the _put_node_atomic scalar-clobber bug.
+    # Uses the shared MongoDB container managed by _get_mongo() / atexit.
+    (mc_raw, _) = _get_mongo();
+    mc: Any = cast(Any, mc_raw);
+    coll: Any = mc["repro_5997"]["_anchors"];
+    coll.drop();
+
+    _id = "counter-node-1";
+    coll.insert_one(
+        {
+            "_id": _id,
+            "type": "NodeAnchor",
+            "data": {
+                "archetype": {"a": 0, "b": 0, "name": "counter"},
+                "edges": ["edge-existing-1"],
+                "access": {}
+            }
+        }
+    );
+
+    # Runs the fixed _put_node_atomic pipeline: per-field dot-notation for
+    # archetype scalars, atomic $setUnion/$setDifference for edges.
+    def fixed_put_node_atomic(
+        _coll: Any,
+        doc_id: str,
+        dirty_arch_fields: dict[str, Any],
+        non_arch_top: dict[str, Any],
+        edges_added: list[str],
+        edges_removed: list[str]
+    ) {
+        set_doc: dict[str, Any] = {"type": "NodeAnchor"};
+        for (k, v) in non_arch_top.items() {
+            set_doc[f"data.{k}"] = v;
+        }
+        for (k, v) in dirty_arch_fields.items() {
+            set_doc[f"data.archetype.{k}"] = v;
+        }
+        set_doc["data.edges"] = {
+            "$setUnion": [
+                {"$setDifference": [{"$ifNull": ["$data.edges", []]}, edges_removed]},
+                edges_added
+            ]
+        };
+        _coll.update_one({"_id": doc_id}, [{"$set": set_doc}], upsert=True);
+    }
+
+    # Walker A (Pod 1): only field `a` is dirty — must write a=42.
+    fixed_put_node_atomic(coll, _id, {"a": 42}, {"access": {}}, [], []);
+    after_a = coll.find_one({"_id": _id})["data"];
+    assert after_a["archetype"]["a"] == 42 , (
+        f"Walker A write failed: a={after_a['archetype']['a']} (expected 42)"
+    );
+
+    # Walker B (Pod 2): loaded BEFORE A committed (stale L1: a=0, b=0).
+    # B modified b=99 and adds a new edge. Only field `b` is dirty.
+    # The fixed pipeline must NOT touch field `a`.
+    fixed_put_node_atomic(coll, _id, {"b": 99}, {"access": {}}, ["edge-b-new"], []);
+    after_b = coll.find_one({"_id": _id})["data"];
+
+    assert after_b["archetype"]["a"] == 42 , (
+        "_put_node_atomic clobbered Walker A's write: "
+        f"a={after_b['archetype']['a']} (expected 42). "
+        "Regression: issue #5997 — shallow $mergeObjects replaced archetype wholesale."
+    );
+    assert after_b["archetype"]["b"] == 99 , (
+        f"Walker B write lost: b={after_b['archetype']['b']} (expected 99)"
+    );
+    edges_final = cast(list[str], after_b["edges"]);
+    assert "edge-existing-1" in edges_final , "pre-existing edge was lost";
+    assert "edge-b-new" in edges_final , "Walker B new edge was lost";
+    assert len(edges_final) == 2 , (
+        f"Expected 2 edges, got {len(edges_final)}: {edges_final}"
+    );
+}
