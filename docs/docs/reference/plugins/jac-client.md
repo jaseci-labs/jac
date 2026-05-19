@@ -237,7 +237,23 @@ with entry {
 
 ## Client Sections
 
-Use the `to cl:` section header to tag every following module-level element as client-side (React) code:
+Wrap client-side (React) code in a `cl { ... }` block -- the braces bracket exactly the tagged region, which is the clearest way to mix client and server code in one file:
+
+```jac
+cl {
+    def:pub app() -> JsxElement {
+        return <div>
+            <h1>Hello, World!</h1>
+        </div>;
+    }
+}
+```
+
+A `cl { ... }` block also works inside a function or class body to locally override the active codespace. In `.cl.jac` files, the whole file is already client-side, so no wrapper is needed.
+
+### Section Headers
+
+As an alternative to a block, the `to cl:` section header tags **every following module-level element** as client-side, until the next `to X:` header or end of file. This is convenient for a file that is mostly client code, since it avoids a wrapping block:
 
 ```jac
 to cl:
@@ -249,7 +265,7 @@ def:pub app() -> JsxElement {
 }
 ```
 
-A section header applies until the next `to X:` header or end of file. You can switch back with `to sv:`, `to na:`, or end the file.
+You can switch back with `to sv:`, `to na:`, or end the file.
 
 ### Single-Statement Forms
 
@@ -260,7 +276,7 @@ cl import from react { useState }
 cl glob THEME: str = "dark";
 ```
 
-This also works for component definitions -- the preferred shorthand for a single tagged declaration inside a mostly-server file:
+This also works for component definitions -- a handy shorthand for a single tagged declaration inside a mostly-server file:
 
 ```jac
 cl def:pub app -> JsxElement {
@@ -268,10 +284,6 @@ cl def:pub app -> JsxElement {
     return <div>Count: {count}</div>;
 }
 ```
-
-### Braced Blocks (legacy / inner-scope)
-
-The older `cl { ... }` braced block still works and is useful for **inner-scope overrides** inside a function or class, but at module scope it emits **W0064** pointing at the section-header form. In `.cl.jac` files or after a `to cl:` header, no wrapper is needed at all.
 
 ### Export Requirement
 
@@ -345,7 +357,7 @@ def:pub app() -> JsxElement {
 
 ### The `has` Keyword
 
-Inside client-tagged code (`to cl:` sections, `.cl.jac` files, or `cl { }` blocks), `has` creates reactive state:
+Inside client-tagged code (a `cl { }` block, a `.cl.jac` file, or a `to cl:` section), `has` creates reactive state:
 
 ```jac
 to cl:

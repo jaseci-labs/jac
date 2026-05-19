@@ -1222,9 +1222,9 @@ with entry {
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
-#   to sv: = server (Python/PyPI)
-#   to cl: = client (JavaScript/npm)
-#   to na: = native (C ABI)
+#   sv { } / to sv: = server (Python/PyPI)
+#   cl { } / to cl: = client (JavaScript/npm)
+#   na { } / to na: = native (C ABI)
 
 
 # ============================================================
@@ -1240,32 +1240,36 @@ def:pub get_todos() -> list {
     return [{"title": t.title} for t in [root -->][?:Todo]];
 }
 
-# Client section (compiles to JavaScript/React)
-to cl:
+# Client code in a braced block (compiles to JavaScript/React).
+# The braces bracket exactly the client region.
+cl {
+    def:pub app() -> JsxElement {
+        has items: list = [];
 
-def:pub app() -> JsxElement {
-    has items: list = [];
+        async can with entry {
+            items = await get_todos();
+        }
 
-    async can with entry {
-        items = await get_todos();
+        return <div>
+            {[<p key={i.title}>{i.title}</p> for i in items]}
+        </div>;
     }
-
-    return <div>
-        {[<p key={i.title}>{i.title}</p> for i in items]}
-    </div>;
 }
 
-# Return to server section
-to sv:
-
+# Code after the block is back in the server codespace
 node Secret { has value: str; }
+
+# Section header -- an alternative to a block; sets the codespace for
+# every following element until the next "to X:" header or end of file
+to cl:
+
+import from react { useEffect }
+
+to sv:
 
 # Single-statement form (no header, no braces)
 sv import from .database { connect_db }
 cl import from react { useState }
-
-# Braced form (cl { ... }) is still valid in inner scopes,
-# but emits W0064 at module scope -- prefer `to cl:` / `cl` prefix.
 
 
 # ============================================================

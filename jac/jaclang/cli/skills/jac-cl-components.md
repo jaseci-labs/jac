@@ -132,7 +132,7 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 - **Event params are typed - `MouseEvent`/`ChangeEvent`/etc.** Annotate every handler that reads `e` with the real event type, so `e.target` / `e.key` resolve. When you genuinely don't read `e`, fall back to lowercase `any` (the gradual type) - never capital `Any`, which is not the keyword and warns `W2001` ("Name 'Any' may be undefined").
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>` or move styling to `className` + a CSS file.
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
-- **No `to cl:` / `cl def:pub` / `cl { }` in `.cl.jac` files.** Extension already sets context. Braced blocks are deprecated (W0064).
+- **No `to cl:` / `cl def:pub` / `cl { }` wrapper in `.cl.jac` files.** The extension already sets the client context.
 - **Top-level component name is `def:pub app()`** - lowercase. Runtime mounts the literal name.
 
 ## See also

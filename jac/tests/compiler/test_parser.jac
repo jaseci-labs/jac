@@ -547,8 +547,8 @@ na def na_fn -> int { return 3; }
     }
 }
 
-test "cl/sv/na braced-block deprecation warning" {
-    # Braced block form emits W0064 for each block
+test "cl/sv/na block and section-header forms parse without warning" {
+    # Braced block form parses cleanly -- it is no longer deprecated
     source = """
 cl { def a() -> int { return 1; } }
 sv { def b() -> int { return 2; } }
@@ -564,9 +564,9 @@ na { def c() -> int { return 3; } }
             w_codes.append(c.code);
         }
     }
-    assert w_codes.count("W0064") == 3;
+    assert "W0064" not in w_codes;
 
-    # Section headers and single-statement prefix forms do not warn
+    # Section headers and single-statement prefix forms also parse cleanly
     source = """
 to cl:
 def a() -> int { return 1; }

@@ -131,7 +131,6 @@ Emitted by the parser and lexer during source code parsing.
 | `W0061` | Parenthesized filter syntax `(?:...)` is deprecated. Use bracket syntax `[?:...]` instead. |
 | `W0062` | `'root()'` is deprecated. Use bare `'root'` instead. |
 | `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
-| `W0064` | `'{keyword} { ... }'` block syntax is deprecated at module scope. Use the `'to {keyword}:'` section header instead. |
 
 ### Lexer Errors
 
