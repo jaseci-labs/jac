@@ -313,11 +313,19 @@ impl JacAPIServerEndpoints.create_webhook_callback(
     walker_name: str
 ) -> Callable[..., TransportResponse] {
     async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
+        import time;
+
         webhook_config = get_scale_config().get_webhook_config();
         signature_header = webhook_config.get(
             'signature_header', 'X-Webhook-Signature'
         );
+        timestamp_header = webhook_config.get(
+            'timestamp_header', 'X-Webhook-Timestamp'
+        );
         verify_signature = webhook_config.get('verify_signature', True);
+        replay_tolerance = int(
+            webhook_config.get('replay_tolerance_seconds', 300)
+        );
 
         # Get API key from header
         api_key = request.headers.get('X-API-Key');
@@ -361,6 +369,32 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                     meta=Meta(extra={'http_status': 401})
                 );
             }
+            # Replay protection: require a fresh timestamp and bind it into
+            # the signature so a captured request cannot be replayed later.
+            timestamp = request.headers.get(timestamp_header);
+            if not timestamp {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message=f"Missing {timestamp_header} header",
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            try {
+                request_ts = int(timestamp);
+            } except Exception {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Invalid webhook timestamp',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
+            if abs(int(time.time()) - request_ts) > replay_tolerance {
+                return TransportResponse.fail(
+                    code='UNAUTHORIZED',
+                    message='Webhook timestamp outside allowed window',
+                    meta=Meta(extra={'http_status': 401})
+                );
+            }
             # Sign/verify with the per-key signing secret, NOT the api_key.
             # The api_key travels in this request, so using it as the HMAC
             # secret would let any observer forge a valid signature. The
@@ -375,9 +409,12 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                     meta=Meta(extra={'http_status': 401})
                 );
             }
+            # The signature covers "<timestamp>." + raw body, so the
+            # timestamp cannot be altered independently of the signature.
+            signed_payload = f"{timestamp}.".encode('utf-8') + raw_body;
             extracted_signature = WebhookUtils.extract_signature(signature);
             if not WebhookUtils.verify_signature(
-                raw_body, extracted_signature, signing_secret
+                signed_payload, extracted_signature, signing_secret
             ) {
                 return TransportResponse.fail(
                     code='UNAUTHORIZED',
@@ -455,7 +492,18 @@ impl JacAPIServerEndpoints.create_webhook_parameters(
             data_type='string',
             required=False,
             default=None,
-            description='HMAC-SHA256 signature of the request body (X-Webhook-Signature header)',
+            description='HMAC-SHA256 signature of "<timestamp>." + body, signed with the signing_secret (X-Webhook-Signature header)',
+            type=ParameterType.HEADER
+        )
+    );
+    # Timestamp header (for replay protection)
+    parameters.append(
+        APIParameter(
+            name='x_webhook_timestamp',
+            data_type='string',
+            required=False,
+            default=None,
+            description='Unix timestamp (seconds) of the request, bound into the signature (X-Webhook-Timestamp header)',
             type=ParameterType.HEADER
         )
     );
