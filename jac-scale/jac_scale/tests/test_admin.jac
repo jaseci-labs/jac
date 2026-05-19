@@ -589,3 +589,59 @@ test "admin ui includes jac.toml and styles for build" {
     assert (ui_dir / "jac.toml").exists() , "jac.toml must be packaged for admin build";
     assert (ui_dir / "styles" / "main.css").exists() , "styles/main.css must be packaged for Tailwind";
 }
+
+test "admin UI build emits admin based assets and keeps useEffect lambda" {
+    import os;
+    import sys;
+    import shutil;
+    import subprocess;
+    import tempfile;
+    import from pathlib { Path }
+    import jac_scale.admin;
+
+    ui_dir = Path(jac_scale.admin.__file__).parent / "ui";
+    assert (ui_dir / "main.jac").exists() , "admin UI source missing";
+
+    # Use the `jac` that matches the running interpreter, not whatever a
+    # bare `jac` resolves to on PATH (which may be an unrelated old env).
+    jac_bin = os.path.join(os.path.dirname(sys.executable), "jac");
+    if not os.path.exists(jac_bin) {
+        jac_bin = "jac";
+    }
+
+    tmp = tempfile.mkdtemp(prefix="admin_ui_build_");
+    try {
+        build_dir = os.path.join(tmp, "ui");
+        shutil.copytree(str(ui_dir), build_dir);
+        # never build against a stale copied-in artifact dir
+        shutil.rmtree(os.path.join(build_dir, ".jac"), ignore_errors=True);
+
+        result = subprocess.run(
+            [jac_bin, "build", "main.jac"],
+            cwd=build_dir,
+            capture_output=True,
+            text=True,
+            timeout=600
+        );
+        dist = Path(build_dir) / ".jac" / "client" / "dist";
+        assert (dist / "index.html").exists() , (
+            f"admin UI build produced no dist (rc={result.returncode}); "
+            f"stdout={result.stdout[-600:]} stderr={result.stderr[-600:]}"
+        );
+        index_html = (dist / "index.html").read_text(encoding="utf-8");
+        assert 'src="/admin/' in index_html , (
+            f"admin assets not under /admin/ (base_path lost): {index_html}"
+        );
+        assert 'href="/admin/' in index_html;
+
+        bundles = list(dist.glob("client.*.js"));
+        assert bundles , "no client bundle emitted";
+        js = bundles[0].read_text(encoding="utf-8");
+        assert ".useEffect([])" not in js , (
+            "admin useEffect lambda was dropped during codegen"
+        );
+        assert "useEffect([])" not in js;
+    } finally {
+        shutil.rmtree(tmp, ignore_errors=True);
+    }
+}

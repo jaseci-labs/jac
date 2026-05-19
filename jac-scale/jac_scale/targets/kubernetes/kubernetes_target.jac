@@ -128,7 +128,22 @@ obj KubernetesTarget(DeploymentTarget) {
         liveness_probe['periodSeconds'] = self.k8s_config.liveness_period;
         liveness_probe['failureThreshold'] = self.k8s_config.liveness_failure_threshold;
 
-        return {'readiness': probe_config, 'liveness': liveness_probe};
+        startup_probe = {
+            'httpGet': {
+                'path': health_check_path,
+                'port': self.k8s_config.container_port,
+                'scheme': 'HTTP'
+            },
+            'initialDelaySeconds': 10,
+            'periodSeconds': 10,
+            'failureThreshold': 90
+        };
+
+        return {
+            'readiness': probe_config,
+            'liveness': liveness_probe,
+            'startup': startup_probe
+        };
     }
 
     """Build Kubernetes service configuration.
@@ -176,11 +191,26 @@ obj KubernetesTarget(DeploymentTarget) {
             'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
         );
         # Remove repos that don't exist yet on Debian testing (trixie) to prevent
-        # apt-get update from failing with "no Release file" errors.
+        # apt-get update from hanging/failing on missing Release files.
+        # Legacy one-line format lives in *.list; modern python:3.x-slim images
+        # (Debian trixie) use the deb822 *.sources format where the suites are
+        # combined on a single `Suites:` line — the *.list-only sed misses it,
+        # so we also strip the trixie-updates token from `Suites:` lines there.
         commands.append(
             'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
         );
-        commands.append('apt-get update');
+        commands.append(
+            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
+        );
+        # Make apt-get update resilient: bounded retries + short network
+        # timeouts so an unreachable suite (e.g. the deb822 trixie-security
+        # stanza) fails fast instead of stalling the pod for minutes, and
+        # `|| true` keeps a partial-but-usable index from aborting the build
+        # (git/curl/unzip resolve from the main trixie suite, which Hits).
+        commands.append(
+            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+            '-o Acquire::https::Timeout=20 update || true'
+        );
 
         # Install base packages (curl and unzip needed for Bun installation)
         base_packages = ['git', 'curl', 'unzip'];
@@ -196,7 +226,20 @@ obj KubernetesTarget(DeploymentTarget) {
 
         if app_config.experimental {
             commands.append('rm -rf jaseci');
-            clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {config.jaseci_repo_url}";
+            # The pod has no SSH key/known_hosts, so a `git@host:owner/repo`
+            # or `ssh://` URL makes the clone hang then fail. Normalize the
+            # common GitHub SCP-style SSH form to anonymous HTTPS so the
+            # in-cluster clone works for public repos without credentials.
+            repo_url = config.jaseci_repo_url;
+            if repo_url.startswith('git@') and ':' in repo_url {
+                host_path = repo_url[4:];
+                host = host_path.split(':', 1)[0];
+                path = host_path.split(':', 1)[1];
+                repo_url = f"https://{host}/{path}";
+            } elif repo_url.startswith('ssh://git@') {
+                repo_url = 'https://' + repo_url[len('ssh://git@'):];
+            }
+            clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {repo_url}";
             commands.append(clone_cmd);
             commands.append('cd ./jaseci');
             if config.jaseci_commit {
@@ -317,7 +360,8 @@ obj KubernetesTarget(DeploymentTarget) {
             'ports': [{'containerPort': self.k8s_config.container_port}],
             'env': self.env_list,
             'readinessProbe': probe_configs['readiness'],
-            'livenessProbe': probe_configs['liveness']
+            'livenessProbe': probe_configs['liveness'],
+            'startupProbe': probe_configs['startup']
         };
 
         if secret_ref_name {
