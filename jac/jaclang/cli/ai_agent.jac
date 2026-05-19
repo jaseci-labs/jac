@@ -590,55 +590,60 @@ def preview_result(text: str) -> str {
 """Run one agent turn, rendering the full byLLM event stream to the terminal.
 
 `ask` runs with `stream=True, logging=True`, so it yields a StreamEvent for
-every step of the ReAct loop -- the model's reasoning (`thought`), each
-`tool_call` and `tool_result`, and finally the answer `chunk`s -- instead of
-going silent while tools run.
+every step of the ReAct loop. Both the model's reasoning (`thought`) and its
+final answer (`chunk`) arrive as token-level events and are written straight
+to stdout as they land, so the whole turn streams live; `tool_call` and
+`tool_result` events punctuate it.
 """
 def run_turn(message: str) {
     console.print("");
-    answering = False;
     # `ask` is typed `-> str` for byLLM's streaming contract, but with
     # logging=True it actually yields StreamEvent objects -- iterate via an
     # `any`-typed handle so attribute access type-checks.
     event_stream: any = ask(message);
-    # Thoughts are buffered, not printed live: byLLM echoes the model's final
-    # reasoning as both a `thought` and the answer `chunk`s. Buffered thoughts
-    # flush only when a tool call follows them (genuine mid-loop reasoning);
-    # the final pre-answer thought is dropped at `steps_done`.
-    pending_thought = "";
+    out: any = sys.stdout;
+    # True while raw model tokens have been written since the last newline,
+    # so structured lines (tool calls, results) start cleanly.
+    streamed = False;
     try {
         for event in event_stream {
             kind = event.event_type;
             data = event.data;
-            if kind == "thought" {
-                pending_thought = str(data.get("content", "")).strip();
+            if kind == "thought" or kind == "chunk" {
+                # Stream every model token live -- reasoning and answer alike.
+                # console.print buffers and takes no flush arg, so write direct.
+                out.write(str(data.get("content", "")));
+                out.flush();
+                streamed = True;
             } elif kind == "tool_call" {
-                if pending_thought {
-                    console.print(pending_thought, style="dim italic");
-                    pending_thought = "";
+                if streamed {
+                    out.write("\n");
+                    out.flush();
+                    streamed = False;
                 }
                 call = fmt_tool_call(str(data.get("tool", "?")), data.get("args", {}));
                 console.print(f"  ⏺ {call}", style="cyan");
             } elif kind == "tool_result" {
+                if streamed {
+                    out.write("\n");
+                    out.flush();
+                    streamed = False;
+                }
                 console.print(
                     f"    {preview_result(str(data.get('result', '')))}", style="dim"
                 );
             } elif kind == "steps_done" {
+                if streamed {
+                    out.write("\n");
+                    out.flush();
+                    streamed = False;
+                }
                 console.print("");
-            } elif kind == "chunk" {
-                # Answer chunks are streaming -- the buffered thought was just
-                # byLLM's echo of the final reasoning, so drop it.
-                pending_thought = "";
-                answering = True;
-                console.print(str(data.get("content", "")), end="");
             }
         }
-        if answering {
-            console.print("");
-        } elif pending_thought {
-            # No answer chunks arrived -- the model's final message itself is
-            # the answer; surface it rather than leaving the turn blank.
-            console.print(pending_thought);
+        if streamed {
+            out.write("\n");
+            out.flush();
         }
     } except KeyboardInterrupt {
         console.print("\n  [interrupted]", style="yellow");

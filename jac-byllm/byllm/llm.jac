@@ -93,6 +93,10 @@ obj BaseLLM {
     def format_prompt(params: dict) -> str;
     def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
+    def dispatch_streaming_with_tools(
+        mt_run: MTRuntime, out: list[CompletionResult]
+    ) -> Generator[str, None, None];
+
     async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     async def adispatch_streaming(mt_run: MTRuntime);
     def model_call_no_stream(params: dict) -> dict;
