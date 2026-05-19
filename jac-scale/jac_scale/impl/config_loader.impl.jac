@@ -77,6 +77,8 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'timestamp_header': 'X-Webhook-Timestamp',
             'verify_signature': True,
             'replay_tolerance_seconds': 300,
+            'max_body_bytes': 1048576,
+            'rate_limit_per_minute': 0,
             'api_key_expiry_days': 365
         },
         'monitoring': {
@@ -225,6 +227,12 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
         'verify_signature': webhook_config.get('verify_signature', True),
         'replay_tolerance_seconds': int(
             webhook_config.get('replay_tolerance_seconds', 300)
+        ),
+        'max_body_bytes': int(
+            webhook_config.get('max_body_bytes', 1048576)
+        ),
+        'rate_limit_per_minute': int(
+            webhook_config.get('rate_limit_per_minute', 0)
         ),
         'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
     };

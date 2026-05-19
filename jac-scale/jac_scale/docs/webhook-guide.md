@@ -23,6 +23,8 @@ signature_header = "X-Webhook-Signature"
 timestamp_header = "X-Webhook-Timestamp"
 verify_signature = true
 replay_tolerance_seconds = 300
+max_body_bytes = 1048576
+rate_limit_per_minute = 0
 api_key_expiry_days = 365
 ```
 
@@ -34,6 +36,8 @@ api_key_expiry_days = 365
 | `timestamp_header` | string | `"X-Webhook-Timestamp"` | HTTP header name containing the request Unix timestamp. |
 | `verify_signature` | boolean | `true` | Whether to verify HMAC signatures (and timestamp freshness) on incoming requests. |
 | `replay_tolerance_seconds` | integer | `300` | Max allowed difference between the request timestamp and server time. Requests outside this window are rejected as replays. |
+| `max_body_bytes` | integer | `1048576` | Maximum webhook request body size. Larger requests are rejected with `413`. |
+| `rate_limit_per_minute` | integer | `0` | Per-key requests allowed per minute (best-effort, per-process). `0` disables the limit; over-limit requests get `429`. |
 | `api_key_expiry_days` | integer | `365` | Default expiry period for API keys in days. Set to `0` for permanent keys. |
 
 ## 2. Creating Webhook Walkers

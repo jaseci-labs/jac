@@ -92,7 +92,8 @@ def _create_api_key_db -> Db | None {
 obj ApiKeyManager {
     has _db: Db | None = _create_api_key_db(),
         _inmemory_store: dict = {},
-        _collection: str = 'webhook_api_keys';
+        _collection: str = 'webhook_api_keys',
+        _rate_window: dict = {};
 
     """Run the one-time legacy migration and ensure indexes (MongoDB only)."""
     def postinit -> None;
@@ -128,4 +129,10 @@ obj ApiKeyManager {
 
     """Whether a valid api_key is permitted to call the given walker."""
     def is_walker_allowed(api_key: str, walker_name: str) -> bool;
+
+    """Per-key fixed-window rate check. True if the call is allowed.
+
+    Best-effort and per-process (not cluster-wide). A non-positive limit
+    disables the check."""
+    def check_rate_limit_for(api_key: str, limit_per_minute: int) -> bool;
 }

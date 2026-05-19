@@ -326,6 +326,8 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         replay_tolerance = int(
             webhook_config.get('replay_tolerance_seconds', 300)
         );
+        max_body_bytes = int(webhook_config.get('max_body_bytes', 1048576));
+        rate_limit = int(webhook_config.get('rate_limit_per_minute', 0));
 
         # Get API key from header
         api_key = request.headers.get('X-API-Key');
@@ -364,10 +366,43 @@ impl JacAPIServerEndpoints.create_webhook_callback(
                 meta=Meta(extra={'http_status': 403})
             );
         }
+        # Per-key rate limit (best-effort, per-process; off when <= 0)
+        if not self.get_api_key_manager().check_rate_limit_for(
+            api_key, rate_limit
+        ) {
+            return TransportResponse.fail(
+                code='RATE_LIMITED',
+                message='Rate limit exceeded',
+                meta=Meta(extra={'http_status': 429})
+            );
+        }
+        # Reject oversized payloads. Check the declared length first so a
+        # huge body is refused before it is buffered into memory.
+        content_length = request.headers.get('content-length');
+        if content_length {
+            try {
+                if int(content_length) > max_body_bytes {
+                    return TransportResponse.fail(
+                        code='PAYLOAD_TOO_LARGE',
+                        message='Request body too large',
+                        meta=Meta(extra={'http_status': 413})
+                    );
+                }
+            } except Exception {
+            # Malformed Content-Length: fall through to the post-read cap
+            }
+        }
 
         # Read the raw request body once and reuse it for both signature
         # verification and field parsing.
         raw_body = await request.body();
+        if len(raw_body) > max_body_bytes {
+            return TransportResponse.fail(
+                code='PAYLOAD_TOO_LARGE',
+                message='Request body too large',
+                meta=Meta(extra={'http_status': 413})
+            );
+        }
 
         # Verify HMAC-SHA256 signature if enabled
         if verify_signature {

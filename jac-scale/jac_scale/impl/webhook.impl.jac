@@ -330,3 +330,33 @@ impl ApiKeyManager.is_walker_allowed(api_key: str, walker_name: str) -> bool {
     }
     return walker_name in allowed;
 }
+
+"""Per-key fixed-window rate check. True if the call is allowed.
+
+Best-effort and per-process: in a multi-pod deployment each pod tracks
+its own window, so this is a coarse safety valve, not a global quota. A
+non-positive limit disables the check.
+"""
+impl ApiKeyManager.check_rate_limit_for(
+    api_key: str, limit_per_minute: int
+) -> bool {
+    if limit_per_minute <= 0 {
+        return True;
+    }
+    key_info = WebhookUtils.validate_api_key(api_key);
+    if not key_info {
+        return False;
+    }
+    api_key_id = key_info.get('api_key_id', '');
+    window_id = int(datetime.now(UTC).timestamp() // 60);
+    entry = self._rate_window.get(api_key_id);
+    if not entry or entry[0] != window_id {
+        self._rate_window[api_key_id] = [window_id, 1];
+        return True;
+    }
+    if entry[1] >= limit_per_minute {
+        return False;
+    }
+    entry[1] += 1;
+    return True;
+}
