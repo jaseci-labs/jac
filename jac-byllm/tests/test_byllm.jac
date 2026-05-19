@@ -1309,3 +1309,213 @@ test "prompt caching disabled via config" {
         ) == False;
     }
 }
+
+import asyncio;
+import inspect;
+
+test "acall_llm proxy is a coroutine function" {
+    assert inspect.iscoroutinefunction(Jac.acall_llm) , (
+        "Jac.acall_llm must be an async function so async walkers can await it"
+    );
+}
+
+test "model_call_no_stream_async raises and logs AuthenticationError" {
+    log_output = io.StringIO();
+    _loguru_logger.remove();
+    handler_id = _loguru_logger.add(log_output, level="ERROR");
+    try {
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._litellm_config,
+            {"debug": False, "drop_params": True},
+            clear=True
+        ) {
+            model = Model(model_name="gpt-4o-mini");
+            auth_err = litellm.exceptions.AuthenticationError(
+                message="Invalid API key", llm_provider="openai", model="gpt-4o-mini"
+            );
+            async def _run_no_stream_auth {
+                with unittest.mock.patch("litellm.acompletion", side_effect=auth_err) {
+                    raised = False;
+                    try {
+                        await model.model_call_no_stream_async(
+                            {"model": "gpt-4o-mini", "messages": []}
+                        );
+                    } except AuthenticationError as e {
+                        raised = True;
+                        assert "Invalid API key" in str(e);
+                    }
+                    assert raised , "AuthenticationError should propagate from async path";
+                }
+            }
+            asyncio.run(_run_no_stream_auth());
+            log_value = log_output.getvalue();
+            assert "LLM AuthenticationError" in log_value , (
+                f"logger.error should fire for async AuthenticationError, got: {log_value}"
+            );
+        }
+    } finally {
+        _loguru_logger.remove(handler_id);
+    }
+}
+
+test "model_call_with_stream_async raises and logs RateLimitError" {
+    log_output = io.StringIO();
+    _loguru_logger.remove();
+    handler_id = _loguru_logger.add(log_output, level="ERROR");
+    try {
+        with unittest.mock.patch.dict(
+            _byllm_llm_mod._litellm_config,
+            {"debug": False, "drop_params": True},
+            clear=True
+        ) {
+            model = Model(model_name="gpt-4o-mini");
+            rate_err = litellm.exceptions.RateLimitError(
+                message="Rate limit exceeded",
+                llm_provider="openai",
+                model="gpt-4o-mini"
+            );
+            async def _run_stream_rate {
+                with unittest.mock.patch("litellm.acompletion", side_effect=rate_err) {
+                    raised = False;
+                    try {
+                        await model.model_call_with_stream_async(
+                            {"model": "gpt-4o-mini", "messages": []}
+                        );
+                    } except RateLimitError as e {
+                        raised = True;
+                        assert "Rate limit" in str(e);
+                    }
+                    assert raised , "RateLimitError should propagate from async stream path";
+                }
+            }
+            asyncio.run(_run_stream_rate());
+            log_value = log_output.getvalue();
+            assert "LLM RateLimitError" in log_value , (
+                f"logger.error should fire for async stream RateLimitError, got: {log_value}"
+            );
+        }
+    } finally {
+        _loguru_logger.remove(handler_id);
+    }
+}
+
+test "model_call_http_async returns json response" {
+    mock_response = unittest.mock.MagicMock();
+    mock_response.json.return_value = {"choices": [{"message": {"content": "ok"}}]};
+    async def _run_http_async {
+        mock_client = unittest.mock.AsyncMock();
+        mock_client.__aenter__.return_value = mock_client;
+        mock_client.post.return_value = mock_response;
+        with unittest.mock.patch("httpx.AsyncClient", return_value=mock_client) {
+            model = Model(model_name="gpt-4o-mini");
+            result = await model.model_call_http_async(
+                url="https://example.com/v1/chat/completions",
+                token="test-token",
+                payload={"model": "gpt-4o-mini", "messages": []},
+                ca_bundle=None
+            );
+            return result;
+        }
+    }
+    result = asyncio.run(_run_http_async());
+    assert result == {"choices": [{"message": {"content": "ok"}}]};
+}
+
+import ast as ast3;
+import from jaclang.jac0core.program { JacProgram }
+
+test "async by llm() codegen emits await Jac.acall_llm not call_llm" {
+    # Compile the fixture that has both an async and a sync by llm() function.
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURE_DIR, "async_by_llm.jac")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module) , (
+        "Expected a compiled Python AST module"
+    );
+    py_source = ast3.unparse(code_gen.gen.py_ast[0]);
+
+    # Async function must use acall_llm, wrapped in await.
+    assert "acall_llm" in py_source , (
+        f"Expected 'acall_llm' in generated source for async by llm(). Got:\n{py_source}"
+    );
+
+    # Sync function must still use call_llm (no await).
+    assert "call_llm" in py_source , (
+        f"Expected 'call_llm' in generated source for sync by llm(). Got:\n{py_source}"
+    );
+
+    # The async body must contain an Await node whose value is a Call to acall_llm.
+    # The codegen imports acall_llm directly (Name node), not as Jac.acall_llm (Attribute).
+    def _is_acall_llm_call(`node: object) -> bool {
+        if not (isinstance(`node, ast3.Call)) {
+            return False;
+        }
+        func = `node.func;
+        return (
+            (isinstance(func, ast3.Name) and func.id == "acall_llm")
+            or (isinstance(func, ast3.Attribute) and func.attr == "acall_llm")
+        );
+    }
+    await_nodes = [
+        n
+        for n in ast3.walk(code_gen.gen.py_ast[0])
+        if isinstance(n, ast3.Await) and _is_acall_llm_call(n.value)
+    ];
+    assert len(await_nodes) >= 1 , (
+        "Expected at least one ast3.Await(value=Call(acall_llm, ...)) in generated AST"
+    );
+
+    # All acall_llm calls must be wrapped in Await — no bare unawaited calls.
+    all_acall_nodes = [
+        n
+        for n in ast3.walk(code_gen.gen.py_ast[0])
+        if _is_acall_llm_call(n)
+    ];
+    awaited_values = {
+        id(n.value)
+        for n in ast3.walk(code_gen.gen.py_ast[0])
+        if isinstance(n, ast3.Await)
+    };
+    bare_acall_nodes = [
+        n
+        for n in all_acall_nodes
+        if id(n) not in awaited_values
+    ];
+    assert len(bare_acall_nodes) == 0 , (
+        f"Found {len(bare_acall_nodes)} bare (non-awaited) acall_llm call(s) — "
+        "async by llm() must always be awaited"
+    );
+}
+
+test "async by llm() end-to-end with mocked acall_llm" {
+    # Compile the fixture and execute it with acall_llm mocked to return "summary".
+    code_gen = (prog := JacProgram()).compile(
+        os.path.join(FIXTURE_DIR, "async_by_llm.jac")
+    );
+    assert not prog.errors_had , f"Compilation errors: {prog.errors_had}";
+    assert code_gen.gen.py_ast and isinstance(code_gen.gen.py_ast[0], ast3.Module);
+
+    compiled = compile(code_gen.gen.py_ast[0], filename="<ast>", mode="exec");
+    module = types.ModuleType("async_by_llm_fixture");
+    module.__dict__["__file__"] = code_gen.loc.mod_path;
+
+    async def _run_end_to_end -> str {
+        # Patch acall_llm so no real API call is made.
+        async def _fake_acall_llm(**kwargs: object) -> object {
+            return "summary";
+        }
+        # acall_llm is imported directly from jaclang.jac0core.jaclib into the
+        # compiled module's namespace, so we patch it there.
+        import jaclang.jac0core.jaclib as _jaclib;
+        with unittest.mock.patch.object(_jaclib, "acall_llm", _fake_acall_llm) {
+            exec(compiled, module.__dict__);
+            result = await module.__dict__["get_summary"](text="hello world");
+            return result;
+        }
+    }
+    result = asyncio.run(_run_end_to_end());
+    assert result == "summary" , (
+        f"Expected mocked acall_llm result 'summary', got: {result!r}"
+    );
+}

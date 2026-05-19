@@ -2,13 +2,16 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
+expression ::=
+    lambda_expr | (cast | concurrent_expr) ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 
 walrus_assign ::= by_expr (":=" by_expr)?
 
 by_expr ::= pipe ("by" by_expr)?
+
+cast ::= concurrent_expr ("as" pipe)*
 
 pipe ::= pipe_back ("|>" pipe_back)*
 

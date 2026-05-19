@@ -1,6 +1,6 @@
 [project]
 name = "jac-mcp"
-version = "0.1.13"
+version = "0.1.15"
 description = "MCP server for AI-assisted Jac development"
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -24,7 +24,7 @@ packages = ["jac_mcp*"]
 jac_mcp = ["content/*.md", "content/docs/*.md", "content/docs/*.spec", "content/docs/*.jac"]
 
 [dependencies]
-jaclang = ">=0.15.0"
+jaclang = ">=0.15.2"
 mcp = ">=1.0.0"
 
 [dev-dependencies]

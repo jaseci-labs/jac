@@ -89,7 +89,7 @@ class DeploymentTargetFactory {
             import from jac_scale.targets.kubernetes.kubernetes_config {
                 KubernetesConfig
             }
-            import from jac_scale.microservices.k8s_target {
+            import from jac_scale.targets.kubernetes.microservice.target {
                 KubernetesMicroserviceTarget
             }
             k8s_config = KubernetesConfig.from_dict(KubernetesConfig, config);

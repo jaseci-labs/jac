@@ -193,3 +193,227 @@ test "MongoBackend inspect_summary shape matches SqliteMemory's" {
         container.stop();
     }
 }
+
+
+test "MongoBackend cascade-quarantines edges when their target node is quarantined" {
+    # Reproduces the schema-drift scenario from issue #5987:
+    # A NodeAnchor of a removed type is quarantined; the connected EdgeAnchors
+    # must also be quarantined and stripped from their source node's data.edges.
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        client = MongoClient(uri);
+        col = client["jac_test_l123"]["_anchors"];
+        q_col = client["jac_test_l123"]["_anchors_quarantine"];
+
+        # IDs for the three actors: a "source" node, an edge, and a "Foo" target node.
+        source_id = str(uuid4());
+        edge_id = str(uuid4());
+        foo_id = str(uuid4());
+
+        # Insert the source (live) NodeAnchor that owns the edge.
+        col.insert_one(
+            {
+                '_id': source_id,
+                'type': 'NodeAnchor',
+                'arch_module': '__main__',
+                'arch_type': '_MongoLayer123Person',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': source_id,
+                    'persistent': True,
+                    'archetype': {
+                        '__type__': '_MongoLayer123Person',
+                        '__module__': '__main__',
+                        'name': 'root',
+                        'age': 0
+                    },
+                    'edges': [edge_id]
+                },
+                'format_version': 1,
+                'updated_at': '2026-05-17T00:00:00'
+            }
+        );
+
+        # Insert the EdgeAnchor pointing source -> foo (removed type).
+        col.insert_one(
+            {
+                '_id': edge_id,
+                'type': 'EdgeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'GenericEdge',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'EdgeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': edge_id,
+                    'persistent': True,
+                    'source': source_id,
+                    'target': foo_id,
+                    'is_undirected': False,
+                    'archetype': {
+                        '__type__': 'GenericEdge',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    }
+                },
+                'format_version': 1,
+                'updated_at': '2026-05-17T00:00:00'
+            }
+        );
+
+        # Insert the Foo NodeAnchor with an unresolvable archetype type.
+        col.insert_one(
+            {
+                '_id': foo_id,
+                'type': 'NodeAnchor',
+                'arch_module': 'app',
+                'arch_type': 'Foo',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'NodeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': foo_id,
+                    'persistent': True,
+                    'archetype': {'__type__': 'Foo', '__module__': 'app', 'x': 1},
+                    'edges': []
+                },
+                'format_version': 1,
+                'updated_at': '2026-05-17T00:00:00'
+            }
+        );
+
+        # Attempting to load the Foo node triggers quarantine (app.Foo unresolvable).
+        loaded = backend.get(UUID(foo_id));
+        assert loaded is None , "unresolvable Foo must not rehydrate";
+
+        # --- Verify the cascade ---
+
+        # 1. Foo node is in quarantine, not in _anchors.
+        assert col.find_one({'_id': foo_id}) is None , "Foo must be removed from _anchors";
+        assert q_col.find_one({'_id': foo_id}) is not None , "Foo must be in quarantine";
+
+        # 2. The edge is also in quarantine (no longer in _anchors).
+        assert col.find_one({'_id': edge_id}) is None , "orphaned edge must be removed from _anchors";
+        q_edge = q_col.find_one({'_id': edge_id});
+        assert q_edge is not None , "orphaned edge must be in quarantine";
+        assert 'cascade quarantine' in q_edge.get('error', '') , (
+            f"edge quarantine error should mention cascade, got: {q_edge.get('error')}"
+        );
+
+        # 3. The source node's data.edges no longer references the orphaned edge.
+        source_doc = col.find_one({'_id': source_id});
+        assert source_doc is not None , "source node must still be live";
+        live_edges = source_doc.get('data', {}).get('edges', []);
+        assert edge_id not in live_edges , (
+            f"source node data.edges should not contain orphaned edge; got: {live_edges}"
+        );
+
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}
+
+
+test "MongoBackend recover re-links undirected edge to both endpoints" {
+    # Verifies the undirected-edge gap: when an EdgeAnchor with is_undirected=True
+    # is recovered from quarantine, the edge ID must be re-added to BOTH the
+    # source node's data.edges AND the target node's data.edges.
+    container = MongoDbContainer("mongo:latest");
+    container.start();
+    try {
+        uri = container.get_connection_url();
+        backend = MongoBackend(mongo_url=uri, db_name="jac_test_l123");
+        client = MongoClient(uri);
+        col = client["jac_test_l123"]["_anchors"];
+        q_col = client["jac_test_l123"]["_anchors_quarantine"];
+
+        source_id = str(uuid4());
+        target_id = str(uuid4());
+        edge_id = str(uuid4());
+
+        # Two live nodes whose data.edges are empty (edge was stripped during cascade).
+        for (nid, nname) in [(source_id, 'src'), (target_id, 'tgt')] {
+            col.insert_one(
+                {
+                    '_id': nid,
+                    'type': 'NodeAnchor',
+                    'arch_module': '__main__',
+                    'arch_type': '_MongoLayer123Person',
+                    'fingerprint': None,
+                    'data': {
+                        '__type__': 'NodeAnchor',
+                        '__module__': 'jaclang.jac0core.archetype',
+                        'id': nid,
+                        'persistent': True,
+                        'archetype': {
+                            '__type__': '_MongoLayer123Person',
+                            '__module__': '__main__',
+                            'name': nname,
+                            'age': 0
+                        },
+                        'edges': []
+                    },
+                    'format_version': 1,
+                    'updated_at': '2026-05-17T00:00:00'
+                }
+            );
+        }
+
+        # Insert the undirected GenericEdge directly into quarantine,
+        # simulating a prior cascade-quarantine event.
+        q_col.insert_one(
+            {
+                '_id': edge_id,
+                'type': 'EdgeAnchor',
+                'arch_module': 'jaclang.jac0core.archetype',
+                'arch_type': 'GenericEdge',
+                'fingerprint': None,
+                'data': {
+                    '__type__': 'EdgeAnchor',
+                    '__module__': 'jaclang.jac0core.archetype',
+                    'id': edge_id,
+                    'persistent': True,
+                    'source': source_id,
+                    'target': target_id,
+                    'is_undirected': True,
+                    'archetype': {
+                        '__type__': 'GenericEdge',
+                        '__module__': 'jaclang.jac0core.archetype'
+                    }
+                },
+                'error': 'cascade quarantine: connected node <x> was quarantined',
+                'quarantined_at': '2026-05-17T00:00:00',
+                'from_format_version': 1
+            }
+        );
+
+        # Recover the edge — GenericEdge is always resolvable.
+        (ok, reason) = backend.recover_one(edge_id);
+        assert ok , f"recover_one must succeed for a GenericEdge, got: {reason}";
+
+        # Both endpoints must have the edge ID in their data.edges.
+        src_doc = col.find_one({'_id': source_id});
+        tgt_doc = col.find_one({'_id': target_id});
+        assert src_doc is not None , "source node must still be live";
+        assert tgt_doc is not None , "target node must still be live";
+        src_edges = src_doc.get('data', {}).get('edges', []);
+        tgt_edges = tgt_doc.get('data', {}).get('edges', []);
+        assert edge_id in src_edges , (
+            f"source data.edges must contain the recovered edge; got: {src_edges}"
+        );
+        assert edge_id in tgt_edges , (
+            f"target data.edges must contain the recovered undirected edge; got: {tgt_edges}"
+        );
+
+        client.close();
+        backend.close();
+    } finally {
+        container.stop();
+    }
+}

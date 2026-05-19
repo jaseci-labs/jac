@@ -48,16 +48,17 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
     i8_ptr = i8.as_pointer();
     i32 = ir.IntType(32);
 
-    # __rc_debug (i8, internal): 0 = silent (default), 1 = trace
+    # __rc_debug (i8, weak): 0 = silent (default), 1 = trace.
+    # weak so link_in() merges all per-module copies; enable/disable from any module.
     rc_debug_gv = ir.GlobalVariable(self.llvm_module, i8, name="__rc_debug");
-    rc_debug_gv.linkage = "internal";
+    rc_debug_gv.linkage = "weak";
     rc_debug_gv.initializer = ir.Constant(i8, 0);
     self.rc_debug_gv = rc_debug_gv;
 
     # __rc_debug_enable() -> void
     en_fnty = ir.FunctionType(ir.VoidType(), []);
     en_fn = ir.Function(self.llvm_module, en_fnty, name="__rc_debug_enable");
-    en_fn.linkage = "internal";
+    en_fn.linkage = "weak_odr";  # one definition kept after link_in()
     en_bb = en_fn.append_basic_block("entry");
     _b_en = ir.IRBuilder(en_bb);
     _b_en.store(ir.Constant(i8, 1), rc_debug_gv);
@@ -70,7 +71,7 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
 
     # __rc_debug_disable() -> void
     dis_fn = ir.Function(self.llvm_module, en_fnty, name="__rc_debug_disable");
-    dis_fn.linkage = "internal";
+    dis_fn.linkage = "weak_odr";  # one definition kept after link_in()
     dis_bb = dis_fn.append_basic_block("entry");
     _b_dis = ir.IRBuilder(dis_bb);
     _b_dis.store(ir.Constant(i8, 0), rc_debug_gv);
@@ -81,21 +82,21 @@ impl NaIRGenPass._emit_rc_debug_globals -> None {
     _b_dis.call(self._get_printf(), [_fmt_off_ptr]);
     _b_dis.ret_void();
 
-    # __rc_ctx_op (i8*): op-name string
+    # __rc_ctx_op / __rc_ctx_loc: op-name and source-location strings.
+    # weak so all modules share one slot after link_in() (set in module A, visible in module B's dtors).
     ctx_op_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__rc_ctx_op");
-    ctx_op_gv.linkage = "internal";
+    ctx_op_gv.linkage = "weak";
     ctx_op_gv.initializer = ir.Constant(i8_ptr, None);
     self.rc_ctx_op_gv = ctx_op_gv;
 
-    # __rc_ctx_loc (i8*): "filename:line" string
     ctx_loc_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__rc_ctx_loc");
-    ctx_loc_gv.linkage = "internal";
+    ctx_loc_gv.linkage = "weak";
     ctx_loc_gv.initializer = ir.Constant(i8_ptr, None);
     self.rc_ctx_loc_gv = ctx_loc_gv;
 
-    # __rc_live_head (i8*): head of live-objects linked list
+    # __rc_live_head (i8*): head of live-objects linked list, weak (shared across modules).
     live_head_gv = ir.GlobalVariable(self.llvm_module, i8_ptr, name="__rc_live_head");
-    live_head_gv.linkage = "internal";
+    live_head_gv.linkage = "weak";
     live_head_gv.initializer = ir.Constant(i8_ptr, None);
     self.rc_live_head_gv = live_head_gv;
 }
@@ -376,9 +377,14 @@ impl NaIRGenPass._emit_raw_free_bbs(
     log_raw_bb = func.append_basic_block("log_raw");
     live_rm_bb = func.append_basic_block("live_rm");
     actual_free_bb = func.append_basic_block("actual_free");
-    # log_free_raw: call malloc_usable_size, check debug flag
+    # log_free_raw: call the platform malloc-size intrinsic, check debug flag.
+    # glibc exports malloc_usable_size; macOS libSystem only has malloc_size
+    # (same i64(i8*) signature). Picking the wrong one fails at dyld load with
+    # "Symbol not found: _malloc_usable_size".
     b = ir.IRBuilder(log_free_bb);
-    _msz_fn = self._get_or_declare_extern("malloc_usable_size", i64, [i8_ptr]);
+    import platform;
+    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
+    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
     _raw_msz = b.gep(ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.msz");
     _msz = b.call(_msz_fn, [_raw_msz], name="msz");
     dbg_flag3 = b.load(self.rc_debug_gv, name="rc.dbg3");
@@ -411,7 +417,7 @@ impl NaIRGenPass._emit_raw_free_bbs(
     _raw_for_free = b.gep(
         ptr, [ir.Constant(i64, HDR_ALLOC_ID_OFF)], name="raw.for.free"
     );
-    b.call(self.free_fn, [_raw_for_free]);
+    b.call(self.rc_safe_free_fn, [_raw_for_free]);
     b.branch(done_bb);
     return log_free_bb;
 }
@@ -443,9 +449,12 @@ impl NaIRGenPass._emit_struct_free_log(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     log_struct_line_bb = func.append_basic_block("log_struct_line");
-    # log_free_struct: compute msz, check debug flag
+    # log_free_struct: compute msz, check debug flag.
+    # macOS libSystem has malloc_size, not glibc's malloc_usable_size.
     b = ir.IRBuilder(log_free_struct_bb);
-    _msz_fn = self._get_or_declare_extern("malloc_usable_size", i64, [i8_ptr]);
+    import platform;
+    _msz_sym = "malloc_size" if platform.system() == "Darwin" else "malloc_usable_size";
+    _msz_fn = self._get_or_declare_extern(_msz_sym, i64, [i8_ptr]);
     _msz2 = b.call(_msz_fn, [obj_raw], name="msz2");
     dbg_flag_s = b.load(self.rc_debug_gv, name="rc.dbg.s");
     b.cbranch(
@@ -579,7 +588,9 @@ impl NaIRGenPass._emit_live_list_remove(
     b3.store(nxt_node, prev_nxt_pp);
     b3.branch(after_unlink);
     b3 = ir.IRBuilder(after_unlink);
-    b3.call(self.free_fn, [cur_phi]);  # free the node (non-RC)
+    b3.call(
+        self.rc_safe_free_fn, [cur_phi]
+    );  # free the node (non-RC, gated by JAC_NO_GC)
     b3.branch(free_bb);
     b2 = ir.IRBuilder(next_bb);
     nnxt_off2 = b2.gep(

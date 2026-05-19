@@ -56,7 +56,7 @@ def _inject_entry_macho(llvm_ir_str: str) -> str {
 
 
 """Compile a .na.jac file to a standalone native binary."""
-impl nacompile(filename: str, output: str = "") -> int {
+impl nacompile(filename: str, output: str = "", scrub: bool = False) -> int {
     # Validate input
     if not filename.endswith(".na.jac") and not filename.endswith(".jac") {
         console.error("Input must be a .jac or .na.jac file.");
@@ -65,6 +65,22 @@ impl nacompile(filename: str, output: str = "") -> int {
     if not os.path.exists(filename) {
         console.error(f"File not found: {filename}");
         return 1;
+    }
+
+    # Scrub: wipe all .jac_ir/ cache directories under the source tree
+    if scrub {
+        import glob as _glob;
+        import shutil;
+        src_root = os.path.dirname(os.path.abspath(filename)) or ".";
+        cache_dirs = _glob.glob(
+            os.path.join(src_root, "**", ".jac_ir"), recursive=True
+        );
+        for cache_dir in cache_dirs {
+            shutil.rmtree(cache_dir, ignore_errors=True);
+        }
+        if cache_dirs {
+            console.print(f"  Scrubbed {len(cache_dirs)} .jac_ir cache dir(s).");
+        }
     }
 
     auto_promote = filename.endswith(".jac") and not filename.endswith(".na.jac");
@@ -98,12 +114,31 @@ impl nacompile(filename: str, output: str = "") -> int {
         # level and runs the optimization pipeline, but skips MCJIT engine
         # creation (which would consume the module). The resulting linked+optimised
         # module is stored in ir_module.gen.llvm_ir for us to emit as object code.
-        options = CompileOptions(aot_mode=True);
+        #
+        # type_check=False: native compilation has its own type discipline (the
+        # backend treats `int`, `str`, function refs and `obj` instances as
+        # 64-bit pointers), so the strict Jac type checker produces false
+        # positives that would otherwise abort the build at the errors_had
+        # gate below. This matches the JIT native path (`prog.compile` without
+        # options also defaults type_check off); `jac check` remains the way to
+        # type-check a native module strictly.
+        options = CompileOptions(aot_mode=True, type_check=False);
         ir_module = prog.compile(file_path=os.path.abspath(filename), options=options);
     } except Exception as e {
         console.error(f"Jac compilation failed: {e}");
         import traceback;
         traceback.print_exc();
+        return 1;
+    }
+
+    # Abort immediately if the pass infrastructure recorded any ERROR-level
+    # diagnostics (e.g. E5020 from a failing imported .na.jac module).
+    # Without this check, nacompile would silently link stale cached IR and
+    # write a broken binary while printing no error.
+    if prog.errors_had {
+        for _err in prog.errors_had {
+            console.print(str(_err));
+        }
         return 1;
     }
 

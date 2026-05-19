@@ -1644,3 +1644,41 @@ test "sibling block scopes — try except finally each get their own let" {
         os.unlink(temp_path);
     }
 }
+
+
+test "in/not in on unknown-typed containers matches Python semantics" {
+    import json;
+    # `opaque()` returns `any`, so the backend cannot statically prove the
+    # container types. Membership must still behave like Python: substring
+    # search for strings, element search for lists, key search for dicts.
+    js_code = compile_fixture_to_js("dynamic_membership.jac", FIXTURES);
+    wrapper = js_code + "\nconsole.log(JSON.stringify(membership()));\n";
+    result = subprocess.run(
+        ["node", "--input-type=module", "-e", wrapper],
+        capture_output=True,
+        text=True,
+        timeout=30
+    );
+    assert result.returncode == 0 , (
+        "dynamic `in` membership crashed in Node "
+        "(raw JS `in` rejects string/array operands):\n"
+        f"stderr={result.stderr!r}\njs:\n{js_code}"
+    );
+    got: dict = json.loads(result.stdout.strip());
+    expected = {
+        "str_hit": True,
+        "str_miss": False,
+        "str_not_in_hit": True,
+        "list_hit": True,
+        "list_miss": False,
+        "list_index_trap": False,
+        "dict_hit": True,
+        "dict_miss": False
+    };
+    for (key, want) in expected.items() {
+        assert key in got , f"missing key '{key}' in result {got}";
+        assert got[key] == want , (
+            f"membership '{key}': got {got[key]!r}, expected {want!r}"
+        );
+    }
+}

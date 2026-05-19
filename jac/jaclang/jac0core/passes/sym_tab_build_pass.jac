@@ -53,6 +53,9 @@ class SymTabBuildPass(UniPass) {
     """Handle walrus operator (:=) assignments."""
     def exit_binary_expr(self: SymTabBuildPass, nd: uni.BinaryExpr) -> None;
 
+    """Bind `global x;` so subsequent assignments to `x` rebind the global."""
+    def enter_global_stmt(self: SymTabBuildPass, nd: uni.GlobalStmt) -> None;
+
     def enter_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def exit_test(self: SymTabBuildPass, nd: uni.Test) -> None;
     def _exit_import_absorb(self: SymTabBuildPass, nd: uni.Import) -> None;
@@ -114,6 +117,8 @@ class SymTabBuildPass(UniPass) {
     def exit_inner_compr(self: SymTabBuildPass, nd: uni.InnerCompr) -> None;
     def enter_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
     def exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -> None;
+    def enter_switch_case(self: SymTabBuildPass, nd: uni.SwitchCase) -> None;
+    def exit_switch_case(self: SymTabBuildPass, nd: uni.SwitchCase) -> None;
 }
 
 """Walk up ancestors to find the nearest Python-scoping node.

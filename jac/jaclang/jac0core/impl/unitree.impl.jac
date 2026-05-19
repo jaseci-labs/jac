@@ -1769,6 +1769,11 @@ impl AwaitExpr.postinit -> None {
     Expr.postinit(self);
 }
 
+impl CastExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+}
+
 
 impl GlobalStmt.postinit -> None {
     self.target = `list(self.target);
