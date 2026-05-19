@@ -7,6 +7,32 @@ This page documents significant breaking changes in Jac and Jaseci that may affe
 
 ---
 
+### Version 0.15.0 (Unreleased)
+
+#### 1. Deprecation of `base_path` in favor of `static_base_path` in Jac Client
+
+The manual configuration key `base_path` under `[plugins.client]` in `jac.toml` has been deprecated and renamed to `static_base_path`.
+
+**Impact:** Existing projects using `base_path` in `jac.toml` for static CDN edge-case deployments must rename the key to `static_base_path`. The old `base_path` key will no longer be respected by the compiler, and assets will default to root-relative `/` paths if `static_base_path` is not provided.
+
+**Before (`jac.toml`):**
+
+```toml
+[plugins.client]
+base_path = "/admin/"
+```
+
+**After (`jac.toml`):**
+
+```toml
+[plugins.client]
+static_base_path = "/admin/"
+```
+
+**Why:** The `base_path` naming was ambiguous as it sounded like it controlled dynamic/runtime route prefixes. Renaming to `static_base_path` clarifies that this prefix is purely for compiling static assets for CDN edge-cases. Dynamic runtime path prefixes are now handled automatically via the polymorphic `ClientTarget` and server-side request headers.
+
+---
+
 ### jac-scale 0.2.15
 
 #### 1. Identity-Based Authentication System
