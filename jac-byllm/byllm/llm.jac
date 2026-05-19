@@ -31,6 +31,7 @@ import from byllm.types {
     LiteLLMMessage,
     MockToolCall,
     StreamEvent,
+    Tool,
     ToolCall,
     Message,
     MessageRole,
