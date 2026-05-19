@@ -541,10 +541,7 @@ impl MongoBackend.sync -> None {
 }
 
 """Atomically update a NodeAnchor, merging only dirty archetype fields and
-edge delta with DB state.
-
-
-"""
+edge delta with DB state."""
 impl MongoBackend._put_node_atomic(
     anchor: NodeAnchor, edges_added: list[str], edges_removed: list[str]
 ) -> None {
