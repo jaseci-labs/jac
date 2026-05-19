@@ -86,6 +86,12 @@ impl ApiKeyManager.postinit -> None {
         } except Exception as e {
             logger.warning(f"webhook_api_keys migration/index skipped: {e}");
         }
+    } else {
+        logger.warning(
+            "Webhook API keys are stored in memory (no MongoDB configured). "
+            "Keys and revocations are NOT durable: every restart invalidates "
+            "all keys. Configure MongoDB for production webhook use."
+        );
     }
 }
 
@@ -261,9 +267,10 @@ impl ApiKeyManager.is_key_active(api_key_id: str) -> bool {
         key_info = self._inmemory_store.get(api_key_id);
     }
     if not key_info {
-        # Key not in store - could be a legacy key
-        # Allow it if JWT is valid (handled by validate_api_key)
-        return True;
+        # Fail closed: a key with no stored record cannot be confirmed
+        # active. A signed but unknown api_key_id (or a record lost to a
+        # store reset) must not be honored.
+        return False;
     }
     return not key_info.get('revoked', False);
 }
