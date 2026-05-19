@@ -312,7 +312,9 @@ impl JacAPIServerEndpoints.get_walker_protocol(walker_name: str) -> str {
 impl JacAPIServerEndpoints.create_webhook_callback(
     walker_name: str
 ) -> Callable[..., TransportResponse] {
-    async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
+    async def _process(
+        request: Request, **kwargs: JsonValue
+    ) -> TransportResponse {
         import time;
 
         webhook_config = get_scale_config().get_webhook_config();
@@ -514,6 +516,29 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         return TransportResponse.success(
             data=result, meta=Meta(extra={'http_status': 200})
         );
+    }
+    async def callback(
+        request: Request, **kwargs: JsonValue
+    ) -> TransportResponse {
+        # Audit chokepoint: every webhook outcome (accept or reject) is
+        # logged once with the walker, client IP and result code so abuse
+        # and probing are visible.
+        client_ip = request.client.host if request?.client else '-';
+        resp = await _process(request, **kwargs);
+        status = resp.meta.extra.get('http_status') if resp?.meta else None;
+        outcome = 'ok' if resp.ok else (
+            resp.error.code if resp?.error else 'error'
+        );
+        audit_line = (
+            f"webhook audit walker={walker_name} ip={client_ip} "
+            f"status={status} outcome={outcome}"
+        );
+        if resp.ok {
+            logger.info(audit_line);
+        } else {
+            logger.warning(audit_line);
+        }
+        return resp;
     }
     return callback;
 }
