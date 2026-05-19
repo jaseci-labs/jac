@@ -794,7 +794,9 @@ impl NaIRGenPass._emit_binary_op(
             slen = self.builder.call(strlen_fn, [str_val], name="rep.slen");
             total = self.builder.mul(slen, int_val, name="rep.total");
             alloc = self.builder.add(total, ir.Constant(i64, 1), name="rep.alloc");
+            self._set_rc_ctx("str_repeat", "");
             buf = self.builder.call(self.rc_alloc_fn, [alloc], name="rep.buf");
+            self._clear_rc_ctx();
             func = self.builder.basic_block.function;
             entry_bb = self.builder.basic_block;
             loop_bb = func.append_basic_block(name="rep.loop");

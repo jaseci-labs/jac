@@ -13,6 +13,7 @@ import from jaclang.project.config {
     get_config,
     interpolate_env_vars,
     is_in_project,
+    serialize_toml,
     set_config
 }
 import jaclang.project.config as config_mod;
@@ -1580,5 +1581,83 @@ some-package = "1.0.0"
         # Verify the saved TOML is valid and can be reloaded
         cfg2 = JacConfig.load(toml_path);
         assert "another-package" in cfg2.plugin_dependencies["npm"];
+    }
+}
+
+test "save round-trips inline-table authors and maintainers" {
+    # The TOML serializer must emit a list of dicts as an array of inline
+    # tables ([{ k = v }]), not Python repr strings. Regression test for
+    # authors/maintainers corruption on any config.save().
+    config_mod._config = None;
+    toml_with_persons = """[project]
+name = "person-test"
+version = "1.0.0"
+authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
+maintainers = [{ name = "A", email = "a@b.c" }, { name = "D", email = "d@e.f" }]
+
+[dependencies]
+jaclang = ">=0.15.2"
+""";
+    with TemporaryDirectory() as tmpdir {
+        toml_path = Path(tmpdir) / "jac.toml";
+        toml_path.write_text(toml_with_persons);
+        cfg = JacConfig.load(toml_path);
+        # Any dependency change triggers a full re-serialize of the file.
+        cfg.add_dependency("rich", ">=13.0.0", dev=False, dep_type="python");
+        cfg.save();
+        saved = toml_path.read_text();
+        # Must remain a parseable array of inline tables, not a repr string.
+        parsed = tomllib.loads(saved);
+        assert parsed["project"]["authors"] == [
+            {"name": "Jason Mars", "email": "jason@mars.ninja"}
+        ] , "authors must survive save() as inline tables";
+        assert parsed["project"]["maintainers"] == [
+            {"name": "A", "email": "a@b.c"},
+            {"name": "D", "email": "d@e.f"}
+        ] , "maintainers must survive save() as inline tables";
+        # save() must not leave behind a stray empty [plugins] table.
+        assert "plugins" not in parsed , "empty [plugins] table must not be emitted";
+        assert parsed["dependencies"]["rich"] == ">=13.0.0";
+    }
+}
+
+test "serialize_toml preserves arbitrarily deep nested tables" {
+    # The canonical serializer must round-trip tables nested 3+ levels deep
+    # (e.g. [dependencies.npm.dev]). Regression for the old CLI writer that
+    # silently dropped any table below the second level.
+    doc = {
+        "project": {"name": "deep"},
+        "dependencies": {
+            "npm": {
+                "react": "^18.2.0",
+                "dev": {"vite": "^6.4.1", "typescript": "^5.3.3"}
+            }
+        }
+    };
+    parsed = tomllib.loads(serialize_toml(doc));
+    assert parsed["dependencies"]["npm"]["react"] == "^18.2.0";
+    assert parsed["dependencies"]["npm"]["dev"]["vite"] == "^6.4.1" , (
+        "deeply nested table must survive serialization"
+    );
+    assert parsed["dependencies"]["npm"]["dev"]["typescript"] == "^5.3.3";
+}
+
+test "discover flags configs found in an ancestor directory" {
+    # discovered_from_ancestor drives the pre-write warning; it must be True
+    # only when discovery had to climb out of the starting directory.
+    config_mod._config = None;
+    with TemporaryDirectory() as tmpdir {
+        temp_project = make_temp_project(Path(tmpdir));
+        # Discovered from the project root itself -> not an ancestor.
+        cfg_root = JacConfig.discover(temp_project);
+        assert cfg_root is not None;
+        assert not cfg_root.discovered_from_ancestor;
+        # Discovered from a nested subdirectory -> climbed into an ancestor.
+        nested = temp_project / "src";
+        cfg_nested = JacConfig.discover(nested);
+        assert cfg_nested is not None;
+        assert cfg_nested.discovered_from_ancestor , (
+            "config discovered by climbing out of cwd must be flagged"
+        );
     }
 }

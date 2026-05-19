@@ -103,7 +103,7 @@ import from jaclang.jac0core.unitree {
     MultiString,
     LambdaExpr
 }
-import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
+import from jaclang.jac0core.unitree { AwaitExpr, CastExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
 import from jaclang.jac0core.unitree {
@@ -819,19 +819,23 @@ impl Parser.parse_module -> Module {
     return module;
 }
 
-impl Parser.parse_expression -> Expr {
+impl Parser.parse_expression(allow_cast: bool = True) -> Expr {
     if self.check(TokenKind.KW_LAMBDA) {
         return self.parse_lambda_expr();
     }
-    expr = self.parse_concurrent_expr();
+    # `allow_cast=False` parses one level below the `as`-cast so a trailing
+    # `as` stays available to the caller (the `with`/`except` alias). It is
+    # threaded through the ternary branches so the whole expression — not just
+    # its first operand — is cast-free; a parenthesized `(x as T)` still casts.
+    expr = self.parse_cast() if allow_cast else self.parse_concurrent_expr();
     if self._check_js_arrow_fault() {
         expr = self._recover_js_arrow_fault(expr);
     }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
-        condition = self.parse_expression();
+        condition = self.parse_expression(allow_cast);
         else_uni = self.consume_uni(TokenKind.KW_ELSE);
-        else_value = self.parse_expression();
+        else_value = self.parse_expression(allow_cast);
         cond_cfg = CfgExpr(expr=condition, kid=[condition]);
         val_cfg = CfgExpr(expr=expr, kid=[expr]);
         else_cfg = CfgExpr(expr=else_value, kid=[else_value]);
@@ -915,6 +919,24 @@ impl Parser.parse_by_expr -> Expr {
         return BinaryExpr(left=left, op=by_uni, right=right, kid=[left, by_uni, right]);
     }
     return left;
+}
+
+"""Parse type-cast expressions: expr as Type.
+
+An unchecked, type-erased cast — at runtime it evaluates to the operand; its
+static type is the named type. The cast sits just below the ternary: `a + b as T`
+is `(a + b) as T`, and a ternary must be parenthesized to be cast. `as` chains
+left-associatively, so `x as A as B` is `(x as A) as B`. `with`/`except` parse
+their context expression via `parse_concurrent_expr` (below this level), so the
+statement's own `as` alias is never swallowed here."""
+impl Parser.parse_cast -> Expr {
+    expr = self.parse_concurrent_expr();
+    while self.match_tok(TokenKind.KW_AS) {
+        as_uni = self.make_uni_token(self.previous());
+        cast_type = self.parse_pipe();
+        expr = CastExpr(value=expr, cast_type=cast_type, kid=[expr, as_uni, cast_type]);
+    }
+    return expr;
 }
 
 impl Parser.parse_pipe -> Expr {
@@ -4392,7 +4414,11 @@ impl Parser.parse_try_stmt -> TryStmt {
 
 impl Parser.parse_except_handler -> Except {
     except_uni = self.consume_uni(TokenKind.KW_EXCEPT);
-    exc_type = self.parse_expression();
+    # Parse with the cast disabled so this handler's own `except ... as name`
+    # alias is not swallowed into a CastExpr; ternary/lambda stay supported.
+    # A parenthesized `(x as T)` still casts (paren contents re-enter the
+    # full expression parser).
+    exc_type = self.parse_expression(allow_cast=False);
     name = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
@@ -4423,7 +4449,9 @@ impl Parser.parse_with_stmt -> WithStmt {
     }
     with_uni = self.consume_uni(TokenKind.KW_WITH);
     exprs: list = [];
-    expr = self.parse_expression();
+    # Parse with the cast disabled so `with <expr> as <alias>` keeps its own
+    # `as`; ternary/lambda contexts still parse, and `(x as T)` still casts.
+    expr = self.parse_expression(allow_cast=False);
     alias = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
@@ -4438,7 +4466,7 @@ impl Parser.parse_with_stmt -> WithStmt {
     comma_unis: list = [];
     while self.match_tok(TokenKind.COMMA) {
         comma_unis.append(self.make_uni_token(self.previous()));
-        expr = self.parse_expression();
+        expr = self.parse_expression(allow_cast=False);
         alias = None;
         as_uni = None;
         if self.match_tok(TokenKind.KW_AS) {

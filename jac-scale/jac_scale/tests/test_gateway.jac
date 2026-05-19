@@ -223,7 +223,10 @@ test "health endpoint returns service summary" {
 
 test "/healthz/live returns 200 always (liveness, no drain check)" {
     # Liveness gates restart; drain affects readiness only.
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain {
+        reset_drain,
+        start_drain
+    }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -246,7 +249,10 @@ test "/healthz/live returns 200 always (liveness, no drain check)" {
 
 test "/healthz/ready returns 200 normally, 503 during drain (readiness)" {
     # Readiness 503s during drain so kube-proxy removes pod from Endpoints.
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain {
+        reset_drain,
+        start_drain
+    }
     reg = ServiceRegistry();
     gw = MicroserviceGateway(registry=reg);
     gw.setup();
@@ -316,7 +322,9 @@ test "unmatched path returns 404" {
 # Prometheus metrics
 # =============================================================================
 test "build_gateway_metrics returns a fresh registry with both collectors" {
-    import from jac_scale.microservices._metrics { build_gateway_metrics }
+    import from jac_scale.microservices.gateway_internals.middleware.metrics {
+        build_gateway_metrics
+    }
     (registry, requests, duration) = build_gateway_metrics();
     assert registry is not None;
     assert requests is not None;
@@ -324,7 +332,9 @@ test "build_gateway_metrics returns a fresh registry with both collectors" {
 }
 
 test "classify_outcome maps status codes to label values" {
-    import from jac_scale.microservices._metrics { classify_outcome }
+    import from jac_scale.microservices.gateway_internals.middleware.metrics {
+        classify_outcome
+    }
     assert classify_outcome(200) == "2xx";
     assert classify_outcome(302) == "3xx";
     assert classify_outcome(404) == "4xx";
@@ -451,7 +461,9 @@ test "error envelope carries the request's trace id for correlation" {
 # Unified /docs Swagger aggregation
 # =============================================================================
 test "_prefixed_paths prepends the service prefix to every key" {
-    import from jac_scale.microservices._openapi_agg { _prefixed_paths }
+    import from jac_scale.microservices.gateway_internals.openapi_agg {
+        _prefixed_paths
+    }
     raw = {
         "/function/list_products": {"post": {"summary": "list"}},
         "/function/get_product": {"post": {"summary": "get"}}
@@ -464,7 +476,9 @@ test "_prefixed_paths prepends the service prefix to every key" {
 }
 
 test "_prefixed_paths handles prefix with trailing slash" {
-    import from jac_scale.microservices._openapi_agg { _prefixed_paths }
+    import from jac_scale.microservices.gateway_internals.openapi_agg {
+        _prefixed_paths
+    }
     out = _prefixed_paths(
         {"/function/x": {"post": {}}}, "/api/products/"  # trailing slash
     );
@@ -1127,7 +1141,11 @@ test "health endpoint does not require auth" {
 }
 
 test "gateway drain 503s new requests with Retry-After + envelope" {
-    import from jac_scale.microservices._drain { reset_drain, start_drain, is_draining }
+    import from jac_scale.microservices.gateway_internals.drain {
+        reset_drain,
+        start_drain,
+        is_draining
+    }
     reset_drain();
 
     reg = ServiceRegistry();
@@ -1161,7 +1179,10 @@ test "gateway drain 503s new requests with Retry-After + envelope" {
 # Drain runs before the dispatcher (outermost middleware), so 503d
 # responses should not carry the X-Trace-Id header the dispatcher stamps.
 test "gateway drain does not burn metrics labels on 503d requests" {
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain {
+        reset_drain,
+        start_drain
+    }
     reset_drain();
 
     reg = ServiceRegistry();
@@ -1305,7 +1326,10 @@ test "CORS simple request echoes Allow-Origin on the response" {
 
 
 test "CORS preflight still responds during drain (headers reachable on 503)" {
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain {
+        reset_drain,
+        start_drain
+    }
     def build -> object {
         reg = ServiceRegistry();
         gw = MicroserviceGateway(registry=reg);
@@ -1353,7 +1377,7 @@ test "CORS preflight still responds during drain (headers reachable on 503)" {
 # http_forward_timeout resolver (gateway-to-service forward; configurable)
 # =============================================================================
 test "http_forward_timeout falls back to 30s default when config read fails" {
-    import from jac_scale.microservices._util { http_forward_timeout }
+    import from jac_scale.microservices.runtime.util { http_forward_timeout }
     # No working config -> the except branch in the resolver fires and
     # returns _DEFAULT_HTTP_FORWARD_TIMEOUT (30.0).
     t: float = http_forward_timeout("module_with_no_override");
@@ -1361,7 +1385,7 @@ test "http_forward_timeout falls back to 30s default when config read fails" {
 }
 
 test "http_forward_timeout precedence: per-service > global > default" {
-    import from jac_scale.microservices._util { http_forward_timeout }
+    import from jac_scale.microservices.runtime.util { http_forward_timeout }
     import jac_scale.config_loader as cfg_mod;
 
     obj _StubCfg {

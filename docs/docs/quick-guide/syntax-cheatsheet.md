@@ -77,6 +77,12 @@ with entry {
     #   raw: any = py_call();   # opt in to permissive flow
     #   raw = py_call();        # inferred -- raw becomes any, no error
 
+    # `as` cast: re-type a value (unchecked, type-erased -- runtime no-op).
+    # Use it as the escape hatch when you know more than the type checker.
+    raw: any = 41;
+    count = raw as int;          # statically int; parenthesize to cast more:
+    bumped = (raw as int) + 1;   # (x if c else y) as T  /  with (x as T) as f
+
     # Union types
     maybe: str | None = None;
 

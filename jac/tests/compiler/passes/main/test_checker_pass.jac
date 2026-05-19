@@ -4210,6 +4210,60 @@ test "jsx_reserved_props_key_ref" {
     ].pretty_print()}";
 }
 
+test "jsx_props_bag_untyped_and_typed" {
+    # A component with a single `props` parameter is the props-bag pattern.
+    # Untyped (`props: any`) accepts arbitrary JSX attributes (no E1101) but
+    # is flagged with W1052; a typed props bag is validated against the
+    # members of the props object's type.
+    path = os.path.join(CHECKER_FIXTURES, "checker_jsx_props_bag.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Only the typed bag's unknown 'bogus' prop should raise E1101 — the
+    # untyped bag must accept its arbitrary attributes silently.
+    e1101_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1101"
+    ];
+    assert len(e1101_errors) == 1 , f"Expected exactly 1 E1101 (TypedComp 'bogus'), got {len(
+        e1101_errors
+    )}:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+    assert "bogus" in e1101_errors[0].pretty_print() , f"Expected E1101 for 'bogus', got: {e1101_errors[
+        0
+    ].pretty_print()}";
+
+    # The typed props bag validates attribute types — count="nope" is E1100.
+    e1100_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1100"
+    ];
+    assert len(e1100_errors) >= 1 , f"Expected E1100 for TypedComp count type mismatch, got {len(
+        e1100_errors
+    )} E1100 errors. All errors:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+
+    # W1052 fires exactly once — for the untyped UntypedComp, not TypedComp.
+    w1052 = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1052"
+    ];
+    assert len(w1052) == 1 , f"Expected exactly 1 W1052 (UntypedComp), got {len(
+        w1052
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1052);
+    assert "UntypedComp" in w1052[0].pretty_print() , f"Expected W1052 for 'UntypedComp', got: {w1052[
+        0
+    ].pretty_print()}";
+}
+
 test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
     # Regression: Name nodes under a JsxElementName are resolved against the
     # _JsxIntrinsicElements registry by the JsxElement handler, not against
@@ -4232,6 +4286,57 @@ test "jsx_intrinsic_tag_names_do_not_emit_w1051" {
     assert len(program.errors_had) == 0 , f"Unexpected errors: {[
         e.pretty_print() for e in program.errors_had
     ]}";
+}
+
+test "dom_browser_globals_resolve_to_storage" {
+    # `localStorage` / `sessionStorage` are ambient browser globals typed as
+    # `Storage` (dom_types.pyi). Their real API surface must type-check with
+    # no E1032 (access on Unknown) and no W1051. The deliberate `getItm` typo
+    # must raise exactly one E1030 (known type, missing attribute) — proving
+    # the global is genuinely typed, not silenced as Unknown.
+    path = os.path.join(CHECKER_FIXTURES, "checker_dom_browser_globals.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    e1032_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1032"
+    ];
+    assert len(e1032_errors) == 0 , f"Expected no E1032 (browser globals must not be Unknown), got {len(
+        e1032_errors
+    )}. All errors:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+
+    e1030_errors = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1030"
+    ];
+    assert len(e1030_errors) == 1 , f"Expected exactly 1 E1030 (the `getItm` typo), got {len(
+        e1030_errors
+    )}. All errors:\n" + "\n---\n".join(
+        f"{err.code.code if err.code else '?'}: {err.pretty_print()}"
+        for err in program.errors_had
+    );
+    assert "getItm" in e1030_errors[0].pretty_print() , f"Expected E1030 for `getItm`, got: {e1030_errors[
+        0
+    ].pretty_print()}";
+
+    # The valid Storage API lines must be fully resolved. W1051 on the typo
+    # line is expected downstream fallout of the E1030 above, so exclude it.
+    typo_line = e1030_errors[0].loc.first_line;
+    w1051_warnings = [
+        w
+        for w in program.warnings_had
+        if w.code and w.code.code == "W1051" and w.loc and w.loc.first_line != typo_line
+    ];
+    assert len(w1051_warnings) == 0 , f"Expected no W1051 on the valid Storage API surface, got {len(
+        w1051_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in w1051_warnings);
 }
 
 test "lambda_block_body_return_type_inference" {
@@ -4615,4 +4720,31 @@ test "pipe_forward_typing_matches_call_form" {
     assert err.code and err.code.code == "E1053" , f"Expected E1053, got {err.code.code
         if err.code
         else 'no-code'}:\n{err.pretty_print()}";
+}
+
+test "as_cast_resolves_any_assignment" {
+    # The `as` cast re-types an Any source so it lands in a declared concrete
+    # type without tripping the strict-gradual rule (E1001).
+    path = os.path.join(CHECKER_FIXTURES, "checker_as_cast.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    e1001 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E1001"
+    ];
+    assert len(e1001) == 0 , f"Expected no E1001 — the `as` casts should satisfy the declared types, got {len(
+        e1001
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e1001);
+
+    parse_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E0002"
+    ];
+    assert len(parse_errs) == 0 , f"`expr as Type` should parse, got E0002:\n" + "\n---\n".join(
+        e.pretty_print() for e in parse_errs
+    );
 }

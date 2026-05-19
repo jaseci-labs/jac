@@ -35,7 +35,9 @@ def _scale_pre_hook(context: HookContext) -> None {
     if ms_config.get("enabled", False) and not is_sv_sibling {
         scale_flag = context.get_arg("scale", False);
         if not scale_flag {
-            import from jac_scale.microservices.orchestrator { start_microservice_mode }
+            import from jac_scale.microservices.orchestrator.orchestrator {
+                start_microservice_mode
+            }
             start_microservice_mode(ms_config);
             context.set_data("cancel_execution", True);
             context.set_data("cancel_return_code", 0);
@@ -123,7 +125,9 @@ def _scale_pre_hook(context: HookContext) -> None {
                 "Installing Jaseci packages from repository (experimental mode)..."
             );
         } elif target == "kubernetes-microservice" {
-            import from jac_scale.microservices._image_build { find_jaseci_repo_root }
+            import from jac_scale.microservices.images.build_helpers {
+                find_jaseci_repo_root
+            }
             repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
             if repo is not None {
                 console.print(
@@ -139,11 +143,11 @@ def _scale_pre_hook(context: HookContext) -> None {
         }
         # Opt into the python_image-fallback guard + auto-build only
         # on the production `jac start --scale` path. Tests using
-        # build=False for manifest-shape assertions don't see these env
-        # vars and fall through to parent behavior.
+        # build=False for manifest-shape assertions construct the
+        # target without these flags and fall through to parent behavior.
         if target == "kubernetes-microservice" {
-            os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
-            os.environ["_JAC_SCALE_AUTO_BUILD"] = "1";
+            deployment_target.auto_build = True;
+            deployment_target.guard_fallback_image = True;
         }
 
         # Deploy. Cancel execution on failure so we don't fall through to
@@ -593,7 +597,9 @@ class JacCmd {
             source="jac-scale"
         )
         def scale_cmd(action: str, service_name: str = "", lines: int = 50) -> int {
-            import from jac_scale.microservices.orchestrator { build_registry }
+            import from jac_scale.microservices.orchestrator.orchestrator {
+                build_registry
+            }
             import from jac_scale.microservices.local_deployer { LocalDeployer }
 
             scale_config = get_scale_config();
@@ -679,7 +685,9 @@ class JacCmd {
             } elif action == "gateway" {
                 # K8s gateway-only mode: no local service spawning, peer
                 # resolution via DNS through get_sv_registry.
-                import from jac_scale.microservices.orchestrator { start_gateway_only }
+                import from jac_scale.microservices.orchestrator.orchestrator {
+                    start_gateway_only
+                }
                 start_gateway_only(ms_config);
                 return 0;
             } else {
@@ -758,7 +766,7 @@ class JacScalePlugin {
         import subprocess;
         import from jaclang.runtimelib { sv_client }
         import from pathlib { Path }
-        import from jac_scale.microservices._util {
+        import from jac_scale.microservices.runtime.util {
             pick_free_port,
             resolve_jac_binary,
             wait_for_health
@@ -779,8 +787,10 @@ class JacScalePlugin {
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jac_scale.config_loader { get_scale_config }
-                import from jac_scale.microservices.k8s_target { k8s_safe_name }
-                import from jac_scale.microservices._util {
+                import from jac_scale.targets.kubernetes.microservice.manifest_builder {
+                    k8s_safe_name
+                }
+                import from jac_scale.microservices.runtime.util {
                     k8s_service_dns_url,
                     in_cluster_namespace
                 }
@@ -875,7 +885,9 @@ class JacScalePlugin {
         # K8s mode: build DNS map from configured routes.
         try {
             import from jac_scale.config_loader { get_scale_config }
-            import from jac_scale.microservices.k8s_deployer { build_k8s_registry }
+            import from jac_scale.targets.kubernetes.microservice.runtime_resolver {
+                build_k8s_registry
+            }
             ms_cfg = get_scale_config().get_microservices_config();
             routes: dict[str, str] = ms_cfg.get("routes", {});
             port: int = int(ms_cfg.get("gateway_port", 8000));
@@ -928,8 +940,8 @@ class JacScalePlugin {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jaclang.runtimelib.sv_sse { consume_sse_stream }
-        import from jac_scale.microservices._auth_ctx { get_current_auth }
-        import from jac_scale.microservices._trace_ctx { get_current_trace }
+        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
+        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
 
         func_label = f"{module_name}.{func_name}";
 
@@ -1075,8 +1087,8 @@ class JacScalePlugin {
     ) -> Any {
         import time;
         import from jaclang.runtimelib { sv_client }
-        import from jac_scale.microservices._auth_ctx { get_current_auth }
-        import from jac_scale.microservices._trace_ctx { get_current_trace }
+        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
+        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
 
         label = f"{module_name}.{walker_name}";
 

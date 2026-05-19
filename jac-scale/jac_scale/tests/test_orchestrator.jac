@@ -1,7 +1,7 @@
 """Tests for microservices orchestrator."""
 
 import unittest.mock as mock;
-import from jac_scale.microservices.orchestrator {
+import from jac_scale.microservices.orchestrator.orchestrator {
     build_registry,
     _mark_all_healthy_k8s,
     _populate_k8s_urls

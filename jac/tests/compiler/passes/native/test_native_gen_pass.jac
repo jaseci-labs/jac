@@ -5,12 +5,15 @@ native machine code, and produce correct results when executed via ctypes.
 """
 
 import ctypes;
+import io;
 import os;
 import subprocess;
 import sys;
+import tempfile;
 import from pathlib { Path }
 import jaclang;
 import from jaclang.jac0core.program { JacProgram }
+import from jaclang.jac0core.runtime { JacRuntime }
 import jaclang.jac0core.unitree as uni;
 import from llvmlite.binding { ExecutionEngine }
 
@@ -2568,16 +2571,6 @@ test "cross module glob init: pushed values are readable" {
     assert get_second() == 99 , f"Expected 99, got {get_second()}";
 }
 
-test "transitive import: compiles without errors" {
-    # fix_transitive_entry imports fix_transitive_mid which imports fix_transitive_leaf.
-    # All three modules must be linked for compilation to succeed.
-    prog = JacProgram();
-    ir = prog.compile(str(os.path.join(FIXTURES, "fix_transitive_entry.na.jac")));
-    assert not prog.errors_had , f"Errors: {prog.errors_had}";
-    assert ir is not None;
-    assert ir.gen.native_engine is not None , "No native engine created";
-}
-
 test "transitive import: function call through two import hops returns correct value" {
     # run_transitive_test() → get_mid() → get_leaf() → 99
     # All three functions must be linked for this to work.
@@ -2983,4 +2976,220 @@ test "lambda closure as scaler" {
     assert f(5, 3) == 15 , f"Expected 15, got {f(5, 3)}";
     assert f(10, 0) == 0 , f"Expected 0, got {f(10, 0)}";
     assert f(7, -2) == -14 , f"Expected -14, got {f(7, -2)}";
+}
+
+# ─── Symbol Collision Detection ───────────────────────────────────────────────
+# Before the fix, when two imported native modules both exported a symbol with
+# the same name, link_in() would silently merge them and produce a binary that
+# crashed with SIGSEGV at runtime. W5024/W5025 were mere warnings, so nacompile
+# wrote a corrupt binary without aborting.
+#
+# After the fix:
+#  - The compiler tracks exported symbols in a symbol_origins dict.
+#  - When a collision is detected before link_in(), E5026 is emitted and
+#    compilation is aborted (errors_had is non-empty).
+#  - Import compile/link failures (W5024/W5025) are now errors (E5024/E5025).
+test "symbol collision: importing two modules with the same exported symbol emits E5026" {
+    # sym_collision_lib_a and sym_collision_lib_b both export `shared_fn`.
+    # Compiling the entry that imports both must emit at least one error.
+    prog = JacProgram();
+    prog.compile(str(os.path.join(FIXTURES, "sym_collision_entry.na.jac")));
+    assert prog.errors_had , (
+        "Expected E5026 symbol collision error, but errors_had is empty"
+    );
+    error_strs = [str(e) for e in prog.errors_had];
+    found_e5026 = any(
+        "E5026" in e or "Symbol collision" in e or "symbol collision" in e
+        for e in error_strs
+    );
+    assert found_e5026 , (f"Expected E5026 in errors, got: {error_strs}");
+}
+
+test "symbol collision: both conflicting module names appear in the error" {
+    # The error message must name both source files so the developer knows which
+    # modules need to be fixed.
+    prog = JacProgram();
+    prog.compile(str(os.path.join(FIXTURES, "sym_collision_entry.na.jac")));
+    assert prog.errors_had , "Expected collision error";
+    combined = " ".join(str(e) for e in prog.errors_had);
+    assert "sym_collision_lib_a" in combined or "lib_a" in combined , (
+        f"Expected lib_a module name in error. Got: {combined}"
+    );
+    assert "sym_collision_lib_b" in combined or "lib_b" in combined , (
+        f"Expected lib_b module name in error. Got: {combined}"
+    );
+}
+
+test "symbol collision: the colliding symbol name is reported" {
+    # E5026 message must include the name of the duplicated symbol.
+    prog = JacProgram();
+    prog.compile(str(os.path.join(FIXTURES, "sym_collision_entry.na.jac")));
+    assert prog.errors_had , "Expected collision error";
+    combined = " ".join(str(e) for e in prog.errors_had);
+    assert "collision_fn" in combined , (
+        f"Expected 'collision_fn' in error message. Got: {combined}"
+    );
+}
+
+# ─── Variable Re-Declaration Type Fix ────────────────────────────────────────
+# Before the fix, when a variable was re-declared with a different type
+# (x: int = 0; x: bool = True;), codegen would store through the original
+# wrongly-typed alloca (e.g. i1 stored into i64 allocation), causing IR type
+# mismatches or corrupt values at runtime.
+#
+# After the fix, the codegen allocates a fresh alloca of the declared type
+# whenever a typed re-declaration (x: T = ...) differs from the existing
+# alloca's pointee type. Collection types (list/dict/set/frozenset) are skipped
+# as they are handled separately.
+test "redecl type: int-to-bool re-declaration (True) returns 1" {
+    # x: int = 0; x: bool = True; if x { return 1; } return 0;
+    # Before fix: wrong alloca type → crash or wrong value.
+    # After fix: fresh i1 alloca; x == True → returns 1.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_int_to_bool_true", ctypes.c_int64);
+    result = f();
+    assert result == 1 , f"Expected 1 (True branch taken), got {result}";
+}
+
+test "redecl type: int-to-bool re-declaration (False) returns 0" {
+    # x: int = 99; x: bool = False; if x { return 1; } return 0;
+    # After fix: fresh i1 alloca; x == False → returns 0.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_int_to_bool_false", ctypes.c_int64);
+    result = f();
+    assert result == 0 , f"Expected 0 (False branch not taken), got {result}";
+}
+
+test "redecl type: same-type re-declaration updates value correctly" {
+    # x: int = 50; x: int = 99; return x; → must return 99.
+    # Same type: no fresh alloca needed; value must still be updated.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_same_type_int", ctypes.c_int64);
+    result = f();
+    assert result == 99 , f"Expected 99, got {result}";
+}
+
+test "redecl type: bool-to-int re-declaration returns int value" {
+    # x: bool = True; x: int = 42; return x; → must return 42.
+    # After fix: fresh i64 alloca for int; correct value stored.
+    (eng, _) = compile_native("redecl_type.na.jac");
+    f = get_func(eng, "redecl_bool_to_int", ctypes.c_int64);
+    result = f();
+    assert result == 42 , f"Expected 42, got {result}";
+}
+
+# ─── Global Variable Scoping (na ⊆ sv) ───────────────────────────────────────
+# Python (and the sv pathway) bind a bare function-scope assignment as a NEW
+# function-local, even when a module global of the same name exists. Rebinding
+# the module global requires an explicit `global x;`.
+#
+# Before the fix the native pathway diverged: a bare `counter = 5` inside a
+# function rebound the module global, so `.na.jac` code observed different
+# results than the identical source run through the sv pathway.
+#
+# `run_sv_source` below executes a Jac source string through the sv pathway so
+# the cross-pathway test can prove both pathways agree on scoping.
+"""Run a .jac source string through the sv pathway; return captured stdout."""
+def run_sv_source(code: str) -> str {
+    tmpdir = tempfile.mkdtemp();
+    src_path = os.path.join(tmpdir, "xpath_mod.jac");
+    fh = open(src_path, "w");
+    fh.write(code);
+    fh.close();
+    old_stdout = sys.stdout;
+    buf = io.StringIO();
+    sys.stdout = buf;
+    try {
+        JacRuntime.jac_import(
+            target="xpath_mod", base_path=tmpdir, override_name="__main__"
+        );
+    } finally {
+        sys.stdout = old_stdout;
+    }
+    return buf.getvalue();
+}
+
+test "glob scoping: bare function-scope assignment does not touch the module global" {
+    # bump_local() does `counter = 5;` with no `global` declaration — Python
+    # semantics make this a function-local, so the module global stays 0.
+    (eng, _) = compile_native("glob_scoping.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    bump_local = get_func(eng, "bump_local", ctypes.c_int64);
+    read_global = get_func(eng, "read_global", ctypes.c_int64);
+    assert bump_local() == 5 , "bare local assignment should evaluate to 5";
+    assert read_global() == 0 , (
+        "module global must be untouched by a bare function-scope assignment "
+        "(before the fix this returned 5 — the native pathway rebound the global)"
+    );
+}
+
+test "glob scoping: explicit `global` still rebinds the module global" {
+    # bump_global() declares `global counter;` first, so `counter = 99;` is a
+    # genuine global store — this must keep working.
+    (eng, _) = compile_native("glob_scoping.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    bump_global = get_func(eng, "bump_global", ctypes.c_int64);
+    read_global = get_func(eng, "read_global", ctypes.c_int64);
+    assert bump_global() == 99;
+    assert read_global() == 99 , "explicit `global x;` must rebind the global";
+}
+
+test "cross-pathway: glob scoping is identical in the na and sv pathways" {
+    # The SAME source is run through both pathways and the observable results
+    # must match (the na ⊆ sv guarantee). Before the fix the native pathway
+    # produced [5, 5, 99, 99] while the sv pathway produced [5, 0, 99, 99].
+    fixture_path = os.path.join(FIXTURES, "glob_scoping.na.jac");
+    fh = open(fixture_path);
+    base_src = fh.read();
+    fh.close();
+
+    # --- native pathway ---
+    (eng, _) = compile_native("glob_scoping.na.jac");
+    entry_fn = get_func(eng, "jac_entry", None);
+    entry_fn();
+    bump_local = get_func(eng, "bump_local", ctypes.c_int64);
+    read_global = get_func(eng, "read_global", ctypes.c_int64);
+    bump_global = get_func(eng, "bump_global", ctypes.c_int64);
+    na_results = [bump_local(), read_global(), bump_global(), read_global()];
+
+    # --- sv pathway: identical source, entry block prints the same sequence ---
+    sv_src = base_src.replace(
+        "with entry {}",
+        "with entry {\n" + "    print(bump_local());\n" + "    print(read_global());\n" + "    print(bump_global());\n" + "    print(read_global());\n" + "}"
+    );
+    assert "with entry {\n" in sv_src , "fixture entry block not substituted";
+    sv_out = run_sv_source(sv_src);
+    sv_results = [int(tok) for tok in sv_out.split()];
+
+    assert sv_results == [5, 0, 99, 99] , (
+        f"sv pathway diverged from CPython scoping: {sv_results}"
+    );
+    assert na_results == sv_results , (
+        f"native pathway diverges from sv: na={na_results} sv={sv_results}. "
+        "A bare function-scope assignment to a glob name must be a local."
+    );
+}
+
+# ─── Finding 2 guard: native pointer-bitcast escape hatch stays native-only ──
+# The type checker permits a handful of pointer-shaped cross-type assignments
+# (int/str/obj) because in native code they are all 64-bit pointers. That
+# escape hatch is gated to `.na.jac` modules via `_in_native_context()`. This
+# test locks that gating in: the sv pathway must still reject the assignment,
+# so the escape hatch can never silently weaken sv type-checking.
+test "finding 2 guard: int-to-obj escape hatch does not leak into the sv pathway" {
+    code = (
+        "obj Wrapper { has slot: int; }\n" + "def make(raw: int) -> Wrapper {\n" + "    w: Wrapper = raw;\n" + "    return w;\n" + "}\n"
+    );
+    # sv pathway (.sv.jac): assigning an int to an obj-typed variable must
+    # remain a type error. The snippet is otherwise valid, so any error here
+    # is the assignability error.
+    sv_prog = JacProgram();
+    sv_path = os.path.join(FIXTURES, "_finding2_guard.sv.jac");
+    sv_prog.compile(file_path=sv_path, use_str=code, type_check=True);
+    assert sv_prog.errors_had , (
+        "sv pathway must reject `w: Wrapper = raw` (int → obj). The native "
+        "pointer-bitcast escape hatch must not apply outside .na.jac modules."
+    );
 }

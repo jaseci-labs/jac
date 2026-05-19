@@ -1,4 +1,4 @@
-# ruff: noqa: N801, N802, N803, N815
+# ruff: noqa: N801, N802, N803, N815, N816
 """DOM type stubs for Jac JSX event handling and element access.
 
 These types are ambient builtins — available in all Jac modules without import.
@@ -514,6 +514,29 @@ AnimationEventHandler = Callable[[AnimationEvent], None]
 TransitionEventHandler = Callable[[TransitionEvent], None]
 ScrollEventHandler = Callable[[ScrollEvent], None]
 EventHandler = Callable[[Event], None]
+
+# ---------------------------------------------------------------------------
+# Browser platform globals
+# ---------------------------------------------------------------------------
+
+class Storage:
+    """Web Storage API interface (the type of `localStorage` / `sessionStorage`).
+
+    Models the standard key/value store. `getItem` and `key` return
+    `str | None` because a missing key yields JS `null`.
+    """
+
+    length: int
+    def getItem(self, key: str) -> str | None: ...
+    def setItem(self, key: str, value: str) -> None: ...
+    def removeItem(self, key: str) -> None: ...
+    def clear(self) -> None: ...
+    def key(self, index: int) -> str | None: ...
+
+# Ambient browser globals — available to all frontend Jac modules without
+# import, mirroring how the DOM event/element classes above are exposed.
+localStorage: Storage
+sessionStorage: Storage
 
 # ---------------------------------------------------------------------------
 # Intrinsic HTML element prop types

@@ -15,5 +15,3 @@ def:pub mid_len() -> int {
 def:pub mid_push(v: int) -> None {
     table_push(v);
 }
-
-with entry {}
