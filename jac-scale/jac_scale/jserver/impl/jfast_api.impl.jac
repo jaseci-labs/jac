@@ -133,9 +133,7 @@ impl JFastApiServer.run_server(
     };
     # P13: wrap handle_exit so SIGTERM flips the drain flag before
     # uvicorn begins its own graceful shutdown.
-    import from jac_scale.microservices._drain { install_signal_drain }
     import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
-    import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
 
