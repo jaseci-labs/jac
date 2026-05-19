@@ -2323,4 +2323,49 @@ test "polymorphic client target asset base path resolution" {
     # Test DesktopTarget resolve_asset_base (always root-relative)
     assert desktop_target.resolve_asset_base({"x-forwarded-prefix": "/ignored"}) == "/";
     assert desktop_target.resolve_asset_base({}) == "/";
+
+    # 3. Get PWATarget from factory and verify it inherits web behavior
+    pwa_target = factory.create_by_type(TargetType.PWA, dummy_dir);
+    assert pwa_target.resolve_asset_base({"x-forwarded-prefix": "/my-pwa"}) == "/my-pwa/";
+    assert pwa_target.resolve_asset_base({}) == "/";
+}
+
+# Mock introspector using standard module introspector mock structure
+obj MockIntrospector {
+    has _module: Any = None,
+        module_name: str = "main",
+        _client_manifest: dict = {"exports": ["app"]},
+        _bundle: Any = None;
+
+    def load { }
+    def get_client_functions -> dict {
+        return {"app": None};
+    }
+
+    def ensure_bundle -> str {
+        return "abc123hash";
+    }
+}
+
+test "render_page base tag injection" {
+    import from pathlib { Path }
+    import from jac_client.plugin.client { JacClient }
+
+    intro = MockIntrospector();
+
+    # 1. Render without headers (standard default)
+    res = JacClient.render_page(intro, "app", {}, "guest");
+    assert "html" in res;
+    html = res["html"];
+    assert '<base href="/">' in html;
+    assert 'src="static/client.js' in html;
+
+    # 2. Render with proxy headers (e.g. dynamic subpath behind Nginx)
+    headers = {"X-Forwarded-Prefix": "/my-reverse-proxy"};
+    res_proxy = JacClient.render_page(
+        intro, "app", {}, "guest", request_ctx={"headers": headers}
+    );
+    html_proxy = res_proxy["html"];
+    assert '<base href="/my-reverse-proxy/">' in html_proxy;
+    assert 'src="static/client.js' in html_proxy;
 }
