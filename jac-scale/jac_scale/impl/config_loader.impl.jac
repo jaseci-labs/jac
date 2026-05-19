@@ -70,7 +70,12 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
             'liveness_failure_threshold': 3
         },
         'secrets': {},
-        'server': {'port': 8000, 'host': '0.0.0.0', 'docs_enabled': True, 'suppress_health_check_logs': False},
+        'server': {
+            'port': 8000,
+            'host': '0.0.0.0',
+            'docs_enabled': True,
+            'suppress_health_check_logs': False
+        },
         'webhook': {
             'secret': 'webhook-secret-key',
             'signature_header': 'X-Webhook-Signature',
@@ -206,7 +211,9 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
         'port': int(server_config.get('port', 8000)),
         'host': server_config.get('host', '0.0.0.0'),
         'docs_enabled': server_config.get('docs_enabled', True),
-        'suppress_health_check_logs': bool(server_config.get('suppress_health_check_logs', False))
+        'suppress_health_check_logs': bool(
+            server_config.get('suppress_health_check_logs', False)
+        )
     };
 }
 

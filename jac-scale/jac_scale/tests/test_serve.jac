@@ -2221,8 +2221,7 @@ test "health check filter is disabled by default" {
     cfg = get_scale_config();
     server_cfg = cfg.get_server_config();
 
-    assert not server_cfg.get('suppress_health_check_logs', False),
-        "suppress_health_check_logs should default to False";
+    assert not server_cfg.get('suppress_health_check_logs', False) , "suppress_health_check_logs should default to False";
 
     # Verify that when False, no HealthCheckFilter is added to the handler
     handler = ConsoleLogHandler();
@@ -2230,8 +2229,7 @@ test "health check filter is disabled by default" {
     if server_cfg.get('suppress_health_check_logs', False) {
         handler.addFilter(HealthCheckFilter());
     }
-    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters),
-        "HealthCheckFilter should not be attached when suppress_health_check_logs is false";
+    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters) , "HealthCheckFilter should not be attached when suppress_health_check_logs is false";
 
     reset_scale_config();
 }
