@@ -2211,6 +2211,31 @@ test "server startup - port fallback integration" {
 # =============================================================================
 # HEALTH CHECK FILTER UNIT TESTS
 # =============================================================================
+"""Test that HealthCheckFilter is not attached by default (suppress_health_check_logs defaults to false)."""
+test "health check filter is disabled by default" {
+    import logging;
+    import from jac_scale.config_loader { get_scale_config, reset_scale_config }
+    import from jac_scale.jserver.jfast_api { ConsoleLogHandler, HealthCheckFilter }
+
+    reset_scale_config();
+    cfg = get_scale_config();
+    server_cfg = cfg.get_server_config();
+
+    assert not server_cfg.get('suppress_health_check_logs', False),
+        "suppress_health_check_logs should default to False";
+
+    # Verify that when False, no HealthCheckFilter is added to the handler
+    handler = ConsoleLogHandler();
+    handler.setFormatter(logging.Formatter("%(message)s"));
+    if server_cfg.get('suppress_health_check_logs', False) {
+        handler.addFilter(HealthCheckFilter());
+    }
+    assert not any(isinstance(f, HealthCheckFilter) for f in handler.filters),
+        "HealthCheckFilter should not be attached when suppress_health_check_logs is false";
+
+    reset_scale_config();
+}
+
 """Test HealthCheckFilter suppresses noisy health-check access log entries."""
 test "health check filter suppresses health endpoint log records" {
     import logging;
@@ -2251,7 +2276,7 @@ test "health check filter suppresses health endpoint log records" {
         '127.0.0.1:12345 - "POST /user/login HTTP/1.1" 200',
         '127.0.0.1:12345 - "GET /graph HTTP/1.1" 200',
         '127.0.0.1:12345 - "POST /function/add_numbers HTTP/1.1" 200',
-        '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',  # sub-path not matched by prefix alone
+        '127.0.0.1:12345 - "GET /health/extra HTTP/1.1" 200',
 
     ];
     for msg in allowed {
