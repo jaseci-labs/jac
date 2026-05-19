@@ -8,7 +8,7 @@ import subprocess;
 import logging;
 import from typing { Any }
 import from pathlib { Path }
-import from jac_scale.microservices.deployer { ServiceDeployer }
+import from jac_scale.abstractions.service_deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry {
     ServiceRegistry,
     ServiceEntry,
@@ -20,7 +20,9 @@ glob logger = logging.getLogger(__name__);
 
 """Local deployer - runs services as subprocesses on the host."""
 obj LocalDeployer(ServiceDeployer) {
-    has process_manager: ServiceProcessManager | None = None;
+    has registry: ServiceRegistry,
+        target: str = "local",
+        process_manager: ServiceProcessManager | None = None;
 
     """Initialize the process manager if needed."""
     def _ensure_pm -> ServiceProcessManager;

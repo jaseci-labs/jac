@@ -173,6 +173,13 @@ def find_project_root(start: Path | None = None) -> tuple[Path, Path] | None;
 # Check if currently in a Jac project.
 def is_in_project -> bool;
 
+# Serialize a config dict to TOML text. Hand-rolled; does not preserve comments.
+# This is the single canonical TOML writer -- do not reintroduce ad-hoc copies.
+def serialize_toml(data: dict[str, Any], prefix: str = "") -> str;
+
+# Render a single Python value as a TOML value literal.
+def toml_value(value: Any) -> str;
+
 """Central configuration class for Jac projects.
 
 This class manages all configuration from jac.toml files, including:
@@ -210,7 +217,10 @@ obj JacConfig {
         active_profile: str = "",
         _raw_data: dict[str, Any] = {},
         entrypoints: dict[str, dict[str, str]] = {},
-        optional_dependencies: dict[str, dict[str, str]] = {};
+        optional_dependencies: dict[str, dict[str, str]] = {},
+        # True when this config was discovered by climbing into a parent
+        # directory (no jac.toml in the cwd). Used to warn before writes.
+        discovered_from_ancestor: bool = False;
 
     static def discover(
         start_path: Path | None = None, profile: str | None = None
@@ -234,6 +244,8 @@ obj JacConfig {
     def get_client_dir -> Path;
     def is_valid -> bool;
     def save -> None;
+    # Serialize `doc` to self.toml_path; the single jac.toml write chokepoint.
+    def persist_doc(doc: dict[str, Any]) -> None;
     def add_dependency(
         name: str, version: str, dev: bool = False, dep_type: str = "python"
     ) -> None;

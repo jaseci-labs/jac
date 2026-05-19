@@ -62,13 +62,19 @@ obj AppleSSOProvider(SSOProvider) {
 
         with self._apple_sso {
             user_info = await self._apple_sso.verify_and_process(request);
+            if user_info is None {
+                raise RuntimeError("Apple SSO verification returned no user info");
+            }
+            if user_info.email is None or user_info.id is None {
+                raise RuntimeError("Apple SSO user info is missing email or id");
+            }
             return SSOUserInfo(
-                email=user_info.email,
-                external_id=user_info.id,
-                display_name=user_info?.display_name,
-                first_name=user_info?.first_name,
-                last_name=user_info?.last_name,
-                picture=user_info?.picture
+                email=str(user_info.email),
+                external_id=str(user_info.id),
+                display_name=user_info.display_name,
+                first_name=user_info.first_name,
+                last_name=user_info.last_name,
+                picture=user_info.picture
             );
         }
     }

@@ -101,7 +101,7 @@ impl ServiceProcessManager._assign_port(service_entry: ServiceEntry) -> int {
     if service_entry.port > 0 {
         return service_entry.port;
     }
-    import from jac_scale.microservices._util { pick_free_port }
+    import from jac_scale.microservices.runtime.util { pick_free_port }
     return pick_free_port(service_entry.name);
 }
 
@@ -115,7 +115,7 @@ impl ServiceProcessManager.start_service(name: str) -> bool {
     entry = self.registry.entries[name];
     port = self._assign_port(entry);
 
-    import from jac_scale.microservices._util { resolve_jac_binary }
+    import from jac_scale.microservices.runtime.util { resolve_jac_binary }
     jac_bin: str = resolve_jac_binary();
 
     cmd = [jac_bin, "start", entry.file, "--port", str(port), "--no_client"];
@@ -191,7 +191,7 @@ Two passes:
      engine calls create_all() simultaneously.
 """
 impl ServiceProcessManager.start_all -> None {
-    import from jac_scale.microservices._util { wait_for_health }
+    import from jac_scale.microservices.runtime.util { wait_for_health }
 
     for (name, entry) in self.registry.entries.items() {
         if entry.port == 0 {

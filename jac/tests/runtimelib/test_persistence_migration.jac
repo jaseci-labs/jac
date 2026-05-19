@@ -26,6 +26,11 @@ obj _DemoArchV1(Root) {
         age: int = 0;
 }
 
+# Used by the type-mismatch quarantine test: score must be an int.
+obj _TypedProfile(Root) {
+    has score: int = 0;
+}
+
 obj _SyncProfile(Root) {
     has name: str = "",
         count: int = 0,
@@ -343,5 +348,78 @@ test "in-place list mutation is detected dirty and flushed to DB" {
             f"in-place list mutation not persisted: got {final_tags}"
         );
         mem3.close();
+    }
+}
+
+
+test "unresolvable nested class in field is quarantined, not silently loaded as None" {
+    # When a field stores a nested object whose class no longer exists,
+    # _deserialize_value returns None. coerce(None, non-Optional-type) raises
+    # TypeError so the anchor is quarantined rather than loaded with a None field.
+    #
+    # Note: other coercion mismatches (e.g. set serialised as str due to JSON
+    # limitations) are NOT quarantined — they fall back with a warning. Only
+    # confirmed None-for-non-Optional is treated as hard corruption.
+    with TemporaryDirectory() as raw_tmpdir {
+        tmpdir = str(raw_tmpdir);
+        db_path = os.path.join(tmpdir, "test.db");
+        good_id = str(uuid.uuid4());
+        bad_nested_id = str(uuid.uuid4());
+        import json;
+        import sqlite3;
+        mem = SqliteMemory(path=db_path);
+        mem._ensure_connection();
+        def _insert(conn: sqlite3.Connection, row_id: str, score_val: object) {
+            conn.execute(
+                """
+                INSERT INTO anchors
+                    (id, type, arch_module, arch_type, fingerprint, data,
+                     format_version, updated_at)
+                VALUES (?, 'NodeAnchor', ?, '_TypedProfile', NULL, ?, 1,
+                        '2026-05-18T00:00:00')
+                """,
+                (
+                    row_id,
+                    _TypedProfile.__module__,
+                    json.dumps(
+                        {
+                            '__type__': 'NodeAnchor',
+                            '__module__': 'jaclang.jac0core.archetype',
+                            'id': row_id,
+                            'persistent': True,
+                            'archetype': {
+                                '__type__': '_TypedProfile',
+                                '__module__': _TypedProfile.__module__,
+                                'score': score_val
+                            },
+                            'edges': []
+                        }
+                    )
+                )
+            );
+        }
+        _insert(mem.__conn__, good_id, 42);
+        # Nested dict with an unresolvable __type__ — _deserialize_value returns
+        # None, coerce(None, int) fails → TypeError → quarantine.
+        _insert(
+            mem.__conn__,
+            bad_nested_id,
+            {'__type__': 'RemovedClass', '__module__': 'app', 'x': 1}
+        );
+        mem.__conn__.commit();
+        # Good row loads fine.
+        good = mem.get(uuid.UUID(good_id));
+        assert good is not None , "valid row must load";
+        assert cast(_TypedProfile, good.archetype).score == 42;
+        # Bad row must be quarantined, not returned.
+        assert mem.get(uuid.UUID(bad_nested_id)) is None , "unresolvable nested class must quarantine";
+        conn = sqlite3.connect(db_path);
+        q_ids = {r[0] for r in conn.execute("SELECT id FROM anchors_quarantine")};
+        live_ids = {r[0] for r in conn.execute("SELECT id FROM anchors")};
+        conn.close();
+        assert bad_nested_id in q_ids , "bad row must be in quarantine table";
+        assert bad_nested_id not in live_ids , "bad row must leave anchors table";
+        assert good_id in live_ids , "good row must remain live";
+        mem.close();
     }
 }

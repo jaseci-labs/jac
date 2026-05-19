@@ -34,8 +34,34 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
                 }
             }
             # Create LLVM global variable
-            global_var = ir.GlobalVariable(self.llvm_module, var_type, name=var_name);
-            global_var.linkage = "";
+            try {
+                global_var = ir.GlobalVariable(
+                    self.llvm_module, var_type, name=var_name
+                );
+            } except Exception as _dup_err {
+                # DuplicatedNameError: var_name already declared (e.g. from a
+                # transitive import). Report as a symbol collision and skip.
+                _cur_path = self.ir_in.loc.mod_path
+                    if self.ir_in?.loc
+                    else "(current module)";
+                _origin = self._global_origins.get(var_name, "(imported module)");
+                self.emit(
+                    E5026,
+                    symbol=var_name,
+                    existing_module=_origin,
+                    new_module=_cur_path
+                );
+                continue;
+            }
+            # Only explicitly :priv globals get internal linkage.
+            # Default (no access modifier) is public in Jac, so they must
+            # keep external linkage to be shared across modules.
+            _is_priv = nd.access and nd.access.tag.name == Tok.KW_PRIV;
+            if _is_priv {
+                global_var.linkage = "internal";
+            } else {
+                global_var.linkage = "";
+            }
             # Try compile-time constant initialization for simple values
             const_init = self._codegen_const_expr(assign.value, var_type)
                 if assign.value is not None
@@ -47,6 +73,10 @@ impl NaIRGenPass._codegen_global_vars(nd: uni.GlobalVars) -> None {
             }
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
+            # Record origin for dup-error diagnostics
+            self._global_origins[var_name] = self.ir_in.loc.mod_path
+                if self.ir_in?.loc
+                else "(current module)";
             # Track list element types for global lists
             if isinstance(var_type, ir.PointerType) {
                 for (ename, ltype) in self.list_types.items() {
