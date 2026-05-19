@@ -1,27 +1,15 @@
-"""Auto-build + auto-distribute pipeline for `jac start --scale`.
+"""Lower-level helpers for the image build pipeline.
 
-Detect cluster -> pick Dockerfile -> docker build -> distribute (minikube
-internal daemon / k3d-kind image load / registry push) -> return image
-tag for the manifest builder.
+Functions that wrap subprocess calls (docker build / push / tag / inspect,
+k3d image import, kind load docker-image) and Dockerfile / .dockerignore /
+client-bundle preparation. The Strategy distributors in `distributors.jac`
+and the entry point in `auto_build.jac` call into here.
 """
 
 import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from typing { Any }
-import from jac_scale.microservices._cluster_detect {
-    detect_cluster_type,
-    get_minikube_docker_env,
-    k3d_cluster_name,
-    kind_cluster_name,
-    _active_context_name,
-    CLUSTER_MINIKUBE,
-    CLUSTER_K3D,
-    CLUSTER_KIND,
-    CLUSTER_REMOTE,
-    CLUSTER_UNKNOWN
-}
 
 
 # Subprocess timeouts (seconds). Largest is docker build because first
@@ -456,73 +444,4 @@ def _read_client_entry -> str {
     } except Exception {
         return "";
     }
-}
-
-
-"""Build user app image, distribute to cluster, return final image tag.
-
-`registry_url` is required for remote clusters, ignored for local."""
-def auto_build_and_distribute(
-    app_name: str, project_dir: Path, registry_url: str | None = None
-) -> str {
-    cluster_type = detect_cluster_type();
-
-    if cluster_type == CLUSTER_UNKNOWN {
-        raise RuntimeError(
-            "Could not detect K8s cluster type. Set up kubectl context:\n"
-            "  - Local:  minikube start  (or k3d / kind)\n"
-            "  - Remote: aws eks update-kubeconfig / gcloud container clusters get-credentials\n"
-            "Then: kubectl cluster-info"
-        );
-    }
-
-    # Build FE bundle before docker build so the image contains .jac/client/dist.
-    client_entry = _read_client_entry();
-    if client_entry {
-        build_client_bundle(project_dir, client_entry);
-    }
-
-    (dockerfile, context_dir, build_args) = resolve_dockerfile(project_dir);
-
-    if cluster_type == CLUSTER_MINIKUBE {
-        image_tag = f"{app_name}:dev";
-        env_overrides = get_minikube_docker_env();
-        run_docker_build(context_dir, image_tag, dockerfile, build_args, env_overrides);
-        return _retag_with_content_id(image_tag, env_overrides);
-    }
-
-    if cluster_type == CLUSTER_K3D {
-        image_tag = f"{app_name}:dev";
-        run_docker_build(context_dir, image_tag, dockerfile, build_args);
-        # Retag BEFORE import so the cluster holds the new content-addressed tag.
-        image_tag = _retag_with_content_id(image_tag);
-        cluster = k3d_cluster_name(_active_context_name());
-        run_k3d_image_import(image_tag, cluster);
-        return image_tag;
-    }
-
-    if cluster_type == CLUSTER_KIND {
-        image_tag = f"{app_name}:dev";
-        run_docker_build(context_dir, image_tag, dockerfile, build_args);
-        image_tag = _retag_with_content_id(image_tag);
-        cluster = kind_cluster_name(_active_context_name());
-        run_kind_image_load(image_tag, cluster);
-        return image_tag;
-    }
-
-    # CLUSTER_REMOTE
-    if not registry_url {
-        raise RuntimeError(
-            "Remote K8s needs a registry. Add to jac.toml:\n"
-            "  [plugins.scale.kubernetes]\n"
-            "  image_registry = \"my-registry.example.com/myorg\"\n"
-            "Or use a local cluster (minikube/k3d/kind)."
-        );
-    }
-    registry_prefix = registry_url.rstrip("/");
-    image_tag = f"{registry_prefix}/{app_name}:dev";
-    run_docker_build(context_dir, image_tag, dockerfile, build_args);
-    image_tag = _retag_with_content_id(image_tag);
-    run_docker_push(image_tag);
-    return image_tag;
 }

@@ -113,7 +113,7 @@ impl JFastApiServer.run_server(
     };
     # P13: wrap handle_exit so SIGTERM flips the drain flag before
     # uvicorn begins its own graceful shutdown.
-    import from jac_scale.microservices._drain { install_signal_drain }
+    import from jac_scale.microservices.gateway_internals.drain { install_signal_drain }
     import from jac_scale.config_loader { get_scale_config }
     ms_cfg = get_scale_config().get_microservices_config();
     drain_timeout: float = float(ms_cfg.get("drain_timeout_seconds", 10));
@@ -1109,7 +1109,7 @@ impl JFastApiServer.init(
         # Capture Authorization header for sv-to-sv auth propagation.
         # The sv_service_call hookimpl in plugin.jac reads this ContextVar
         # and forwards the header to the downstream service.
-        import from jac_scale.microservices._auth_ctx {
+        import from jac_scale.microservices.runtime.auth_ctx {
             set_current_auth,
             reset_current_auth
         }
@@ -1121,7 +1121,7 @@ impl JFastApiServer.init(
         # correlator. Install the log filter so this service's logs
         # get a [trace=xxxx] prefix matching the gateway's and every
         # sibling service's.
-        import from jac_scale.microservices._trace_ctx {
+        import from jac_scale.microservices.runtime.trace_ctx {
             set_current_trace,
             reset_current_trace,
             ensure_trace_id,
@@ -1186,6 +1186,8 @@ impl JFastApiServer.init(
 
     # P13: drain registered last -> outermost, so a 503 short-circuits
     # before JWT/context setup runs during graceful shutdown.
-    import from jac_scale.microservices._drain { build_drain_middleware }
+    import from jac_scale.microservices.gateway_internals.drain {
+        build_drain_middleware
+    }
     self.app.middleware('http')(build_drain_middleware("service"));
 }

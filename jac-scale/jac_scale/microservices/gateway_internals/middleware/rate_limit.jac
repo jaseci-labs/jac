@@ -118,7 +118,7 @@ def build_rate_limit_middleware(cfg: dict[str, Any]) -> Any {
         );
     }
 
-    import from jac_scale.microservices._errors { error_response }
+    import from jac_scale.microservices.runtime.errors { error_response }
 
     async def rate_limit_middleware(request: Any, call_next: Any) -> Any {
         path: str = request.url.path;

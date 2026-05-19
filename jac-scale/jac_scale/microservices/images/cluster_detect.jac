@@ -1,13 +1,11 @@
 """K8s cluster type detection for the auto-build pipeline.
 
 Reads the active kubeconfig context name and classifies it as minikube
-/ k3d / kind / remote / unknown so _image_build can pick the right
-image-distribution strategy (internal docker daemon / `<tool> image import` /
-registry push).
+/ k3d / kind / remote / unknown so the distributors module can pick
+the right image-distribution strategy.
 """
 
 import subprocess;
-import from typing { Any }
 import from jac_scale._optdeps.kubernetes { config as k8s_config_lib, ConfigException }
 
 

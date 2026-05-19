@@ -6,20 +6,22 @@ import tempfile;
 import unittest.mock as mock;
 import from typing { Any }
 import from pathlib { Path }
-import from jac_scale.microservices._image_build {
+import from jac_scale.microservices.images.build_helpers {
     resolve_dockerfile,
     ensure_dockerignore,
-    build_client_bundle,
-    auto_build_and_distribute
+    build_client_bundle
 }
-import from jac_scale.microservices._cluster_detect {
+import from jac_scale.microservices.images.auto_build { auto_build_and_distribute }
+import from jac_scale.microservices.images.cluster_detect {
     CLUSTER_MINIKUBE,
     CLUSTER_K3D,
     CLUSTER_KIND,
     CLUSTER_REMOTE,
     CLUSTER_UNKNOWN
 }
-import jac_scale.microservices._image_build as ib_mod;
+import jac_scale.microservices.images.build_helpers as helpers_mod;
+import jac_scale.microservices.images.auto_build as ab_mod;
+import jac_scale.microservices.images.distributors as dist_mod;
 
 
 test "resolve_dockerfile priority: user override > shipped > embedded fallback" {
@@ -36,7 +38,9 @@ test "resolve_dockerfile priority: user override > shipped > embedded fallback" 
         # 2. Embedded fallback when no user file + no shipped Dockerfile.
         proj2 = Path(tmp) / "myapp";
         proj2.mkdir();
-        with mock.patch.object(ib_mod, "find_shipped_dockerfile", return_value=None) {
+        with mock.patch.object(
+            helpers_mod, "find_shipped_dockerfile", return_value=None
+        ) {
             (df, ctx, args) = resolve_dockerfile(proj2);
         }
         assert df.parent.name == ".jac";
@@ -76,9 +80,9 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
     with tempfile.TemporaryDirectory() as tmp {
         project = Path(tmp);
         with mock.patch.object(
-            ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE
+            ab_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE
         ) {
-            with mock.patch.object(ib_mod, "_read_client_entry", return_value="") {
+            with mock.patch.object(ab_mod, "_read_client_entry", return_value="") {
                 raised = False;
                 try {
                     auto_build_and_distribute("myapp", project, registry_url=None);
@@ -90,22 +94,22 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
             }
         }
         with mock.patch.object(
-            ib_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE
+            ab_mod, "detect_cluster_type", return_value=CLUSTER_REMOTE
         ) {
-            with mock.patch.object(ib_mod, "_read_client_entry", return_value="") {
+            with mock.patch.object(ab_mod, "_read_client_entry", return_value="") {
                 with mock.patch.object(
-                    ib_mod,
+                    dist_mod,
                     "resolve_dockerfile",
                     return_value=(Path("/Dockerfile.microservice"), project, {})
                 ) {
-                    with mock.patch.object(ib_mod, "run_docker_build") {
+                    with mock.patch.object(dist_mod, "run_docker_build") {
                         with mock.patch.object(
-                            ib_mod,
+                            dist_mod,
                             "_retag_with_content_id",
                             side_effect=lambda tag , envNone : f"{tag}-abc123"
                         ) {
                             with mock.patch.object(
-                                ib_mod, "run_docker_push"
+                                dist_mod, "run_docker_push"
                             ) as push_mock {
                                 tag = auto_build_and_distribute(
                                     "myapp", project, registry_url="reg.example.com/org"
@@ -126,7 +130,7 @@ test "auto_build_and_distribute on remote requires registry_url, pushes when giv
 
 test "auto_build_and_distribute on unknown cluster raises actionable error" {
     with mock.patch.object(
-        ib_mod, "detect_cluster_type", return_value=CLUSTER_UNKNOWN
+        ab_mod, "detect_cluster_type", return_value=CLUSTER_UNKNOWN
     ) {
         raised = False;
         try {
