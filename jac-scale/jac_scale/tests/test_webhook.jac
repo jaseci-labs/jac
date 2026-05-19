@@ -343,14 +343,18 @@ def run_minimal_webhook_with_valid_api_key_test(base_url: str) {
 
     payload = json.dumps({});
     payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
     response = requests.post(
         f"{base_url}/webhook/MinimalWebhook",
         data=payload,
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -390,7 +394,10 @@ def run_webhook_payment_received_test(base_url: str) {
         }
     );
     payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
 
     response = requests.post(
         f"{base_url}/webhook/PaymentReceived",
@@ -398,7 +405,8 @@ def run_webhook_payment_received_test(base_url: str) {
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -454,14 +462,18 @@ def run_webhook_revoked_api_key_test(base_url: str) {
     # Verify API key works with MinimalWebhook
     payload = json.dumps({});
     payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
     response = requests.post(
         f"{base_url}/webhook/MinimalWebhook",
         data=payload,
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -484,7 +496,8 @@ def run_webhook_revoked_api_key_test(base_url: str) {
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -517,22 +530,21 @@ def run_webhook_scoped_api_key_test(base_url: str) {
 
     # Allowed walker works
     payload = json.dumps(
-        {
-            "payment_id": "PAY-1",
-            "order_id": "ORD-1",
-            "amount": 1.0,
-            "currency": "USD"
-        }
+        {"payment_id": "PAY-1", "order_id": "ORD-1", "amount": 1.0, "currency": "USD"}
     );
     payload_bytes = payload.encode("utf-8");
-    ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+    ts = str(int(time.time()));
+    signature = _generate_webhook_signature(
+        f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+    );
     allowed_resp = requests.post(
         f"{base_url}/webhook/PaymentReceived",
         data=payload,
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+            "X-Webhook-Signature": signature,
+            "X-Webhook-Timestamp": ts
         },
         timeout=10
     );
@@ -543,14 +555,18 @@ def run_webhook_scoped_api_key_test(base_url: str) {
     # Walker outside the allow-list is rejected with 403
     other_payload = json.dumps({});
     other_bytes = other_payload.encode("utf-8");
-    ts2 = str(int(time.time())); other_sig = _generate_webhook_signature(f"{ts2}.".encode("utf-8") + other_bytes, api_key_data["signing_secret"]);
+    ts2 = str(int(time.time()));
+    other_sig = _generate_webhook_signature(
+        f"{ts2}.".encode("utf-8") + other_bytes, api_key_data["signing_secret"]
+    );
     denied_resp = requests.post(
         f"{base_url}/webhook/MinimalWebhook",
         data=other_payload,
         headers={
             "Content-Type": "application/json",
             "X-API-Key": api_key,
-            "X-Webhook-Signature": other_sig, "X-Webhook-Timestamp": ts2
+            "X-Webhook-Signature": other_sig,
+            "X-Webhook-Timestamp": ts2
         },
         timeout=10
     );
@@ -714,14 +730,18 @@ test "webhook without mongo - minimal webhook with valid api key" {
 
         payload = json.dumps({});
         payload_bytes = payload.encode("utf-8");
-        ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
         response = client.post(
             "/webhook/MinimalWebhook",
             content=payload,
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
 
@@ -766,7 +786,10 @@ test "webhook without mongo - payment received with fields" {
             }
         );
         payload_bytes = payload.encode("utf-8");
-        ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
 
         response = client.post(
             "/webhook/PaymentReceived",
@@ -774,7 +797,8 @@ test "webhook without mongo - payment received with fields" {
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
 
@@ -843,14 +867,18 @@ test "webhook without mongo - revoked api key" {
         # Verify API key works with MinimalWebhook
         payload = json.dumps({});
         payload_bytes = payload.encode("utf-8");
-        ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
         response = client.post(
             "/webhook/MinimalWebhook",
             content=payload,
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
         assert response.status_code == 200;
@@ -870,7 +898,8 @@ test "webhook without mongo - revoked api key" {
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
 
@@ -915,14 +944,18 @@ test "webhook without mongo - scoped api key" {
             }
         );
         payload_bytes = payload.encode("utf-8");
-        ts = str(int(time.time())); signature = _generate_webhook_signature(f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]);
+        ts = str(int(time.time()));
+        signature = _generate_webhook_signature(
+            f"{ts}.".encode("utf-8") + payload_bytes, api_key_data["signing_secret"]
+        );
         allowed_resp = client.post(
             "/webhook/PaymentReceived",
             content=payload,
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": signature, "X-Webhook-Timestamp": ts
+                "X-Webhook-Signature": signature,
+                "X-Webhook-Timestamp": ts
             }
         );
         assert allowed_resp.status_code == 200 , (
@@ -931,14 +964,18 @@ test "webhook without mongo - scoped api key" {
 
         other_payload = json.dumps({});
         other_bytes = other_payload.encode("utf-8");
-        ts2 = str(int(time.time())); other_sig = _generate_webhook_signature(f"{ts2}.".encode("utf-8") + other_bytes, api_key_data["signing_secret"]);
+        ts2 = str(int(time.time()));
+        other_sig = _generate_webhook_signature(
+            f"{ts2}.".encode("utf-8") + other_bytes, api_key_data["signing_secret"]
+        );
         denied_resp = client.post(
             "/webhook/MinimalWebhook",
             content=other_payload,
             headers={
                 "Content-Type": "application/json",
                 "X-API-Key": api_key,
-                "X-Webhook-Signature": other_sig, "X-Webhook-Timestamp": ts2
+                "X-Webhook-Signature": other_sig,
+                "X-Webhook-Timestamp": ts2
             }
         );
         assert denied_resp.status_code == 403 , (

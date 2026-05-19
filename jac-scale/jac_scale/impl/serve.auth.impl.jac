@@ -475,12 +475,12 @@ impl JacAPIServerAuth.register_api_key_endpoints -> None {
         scoped: list[str] | None = None;
         if allowed_walkers {
             scoped = [
-                w.strip() for w in allowed_walkers.split(',') if w.strip()
+                w.strip()
+                for w in allowed_walkers.split(',')
+                if w.strip()
             ];
         }
-        return self.create_api_key(
-            name, expiry_days, authorization, scoped
-        );
+        return self.create_api_key(name, expiry_days, authorization, scoped);
     }
     async def list_api_keys_handler(request: Request) -> TransportResponse {
         authorization = request.headers.get('Authorization');

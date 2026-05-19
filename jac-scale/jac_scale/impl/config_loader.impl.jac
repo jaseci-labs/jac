@@ -228,12 +228,8 @@ impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
         'replay_tolerance_seconds': int(
             webhook_config.get('replay_tolerance_seconds', 300)
         ),
-        'max_body_bytes': int(
-            webhook_config.get('max_body_bytes', 1048576)
-        ),
-        'rate_limit_per_minute': int(
-            webhook_config.get('rate_limit_per_minute', 0)
-        ),
+        'max_body_bytes': int(webhook_config.get('max_body_bytes', 1048576)),
+        'rate_limit_per_minute': int(webhook_config.get('rate_limit_per_minute', 0)),
         'api_key_expiry_days': int(webhook_config.get('api_key_expiry_days', 365))
     };
 }

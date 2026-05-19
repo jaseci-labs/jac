@@ -46,9 +46,7 @@ impl WebhookUtils.create_api_key_token(
         payload['exp'] = current_time + timedelta(days=int(default_expiry));
     }
     # If expiry_days is 0 or negative, no expiry is set (permanent key)
-    return jwt.encode(
-        payload, jwt_config['secret'], algorithm=jwt_config['algorithm']
-    );
+    return jwt.encode(payload, jwt_config['secret'], algorithm=jwt_config['algorithm']);
 }
 
 """Validate an API key token and extract user information."""
@@ -56,9 +54,7 @@ impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
     try {
         jwt_config = get_scale_config().get_jwt_config();
         payload = jwt.decode(
-            api_key,
-            jwt_config['secret'],
-            algorithms=[jwt_config['algorithm']]
+            api_key, jwt_config['secret'], algorithms=[jwt_config['algorithm']]
         );
 
         # Verify this is an API key token
@@ -152,7 +148,7 @@ impl ApiKeyManager.create_api_key(
         'expires_at': expires_at.isoformat() if expires_at else None,
         'revoked': False,
         'signing_secret': signing_secret,
-        'allowed_walkers': allowed_walkers if allowed_walkers else []
+        'allowed_walkers': allowed_walkers or []
     };
     if self._db is not None {
         self._db.insert_one(self._collection, key_doc);
@@ -336,9 +332,7 @@ Best-effort and per-process: in a multi-pod deployment each pod tracks
 its own window, so this is a coarse safety valve, not a global quota. A
 non-positive limit disables the check.
 """
-impl ApiKeyManager.check_rate_limit_for(
-    api_key: str, limit_per_minute: int
-) -> bool {
+impl ApiKeyManager.check_rate_limit_for(api_key: str, limit_per_minute: int) -> bool {
     if limit_per_minute <= 0 {
         return True;
     }

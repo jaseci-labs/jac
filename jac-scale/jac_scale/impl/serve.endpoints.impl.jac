@@ -312,9 +312,7 @@ impl JacAPIServerEndpoints.get_walker_protocol(walker_name: str) -> str {
 impl JacAPIServerEndpoints.create_webhook_callback(
     walker_name: str
 ) -> Callable[..., TransportResponse] {
-    async def _process(
-        request: Request, **kwargs: JsonValue
-    ) -> TransportResponse {
+    async def _process(request: Request, **kwargs: JsonValue) -> TransportResponse {
         import time;
 
         webhook_config = get_scale_config().get_webhook_config();
@@ -325,9 +323,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             'timestamp_header', 'X-Webhook-Timestamp'
         );
         verify_signature = webhook_config.get('verify_signature', True);
-        replay_tolerance = int(
-            webhook_config.get('replay_tolerance_seconds', 300)
-        );
+        replay_tolerance = int(webhook_config.get('replay_tolerance_seconds', 300));
         max_body_bytes = int(webhook_config.get('max_body_bytes', 1048576));
         rate_limit = int(webhook_config.get('rate_limit_per_minute', 0));
 
@@ -359,9 +355,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             );
         }
         # Enforce per-key walker scoping (allow-list on the key)
-        if not self.get_api_key_manager().is_walker_allowed(
-            api_key, walker_name
-        ) {
+        if not self.get_api_key_manager().is_walker_allowed(api_key, walker_name) {
             return TransportResponse.fail(
                 code='FORBIDDEN',
                 message='API key is not permitted to call this webhook',
@@ -369,9 +363,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             );
         }
         # Per-key rate limit (best-effort, per-process; off when <= 0)
-        if not self.get_api_key_manager().check_rate_limit_for(
-            api_key, rate_limit
-        ) {
+        if not self.get_api_key_manager().check_rate_limit_for(api_key, rate_limit) {
             return TransportResponse.fail(
                 code='RATE_LIMITED',
                 message='Rate limit exceeded',
@@ -446,9 +438,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             # The api_key travels in this request, so using it as the HMAC
             # secret would let any observer forge a valid signature. The
             # signing secret is shared out of band and never sent here.
-            signing_secret = self.get_api_key_manager().get_signing_secret(
-                api_key
-            );
+            signing_secret = self.get_api_key_manager().get_signing_secret(api_key);
             if not signing_secret {
                 return TransportResponse.fail(
                     code='UNAUTHORIZED',
@@ -517,18 +507,14 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             data=result, meta=Meta(extra={'http_status': 200})
         );
     }
-    async def callback(
-        request: Request, **kwargs: JsonValue
-    ) -> TransportResponse {
+    async def callback(request: Request, **kwargs: JsonValue) -> TransportResponse {
         # Audit chokepoint: every webhook outcome (accept or reject) is
         # logged once with the walker, client IP and result code so abuse
         # and probing are visible.
         client_ip = request.client.host if request?.client else '-';
         resp = await _process(request, **kwargs);
         status = resp.meta.extra.get('http_status') if resp?.meta else None;
-        outcome = 'ok' if resp.ok else (
-            resp.error.code if resp?.error else 'error'
-        );
+        outcome = 'ok' if resp.ok else (resp.error.code if resp?.error else 'error');
         audit_line = (
             f"webhook audit walker={walker_name} ip={client_ip} "
             f"status={status} outcome={outcome}"
