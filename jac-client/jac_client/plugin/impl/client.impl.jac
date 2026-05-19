@@ -128,11 +128,16 @@ impl JacClient.render_page(
     headers = request_ctx.get("headers", {}) if request_ctx else {};
     resolved_base = target.resolve_asset_base(headers);
 
+    base_prefix = resolved_base or "/";
+    if not base_prefix.endswith('/') {
+        base_prefix += '/';
+    }
+
     css_link = '';
     css_file = dist_dir / 'styles.css';
     if css_file.exists() {
         css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
-        css_link = f'<link rel="stylesheet" href="static/styles.css?hash={css_hash}"/>';
+        css_link = f'<link rel="stylesheet" href="{base_prefix}static/styles.css?hash={css_hash}"/>';
     }
     client_cfg = config.get_plugin_config("client") if config else None;
     meta_data = client_cfg.get("app_meta_data", {}) if client_cfg else {};
@@ -153,19 +158,21 @@ impl JacClient.render_page(
         pwa_cfg = client_cfg.get("pwa", {}) if client_cfg else {};
         pwa_theme_color = pwa_cfg.get("theme_color", "#000000");
         pwa_head = f'''
-    <link rel="manifest" href="static/manifest.json">
+    <link rel="manifest" href="{base_prefix}static/manifest.json">
     <meta name="theme-color" content="{pwa_theme_color}">
-    <link rel="apple-touch-icon" href="static/pwa-192x192.png">''';
+    <link rel="apple-touch-icon" href="{base_prefix}static/pwa-192x192.png">''';
         pwa_body = '''
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('static/sw.js')
+          navigator.serviceWorker.register('{base_prefix}static/sw.js')
             .then((reg) => console.log('SW registered:', reg.scope))
             .catch((err) => console.log('SW registration failed:', err));
         });
       }
-    </script>''';
+    </script>'''.replace(
+            '{base_prefix}', base_prefix
+        );
     }
     # Build __jac_init__ JSON with endpoint effects for client-side auto-caching
     init_data = {
@@ -177,7 +184,7 @@ impl JacClient.render_page(
     };
     init_json = json.dumps(init_data).replace('</', '<\\/');
     init_script = f'<script id="__jac_init__" type="application/json">{init_json}</script>';
-    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}{pwa_head}</head><body><div id="root"></div>{init_script}{pwa_body}<script type="module" src="static/client.js?hash={bundle_hash}"></script></body></html>';
+    page = f'<!DOCTYPE html><html lang="en"><head>{head_content}{pwa_head}</head><body><div id="root"></div>{init_script}{pwa_body}<script type="module" src="{base_prefix}static/client.js?hash={bundle_hash}"></script></body></html>';
     return {
         'html': page,
         'bundle_hash': bundle_hash,

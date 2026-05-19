@@ -2358,7 +2358,7 @@ test "render_page base tag injection" {
     assert "html" in res;
     html = res["html"];
     assert '<base href="/">' in html;
-    assert 'src="static/client.js' in html;
+    assert 'src="/static/client.js' in html;
 
     # 2. Render with proxy headers (e.g. dynamic subpath behind Nginx)
     headers = {"X-Forwarded-Prefix": "/my-reverse-proxy"};
@@ -2367,5 +2367,5 @@ test "render_page base tag injection" {
     );
     html_proxy = res_proxy["html"];
     assert '<base href="/my-reverse-proxy/">' in html_proxy;
-    assert 'src="static/client.js' in html_proxy;
+    assert 'src="/my-reverse-proxy/static/client.js' in html_proxy;
 }
