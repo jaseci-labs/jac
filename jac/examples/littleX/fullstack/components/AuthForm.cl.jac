@@ -15,7 +15,7 @@ def:pub AuthForm(
         <div className="lx-auth-root">
             <div className="lx-auth-left">
                 <img
-                    src="/static/assets/littlex-logo.png"
+                    src="/static/assets/littlex-logo.svg"
                     className="lx-auth-logo-big"
                     alt="little-x"
                 />
@@ -23,7 +23,7 @@ def:pub AuthForm(
             <div className="lx-auth-right">
                 <div className="lx-auth-box">
                     <img
-                        src="/static/assets/littlex-logo.png"
+                        src="/static/assets/littlex-logo.svg"
                         className="lx-auth-mobile-logo"
                         alt="little-x"
                     />

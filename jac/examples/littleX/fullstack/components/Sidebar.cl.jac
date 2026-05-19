@@ -18,7 +18,7 @@ def:pub Sidebar(
         <aside className="lx-sidebar-left">
             <div className="lx-brand">
                 <img
-                    src="/static/assets/littlex-logo.png"
+                    src="/static/assets/littlex-logo.svg"
                     className="lx-brand-logo"
                     alt="little-x"
                 />
