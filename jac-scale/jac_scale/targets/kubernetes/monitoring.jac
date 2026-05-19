@@ -257,12 +257,21 @@ obj MonitoringDeployer {
                 ]
             }
         };
-        # Always patch so the config-hash annotation propagates and triggers a rollout
-        # when the scrape config changes. Fall back to create on first deploy.
-        # Storage size and serviceName are immutable StatefulSet fields — never patch them.
+        # On redeploy, patch only mutable fields so the config-hash annotation propagates
+        # and triggers a rollout when the scrape config changes.
+        # volumeClaimTemplates and serviceName are immutable — sending them in a patch
+        # causes K8s to reject it with 422. Use the full body only for the initial create.
+        prometheus_patch = {
+            'metadata': prometheus_statefulset['metadata'],
+            'spec': {
+                'replicas': prometheus_statefulset['spec']['replicas'],
+                'selector': prometheus_statefulset['spec']['selector'],
+                'template': prometheus_statefulset['spec']['template']
+            }
+        };
         try {
             apps_v1.patch_namespaced_stateful_set(
-                name=prometheus_name, namespace=namespace, body=prometheus_statefulset
+                name=prometheus_name, namespace=namespace, body=prometheus_patch
             );
         } except ApiException as e {
             if e.status == 404 {
