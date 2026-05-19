@@ -1048,15 +1048,15 @@ test "desktop build generates index.html with custom base_path" {
         project_dir = Path(temp_dir) / "multi_segment_app";
         import shutil;
         shutil.copytree(app_dir, project_dir);
-        # Update jac.toml with custom base_path
+        # Update jac.toml with custom static_base_path
         jac_toml_path = project_dir / "jac.toml";
         jac_toml_content = jac_toml_path.read_text();
         if "[plugins.client]" in jac_toml_content {
             jac_toml_content = jac_toml_content.replace(
-                "[plugins.client]", "[plugins.client]\nbase_path = \"/myapp/\""
+                "[plugins.client]", "[plugins.client]\nstatic_base_path = \"/myapp/\""
             );
         } else {
-            jac_toml_content += "\n[plugins.client]\nbase_path = \"/myapp/\"\n";
+            jac_toml_content += "\n[plugins.client]\nstatic_base_path = \"/myapp/\"\n";
         }
         jac_toml_path.write_text(jac_toml_content);
         jac_cmd = get_jac_command();
@@ -1101,11 +1101,11 @@ test "desktop build generates index.html with custom base_path" {
         assert 'base: "/myapp/"' in vite_config_content , (
             f"vite.config.js should have base set to /myapp/. Content:\n{vite_config_content}"
         );
-        # Test 2: base_path = "./"
+        # Test 2: static_base_path = "./"
         # Update jac.toml again
         jac_toml_content = jac_toml_path.read_text();
         jac_toml_content = jac_toml_content.replace(
-            'base_path = "/myapp/"', 'base_path = "./"'
+            'static_base_path = "/myapp/"', 'static_base_path = "./"'
         );
         jac_toml_path.write_text(jac_toml_content);
         # Run build again (should be fast as node_modules exist)
