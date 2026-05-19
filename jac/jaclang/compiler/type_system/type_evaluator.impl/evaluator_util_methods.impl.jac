@@ -40,6 +40,11 @@ impl TypeEvaluator._build_field_params(
             if skip_deferred and has_var.defer {
                 continue;
             }
+            # Property declarations (`has x: T { get; set; }`) are not dataclass
+            # fields — they synthesize accessor methods, not init parameters.
+            if has_var.accessors is not None {
+                continue;
+            }
             param_type: TypeBase | None = None;
             if has_var.type_tag {
                 var_type_expr = has_var.type_tag.tag;
@@ -376,7 +381,7 @@ impl TypeEvaluator._get_enclosing_return_scope(
     return None;
 }
 
-"""Get the resolved return type from an Ability or LambdaExpr, or None if unresolvable."""
+
 impl TypeEvaluator._get_declared_return_type(
     scope: uni.Ability | uni.LambdaExpr
 ) -> TypeBase | None {
@@ -392,6 +397,27 @@ impl TypeEvaluator._get_declared_return_type(
             );
         }
         return None;
+    }
+    # Property accessors without an explicit return type inherit the property's
+    # declared type. Inline `get { ... }` and inline impl bodies for `get` whose
+    # declaration was sig-less both hit this path.
+    if (
+        isinstance(scope, uni.Ability)
+        and (scope.accessor_kind == "property")
+        and (
+            (scope.signature is None)
+            or (
+                isinstance(scope.signature, uni.FuncSignature)
+                and (scope.signature.return_type is None)
+            )
+        )
+    ) {
+        hv = scope.find_parent_of_type(uni.HasVar);
+        if hv and hv.type_tag {
+            return self._convert_to_instance(
+                self.get_type_of_expression(hv.type_tag.tag)
+            );
+        }
     }
     # Ability path — resolve via get_type_of_ability (handles both annotated
     # and unannotated cases; unannotated defaults to NoneType).
@@ -758,6 +784,16 @@ impl TypeEvaluator._classify_property_symbol(
 ) -> type_utils.PropertyWriteKind {
     import from jaclang.compiler.type_system.type_utils { PropertyWriteKind }
     node_ = symbol.decl.name_of;
+    # Native property syntax: `has x: T { get; set; }` etc.
+    # Read-only iff there's no `set` accessor in the bundle.
+    if isinstance(node_, uni.HasVar) and (node_.accessors is not None) {
+        for acc in node_.accessors {
+            if acc.accessor_kind == "setter" {
+                return PropertyWriteKind.WRITABLE;
+            }
+        }
+        return PropertyWriteKind.READ_ONLY;
+    }
     if not isinstance(node_, uni.Ability) {
         return PropertyWriteKind.NOT_PROPERTY;
     }
@@ -822,6 +858,25 @@ impl TypeEvaluator.get_property_write_type(
     kind = self._classify_property_symbol(symbol);
     if kind == PropertyWriteKind.NOT_PROPERTY {
         return PropertyWriteResult(kind=PropertyWriteKind.NOT_PROPERTY);
+    }
+
+    # Native HasVar property (`has x: T { get; set; }`): write type = declared type.
+    node_decl = symbol.decl.name_of;
+    if isinstance(node_decl, uni.HasVar) and (node_decl.accessors is not None) {
+        if kind == PropertyWriteKind.READ_ONLY {
+            return PropertyWriteResult(kind=PropertyWriteKind.READ_ONLY);
+        }
+        if node_decl.type_tag {
+            decl_ty = self._convert_to_instance(
+                self.get_type_of_expression(node_decl.type_tag.tag)
+            );
+            return PropertyWriteResult(
+                kind=PropertyWriteKind.WRITABLE, write_type=decl_ty
+            );
+        }
+        return PropertyWriteResult(
+            kind=PropertyWriteKind.WRITABLE, write_type=types.UnknownType()
+        );
     }
 
     # @cached_property (WRITABLE from classifier): write type = getter return type.
@@ -949,9 +1004,7 @@ impl TypeEvaluator._create_callable_type(
         if len(type_arg_values) == 0 {
             # Empty Callable[] - emit error and return gradual form
             self.emit_diag(E1070, error_node);
-            return types.create_callable_type(
-                [], types.UnknownType(), is_gradual=True
-            );
+            return types.create_callable_type([], types.UnknownType(), is_gradual=True);
         }
         # First argument: parameter types list or ellipsis
         first_arg = type_arg_values[0];
@@ -1118,6 +1171,13 @@ impl TypeEvaluator._get_special_form_type(
         case "Self":
             # Pyright: createSelfType (line 21227-21228) - returns TypeVarType for Self
             return type_utils.synthesize_self_type_var();
+
+        case "Never":
+            return types.NeverType();
+
+        case "NoReturn":
+            # PEP 484: NoReturn is a synonym for Never.
+            return types.NeverType();
 
         # TODO: Add Literal[...] annotation parsing support (e.g., x: Literal["a", "b"] = "a")
         # Requires _create_literal_type() method to parse type args into literal ClassTypes.
@@ -1475,7 +1535,6 @@ impl TypeEvaluator.validate_typevar_scope(
                 while sig_check {
                     if isinstance(sig_check, uni.FuncSignature) {
                         return;  # Valid: module-level TypeVar in function signature
-
                     }
                     if isinstance(
                         sig_check, (uni.Ability, uni.Archetype, uni.Module)
@@ -1509,7 +1568,6 @@ impl TypeEvaluator.validate_typevar_scope(
         for tp in func_type_params {
             if tp.name == type_var.name {
                 return;  # Valid: TypeVar used in function signature
-
             }
         }
         # TypeVar not in scope for this function
@@ -1523,7 +1581,6 @@ impl TypeEvaluator.validate_typevar_scope(
         for tp in class_type_params {
             if tp.name == type_var.name {
                 return;  # Valid: TypeVar declared in this class
-
             }
         }
         # TypeVar not declared in this class

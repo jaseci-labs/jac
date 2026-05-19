@@ -81,7 +81,7 @@ def check_deployment_status(
     node_port: int,
     path: str = '/docs',
     interval: int = 15,
-    max_retries: int = 30,
+    max_retries: int = 48,
     nlb_url: (str | None) = None,
     namespace: str = "default",
     app_name: str = "jaseci",
@@ -98,6 +98,12 @@ def ensure_pvc_exists(
     storage_size: str,
     storage_class: (str | None) = None,
     access_mode: str = 'ReadWriteOnce'
+) -> None;
+
+def parse_storage_quantity(quantity: str) -> int;
+
+def resize_pvc_if_needed(
+    core_v1: client.CoreV1Api, namespace: str, pvc_name: str, desired_size: str
 ) -> None;
 
 def wait_for_pod_phase(

@@ -84,6 +84,33 @@ impl ModelPool.postinit -> None {
     );
 }
 
+"""Resolve ctx_window for a ModelPool.
+
+Explicit overrides (call_params > self.ctx_window > config) take priority.
+When none are set, takes the minimum across pool members so we never
+over-fill the most constrained model in the pool.
+"""
+impl ModelPool._get_ctx_window(call_params: dict) -> int {
+    override = int(
+        call_params.get("ctx_window")
+        or self.ctx_window
+        or get_byllm_config().get_compaction_config().get("ctx_window", 0)
+        or 0
+    );
+    if override > 0 {
+        return override;
+    }
+    windows: list = [];
+    for m in self.models {
+        w = m._get_ctx_window({});
+        if w > 0 {
+            windows.append(w);
+        }
+    }
+    return min(windows) if windows else 0;
+}
+
+
 """Make a direct model call without streaming via the LiteLLM Router.
 
 For most strategies, router.completion() works synchronously. For
@@ -104,7 +131,6 @@ impl ModelPool.model_call_no_stream(params: dict) -> dict {
         return response;
     }
     return self._router.completion(**params);  # type: ignore
-
 }
 
 """Make a streaming model call via the LiteLLM Router.
@@ -128,7 +154,6 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
         }
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool {
             return pool.submit(asyncio.run, _collect_stream()).result();  # type: ignore
-
         }
     }
     # Fallback strategy: call Router._completion() per model with fallbacks=[]
@@ -171,5 +196,4 @@ impl ModelPool.model_call_with_stream(params: dict) -> Generator[str, None, None
         return _fallback_gen();
     }
     return self._router.completion(stream=True, **params);  # type: ignore
-
 }

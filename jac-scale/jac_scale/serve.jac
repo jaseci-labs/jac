@@ -28,6 +28,7 @@ import from jac_scale.utils { generate_random_password, _extract_path_param_name
 import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.webhook { ApiKeyManager, WebhookUtils }
 import from jac_scale.abstractions.metrics { MetricsCollector }
+import from jac_scale.events.broker { EventStreamBroker }
 import from jac_scale.websocket { WebSocketConnectionManager }
 import from typing { AsyncGenerator }
 import from inspect { isgenerator }
@@ -43,11 +44,14 @@ import from jaclang.runtimelib.builtin { ScheduleTrigger }
 import from jaclang.jac0core.constant { Constants as Con }
 import traceback;
 import from urllib.parse { quote }
-import from jac_scale.utils { extract_bearer_token }
+import from jac_scale.utils { authenticate_or_fail }
 import from jac_scale.auth_models {
     RegisterRequest,
     LoginRequest,
-    UpdatePasswordRequest
+    UpdatePasswordRequest,
+    UpdateProfileRequest,
+    UpdateProfileResponse,
+    MeResponse
 }
 
 # Load configuration from jac.toml with env var overrides
@@ -78,6 +82,9 @@ obj JacAPIServerAuth {
     def register_refresh_token_endpoint -> None;
     # Update password
     def register_update_password_endpoint -> None;
+    # Current user
+    def register_me_endpoint -> None;
+    def register_update_me_endpoint -> None;
     # SSO
     def register_sso_endpoints -> None;
     def _create_sso_callback_wrapper -> Callable[..., (Response | TransportResponse)];
@@ -115,6 +122,7 @@ obj JacAPIServerCore {
     def _register_endpoints -> None;
     def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
+    def _setup_events -> None;
     # Metrics endpoint wrapper for admin-only access
     def _create_admin_metrics_handler(
         original_handler: Callable[..., Any]
@@ -191,5 +199,6 @@ obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacA
         _hot_reloader: Any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
         _metrics: MetricsCollector | None = None,
+        _broker: EventStreamBroker | None = None,
         _ws_manager: WebSocketConnectionManager | None = None;
 }

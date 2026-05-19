@@ -92,6 +92,10 @@ impl TargetFactory.create_by_type(
         import from jac_client.plugin.src.targets.pwa_target { PWATarget }
         target = PWATarget();
         target.project_dir = project_dir;
+    } elif target_type == TargetType.MOBILE {
+        import from jac_client.plugin.src.targets.mobile_target { MobileTarget }
+        target = MobileTarget();
+        target.project_dir = project_dir;
     } else {
         # This shouldn't happen if TargetType enum is exhaustive
         raise ValueError(f"Unhandled target type: {target_type}");
@@ -114,7 +118,7 @@ impl TargetFactory.get_default(project_dir: Path) -> ClientTarget {
 impl TargetFactory.get_available_targets -> list[TargetType] {
     # Import inside function to avoid circular import
     import from jac_client.plugin.src.targets.registry { TargetType }
-    return [TargetType.WEB, TargetType.DESKTOP, TargetType.PWA];
+    return [TargetType.WEB, TargetType.DESKTOP, TargetType.PWA, TargetType.MOBILE];
 }
 
 """Get list of available target names as strings."""

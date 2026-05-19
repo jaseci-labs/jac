@@ -7,7 +7,7 @@ import from copy { copy }
 import from enum { IntEnum }
 import from hashlib { md5 }
 import from types { EllipsisType }
-import from typing { TYPE_CHECKING, Any, cast }
+import from typing { Any, cast }
 import from jaclang.jac0core.bccache { discover_base_file }
 import from jaclang.jac0core.codeinfo { CodeGenTarget, CodeLocInfo }
 import from jaclang.jac0core.constant {
@@ -22,12 +22,7 @@ import from jaclang.jac0core.constant { JacSemTokenModifier as SemTokMod }
 import from jaclang.jac0core.constant { JacSemTokenType as SemTokType }
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.modresolver { resolve_relative_path }
-
-with entry {
-    if TYPE_CHECKING {
-        import from jaclang.compiler.type_system.types { TypeBase }
-    }
-}
+import type from jaclang.compiler.type_system.types { TypeBase }
 
 import from jaclang.jac0core.treeprinter {
     print_ast_tree,
@@ -578,6 +573,7 @@ obj Import(ContextAwareNode, ElementStmt, CodeBlockStmt) {
     has from_loc: (ModulePath | None),
         items: (Sequence[ModuleItem] | Sequence[ModulePath]),
         is_absorb: bool,
+        is_typed: bool = False,
         clib_decls: (Sequence[UniNode] | None) = None,
         hint: (SubTag[Token] | None) by postinit;
 
@@ -669,9 +665,17 @@ obj SemDef(ElementStmt, AstSymbolNode, UniScopeNode) {
     def create_sem_name_node -> Name;
 }
 
-"""Enum node type for Jac Ast."""
+"""Enum node type for Jac Ast.
+
+`value_type` holds the typed-base shorthand `: T` from `enum X: T { ... }`
+(desugars to `class X(IntEnum)` for int, `class X(StrEnum)` for str, and the
+mixin pattern `class X(T, Enum)` for everything else). `base_classes` holds
+the parenthesized form `enum X(B1, B2) { ... }`. The two are mutually
+exclusive at the grammar level — the parser never populates both.
+"""
 obj Enum(ContextAwareNode, ArchSpec, AstAccessNode, AstImplNeedingNode, ArchBlockStmt, UniScopeNode) {
     has name: Name,
+        value_type: (Expr | None),
         base_classes: (Sequence[Expr] | None);
 
     def postinit -> None;
@@ -686,7 +690,8 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         is_abstract: bool,
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
-        type_params: (Sequence[TypeParam] | None) = None;
+        type_params: (Sequence[TypeParam] | None) = None,
+        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
 
     def postinit -> None;
     @property
@@ -773,7 +778,8 @@ obj ArchHas(AstAccessNode, AstDocNode, ArchBlockStmt, CodeBlockStmt) {
 obj HasVar(AstSymbolNode, AstTypedVarNode) {
     has name: Name,
         value: (Expr | None),
-        defer: bool;
+        defer: bool,
+        accessors: (Sequence[Ability] | None) = None;
 
     def postinit -> None;
 }
@@ -946,6 +952,16 @@ obj AwaitExpr(Expr) {
     def postinit -> None;
 }
 
+"""CastExpr node type for Jac Ast.
+Represents `value as cast_type` -- an unchecked, type-erased cast. At runtime
+it evaluates to `value` unchanged; statically its type is `cast_type`."""
+obj CastExpr(Expr) {
+    has value: Expr,
+        cast_type: Expr;
+
+    def postinit -> None;
+}
+
 """GlobalStmt node type for Jac Ast."""
 obj GlobalStmt(CodeBlockStmt) {
     has target: Sequence[NameAtom];
@@ -1099,7 +1115,7 @@ obj KWPair(UniNode) {
 }
 
 """InnerCompr node type for Jac Ast."""
-obj InnerCompr(AstAsyncNode, UniScopeNode) {
+obj InnerCompr(AstAsyncNode, UniScopeNode, UniCFGNode) {
     has target: Expr,
         collection: Expr,
         conditional: (list[Expr] | None);
@@ -1287,6 +1303,19 @@ obj JsxText(JsxChild) {
 """JsxExpression node type for Jac Ast."""
 obj JsxExpression(JsxChild) {
     has expr: Expr;
+
+    def postinit -> None;
+}
+
+"""JsxComment node type for Jac Ast.
+
+Represents a Jac-native JSX block comment of the form ``{#* ... *#}``.
+The whole brace-wrapped span is owned by this node so the formatter can
+round-trip the comment verbatim; codegen passes treat it as a no-op
+child and emit nothing.
+"""
+obj JsxComment(JsxChild) {
+    has value: Token;
 
     def postinit -> None;
 }

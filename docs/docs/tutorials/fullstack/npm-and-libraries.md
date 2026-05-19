@@ -7,6 +7,9 @@ Jac's client-side compiler gives you full access to the npm ecosystem. You can i
 > - Completed: [State Management](state.md)
 > - Time: ~30 minutes
 
+!!! note "npm imports and `jac check`"
+    npm packages bundle correctly under `jac start`, but the static checker has no `.d.ts`-equivalent stubs for them yet, so attribute access on imported npm symbols (`useRef().current`, `axios.get`, lodash methods, shadcn primitives, etc.) shows up as Unknown under isolated `jac check`. The snippets below run as written; a typed-stub story for npm imports lands as a separate type-checker improvement.
+
 ---
 
 ## Adding NPM Dependencies
@@ -244,7 +247,7 @@ def:pub app() -> JsxElement {
 Use ternary expressions for dynamic Tailwind classes:
 
 ```jac
-def:pub Tab(props: Any) -> JsxElement {
+def:pub Tab(props: any) -> JsxElement {
     activeCls = "border-primary text-foreground";
     inactiveCls = "border-transparent text-muted-foreground hover:text-foreground";
 
@@ -323,7 +326,7 @@ The standard shadcn `cn()` utility can be written entirely in Jac (no TypeScript
 import from "clsx" { clsx }
 import from "tailwind-merge" { twMerge }
 
-def:pub cn(inputs: Any) -> str {
+def:pub cn(inputs: any) -> str {
     args = [].slice.call(arguments);
     return twMerge(clsx(args));
 }
@@ -346,7 +349,7 @@ Here's how the shadcn Button component looks in Jac, using Class Variance Author
 import from "class-variance-authority" { cva }
 import from ...lib.utils { cn }
 
-glob _buttonVariants: Any = cva(
+glob _buttonVariants: any = cva(
     "inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors",
     {
         "variants": {
@@ -370,7 +373,7 @@ glob _buttonVariants: Any = cva(
     }
 );
 
-def:pub Button(props: Any) -> JsxElement {
+def:pub Button(props: any) -> JsxElement {
     variant = props.variant or "default";
     size = props.size or "default";
     computedClass = cn(
@@ -400,19 +403,19 @@ shadcn components wrap Radix UI primitives. Here's a Dialog example in Jac:
 import from "radix-ui" { Dialog as DialogPrimitive }
 import from ...lib.utils { cn }
 
-def:pub Dialog(props: Any) -> JsxElement {
+def:pub Dialog(props: any) -> JsxElement {
     return <DialogPrimitive.Root {...props}>
         {props.children}
     </DialogPrimitive.Root>;
 }
 
-def:pub DialogTrigger(props: Any) -> JsxElement {
+def:pub DialogTrigger(props: any) -> JsxElement {
     return <DialogPrimitive.Trigger {...props}>
         {props.children}
     </DialogPrimitive.Trigger>;
 }
 
-def:pub DialogContent(props: Any) -> JsxElement {
+def:pub DialogContent(props: any) -> JsxElement {
     return <DialogPrimitive.Portal>
         <DialogPrimitive.Overlay
             className={cn("fixed inset-0 z-50 bg-black/50", props.overlayClassName)}
@@ -505,7 +508,7 @@ def:pub CodeEditor() -> JsxElement {
         language="python"
         theme="vs-dark"
         value={code}
-        onChange={lambda value: Any -> None { code = value; }}
+        onChange={lambda value: any -> None { code = value; }}
     />;
 }
 ```

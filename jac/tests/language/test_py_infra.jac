@@ -23,7 +23,11 @@ import from jaclang.cli.commands { execution, transform }
 import from jaclang.jac0core.jir { get_jir_cache_dir, get_module_cache_path }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.compiler.passes.main.pyast_load_pass { PyastBuildPass }
-import from jaclang.runtimelib.utils { read_file_with_encoding }
+import from jaclang.jac0core.helpers {
+    read_file_with_encoding,
+    read_toml_with_encoding
+}
+import tomllib;
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      FIXTURES = os.path.join(JAC_ROOT, "tests", "language", "fixtures"),
@@ -50,8 +54,7 @@ test "pyfunc 1" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -71,8 +74,7 @@ test "pyfunc 2" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -90,8 +92,7 @@ test "pyfunc 3" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -109,8 +110,7 @@ test "pyfunc binop" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -144,8 +144,7 @@ test "py2jac" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -163,8 +162,7 @@ test "py2jac params" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -184,8 +182,7 @@ test "py2jac empty file" {
         file_source = f.read();
         converted_ast = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out;
@@ -200,8 +197,7 @@ test "py2jac augassign and doc" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -217,8 +213,7 @@ test "py2jac reassign semantics" {
         file_source = f.read();
         jac_code = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -258,8 +253,7 @@ test "py namedexpr" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -274,8 +268,7 @@ test "py bool parentheses" {
         file_source = f.read();
         output = PyastBuildPass(
             ir_in=uni.PythonModuleAst(
-                py_ast.parse(file_source),
-                orig_src=uni.Source(file_source, py_out_path)
+                py_ast.parse(file_source), orig_src=uni.Source(file_source, py_out_path)
             ),
             prog=JacProgram()
         ).ir_out.unparse();
@@ -368,27 +361,6 @@ test "deep outer imports from loc" {
         "module 'jaclang.tests.fixtures.pyfunc' from " in stdout_value
         or "module 'pyfunc' from " in stdout_value
     );
-}
-
-test "inherit baseclass sym" {
-    pytest.xfail("TODO: Support symtable for inheritance");
-    mypass = JacProgram().compile(
-        os.path.join(EXAMPLES, "guess_game", "guess_game3.jac")
-    );
-    table = None;
-    for i in mypass.sym_tab.kid_scope {
-        if i.scope_name == "GuessTheNumberGame" {
-            for j in i.kid_scope {
-                if j.scope_name == "play" {
-                    table = j;
-                    break;
-                }
-            }
-            break;
-        }
-    }
-    assert table is not None;
-    assert table.lookup("attempts") is not None;
 }
 
 test "list methods" {
@@ -557,7 +529,9 @@ test "import jac from py" {
     old_stdout = sys.stdout;
     sys.stdout = captured;
     try {
-        jac_from_py_mod = importlib.import_module("tests.language.fixtures.jac_from_py");
+        jac_from_py_mod = importlib.import_module(
+            "tests.language.fixtures.jac_from_py"
+        );
         jac_from_py_mod.main();
     } finally {
         sys.stdout = old_stdout;
@@ -658,7 +632,9 @@ test "read file with encoding utf16" {
 
 test "read file with encoding utf8 bom" {
     Jac.attach_program(JacProgram());
-    with tempfile.NamedTemporaryFile(delete=False, mode="w", encoding="utf-8-sig") as f {
+    with tempfile.NamedTemporaryFile(
+        delete=False, mode="w", encoding="utf-8-sig"
+    ) as f {
         test_content = "Hello, UTF-8 BOM test! \U0001f680";
         f.write(test_content);
         temp_path = f.name;
@@ -707,6 +683,82 @@ test "read file with encoding special characters" {
         assert "\u00a9\u00ae\u2122" in result;
         assert "\u2211\u220f\u222b" in result;
         assert "\U0001f600\U0001f60d" in result;
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+# -- read_toml_with_encoding tests --
+test "read toml with encoding utf8" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", suffix=".toml", delete=False
+    ) as f {
+        f.write('name = "demo"\nversion = "1.0.0"\n\n[deps]\npkg = "^1.0"\n');
+        temp_path = f.name;
+    }
+
+    try {
+        result = read_toml_with_encoding(temp_path);
+        assert result["name"] == "demo";
+        assert result["version"] == "1.0.0";
+        assert result["deps"]["pkg"] == "^1.0";
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "read toml with encoding utf8 bom" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8-sig", suffix=".toml", delete=False
+    ) as f {
+        f.write('description = "hello \u2013 world"\n');
+        temp_path = f.name;
+    }
+
+    try {
+        result = read_toml_with_encoding(temp_path);
+        assert result["description"] == "hello \u2013 world";
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "read toml with encoding utf16" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-16", suffix=".toml", delete=False
+    ) as f {
+        f.write('name = "utf16-encoded"\n');
+        temp_path = f.name;
+    }
+
+    try {
+        result = read_toml_with_encoding(temp_path);
+        assert result["name"] == "utf16-encoded";
+    } finally {
+        os.unlink(temp_path);
+    }
+}
+
+test "read toml with encoding malformed raises TOMLDecodeError" {
+    Jac.attach_program(JacProgram());
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", suffix=".toml", delete=False
+    ) as f {
+        f.write("this is not valid toml [[[\n");
+        temp_path = f.name;
+    }
+
+    raised = False;
+    try {
+        try {
+            read_toml_with_encoding(temp_path);
+        } except tomllib.TOMLDecodeError {
+            raised = True;
+        }
+        assert raised , "Expected TOMLDecodeError for malformed TOML";
     } finally {
         os.unlink(temp_path);
     }

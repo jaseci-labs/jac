@@ -47,19 +47,18 @@ impl ASTValidationPass.enter_binary_expr(
     }
 }
 
-"""Validate 'pass' and 'new' keywords are not used as identifiers."""
+"""Validate 'pass' is not used as an identifier.
+
+`new` was historically rejected here, but is now an ambient builtin
+(`new(Cls, ...args)`) supplied by `jaclang.runtimelib.builtin`. The
+ambient builtin lowers to `Cls(*args)` on the server and to
+`Reflect.construct(Cls, [args])` in `cl` blocks, so it is a legitimate
+identifier in every codespace. The historical JS-keyword form
+`new Foo()` is still rejected by the parser as a syntax error.
+"""
 impl ASTValidationPass.enter_name(self: ASTValidationPass, nd: uni.Name) -> None {
     if nd.value == "pass" {
         self.emit(E0010, node_override=nd, keyword="pass");
-    } elif nd.value == "new" {
-        # Only flag 'new' as a standalone identifier, not as an attribute
-        # access (e.g. hmac.new is valid Python interop).
-        is_attr = isinstance(nd.parent, uni.AtomTrailer)
-        and nd.parent.is_attr
-        and nd.parent.right is nd;
-        if not is_attr {
-            self.emit(E0010, node_override=nd, keyword="new");
-        }
     }
 }
 
@@ -295,27 +294,89 @@ impl ASTValidationPass.enter_archetype(
     and isinstance(nd.body.body, (list, tuple)) {
         body = list(nd.body.body);
     }
-    seen_methods: set[str] = set();
+    # Phase 1: collect names declared with `@property` in this class body.
+    # Property-accessor decorators (`@<name>.setter` / `.getter` / `.deleter`)
+    # reuse the same method name to extend the property, so a method whose
+    # decorator matches `@<name>.<accessor>` is only a "property accessor"
+    # (and not a duplicate-method error) when `<name>` is actually a property
+    # declared in this class. Limiting the skip to that case preserves real
+    # duplicate detection in patterns like `@bar.setter def foo` (where `bar`
+    # is not a property — the second `def foo` should still collide with
+    # any earlier `def foo` in the class).
+    properties_seen: set[str] = set();
     for item in body {
-        if isinstance(item, uni.Ability) and item.name_ref is not None {
-            # Skip @overload-decorated methods — duplicates are expected.
-            has_overload = False;
-            if item.decorators is not None {
-                for dec in item.decorators {
-                    if isinstance(dec, uni.Name) and dec.value == "overload" {
-                        has_overload = True;
-                    }
+        if (
+            isinstance(item, uni.Ability)
+            and item.name_ref is not None
+            and item.decorators is not None
+        ) {
+            for dec in item.decorators {
+                if isinstance(dec, uni.Name) and dec.value == "property" {
+                    properties_seen.add(item.name_ref.value);
+                    break;
                 }
             }
-            if has_overload {
-                continue;
+        }
+    }
+
+    # Phase 2: duplicate detection with property-accessor awareness.
+    # `seen_methods` tracks plain method names; `seen_accessors` tracks
+    # `(property_name, accessor_kind)` so that two `@x.setter def x` defs
+    # still flag as a duplicate accessor.
+    seen_methods: set[str] = set();
+    seen_accessors: set[tuple[(str, str)]] = set();
+    for item in body {
+        if not (isinstance(item, uni.Ability) and item.name_ref is not None) {
+            continue;
+        }
+        has_overload = False;
+        accessor_kind: (str | None) = None;
+        accessor_target: (str | None) = None;
+        if item.decorators is not None {
+            for dec in item.decorators {
+                if isinstance(dec, uni.Name) and dec.value == "overload" {
+                    has_overload = True;
+                } elif (
+                    isinstance(dec, uni.AtomTrailer)
+                    and isinstance(dec.right, uni.Name)
+                    and dec.right.value in ("setter", "getter", "deleter")
+                    and isinstance(dec.target, uni.Name)
+                ) {
+                    accessor_kind = dec.right.value;
+                    accessor_target = dec.target.value;
+                }
             }
-            mname = item.name_ref.value;
-            if mname in seen_methods {
+        }
+        # @overload-decorated methods may legitimately repeat names.
+        if has_overload {
+            continue;
+        }
+        mname = item.name_ref.value;
+        # Recognise a property accessor only when the decorator's target Name
+        # matches the method name and that name was declared `@property` in
+        # this class. The first guard rejects cross-property accessors like
+        # `@bar.setter def foo`; the second rejects accessors for properties
+        # not declared here. Both cases fall through to plain dup detection,
+        # which is what catches real bugs that a looser structural check
+        # would silently swallow.
+        if (
+            accessor_kind is not None
+            and accessor_target == mname
+            and mname in properties_seen
+        ) {
+            key = (mname, accessor_kind);
+            if key in seen_accessors {
+                # Two `@x.setter def x` (or two `.getter` / `.deleter`):
+                # a genuine duplicate accessor — flag it.
                 self.emit(E0076, node_override=item.name_ref, name=mname);
             }
-            seen_methods.add(mname);
+            seen_accessors.add(key);
+            continue;
         }
+        if mname in seen_methods {
+            self.emit(E0076, node_override=item.name_ref, name=mname);
+        }
+        seen_methods.add(mname);
     }
 }
 

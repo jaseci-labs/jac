@@ -9,25 +9,28 @@ These patterns are drawn from [JacBuilder](https://github.com/jaseci-labs/jacBui
 > - Completed: [NPM Packages & UI Libraries](npm-and-libraries.md)
 > - Time: ~30 minutes
 
+!!! note "Browser globals and `jac check`"
+    Most snippets on this page reference browser globals (`Reflect`, `WebSocket`, `console`, `JSON`, `URL`, `String`, `Date`, `window`, `document`, `setTimeout`, `requestAnimationFrame`, `Promise`, etc.). These are provided by the JS runtime when the file is bundled with `jac start`, but the static checker does not yet ship typed stubs for them, so isolated `jac check` runs flag those names as Unknown. The patterns work as written at runtime; typed stubs land with the browser-globals story tracked as a separate type-checker improvement.
+
 ---
 
 ## WebSocket Client
 
 ### Creating a WebSocket
 
-In Jac client code, use `Reflect.construct()` instead of the `new` keyword to instantiate browser built-in objects like `WebSocket`:
+In Jac client code, use the `new(...)` ambient builtin to instantiate browser built-in objects like `WebSocket`. (The compiler lowers the call to `Reflect.construct(WebSocket, [url])` in the emitted JS; you do not need to write that out by hand.)
 
 ```jac
-glob _ws: Any = None;
+glob _ws: any = None;
 
 def connectWebSocket(url: str) -> None {
-    _ws = Reflect.construct(WebSocket, [url]);
+    _ws = new(WebSocket, url);
 
     _ws.onopen = lambda {
         console.log("WebSocket connected");
     };
 
-    _ws.onmessage = lambda(event: Any) {
+    _ws.onmessage = lambda(event: any) {
         try {
             msg = JSON.parse(event.data);
             handleMessage(msg);
@@ -36,7 +39,7 @@ def connectWebSocket(url: str) -> None {
         }
     };
 
-    _ws.onerror = lambda(e: Any) {
+    _ws.onerror = lambda(e: any) {
         console.warn("WS error:", e);
     };
 
@@ -49,7 +52,7 @@ def connectWebSocket(url: str) -> None {
 ### Sending Messages
 
 ```jac
-def sendMessage(action: str, data: Any) -> None {
+def sendMessage(action: str, data: any) -> None {
     if not _ws or _ws.readyState != 1 {
         console.warn("WebSocket not connected");
         return;
@@ -74,9 +77,9 @@ For WebSocket protocols that use request IDs:
 
 ```jac
 glob _nextReqId: int = 1;
-glob _pendingCallbacks: Any = {};
+glob _pendingCallbacks: any = {};
 
-def wsRequest(method: str, params: Any, callback: Any) -> None {
+def wsRequest(method: str, params: any, callback: any) -> None {
     reqId = _nextReqId;
     _nextReqId = _nextReqId + 1;
 
@@ -90,7 +93,7 @@ def wsRequest(method: str, params: Any, callback: Any) -> None {
     _ws.send(JSON.stringify(msg));
 }
 
-def handleResponse(msg: Any) -> None {
+def handleResponse(msg: any) -> None {
     if msg and msg.id != undefined and _pendingCallbacks[String(msg.id)] {
         cb = _pendingCallbacks[String(msg.id)];
         _pendingCallbacks[String(msg.id)] = undefined;
@@ -103,7 +106,7 @@ def handleResponse(msg: Any) -> None {
 
 ```jac
 def buildWsUrl(basePath: str, token: str) -> str {
-    wsUrl = Reflect.construct(URL, [String(window.location.origin)]);
+    wsUrl = new(URL, String(window.location.origin));
     wsUrl.protocol = ("wss:" if window.location.protocol == "https:" else "ws:");
     wsUrl.pathname = basePath;
     wsUrl.search = "?token=" + encodeURIComponent(token);
@@ -117,36 +120,39 @@ def buildWsUrl(basePath: str, token: str) -> str {
 
 Jac compiles to JavaScript, and there are several patterns where you need to work with the compiled output in mind.
 
-### Reflect.construct for `new` Objects
+!!! tip "Lambda, closure, IIFE, and factory analogs from JS"
+    For a side-by-side mapping of common JS function idioms (`x => x + 1`, IIFEs, closure factories) to their Jac equivalents, see [§8 IIFE & Anonymous Factories](../../reference/language/functions-objects.md#8-iife-anonymous-factories) in the language reference.
 
-Jac does not have a `new` keyword. For browser built-in constructors, use `Reflect.construct()`:
+### The `new(...)` Builtin for JS Constructors
+
+Jac does not have a JavaScript-style `new` keyword. Instead, the ambient `new(Cls, ...args)` builtin is the portable spelling; in `cl` blocks the compiler lowers it to `Reflect.construct(Cls, [args])` in the generated JavaScript, which is the standard JS reflection API equivalent to `new Cls(...)`. The same call also works on the server, where it is a thin alias for `Cls(*args)`.
 
 <!-- jac-skip -->
 ```jac
 # WebSocket
-ws = Reflect.construct(WebSocket, [url]);
+ws = new(WebSocket, url);
 
 # URL
-url = Reflect.construct(URL, [String(base)]);
+url = new(URL, String(base));
 
 # Date
-now = Reflect.construct(Date, []);
+now = new(Date);
 
 # Promise
-promise = Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+promise = new(Promise, lambda(resolve: any, reject: any) {
     # ... async work ...
     resolve.call(None, result);
-}]);
+});
 
 # CustomEvent
-evt = Reflect.construct(CustomEvent, ["my-event", {"detail": {"key": "value"}}]);
+evt = new(CustomEvent, "my-event", {"detail": {"key": "value"}});
 window.dispatchEvent(evt);
 
 # Map
-map = Reflect.construct(Map, []);
+map = new(Map);
 
 # xterm.js Terminal
-terminal = Reflect.construct(XTerminal, [termConfig]);
+terminal = new(XTerminal, termConfig);
 ```
 
 ### Callback Invocations with .call()
@@ -157,21 +163,21 @@ When passing callbacks that will be invoked later, use `.call(None, ...)` to avo
 ```jac
 # Assign callback to local variable, then use .call()
 msgHandler = onMessage;
-ws.onmessage = lambda(e: Any) {
+ws.onmessage = lambda(e: any) {
     msg = JSON.parse(e.data);
     msgHandler.call(None, msg);
 };
 
 # Promise resolve/reject
-Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+new(Promise, lambda(resolve: any, reject: any) {
     resolveFn = resolve;
     rejectFn = reject;
 
     doAsyncWork(
-        lambda(result: Any) { resolveFn.call(None, result); },
-        lambda(err: Any) { rejectFn.call(None, err); }
+        lambda(result: any) { resolveFn.call(None, result); },
+        lambda(err: any) { rejectFn.call(None, err); }
     );
-}]);
+});
 ```
 
 ### String Concatenation vs F-Strings
@@ -207,10 +213,10 @@ Use `glob` for state that persists across component renders and is shared across
 ```jac
 # Module-level state (like JavaScript module variables)
 glob monacoInitialized: bool = False;
-glob cachedConfig: Any = None;
-glob initPromise: Any = None;
+glob cachedConfig: any = None;
+glob initPromise: any = None;
 
-async def:pub initializeOnce() -> Any {
+async def:pub initializeOnce() -> any {
     if monacoInitialized {
         return cachedConfig;
     }
@@ -238,7 +244,7 @@ version = globalThis.__APP_VERSION__;
 apiBase = globalThis.__API_BASE_URL__;
 
 # Browser APIs
-window.addEventListener("resize", lambda(e: Any) { handleResize(); });
+window.addEventListener("resize", lambda(e: any) { handleResize(); });
 document.querySelector(".my-element");
 ```
 
@@ -249,10 +255,11 @@ glob _THEME_EVENT: str = "theme-change";
 
 # Dispatch
 def dispatchThemeChange(theme: str) -> None {
-    evt = Reflect.construct(CustomEvent, [
+    evt = new(
+        CustomEvent,
         _THEME_EVENT,
         {"detail": {"theme": theme}}
-    ]);
+    );
     window.dispatchEvent(evt);
 }
 
@@ -263,7 +270,7 @@ def:pub ThemeListener() -> JsxElement {
     has theme: str = "light";
 
     useEffect(lambda -> None {
-        handler = lambda(e: Any) {
+        handler = lambda(e: any) {
             theme = e.detail.theme;
         };
         window.addEventListener(_THEME_EVENT, handler);
@@ -283,15 +290,15 @@ def:pub ThemeListener() -> JsxElement {
 ### Async File Reading with Promises
 
 ```jac
-def readAllEntries(reader: Any) -> Any {
-    return Reflect.construct(Promise, [lambda(resolve: Any, reject: Any) {
+def readAllEntries(reader: any) -> any {
+    return new(Promise, lambda(resolve: any, reject: any) {
         allEntries: list = [];
         resolveFn = resolve;
         rejectFn = reject;
 
         def readBatch() -> None {
             reader.readEntries(
-                lambda(entries: Any) {
+                lambda(entries: any) {
                     if not entries or entries.length == 0 {
                         resolveFn.call(None, allEntries);
                     } else {
@@ -301,11 +308,11 @@ def readAllEntries(reader: Any) -> Any {
                         readBatch();
                     }
                 },
-                lambda(err: Any) { rejectFn.call(None, err); }
+                lambda(err: any) { rejectFn.call(None, err); }
             );
         }
         readBatch();
-    }]);
+    });
 }
 ```
 
@@ -314,7 +321,7 @@ def readAllEntries(reader: Any) -> Any {
 ```jac
 import from react { useRef }
 
-def:pub useAutoSave() -> Any {
+def:pub useAutoSave() -> any {
     timerRef = useRef(None);
 
     def save(path: str, content: str) -> None {
@@ -345,12 +352,12 @@ def:pub useAutoSave() -> Any {
 ```jac
 import from react { useRef }
 
-def:pub useDrag() -> Any {
+def:pub useDrag() -> any {
     isDraggingRef = useRef(False);
     rafRef = useRef(None);
     lastXRef = useRef(0);
 
-    def onMouseMove(e: Any) -> None {
+    def onMouseMove(e: any) -> None {
         if not isDraggingRef.current { return; }
         lastXRef.current = e.clientX;
 
@@ -387,10 +394,11 @@ console.error("[DataLoader] Failed to fetch:", err);
 ### Error Recovery with Retry Limits
 
 ```jac
+
 glob _errorCount: int = 0;
 glob _maxRetries: int = 10;
 
-def handleError(context: str, err: Any) -> None {
+def handleError(context: str, err: any) -> None {
     _errorCount = _errorCount + 1;
     console.error(f"[{context}] Error #{_errorCount}:", err);
 
@@ -410,10 +418,10 @@ def handleError(context: str, err: Any) -> None {
 ```jac
 import from react { useRef }
 
-def:pub useSafeSubmit() -> Any {
+def:pub useSafeSubmit() -> any {
     sendingRef = useRef(False);
 
-    async def submit(data: Any) -> Any {
+    async def submit(data: any) -> any {
         if sendingRef.current {
             console.warn("[submit] Already in progress, skipping");
             return None;
@@ -501,10 +509,11 @@ myapp/
 Extract reusable stateful logic into custom hooks (functions starting with `use`):
 
 ```jac
+
 # hooks/usePolling.cl.jac
 import from react { useRef, useEffect }
 
-def:pub usePolling(callback: Any, intervalMs: int, enabled: bool) -> None {
+def:pub usePolling(callback: any, intervalMs: int, enabled: bool) -> None {
     timerRef = useRef(None);
     callbackRef = useRef(callback);
     callbackRef.current = callback;
@@ -554,13 +563,13 @@ def:pub PreviewPanel() -> JsxElement {
 
 | Pattern | Jac Approach |
 |---------|-------------|
-| Instantiate browser objects | `Reflect.construct(ClassName, [args])` |
+| Instantiate browser objects | `new(ClassName, ...args)` |
 | Invoke callbacks | `callback.call(None, arg)` |
 | Module-level state | `glob varname: Type = value;` |
 | Browser globals | `globalThis.X`, `window.X`, `localStorage` |
 | Newline character | `String.fromCharCode(10)` |
 | Debug logging | `console.log("[prefix]", data)` |
-| WebSocket | `Reflect.construct(WebSocket, [url])` |
+| WebSocket | `new(WebSocket, url)` |
 
 ---
 

@@ -261,6 +261,12 @@ impl JacClientConfig.get_api_config(self: JacClientConfig) -> dict[str, Any] {
     return config.get('api', {});
 }
 
+"""Get base path for HTML generation and Vite."""
+impl JacClientConfig.get_base_path(self: JacClientConfig) -> str {
+    config = self.load();
+    return str(config.get('base_path', '/'));
+}
+
 """Get Vite-specific configuration."""
 impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, Any] {
     config = self.load();

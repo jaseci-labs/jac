@@ -103,7 +103,7 @@ import from jaclang.jac0core.unitree {
     MultiString,
     LambdaExpr
 }
-import from jaclang.jac0core.unitree { AwaitExpr, ConcurrentExpr }
+import from jaclang.jac0core.unitree { AwaitExpr, CastExpr, ConcurrentExpr }
 import from jaclang.jac0core.unitree { EdgeOpRef, FilterCompr, AssignCompr }
 import from jaclang.jac0core.unitree { ConnectOp, DisconnectOp }
 import from jaclang.jac0core.unitree {
@@ -144,12 +144,17 @@ import from jaclang.jac0core.diagnostics {
     E0021,
     E0022,
     E0025,
+    E0027,
+    E0028,
+    E0026,
     E0030,
     E0032,
     E0034,
     E0045,
     E0046,
     E0047,
+    E0080,
+    E0081,
     W0060,
     W0061,
     W0063
@@ -338,6 +343,9 @@ impl Parser.is_keyword_token -> bool {
         TokenKind.KW_STATIC,
         TokenKind.KW_OVERRIDE,
         TokenKind.KW_IMPL,
+        TokenKind.KW_GETTER,
+        TokenKind.KW_SETTER,
+        TokenKind.KW_DELETER,
         TokenKind.KW_SEM,
         TokenKind.KW_TEST,
         TokenKind.KW_GLOBAL,
@@ -811,19 +819,23 @@ impl Parser.parse_module -> Module {
     return module;
 }
 
-impl Parser.parse_expression -> Expr {
+impl Parser.parse_expression(allow_cast: bool = True) -> Expr {
     if self.check(TokenKind.KW_LAMBDA) {
         return self.parse_lambda_expr();
     }
-    expr = self.parse_concurrent_expr();
+    # `allow_cast=False` parses one level below the `as`-cast so a trailing
+    # `as` stays available to the caller (the `with`/`except` alias). It is
+    # threaded through the ternary branches so the whole expression — not just
+    # its first operand — is cast-free; a parenthesized `(x as T)` still casts.
+    expr = self.parse_cast() if allow_cast else self.parse_concurrent_expr();
     if self._check_js_arrow_fault() {
         expr = self._recover_js_arrow_fault(expr);
     }
     if self.match_tok(TokenKind.KW_IF) {
         if_uni = self.make_uni_token(self.previous());
-        condition = self.parse_expression();
+        condition = self.parse_expression(allow_cast);
         else_uni = self.consume_uni(TokenKind.KW_ELSE);
-        else_value = self.parse_expression();
+        else_value = self.parse_expression(allow_cast);
         cond_cfg = CfgExpr(expr=condition, kid=[condition]);
         val_cfg = CfgExpr(expr=expr, kid=[expr]);
         else_cfg = CfgExpr(expr=else_value, kid=[else_value]);
@@ -904,11 +916,27 @@ impl Parser.parse_by_expr -> Expr {
     if self.match_tok(TokenKind.KW_BY) {
         by_uni = self.make_uni_token(self.previous());
         right = self.parse_by_expr();
-        return BinaryExpr(
-            left=left, op=by_uni, right=right, kid=[left, by_uni, right]
-        );
+        return BinaryExpr(left=left, op=by_uni, right=right, kid=[left, by_uni, right]);
     }
     return left;
+}
+
+"""Parse type-cast expressions: expr as Type.
+
+An unchecked, type-erased cast — at runtime it evaluates to the operand; its
+static type is the named type. The cast sits just below the ternary: `a + b as T`
+is `(a + b) as T`, and a ternary must be parenthesized to be cast. `as` chains
+left-associatively, so `x as A as B` is `(x as A) as B`. `with`/`except` parse
+their context expression via `parse_concurrent_expr` (below this level), so the
+statement's own `as` alias is never swallowed here."""
+impl Parser.parse_cast -> Expr {
+    expr = self.parse_concurrent_expr();
+    while self.match_tok(TokenKind.KW_AS) {
+        as_uni = self.make_uni_token(self.previous());
+        cast_type = self.parse_pipe();
+        expr = CastExpr(value=expr, cast_type=cast_type, kid=[expr, as_uni, cast_type]);
+    }
+    return expr;
 }
 
 impl Parser.parse_pipe -> Expr {
@@ -1127,6 +1155,9 @@ impl Parser.parse_connect -> Expr {
         if conn_op is None {
             break;
         }
+        if self._recover_missing_connect_rhs() {
+            break;
+        }
         right = self.parse_atomic_pipe();
         kid: list = [left, conn_op, right];
         left = BinaryExpr(left=left, op=conn_op, right=right, kid=kid);
@@ -1134,46 +1165,34 @@ impl Parser.parse_connect -> Expr {
     return left;
 }
 
+# Issue #5885 gap 10: surface a clear "missing RHS" diagnostic when a
+# connect/disconnect operator is followed by a statement-level terminator
+# instead of a right operand. Without this, the cascading parse failure
+# inside `parse_atomic_pipe` produces a misleading "Unexpected token in
+# expression: ';'" trail. Returns True when recovery emitted a diagnostic
+# and the caller should stop trying to parse the right-hand side.
+impl Parser._recover_missing_connect_rhs -> bool {
+    if not self.check_any(
+        TokenKind.SEMI,
+        TokenKind.RBRACE,
+        TokenKind.RPAREN,
+        TokenKind.RSQUARE,
+        TokenKind.COMMA,
+        TokenKind.EOF
+    ) {
+        return False;
+    }
+    self.emit_diag(E0026);
+    return True;
+}
+
 """Parse edge op ref inline (-->, <--, <-->, or typed variants like ->:Type:->)."""
 impl Parser.parse_edge_op_ref_inline -> EdgeOpRef | None {
-    if self.check_any(TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI) {
-        # Simple edge operator: -->, <--, <-->
-        tok = self.advance();
-        edge_op = self.make_uni_token(tok);
-        dir = EdgeDir.OUT
-            if tok.kind == TokenKind.ARROW_R
-            else EdgeDir.IN if tok.kind == TokenKind.ARROW_L else EdgeDir.ANY;
-        return EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_op]);
-    }
-    if self.match_tok(TokenKind.ARROW_R_P1) {
-        # Typed edge: ->:Type:->
-        start = self.make_uni_token(self.previous());
-        kid: list = [start];
-        if self.check_name() {
-            type_name = self.parse_atom();
-            kid.append(type_name);
-        }
-        if self.match_tok(TokenKind.ARROW_R_P2) {
-            end = self.make_uni_token(self.previous());
-            kid.append(end);
-        }
-        return EdgeOpRef(filter_cond=None, edge_dir=EdgeDir.OUT, kid=kid);
-    }
-    if self.match_tok(TokenKind.ARROW_L_P1) {
-        # Typed edge: <-:Type:<-
-        start = self.make_uni_token(self.previous());
-        kid: list = [start];
-        if self.check_name() {
-            type_name = self.parse_atom();
-            kid.append(type_name);
-        }
-        if self.match_tok(TokenKind.ARROW_L_P2) {
-            end = self.make_uni_token(self.previous());
-            kid.append(end);
-        }
-        return EdgeOpRef(filter_cond=None, edge_dir=EdgeDir.IN, kid=kid);
-    }
-    return None;
+    # Thin alias for the disconnect path (`del a-->b`, `del a->:T:->b`).
+    # parse_edge_op_ref already covers every edge form symmetrically, so
+    # we just forward — keeps the disconnect feature in lock-step with
+    # query/visit edge-ref parsing (including typed-edge filter clauses).
+    return self.parse_edge_op_ref();
 }
 
 """Parse connect operator (++>, <++, <++>, +>:Type:+>, etc.) or disconnect (del -->)."""
@@ -1235,6 +1254,11 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 conn_assign = AssignCompr(assigns=assigns, kid=ac_kid);
                 kid.append(conn_assign);
             }
+        }
+        if not self.check(TokenKind.CARROW_R_P2) {
+            self.emit_diag(E0027);
+            self.synchronize();
+            return None;
         }
         end_uni = self.consume_uni(TokenKind.CARROW_R_P2);
         kid.append(end_uni);
@@ -1300,7 +1324,8 @@ impl Parser.parse_connect_op -> ConnectOp | DisconnectOp | None {
                 kid=kid
             );
         } else {
-            self.emit_diag(E0021);
+            self.emit_diag(E0028);
+            self.synchronize();
             return None;
         }
     }
@@ -2516,7 +2541,10 @@ impl Parser.parse_list_or_compr -> Expr {
         kid.append(self.consume_uni(TokenKind.RSQUARE));
         return ListCompr(out_expr=first, compr=comprs, kid=kid);
     }
-    # Check if this is an edge ref chain with expression as start (like [[<--]-->])
+    # Check if this is an edge ref chain with expression as start (like
+    # `[[<--]-->]` or `[root()->:Type:->]`). All five typed-edge token
+    # kinds lex symmetrically (see lexer's 3-char block), so a single
+    # check_any covers every continuation form.
     if self.check_any(
         TokenKind.ARROW_R,
         TokenKind.ARROW_L,
@@ -2544,63 +2572,34 @@ impl Parser.parse_list_or_compr -> Expr {
 
 """Continue parsing edge ref chain when start expression is already parsed."""
 impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> Expr {
-    # Already consumed LSQUARE and parsed start_expr
-    # This follows the same structure as parse_edge_ref_chain but with
-    # an already-parsed starting expression.
+    # Already consumed LSQUARE and parsed start_expr.
+    #
+    # Delegates per-edge-op parsing to parse_edge_op_ref so every edge
+    # form (simple `-->`, typed `->:Type:->`, typed-with-filter
+    # `->:Type:cond:->`, both directions) is handled uniformly, and this
+    # stays in sync with the no-start-expr parse_edge_ref_chain path.
+    # The trailing-handling block below mirrors parse_edge_ref_chain's
+    # exactly — kept structurally identical.
     kid: list = [lsquare_uni, start_expr];
     chain: list = [start_expr];
     while True {
-        edge_op_ref: EdgeOpRef | None = None;
-        # Check for simple edge operators: -->, <--, <-->
-        if self.check_any(TokenKind.ARROW_R, TokenKind.ARROW_L, TokenKind.ARROW_BI) {
-            edge_tok = self.advance();
-            edge_uni = self.make_uni_token(edge_tok);
-            dir = EdgeDir.OUT;
-            if edge_tok.kind == TokenKind.ARROW_L {
-                dir = EdgeDir.IN;
-            } elif edge_tok.kind == TokenKind.ARROW_BI {
-                dir = EdgeDir.ANY;
-            }
-            edge_op_ref = EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_uni]);
-        } elif self.check(TokenKind.ARROW_R_P1) {
-            self.advance();
-            start_uni = self.make_uni_token(self.previous());
-            f_type = None;
-            fcompr_kid: list = [];
-            if self.check_name() {
-                f_type = self.parse_atom();
-                fcompr_kid.append(f_type);
-            }
-            fcond = FilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
-            end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
-            edge_op_ref = EdgeOpRef(
-                filter_cond=fcond, edge_dir=EdgeDir.OUT, kid=[start_uni, fcond, end_uni]
-            );
-        } elif self.check(TokenKind.ARROW_L_P1) {
-            self.advance();
-            start_uni = self.make_uni_token(self.previous());
-            f_type = None;
-            fcompr_kid: list = [];
-            if self.check_name() {
-                f_type = self.parse_atom();
-                fcompr_kid.append(f_type);
-            }
-            fcond = FilterCompr(f_type=f_type, compares=[], kid=fcompr_kid);
-            end_uni = self.consume_uni(TokenKind.ARROW_L_P2);
-            edge_op_ref = EdgeOpRef(
-                filter_cond=fcond, edge_dir=EdgeDir.IN, kid=[start_uni, fcond, end_uni]
-            );
-        } else {
+        edge_op_ref = self.parse_edge_op_ref();
+        if edge_op_ref is None {
             break;
         }
-        if edge_op_ref is not None {
-            chain.append(edge_op_ref);
-            kid.append(edge_op_ref);
+        chain.append(edge_op_ref);
+        kid.append(edge_op_ref);
+        # Check for bracket filter after edge operator: -->[?:A] or -->[?val==5]
+        if self.check(TokenKind.LSQUARE) and self.check_peek(TokenKind.NULL_OK) {
+            self.advance();  # consume [
+            filter_expr = self.parse_filter_compr_bracket();
+            chain.append(filter_expr);
+            kid.append(filter_expr);
         }
-        # Check for filter expressions after edge operator: -->(?val==5) or -->(?:A)
-        # Note: (?:...) inside edge ref chain is NOT deprecated (brackets can't nest here)
-        if self.check(TokenKind.LPAREN) {
+        # Deprecated paren filter: -->(?:A) or -->(?val==5)
+        elif self.check(TokenKind.LPAREN) {
             if self.check_peek(TokenKind.NULL_OK) {
+                self.emit_warn(W0061, loc=self.current().loc);
                 self.advance();
                 filter_expr = self.parse_filter_compr_inner();
                 chain.append(filter_expr);
@@ -2614,6 +2613,19 @@ impl Parser.continue_edge_ref_chain(start_expr: Expr, lsquare_uni: UniToken) -> 
                 kid.append(filter_expr);
                 kid.append(self.consume_uni(TokenKind.RPAREN));
             }
+        }
+        # Target expression after edge operator (e.g. [a-->b])
+        elif self.check_any(
+            TokenKind.NAME,
+            TokenKind.KWESC_NAME,
+            TokenKind.KW_SELF,
+            TokenKind.KW_ROOT,
+            TokenKind.KW_HERE,
+            TokenKind.KW_SUPER
+        ) {
+            target_expr = self.parse_atomic_chain();
+            chain.append(target_expr);
+            kid.append(target_expr);
         }
     }
     kid.append(self.consume_uni(TokenKind.RSQUARE));
@@ -2724,42 +2736,21 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
         }
         return EdgeOpRef(filter_cond=None, edge_dir=dir, kid=[edge_uni]);
     }
-    # Typed edge out: ->:type:-> (as RETURN_HINT + COLON ... ARROW_R_P2)
-    if self.check(TokenKind.RETURN_HINT) and self.check_peek(TokenKind.COLON) {
-        self.advance();  # ->
-        arrow_r_tok = self.previous();
-        self.advance();  # :
-        start_uni = self.make_uni_token(arrow_r_tok);
-        colon_uni = self.make_uni_token(self.previous());
-        # Parse typed filter compare list
+    # Typed edge out: ->:Type:-> or ->:Type:cond1,cond2:->
+    if self.check(TokenKind.ARROW_R_P1) {
+        self.advance();  # ->:
+        start_uni = self.make_uni_token(self.previous());
         f_type = None;
         compares: list = [];
         fcompr_kid: list = [];
-        if self.check_name()
-        or self.check_any(
-            TokenKind.TYP_STRING,
-            TokenKind.TYP_INT,
-            TokenKind.TYP_FLOAT,
-            TokenKind.TYP_LIST,
-            TokenKind.TYP_TUPLE,
-            TokenKind.TYP_SET,
-            TokenKind.TYP_DICT,
-            TokenKind.TYP_BOOL,
-            TokenKind.TYP_BYTES,
-            TokenKind.TYP_ANY,
-            TokenKind.TYP_TYPE
-        ) {
+        if self.check_name() or self.is_keyword_token() {
             f_type = self.parse_atom();
-        }
-        if f_type is not None {
             fcompr_kid.append(f_type);
         }
-        # Parse optional filter conditions: :field==val,field2==val2
-        if self.check(TokenKind.COLON)
-        and not self.check_any(TokenKind.ARROW_R_P2, TokenKind.ARROW_L_P2) {
-            self.advance();  # :
+        if self.check(TokenKind.COLON) and not self.check(TokenKind.ARROW_R_P2) {
+            self.advance();
             fcompr_kid.append(self.make_uni_token(self.previous()));
-            if not self.check_any(TokenKind.ARROW_R_P2, TokenKind.ARROW_L_P2) {
+            if not self.check(TokenKind.ARROW_R_P2) {
                 cmp = self.parse_compare();
                 compares.append(cmp);
                 fcompr_kid.append(cmp);
@@ -2774,12 +2765,10 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
         fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
         end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
         return EdgeOpRef(
-            filter_cond=fcond,
-            edge_dir=EdgeDir.OUT,
-            kid=[start_uni, colon_uni, fcond, end_uni]
+            filter_cond=fcond, edge_dir=EdgeDir.OUT, kid=[start_uni, fcond, end_uni]
         );
     }
-    # Typed edge in: <-:type:<- or <-:type:a==1,b==2:<-
+    # Typed edge in: <-:Type:<- or <-:Type:cond1,cond2:<-
     if self.check(TokenKind.ARROW_L_P1) {
         self.advance();  # <-:
         start_uni = self.make_uni_token(self.previous());
@@ -2809,23 +2798,6 @@ impl Parser.parse_edge_op_ref -> EdgeOpRef | None {
         end_uni = self.consume_uni(TokenKind.ARROW_L_P2);
         return EdgeOpRef(
             filter_cond=fcond, edge_dir=EdgeDir.IN, kid=[start_uni, fcond, end_uni]
-        );
-    }
-    # Typed edge as single tokens: ARROW_R_P1 ... ARROW_R_P2
-    if self.check(TokenKind.ARROW_R_P1) {
-        self.advance();
-        start_uni = self.make_uni_token(self.previous());
-        f_type = None;
-        compares: list = [];
-        fcompr_kid: list = [];
-        if self.check_name() {
-            f_type = self.parse_atom();
-            fcompr_kid.append(f_type);
-        }
-        fcond = FilterCompr(f_type=f_type, compares=compares, kid=fcompr_kid);
-        end_uni = self.consume_uni(TokenKind.ARROW_R_P2);
-        return EdgeOpRef(
-            filter_cond=fcond, edge_dir=EdgeDir.OUT, kid=[start_uni, fcond, end_uni]
         );
     }
     return None;
@@ -3393,16 +3365,37 @@ impl Parser.parse_jsx_children -> list {
 
 """Parse a single JSX child: text, expression {expr}, or nested element."""
 impl Parser.parse_jsx_child -> Expr {
-    # Text content — store raw token; whitespace normalization is handled
-    # downstream by JsxText.get_normalized_text() (single source of truth).
+    # Text content. Heavy lifting (per-line trim, cross-line collapse)
+    # is done downstream by JsxText.get_normalized_text(); codegen also
+    # drops children that normalize to empty.
+    #
+    # Drop just one specific case here: whitespace-only AND contains a
+    # newline. That's structural source formatting between sibling JSX
+    # children (e.g. the indent between `>` and the next `<` on a new
+    # line). If we kept it as an AST node the formatter would round-trip
+    # it as an extra blank line in the source.
+    #
+    # Same-line whitespace (just spaces/tabs, no newline) is the
+    # intentional separator in `<div>{a} {b}</div>` and MUST be kept,
+    # so the rendered DOM shows "3 tasks remaining" instead of
+    # "3tasks remaining". Babel's JSX rules and our get_normalized_text
+    # treat both cases identically; this parser-side filter just
+    # drops AST nodes that would normalize to "" anyway.
     if self.check(TokenKind.JSX_TEXT) {
         text_tok = self.advance();
-        if not text_tok.value.strip() {
-            # Whitespace-only text node, skip (structural decision)
+        raw = text_tok.value;
+        if not raw.strip() and ('\n' in raw or '\r' in raw) {
             return self.parse_jsx_child();
         }
         text_node = self.make_uni_token(text_tok);
         return JsxText(value=text_node, kid=[text_node]);
+    }
+    # JSX block comment: {#* ... *#} — renders nothing, but kept in the AST
+    # so the formatter can round-trip it.
+    if self.check(TokenKind.JSX_COMMENT) {
+        cmt_tok = self.advance();
+        cmt_node = self.make_uni_token(cmt_tok);
+        return JsxComment(value=cmt_node, kid=[cmt_node]);
     }
     # Expression: {expr}
     if self.check(TokenKind.LBRACE) {
@@ -3608,7 +3601,10 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_IMPL,
         TokenKind.TYP_TYPE,
         TokenKind.KW_GLOBAL,
-        TokenKind.KW_WITH
+        TokenKind.KW_WITH,
+        TokenKind.KW_CLIENT,
+        TokenKind.KW_SERVER,
+        TokenKind.KW_NATIVE
     ) {
         return self.parse_docstring_target();
     }
@@ -3760,6 +3756,17 @@ impl Parser.parse_docstring_target{
         result = self.parse_module_code();
         result.doc = elem_doc;
         result.add_kids_left([elem_doc]);
+        return result;
+    }
+    # cl / sv / na single-stmt prefix: recurse into parse_element_stmt so the
+    # prefix is consumed and code_context is tagged on the inner element. The
+    # docstring attaches to that inner element, not to the context prefix.
+    if self.check_any(TokenKind.KW_CLIENT, TokenKind.KW_SERVER, TokenKind.KW_NATIVE) {
+        result = self.parse_element_stmt();
+        if result is not None {
+            result.doc = elem_doc;
+            result.add_kids_left([elem_doc]);
+        }
         return result;
     }
     # Complex case: decorators/async/ability/archetype — dispatch via lookahead
@@ -4072,9 +4079,16 @@ impl Parser.parse_statement{
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
     }
-    # Handle decorators for nested functions
-    if self.check(TokenKind.DECOR_OP) {
+    # Handle `static def` / `static can` (staticmethod) in code blocks.
+    # Required so `with entry { static def ... { ... } }` parses inside an
+    # enum or archetype body — otherwise `static` falls through to the
+    # E0005 "unexpected token" branch.
+    if self.check(TokenKind.KW_STATIC)
+    and self.check_peek_any(TokenKind.KW_DEF, TokenKind.KW_CAN, TokenKind.KW_ASYNC) {
         return self.parse_ability();
+    }
+    if self.check(TokenKind.DECOR_OP) {
+        return self._dispatch_decorated();
     }
     # Handle `class def` / `class can` (classmethod) in code blocks
     if self.check(TokenKind.KW_CLASS)
@@ -4155,6 +4169,12 @@ impl Parser.parse_statement{
     expr_kid: list = [expr];
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
+    } elif isinstance(expr, Name) and expr.value == "new" {
+        # `new` is an ambient builtin; a bare `new` followed by another atom
+        # is JS-style `new Foo(...)` usage. Emit the migration-friendly
+        # E0012 (which recommends `new(target, ...args)`) instead of the
+        # generic E0002 "Missing ';'".
+        self.emit_diag(E0012, loc=self.current().loc);
     } else {
         self.emit_diag(E0002, token=";");
     }
@@ -4394,7 +4414,11 @@ impl Parser.parse_try_stmt -> TryStmt {
 
 impl Parser.parse_except_handler -> Except {
     except_uni = self.consume_uni(TokenKind.KW_EXCEPT);
-    exc_type = self.parse_expression();
+    # Parse with the cast disabled so this handler's own `except ... as name`
+    # alias is not swallowed into a CastExpr; ternary/lambda stay supported.
+    # A parenthesized `(x as T)` still casts (paren contents re-enter the
+    # full expression parser).
+    exc_type = self.parse_expression(allow_cast=False);
     name = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
@@ -4425,7 +4449,9 @@ impl Parser.parse_with_stmt -> WithStmt {
     }
     with_uni = self.consume_uni(TokenKind.KW_WITH);
     exprs: list = [];
-    expr = self.parse_expression();
+    # Parse with the cast disabled so `with <expr> as <alias>` keeps its own
+    # `as`; ternary/lambda contexts still parse, and `(x as T)` still casts.
+    expr = self.parse_expression(allow_cast=False);
     alias = None;
     as_uni = None;
     if self.match_tok(TokenKind.KW_AS) {
@@ -4440,7 +4466,7 @@ impl Parser.parse_with_stmt -> WithStmt {
     comma_unis: list = [];
     while self.match_tok(TokenKind.COMMA) {
         comma_unis.append(self.make_uni_token(self.previous()));
-        expr = self.parse_expression();
+        expr = self.parse_expression(allow_cast=False);
         alias = None;
         as_uni = None;
         if self.match_tok(TokenKind.KW_AS) {
@@ -4996,10 +5022,38 @@ impl Parser.parse_assert_stmt -> AssertStmt {
 impl Parser.parse_delete_stmt -> DeleteStmt {
     del_uni = self.consume_uni(TokenKind.KW_DELETE);
     target = self.parse_expression();
+    self._recover_misplaced_disconnect();
     kid: list = [del_uni, target];
     self.expect(TokenKind.SEMI);
     kid.append(self.make_semi());
     return DeleteStmt(target=target, kid=kid);
+}
+
+# Issue #5885 gap 10: a stray edge-op-ref (`-->`, `<--`, `<-->`, or a
+# typed-edge variant `->:T:->` / `<-:T:<-`) right after a `del <expr>`
+# target means the user wrote the non-canonical disconnect form
+# `del <lhs>--><rhs>?;` and likely forgot the right operand (or wrote it
+# with the canonical form moved). Surface E0026 about the missing RHS
+# rather than the cascade of `Missing ';'` / `Unexpected token` that the
+# default recovery would emit, then skip ahead to the next terminator so
+# the trailing `;` / `}` is consumed cleanly.
+impl Parser._recover_misplaced_disconnect -> None {
+    if not self.check_any(
+        TokenKind.ARROW_R,
+        TokenKind.ARROW_L,
+        TokenKind.ARROW_BI,
+        TokenKind.ARROW_R_P1,
+        TokenKind.ARROW_L_P1
+    ) {
+        return;
+    }
+    self.emit_diag(E0026);
+    while not self.at_end()
+    and not self.check_any(
+        TokenKind.SEMI, TokenKind.RBRACE, TokenKind.RPAREN, TokenKind.RSQUARE
+    ) {
+        self.advance();
+    }
 }
 
 impl Parser.parse_global_stmt -> GlobalStmt {
@@ -5115,7 +5169,17 @@ impl Parser.parse_assignment_with_target(
     }
     # Add Semi as child of Assignment (matching Lark structure)
     if require_semi {
-        self.expect(TokenKind.SEMI);
+        if not self.check(TokenKind.SEMI)
+        and value is not None
+        and isinstance(value, Name)
+        and value.value == "new" {
+            # JS-style `lhs = new Foo(...)`: emit E0012 instead of the
+            # generic E0002 from expect(SEMI). See parse_statement for
+            # the same detection on bare expressions.
+            self.emit_diag(E0012, loc=self.current().loc);
+        } else {
+            self.expect(TokenKind.SEMI);
+        }
         kid.append(self.make_semi());
     } elif self.match_tok(TokenKind.SEMI) {
         kid.append(self.make_semi());
@@ -5139,6 +5203,12 @@ impl Parser.parse_import_stmt -> Import {
         self.expect(TokenKind.KW_IMPORT);
     }
     kid: list = [self.make_uni_token(self.previous())];
+    # Check for 'import type ...' (type-only import; lowers to TYPE_CHECKING in Python)
+    is_typed = False;
+    if not is_include and self.match_tok(TokenKind.TYP_TYPE) {
+        is_typed = True;
+        kid.append(self.make_uni_token(self.previous()));
+    }
     # Check for 'import from X { Y }' syntax
     from_loc: ModulePath | None = None;
     is_clib_import = False;
@@ -5213,6 +5283,7 @@ impl Parser.parse_import_stmt -> Import {
         from_loc=from_loc,
         items=items,
         is_absorb=is_include,
+        is_typed=is_typed,
         kid=kid,
         doc=None,
         clib_decls=clib_decls
@@ -5648,7 +5719,15 @@ impl Parser.parse_has_stmt -> ArchHas {
         has_comma_unis.append(self.make_uni_token(self.previous()));
         vars.append(self.parse_has_var());
     }
-    self.expect(TokenKind.SEMI);
+    # `;` is optional when the last var ends with an accessor brace `}`
+    last_had_accessors = vars and (vars[len(vars) - 1].accessors is not None);
+    saw_semi = False;
+    if last_had_accessors {
+        saw_semi = self.match_tok(TokenKind.SEMI) is not None;
+    } else {
+        self.expect(TokenKind.SEMI);
+        saw_semi = True;
+    }
     kid: list = [];
     if is_static {
         kid.append(self.make_uni_token(static_tok));
@@ -5664,21 +5743,23 @@ impl Parser.parse_has_stmt -> ArchHas {
         }
         kid.append(v);
     }
-    # Add trailing Semi
-    prev = self.previous();
-    kid.append(
-        Semi(
-            orig_src=self.get_source(),
-            name=Tok.SEMI.value,
-            value=";",
-            line=prev.loc.line,
-            end_line=prev.loc.end_line,
-            col_start=prev.loc.col_start,
-            col_end=prev.loc.col_end,
-            pos_start=prev.loc.pos_start,
-            pos_end=prev.loc.pos_end
-        )
-    );
+    # Add trailing Semi (synthetic if elided after accessor brace)
+    if saw_semi {
+        prev = self.previous();
+        kid.append(
+            Semi(
+                orig_src=self.get_source(),
+                name=Tok.SEMI.value,
+                value=";",
+                line=prev.loc.line,
+                end_line=prev.loc.end_line,
+                col_start=prev.loc.col_start,
+                col_end=prev.loc.col_end,
+                pos_start=prev.loc.pos_start,
+                pos_end=prev.loc.pos_end
+            )
+        );
+    }
     return ArchHas(
         is_static=is_static,
         access=access,
@@ -5728,6 +5809,27 @@ impl Parser.parse_has_var -> HasVar {
         self.expect(TokenKind.KW_POST_INIT);
         defer = True;
     }
+    # Optional accessor block: { getter/setter/deleter ... }.
+    # In Jac, `has x: T { ... }` declares a *property* (pure computed accessors);
+    # storage is never allocated implicitly. Initializers (`= value`) are reserved
+    # for the storage form `has x: T = value;` and are rejected on property blocks.
+    accessors: (list | None) = None;
+    acc_lb_uni: UniToken | None = None;
+    acc_rb_uni: UniToken | None = None;
+    if self.check(TokenKind.LBRACE) {
+        if value is not None {
+            self.emit_diag(E0080);
+        }
+        acc_lb_uni = self.consume_uni(TokenKind.LBRACE);
+        accessors = [];
+        while not self.check(TokenKind.RBRACE) {
+            accessors.append(self.parse_accessor());
+        }
+        acc_rb_uni = self.consume_uni(TokenKind.RBRACE);
+        if len(accessors) == 0 {
+            self.emit_diag(E0081);
+        }
+    }
     kid: list = [name, type_tag];
     if value {
         kid.append(eq_uni);
@@ -5737,7 +5839,96 @@ impl Parser.parse_has_var -> HasVar {
         kid.append(by_uni);
         kid.append(self.make_special_name(self.previous()));
     }
-    return HasVar(name=name, type_tag=type_tag, value=value, defer=defer, kid=kid);
+    if accessors is not None {
+        kid.append(acc_lb_uni);
+        for acc in accessors {
+            kid.append(acc);
+        }
+        kid.append(acc_rb_uni);
+    }
+    return HasVar(
+        name=name,
+        type_tag=type_tag,
+        value=value,
+        defer=defer,
+        accessors=accessors,
+        kid=kid
+    );
+}
+
+"""Recognize `getter`/`setter`/`deleter` as a property-accessor-kind keyword and consume it.
+
+All three accessor keywords are real lexer-level keywords (KW_GETTER, KW_SETTER,
+KW_DELETER). They are allowed as identifiers in normal positions via the same
+`is_keyword_token`/`_make_attr_from_keyword` mechanism that lets `int`, `set`,
+`static`, etc. be used as identifiers despite being reserved words.
+"""
+impl Parser._consume_accessor_kind -> tuple[str, Token] {
+    if self.check(TokenKind.KW_DELETER) {
+        return ("deleter", self.advance());
+    }
+    if self.check(TokenKind.KW_SETTER) {
+        return ("setter", self.advance());
+    }
+    if self.check(TokenKind.KW_GETTER) {
+        return ("property", self.advance());
+    }
+    self.emit_diag(E0001);
+    return ("property", self.advance());
+}
+
+"""Parse one property accessor: `getter`, `setter`, or `deleter`, with optional signature and body."""
+impl Parser.parse_accessor -> Ability {
+    (kind_str, kind_tok) = self._consume_accessor_kind();
+    name = self.make_name(kind_tok);
+    # Optional () params and -> return-type
+    signature: FuncSignature | None = self.parse_func_signature();
+    has_sig_content = not (
+        len(signature.kid) == 1 and isinstance(signature.kid[0], EmptyToken)
+    );
+    if not has_sig_content {
+        signature = None;
+    }
+    # Body: `{ ... }` or `;`
+    body: list | None = None;
+    body_lb_uni: UniToken | None = None;
+    body_rb_uni: UniToken | None = None;
+    if self.match_tok(TokenKind.LBRACE) {
+        body_lb_uni = self.make_uni_token(self.previous());
+        body = self.parse_code_block_stmts();
+        body_rb_uni = self.consume_uni(TokenKind.RBRACE);
+    } else {
+        self.expect(TokenKind.SEMI);
+    }
+    kid: list = [name];
+    if signature is not None {
+        kid.append(signature);
+    }
+    if body is not None {
+        kid.append(body_lb_uni);
+        for s in body {
+            kid.append(s);
+        }
+        kid.append(body_rb_uni);
+    } else {
+        kid.append(self.make_semi());
+    }
+    return Ability(
+        name_ref=name,
+        is_async=False,
+        is_override=False,
+        is_static=False,
+        is_classmethod=False,
+        is_abstract=False,
+        access=None,
+        signature=signature,
+        body=body,
+        kid=kid,
+        doc=None,
+        decorators=None,
+        type_params=None,
+        accessor_kind=kind_str
+    );
 }
 
 impl Parser.parse_ability -> Ability {
@@ -6144,11 +6335,19 @@ impl Parser.parse_enum -> Enum {
         name_tok = self.expect_name();
     }
     name = self.make_name_or_special(name_tok);
+    value_type: Expr | None = None;
+    enum_colon_uni: UniToken | None = None;
     base_classes: list = [];
     enum_lp_uni: UniToken | None = None;
     enum_rp_uni: UniToken | None = None;
     enum_base_comma_unis: list = [];
-    if self.match_tok(TokenKind.LPAREN) {
+    if self.match_tok(TokenKind.COLON) {
+        # Typed-base shorthand: `enum X: int { ... }` desugars to `class X(IntEnum)`,
+        # `enum X: str { ... }` to `class X(StrEnum)`, and `enum X: T { ... }` to
+        # `class X(T, Enum)` (Python mixin pattern). Mutually exclusive with `(...)`.
+        enum_colon_uni = self.make_uni_token(self.previous());
+        value_type = self.parse_atomic_chain();
+    } elif self.match_tok(TokenKind.LPAREN) {
         enum_lp_uni = self.make_uni_token(self.previous());
         if not self.check(TokenKind.RPAREN) {
             base_classes.append(self.parse_atomic_chain());
@@ -6207,7 +6406,10 @@ impl Parser.parse_enum -> Enum {
         kid.append(access);
     }
     kid.append(name);
-    if base_classes {
+    if value_type {
+        kid.append(enum_colon_uni);
+        kid.append(value_type);
+    } elif base_classes {
         kid.append(enum_lp_uni);
         for (i, base) in enumerate(base_classes) {
             kid.append(base);
@@ -6227,6 +6429,7 @@ impl Parser.parse_enum -> Enum {
     return Enum(
         name=name,
         access=access,
+        value_type=value_type,
         base_classes=base_classes,
         body=body,
         kid=kid,

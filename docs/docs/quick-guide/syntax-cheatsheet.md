@@ -68,6 +68,20 @@ with entry {
 
     # Jac has the same built-in types as Python:
     # int, float, str, bool, list, tuple, set, dict, bytes, any
+    # `any` vs `` `any ``: use `any` for the built-in type (placeholder for
+    # any type) and `` `any `` for the built-in Python function.
+
+    # Gradual typing: `any` cannot silently flow into a typed destination
+    # in .jac source. `x: int = py_call()` errors if py_call() returns any --
+    # either type the source (e.g. via .pyi stub) or accept it explicitly:
+    #   raw: any = py_call();   # opt in to permissive flow
+    #   raw = py_call();        # inferred -- raw becomes any, no error
+
+    # `as` cast: re-type a value (unchecked, type-erased -- runtime no-op).
+    # Use it as the escape hatch when you know more than the type checker.
+    raw: any = 41;
+    count = raw as int;          # statically int; parenthesize to cast more:
+    bumped = (raw as int) + 1;   # (x if c else y) as T  /  with (x as T) as f
 
     # Union types
     maybe: str | None = None;
@@ -102,10 +116,11 @@ include random;
 # sv import from ...main { MyWalker }       # Server import in client
 # cl import from "@jac/runtime" { Link }    # npm runtime import
 
-# Type-only imports are automatic -- the compiler detects when an import
-# is only used in type annotations and wraps it in TYPE_CHECKING for you.
-# No manual `if TYPE_CHECKING { ... }` blocks needed!
-import from mymodule { MyClass }  # auto-wrapped if only used as a type
+# Type-only import: opt-in, lowers to `if typing.TYPE_CHECKING: ...`
+# Use to break circular imports between modules that reference each other
+# only in type annotations. Don't use for archetype `has` field types or
+# names that decorators (dataclass, Pydantic, FastAPI, ...) resolve at runtime.
+import type from billing { Invoice }
 
 
 # ============================================================
@@ -287,9 +302,9 @@ obj Dog {
         print(f"{self.name} says Woof!");
     }
 
-    # Class method -- Self refers to the class
-    class def create(name: str) -> Self {
-        return Self(name=name);
+    # Static method -- no self or Self; works as a named constructor
+    static def make(name: str) -> Dog {
+        return Dog(name=name);
     }
 
     # Static method -- no self or Self
@@ -355,6 +370,32 @@ obj Example {
 
 
 # ============================================================
+# Properties (getter / setter / deleter)
+# ============================================================
+
+# A `has` with an accessor block is a property. It never allocates
+# backing storage -- declare backing fields explicitly and reference
+# them with `self._<name>`.
+
+obj Account {
+    has _balance: float = 0.0,
+        balance: float {
+            getter -> float { return self._balance; }
+            setter(value: float) { self._balance = value; }
+            deleter { self._balance = 0.0; }
+        }
+
+    # Pure computed (no backing): read-only by omitting `setter`.
+    has doubled: float {
+        getter { return self._balance * 2.0; }
+    }
+}
+
+# Accessor bodies can live in an impl block, like regular methods:
+#   impl Account.balance.getter -> float { return self._balance; }
+
+
+# ============================================================
 # Access Modifiers
 # ============================================================
 
@@ -395,9 +436,16 @@ enum Color {
 # Auto-valued enum members
 enum Status { PENDING, ACTIVE, DONE }
 
+# Typed-base shorthand: members ARE instances of T
+# `: int` -> IntEnum, `: str` -> StrEnum, `: T` -> mixin (T, Enum)
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+
 with entry {
-    print(Color.RED.value);      # "red"
-    print(Status.ACTIVE.value);  # 2
+    print(Color.RED.value);             # "red"
+    print(Status.ACTIVE.value);         # 2
+    print(HttpStatus.OK == 200);        # True (no .value needed)
+    print(isinstance(Tag.OPEN, str));   # True
 }
 
 
@@ -411,10 +459,10 @@ type Json = JsonPrimitive | list[Json] | dict[str, Json];
 # Generic type alias
 type NumberList = list[int | float];
 
-# Self type -- refers to the enclosing archetype
+# Recursive types name the enclosing archetype directly
 obj TreeNode {
     has value: int = 0,
-        next: Self | None = None;  # Self = TreeNode here
+        next: TreeNode | None = None;
 }
 
 
@@ -505,8 +553,8 @@ with entry {
 # Decorators
 # ============================================================
 
-# Prefer `class def` for classmethods in obj (see Objects section above)
-# @classmethod decorator is supported for Python `class` compatibility
+# Prefer `static def` for named constructors and `class def` for class-bound
+# methods in `obj`. The @classmethod decorator stays for Python `class` compatibility.
 @classmethod
 def my_class_method(cls: type) -> str {
     return cls.__name__;
@@ -1253,6 +1301,7 @@ def:pub Counter() -> JsxElement {
 # <div>text</div>               HTML elements
 # <Component prop="val" />      Component with props
 # {expression}                  JavaScript expression
+# {#* comment *#}               JSX comment (renders nothing)
 # {condition and <p>Show</p>}   Conditional render
 # {[<li>...</li> for x in xs]}  List rendering
 # <div {...props}>               Spread props

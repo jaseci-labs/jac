@@ -459,6 +459,9 @@ The `in` operator is defined for all container types:
 
 These functions are available in every codespace. Each backend provides its own implementation, but the behavior is the same:
 
+!!! note "Backtick Escaping for `any`"
+    The `any` builtin function must be escaped as `` `any `` to distinguish it from the `any` built-in type. This convention ensures that the type checker and compiler can correctly resolve whether you are referring to the gradual type or the boolean aggregation function.
+
 ### I/O
 
 | Function | Description |
@@ -556,6 +559,7 @@ Every primitive type can be constructed explicitly:
 | `open(file, mode)` | Open a file |
 | `format(value, spec)` | Format a value |
 | `ascii(obj)` | ASCII representation |
+| `new(cls, ...args)` | Portable constructor: `cls(*args)` on the server; `Reflect.construct(cls, [args])` in `cl` blocks |
 
 ---
 

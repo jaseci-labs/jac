@@ -25,6 +25,8 @@ Bug index:
   #IMPL-1 - Has var reassigned in impl body loses its type (shadow local)
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
+  #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
+  #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
 """
 
 import os;
@@ -582,5 +584,183 @@ test "bug_super1_super_call_returns_parent_instance" {
         "parent instance so that attribute access dispatches through the "
         "parent's MRO. "
         f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_dloc1_decorated_class_in_function_body" {
+    program = compile_and_check("checker_bug_decorated_local_class.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "Bug #DLOC-1: a decorated class inside a function body must parse "
+        "as an Archetype so the type checker recognises its constructor and "
+        "fields. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_while_loop_narrowing" {
+    program = compile_and_check("checker_bug_while_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`while cur` should narrow cur from Item|None to Item inside the body. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_subscript_index_narrowing" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "items[0], items[-1], config[\"host\"] should all narrow inside isinstance guard. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_subscript_index_narrowing_negative" {
+    program = compile_and_check("checker_bug_subscript_key_narrowing_neg.jac");
+
+    assert len(program.errors_had) >= 5 , (
+        "Variable index, range slice, and post-narrow subscript writes "
+        "(items[0]=, items[-1]=, config[\"host\"]=) must all error. "
+        "Expected at least 5 E1099 errors but got "
+        f"{len(program.errors_had)}: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+test "bug_cast_union_instance" {
+    program = compile_and_check("checker_bug_cast_union_instance.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "instance types so that attribute access on the result does not "
+        "produce false-positive E1099 errors. "
+    );
+}
+
+# =========================================================================
+# Bug #NONE-EQ: `x == None` / `x != None` did not narrow `T | None`.
+#
+# `is None` / `is not None` correctly narrowed Optional unions, but the
+# operator-equality forms fell through unhandled in classify_condition,
+# leaving attribute access on the narrowed branch typed as `T | None` and
+# producing spurious E1099 errors. Pyright, mypy, and TypeScript all
+# narrow on both forms; Jac now does too.
+# =========================================================================
+test "bug_none_eq_neq_narrowing" {
+    program = compile_and_check("checker_bug_eq_none_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`x != None` (true branch) and `x == None` (fall-through) must "
+        "narrow `T | None` to `T`, matching the existing `is`/`is not None` "
+        "behavior. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #COMPR-NARROW: `T | None` narrowing did not reach comprehension
+# iterators or conditionals.
+#
+# `InnerCompr` is a `UniCFGNode` but is never wired into the CFG. A
+# reference to a narrowed symbol inside the comprehension's `collection`
+# or `conditional` walks up to the orphan `InnerCompr` and stops, missing
+# the narrowing established by an enclosing guard. Pyright and mypy treat
+# the comprehension as part of the enclosing flow scope; Jac now does too.
+# =========================================================================
+test "bug_comprehension_narrowing" {
+    program = compile_and_check("checker_bug_compr_narrowing.jac");
+
+    assert len(program.errors_had) == 0 , (
+        "`T | None` narrowing established by an enclosing guard must "
+        "propagate into list/dict/set/gen comprehension iterators, out "
+        "expressions, and conditional clauses. "
+        f"Got errors: {[str(e) for e in program.errors_had]}"
+    );
+}
+
+# =========================================================================
+# Bug #PROP-SETTER: @<name>.setter flagged as duplicate method
+#
+# ASTValidationPass.enter_archetype scans archetype bodies for duplicate
+# method names to emit E0076. It correctly skips `@overload` methods but
+# did not skip property accessor decorators (`@<name>.setter`,
+# `@<name>.deleter`, `@<name>.getter`). Those decorators extend an existing
+# `@property` definition by reusing the same method name — the canonical
+# Python property pattern — and must not be reported as duplicates.
+#
+# Impact: any archetype declaring a property setter (e.g. JacProgram.doc_ir
+# in jac0core/codeinfo.jac) triggered a spurious E0076 syntax error.
+#
+# The fix is *semantic*, not just structural: the dup-check first collects
+# names declared with `@property` in the class body, then skips a method
+# only when its decorator is `@<name>.setter`/`.getter`/`.deleter`, the
+# decorator's target Name matches the method name, AND `<name>` was
+# declared `@property` in this class. This preserves dup detection for:
+#   (a) accessors targeting non-properties (`@bar.setter def foo`)
+#   (b) duplicate accessors of the same kind (two `@x.setter def x`)
+# =========================================================================
+"""Return E0076 errors emitted while checking a fixture."""
+def _e0076_errors_of(fixture_name: str) -> list {
+    program = compile_and_check(fixture_name);
+    return [
+        e
+        for e in program.errors_had
+        if (e.code is not None and e.code.code == "E0076")
+    ];
+}
+
+test "bug_property_setter_not_duplicate_method" {
+    # Canonical property + setter + deleter + multi-property fixture: no E0076.
+    errs = _e0076_errors_of("checker_bug_property_setter.jac");
+    assert len(errs) == 0 , (
+        "Bug #PROP-SETTER: `@<name>.setter`/`.deleter`/`.getter` decorators "
+        "extend a property and must not be flagged as duplicate methods. "
+        f"Got E0076 errors: {[str(e) for e in errs]}"
+    );
+}
+
+test "bug_property_setter_strict_masked_dup_still_reported" {
+    # `@bar.setter def foo` where `bar` is not a @property must NOT mask
+    # a real duplicate of `def foo`. A purely structural skip (any decorator
+    # ending in `.setter`/`.getter`/`.deleter`) would silently swallow this;
+    # the semantic skip only triggers when the decorator target is a
+    # property declared in this class, so the second `def foo` still flags.
+    errs = _e0076_errors_of("checker_bug_property_setter_masked_dup.jac");
+    assert len(errs) == 1 , (
+        "Bug #PROP-SETTER strict: a duplicate `def foo` whose second "
+        "occurrence carries `@bar.setter` (with no `@property def bar` in "
+        "this class) must still raise E0076 — the property-accessor skip "
+        "must be semantic, not just structural. "
+        f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+test "bug_property_setter_duplicate_accessor_reported" {
+    # Two `@val.setter def val` for the same property is a real dup: a
+    # property can have at most one setter, getter, or deleter. The dup-
+    # detector tracks `(name, accessor_kind)` pairs alongside plain
+    # method names so this case still raises E0076.
+    errs = _e0076_errors_of("checker_bug_property_setter_dup_accessor.jac");
+    assert len(errs) == 1 , (
+        "Bug #PROP-SETTER strict: declaring two `@val.setter def val` for "
+        "the same property must raise E0076 — a property has at most one "
+        "setter (or getter, or deleter). "
+        f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+# Bug #STUB-VGUARD: top-level `if sys.version_info` guards left their symbols
+# wrapped in IfStmt by proc_module, so the type checker saw e.g. `datetime.UTC`
+# as Unknown and emitted W1051 at every use site.
+test "bug_stub_vguard_module_level_symbol_resolves" {
+    program = compile_and_check("checker_bug_version_guard_stub_symbol.jac");
+    unresolved = [
+        w
+        for w in program.warnings_had
+        if "could not be resolved" in str(w)
+    ];
+    assert unresolved == [] , (
+        "Bug #STUB-VGUARD: `datetime.UTC` (defined under `if sys.version_info "
+        ">= (3, 11):` in typeshed) must resolve to its declared type, not Unknown. "
+        f"Got W1051 warnings: {[str(w) for w in unresolved]}"
     );
 }

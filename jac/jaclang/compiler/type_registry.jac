@@ -121,6 +121,8 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              "isinstance","issubclass","type","callable",
              # Identity / hashing
              "id","hash","jid",
+             # Portable constructor (server: Cls(*args); cl: Reflect.construct)
+             "new",
              # Representation
              "repr","format","ascii",
              # Char/ord conversion

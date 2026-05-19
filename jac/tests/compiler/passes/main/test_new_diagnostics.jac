@@ -173,6 +173,32 @@ test "E0117: mixed tabs and spaces" {
     assert prog is not None and has_diagnostic_code(prog, "E0117", in_warnings=True);
 }
 
+test "W0100: invalid escape sequence warns" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "press \\q now"; }', file_path="test.jac");
+    assert has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: valid escapes do not warn" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='with entry { x = "tab\\there\\nline\\x41"; }', file_path="test.jac"
+    );
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: raw string keeps backslashes and is exempt" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = r"press \\q"; }', file_path="test.jac");
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: each invalid escape warns once" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "\\q then \\e"; }', file_path="test.jac");
+    assert count_diagnostic_code(prog, "W0100", in_warnings=True) == 2;
+}
+
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 2: PARSER / SYNTAX DIAGNOSTICS (E0052-E0078)
@@ -239,6 +265,34 @@ test "E0025: arrow in fstring slot" {
 test "E0025: empty body recovers without crash" {
     (prog, _) = parse_with_prog('with entry { f = x =>; }');
     assert has_diagnostic_code(prog, "E0025");
+}
+
+# ── E0027: forward typed connection missing :+> ──────────────────────
+test "E0027: +>: EdgeType without :+> closer emits E0027" {
+    (prog, _) = compile_only("parser_E0027_forward_missing_close.jac");
+    assert has_diagnostic_code(prog, "E0027");
+}
+
+test "E0027: complete +>: EdgeType :+> does not fire" {
+    (prog, had_err) = parse_with_prog(
+        'node N {} edge F {} with entry { n1=N(); n2=N(); n1 +>: F :+> n2; }'
+    );
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0027");
+}
+
+# ── E0028: backward typed connection missing :<+ ─────────────────────
+test "E0028: <+: EdgeType without :<+ closer emits E0028" {
+    (prog, _) = compile_only("parser_E0028_backward_missing_close.jac");
+    assert has_diagnostic_code(prog, "E0028");
+}
+
+test "E0028: complete <+: EdgeType :<+ does not fire" {
+    (prog, had_err) = parse_with_prog(
+        'node N {} edge F {} with entry { n1=N(); n2=N(); n1 <+: F :<+ n2; }'
+    );
+    assert not had_err;
+    assert not has_diagnostic_code(prog, "E0028");
 }
 
 

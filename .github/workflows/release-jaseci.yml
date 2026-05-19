@@ -32,17 +32,18 @@ jobs:
         run: |
           VERSION=$(python3 -c "
           import tomllib
-          with open('pyproject.toml', 'rb') as f:
+          with open('jac.toml', 'rb') as f:
               print(tomllib.load(f)['project']['version'])
           ")
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Install build tools
         run: |
-          pip install build twine
+          pip install -e ../jac
+          pip install twine
 
       - name: Build package
-        run: python -m build
+        run: jac bundle
 
       - name: Publish package to PyPI
         run: |

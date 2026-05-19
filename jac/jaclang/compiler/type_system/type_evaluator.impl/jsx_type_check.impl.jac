@@ -134,6 +134,78 @@ impl TypeEvaluator._validate_component_jsx_props(
     }
     matched_params: set[str] = set();
 
+    # Props-bag pattern: a component declared with a single parameter named
+    # `props` receives all JSX attributes as one object instead of as
+    # destructured named parameters (mirrors the codegen heuristic in
+    # esast_gen_pass — single param named `props`).  Validate attributes
+    # against the members of the props object's type, not against the lone
+    # `props` parameter name.
+    if len(param_map) == 1 and "props" in param_map {
+        props_type = param_map["props"].param_type;
+        # `props: any` resolves to the prefetched `any` ClassType, not
+        # AnyType — treat both (and Unknown / unannotated) as "untyped".
+        is_any_class = (
+            self.prefetch is not None
+            and self.prefetch.any_class is not None
+            and isinstance(props_type, types.ClassType)
+            and props_type.shared == self.prefetch.any_class.shared
+        );
+        if (
+            props_type is None
+            or isinstance(props_type, (types.AnyType, types.UnknownType))
+            or is_any_class
+        ) {
+            # Untyped props bag (`props: any`) — no prop schema to check
+            # against, so every attribute is accepted.  The component is
+            # flagged once at its definition site via W1052.
+            return;
+        }
+        if isinstance(props_type, types.ClassType) {
+            for attr in expr.attributes {
+                if not isinstance(attr, uni.JsxNormalAttribute) {
+                    # Spread into a typed props bag — keys can't be verified
+                    # statically, accept it.
+                    continue;
+                }
+                attr_name = attr.name.value
+                    if isinstance(attr.name, (uni.Name, uni.Token))
+                    else str(attr.name);
+                if attr_name in _JSX_RESERVED_ATTRS {
+                    continue;
+                }
+                member = self._lookup_class_member(props_type, attr_name);
+                if not member {
+                    self.emit_diag(
+                        E1101, attr, component=component_name, name=attr_name
+                    );
+                    continue;
+                }
+                if attr.value is not None {
+                    member_type = self._convert_to_instance(
+                        self.get_type_of_symbol(member.symbol)
+                    );
+                    attr_type = self.get_type_of_expression(
+                        attr.value, expected_type=member_type
+                    );
+                    if (
+                        not isinstance(attr_type, (types.UnknownType, types.AnyType))
+                        and not self.assign_type(attr_type, member_type)
+                    ) {
+                        self.emit_diag(
+                            E1100,
+                            attr,
+                            actual=str(attr_type),
+                            name=attr_name,
+                            expected=str(member_type)
+                        );
+                    }
+                }
+            }
+            return;
+        }
+        return;
+    }
+
     for attr in expr.attributes {
         if isinstance(attr, uni.JsxNormalAttribute) {
             attr_name = attr.name.value

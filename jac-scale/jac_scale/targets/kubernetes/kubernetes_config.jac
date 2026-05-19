@@ -14,6 +14,14 @@ obj KubernetesConfig(BaseConfig) {
         cpu_limit: (str | None) = None,
         memory_request: (str | None) = None,
         memory_limit: (str | None) = None,
+        # Probe defaults match upstream's pre-microservice baseline so the
+        # monolith all-in-one path keeps the rollout-grace window it
+        # expected (slow first-boot apps with multiple init containers
+        # need ~13min of liveness grace before restart-looping).
+        # Microservice-mode apps that want tighter drain semantics set
+        # `[plugins.scale.kubernetes].liveness_failure_threshold` etc.
+        # in jac.toml explicitly; we don't tighten the defaults globally
+        # because the parent KubernetesTarget shares this config object.
         readiness_initial_delay: int = 10,
         readiness_period: int = 20,
         liveness_initial_delay: int = 10,
@@ -29,6 +37,7 @@ obj KubernetesConfig(BaseConfig) {
         wait_image: str = 'busybox',
         # Storage configuration
         pvc_size: str = '5Gi',
+        mongodb_storage_size: str = '1Gi',
         # Timing configuration
         resource_deletion_wait: int = 5,
         aws_nlb_wait: int = 60,
@@ -68,7 +77,14 @@ obj KubernetesConfig(BaseConfig) {
         ingress_session_affinity: bool = True,
         # Domain / TLS configuration
         domain: str = "",
-        cert_manager_email: str = "";
+        cert_manager_email: str = "",
+        # Microservice deployments default to the namespace `default`
+        # ServiceAccount (no RBAC). Apps that need cluster API access
+        # (e.g. sandbox-spawning apps that watch pods, create namespaces)
+        # point this at a pre-bound SA. The microservice target does
+        # not create the SA - it must already exist in the namespace,
+        # with whatever RoleBindings / ClusterRoleBindings the app needs.
+        service_account_name: str = "";
 
     override def to_dict -> dict[str, Any] {
         base = super.to_dict();
@@ -99,6 +115,7 @@ obj KubernetesConfig(BaseConfig) {
                 'wait_image': self.wait_image,
                 # Storage configuration
                 'pvc_size': self.pvc_size,
+                'mongodb_storage_size': self.mongodb_storage_size,
                 # Timing configuration
                 'resource_deletion_wait': self.resource_deletion_wait,
                 'aws_nlb_wait': self.aws_nlb_wait,
@@ -136,7 +153,8 @@ obj KubernetesConfig(BaseConfig) {
                 'ingress_session_affinity': self.ingress_session_affinity,
                 # Domain / TLS configuration
                 'domain': self.domain,
-                'cert_manager_email': self.cert_manager_email
+                'cert_manager_email': self.cert_manager_email,
+                'service_account_name': self.service_account_name
             }
         );
         return base;
@@ -169,6 +187,7 @@ obj KubernetesConfig(BaseConfig) {
             busybox_image=config.get('busybox_image', 'busybox:1.36'),
             wait_image=config.get('wait_image', 'busybox'),
             pvc_size=config.get('pvc_size', '5Gi'),
+            mongodb_storage_size=config.get('mongodb_storage_size', '1Gi'),
             resource_deletion_wait=config.get('resource_deletion_wait', 5),
             aws_nlb_wait=config.get('aws_nlb_wait', 60),
             app_mount_path=config.get('app_mount_path', '/app'),
@@ -205,7 +224,8 @@ obj KubernetesConfig(BaseConfig) {
             ingress_limit_connections=config.get('ingress_limit_connections', 20),
             ingress_session_affinity=config.get('ingress_session_affinity', True),
             domain=config.get('domain', ''),
-            cert_manager_email=config.get('cert_manager_email', '')
+            cert_manager_email=config.get('cert_manager_email', ''),
+            service_account_name=config.get('service_account_name', '')
         );
     }
 }

@@ -4,6 +4,8 @@ The `jac.toml` file is the central configuration for Jac projects -- similar to 
 
 You typically don't need to edit `jac.toml` manually for basic projects. The `jac create` command generates one with sensible defaults, and commands like `jac add` and `jac config set` modify it for you. But understanding the full configuration surface is valuable when you need to customize build behavior, configure LLM providers, set up lint rules, or manage deployment settings.
 
+`jac` commands locate `jac.toml` by walking up from the current working directory. The only exception is `jac install -e <path>`, which reads `jac.toml` from the resolved `<path>` so editable installs work from anywhere.
+
 ## Creating a Project
 
 ```bash
@@ -42,32 +44,45 @@ You typically don't need to modify this file until you add dependencies or custo
 
 ### [project]
 
-Project metadata:
+Project metadata. Runtime fields (`entry-point`, `jac-version`) are used by `jac run` and `jac start`. Publishing fields (`license`, `readme`, `keywords`, `requires-python`, `authors`, `maintainers`, and `[project.include]`) are used by `jac bundle` when building a distributable wheel. All publishing fields are optional -- a project that is never published only needs `name`.
 
 ```toml
 [project]
 name = "myapp"
 version = "1.0.0"
 description = "My Jac application"
-authors = ["Your Name <you@example.com>"]
-license = "MIT"
 entry-point = "main.jac"
-jac-version = ">=0.9.0"
+jac-version = ">=0.15.0"
+
+# Publishing metadata -- only needed to run `jac bundle`
+license = "MIT"
+readme = "README.md"
+requires-python = ">=3.12"
+keywords = ["jac", "ai"]
+authors = [{ name = "Your Name", email = "you@example.com" }]
+maintainers = [{ name = "Another Person", email = "them@example.com" }]
 
 [project.urls]
 homepage = "https://example.com"
 repository = "https://github.com/user/repo"
 ```
 
-| Field | Description |
-|-------|-------------|
-| `name` | Project name (required) |
-| `version` | Semantic version |
-| `description` | Brief description |
-| `authors` | List of authors |
-| `license` | License identifier |
-| `entry-point` | Main file (default: `main.jac`) |
-| `jac-version` | Required Jac version |
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | string | Project / PyPI package name (required) |
+| `version` | string | Semantic version (default: `0.1.0`) |
+| `description` | string | One-line summary (also shown on PyPI) |
+| `entry-point` | string | Main file for `jac run` (default: `main.jac`) |
+| `jac-version` | string | Required Jac compiler version |
+| `license` | string | SPDX license identifier (e.g. `"MIT"`) |
+| `readme` | string | Path to README file (default: `README.md`) |
+| `requires-python` | string | Minimum Python version (e.g. `">=3.12"`) |
+| `keywords` | list | Search keywords shown on PyPI |
+| `authors` | list of `{name, email}` | Package authors |
+| `maintainers` | list of `{name, email}` | Package maintainers |
+| `urls` | table | Links shown on PyPI (declared under `[project.urls]`) |
+
+> **Note:** `authors` and `maintainers` also accept a plain string form (`authors = ["Your Name"]`), but the `{ name, email }` table form is recommended -- it is what every plugin `jac.toml` uses and what PyPI renders. See [`[project.include]`](#projectinclude) for controlling which files land in the wheel.
 
 ---
 
@@ -98,6 +113,39 @@ my-lib = { git = "https://github.com/user/repo.git", branch = "main" }
 | Compatible | `"~=1.4.2"` | 1.4.x |
 
 > **Default behavior:** When you run `jac add requests` without a version, the package is installed unconstrained and then the actual installed version is queried. A compatible-release spec (`~=X.Y`) is recorded -- e.g., if pip installs `2.32.5`, `jac.toml` gets `requests = "~=2.32"`. The `jac update` command also uses this format when writing updated versions back.
+
+---
+
+### [optional-dependencies]
+
+Optional dependency groups that users can install on demand with `jac install --extras <group>`. Useful for heavy or situational dependencies (monitoring, test infrastructure, database drivers) that most users don't need.
+
+```toml
+[optional-dependencies.data]
+pymongo = ">=4.0,<5.0"
+redis = ">=7.0,<8.0"
+
+[optional-dependencies.monitoring]
+prometheus-client = ">=0.21.0,<1.0.0"
+
+[optional-dependencies.all]
+"mypkg[data,monitoring]" = "*"
+```
+
+Install a group at the command line:
+
+```bash
+jac install --extras data monitoring
+jac install -e . --extras all    # editable install + extras
+```
+
+Version specifiers follow the same rules as `[dependencies]`. Use `"*"` or `"latest"` to express no constraint (the package is installed without a version pin).
+
+**Group composition:**
+
+An entry whose name matches `<project-name>[group,...]` is not installed as a package - it expands the listed groups transitively. In the example above, `"mypkg[data,monitoring]" = "*"` under `[optional-dependencies.all]` means `--extras all` pulls in everything from both `data` and `monitoring`.
+
+Third-party extras syntax (e.g. `"testcontainers[mongodb,redis]"`) passes through to pip unchanged.
 
 ---
 
@@ -340,11 +388,13 @@ discovery = "auto"      # "auto", "manual", or "disabled"
 enabled = ["byllm"] # Explicitly enabled
 disabled = []           # Explicitly disabled
 
-# Plugin-specific settings
-[plugins.byllm]
-model = "gpt-4"
-temperature = 0.7
+# Plugin-specific settings (byllm splits model identity from call params)
+[plugins.byllm.model]
+default_model = "gpt-4o"
 api_key = "${OPENAI_API_KEY}"
+
+[plugins.byllm.call_params]
+temperature = 0.7
 
 # Server settings (jac-scale)
 [plugins.scale.server]
@@ -365,12 +415,13 @@ jaclang = "latest"
 jac_scale = "latest"
 jac_client = "latest"
 jac_byllm = "none"           # Use "none" to skip installation
+jac_mcp = "latest"
 ```
 
 **Prometheus Metrics (jac-scale):**
 
 ```toml
-[plugins.scale.metrics]
+[plugins.scale.monitoring]
 enabled = true
 endpoint = "/metrics"
 namespace = "myapp"
@@ -390,6 +441,21 @@ DATABASE_PASSWORD = "${DB_PASS}"
 See [Kubernetes Secrets](../plugins/jac-scale.md#kubernetes-secrets) for details.
 
 See also [jac-scale Webhooks](../plugins/jac-scale.md#webhooks) and [Kubernetes Deployment](../plugins/jac-scale.md#kubernetes-deployment) for more options.
+
+**Built-in Local Models (byllm):**
+
+```toml
+[plugins.byllm.model]
+default_model = "local:gemma-4-e4b"   # in-process llama.cpp; no API key, no daemon
+
+[plugins.byllm.local]
+default_alias  = "gemma-4-e4b"        # used when default_model is unset
+n_gpu_layers   = -1                   # -1 = offload all layers to GPU; 0 = CPU only
+n_ctx          = 0                    # 0 = use the alias's bundled default
+auto_download  = false                # true = skip the first-run TTY prompt
+```
+
+Bundled aliases are downloaded as Q4_K_M GGUFs into `~/.cache/jac/models/<alias>/` on first use and managed via `jac model list/pull/rm`. See [Built-in Local Models](../plugins/byllm.md#built-in-local-models) for the full reference and [`jac model`](../cli/index.md#jac-model) for cache management.
 
 **Import Path Aliases (jac-client):**
 
@@ -494,10 +560,10 @@ JAC_PROFILE=production jac run main.jac
 Use environment variable interpolation:
 
 ```toml
-[plugins.byllm]
-api_key = "${OPENAI_API_KEY}"              # Required
-model = "${MODEL:-gpt-3.5-turbo}"          # With default
-secret = "${SECRET:?Secret is required}"   # Required with error
+[plugins.byllm.model]
+api_key = "${OPENAI_API_KEY}"                       # Required
+default_model = "${MODEL:-gpt-4o-mini}"             # With default
+base_url = "${BASE_URL:?Base URL is required}"      # Required with error
 ```
 
 | Syntax | Description |
@@ -505,6 +571,72 @@ secret = "${SECRET:?Secret is required}"   # Required with error
 | `${VAR}` | Use variable (error if not set) |
 | `${VAR:-default}` | Use default if not set |
 | `${VAR:?error}` | Custom error if not set |
+
+---
+
+### [project.include]
+
+Controls which files and directories `jac bundle` collects into the wheel.
+
+> **Note:** Earlier releases used a separate `[package]` / `[package.include]` section for publishing metadata. As of jaclang 0.15, `[package]` has been merged into `[project]` -- all publishing fields now live under `[project]` (see above), and file-inclusion rules live under `[project.include]`. Plain `[package]` tables are no longer read.
+
+```toml
+[project.include]
+# Explicit list of package directories to include.
+# Defaults to a directory matching the package name (hyphens replaced with underscores).
+packages = ["mylib", "mylib_utils"]
+
+[project.include.data]
+# "*" sets global file patterns for all packages.
+"*" = ["**/*.jac", "**/*.py", "**/*.pyi", "py.typed"]
+
+# Per-package overrides add extra patterns on top of globals.
+mylib = ["**/*.lark", "data/*.json", "templates/**/*"]
+```
+
+| Key | Description |
+|-----|-------------|
+| `packages` | Glob list of package directories to ship. Defaults to one directory named after the project (hyphens → underscores). |
+| `data` | Map of file-glob patterns. The `"*"` key sets global patterns for every package; a per-package key adds extra patterns on top. |
+
+Simple patterns without a path separator (e.g. `"*.jac"`) are matched recursively, so sub-packages are covered automatically.
+
+**Default included patterns** (when `[project.include.data]` is absent):
+
+| Pattern | Description |
+|---------|-------------|
+| `**/*.jac` | Jac source files |
+| `**/*.py` | Python source files |
+| `**/*.pyi` | Type stub files |
+| `**/*.lark` | Lark grammar files |
+| `**/py.typed` | PEP 561 type marker |
+| `**/*.jir` | Pre-compiled JIR bytecode (collected if already present -- see [`jac bundle`](../cli/index.md#jac-bundle)) |
+| `_precompiled/manifest.json` | JIR precompile manifest |
+
+**Always excluded** (regardless of patterns):
+
+- Directories: `.jac/`, `__pycache__/`, `dist/`, `build/`, `venv/`, `.venv/`, `env/`, `.git/`, `.hg/`, `node_modules/`, `*.egg-info/`
+- File suffixes: `.pyc`
+
+---
+
+### [entrypoints]
+
+Declare console scripts and plugin entry points. Maps directly to `entry_points.txt` in the wheel's `.dist-info`.
+
+```toml
+[entrypoints.scripts]
+# Installs a "mylib" CLI command pointing to mylib.cli:main
+mylib = "mylib.cli:main"
+
+[entrypoints.jac]
+# Declare a Jac plugin; discovered via entry_points(group="jac")
+mylib = "mylib.plugin:setup"
+```
+
+The `[entrypoints.scripts]` group is written as `[console_scripts]` in `entry_points.txt`, which is the standard pip convention for installing CLI commands. After a user runs `pip install mylib`, the `mylib` command is available on their `PATH`.
+
+The `[entrypoints.jac]` group is the entry point group Jac's plugin system queries at startup (`entry_points(group="jac")`). Any package that declares an entry point here will be auto-discovered when the user has it installed.
 
 ---
 
@@ -566,8 +698,8 @@ exclude = []
 [plugins]
 discovery = "auto"
 
-[plugins.byllm]
-model = "${LLM_MODEL:-gpt-4}"
+[plugins.byllm.model]
+default_model = "${LLM_MODEL:-gpt-4o-mini}"
 api_key = "${OPENAI_API_KEY}"
 
 [scripts]
@@ -662,4 +794,5 @@ Each line is a filename or pattern that should be skipped during Jac compilation
 ## See Also
 
 - [CLI Reference](../cli/index.md) - Command-line interface documentation
+- [Publishing Packages](../publishing.md) - Building and uploading wheels to PyPI
 - [Plugin Management](../cli/index.md#plugin-management) - Managing plugins

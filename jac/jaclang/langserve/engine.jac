@@ -73,6 +73,13 @@ obj JacLangServer(JacProgram, LanguageServer) {
 
     def type_check(file_uri: str) -> None;
     def _do_type_check(file_uri: str) -> None;
+    """React to an external change at `file_uri`: drop the file's IR from
+    `JacProgram` caches and queue a re-check for every open document that
+    transitively imports it. Idempotent and safe to call from any LSP
+    event handler. The owning file's own re-check is not queued here —
+    callers normally pair this with `type_check(file_uri)` for that."""
+    def _fanout_dependents(file_uri: str) -> None;
+
     def get_token_at_position(
         file_path: str, position: lspt.Position
     ) -> Optional[uni.UniNode];

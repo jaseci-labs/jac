@@ -63,6 +63,14 @@ obj Lexer {
         start_pos: int,
         code_str: str = ""
     );
+
+    def warning(
+        message: str,
+        start_line: int,
+        start_col: int,
+        start_pos: int,
+        code_str: str = ""
+    );
     # Character classification
     def is_digit(ch: str) -> bool;
     def is_hex_digit(ch: str) -> bool;

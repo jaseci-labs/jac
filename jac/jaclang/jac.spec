@@ -2,13 +2,16 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
+expression ::=
+    lambda_expr | (cast | concurrent_expr) ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 
 walrus_assign ::= by_expr (":=" by_expr)?
 
 by_expr ::= pipe ("by" by_expr)?
+
+cast ::= concurrent_expr ("as" pipe)*
 
 pipe ::= pipe_back ("|>" pipe_back)*
 
@@ -44,12 +47,7 @@ factor ::= ("~" | "-" | "+") factor | connect
 
 connect ::= atomic_pipe (connect_op atomic_pipe)*
 
-edge_op_ref_inline ::=
-    "-->"
-    | "<--"
-    | "<-->"
-    | "->:" ((NAME | KWESC_NAME) atom)? ":->"?
-    | "<-:" ((NAME | KWESC_NAME) atom)? ":<-"?
+edge_op_ref_inline ::= edge_op_ref
 
 connect_op ::=
     "del" edge_op_ref_inline
@@ -193,9 +191,8 @@ edge_op_ref ::=
     "-->"
     | "<--"
     | "<-->"
-    | "->" atom? (":" (compare ("," compare)*)?)? ":->"
+    | "->:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":->"
     | "<-:" ((NAME | KWESC_NAME) atom)? (":" (compare ("," compare)*)?)? ":<-"
-    | "->:" ((NAME | KWESC_NAME) atom)? ":->"
 
 dict_or_set ::=
     "}"
@@ -241,7 +238,7 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::= JSX_TEXT jsx_child? | "{" expression "}" | jsx_element
+jsx_child ::= JSX_TEXT jsx_child? | JSX_COMMENT | "{" expression "}" | jsx_element
 
 element_stmt ::=
     ";"
@@ -270,6 +267,7 @@ docstring_target ::=
         | global_var
         | "impl" impl_def
         | module_code
+        | ("cl" | "sv" | "na") element_stmt
     )?
 
 client_block ::= "cl" ("{" element_stmt* "}" | element_stmt)
@@ -412,7 +410,7 @@ assignment_with_target ::=
     ) ";" ";"?
 
 import_stmt ::=
-    ("include" | "import") ("from" from_path)? (
+    ("include" | "import") "type"? ("from" from_path)? (
         import_items
         | (STRING | (NAME | KWESC_NAME) ("." (NAME | KWESC_NAME))*)?
           ("as" (NAME | KWESC_NAME))?
@@ -451,7 +449,11 @@ archetype_member ::=
 
 has_stmt ::= "static"? "has" access_tag has_var ("," has_var)* ";"
 
-has_var ::= (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
+has_var ::=
+    (NAME | KWESC_NAME) ":" pipe ("=" expression | ("by" "postinit")?)
+    ("{" accessor* "}")?
+
+accessor ::= func_signature ("{" code_block_stmts "}" | ";")
 
 ability ::=
     ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag
@@ -469,7 +471,7 @@ param_var ::=
 
 enum ::=
     ("@" atomic_chain)* "enum" access_tag (NAME | KWESC_NAME)
-    ("(" (atomic_chain ("," atomic_chain)*)? ")")?
+    (":" atomic_chain | ("(" (atomic_chain ("," atomic_chain)*)? ")")?)
     ("{" (enum_member ","? | PYNLINE | module_code)* "}" | ";")
 
 enum_member ::= (NAME | KWESC_NAME) ("=" expression)?

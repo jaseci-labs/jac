@@ -10,7 +10,6 @@ jaclang dependency".
 """
 
 import shutil;
-import tomllib;
 import json;
 import re;
 import from pathlib { Path }
@@ -77,13 +76,8 @@ def load_eject_project_metadata(src: Path) -> dict {
     if not toml_path.exists() {
         raise FileNotFoundError(f"No jac.toml found in {src}");
     }
-    try {
-        with open(toml_path, "rb") as f {
-            toml_data = tomllib.load(f);
-        }
-    } except Exception as e {
-        raise RuntimeError(f"Failed to parse {toml_path}: {e}");
-    }
+    import from jaclang.jac0core.helpers { read_toml_with_encoding }
+    toml_data = read_toml_with_encoding(str(toml_path));
     project_section = toml_data.get("project", {});
     raw_name = project_section.get("name", "") or "";
     # Fall back to the source directory name if jac.toml has the unrendered
@@ -1025,25 +1019,9 @@ createRoot against <div id="root">. Without this, `vite dev` serves the
 files and 200s cleanly, but the page stays blank.
 """
 def _emit_entry_js(frontend_src_dir: Path, entry_module: str) {
-    lines: list[str] = [
-        'import React from "react";',
-        'import { createRoot } from "react-dom/client";',
-        f'import {{ app as App }} from "./{entry_module}.js";',
-        'import { JacClientErrorBoundary, ErrorFallback, __jacInstallErrorHandlers } from "@jac/runtime";',
-        '',
-        '__jacInstallErrorHandlers();',
-        'const root = createRoot(document.getElementById("root"));',
-        'root.render(',
-        '  React.createElement(',
-        '    JacClientErrorBoundary,',
-        '    { FallbackComponent: ErrorFallback },',
-        '    React.createElement(App, null)',
-        '  )',
-        ');',
-        ''
-    ];
+    import from jaclang.runtimelib.react_entry { build_simple_react_entry_script }
     (frontend_src_dir / "__jac_entry.js").write_text(
-        "\n".join(lines), encoding="utf-8"
+        build_simple_react_entry_script(entry_module), encoding="utf-8"
     );
 }
 

@@ -327,10 +327,20 @@ impl ExecutionManager._finalize_call_response(
     if isgenerator(reports) or isinstance(reports, AsyncGenerator) {
         return reports;
     }
-    return {
+    # Drain permission-denial diagnostics accumulated during the walker
+    # run *and* the commit that follows it. Surfaces silent cross-user
+    # write rejections (edge writes, field mutations, deletes) on the
+    # wire so callers stop debugging "200 OK but nothing changed".
+    envelope: dict[str, JsonValue] = {
         'result': Serializer.serialize(result, api_mode=True),
         'reports': Serializer.serialize(reports, api_mode=True)
     };
+    ctx = Jac.get_context();
+    if ctx.diagnostics {
+        envelope['warnings'] = [d.to_dict() for d in ctx.diagnostics];
+        ctx.diagnostics.clear();
+    }
+    return envelope;
 }
 
 """Dispatcher: pick sync/async variant based on function kind.
@@ -685,8 +695,26 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
     import from jaclang.jac0core.constructs { WalkerArchetype }
     import from jaclang.jac0core.constant { Tokens as Tok }
     endpoint_effects: dict = {};
-    # Recursively check if an AST subtree contains write operations
-    def has_write_ops(`node: Any) -> bool {
+    # Find a module-level ability (a `def`) by name within a module AST.
+    def find_ability_in_ast(ast_mod: Any, fname: str) -> Any {
+        if not ast_mod {
+            return None;
+        }
+        for item in ast_mod.body {
+            if (
+                isinstance(item, uni.Ability)
+                and item.name_ref is not None
+                and item.name_ref.sym_name == fname
+            ) {
+                return item;
+            }
+        }
+        return None;
+    }
+    # Recursively check if an AST subtree contains write operations. Follows
+    # calls into module-level helper defs (interprocedural) so a graph
+    # mutation hidden behind a helper still marks the caller as a writer.
+    def has_write_ops(`node: Any, ast_mod: Any, seen: set) -> bool {
         if isinstance(`node, uni.DeleteStmt) {
             return True;
         }
@@ -698,10 +726,43 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
                 return True;
             }
         }
+        # Field mutation on a non-self target (`n.attr = ...`) writes to a
+        # node/edge attribute. `self.x` is walker-local state, so excluded.
+        if isinstance(`node, uni.Assignment) and `node.target {
+            for tgt in `node.target {
+                if isinstance(tgt, uni.AtomTrailer) and tgt.is_attr {
+                    root_expr = tgt.target;
+                    while isinstance(root_expr, uni.AtomTrailer) {
+                        root_expr = root_expr.target;
+                    }
+                    if not (
+                        isinstance(root_expr, uni.SpecialVarRef)
+                        and root_expr.sym_name == 'self'
+                    ) {
+                        return True;
+                    }
+                }
+            }
+        }
+        # Interprocedural: follow a call into a module-level helper def.
+        if isinstance(`node, uni.FuncCall) and isinstance(`node.target, uni.Name) {
+            fname = `node.target.sym_name;
+            if fname not in seen {
+                seen.add(fname);
+                callee = find_ability_in_ast(ast_mod, fname);
+                if callee and callee.body and hasattr(callee.body, '__iter__') {
+                    for stmt in callee.body {
+                        if has_write_ops(stmt, ast_mod, seen) {
+                            return True;
+                        }
+                    }
+                }
+            }
+        }
         # Recurse into children
         if `node?.kid and `node.kid {
             for child in `node.kid {
-                if has_write_ops(child) {
+                if has_write_ops(child, ast_mod, seen) {
                     return True;
                 }
             }
@@ -729,7 +790,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
             body = item._get_impl_resolved_body();
             is_writer = False;
             for body_item in body {
-                if has_write_ops(body_item) {
+                if has_write_ops(body_item, mod_ast, set()) {
                     is_writer = True;
                     break;
                 }
@@ -789,7 +850,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
                     is_writer = False;
                     if item.body and hasattr(item.body, '__iter__') {
                         for body_item in item.body {
-                            if has_write_ops(body_item) {
+                            if has_write_ops(body_item, mod_ast, set()) {
                                 is_writer = True;
                                 break;
                             }
@@ -978,6 +1039,24 @@ impl ModuleIntrospector.introspect_walker(
     } except Exception {
         return {'fields': {}};
     }
+    # Walkers compile to dataclasses; mutable defaults like `has results: list = []`
+    # become `field(default_factory=...)`, which makes `inspect.signature` report
+    # the parameter default as `dataclasses._HAS_DEFAULT_FACTORY` -- a sentinel
+    # that crashes Pydantic if it leaks into request-body schema generation.
+    # Pre-resolve those by calling the factory once.
+    factory_defaults: dict[str, Any] = {};
+    if dataclasses.is_dataclass(walker_cls) {
+        for dc_field in dataclasses.fields(walker_cls) {
+            if dc_field.default_factory is dataclasses.MISSING {
+                continue;
+            }
+            try {
+                factory_defaults[dc_field.name] = dc_field.default_factory();
+            } except Exception {
+                factory_defaults[dc_field.name] = None;
+            }
+        }
+    }
     fields: dict[str, dict[str, Any]] = {};
     for (name, param) in sig.parameters.items() {
         if (name in ('self', 'args', 'kwargs')) {
@@ -996,12 +1075,18 @@ impl ModuleIntrospector.introspect_walker(
                 type_name = 'Any';
             }
         }
+        is_required = param.default == inspect.Parameter.empty;
+        if is_required {
+            default_val = None;
+        } elif name in factory_defaults {
+            default_val = factory_defaults[name];
+        } else {
+            default_val = param.default;
+        }
         fields[name] = {
             'type': type_name,
-            'required': (param.default == inspect.Parameter.empty),
-            'default': None
-                if (param.default == inspect.Parameter.empty)
-                else param.default
+            'required': is_required,
+            'default': default_val
         };
     }
     fields['_jac_spawn_node'] = {
@@ -1875,32 +1960,29 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
                 } else {
                     # Rate limit and deduplicate
                     import from jaclang.runtimelib.source_mapping {
-                        SourceMapper,
-                        _error_rate_limiter
+                        _error_rate_limiter,
+                        resolve_client_error_stacks,
+                        format_client_error_log
                     }
+                    import from jaclang.project.config { get_config }
                     if not _error_rate_limiter.should_log(message) {
                         Jac.send_json(self, 200, {'ok': True, 'throttled': True});
                     } else {
-                        stack = data.get('stack', '');
-                        url = data.get('url', '');
-                        source = data.get('source', '');
-                        # Resolve stack trace to .jac files via source maps
-                        if stack and server.base_path {
-                            try {
-                                mapper = SourceMapper.from_bundle(server.base_path);
-                                stack = mapper.resolve_stack_trace(stack);
-                            } except Exception { }
-                        }
-                        log_parts = [f"[Client] {message}"];
-                        if stack {
-                            log_parts.append(f"  Stack: {stack}");
-                        }
-                        if url {
-                            log_parts.append(f"  URL: {url}");
-                        }
-                        if source {
-                            log_parts.append(f"  Source: {source}");
-                        }
+                        cfg = get_config();
+                        verbose = cfg.client_errors.verbose if cfg else False;
+                        (stack, component_stack) = resolve_client_error_stacks(
+                            server.base_path,
+                            data.get('stack', ''),
+                            data.get('componentStack', ''),
+                            verbose=verbose
+                        );
+                        log_parts = format_client_error_log(
+                            message,
+                            stack=stack,
+                            component_stack=component_stack,
+                            url=data.get('url', ''),
+                            source=data.get('source', '')
+                        );
                         import logging;
                         logging.getLogger("jaclang.client_errors").error(
                             '\n'.join(log_parts)

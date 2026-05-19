@@ -19,7 +19,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 |---------|----------|-------------|
 | `abs` | Modifier | Abstract ability declaration (postfix, e.g., `def area() -> float abs;`) |
 | `and` | Operator | Logical AND (also `&&`) |
-| `as` | Import | Alias |
+| `as` | Operator / Alias | Type-cast operator (`expr as Type`); also the alias in `import`/`with`/`except`/`match` |
 | `assert` | Statement | Assertion |
 | `async` | Modifier | Async function/walker |
 | `await` | Expression | Await async |
@@ -86,6 +86,7 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `test` | Declaration | Test block |
 | `to` | Control | For loop upper bound |
 | `try` | Control | Try block |
+| `type` | Module | Type-only import marker (`import type from ...`) |
 | `visitor` | OSP | Visiting walker (in node) |
 | `wait` | Concurrency | Wait for concurrent result |
 | `walker` | Archetype | Walker type |
@@ -158,6 +159,12 @@ Use these appendices when you need to look up a specific keyword, operator, or s
 | `:>` | Atomic forward |
 | `<:` | Atomic backward |
 
+### Type Cast
+
+| Operator | Description |
+|----------|-------------|
+| `expr as Type` | Unchecked, type-erased cast -- re-types `expr` as `Type` (runtime no-op) |
+
 ---
 
 ## Appendix C: Grammar Summary
@@ -179,7 +186,7 @@ has_stmt      : "has" (modifier)? NAME ":" type ("=" expr)? ";"
 ability       : async? "can" NAME params? ("->" type)? event_clause? (body | ";")
 event_clause  : "with" type_expr? (entry | exit)
 
-import        : "import" (module | "from" import_path "{" names "}")
+import        : "import" "type"? (module | "from" import_path "{" names "}")
               | "import" "from" STRING "{" extern_decl* "}"  # C library import (na)
 import_path   : (NAME ":")? dotted_name       # Optional namespace prefix (e.g., jac:module)
 entry         : "with" "entry" (":" NAME)? body
@@ -265,8 +272,10 @@ obj Example {
 ### 5. Walker `visit` is Queued
 
 ```jac
+node Item { has name: str = ""; }
+
 walker Example {
-    can traverse with Node entry {
+    can traverse with Item entry {
         print("Visiting");
         visit [-->];  # Nodes queued, visited AFTER this method
         print("This prints before visiting children");
@@ -274,19 +283,24 @@ walker Example {
 }
 ```
 
+To match every node regardless of type, use the anonymous form `can traverse with entry { ... }` -- there is no built-in `Node` catch-all trigger.
+
 ### 6. `report` vs `return`
 
-<!-- jac-skip -->
 ```jac
+node Item { has value: int = 0; }
+
 walker Example {
-    can collect with Node entry -> object {
+    can collect with Item entry {
         report here.value;  # Continues execution
         visit [-->];        # Still runs
 
-        return here.value;  # Would stop here
+        return;             # Would stop the walker here
     }
 }
 ```
+
+Walker abilities don't carry an arrow-return type annotation -- `report` accumulates results on the walker's `reports` list, and `return` (with no value) ends the current ability.
 
 ### 7. Global Modification Requires Declaration
 
@@ -315,6 +329,7 @@ def increment -> None {
 | Entry point | `if __name__ == "__main__":` | `with entry { }` |
 | Module variables | Global assignment | `glob` keyword |
 | Enums | `class Color(Enum):` | `enum Color { RED, GREEN, BLUE }` |
+| Typed enums | `class S(IntEnum):` / `class S(StrEnum):` | `enum S: int { ... }` / `enum S: str { ... }` |
 | Error handling | `try: ... except:` | `try { } except Type as e { }` |
 | Imports | `from x import y` | `import from x { y }` |
 | Pattern matching | `match x: case 1:` | `match x { case 1:` (Python-style indentation inside braces) |
@@ -436,6 +451,31 @@ enum Status {
 }
 ```
 
+For `IntEnum`/`StrEnum`, Jac offers a typed-base shorthand `enum X: T { ... }`:
+
+**Python:**
+
+```python
+from enum import IntEnum, StrEnum
+
+class HttpStatus(IntEnum):
+    OK = 200
+    NOT_FOUND = 404
+
+class Tag(StrEnum):
+    OPEN = "open"
+    CLOSE = "close"
+```
+
+**Jac:**
+
+```jac
+enum HttpStatus: int { OK = 200, NOT_FOUND = 404 }
+enum Tag: str { OPEN = "open", CLOSE = "close" }
+```
+
+For any other base `T`, `enum X: T` desugars to the Python mixin form `class X(T, Enum)`.
+
 ### Entry Point
 
 **Python:**
@@ -482,16 +522,21 @@ finally:
 
 **Jac:**
 
-<!-- jac-skip -->
 ```jac
-try {
-    result = divide(10, 0);
-} except ValueError as e {
-    print(f"Error: {e}");
-} finally {
-    print("Done");
+def divide(a: int, b: int) -> int { return a // b; }
+
+with entry {
+    try {
+        result = divide(10, 0);
+    } except ValueError as e {
+        print(f"Error: {e}");
+    } finally {
+        print("Done");
+    }
 }
 ```
+
+Module-level statements (including `try`) must live inside a `with entry { ... }` block or a function body.
 
 For a step-by-step transition guide, see [Jac Basics Tutorial](../../tutorials/language/basics.md).
 

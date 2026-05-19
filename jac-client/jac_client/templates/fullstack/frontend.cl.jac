@@ -78,7 +78,7 @@ def:pub app -> JsxElement {
                 >
                     <h1 style={{"margin": "0", "color": "#1a1a2e"}}>My Todos</h1>
                     <button
-                        onClick={lambda _e: MouseEvent { handleLogout();}}
+                        onClick={lambda _e: MouseEvent { handleLogout(); }}
                         style={{
                             "padding": "0.5rem 1rem",
                             "fontSize": "0.9rem",
@@ -102,7 +102,7 @@ def:pub app -> JsxElement {
                     <input
                         type="text"
                         value={newTodoText}
-                        onChange={lambda e: ChangeEvent { newTodoText = e.target.value;}}
+                        onChange={lambda e: ChangeEvent { newTodoText = e.target.value; }}
                         onKeyPress={handleTodoKeyPress}
                         placeholder="What needs to be done?"
                         style={{
@@ -115,7 +115,7 @@ def:pub app -> JsxElement {
                         }}
                     />
                     <button
-                        onClick={lambda _e: MouseEvent { addTodo();}}
+                        onClick={lambda _e: MouseEvent { addTodo(); }}
                         style={{
                             "padding": "0.75rem 1.5rem",
                             "fontSize": "1rem",
@@ -190,8 +190,8 @@ def:pub app -> JsxElement {
             password={password}
             error={error}
             loading={loading}
-            onUsernameChange={lambda e: ChangeEvent { username = e.target.value;}}
-            onPasswordChange={lambda e: ChangeEvent { password = e.target.value;}}
+            onUsernameChange={lambda e: ChangeEvent { username = e.target.value; }}
+            onPasswordChange={lambda e: ChangeEvent { password = e.target.value; }}
             onSubmit={handleSubmit}
             onToggleMode={lambda _e: MouseEvent {
                 isSignup = not isSignup;

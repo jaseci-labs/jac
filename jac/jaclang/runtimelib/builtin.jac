@@ -3,7 +3,11 @@ import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
 import from enum { StrEnum }
-import from typing { TYPE_CHECKING, Any, ClassVar, override }
+import from typing { Any, ClassVar, override }
+import type from enum { IntEnum }
+import type from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
+import type from jaclang.jac0core.runtime { LLMModel }
+import type from jaclang { JacRuntimeInterface }
 
 enum APIProtocol ( StrEnum ) {
     HTTP = 'http',
@@ -15,15 +19,6 @@ enum APIProtocol ( StrEnum ) {
 enum ScheduleTrigger ( StrEnum ) {
     STATIC = 'static',
     DYNAMIC = 'dynamic'
-}
-
-with entry {
-    if TYPE_CHECKING {
-        import from enum { IntEnum }
-        import from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
-        import from jaclang.jac0core.runtime { LLMModel }
-        import from jaclang { JacRuntimeInterface }
-    }
 }
 
 def _get_jac -> type[JacRuntimeInterface];
@@ -70,6 +65,16 @@ def restspec(**specs: Any) -> Callable;
 
 def schedule(**kwargs: Any) -> Callable;
 
+"""Portable constructor: returns ``cls(*args)``.
+
+On the server this is just a thin alias for direct instantiation, so the
+same source code can be written once and used in any codespace. In a
+``cl { ... }`` block this same call lowers to
+``Reflect.construct(cls, [args])`` (the JS spelling for ``new cls(...)``),
+since JavaScript classes require ``new``.
+"""
+def new(cls: Any, *args: Any) -> Any;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -81,6 +86,7 @@ glob __all__ = [
          'commit',
          'store',
          'llm',
+         'new',
          'NoPerm',
          'ReadPerm',
          'ConnectPerm',

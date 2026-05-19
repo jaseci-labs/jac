@@ -29,7 +29,22 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
         'fallback': {'strategy': 'fallback', 'num_retries': 1, 'timeout': 60.0},
         'prompt_caching': {'enabled': True},
         'parallel': {'enabled': False},
-        'system_prompt': ''
+        'system_prompt': '',
+        'compaction': {
+            'enabled': True,
+            'threshold_ratio': 0.80,
+            'keep_recent_iterations': 3,
+            'ctx_window': 0,
+            'compaction_model': ''
+        },
+        'local': {
+            'default_alias': 'gemma-4-e4b',
+            'n_ctx': 0,
+            'n_gpu_layers': 0,
+            'n_threads': 0,
+            'verbose': False,
+            'auto_download': False
+        }
     };
 }
 
@@ -125,6 +140,33 @@ impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, Any] 
 impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
     config = self.load();
     return config.get('system_prompt', '');
+}
+
+"""Get compaction configuration from jac.toml."""
+impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    c = config.get('compaction', {});
+    return {
+        'enabled': bool(c.get('enabled', True)),
+        'threshold_ratio': float(c.get('threshold_ratio', 0.80)),
+        'keep_recent_iterations': int(c.get('keep_recent_iterations', 3)),
+        'ctx_window': int(c.get('ctx_window', 0)),
+        'compaction_model': str(c.get('compaction_model', ''))
+    };
+}
+
+"""Get local-runtime configuration from jac.toml."""
+impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, Any] {
+    config = self.load();
+    local_cfg = config.get('local', {});
+    return {
+        'default_alias': str(local_cfg.get('default_alias', 'gemma-4-e4b')),
+        'n_ctx': int(local_cfg.get('n_ctx', 0)),
+        'n_gpu_layers': int(local_cfg.get('n_gpu_layers', 0)),
+        'n_threads': int(local_cfg.get('n_threads', 0)),
+        'verbose': bool(local_cfg.get('verbose', False)),
+        'auto_download': bool(local_cfg.get('auto_download', False))
+    };
 }
 
 """Reset the global config instance (useful for testing)."""

@@ -13,14 +13,18 @@ impl MongoBackend.postinit -> None {
     if self.mongo_url is None {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if self.client is None and self.mongo_url {
-        try {
-            self.client = MongoClient(self.mongo_url);
+    if self.mongo_url {
+        if 'mongo_client' not in _process_cache {
+            try {
+                _process_cache['mongo_client'] = MongoClient(self.mongo_url);
+            } except Exception as e {
+                logger.warning(f"MongoDB connection failed: {e}");
+            }
+        }
+        self.client = _process_cache.get('mongo_client');
+        if self.client {
             self.db = self.client[self.db_name];
             self.collection = self.db[self.collection_name];
-        } except Exception as e {
-            logger.warning(f"MongoDB connection failed: {e}");
-            self.client = None;
         }
     }
     if self.client is not None {
@@ -125,6 +129,11 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
 
 Never raises: we'd rather fail loud on load (caller quarantines + None)
 than leak exceptions into walker traversal.
+
+When quarantining a NodeAnchor, also cascade-quarantine every EdgeAnchor
+whose data.source or data.target references this node, then strip those
+edge IDs from all remaining live NodeAnchor data.edges arrays. This
+prevents dangling edge references after schema drift removes a node type.
 """
 def _mongo_quarantine(
     backend: MongoBackend,
@@ -138,7 +147,9 @@ def _mongo_quarantine(
     from_format_version: (int | None) = None
 ) {
     try {
-        _mongo_q_collection(backend).update_one(
+        q_col = _mongo_q_collection(backend);
+        now_ts = datetime.now(timezone.utc).isoformat();
+        q_col.update_one(
             {'_id': id_str},
             {
                 '$set': {
@@ -148,13 +159,56 @@ def _mongo_quarantine(
                     'fingerprint': fingerprint,
                     'data': data,
                     'error': error,
-                    'quarantined_at': datetime.now(timezone.utc).isoformat(),
+                    'quarantined_at': now_ts,
                     'from_format_version': from_format_version
                 }
             },
             upsert=True
         );
         backend.collection.delete_one({'_id': id_str});
+        # Cascade: when a NodeAnchor is quarantined, orphan its edges too.
+        if anchor_type == 'NodeAnchor' {
+            orphaned_edges = list(
+                backend.collection.find(
+                    {
+                        'type': 'EdgeAnchor',
+                        '$or': [{'data.source': id_str}, {'data.target': id_str}]
+                    }
+                )
+            );
+            if orphaned_edges {
+                orphan_edge_ids = [e['_id'] for e in orphaned_edges];
+                cascade_error = f"cascade quarantine: connected node {id_str} was quarantined";
+                cascade_ops = [
+                    UpdateOne(
+                        {'_id': edge_doc['_id']},
+                        {
+                            '$set': {
+                                'type': edge_doc.get('type'),
+                                'arch_module': edge_doc.get('arch_module'),
+                                'arch_type': edge_doc.get('arch_type'),
+                                'fingerprint': edge_doc.get('fingerprint'),
+                                'data': edge_doc.get('data'),
+                                'error': cascade_error,
+                                'quarantined_at': now_ts,
+                                'from_format_version': edge_doc.get('format_version')
+                            }
+                        },
+                        upsert=True
+                    ) for edge_doc in orphaned_edges
+                ];
+                q_col.bulk_write(cascade_ops, ordered=False);
+                backend.collection.delete_many({'_id': {'$in': orphan_edge_ids}});
+                backend.collection.update_many(
+                    {'type': 'NodeAnchor', 'data.edges': {'$in': orphan_edge_ids}},
+                    {'$pullAll': {'data.edges': orphan_edge_ids}}
+                );
+                logger.info(
+                    f"MongoBackend: cascade-quarantined {len(orphan_edge_ids)} edge(s) "
+                    f"connected to quarantined node {id_str}."
+                );
+            }
+        }
     } except Exception as e {
         logger.error(f"MongoBackend: failed to quarantine {id_str}: {e}");
     }
@@ -167,28 +221,29 @@ impl MongoBackend.set_memory_ref(mem: dict[UUID, Anchor]) -> None {
 
 """Check if MongoDB is available and connected."""
 impl MongoBackend.is_available -> bool {
+    # Only cache a confirmed True — caching False would prevent later contexts
+    # (e.g. test files that configure MongoDB after others that don't) from ever
+    # reaching MongoDB in the same process.
+    if _process_cache.get('mongo_available') is True {
+        return True;
+    }
     if not self.mongo_url {
         self.mongo_url = _get_db_config().get('mongodb_uri');
     }
-    if not self.mongo_url {
+    if not self.mongo_url or self.client is None {
         return False;
     }
-    client = None;
     try {
-        client = MongoClient(self.mongo_url);
-        client.admin.command('ping', maxTimeMS=100);
+        self.client.admin.command('ping', maxTimeMS=100);
+        _process_cache['mongo_available'] = True;
         return True;
     } except ConnectionFailure {
+        _process_cache['mongo_available'] = False;
         return False;
     } except Exception as e {
         logger.debug(f"MongoDB availability check failed: {e}");
+        _process_cache['mongo_available'] = False;
         return False;
-    } finally {
-        if client {
-            try {
-                client.close();
-            } except Exception { }
-        }
     }
 }
 
@@ -203,6 +258,7 @@ impl MongoBackend.get(id: UUID) -> (Anchor | None) {
     if self.client is None {
         return None;
     }
+    self.fetch_count += 1;
     _id = to_uuid(id);
     try {
         db_obj = self.collection.find_one({'_id': str(_id)});
@@ -283,6 +339,7 @@ impl MongoBackend._write_to_db(anchor: Anchor) -> None {
     if self.client is None or not anchor.persistent {
         return;
     }
+    self.put_count += 1;
     _id = to_uuid(anchor.id);
     arch = anchor.archetype if anchor.is_populated() else None;
     try {
@@ -338,22 +395,15 @@ impl MongoBackend.delete(id: UUID) -> None {
     }
 }
 
-"""Flush pending writes and close MongoDB connection."""
+"""Flush pending writes and release local reference to the shared client."""
 impl MongoBackend.close -> None {
-    # Persist any pending L1 changes before closing
     try {
         self.sync();
     } except Exception as e {
         logger.warning(f"MongoBackend.close sync failed: {e}");
     }
-    if self.client {
-        try {
-            self.client.close();
-        } except Exception as e {
-            logger.warning(f"Error closing MongoDB connection: {e}");
-        }
-        self.client = None;
-    }
+    # Don't close the shared process-level client; just drop local reference.
+    self.client = None;
     self._mem_ref = None;
 }
 
@@ -577,6 +627,7 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
     if self.client is None or not ids {
         return result;
     }
+    self.fetch_count += len(ids);
     str_ids = [str(to_uuid(id)) for id in ids];
     try {
         for doc in self.collection.find({'_id': {'$in': str_ids}}) {
@@ -589,6 +640,12 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
         logger.debug(f"MongoDB batch_get failed: {e}");
     }
     return result;
+}
+
+"""Reset get/put counters (for instrumentation/tests)."""
+impl MongoBackend.reset_counters -> None {
+    self.fetch_count = 0;
+    self.put_count = 0;
 }
 
 """Load anchor from raw MongoDB document, quarantining on failure."""
@@ -675,6 +732,35 @@ def _mongo_attempt_recover(backend: MongoBackend, doc: dict) -> tuple {
         _mongo_q_collection(backend).delete_one({'_id': doc_id});
     } except Exception as e {
         return (False, f"write-back failed: {type(e).__name__}: {e}");
+    }
+    # Re-link: when recovering an EdgeAnchor that was cascade-quarantined, the
+    # connected node(s)' data.edges was stripped. Re-add the edge ID to the
+    # source (always) and also to the target for undirected edges.
+    if doc.get('type') == 'EdgeAnchor' and isinstance(data, dict) {
+        source_id = data.get('source');
+        target_id = data.get('target');
+        is_undirected = bool(data.get('is_undirected', False));
+        relink_ids: list = [
+            n
+            for n in [source_id]
+            if n
+        ];
+        if is_undirected and target_id and target_id != source_id {
+            relink_ids.append(target_id);
+        }
+        for node_id in relink_ids {
+            try {
+                backend.collection.update_one(
+                    {'_id': node_id, 'type': 'NodeAnchor'},
+                    {'$addToSet': {'data.edges': doc_id}}
+                );
+            } except Exception as relink_err {
+                logger.warning(
+                    f"MongoBackend: recover re-link of edge {doc_id} "
+                    f"to node {node_id} failed: {relink_err}"
+                );
+            }
+        }
     }
     return (True, "recovered");
 }
@@ -913,6 +999,66 @@ impl MongoBackend.remove_alias(old_name: str) -> bool {
     return removed;
 }
 
+
+"""Get anchor by UUID using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.aget(id: UUID) -> (Anchor | None) {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
+        return await super.aget(id);
+    }
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    try {
+        db_obj = await coll.find_one({'_id': str(to_uuid(id))});
+        if not db_obj {
+            return None;
+        }
+        return self._load_anchor(db_obj);
+    } except Exception as e {
+        logger.debug(f"Async aget failed: {e}");
+        return None;
+    }
+}
+
+"""Store anchor using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.aput(anchor: Anchor) -> None { }
+
+"""Flush dirty anchors using PyMongo AsyncMongoClient (no asyncio.to_thread)."""
+impl MongoBackend.acommit(anchor: (Anchor | None) = None) -> None {
+    import from jac_scale._optdeps.pymongo { AsyncMongoClient }
+    if AsyncMongoClient is None or self.mongo_url is None {
+        await super.acommit(anchor);
+        return;
+    }
+    if self._mem_ref is None {
+        await super.acommit(anchor);
+        return;
+    }
+    if 'async_mongo_client' not in _process_cache {
+        _process_cache['async_mongo_client'] = AsyncMongoClient(self.mongo_url);
+    }
+    coll = _process_cache['async_mongo_client'][self.db_name][self.collection_name];
+    dirty = [];
+    targets = [anchor] if anchor is not None else list(self._mem_ref.values());
+    for a in targets {
+        if a.persistent and Jac.check_write_access(a) {
+            dirty.append(a);
+        }
+    }
+    if dirty {
+        ops = [
+            UpdateOne({'_id': str(a.id)}, {'$set': _anchor_to_doc(a)}, upsert=True)
+            for a in dirty
+        ];
+        try {
+            await coll.bulk_write(ops, ordered=False);
+        } except Exception as e {
+            logger.warning(f"Async acommit bulk_write failed: {e}");
+        }
+    }
+}
 
 """Load DB-resident aliases into the in-process Serializer registry."""
 impl MongoBackend._load_db_aliases -> int {

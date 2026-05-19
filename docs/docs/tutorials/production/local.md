@@ -28,7 +28,7 @@ graph LR
 ### 1. Create Your Walker
 
 ```jac
-# app.jac
+# main.jac
 node Task {
     has title: str;
     has done: bool = False;
@@ -56,8 +56,11 @@ walker:pub add_task {
 
 ### 2. Start the Server
 
+!!! note
+    `main.jac` is the default entry point. If your entry point has a different name (e.g., `app.jac`), pass it explicitly: `jac start app.jac`.
+
 ```bash
-jac start app.jac
+jac start
 ```
 
 Output:
@@ -89,7 +92,7 @@ curl -X POST http://localhost:8000/walker/add_task \
 
 ```bash
 # Custom port
-jac start app.jac --port 3000
+jac start --port 3000
 ```
 
 If the specified port is already in use, the server automatically finds and uses the next available port:
@@ -103,7 +106,7 @@ Port 3000 is in use, using port 3001 instead
 Hot Module Replacement for development:
 
 ```bash
-jac start app.jac --dev
+jac start --dev
 ```
 
 Changes to your `.jac` files will automatically reload.
@@ -113,7 +116,7 @@ Changes to your `.jac` files will automatically reload.
 Skip client bundling and only serve the API:
 
 ```bash
-jac start app.jac --dev --no_client
+jac start --dev --no_client
 ```
 
 ---

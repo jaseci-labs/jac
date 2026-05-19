@@ -188,7 +188,9 @@ obj IngressDeployer {
             },
             'data': {
                 'allow-snippet-annotations': 'true',
-                'annotations-risk-level': 'Critical'
+                'annotations-risk-level': 'Critical',
+                'use-gzip': 'true',
+                'gzip-types': 'application/javascript text/css application/json image/svg+xml'
             }
         };
         try {
@@ -295,7 +297,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'livenessProbe': {
                                     'httpGet': {
@@ -305,7 +308,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'resources': {
                                     'requests': {'cpu': '100m', 'memory': '90Mi'},
@@ -643,11 +647,15 @@ obj IngressDeployer {
             # /assets/... for the backend). RIPROXYPATH is also rewritten so the JS
             # frontend sets window.__RI_PROXY_PATH__ = 'cache-dashboard' and prefixes all
             # API/socket calls with /cache-dashboard (which nginx strips via rewrite-target).
-            # Accept-Encoding is cleared so nginx can apply sub_filter to uncompressed HTML.
+            # Accept-Encoding "" lets sub_filter work on raw HTML from the upstream.
+            # Compression is handled at the server level via the nginx ConfigMap
+            # (use-gzip: true), NOT in the snippet — gzip directives in location
+            # snippets can crash the ingress controller.
             redis_ingress_annotations: dict = {
                 'nginx.ingress.kubernetes.io/proxy-body-size': '0',
                 'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
                 'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+                'nginx.ingress.kubernetes.io/proxy-buffering': 'on',
                 'nginx.ingress.kubernetes.io/use-regex': 'true',
                 'nginx.ingress.kubernetes.io/rewrite-target': '/$2',
                 'nginx.ingress.kubernetes.io/configuration-snippet': (

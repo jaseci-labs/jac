@@ -3,6 +3,10 @@
 impl NaIRGenPass.postinit -> None {
     # Use the source file name as the LLVM module ID so GDB shows it.
     import os as _ni_os;
+    # Phase R2: gate debug-only RC machinery (live-list, ctx attribution,
+    # leak dump) on JAC_RC_DEBUG_CODEGEN. Default OFF so production binaries
+    # don't pay the per-allocation malloc(LIVE_NODE_SIZE) overhead.
+    self._rc_debug_codegen = bool(_ni_os.environ.get("JAC_RC_DEBUG_CODEGEN", ""));
     _ni_src: str = self.ir_in.loc.mod_path if self.ir_in.loc else "";
     _ni_mod_name: str = _ni_os.path.basename(_ni_src) if _ni_src else "jac_native";
     self.llvm_module = ir.Module(name=_ni_mod_name, context=ir.Context());
@@ -577,7 +581,8 @@ impl NaIRGenPass._walk_imported_module_types(imported_mod: uni.Module) -> None {
         } elif isinstance(stmt, uni.Enum) {
             self._codegen_enum(stmt);
         } elif isinstance(stmt, uni.GlobalVars) {
-            self._register_imported_globals(stmt);
+            _imp_path = imported_mod.loc.mod_path if imported_mod?.loc else "";
+            self._register_imported_globals(stmt, _imp_path);
         }
     }
 }
@@ -655,7 +660,9 @@ impl NaIRGenPass._register_imported_archetype(arch: uni.Archetype) -> None {
 }
 
 """Register imported global variables with external linkage (resolved at link time)."""
-impl NaIRGenPass._register_imported_globals(nd: uni.GlobalVars) -> None {
+impl NaIRGenPass._register_imported_globals(
+    nd: uni.GlobalVars, source_path: str = ""
+) -> None {
     for assign in nd.assignments {
         targets = assign.target
             if isinstance(assign.target, (list, tuple))
@@ -676,6 +683,10 @@ impl NaIRGenPass._register_imported_globals(nd: uni.GlobalVars) -> None {
             global_var.linkage = "external";
             self.global_vars[var_name] = global_var;
             self.global_var_types[var_name] = var_type;
+            # Record origin so dup-error messages can name the source module
+            if source_path {
+                self._global_origins[var_name] = source_path;
+            }
             # Track list element types for imported list globals
             if isinstance(var_type, ir.PointerType) {
                 for (ename, ltype) in self.list_types.items() {
@@ -816,7 +827,12 @@ impl NaIRGenPass._process_clib_imports(module: uni.Module) -> None {
         for decl in stmt.clib_decls {
             if isinstance(decl, uni.Ability) {
                 fn_name = decl.name_ref.sym_name if decl.name_ref else None;
-                if decl.body is not None {
+                # A `;`-terminated clib decl parses with body=None, but later
+                # passes (e.g. decl/impl matching) can normalise it to `[]`.
+                # Treat an empty body list as no body — only a non-empty body
+                # is a true error.
+                _is_empty_list = isinstance(decl.body, list) and not decl.body;
+                if decl.body is not None and not _is_empty_list {
                     self.emit(E5060, name=fn_name);
                     continue;
                 }
