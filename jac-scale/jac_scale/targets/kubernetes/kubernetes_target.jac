@@ -1196,8 +1196,15 @@ obj KubernetesTarget(DeploymentTarget) {
         path = health_check_path;
         deployment_details = "";
         if cluster_env == 'aws' {
-            time.sleep(self.k8s_config.aws_nlb_wait);
+            # Poll until the NLB has an assigned hostname or the deadline is hit.
+            # AWS NLBs typically take 60-90s to provision; a single sleep risks
+            # reading before ingress is assigned, leaving nlb_url=None and silently
+            # skipping the health check.
             nlb_url = None;
+            poll_interval = self.k8s_config.aws_nlb_wait;
+            nlb_deadline = 120;
+            elapsed = 0;
+            ingress_svc_name = f"{app_name}-ingress-nginx-service";
             try {
                 try {
                     k8s_cluster_config.load_kube_config();
@@ -1207,20 +1214,24 @@ obj KubernetesTarget(DeploymentTarget) {
                 core_v1 = client.CoreV1Api();
                 # The app service is ClusterIP; the NLB is on the NGINX ingress
                 # controller's LoadBalancer service — same source as get_service_url().
-                ingress_svc_name = f"{app_name}-ingress-nginx-service";
-                service_obj = core_v1.read_namespaced_service(
-                    ingress_svc_name, namespace
-                );
-                nlb_ingress = service_obj.status.load_balancer.ingress;
-                if (nlb_ingress and (len(nlb_ingress) > 0)) {
-                    endpoint = nlb_ingress[0].hostname or nlb_ingress[0].ip;
-                    nlb_url = f"http://{endpoint}";
-                } else {
+                while elapsed < nlb_deadline {
+                    service_obj = core_v1.read_namespaced_service(
+                        ingress_svc_name, namespace
+                    );
+                    nlb_ingress = service_obj.status.load_balancer.ingress;
+                    if (nlb_ingress and (len(nlb_ingress) > 0)) {
+                        endpoint = nlb_ingress[0].hostname or nlb_ingress[0].ip;
+                        nlb_url = f"http://{endpoint}";
+                        break;
+                    }
                     if self.logger {
                         self.logger.info(
-                            f"NLB is being provisioned. Run 'kubectl get svc {ingress_svc_name} -n {namespace}' to get the endpoint."
+                            f"NLB is being provisioned ({elapsed}s elapsed). "
+                            f"Retrying in {poll_interval}s..."
                         );
                     }
+                    time.sleep(poll_interval);
+                    elapsed += poll_interval;
                 }
             } except Exception as e {
                 if self.logger {
@@ -1239,6 +1250,12 @@ obj KubernetesTarget(DeploymentTarget) {
                 if not (deployment_status) {
                     raise Exception("Deployment failed: Application failed to deploy.");
                 }
+            } else {
+                raise Exception(
+                    f"AWS NLB '{ingress_svc_name}' did not receive a hostname within "
+                    f"{nlb_deadline}s. Run 'kubectl get svc {ingress_svc_name} "
+                    f"-n {namespace}' to check status."
+                );
             }
         } else {
             (deployment_status, deployment_details) = check_deployment_status(
