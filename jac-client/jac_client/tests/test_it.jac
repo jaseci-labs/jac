@@ -16,7 +16,7 @@ import from subprocess { PIPE, STDOUT, Popen, run }
 import from urllib.error { HTTPError, URLError }
 import from urllib.request { Request, urlopen }
 
-import from .test_helpers {
+import from test_helpers {
     get_env_with_npm,
     get_free_port,
     get_jac_command,
@@ -245,7 +245,9 @@ test "all in one app endpoints" {
 
                 # "/" - server up
                 try {
-                    print("[DEBUG] Sending GET request to root endpoint / (with retry)");
+                    print(
+                        "[DEBUG] Sending GET request to root endpoint / (with retry)"
+                    );
                     root_bytes = _wait_for_endpoint(
                         f"http://127.0.0.1:{server_port}",
                         timeout=120.0,
@@ -363,8 +365,7 @@ test "all in one app endpoints" {
                         "Worker JS should not be empty"
                     );
                     assert (
-                        "postMessage" in worker_js_body
-                        or "onmessage" in worker_js_body
+                        "postMessage" in worker_js_body or "onmessage" in worker_js_body
                     ) , "Worker JS should contain a message handler";
                 } except (
                     URLError,
@@ -443,12 +444,9 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/register endpoint");
                     register_payload = {
-                        "identities": [
-                            {"type": "username", "value": test_username}
-                        ],
-                        "credential": {
-                            "type": "password", "password": test_password
-                        },
+                        "identities": [{"type": "username", "value": test_username}],
+                        "credential": {"type": "password", "password": test_password},
+
                     };
                     req_register = Request(
                         f"http://127.0.0.1:{server_port}/user/register",
@@ -467,7 +465,9 @@ test "all in one app endpoints" {
                         );
                         assert resp_register.status == 201;
                         register_response = json.loads(register_body);
-                        register_data = register_response.get("data", register_response);
+                        register_data = register_response.get(
+                            "data", register_response
+                        );
                         assert "username" in register_data;
                         assert "token" in register_data;
                         assert "root_id" in register_data;
@@ -489,12 +489,9 @@ test "all in one app endpoints" {
                 try {
                     print("[DEBUG] Sending POST request to /user/login endpoint");
                     login_payload = {
-                        "identity": {
-                            "type": "username", "value": test_username
-                        },
-                        "credential": {
-                            "type": "password", "password": test_password
-                        },
+                        "identity": {"type": "username", "value": test_username},
+                        "credential": {"type": "password", "password": test_password},
+
                     };
                     req_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",
@@ -530,12 +527,12 @@ test "all in one app endpoints" {
                         "[DEBUG] Sending POST request to /user/login with invalid credentials"
                     );
                     invalid_login_payload = {
-                        "identity": {
-                            "type": "username", "value": "nonexistent_user"
-                        },
+                        "identity": {"type": "username", "value": "nonexistent_user"},
                         "credential": {
-                            "type": "password", "password": "wrong_password"
+                            "type": "password",
+                            "password": "wrong_password"
                         },
+
                     };
                     req_invalid_login = Request(
                         f"http://127.0.0.1:{server_port}/user/login",
@@ -593,7 +590,9 @@ test "all in one app endpoints" {
                         "__jac_init__ script tag should be present in served HTML"
                     );
                     init_data = json.loads(init_match.group(1));
-                    print(f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}");
+                    print(
+                        f"[DEBUG] Parsed __jac_init__ keys: {list(init_data.keys())}"
+                    );
 
                     # 1. Verify endpointEffects is present
                     assert "endpointEffects" in init_data , (
@@ -923,7 +922,9 @@ test "default client app renders" {
                             ) , "JS bundle should contain React createElement or jsx";
                             print(
                                 f"[DEBUG] JS bundle fetched successfully "
-                                f"({len(js_body)} bytes), contains expected runtime code"
+                                f"({len(
+                                    js_body
+                                )} bytes), contains expected runtime code"
                             );
                         }
                     } else {
@@ -1534,6 +1535,97 @@ test "vite env and define config" {
         } finally {
             os.chdir(original_cwd);
             gc.collect();
+        }
+    }
+}
+
+"""Create a minimal jac.toml file for static_base_path testing."""
+def _create_jac_toml_with_static_base(
+    temp_dir: str, static_base_path: str | None = None
+) -> str {
+    client_section = "";
+    if static_base_path is not None {
+        client_section = f'\n[plugins.client]\nstatic_base_path = "{static_base_path}"\n';
+    }
+
+    toml_content = f'''[project]
+name = "test-static-base-app"
+version = "1.0.0"
+description = "Test static base path project"
+entry-point = "main.jac"
+
+[dependencies.npm]
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+
+[dependencies.npm.dev]
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
+
+{client_section}
+''';
+    config_path = os.path.join(temp_dir, "jac.toml");
+    with open(config_path, "w") as f {
+        f.write(toml_content);
+    }
+    return config_path;
+}
+
+"""Test that Vite config base is set to './' in production by default."""
+test "vite config base defaults to relative path in prod" {
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            _create_jac_toml_with_static_base(temp_dir);
+
+            bundler = ViteBundler(Path(temp_dir));
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry");
+
+            vite_config_path = bundler.create_vite_config(entry_file, is_dev=False);
+            vite_content = vite_config_path.read_text();
+
+            # Verify that base: "./" is set in the config content
+            assert 'base: "./"' in vite_content , "Base path in production should default to relative path './'";
+        } finally {
+            os.chdir(original_cwd);
+        }
+    }
+}
+
+"""Test that Vite config base is set to custom static base path when configured."""
+test "vite config base uses custom static base path when configured" {
+    import from jac_client.plugin.src.vite_bundler { ViteBundler }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        original_cwd = os.getcwd();
+        try {
+            os.chdir(temp_dir);
+            _create_jac_toml_with_static_base(
+                temp_dir, "https://cdn.example.com/assets/"
+            );
+
+            bundler = ViteBundler(Path(temp_dir));
+            entry_file = Path(temp_dir) / ".jac" / "client" / "build" / "main.js";
+            entry_file.parent.mkdir(parents=True, exist_ok=True);
+            entry_file.write_text("// Mock entry");
+
+            vite_config_path = bundler.create_vite_config(entry_file, is_dev=False);
+            vite_content = vite_config_path.read_text();
+
+            # Verify that base: "https://cdn.example.com/assets/" is set in the config content
+            assert 'base: "https://cdn.example.com/assets/"' in vite_content , "Custom base path should be set in production config";
+        } finally {
+            os.chdir(original_cwd);
         }
     }
 }

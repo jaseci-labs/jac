@@ -38,6 +38,7 @@ class ViteBundler {
         self: ViteBundler, api_base_url_override: str = ""
     ) -> str;
 
+    def _resolve_static_base_path(self: ViteBundler) -> str;
     def create_vite_config(
         self: ViteBundler,
         entry_file: Path,

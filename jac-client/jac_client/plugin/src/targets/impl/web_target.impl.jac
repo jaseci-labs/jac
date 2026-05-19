@@ -184,7 +184,7 @@ def _get_client_function_name(loaded_mod: types.ModuleType) -> str {
 }
 
 """Build CSS link tag if CSS file exists."""
-def _build_css_link(bundler: ViteBundler) -> str {
+def _build_css_link(bundler: ViteBundler, base_path: str = "") -> str {
     import hashlib;
 
     css_file = bundler.find_css();
@@ -192,7 +192,8 @@ def _build_css_link(bundler: ViteBundler) -> str {
         return '';
     }
     css_hash = hashlib.sha256(css_file.read_bytes()).hexdigest()[:8];
-    return f'<link rel="stylesheet" href="{css_file.name}?hash={css_hash}"/>';
+    href = base_path + css_file.name if base_path else css_file.name;
+    return f'<link rel="stylesheet" href="{href}?hash={css_hash}"/>';
 }
 
 """Get app meta data from project config."""
@@ -221,10 +222,15 @@ def _generate_index_html(
     import json;
     import from jac_client.plugin.client { HeaderBuilder }
 
+    static_base = bundler.config_loader.get_static_base_path();
+    if static_base and not static_base.endswith('/') {
+        static_base = static_base + '/';
+    }
+
     function_name = _get_client_function_name(loaded_mod);
     module_name = loaded_mod.__name__;
     dist_dir = Path(bundler.output_dir);
-    css_link = _build_css_link(bundler);
+    css_link = _build_css_link(bundler, static_base);
     meta_data = _get_app_meta_data();
     head_builder = HeaderBuilder(meta_data, function_name);
     head_content = head_builder.build_head();
@@ -241,16 +247,17 @@ def _generate_index_html(
     # Escape </ to prevent closing script tag early (don't use html.escape - breaks JSON)
     init_json = json.dumps(init_payload).replace('</', '<\\/');
     bundle_filename = bundle_path.name;
+    src_path = static_base + bundle_filename if static_base else bundle_filename;
 
     html_content = f'''<!DOCTYPE html>
 <html lang="en">
   <head>
-{head_content}
+    {head_content}
   </head>
   <body>
     <div id="root"></div>
     <script id="__jac_init__" type="application/json">{init_json}</script>
-    <script type="module" src="{bundle_filename}"></script>
+    <script type="module" src="{src_path}"></script>
   </body>
 </html>''';
     index_html = dist_dir / 'index.html';

@@ -21,6 +21,7 @@ class JacClientConfig(PluginConfigBase) {
     def save(self: JacClientConfig) -> None;
     def get_api_config(self: JacClientConfig) -> dict[str, Any];
     def get_vite_config(self: JacClientConfig) -> dict[str, Any];
+    def get_static_base_path(self: JacClientConfig) -> str;
     def get_ts_config(self: JacClientConfig) -> dict[str, Any];
     def get_configs(self: JacClientConfig) -> dict[str, Any];
     def get_package_config(self: JacClientConfig) -> dict[str, Any];
