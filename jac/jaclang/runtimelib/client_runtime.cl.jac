@@ -3,11 +3,13 @@
 # JSX element representation
 obj JsxElement {
     has tag: any,
-        props: dict = {},
-        children: list = [];
+        props: dict[str, any] = {},
+        children: list[any] = [];
 }
 # JSX factory function
-def __jacJsx(tag: any, props: dict = {}, children: list = []) -> JsxElement;
+def __jacJsx(
+    tag: any, props: dict[str, any] = {}, children: list[any] = []
+) -> JsxElement;
 # DOM rendering function
 def renderJsxTree(nd: JsxElement, container: any) -> None;
 # Internal: Build DOM from JSX tree
@@ -33,10 +35,10 @@ glob __jacReactiveContext = {
      };
 # Create a reactive signal (primitive value)
 # Returns [getter, setter] tuple for reactive primitive value
-def createSignal(initialValue: any) -> list;
+def createSignal(initialValue: any) -> list[any];
 # Create reactive state (object/dict)
 # Returns [getter, setter] tuple for reactive object
-def createState(initialState: dict) -> list;
+def createState(initialState: dict[str, any]) -> list[any];
 # Run effect when dependencies change
 # Executes effectFn and re-runs when tracked signals change
 def createEffect(effectFn: any) -> None;
@@ -44,9 +46,9 @@ def createEffect(effectFn: any) -> None;
 # Executes mountFn once when the component first renders
 def onMount(mountFn: any) -> None;
 # Internal: Track component dependencies
-def __jacTrackDependency(subscribers: list) -> None;
+def __jacTrackDependency(subscribers: list[any]) -> None;
 # Internal: Notify subscribers of state change
-def __jacNotifySubscribers(subscribers: list) -> None;
+def __jacNotifySubscribers(subscribers: list[any]) -> None;
 # Internal: Run an effect function with dependency tracking
 def __jacRunEffect(effectFn: any) -> None;
 # Schedule a re-render (batched)
@@ -96,7 +98,7 @@ def Link(
     replace: bool = False,
     state: any = None,
     className: str = "",
-    style: dict = {},
+    style: dict[str, str] = {},
     children: any = None
 ) -> JsxElement;
 
@@ -113,24 +115,24 @@ def useNavigate -> any;
 
 # Current location — `{pathname, search, hash}`. Subscribes to the router
 # signal so dependent renders re-run on URL changes.
-def useLocation -> dict;
+def useLocation -> dict[str, any];
 
 # URL params from the matched route's `:param` placeholders.
-def useParams -> dict;
+def useParams -> dict[str, any];
 
 # Imperative navigation — equivalent to calling `useNavigate()(path)`.
 def navigate(path: str) -> None;
 
 # Returns `{navigate, location, params, pathname, search, hash}` — the
 # bundle of router state most apps reach for. Same shape in both runtimes.
-def useRouter -> dict;
+def useRouter -> dict[str, any];
 
 # Internal: pathname for the current URL.
 def __jacGetPath -> str;
 
 # Internal: lazy-initialize the router state (path signal + popstate listener).
 # Declared so the bundler ships the helper alongside the public surface.
-def _ensureRouter -> dict;
+def _ensureRouter -> dict[str, any];
 
 # Internal: match a `path` pattern (with `:param` placeholders) against the
 # current URL pathname. Returns extracted params on match, `None` on miss.
@@ -138,25 +140,26 @@ def _matchRoutePath(pattern: str, path: str) -> any;
 # ============================================================================
 # Walker spawn function
 # ============================================================================
-async def __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+async def __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any;
 # Synchronous spawn helper — surface parity with jac-client.
-def jacSpawn(left: str, right: str = "", fields: dict = {}) -> any;
+def jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any;
 # Function call function - calls server-side functions from client
-async def __jacCallFunction(function_name: str, args: dict = {}) -> any;
+async def __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any;
 # Authentication helpers
-def __normalizeIdentity(x: any) -> dict;
-def __normalizeCredential(x: any) -> dict;
+def __normalizeIdentity(x: any) -> dict[str, any];
+def __normalizeCredential(x: any) -> dict[str, any];
 # `profile` is jac-client-style optional signup metadata; bare-serve forwards
 # it to the server unchanged so apps written against jac-client also work
 # under bare-serve without per-call edits.
 async def jacSignup(
-    identities_or_username: (str | list),
-    credential_or_password: (str | dict),
-    profile: (dict | None) = None
-) -> dict;
+    identities_or_username: (str | list[str]),
+    credential_or_password: (str | dict[str, any]),
+    profile: (dict[str, any] | None) = None
+) -> dict[str, any];
 
 async def jacLogin(
-    identity_or_username: (str | dict), credential_or_password: (str | dict)
+    identity_or_username: (str | dict[str, any]),
+    credential_or_password: (str | dict[str, any])
 ) -> bool;
 
 def jacLogout -> None;
@@ -169,7 +172,7 @@ def __removeLocalStorage(key: str) -> None;
 def __isObject(value: any) -> bool;
 
 def __isFunction(value: any) -> bool;
-def __objectKeys(`obj: any) -> list;
+def __objectKeys(`obj: any) -> list[str];
 # Low-level helpers
 def __jacHasOwn(`obj: any, key: any) -> bool;
 # Internal polyfill for Python-style dict.get on plain JS objects
@@ -178,16 +181,18 @@ def __jacEnsureObjectGetPolyfill -> None;
 def __jacGetDocument(scope: any) -> any;
 def __jacParseJsonObject(text: str) -> any;
 
-def __jacBuildOrderedArgs(order: list, argsDict: dict) -> list;
+def __jacBuildOrderedArgs(order: list[str], argsDict: dict[str, any]) -> list[any];
 def __jacResolveRenderer(scope: any) -> any;
 
-def __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any;
+def __jacResolveTarget(
+    moduleRecord: dict[str, any], registry: dict[str, any], name: str
+) -> any;
 def __jacSafeCallTarget(
-    target: any, scope: any, orderedArgs: list, targetName: str
-) -> dict;
+    target: any, scope: any, orderedArgs: list[any], targetName: str
+) -> dict[str, any];
 # Runtime support helpers for client module registration / hydration
 def __jacGlobalScope -> any;
-def __jacEnsureRegistry -> dict;
+def __jacEnsureRegistry -> dict[str, any];
 def __jacApplyRender(renderer: any, container: any, nd: any) -> None;
 
 def __jacHydrateFromDom(defaultModuleName: str) -> None;
@@ -195,16 +200,16 @@ def __jacExecuteHydration -> None;
 def __jacEnsureHydration(moduleName: str) -> None;
 
 def __jacRegisterClientModule(
-    moduleName: str, clientFunctions: list = [], clientGlobals: dict = {}
+    moduleName: str, clientFunctions: list[str] = [], clientGlobals: dict[str, any] = {}
 ) -> None;
 
 # ============================================================================
 # React-style API aliases for compatibility
 # ============================================================================
 # These provide React-like API using the core reactive primitives
-def useState(initialValue: any) -> list;
+def useState(initialValue: any) -> list[any];
 
-def useEffect(effectFn: any, deps: list = []) -> None;
+def useEffect(effectFn: any, deps: list[any] = []) -> None;
 
 # ============================================================================
 # Client Error Reporting

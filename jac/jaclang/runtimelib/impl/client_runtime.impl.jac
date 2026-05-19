@@ -1,4 +1,6 @@
-impl __jacJsx(tag: any, props: dict = {}, children: list = []) -> JsxElement {
+impl __jacJsx(
+    tag: any, props: dict[str, any] = {}, children: list[any] = []
+) -> JsxElement {
     return JsxElement(tag=tag, props=props, children=children);
 }
 
@@ -80,7 +82,7 @@ impl __applyProp(element: any, key: str, value: any) -> None {
     }
 }
 
-impl createSignal(initialValue: any) -> list {
+impl createSignal(initialValue: any) -> list[any] {
     signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialValue, "subscribers": []};
     __jacReactiveContext.signals.append(signalData);
@@ -97,7 +99,7 @@ impl createSignal(initialValue: any) -> list {
     return [readVal, writeVal];
 }
 
-impl createState(initialState: dict) -> list {
+impl createState(initialState: dict[str, any]) -> list[any] {
     signalId = len(__jacReactiveContext.signals);
     signalData = {"value": initialState, "subscribers": []};
     __jacReactiveContext.signals.append(signalData);
@@ -151,7 +153,7 @@ impl onMount(mountFn: any) -> None {
     }
 }
 
-impl __jacTrackDependency(subscribers: list) -> None {
+impl __jacTrackDependency(subscribers: list[any]) -> None {
     currentEffect = __jacReactiveContext.currentEffect;
     if currentEffect {
         alreadySubscribed = False;
@@ -178,7 +180,7 @@ impl __jacTrackDependency(subscribers: list) -> None {
     }
 }
 
-impl __jacNotifySubscribers(subscribers: list) -> None {
+impl __jacNotifySubscribers(subscribers: list[any]) -> None {
     for subscriber in subscribers {
         if __isFunction(subscriber) {
             # It's an effect function - re-run it
@@ -267,7 +269,7 @@ impl __jacRerenderComponent(componentId: any) -> None {
 # access; `_ensureRouter` is the choke point that installs the popstate listener
 # and the path signal, which `<Routes>` and the `useNavigate`/`useLocation`/
 # `useParams` hooks subscribe to.
-impl _ensureRouter -> dict {
+impl _ensureRouter -> dict[str, any] {
     existing = __jacReactiveContext.router;
     if existing {
         return existing;
@@ -365,7 +367,7 @@ impl Link(
     replace: bool = False,
     state: any = None,
     className: str = "",
-    style: dict = {},
+    style: dict[str, str] = {},
     children: any = None
 ) -> JsxElement {
     target = `to;
@@ -399,7 +401,7 @@ impl useNavigate -> any {
     return navigate;
 }
 
-impl useLocation -> dict {
+impl useLocation -> dict[str, any] {
     router = _ensureRouter();
     pathname = router.path();  # subscribe to path signal
     return {
@@ -410,7 +412,7 @@ impl useLocation -> dict {
     };
 }
 
-impl useParams -> dict {
+impl useParams -> dict[str, any] {
     router = _ensureRouter();
     return router.params or {};
 }
@@ -421,7 +423,7 @@ impl navigate(path: str) -> None {
     router.setPath(path);
 }
 
-impl useRouter -> dict {
+impl useRouter -> dict[str, any] {
     router = _ensureRouter();
     pathname = router.path();  # subscribe so consumers re-render on URL change
     return {
@@ -447,7 +449,7 @@ impl __jacGetPath -> str {
     return "/";
 }
 
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+impl __jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
     token = __getLocalStorage("jac_token");
     url = f"/walker/{left}";
     if right != "" {
@@ -475,14 +477,14 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     return payload["data"] if payload["data"] else payload;
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
+impl jacSpawn(left: str, right: str = "", fields: dict[str, any] = {}) -> any {
     # Sync caller — returns the promise from __jacSpawn so callers that don't
     # need the resolved value can fire-and-forget. Surface parity with
     # jac-client which exposes both `__jacSpawn` (async) and `jacSpawn` (sync).
     return __jacSpawn(left, right, fields);
 }
 
-impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
+impl __jacCallFunction(function_name: str, args: dict[str, any] = {}) -> any {
     token = __getLocalStorage("jac_token");
     response = await fetch(
         f"/function/{function_name}",
@@ -511,14 +513,14 @@ impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     return result;
 }
 
-def __normalizeIdentity(x: any) -> dict {
+def __normalizeIdentity(x: any) -> dict[str, any] {
     if __isObject(x) {
         return x;
     }
     return {"type": "username", "value": x};
 }
 
-def __normalizeCredential(x: any) -> dict {
+def __normalizeCredential(x: any) -> dict[str, any] {
     if __isObject(x) {
         return x;
     }
@@ -526,10 +528,10 @@ def __normalizeCredential(x: any) -> dict {
 }
 
 impl jacSignup(
-    identities_or_username: (str | list),
-    credential_or_password: (str | dict),
-    profile: (dict | None) = None
-) -> dict {
+    identities_or_username: (str | list[str]),
+    credential_or_password: (str | dict[str, any]),
+    profile: (dict[str, any] | None) = None
+) -> dict[str, any] {
     credential = __normalizeCredential(credential_or_password);
     identities = (
         identities_or_username
@@ -586,7 +588,8 @@ impl jacSignup(
 }
 
 impl jacLogin(
-    identity_or_username: (str | dict), credential_or_password: (str | dict)
+    identity_or_username: (str | dict[str, any]),
+    credential_or_password: (str | dict[str, any])
 ) -> bool {
     identity = __normalizeIdentity(identity_or_username);
     credential = __normalizeCredential(credential_or_password);
@@ -655,7 +658,7 @@ impl __isFunction(value: any) -> bool {
     return Object.prototype.toString.call(value) == "[object Function]";
 }
 
-impl __objectKeys(`obj: any) -> list {
+impl __objectKeys(`obj: any) -> list[str] {
     if `obj == None {
         return [];
     }
@@ -712,7 +715,7 @@ impl __jacParseJsonObject(text: str) -> any {
     }
 }
 
-impl __jacBuildOrderedArgs(order: list, argsDict: dict) -> list {
+impl __jacBuildOrderedArgs(order: list[str], argsDict: dict[str, any]) -> list[any] {
     result = [];
     if not order {
         return result;
@@ -734,7 +737,9 @@ impl __jacResolveRenderer(scope: any) -> any {
     return None;
 }
 
-impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any {
+impl __jacResolveTarget(
+    moduleRecord: dict[str, any], registry: dict[str, any], name: str
+) -> any {
     moduleFunctions = (
         moduleRecord.moduleFunctions
             if moduleRecord and moduleRecord.moduleFunctions
@@ -751,8 +756,8 @@ impl __jacResolveTarget(moduleRecord: dict, registry: dict, name: str) -> any {
 }
 
 impl __jacSafeCallTarget(
-    target: any, scope: any, orderedArgs: list, targetName: str
-) -> dict {
+    target: any, scope: any, orderedArgs: list[any], targetName: str
+) -> dict[str, any] {
     try {
         result = target.apply(scope, orderedArgs);
         return {"ok": True, "value": result};
@@ -775,7 +780,7 @@ impl __jacGlobalScope -> any {
     return {};
 }
 
-impl __jacEnsureRegistry -> dict {
+impl __jacEnsureRegistry -> dict[str, any] {
     scope = __jacGlobalScope();
     registry = scope.__jacClient;
     if not registry {
@@ -937,7 +942,7 @@ impl __jacEnsureHydration(moduleName: str) -> None {
 }
 
 impl __jacRegisterClientModule(
-    moduleName: str, clientFunctions: list = [], clientGlobals: dict = {}
+    moduleName: str, clientFunctions: list[str] = [], clientGlobals: dict[str, any] = {}
 ) -> None {
     __jacEnsureObjectGetPolyfill();
     __jacInstallErrorHandlers();
@@ -1001,7 +1006,7 @@ Returns [value, setter] where value is the current state (not a getter function)
 When setter is called, schedules a re-render of the component.
 Uses hook index tracking to maintain state across re-renders.
 """
-impl useState(initialValue: any) -> list {
+impl useState(initialValue: any) -> list[any] {
     # Get current hook index
     hookIndex = __jacReactiveContext.hookIndex;
     hooks = __jacReactiveContext.hooks;
@@ -1034,7 +1039,7 @@ impl useState(initialValue: any) -> list {
 When deps is empty [], runs once on mount (like onMount).
 Otherwise tracks dependencies and re-runs when they change.
 """
-impl useEffect(effectFn: any, deps: list = []) -> None {
+impl useEffect(effectFn: any, deps: list[any] = []) -> None {
     # For now, always run on mount since we don't have React's dep tracking
     # This matches useEffect(() => { ... }, []) behavior
     onMount(effectFn);
