@@ -25,7 +25,12 @@ The `sub` claim carries the stable user_id. The `type` claim is kept as
 impl WebhookUtils.create_api_key_token(
     api_key_id: str, user_id: str, name: str, expiry_days: int | None = None
 ) -> str {
-    default_expiry = WEBHOOK_API_KEY_EXPIRY_DAYS;
+    # Read config at call time so secret/expiry rotation does not require
+    # a process restart.
+    jwt_config = get_scale_config().get_jwt_config();
+    default_expiry = int(
+        get_scale_config().get_webhook_config()['api_key_expiry_days']
+    );
     payload: dict[str, Any] = {
         'type': 'api_key',
         'api_key_id': api_key_id,
@@ -41,13 +46,20 @@ impl WebhookUtils.create_api_key_token(
         payload['exp'] = current_time + timedelta(days=int(default_expiry));
     }
     # If expiry_days is 0 or negative, no expiry is set (permanent key)
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM);
+    return jwt.encode(
+        payload, jwt_config['secret'], algorithm=jwt_config['algorithm']
+    );
 }
 
 """Validate an API key token and extract user information."""
 impl WebhookUtils.validate_api_key(api_key: str) -> dict[str, str] | None {
     try {
-        payload = jwt.decode(api_key, JWT_SECRET, algorithms=[JWT_ALGORITHM]);
+        jwt_config = get_scale_config().get_jwt_config();
+        payload = jwt.decode(
+            api_key,
+            jwt_config['secret'],
+            algorithms=[jwt_config['algorithm']]
+        );
 
         # Verify this is an API key token
         if payload.get('type') != 'api_key' {
@@ -134,7 +146,9 @@ impl ApiKeyManager.create_api_key(
     );
     key_created_at: datetime = datetime.now(UTC);
     expires_at: datetime | None = None;
-    default_expiry = WEBHOOK_API_KEY_EXPIRY_DAYS;
+    default_expiry = int(
+        get_scale_config().get_webhook_config()['api_key_expiry_days']
+    );
     if expiry_days is not None and expiry_days > 0 {
         expires_at = key_created_at + timedelta(days=int(expiry_days));
     } elif default_expiry > 0 {

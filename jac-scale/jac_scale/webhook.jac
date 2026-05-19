@@ -22,13 +22,9 @@ import from jac_scale.config_loader { get_scale_config }
 import from jac_scale.db { Db, get_mongo_client }
 import from jac_scale.factories.database_factory { DatabaseType }
 
-# Load webhook configuration
-glob logger = logging.getLogger(__name__),
-     _webhook_config = get_scale_config().get_webhook_config(),
-     WEBHOOK_API_KEY_EXPIRY_DAYS = _webhook_config['api_key_expiry_days'],
-     _jwt_config = get_scale_config().get_jwt_config(),
-     JWT_SECRET = _jwt_config['secret'],
-     JWT_ALGORITHM = _jwt_config['algorithm'];
+# JWT and webhook settings are read at call time (see webhook.impl.jac)
+# so secret/expiry rotation does not require a process restart.
+glob logger = logging.getLogger(__name__);
 
 """Pydantic model for API key creation request."""
 class CreateApiKeyRequest(BaseModel) {
