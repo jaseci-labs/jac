@@ -187,6 +187,7 @@ def __jacResolveRenderer(scope: any) -> any;
 def __jacResolveTarget(
     moduleRecord: dict[str, any], registry: dict[str, any], name: str
 ) -> any;
+
 def __jacSafeCallTarget(
     target: any, scope: any, orderedArgs: list[any], targetName: str
 ) -> dict[str, any];
