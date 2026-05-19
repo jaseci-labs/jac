@@ -244,86 +244,29 @@ impl ApiKeyManager.revoke_api_key(user_id: str, api_key_id: str) -> TransportRes
     );
 }
 
-"""Validate an API key and return the associated user_id."""
-impl ApiKeyManager.validate_api_key(api_key: str) -> str | None {
-    # Decode the JWT to get key info
-    key_info = WebhookUtils.validate_api_key(api_key);
-    if not key_info {
-        return None;
-    }
-    api_key_id = key_info.get('api_key_id', '');
-    # Check if key is still active (not revoked) in database
-    if not self.is_key_active(api_key_id) {
-        return None;
-    }
-    return key_info.get('user_id');
-}
-
-"""Check if an API key ID exists and is not revoked."""
-impl ApiKeyManager.is_key_active(api_key_id: str) -> bool {
-    key_info: dict | None = None;
+"""Look up a stored key document by id (MongoDB or in-memory)."""
+impl ApiKeyManager._get_key_doc(api_key_id: str) -> dict | None {
     if self._db is not None {
-        key_info = self._db.find_one(self._collection, {'_id': api_key_id});
-    } else {
-        key_info = self._inmemory_store.get(api_key_id);
+        return self._db.find_one(self._collection, {'_id': api_key_id});
     }
-    if not key_info {
-        # Fail closed: a key with no stored record cannot be confirmed
-        # active. A signed but unknown api_key_id (or a record lost to a
-        # store reset) must not be honored.
-        return False;
-    }
-    return not key_info.get('revoked', False);
+    return self._inmemory_store.get(api_key_id);
 }
 
-"""Return the per-key signing secret for a valid api_key, or None.
+"""Resolve a valid, active api_key to its stored document.
 
-This secret is independent of the api_key itself and is never sent in a
-webhook request, so it is what request bodies are HMAC-signed with.
+Fails closed: a key with no stored record (signed but unknown id, or a
+record lost to a store reset) or a revoked key is not honored.
 """
-impl ApiKeyManager.get_signing_secret(api_key: str) -> str | None {
+impl ApiKeyManager.resolve_key(api_key: str) -> dict | None {
     key_info = WebhookUtils.validate_api_key(api_key);
     if not key_info {
         return None;
     }
-    api_key_id = key_info.get('api_key_id', '');
-    key_doc: dict | None = None;
-    if self._db is not None {
-        key_doc = self._db.find_one(self._collection, {'_id': api_key_id});
-    } else {
-        key_doc = self._inmemory_store.get(api_key_id);
-    }
-    if not key_doc {
+    key_doc = self._get_key_doc(key_info.get('api_key_id', ''));
+    if not key_doc or key_doc.get('revoked', False) {
         return None;
     }
-    return key_doc.get('signing_secret');
-}
-
-"""Whether a valid api_key is permitted to call the given walker.
-
-An empty (or missing) allowed_walkers list means the key is unscoped and
-may call any webhook walker. A non-empty list is an allow-list.
-"""
-impl ApiKeyManager.is_walker_allowed(api_key: str, walker_name: str) -> bool {
-    key_info = WebhookUtils.validate_api_key(api_key);
-    if not key_info {
-        return False;
-    }
-    api_key_id = key_info.get('api_key_id', '');
-    key_doc: dict | None = None;
-    if self._db is not None {
-        key_doc = self._db.find_one(self._collection, {'_id': api_key_id});
-    } else {
-        key_doc = self._inmemory_store.get(api_key_id);
-    }
-    if not key_doc {
-        return False;
-    }
-    allowed = key_doc.get('allowed_walkers') or [];
-    if not allowed {
-        return True;
-    }
-    return walker_name in allowed;
+    return key_doc;
 }
 
 """Per-key fixed-window rate check. True if the call is allowed.
@@ -332,15 +275,10 @@ Best-effort and per-process: in a multi-pod deployment each pod tracks
 its own window, so this is a coarse safety valve, not a global quota. A
 non-positive limit disables the check.
 """
-impl ApiKeyManager.check_rate_limit_for(api_key: str, limit_per_minute: int) -> bool {
+impl ApiKeyManager.check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool {
     if limit_per_minute <= 0 {
         return True;
     }
-    key_info = WebhookUtils.validate_api_key(api_key);
-    if not key_info {
-        return False;
-    }
-    api_key_id = key_info.get('api_key_id', '');
     window_id = int(datetime.now(UTC).timestamp() // 60);
     entry = self._rate_window.get(api_key_id);
     if not entry or entry[0] != window_id {

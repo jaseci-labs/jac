@@ -337,25 +337,22 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             );
         }
 
-        # Validate API key and get the owning user_id
-        user_id = self.get_api_key_manager().validate_api_key(api_key);
-        if not user_id {
+        # Resolve the key once (one JWT decode + one store read). The doc
+        # carries user_id, signing_secret and allowed_walkers, so the
+        # checks below read from it instead of re-resolving the api_key.
+        key_doc = self.get_api_key_manager().resolve_key(api_key);
+        user_id = key_doc.get('user_id') if key_doc else None;
+        # Invalid/inactive key, or its owning user no longer exists.
+        if not user_id or not self.user_manager.user_exists(user_id) {
             return TransportResponse.fail(
                 code='UNAUTHORIZED',
                 message='Invalid or expired API key',
                 meta=Meta(extra={'http_status': 401})
             );
         }
-        # Reject keys whose owning user no longer exists (no ghost users)
-        if not self.user_manager.user_exists(user_id) {
-            return TransportResponse.fail(
-                code='UNAUTHORIZED',
-                message='Invalid or expired API key',
-                meta=Meta(extra={'http_status': 401})
-            );
-        }
-        # Enforce per-key walker scoping (allow-list on the key)
-        if not self.get_api_key_manager().is_walker_allowed(api_key, walker_name) {
+        # Enforce per-key walker scoping (empty allow-list = unscoped)
+        allowed_walkers = key_doc.get('allowed_walkers') or [];
+        if allowed_walkers and walker_name not in allowed_walkers {
             return TransportResponse.fail(
                 code='FORBIDDEN',
                 message='API key is not permitted to call this webhook',
@@ -363,7 +360,9 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             );
         }
         # Per-key rate limit (best-effort, per-process; off when <= 0)
-        if not self.get_api_key_manager().check_rate_limit_for(api_key, rate_limit) {
+        if not self.get_api_key_manager().check_rate_limit(
+            key_doc.get('_id', ''), rate_limit
+        ) {
             return TransportResponse.fail(
                 code='RATE_LIMITED',
                 message='Rate limit exceeded',
@@ -372,15 +371,18 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         }
         # Reject oversized payloads. Check the declared length first so a
         # huge body is refused before it is buffered into memory.
+        def _too_large -> TransportResponse {
+            return TransportResponse.fail(
+                code='PAYLOAD_TOO_LARGE',
+                message='Request body too large',
+                meta=Meta(extra={'http_status': 413})
+            );
+        }
         content_length = request.headers.get('content-length');
         if content_length {
             try {
                 if int(content_length) > max_body_bytes {
-                    return TransportResponse.fail(
-                        code='PAYLOAD_TOO_LARGE',
-                        message='Request body too large',
-                        meta=Meta(extra={'http_status': 413})
-                    );
+                    return _too_large();
                 }
             } except Exception {
             # Malformed Content-Length: fall through to the post-read cap
@@ -391,11 +393,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         # verification and field parsing.
         raw_body = await request.body();
         if len(raw_body) > max_body_bytes {
-            return TransportResponse.fail(
-                code='PAYLOAD_TOO_LARGE',
-                message='Request body too large',
-                meta=Meta(extra={'http_status': 413})
-            );
+            return _too_large();
         }
 
         # Verify HMAC-SHA256 signature if enabled
@@ -438,7 +436,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             # The api_key travels in this request, so using it as the HMAC
             # secret would let any observer forge a valid signature. The
             # signing secret is shared out of band and never sent here.
-            signing_secret = self.get_api_key_manager().get_signing_secret(api_key);
+            signing_secret = key_doc.get('signing_secret');
             if not signing_secret {
                 return TransportResponse.fail(
                     code='UNAUTHORIZED',

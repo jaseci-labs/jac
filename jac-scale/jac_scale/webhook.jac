@@ -114,21 +114,20 @@ obj ApiKeyManager {
     """Revoke an API key."""
     def revoke_api_key(user_id: str, api_key_id: str) -> TransportResponse;
 
-    """Validate an API key and return the associated user_id."""
-    def validate_api_key(api_key: str) -> str | None;
+    """Look up a stored key document by id (MongoDB or in-memory)."""
+    def _get_key_doc(api_key_id: str) -> dict | None;
 
-    """Check if an API key ID exists and is not revoked."""
-    def is_key_active(api_key_id: str) -> bool;
+    """Resolve a valid, active api_key to its stored document.
 
-    """Return the per-key signing secret for a valid api_key, or None."""
-    def get_signing_secret(api_key: str) -> str | None;
-
-    """Whether a valid api_key is permitted to call the given walker."""
-    def is_walker_allowed(api_key: str, walker_name: str) -> bool;
+    Decodes the JWT, loads the record, and fails closed if the record is
+    missing or revoked. The returned doc carries user_id, signing_secret
+    and allowed_walkers, so a caller resolves the key once and reads
+    everything it needs from the result."""
+    def resolve_key(api_key: str) -> dict | None;
 
     """Per-key fixed-window rate check. True if the call is allowed.
 
     Best-effort and per-process (not cluster-wide). A non-positive limit
     disables the check."""
-    def check_rate_limit_for(api_key: str, limit_per_minute: int) -> bool;
+    def check_rate_limit(api_key_id: str, limit_per_minute: int) -> bool;
 }
