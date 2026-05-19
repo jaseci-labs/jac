@@ -2908,6 +2908,7 @@ impl PyastBuildPass.proc_module(nd: py_ast.Module) -> uni.Module {
         return uni.Module.make_stub(inject_src=self.ir_in.orig_src);
     }
     elements: list[uni.UniNode] = [self.convert(i) for i in nd.body];
+    elements = self._flatten_version_conditionals(elements);
     elements[0] = elements[0].expr
         if (
             isinstance(elements[0], uni.ExprStmt)
