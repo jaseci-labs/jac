@@ -81,6 +81,24 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         parts: list[doc.DocType] = [start_token.gen.doc_ir];
         if name_node {
             parts.append(name_node.gen.doc_ir);
+        } else {
+            # No JsxElementName — this is a dynamic tag (`<@expr ...>` /
+            # `</@expr>`) where the tag region is built from the `@` token
+            # plus the tag expression (and `{`/`}` for the brace-wrapped
+            # form). Emit every kid between start_token and end_token that
+            # isn't an attribute, preserving source order.
+            for k in nd.kid {
+                if k is start_token or k is end_token {
+                    continue;
+                }
+                if (
+                    isinstance(k, uni.JsxNormalAttribute)
+                    or isinstance(k, uni.JsxSpreadAttribute)
+                ) {
+                    continue;
+                }
+                parts.append(k.gen.doc_ir);
+            }
         }
         # Attributes live in their own Group so the opening-tag flat/break
         # decision is independent of the children flat/break decision. This

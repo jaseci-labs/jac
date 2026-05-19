@@ -118,7 +118,12 @@ obj ViewLowerPass(UniPass) {
         }
     }
 
-    """True when `stmts` (recursively) render a JSX element with no `key`."""
+    """True when `stmts` (recursively) render a JSX element with no `key`.
+
+    Mirrors the recursion in `_check_body` — descends through every
+    block-bodied construct that can yield template content (loops, `with`,
+    `if`/`else`, `match`/`switch`, and `try` including each `except` arm,
+    the `else` clause, and the `finally` body)."""
     def _emits_keyless_jsx(stmts: list) -> bool {
         for s in stmts {
             if isinstance(s, uni.ExprStmt) and isinstance(s.expr, uni.JsxElement) {
@@ -140,6 +145,30 @@ obj ViewLowerPass(UniPass) {
             } elif isinstance(s, uni.IfStmt) or isinstance(s, uni.ElseStmt) {
                 if self._emits_keyless_jsx(s.body) {
                     return True;
+                }
+            } elif isinstance(s, uni.TryStmt) {
+                if self._emits_keyless_jsx(s.body) {
+                    return True;
+                }
+                for ex in s.excepts {
+                    if self._emits_keyless_jsx(ex.body) {
+                        return True;
+                    }
+                }
+                if s.else_body is not None
+                and isinstance(s.else_body, uni.ElseStmt)
+                and self._emits_keyless_jsx(s.else_body.body) {
+                    return True;
+                }
+                if s.finally_body is not None
+                and self._emits_keyless_jsx(s.finally_body.body) {
+                    return True;
+                }
+            } elif isinstance(s, uni.MatchStmt) or isinstance(s, uni.SwitchStmt) {
+                for cs in s.cases {
+                    if self._emits_keyless_jsx(cs.body) {
+                        return True;
+                    }
                 }
             }
         }

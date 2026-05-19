@@ -6233,8 +6233,7 @@ ordinary `def:pub -> JsxElement` is done later by `ViewLowerPass`, so the
 syntax faithfully. The generic list and parameter list are both optional, so
 `view Name { body }` is valid."""
 impl Parser.parse_view -> Ability {
-    self.advance();  # consume the `view` keyword
-    view_uni = self.make_uni_token(self.previous());
+    view_uni = self.consume_uni(TokenKind.KW_VIEW);  # `defview`
     name_tok = self.expect_name();
     name = self.make_name(name_tok);
     # Optional generic params: view Name[T](...)
