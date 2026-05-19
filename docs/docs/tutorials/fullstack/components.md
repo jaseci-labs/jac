@@ -1,6 +1,6 @@
 # React-Style Components
 
-Jac's client-side code uses JSX syntax (the same HTML-in-code approach popularized by React) to build UI components. Components are functions declared inside `cl { }` blocks that return `JsxElement` values. Each prop is a named parameter -- the type-checker validates every JSX call site per attribute -- and components compose just like in React, with conditional rendering, list mapping, and event handling.
+Jac's client-side code uses JSX syntax (the same HTML-in-code approach popularized by React) to build UI components. Components are functions declared in client-side code -- a `.cl.jac` file or a `to cl:` section -- that return `JsxElement` values. Each prop is a named parameter -- the type-checker validates every JSX call site per attribute -- and components compose just like in React, with conditional rendering, list mapping, and event handling.
 
 The key difference from a standard React setup: there's no separate JavaScript project, no webpack configuration, and no build toolchain to manage. You write components in Jac syntax, the compiler generates optimized JavaScript, and the dev server bundles and serves it automatically.
 
@@ -34,6 +34,37 @@ def:pub app() -> JsxElement {
 - `def:pub` exports the component
 - Each prop is a named parameter -- `<Greeting name="Alice" />` is type-checked against the `name: str` declaration
 - Self-closing tags: `<Component />`
+
+---
+
+## Typed props and `children`
+
+Declare **every prop as its own named, typed parameter**. The type-checker keys per-attribute validation on parameter names, so each `<Card title="..." />` call site is checked against the declared types -- unknown props, type mismatches, and missing required props are all caught at `jac check` time.
+
+`children` -- the JSX nested between a component's tags -- is just a regular parameter named `children`. It is not special-cased: React's reconciler fills it in and the compiler destructures it like any other prop. (The only genuinely reserved attribute names are `key` and `ref`.)
+
+```jac
+to cl:
+
+def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
+    return <div className="card">
+        <h2>{title}</h2>
+        <p>{description}</p>
+        {children}
+    </div>;
+}
+
+def:pub app() -> JsxElement {
+    return <Card title="Welcome" description="Hello!">
+        <p>This is the card content.</p>
+    </Card>;
+}
+```
+
+!!! warning "`children` must have a default value"
+    The prop validator counts only JSX **attributes** toward matched parameters -- nested content does *not* count. A `children` parameter with no default is therefore treated as a *required* prop, and any call site that passes another attribute fails with `error[E1102]: Component 'Card' requires prop 'children'`. Always declare it as `children: any = None`.
+
+There is no `ReactNode`-style union type in Jac, and a children value can be an element, a string, a number, or a list of those -- so `any` is the honest type for a `children` parameter. The parameter type governs only how you use `children` inside the body; it is never checked against the nested content.
 
 ---
 
@@ -236,7 +267,7 @@ def:pub LoginForm() -> JsxElement {
 ```jac
 to cl:
 
-def:pub Card(title: str, children: Any) -> JsxElement {
+def:pub Card(title: str, children: any = None) -> JsxElement {
     return <div className="card">
         <div className="card-header">{title}</div>
         <div className="card-body">{children}</div>
@@ -290,7 +321,7 @@ def:pub app() -> JsxElement {
 ### Header.cl.jac
 
 ```jac
-# No cl { } needed for .cl.jac files
+# No `to cl:` header needed for .cl.jac files
 
 def:pub Header(title: str) -> JsxElement {
     return <header>
@@ -407,7 +438,7 @@ def:pub app() -> JsxElement {
 | Input handler | `onChange={lambda e: ChangeEvent { ... }}` |
 | List rendering | `{[<li>{x}</li> for x in items]}` |
 | Conditional | `{("A" if condition else "B")}` |
-| Children | `def:pub Card(children: Any) { ... }` then `{children}` |
+| Children | `def:pub Card(children: any = None) { ... }` then `{children}` |
 | Forwarding bundle | `def:pub Wrap(props: dict)` (suppress W5015) |
 | Import component | `import from "./File.cl.jac" { Component }` |
 

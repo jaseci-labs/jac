@@ -128,6 +128,9 @@ Emitted by the parser and lexer during source code parsing.
 | Code | Message |
 |------|---------|
 | `W0060` | Docstrings in Jac go before the declaration, not inside the body |
+| `W0061` | Parenthesized filter syntax `(?:...)` is deprecated. Use bracket syntax `[?:...]` instead. |
+| `W0062` | `'root()'` is deprecated. Use bare `'root'` instead. |
+| `W0063` | JSX spread `{...expr}` is JS-idiomatic. Prefer `{**expr}` in Jac. |
 | `W0064` | `'{keyword} { ... }'` block syntax is deprecated at module scope. Use the `'to {keyword}:'` section header instead. |
 
 ### Lexer Errors
@@ -255,6 +258,15 @@ Emitted by the type checker and type evaluator.
 | `E1098` | Connection type must be an edge instance |
 | `E1099` | Cannot access attribute "{attr}" for type "{type}"; attribute is missing from {missing} |
 
+### Type Warnings
+
+| Code | Message |
+|------|---------|
+| `W1036` | Generic type "{type}" used without type arguments, defaulting to "{type}[Any]"; consider adding explicit type arguments |
+| `W1050` | Unknown intrinsic JSX element '<{tag}>' |
+| `W1051` | Expression type could not be resolved (Unknown) |
+| `W1052` | JSX component '{component}' uses an untyped props bag (`props: any`); its JSX props cannot be type-checked |
+
 ---
 
 ## Import Warnings (W1xxx)
@@ -263,7 +275,9 @@ Emitted by the type checker and type evaluator.
 |------|---------|
 | `W1100` | Module not found |
 | `W1101` | Cannot import name '{name}' from module '{module}' |
-| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as any |
+| `W1102` | Imported name '{name}' from foreign-source module '{module}' typed as Any |
+| `W1103` | '{name}' is ambient and does not need to be imported from '{module}' |
+| `W1104` | Use the lowercase `any` keyword instead of importing `Any` from typing |
 
 ---
 
@@ -318,6 +332,21 @@ Emitted by `jac lint`. Rules can be configured in [`jac.toml`](config/index.md#c
 | `W3010` | `fix-impl-signature` | Implementation signature does not match declaration | default |
 | `W3011` | `remove-import-semi` | Unnecessary semicolon after import | default |
 | `E3012` | `no-print` | Calling print() is disallowed by rule | all |
+| `W3020` | `unnecessary-pass` | Unnecessary 'pass' in non-empty body | default |
+| `W3021` | `unnecessary-else-after-return` | Unnecessary 'else' after 'return' | default |
+| `W3022` | `nested-if-to-elif` | Nested 'if' in 'else' can be 'elif' | default |
+| `W3023` | `simplify-return-bool` | `if cond return True else return False` can be simplified to `return cond` | default |
+| `W3024` | `repeated-condition` | Repeated condition in if/elif chain | default |
+| `W3025` | `identical-branches` | Identical if/else branches -- the else is redundant | default |
+| `W3030` | `too-many-params` | Function has {count} parameters (threshold is {threshold}) | default |
+| `W3035` | `is-with-literal` | Use '==' instead of 'is' when comparing to a literal | default |
+| `W3036` | `mutable-default` | Mutable default argument '{type}' -- use None and assign inside the function | default |
+| `W3037` | `unnecessary-none-return` | Unnecessary '-> None' return type annotation on '{name}'; functions without a return statement implicitly return None | default |
+| `W3038` | `usestate-to-has` | useState hook for '{name}' can be replaced with `has {name}: {type} = {init}` | default |
+| `W3039` | `getattr-to-null-ok` | getattr(obj, 'attr', None) should use null-safe access | default |
+| `W3040` | `filter-compare-tautology` | Filter comparison '{name} == {name}' is always true | default |
+| `W3041` | `stale-has-read` | Reactive `has` field '{name}' is read after being assigned in the same `can with entry` block | default |
+| `W3042` | `map-lambda-to-comprehension` | `.map(lambda x -> any { return <jsx>; })` can be replaced with comprehension syntax | default |
 
 ---
 

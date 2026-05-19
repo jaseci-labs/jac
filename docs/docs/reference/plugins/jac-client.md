@@ -29,11 +29,15 @@ cd myapp
 myapp/
 ├── jac.toml           # Project configuration
 ├── main.jac           # Entry point with app() function
+├── README.md          # Project readme
+├── AGENTS.md          # Agent guide for the project
 ├── components/        # Reusable components
-│   └── Button.tsx     # TypeScript components supported
-└── styles/            # CSS files
-    └── main.css
+│   └── Button.cl.jac  # Example component (.cl.jac = client-side)
+└── assets/            # Static assets (images, fonts)
 ```
+
+TypeScript/TSX and CSS files are also supported -- drop a `.tsx` component or
+a `.css` file anywhere in the project and import it from your Jac code.
 
 ### The `.cl.jac` Convention
 
@@ -165,11 +169,11 @@ node Task {
 
 # Server: return typed objects directly
 def:pub get_tasks -> list[Task] {
-    return [root()-->][?:Task];
+    return [root-->][?:Task];
 }
 
 def:pub create_task(title: str) -> Task {
-    task = root() ++> Task(title=title);
+    task = root ++> Task(title=title);
     return task[0];
 }
 
@@ -287,15 +291,20 @@ def:pub app() -> JsxElement {  # :pub required
 
 ### Function Components
 
+Declare each prop as a named, typed parameter -- the type-checker validates
+every JSX call site per attribute. `children` is the special prop that holds
+the JSX nested between a component's tags:
+
 ```jac
 to cl:
 
-def:pub Button(props: dict) -> JsxElement {
-    return <button
-        className={props.get("className", "")}
-        onClick={props.get("onClick")}
-    >
-        {props.children}
+def:pub Button(
+    className: str = "",
+    onClick: MouseEventHandler = None,
+    children: any = None
+) -> JsxElement {
+    return <button className={className} onClick={onClick}>
+        {children}
     </button>;
 }
 ```
@@ -305,11 +314,11 @@ def:pub Button(props: dict) -> JsxElement {
 ```jac
 to cl:
 
-def:pub Card(props: dict) -> JsxElement {
+def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
     return <div className="card">
-        <h2>{props["title"]}</h2>
-        <p>{props["description"]}</p>
-        {props.children}
+        <h2>{title}</h2>
+        <p>{description}</p>
+        {children}
     </div>;
 }
 ```
@@ -481,11 +490,11 @@ import from react { createContext, useContext }
 
 glob AppContext = createContext(None);
 
-def:pub AppProvider(props: dict) -> JsxElement {
+def:pub AppProvider(children: any = None) -> JsxElement {
     has theme: str = "light";
 
     return <AppContext.Provider value={{"theme": theme}}>
-        {props.children}
+        {children}
     </AppContext.Provider>;
 }
 
@@ -550,7 +559,7 @@ def:pub TaskList() -> JsxElement {
 
     # Fetch data on component mount
     async can with entry {
-        result = root() spawn get_tasks();
+        result = root spawn get_tasks();
         if result.reports and result.reports.length > 0 {
             tasks = result.reports[0];
         }
@@ -580,8 +589,8 @@ The `spawn` call returns a result object:
 
 | Syntax | Description |
 |--------|-------------|
-| `root() spawn WalkerName()` | Spawn walker from root node |
-| `root() spawn WalkerName(arg=value)` | Spawn with parameters |
+| `root spawn WalkerName()` | Spawn walker from root node |
+| `root spawn WalkerName(arg=value)` | Spawn with parameters |
 | `node_id spawn WalkerName()` | Spawn from specific node |
 
 The spawn call returns a result object with:
@@ -601,7 +610,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Create
     async def handle_add(title: str) -> None {
-        result = root() spawn add_task(title=title);
+        result = root spawn add_task(title=title);
         if result.reports and result.reports.length > 0 {
             tasks = tasks + [result.reports[0]];
         }
@@ -609,7 +618,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Update
     async def handle_toggle(task_id: str) -> None {
-        result = root() spawn toggle_task(task_id=task_id);
+        result = root spawn toggle_task(task_id=task_id);
         if result.reports and result.reports[0]["success"] {
             tasks = [
                 {**t, "completed": not t["completed"]} if t["id"] == task_id else t
@@ -620,7 +629,7 @@ def:pub TaskManager() -> JsxElement {
 
     # Delete
     async def handle_delete(task_id: str) -> None {
-        result = root() spawn delete_task(task_id=task_id);
+        result = root spawn delete_task(task_id=task_id);
         if result.reports and result.reports[0]["success"] {
             tasks = [t for t in tasks if t["id"] != task_id];
         }
@@ -645,7 +654,7 @@ def:pub SafeDataView() -> JsxElement {
     async can with entry {
         loading = True;
         try {
-            result = root() spawn get_data();
+            result = root spawn get_data();
             if result.reports and result.reports.length > 0 {
                 data = result.reports[0];
             }
@@ -679,7 +688,7 @@ def:pub LiveData() -> JsxElement {
     has data: any = None;
 
     async def fetch_data() -> None {
-        result = root() spawn get_live_data();
+        result = root spawn get_live_data();
         if result.reports and result.reports.length > 0 {
             data = result.reports[0];
         }
@@ -687,9 +696,11 @@ def:pub LiveData() -> JsxElement {
 
     async can with entry { await fetch_data(); }
 
-    useEffect(lambda -> None {
-        interval = setInterval(lambda -> None { fetch_data(); }, 5000);
-        return lambda -> None { clearInterval(interval); };
+    # The outer lambda must NOT be annotated `-> None` -- a cleanup effect
+    # returns a function, so `-> None` would be a type error.
+    useEffect(lambda {
+        interval = setInterval(lambda { fetch_data(); }, 5000);
+        return lambda { clearInterval(interval); };
     }, []);
 
     return <div>{data and <p>Last updated: {data["timestamp"]}</p>}</div>;
@@ -745,7 +756,7 @@ def:pub page() -> JsxElement {
     params = useParams();
     return <div>
         <Link to="/users">Back</Link>
-        <h1>User {params.id}</h1>
+        <h1>User {params["id"]}</h1>
     </div>;
 }
 ```
@@ -863,7 +874,7 @@ Import from `@jac/runtime`:
 
 | Hook | Returns | Usage |
 |------|---------|-------|
-| `useParams()` | dict | Access URL parameters: `params.id` |
+| `useParams()` | dict | Access URL parameters: `params["id"]` |
 | `useNavigate()` | function | Navigate programmatically: `navigate("/path")`, `navigate(-1)` |
 | `useLocation()` | object | Current location: `location.pathname`, `location.search` |
 | `Link` | component | Navigation: `<Link to="/path">Text</Link>` |
