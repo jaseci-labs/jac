@@ -52,9 +52,9 @@ test "prod a1 dict compr type" {
     program = compile_and_check("checker_prod_dict_compr_type.jac");
 
     # {k: v for ...} must infer as dict[K, V], not just dict
-    assert len(program.errors_had) >= 3 , f"A1: Dict comprehension type inference failed. "
+    assert len(program.errors_had) >= 3 , "A1: Dict comprehension type inference failed. "
     f"Expected >= 3 errors but got {len(program.errors_had)}. "
-    f"Dict comprehensions must infer key/value types, not Unknown.";
+    "Dict comprehensions must infer key/value types, not Unknown.";
 }
 
 # -------------------------------------------------------------------------
@@ -64,9 +64,9 @@ test "prod a2 set compr type" {
     program = compile_and_check("checker_prod_set_compr_type.jac");
 
     # {x * 2 for x in nums} must infer as set[int], not just set
-    assert len(program.errors_had) >= 2 , f"A2: Set comprehension type inference failed. "
+    assert len(program.errors_had) >= 2 , "A2: Set comprehension type inference failed. "
     f"Expected >= 2 errors but got {len(program.errors_had)}. "
-    f"Set comprehensions must infer element type, not Unknown.";
+    "Set comprehensions must infer element type, not Unknown.";
 }
 
 # =========================================================================
@@ -88,9 +88,9 @@ test "prod b1 unknown assign" {
     program = compile_and_check("checker_prod_unknown_assign.jac");
 
     # Assigning Unknown to int, str, list, bool, float should warn/error
-    assert len(program.errors_had) >= 3 , f"B1: Unknown silently assigned to typed variables. "
+    assert len(program.errors_had) >= 3 , "B1: Unknown silently assigned to typed variables. "
     f"Expected >= 3 errors/warnings but got {len(program.errors_had)}. "
-    f"Unknown must not be a universal 'any' type that accepts all assignments.";
+    "Unknown must not be a universal 'any' type that accepts all assignments.";
 }
 
 # -------------------------------------------------------------------------
@@ -100,9 +100,9 @@ test "prod b2 unknown method call" {
     program = compile_and_check("checker_prod_unknown_method_call.jac");
 
     # .nonexistent(), .append(), .upper(), [0] on Unknown should error
-    assert len(program.errors_had) >= 3 , f"B2: Method calls on Unknown silently pass. "
+    assert len(program.errors_had) >= 3 , "B2: Method calls on Unknown silently pass. "
     f"Expected >= 3 errors but got {len(program.errors_had)}. "
-    f"Calling .nonexistent() on Unknown must not silently succeed.";
+    "Calling .nonexistent() on Unknown must not silently succeed.";
 }
 
 # -------------------------------------------------------------------------
@@ -112,9 +112,9 @@ test "prod b3 unknown propagation" {
     program = compile_and_check("checker_prod_unknown_propagation.jac");
 
     # Unknown + 1, Unknown + "hello", -Unknown should not silently produce Unknown
-    assert len(program.errors_had) >= 3 , f"B3: Unknown propagates silently through expressions. "
+    assert len(program.errors_had) >= 3 , "B3: Unknown propagates silently through expressions. "
     f"Expected >= 3 errors but got {len(program.errors_had)}. "
-    f"Arithmetic/string ops on Unknown must not silently produce more Unknown.";
+    "Arithmetic/string ops on Unknown must not silently produce more Unknown.";
 }
 
 # -------------------------------------------------------------------------
@@ -124,9 +124,9 @@ test "prod b4 unknown function arg" {
     program = compile_and_check("checker_prod_unknown_function_arg.jac");
 
     # Passing Unknown to int, str, list[int] params should error
-    assert len(program.errors_had) >= 3 , f"B4: Unknown passed to typed function params silently. "
+    assert len(program.errors_had) >= 3 , "B4: Unknown passed to typed function params silently. "
     f"Expected >= 3 errors but got {len(program.errors_had)}. "
-    f"Unknown must not be silently accepted as int, str, or list[int] argument.";
+    "Unknown must not be silently accepted as int, str, or list[int] argument.";
 }
 
 # -------------------------------------------------------------------------
@@ -136,9 +136,9 @@ test "prod b5 unknown return" {
     program = compile_and_check("checker_prod_unknown_return.jac");
 
     # Returning Unknown where int or str is declared should error
-    assert len(program.errors_had) >= 3 , f"B5: Unknown returned where typed return is declared. "
+    assert len(program.errors_had) >= 3 , "B5: Unknown returned where typed return is declared. "
     f"Expected >= 3 errors but got {len(program.errors_had)}. "
-    f"Returning Unknown for declared -> int or -> str must produce a diagnostic.";
+    "Returning Unknown for declared -> int or -> str must produce a diagnostic.";
 }
 
 # -------------------------------------------------------------------------
@@ -148,9 +148,9 @@ test "prod b6 unknown conditional" {
     program = compile_and_check("checker_prod_unknown_conditional.jac");
 
     # isinstance on Unknown, ternary with Unknown must produce errors
-    assert len(program.errors_had) >= 2 , f"B6: Unknown bypasses conditional type narrowing. "
+    assert len(program.errors_had) >= 2 , "B6: Unknown bypasses conditional type narrowing. "
     f"Expected >= 2 errors but got {len(program.errors_had)}. "
-    f"isinstance() on Unknown must narrow or flag, not silently accept.";
+    "isinstance() on Unknown must narrow or flag, not silently accept.";
 }
 
 # -------------------------------------------------------------------------
@@ -166,10 +166,10 @@ test "prod b7 no return annotation is none" {
 
     # side_effect() and Foo.mutate() have no return annotation -> None.
     # Assigning their result to int/str/list must error.
-    assert len(program.errors_had) >= 4 , f"B7: Omitted return annotation infers Unknown instead of None. "
+    assert len(program.errors_had) >= 4 , "B7: Omitted return annotation infers Unknown instead of None. "
     f"Expected >= 4 errors but got {len(program.errors_had)}. "
-    f"Functions without return annotation must be -> None, not Unknown. "
-    f"Currently construct_types.impl.jac defaults to UnknownType.";
+    "Functions without return annotation must be -> None, not Unknown. "
+    "Currently construct_types.impl.jac defaults to UnknownType.";
 }
 
 # =========================================================================
@@ -194,11 +194,11 @@ test "prod c1 filter compr type" {
         for e in program.errors_had
         if e.code and e.code.code == "E1002"
     ];
-    assert len(e1002_errors) == 0 , f"C1: Filter comprehension returns Unknown instead of list[T]. "
+    assert len(e1002_errors) == 0 , "C1: Filter comprehension returns Unknown instead of list[T]. "
     f"Expected 0 E1002 (return type mismatch) errors but got {len(e1002_errors)}. "
-    f"[root-->][?:Todo] must infer as list[Todo], not Unknown.";
+    "[root-->][?:Todo] must infer as list[Todo], not Unknown.";
 
-    assert len(program.errors_had) >= 2 , f"C1: Filter comprehension type inference failed. "
+    assert len(program.errors_had) >= 2 , "C1: Filter comprehension type inference failed. "
     f"Expected >= 2 errors (str/dict assignment) but got {len(program.errors_had)}. "
-    f"Filter comprehensions with type filter must infer list[FilteredType].";
+    "Filter comprehensions with type filter must infer list[FilteredType].";
 }
