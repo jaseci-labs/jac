@@ -44,7 +44,15 @@ glob yolo_mode: bool = True,
      agent_temperature: float | None = None,
      # Where the resolved model came from -- shown in the banner so the user can
      # see whether a `--model` flag, jac.toml, or the built-in default won.
-     agent_model_source: str = "default";
+     agent_model_source: str = "default",
+     # Whether to print the one-line turn summary (duration, tool calls, files
+     # changed, tokens, project health) after each turn. Toggled with `/stats`.
+     show_stats: bool = True;
+
+# Tool names grouped for the turn-stat breakdown: tools that mutate files,
+# and tools that execute code or shell commands. Everything else is a read.
+glob _WRITE_TOOLS: set[str] = {"write_file","edit_file"},
+     _RUN_TOOLS: set[str] = {"run_command","jac_check","start_app"};
 
 # The shared CodeIntelligence handle for this session, set by `run_agent` from
 # the AgentRequest. The semantic tools (find_symbol, find_uses, ...) query it
@@ -651,12 +659,33 @@ Work like this:
 - Keep files focused and modest in size; split large archetypes into impl
   files. For a large file, write a skeleton first, then fill it with edit_file.
 - Make minimal, targeted changes. Prefer edit_file over rewriting a whole file.
-- Verify. Every write_file and edit_file result reports the compiler errors
-  that now exist in the file you touched -- fix them before moving on, do not
-  leave a write with errors behind. Run `jac check .` for a whole-project
-  type-check, and start_app to confirm an app boots.
-- When the task is complete, finish with a short plain-language summary of what
-  you changed and why.
+- Fix as you go. Every write_file and edit_file result reports the compiler
+  errors and warnings your edit caused -- in the file you wrote and in any
+  other file it affects. Fix them before moving on; never leave a write with
+  errors behind.
+- QA before you finish. This is mandatory: never report a task as done until
+  the QA pass below has been run and comes back clean.
+
+QA pass -- before you consider the task done, run every step that applies, in
+order, and fix anything it surfaces (then run the pass again):
+1. `jac check .` -- a whole-project type-check. It must report zero errors.
+2. For any runnable app, call start_app and confirm it boots with no errors in
+   the startup logs.
+3. For a web or fullstack app, also QA it in a real browser with the
+   `agent-browser` CLI, driven through run_command:
+   - Check the CLI first: `command -v agent-browser`. If it is missing, tell
+     the user, suggest they run `npm i -g agent-browser`, skip the browser
+     step, and do NOT install it yourself.
+   - If it is installed, start the server detached so it stays up during the
+     test -- from the app's directory run
+     `nohup jac start <entry> > /tmp/jac_qa.log 2>&1 &` -- wait a few seconds,
+     then read /tmp/jac_qa.log for the URL it serves on.
+   - Drive the browser: `agent-browser open <url>`, `agent-browser snapshot`
+     to read the page, exercise the main user flows with click/type/fill, and
+     check for console or on-page errors. Take an `agent-browser screenshot`.
+   - Stop the server when finished: `pkill -f "jac start"`.
+Once QA is clean, finish with a short plain-language summary of what you
+changed and why, plus one line on the QA you ran and that it passed.
 
 Jac gotchas -- the type checker rejects all of these, so never write them:
 - There is no `pass` statement. For an empty block, write empty braces: `{}`.
@@ -750,6 +779,7 @@ def print_help {
     console.print("  /help    show this help", style="muted");
     console.print("  /clear   reset the conversation", style="muted");
     console.print("  /guides  list the bundled Jac reference guides", style="muted");
+    console.print("  /stats   toggle the per-turn stat line", style="muted");
     console.print("  /exit    quit the session", style="muted");
 }
 
@@ -786,6 +816,122 @@ def preview_result(text: str) -> str {
 }
 
 
+"""Render a token count compactly: 12400 -> '12.4k', 840 -> '840'."""
+def _short_num(n: int) -> str {
+    return f"{n / 1000:.1f}k" if n >= 1000 else str(n);
+}
+
+
+"""Best-effort USD cost for the turn from litellm's price map; 0 if unknown.
+
+Local models and any model litellm does not price raise here and fall back
+to 0 -- which is correct for a local model, and a benign omission otherwise.
+"""
+def _estimate_cost(prompt_tokens: int, completion_tokens: int) -> float {
+    try {
+        import litellm;
+        costs: any = litellm.cost_per_token(
+            model=agent_model.model_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens
+        );
+        return float(str(costs[0])) + float(str(costs[1]));
+    } except Exception {
+        return 0.0;
+    }
+}
+
+
+"""Render token usage (and cost, when priced) from a byLLM `usage` total."""
+def _format_tokens(usage: dict[str, object]) -> str {
+    prompt = int(usage.get("prompt_tokens", 0) or 0);
+    completion = int(usage.get("completion_tokens", 0) or 0);
+    if prompt == 0 and completion == 0 {
+        return "";
+    }
+    text = f"{_short_num(prompt)} in / {_short_num(completion)} out";
+    cost = _estimate_cost(prompt, completion);
+    if cost > 0 {
+        text += f" (~${cost:.4f})";
+    }
+    return text;
+}
+
+
+"""Render the project's compiler health from the session's CodeIntelligence.
+
+The count is project-wide, so it catches breakage the turn left in any file.
+Reported only when the turn already built the project model (a write or a
+semantic-tool query): a stat line must stay cheap and must never trigger a
+whole-project compile -- in a large repo that would stall every turn. When
+the model is not yet built there is nothing the turn touched, so the stat is
+simply omitted.
+"""
+def _format_health -> str {
+    ci = code_intel();
+    if ci is None or not ci.is_loaded() {
+        return "";
+    }
+    try {
+        diags: list[any] = list(ci.diagnostics());
+    } except Exception {
+        return "";
+    }
+    n_err = len(
+        [
+            d
+            for d in diags
+            if d.severity == "error"
+        ]
+    );
+    n_warn = len(diags) - n_err;
+    if n_err == 0 and n_warn == 0 {
+        return "project: clean";
+    }
+    return f"project: {n_err} error(s), {n_warn} warning(s)";
+}
+
+
+"""Print the one-line turn summary: duration, tools, files, tokens, health."""
+def print_stats(
+    elapsed: float,
+    n_read: int,
+    n_write: int,
+    n_run: int,
+    files: set[str],
+    usage: dict[str, object]
+) {
+    parts: list[str] = [f"{elapsed:.1f}s"];
+    n_tools = n_read + n_write + n_run;
+    if n_tools > 0 {
+        breakdown: list[str] = [];
+        if n_read {
+            breakdown.append(f"{n_read} read");
+        }
+        if n_write {
+            breakdown.append(f"{n_write} write");
+        }
+        if n_run {
+            breakdown.append(f"{n_run} run");
+        }
+        parts.append(f"{n_tools} tools (" + ", ".join(breakdown) + ")");
+    }
+    if files {
+        suffix = "" if len(files) == 1 else "s";
+        parts.append(f"{len(files)} file{suffix} changed");
+    }
+    tokens = _format_tokens(usage);
+    if tokens {
+        parts.append(tokens);
+    }
+    health = _format_health();
+    if health {
+        parts.append(health);
+    }
+    console.print("  " + "  ·  ".join(parts), style="muted");
+}
+
+
 """Run one agent turn, rendering the full byLLM event stream to the terminal.
 
 `ask` runs with `stream=True, logging=True`, so it yields a StreamEvent for
@@ -804,6 +950,14 @@ def run_turn(message: str) {
     # True while raw model tokens have been written since the last newline,
     # so structured lines (tool calls, results) start cleanly.
     streamed = False;
+    # Turn-stat accumulators -- declared before the try so the `finally` can
+    # render them even if the stream errors out partway through.
+    started = time.time();
+    n_read = 0;
+    n_write = 0;
+    n_run = 0;
+    files: set[str] = set();
+    usage: dict[str, object] = {};
     try {
         for event in event_stream {
             kind = event.event_type;
@@ -820,8 +974,31 @@ def run_turn(message: str) {
                     out.flush();
                     streamed = False;
                 }
-                call = fmt_tool_call(str(data.get("tool", "?")), data.get("args", {}));
-                console.print(f"  ⏺ {call}", style="cyan");
+                tool = str(data.get("tool", "?"));
+                args = data.get("args", {});
+                # Tally the call for the turn stats: writes (and the files they
+                # touch), code/shell runs, and everything else as a read.
+                if tool in _WRITE_TOOLS {
+                    n_write += 1;
+                    if isinstance(args, dict) {
+                        path = args.get("path");
+                        if path {
+                            files.add(str(path));
+                        }
+                    }
+                } elif tool in _RUN_TOOLS {
+                    n_run += 1;
+                } else {
+                    n_read += 1;
+                }
+                console.print(f"  ⏺ {fmt_tool_call(tool, args)}", style="cyan");
+            } elif kind == "usage" {
+                # byLLM emits one `usage` event at stream end with token totals
+                # aggregated across every LLM call in the turn.
+                total = data.get("total", {});
+                if isinstance(total, dict) {
+                    usage = total;
+                }
             } elif kind == "tool_result" {
                 if streamed {
                     out.write("\n");
@@ -853,6 +1030,12 @@ def run_turn(message: str) {
             import traceback;
             traceback.print_exc();
         }
+    } finally {
+        # Always render the turn summary -- a turn cut short by an error or an
+        # interrupt is exactly when its stats are most worth seeing.
+        if show_stats {
+            print_stats(time.time() - started, n_read, n_write, n_run, files, usage);
+        }
     }
 }
 
@@ -866,7 +1049,7 @@ otherwise starts an interactive read-eval-print loop. Always returns 0 -- a
 failed turn reports its error but does not abort the session.
 """
 def run_agent(req: object) -> int {
-    global agent_model,yolo_mode,agent_ci;
+    global agent_model,yolo_mode,agent_ci,show_stats;
     # `req` is an AgentRequest; access it untyped so attribute reads
     # type-check without importing the class into this byLLM-only module.
     r: any = req;
@@ -919,6 +1102,11 @@ def run_agent(req: object) -> int {
                 console.print(f"  {g.name}", style="bold");
                 console.print(f"      {g.description}", style="muted");
             }
+            continue;
+        }
+        if line == "/stats" {
+            show_stats = not show_stats;
+            console.success("Turn stats on." if show_stats else "Turn stats off.");
             continue;
         }
         run_turn(line);

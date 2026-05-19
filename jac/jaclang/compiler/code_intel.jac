@@ -383,6 +383,16 @@ obj CodeIntelligence {
         }
     }
 
+    """Whether `load` has compiled the project at least once.
+
+    Lets a caller read already-built results (e.g. `diagnostics`) without
+    paying for a first compile -- a query that must stay cheap can skip itself
+    when the project model is not yet built.
+    """
+    def is_loaded -> bool {
+        return self._loaded;
+    }
+
     """List the project .jac files that were compiled."""
     def files -> list[str] {
         self._ensure();
