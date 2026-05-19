@@ -267,6 +267,10 @@ obj CodeIntelligence {
                 self._compile_one(p);
             }
         }
+        # An edit can add or drop an import, so the reverse-dependency map
+        # must be rebuilt from the recompiled modules -- otherwise the next
+        # refresh would not know a file's new importers.
+        self._build_rdeps();
     }
 
     """Compile one project file and record the resulting module."""
