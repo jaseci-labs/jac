@@ -962,6 +962,27 @@ impl JacBuiltin.printgraph(
 """Create Jac CLI cmds."""
 impl JacCmd.create_cmd -> None { }
 
+"""Run the `jac ai` coding agent -- the built-in byLLM implementation.
+
+This is the default hook implementation: it lazily imports the bundled
+byLLM-powered agent so the core CLI keeps no hard dependency on byLLM. A
+plugin that registers its own `run_ai_agent` hook outranks this one and
+replaces the agent entirely.
+"""
+impl JacCmd.run_ai_agent(req: object) -> int {
+    try {
+        import from jaclang.cli.ai_agent { run_agent }
+    } except ImportError {
+        import from jaclang.cli.console { console }
+        console.error(
+            "`jac ai` needs the byLLM plugin, which is not installed.",
+            hint="Install it with:  pip install byllm"
+        );
+        return 1;
+    }
+    return run_agent(req);
+}
+
 """Set Class References."""
 impl JacBasics.setup -> None { }
 

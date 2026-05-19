@@ -46,6 +46,14 @@ glob yolo_mode: bool = True,
      # see whether a `--model` flag, jac.toml, or the built-in default won.
      agent_model_source: str = "default";
 
+# The shared CodeIntelligence handle for this session, set by `run_agent` from
+# the AgentRequest. The semantic tools (find_symbol, find_uses, ...) query it
+# so the agent navigates the project by compiler symbol data, not text search.
+glob agent_ci: any = None,
+     # Set by write_file/edit_file after a successful write; the next semantic
+     # query rebuilds the project model so lookups reflect the new source.
+     agent_ci_dirty: bool = False;
+
 """Pick which model `jac ai` should run.
 
 Priority: the `--model` flag (`model_override`), then `[plugins.byllm.model]
@@ -154,6 +162,59 @@ def confirm(action: str) -> bool {
     return answer in ("y", "yes");
 }
 
+
+"""Rebuild the project model after a write and report the diagnostics it caused.
+
+Returns, as a text block appended to the write tool's result, every compiler
+error and warning now in `path` plus any newly introduced in other project
+files the edit affects -- so the model gets compiler feedback, including
+cross-file breakage, on every write without a separate `jac_check` call. A
+dependent module's pre-existing error is not reported: only the delta this
+edit caused. Warnings are included because an undefined name or unresolved
+type surfaces as a warning, not an error. Empty string when the edit
+introduced nothing (or no code intelligence is available).
+"""
+def write_feedback(path: str) -> str {
+    global agent_ci_dirty;
+    if agent_ci is None {
+        return "";
+    }
+    # The write changed the project; mark dirty up front so a failed refresh
+    # still triggers a rebuild on the next semantic query.
+    agent_ci_dirty = True;
+    try {
+        # refresh_and_diff recompiles and returns the diagnostics this edit is
+        # responsible for: all of `path`, plus breakage in dependent modules.
+        diags: list = list(agent_ci.refresh_and_diff(path));
+    } except Exception {
+        return "";
+    }
+    agent_ci_dirty = False;
+    if not diags {
+        return "";
+    }
+    n_err = len(
+        [
+            d
+            for d in diags
+            if d.severity == "error"
+        ]
+    );
+    n_warn = len(diags) - n_err;
+    lines = [
+        f"\ncompiler feedback for editing {path} -- {n_err} error(s), "
+        f"{n_warn} warning(s); fix what you introduced (some may be in other "
+        "files your edit affects):"
+    ];
+    for d in diags[:20] {
+        lines.append("  " + str(d.render()));
+    }
+    if len(diags) > 20 {
+        lines.append(f"  ... and {len(diags) - 20} more");
+    }
+    return "\n".join(lines);
+}
+
 #===============================================================================
 # TOOLS -- plain typed functions; byLLM turns the annotations into JSON schema
 #===============================================================================
@@ -177,7 +238,7 @@ def write_file(path: str, content: str) -> str {
         p = Path(path);
         p.parent.mkdir(parents=True, exist_ok=True);
         p.write_text(content);
-        return f"OK: wrote {len(content)} chars to {path}";
+        return f"OK: wrote {len(content)} chars to {path}" + write_feedback(path);
     } except Exception as e {
         return f"ERROR writing {path}: {e}";
     }
@@ -209,7 +270,7 @@ def edit_file(path: str, old_text: str, new_text: str) -> str {
     }
     try {
         Path(path).write_text(original.replace(old_text, new_text));
-        return f"OK: edited {path}";
+        return f"OK: edited {path}" + write_feedback(path);
     } except Exception as e {
         return f"ERROR writing {path}: {e}";
     }
@@ -423,6 +484,131 @@ sem read_guide = "Read a bundled Jac reference guide in full -- the authoritativ
 sem read_guide.name = "Exact guide name, e.g. 'jac-walker-patterns'.";
 
 
+#===============================================================================
+# SEMANTIC TOOLS -- backed by the Jac compiler's symbol table, not text search
+#===============================================================================
+"""Return the session's CodeIntelligence, rebuilding it if a write happened.
+
+`write_file`/`edit_file` flag the project as dirty; the first semantic query
+after a write recompiles so symbol lookups reflect what the agent just wrote.
+"""
+def code_intel -> any {
+    global agent_ci_dirty;
+    if agent_ci is None {
+        return None;
+    }
+    if agent_ci_dirty {
+        try {
+            agent_ci.refresh();
+        } except Exception { }
+        agent_ci_dirty = False;
+    }
+    return agent_ci;
+}
+
+
+def find_symbol(name: str) -> str {
+    ci = code_intel();
+    if ci is None {
+        return "ERROR: code intelligence is unavailable in this session.";
+    }
+    hits = ci.lookup(name);
+    if not hits {
+        return f"No Jac symbol named '{name}' is defined in this project.";
+    }
+    out: list[str] = [];
+    for info in hits {
+        out.append(str(info.render()));
+    }
+    uses = [
+        r
+        for r in ci.references(name)
+        if r.role == "use"
+    ];
+    if uses {
+        out.append(f"\nused in {len(uses)} place(s):");
+        for r in uses[:25] {
+            out.append("  " + str(r.render()));
+        }
+    }
+    return "\n".join(out);
+}
+
+sem find_symbol = "Look up a Jac symbol (node, walker, edge, obj, enum, ability, ...) by name via the compiler's symbol table. Returns its exact definition site, fields, abilities, base classes, and every place it is used. This is precise -- unlike grep it never matches a comment or an unrelated identifier. Prefer this over grep whenever you know the name of the thing you are looking for.";
+sem find_symbol.name = "The symbol name to look up, e.g. 'User' or 'make_user'.";
+
+
+def find_uses(name: str) -> str {
+    ci = code_intel();
+    if ci is None {
+        return "ERROR: code intelligence is unavailable in this session.";
+    }
+    refs = ci.references(name);
+    if not refs {
+        return f"No definitions or uses of '{name}' were found.";
+    }
+    lines: list[str] = [];
+    for r in refs {
+        lines.append(f"{r.role}  {r.render()}");
+    }
+    return "\n".join(lines);
+}
+
+sem find_uses = "List every definition and use of a symbol across the whole project, computed from the compiler's def/use chains. Use this before renaming or changing a symbol to see exactly what it touches.";
+sem find_uses.name = "The symbol name whose references to list.";
+
+
+def project_map -> str {
+    ci = code_intel();
+    if ci is None {
+        return "ERROR: code intelligence is unavailable in this session.";
+    }
+    archs = ci.archetypes();
+    if not archs {
+        return "(no nodes, walkers, edges, or objects found in the project)";
+    }
+    rows: list[str] = [];
+    for a in archs {
+        rows.append(f"{a.kind:7} {a.name}    [{a.file}:{a.line}]");
+    }
+    return "\n".join(sorted(rows));
+}
+
+sem project_map = "Show every node, walker, edge, and object archetype in the project with its location -- a structural overview built from the compiler, not a directory listing. Use this first to understand an unfamiliar project.";
+
+
+def find_walkers(node_type: str) -> str {
+    ci = code_intel();
+    if ci is None {
+        return "ERROR: code intelligence is unavailable in this session.";
+    }
+    eps = ci.walkers_visiting(node_type);
+    if not eps {
+        return f"No walkers traverse a '{node_type}' node.";
+    }
+    lines: list[str] = [];
+    for ep in eps {
+        lines.append(str(ep.render()));
+    }
+    return "\n".join(lines);
+}
+
+sem find_walkers = "Find every walker entry point that traverses a given node type -- an Object-Spatial query the compiler answers from walker entry signatures. Use this to see how a node is visited.";
+sem find_walkers.node_type = "The node archetype name, e.g. 'User'.";
+
+
+def context_slice(name: str) -> str {
+    ci = code_intel();
+    if ci is None {
+        return "ERROR: code intelligence is unavailable in this session.";
+    }
+    return str(ci.slice_for(name).render());
+}
+
+sem context_slice = "Get a typed context slice for a symbol: its definition, the types it depends on, and where it is used -- a focused, compiler-accurate neighbourhood to read instead of opening whole files.";
+sem context_slice.name = "The symbol to build a context slice around.";
+
+
 # Side-effecting tools must never run concurrently; byLLM keeps any parallel
 # batch that contains one of these sequential.
 with entry {
@@ -453,14 +639,22 @@ Work like this:
 - Decide and commit. When two or more approaches would both work, pick the
   simplest and build it. Do not re-litigate a choice you have already acted on,
   and never write a file just to delete it -- think the choice through first.
+- Navigate by meaning, not text. To find where a node, walker, edge, or
+  ability is defined or used, call find_symbol or find_uses -- they read the
+  compiler's symbol table and are exact. Use project_map for a structural
+  overview of an unfamiliar project, find_walkers to see how a node is
+  traversed, and context_slice to read a symbol's typed neighbourhood. Reserve
+  grep for plain text -- comments, strings, TODOs.
 - Never guess. Read a file before editing it; consult the guides before
   writing unfamiliar Jac. The bundled guides are the authoritative spec for
   correct, idiomatic Jac.
 - Keep files focused and modest in size; split large archetypes into impl
   files. For a large file, write a skeleton first, then fill it with edit_file.
 - Make minimal, targeted changes. Prefer edit_file over rewriting a whole file.
-- Verify. After writing code, run `jac check .` to type-check the whole
-  project and fix every error. For an app, use start_app to confirm it boots.
+- Verify. Every write_file and edit_file result reports the compiler errors
+  that now exist in the file you touched -- fix them before moving on, do not
+  leave a write with errors behind. Run `jac check .` for a whole-project
+  type-check, and start_app to confirm an app boots.
 - When the task is complete, finish with a short plain-language summary of what
   you changed and why.
 
@@ -503,6 +697,11 @@ def ask(message: str) -> str by agent_model(
         edit_file,
         list_dir,
         grep,
+        find_symbol,
+        find_uses,
+        project_map,
+        find_walkers,
+        context_slice,
         run_command,
         jac_check,
         start_app,
@@ -658,24 +857,29 @@ def run_turn(message: str) {
 }
 
 
-"""Entry point for `jac ai`.
+"""Entry point for `jac ai` -- the default `run_ai_agent` hook implementation.
 
-Applies the resolved `--model`, `--n_ctx`, and `--safe` flags, then runs.
-With `initial_prompt`, runs a single turn and exits; otherwise starts an
-interactive read-eval-print loop. Always returns 0 -- a failed turn reports
-its error but does not abort the session.
+`req` is an `AgentRequest`: the resolved `--model`, `--n_ctx`, and `--safe`
+flags, the working directory, and a shared `CodeIntelligence` handle the
+semantic tools query. With a non-empty `prompt`, runs a single turn and exits;
+otherwise starts an interactive read-eval-print loop. Always returns 0 -- a
+failed turn reports its error but does not abort the session.
 """
-def run_agent(
-    initial_prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False
-) -> int {
-    global agent_model,yolo_mode;
+def run_agent(req: object) -> int {
+    global agent_model,yolo_mode,agent_ci;
+    # `req` is an AgentRequest; access it untyped so attribute reads
+    # type-check without importing the class into this byLLM-only module.
+    r: any = req;
     # File writes and code execution run without prompting unless `--safe`
     # asks to confirm each one.
-    yolo_mode = not safe;
+    yolo_mode = not r.safe;
+    # The compiler-backed project model the semantic tools navigate.
+    agent_ci = r.code_intel;
+    initial_prompt = str(r.prompt);
     # The import-time `agent_model` already covers jac.toml/default; only
     # rebuild when a flag actually changes the model or its context window.
-    if model or n_ctx > 0 {
-        agent_model = build_model(model, n_ctx);
+    if r.model or r.n_ctx > 0 {
+        agent_model = build_model(str(r.model), int(r.n_ctx));
     }
     print_banner();
     reset_history();

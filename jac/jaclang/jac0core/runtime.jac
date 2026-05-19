@@ -351,6 +351,15 @@ class JacBuiltin {
 class JacCmd {
     """Create Jac CLI cmds."""
     static def create_cmd -> None;
+
+    """Run the `jac ai` interactive coding agent.
+
+        A hook so the agent engine is pluggable: the core ships a built-in
+        byLLM agent as the default implementation, and a plugin can register
+        its own implementation to replace it. `req` is an `AgentRequest`
+        carrying the resolved flags plus a `CodeIntelligence` handle.
+        """
+    static def run_ai_agent(req: object) -> int;
 }
 
 """Jac Feature."""

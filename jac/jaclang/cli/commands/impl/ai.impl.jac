@@ -1,22 +1,16 @@
 """Implementation of the `jac ai` command.
 
-This file is intentionally thin: it validates that byLLM is available, then
-hands the user's flags straight to `run_agent`. The agent itself lives in
-`jaclang/cli/ai_agent.jac`, imported lazily here so the core CLI keeps no hard
-dependency on the byLLM plugin.
+This file is intentionally thin: it builds an `AgentRequest` from the user's
+flags and dispatches it through the `run_ai_agent` hook. The core ships a
+built-in byLLM agent as the default hook implementation; a plugin can register
+its own to replace it. Because dispatch goes through the hook, the core CLI
+keeps no hard dependency on the byLLM plugin.
 """
-import from jaclang.cli.console { console }
 
-"""Launch an interactive Jac coding agent powered by a byLLM model."""
+"""Launch an interactive Jac coding agent."""
 impl ai(prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False) -> int {
-    try {
-        import from jaclang.cli.ai_agent { run_agent }
-    } except ImportError {
-        console.error(
-            "`jac ai` needs the byLLM plugin, which is not installed.",
-            hint="Install it with:  pip install byllm"
-        );
-        return 1;
-    }
-    return run_agent(prompt, model, n_ctx, safe);
+    import from jaclang.cli.agent_api { build_agent_request }
+    import from jaclang.jac0core.runtime { JacRuntime as Jac }
+    req = build_agent_request(prompt, model, n_ctx, safe);
+    return Jac.run_ai_agent(req);
 }
