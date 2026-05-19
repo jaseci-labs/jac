@@ -3,7 +3,7 @@ name: jac-scaffold
 description: Bootstrapping a new Jac project - how to use `jac create --use <template>`, what each template lays out on disk, how to fix the deprecated syntax it ships with, and the post-scaffold checklist. Load when starting a new project from scratch. Pair with `jac-fullstack-patterns` when building fullstack.
 ---
 
-Use the Jac CLI's `jac create` to scaffold new projects. Run it via `run_command(...)`. JacCoder no longer ships its own scaffolder - `jac create` is the single source of truth and stays current with Jac releases.
+Use the Jac CLI's `jac create` to scaffold new projects. It is the single source of truth for project layout and stays current with Jac releases.
 
 ## `jac create` - the only scaffolder
 
@@ -25,8 +25,8 @@ Always pass an explicit project name - without one, `jac create` falls back to `
 | `--use <template>` | When to pick it | What ships |
 |---|---|---|
 | (omitted) `default` | Backend / library project, no UI | `main.jac` (a `with entry` stub), `jac.toml`, `AGENTS.md`, `.gitignore` |
-| `client` | Pure client app, no server data | `main.jac` (`to cl:` + `def:pub app`), `components/Button.cl.jac`, `jac.toml`, `README.md`, `.gitignore` |
-| `fullstack` | Client UI + server endpoints | `main.jac`, `endpoints.sv.jac`, `frontend.cl.jac` + `frontend.impl.jac`, `components/*.cl.jac`, `jac.toml`, `README.md`, `.gitignore` |
+| `client` | Pure client app, no server data | `main.jac` (`to cl:` + `def:pub app`), `components/Button.cl.jac`, `assets/`, `jac.toml`, `README.md`, `AGENTS.md`, `.gitignore` |
+| `fullstack` | Client UI + server endpoints | `main.jac`, `endpoints.sv.jac`, `frontend.cl.jac` + `frontend.impl.jac`, `components/*.cl.jac`, `assets/`, `jac.toml`, `README.md`, `AGENTS.md`, `.gitignore` |
 
 The `default` template's `main.jac` is a minimal `with entry { ... }` stub - it does **not** pre-wire endpoints; add `node`/`def:pub` declarations yourself (see `jac-sv-endpoints`).
 
@@ -36,11 +36,11 @@ The `default` template's `main.jac` is a minimal `with entry { ... }` stub - it 
 
 Before running `jac create`:
 
-1. `list_files(workspace)` - see what's already there
-2. If `jac.toml` is present at the workspace root, **do NOT scaffold a new project** - extend the existing one with `write_code` / `edit_code` instead
+1. List the workspace contents - see what's already there
+2. If `jac.toml` is present at the workspace root, **do NOT scaffold a new project** - extend the existing one in place instead
 3. If the workspace is empty, then `jac create` is safe
 
-When called by JacBuilder or any IDE harness, the workspace usually already has a project. Scaffolding into it creates a nested mess. Read first.
+An existing workspace usually already has a project. Scaffolding into it creates a nested mess. Inspect it first.
 
 ## Adapt the output - the `fullstack` template ships deprecated syntax
 
@@ -65,8 +65,8 @@ After `jac create`:
 
 ## Pitfalls
 
-- **Don't hand-write `jac.toml`.** Generate it via `jac create`. For Tailwind setup, follow Build Workflow step 4 for the exact jac.toml format. Load `jac-cl-styling` for styling patterns.
+- **Don't hand-write `jac.toml`.** Generate it via `jac create`. Load `jac-cl-styling` for styling patterns and Tailwind setup.
 - **Match the template to the user's actual need.** Picking `fullstack` for a UI-only spike adds unused server scaffolding; picking `client` for an app that needs persistence forces a later migration.
-- **Don't scaffold into a non-empty workspace.** Run `list_files` first; if a project exists, extend it.
+- **Don't scaffold into a non-empty workspace.** Inspect the workspace first; if a project exists, extend it.
 - **`-s` / `--skip` on `jac create --use client`** skips npm install - convenient for offline scaffolding, but you'll need `jac install` before running.
 - **Project-name argument is optional but defaults to `jactastic`.** Always pass an explicit name.

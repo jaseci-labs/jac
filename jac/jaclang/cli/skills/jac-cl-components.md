@@ -34,10 +34,10 @@ def:pub Counter() -> JsxElement {
 
 ## Props
 
-Components declare props as typed function params; callers pass as JSX attributes. Callback props are typed `Any`. Wrap incoming callbacks in a local handler so parent-side data (like a row's id) is closed over when the event fires.
+Components declare props as typed function params; callers pass as JSX attributes. Callback props are typed `any` (lowercase - the gradual type). Wrap incoming callbacks in a local handler so parent-side data (like a row's id) is closed over when the event fires.
 
 ```jac
-def:pub BookCard(bookId: str, title: str, onDelete: Any) -> JsxElement {
+def:pub BookCard(bookId: str, title: str, onDelete: any) -> JsxElement {
     def handle_delete(e: MouseEvent) {
         if onDelete { onDelete(bookId); }
     }
@@ -58,11 +58,11 @@ Call site: `<BookCard bookId={b["id"]} title={b["title"]} onDelete={remove} />`.
 | `onSubmit`, `onReset` | `FormEvent` | `e.preventDefault()` |
 | `onFocus`, `onBlur` | `FocusEvent` | `e.target` |
 
-Fall back to `Any` (capital, built-in) only when you don't read `e`.
+Fall back to `any` (lowercase, the gradual type) only when you don't read `e`.
 
 ## Built-in in `.cl.jac` - NEVER import these
 
-`JsxElement` (the component return type), `Any`, and all DOM event types (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`, `InputEvent`, `FocusEvent`) are Jac built-ins in client context. Trying `import from "@jac/runtime" { JsxElement }` is wrong and can fail the Vite build.
+`JsxElement` (the component return type) and all DOM event types (`MouseEvent`, `ChangeEvent`, `FormEvent`, `KeyboardEvent`, `InputEvent`, `FocusEvent`) are Jac built-ins in client context. Trying `import from "@jac/runtime" { JsxElement }` is wrong and can fail the Vite build.
 
 ## Imports from `@jac/runtime` (complete list)
 
@@ -92,13 +92,13 @@ has_filter: bool = bool(useParams()["category"]);
 ```
 
 - **Server RPC import uses `sv import from ..services.X { fn, Types }`** (prefix required). Dot count = how many folders up from THIS file to reach `services/` - for a `components/X.cl.jac` it's 2 dots, for `components/pages/X.cl.jac` it's 3 dots (see `jac-core-cheatsheet` for dot semantics). Plain `import from` to a `.sv.jac` breaks the Vite build. Include obj/node types too - they're needed to type your `has` state (next rule). See `jac-fullstack-patterns`.
-- **Type `has` state with the imported `sv` types - `list[Any]` loses the element type.** Store data from `sv import` calls in fields typed with the actual node/obj. Without it, attribute access in loops fails `E1032: Type is Unknown`.
+- **Type `has` state with the imported `sv` types - `list[any]` loses the element type.** Store data from `sv import` calls in fields typed with the actual node/obj. Without it, attribute access in loops fails `E1032: Type is Unknown`.
 
 ```
 sv import from ..services.linkedin { Post };   # 2 dots: this file is at components/X.cl.jac; `..` walks up to project root, then into services/
 
 # FRAGILE
-has posts: list[Any] = [];           # E1032 on p.title in any loop
+has posts: list[any] = [];           # E1032 on p.title in any loop
 
 # CORRECT
 has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
@@ -107,7 +107,7 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 - **Call server endpoints POSITIONAL, not kwargs.** `save(a, b)` works; `save(a=a, b=b)` sends empty body → 422. Also: the caller's variable names become the JSON keys - they must match the server parameter names exactly. See `jac-fullstack-patterns`.
 - **JSX ternary is Python-style:** `{X if cond else Y}`. NOT `{cond ? X : Y}` (parse error even inside JSX). Short-circuit also works: `{cond and <X />}`.
 - **Iterate with comprehensions, NOT `.map()`.** `items.map(...)` on a Jac list fails E1030. Use `[<li>...</li> for i in items]` inside JSX. `for i, x in enumerate(items)` parse-fails E0001 - use a single loop var, or `range(len(items))` with index access: `[<li key={str(i)}>{items[i]}</li> for i in range(len(items))]`.
-- **Dict / hook access (`useParams()[k]`, `useLocation()[k]`, generic `[key]`) returns `Any` and yields JS `undefined` for missing keys.** Since `undefined !== null` in JS, both `x is None` and `x is not None` MISS undefined - `params["id"] is not None` returns True even when `:id` isn't in the route, and `str(undefined)` produces the literal string `"undefined"`. **Use a truthy check (`if x` / `if not x`) for hook/dict values - it catches both `None` and `undefined`.** The narrowing-friendly `is not None` form is still correct for typed Optionals (`T | None` from `sv import`-ed functions, function params, etc.) where `undefined` can't appear. (Also: `params.get("id")` runtime-fails in the browser since `useParams` returns a plain JS object - always use `[key]`.)
+- **Dict / hook access (`useParams()[k]`, `useLocation()[k]`, generic `[key]`) returns `any` and yields JS `undefined` for missing keys.** Since `undefined !== null` in JS, both `x is None` and `x is not None` MISS undefined - `params["id"] is not None` returns True even when `:id` isn't in the route, and `str(undefined)` produces the literal string `"undefined"`. **Use a truthy check (`if x` / `if not x`) for hook/dict values - it catches both `None` and `undefined`.** The narrowing-friendly `is not None` form is still correct for typed Optionals (`T | None` from `sv import`-ed functions, function params, etc.) where `undefined` can't appear. (Also: `params.get("id")` runtime-fails in the browser since `useParams` returns a plain JS object - always use `[key]`.)
 - **`T | None` narrowing doesn't reach inside JSX list comprehensions / short-circuits.** After `if x is None { return ...; }`, direct `x.attr` works in the function body - but `{[<li>{x.attr}</li> for i in range(len(x.attr))]}` inside JSX fails E1099 because the comprehension is its own scope. **Workaround:** pull each used attribute into a typed local *before* the JSX block (e.g. `title: str = x.title; parts: list[str] = x.parts;`), then reference the locals from JSX. See `jac-types` for the full BROKEN/CORRECT pair.
 - **Guard None/null/undefined when iterating or dotting into server data.** Runtime-only failure (`Cannot read properties of null/undefined`), nothing at compile. Four hot spots - single-level access is the most common:
 
@@ -129,7 +129,7 @@ Also works: short-circuit in JSX - `{result and <X total={result.total_posts} />
 
 **For server response objects (dicts/lists from `sv import` calls), prefer truthy checks (`if result {`) over `!= None`.** The `!=` operator uses deep equality which calls `Object.keys()` - crashes with `"Cannot convert undefined or null to object"` if the value is `null`/`undefined`. `!= None` is safe for primitives (strings, ints, bools) but not for complex objects returned from server calls.
 
-- **Event params are typed - `MouseEvent`/`ChangeEvent`/etc.** `e: any` (lowercase) is the Python `any()` builtin, fails E1103. Use capital `Any` (no import) for untyped.
+- **Event params are typed - `MouseEvent`/`ChangeEvent`/etc.** Annotate every handler that reads `e` with the real event type, so `e.target` / `e.key` resolve. When you genuinely don't read `e`, fall back to lowercase `any` (the gradual type) - never capital `Any`, which is not the keyword and warns `W2001` ("Name 'Any' may be undefined").
 - **`style` prop takes a `dict[str, object]`, not a CSS string.** `<div style="color: red">` fails E1103. Use inline dict `<div style={{"color": "red"}}>` or move styling to `className` + a CSS file.
 - **JSX uses `className`, curly-brace interpolation `{expr}`, camelCase events** (`onClick`, `onChange`).
 - **No `to cl:` / `cl def:pub` / `cl { }` in `.cl.jac` files.** Extension already sets context. Braced blocks are deprecated (W0064).

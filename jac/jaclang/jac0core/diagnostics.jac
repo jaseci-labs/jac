@@ -272,6 +272,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0107 = _err(
          "E0107", Category.SYNTAX, "Lexer stuck at EOF in mode {mode} (pos={pos})"
      ),
+     # Lexer: warnings
+     W0100 = _warn(
+         "W0100",
+         Category.SYNTAX,
+         "Invalid escape sequence '{esc}'",
+         "Double the backslash for a literal backslash, or prefix the string with r to make it raw."
+     ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Type errors (E1xxx) — type checker and type evaluator
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

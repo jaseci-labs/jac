@@ -168,6 +168,34 @@ impl Lexer.error(
     }
 }
 
+impl Lexer.warning(
+    message: str, start_line: int, start_col: int, start_pos: int, code_str: str = ""
+) {
+    if self?.prog and self.prog is not None and hasattr(self.prog, "warnings_had") {
+        import from jaclang.jac0core.unitree { Token as UniToken, Source }
+        import from jaclang.jac0core.codeinfo { CodeLocInfo }
+        import from jaclang.jac0core.passes.transform { Alert }
+        import from jaclang.jac0core.diagnostics { DIAGNOSTICS }
+        sloc = self.make_loc(start_line, start_col, start_pos);
+        src = Source(self.source, mod_path=self.file_path);
+        tok = UniToken(
+            orig_src=src,
+            name="WARNING",
+            value="",
+            line=sloc.line,
+            end_line=sloc.end_line,
+            col_start=sloc.col_start,
+            col_end=sloc.col_end,
+            pos_start=sloc.pos_start,
+            pos_end=sloc.pos_end
+        );
+        loc = CodeLocInfo(tok, tok);
+        code = DIAGNOSTICS.get(code_str) if code_str else None;
+        alrt = Alert(message, loc, Lexer, code=code);
+        self.prog.warnings_had.append(alrt);
+    }
+}
+
 impl Lexer.is_digit(ch: str) -> bool {
     return ch >= "0" and ch <= "9";
 }
@@ -454,6 +482,16 @@ impl Lexer.scan_string(quote: str) -> Token {
     start_col = self.col;
     start_pos = self.pos;
     value = "";
+    # A leading r/R prefix sits in the source just before the opening quote
+    # (the lexer emits it as a separate name token). A raw string keeps
+    # backslashes literal, so an unknown escape there is intentional.
+    prefix = "";
+    pp = start_pos - 1;
+    while pp >= 0 and self.is_alnum(self.source[pp]) {
+        prefix = self.source[pp] + prefix;
+        pp -= 1;
+    }
+    is_raw = prefix.lower() in ["r", "rb", "br"];
     triple = False;
     # Check for triple-quoted string
     if self.peek() == quote and self.peek(2) == quote {
@@ -499,9 +537,33 @@ impl Lexer.scan_string(quote: str) -> Token {
 
         # Handle escape sequences
         if ch == "\\" {
-            value += self.advance();
+            esc_line = self.line;
+            esc_col = self.col;
+            esc_pos = self.pos;
+            value += self.advance();  # consume the backslash
             if not self.at_end() {
-                value += self.advance();
+                esc = self.current();
+                value += self.advance();  # consume the escaped character
+                # Flag escapes Python does not recognize: the compiler decodes
+                # the literal through Python, which would otherwise leak a bare
+                # SyntaxWarning with no source location. Raw strings are exempt.
+                if (
+                    not is_raw
+                    and esc not in "nrtbfva01234567xNuU"
+                    and esc != "\\"
+                    and esc != "\""
+                    and esc != "'"
+                    and esc != "\n"
+                    and esc != "\r"
+                ) {
+                    self.warning(
+                        f"Invalid escape sequence '\\{esc}'",
+                        esc_line,
+                        esc_col,
+                        esc_pos,
+                        code_str="W0100"
+                    );
+                }
             }
         } else {
             value += self.advance();

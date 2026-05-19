@@ -3,7 +3,7 @@ name: jac-sv-auth
 description: The server-side auth model - deciding which endpoints are public versus authenticated, and isolating data per user. Load when deciding which server functions need login or whose data they should see. Pair with `jac-sv-endpoints` (endpoint visibility), `jac-cl-auth` (client side of the auth loop).
 ---
 
-Jac's server auth model is **isolation, not access control**. There's no explicit user id to check - the runtime handles login via `@jac/runtime` client helpers (`jacLogin`, etc.) and then routes each user's queries to their own subgraph. You pick the endpoint prefix; the runtime does the rest.
+Jac's server auth model is built on **per-user data isolation**. There's no explicit user id to check - the runtime handles login via `@jac/runtime` client helpers (`jacLogin`, etc.) and then routes each user's queries to their own subgraph. You pick the endpoint prefix; the runtime does the rest. (For data that *specific* users share, isolation has an escape hatch - see "Sharing data with specific users" below.)
 
 - **`def:pub`** - anonymous. Anyone can call. `root` is the **shared global graph** - every caller sees the same data.
 - **`def:priv`** - authenticated. Requires login. `root` is the **current user's isolated subgraph** - same code, different data per caller.
@@ -33,6 +33,24 @@ def:priv add_todo(title: str) -> Todo {
 ```
 
 For full CRUD shapes (update / toggle / delete + typed returns + async), see `jac-sv-endpoints`.
+
+## Sharing data with specific users
+
+`def:pub` (one shared global graph) and `def:priv` (per-user isolated graph) are
+not the only two options. For data that some *specific* users share but the
+public must not see - a shared document, a team workspace, a two-player game -
+keep the endpoints `def:priv` and use the ambient permission builtins (no
+import needed):
+
+- `grant(node, level)` - give another user access to a specific node.
+- `revoke(node)` - withdraw that access.
+- `allroots()` - list every user's `root` (returns `list[Root]`), for admin or
+  cross-user views.
+
+This opens a chosen node to chosen users instead of dumping shared state into
+the global `def:pub` graph. The jac-scale reference documents the full
+cross-user permission model (access levels, granting against another user's
+root) - consult it before building a multi-user-shared feature.
 
 ## Pitfalls
 

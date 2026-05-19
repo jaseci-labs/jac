@@ -173,6 +173,32 @@ test "E0117: mixed tabs and spaces" {
     assert prog is not None and has_diagnostic_code(prog, "E0117", in_warnings=True);
 }
 
+test "W0100: invalid escape sequence warns" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "press \\q now"; }', file_path="test.jac");
+    assert has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: valid escapes do not warn" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='with entry { x = "tab\\there\\nline\\x41"; }', file_path="test.jac"
+    );
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: raw string keeps backslashes and is exempt" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = r"press \\q"; }', file_path="test.jac");
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: each invalid escape warns once" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "\\q then \\e"; }', file_path="test.jac");
+    assert count_diagnostic_code(prog, "W0100", in_warnings=True) == 2;
+}
+
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 2: PARSER / SYNTAX DIAGNOSTICS (E0052-E0078)

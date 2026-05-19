@@ -48,7 +48,7 @@ with entry {
 - `disengage;` halts the walker immediately - queued visits are discarded. Use for search-style early exits.
 - **`visit` is a statement, not a method.** `visit [-->]` queues every outgoing edge; `visit (node_expr)` queues one specific node. Variants: `[<--]` incoming, `[-->:EdgeType:]` typed. Do NOT write `self.visit(...)` - a walker has no `visit` attribute (fails E1030).
 - Walkers don't `return` - they `report X;` (appears in `result.reports`) or `disengage;`.
-- Every entry needs `with <NodeType> entry` - bare `can foo { ... }` is invalid.
+- Every entry needs a `with ... entry` clause - bare `can foo { ... }` (no `with`) is invalid (E0034). The clause is either typed (`with Item entry`, fires only on `Item` nodes) or generic (`with entry`, fires on every node).
 - Entry points are **`can`**, NOT `def`. Plain helper methods can still be `def`, but bodies that fire on node arrival must be `can`.
 - **Keyword pairs depend on which side you're writing.** Inside a *walker* entry (`can ... with NodeType entry` in a walker): `self` = the walker, `here` = the current node. Inside a *node* entry (`can ... with WalkerType entry` in a node): `self` = the node, `visitor` = the arriving walker. Mixing them is the #1 walker bug.
-- **No generic `with node entry`.** `node` is a declaration keyword, NOT a type. `can foo with node entry { ... }` fails `jac check` with E2018 - the type must be a declared node archetype (or `Root`). Nodes without a matching entry body are simply passed through - no catch-all needed.
+- **The literal keyword `node` is not a type.** `can foo with node entry { ... }` fails `jac check` with E2018. For a typed entry, name a declared node archetype (or `Root`); for a catch-all that fires on every node, use a generic `with entry` (no type). A node with neither a matching typed entry nor a generic entry is simply passed through.

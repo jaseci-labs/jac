@@ -10,3 +10,4 @@ import from jaclang.cli.commands { tools }
 import from jaclang.cli.commands { config }
 import from jaclang.cli.commands { db }
 import from jaclang.cli.commands { nacompile }
+import from jaclang.cli.commands { ai }

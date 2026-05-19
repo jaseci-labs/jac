@@ -26,6 +26,7 @@ Bug index:
   #BASE-1 - Base class name resolved in class's own scope (should be enclosing)
   #SUPER-1 - super() call returns Unknown instead of parent instance
   #DLOC-1 - Decorated class inside function body parsed as Ability instead of Archetype
+  #STUB-VGUARD - Module-level version-guarded stub symbols (e.g. datetime.UTC) resolve as Unknown
 """
 
 import os;
@@ -744,5 +745,22 @@ test "bug_property_setter_duplicate_accessor_reported" {
         "the same property must raise E0076 — a property has at most one "
         "setter (or getter, or deleter). "
         f"Got {len(errs)} E0076 error(s): {[str(e) for e in errs]}"
+    );
+}
+
+# Bug #STUB-VGUARD: top-level `if sys.version_info` guards left their symbols
+# wrapped in IfStmt by proc_module, so the type checker saw e.g. `datetime.UTC`
+# as Unknown and emitted W1051 at every use site.
+test "bug_stub_vguard_module_level_symbol_resolves" {
+    program = compile_and_check("checker_bug_version_guard_stub_symbol.jac");
+    unresolved = [
+        w
+        for w in program.warnings_had
+        if "could not be resolved" in str(w)
+    ];
+    assert unresolved == [] , (
+        "Bug #STUB-VGUARD: `datetime.UTC` (defined under `if sys.version_info "
+        ">= (3, 11):` in typeshed) must resolve to its declared type, not Unknown. "
+        f"Got W1051 warnings: {[str(w) for w in unresolved]}"
     );
 }
