@@ -3968,6 +3968,33 @@ test "bare_generic_in_signatures_emits_w1036" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
 
+test "explicit_any_annotations_emit_w1037" {
+    # Explicit `any` annotations disable type checking, so each one — on a
+    # param, return type, field, assignment, or nested inside a generic or
+    # union — should produce a W1037 warning. Specific types must not warn.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_any.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    explicit_any_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1037" in w.pretty_print()
+    ];
+    # Expected sites (6 total):
+    #   1. `x: any`          param type on `takes_any`
+    #   2. `-> any`          return type on `takes_any`
+    #   3. `y: any = 5`      annotated assignment
+    #   4. `list[any]`       nested any in a generic param
+    #   5. `any | None`      any branch of a union return type
+    #   6. `payload: any`    field annotation
+    assert len(explicit_any_warnings) == 6 , f"Expected 6 W1037 warnings, got {len(
+        explicit_any_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in explicit_any_warnings);
+}
+
 """Test callable() type narrowing - validates narrowing unions by callability."""
 test "callable_narrowing" {
     program = JacProgram();

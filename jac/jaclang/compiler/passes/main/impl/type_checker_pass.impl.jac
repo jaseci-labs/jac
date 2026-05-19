@@ -220,9 +220,10 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             } else {
                 target.type = left_type;
             }
-            # Warn on bare generic type annotations (e.g. x: list = [])
+            # Warn on bare generic / explicit-any type annotations (e.g. x: list = [])
             if nd.type_tag and nd.type_tag.tag {
                 self._check_bare_generic(nd.type_tag.tag, left_type);
+                self._check_explicit_any(nd.type_tag.tag);
             }
         } elif isinstance(target, (uni.TupleVal, uni.ListVal)) {
             # Tuple/list unpacking: (px, py) = p; or [a, b] = lst;
@@ -246,8 +247,9 @@ impl TypeCheckPass.exit_assignment(self: TypeCheckPass, nd: uni.Assignment) -> N
             # Propagate type annotation to the target node
             if nd.type_tag and nd.type_tag.tag {
                 declared_type = self.evaluator.get_type_of_expression(nd.type_tag.tag);
-                # Warn on bare generic type annotations (e.g. list instead of list[T])
+                # Warn on bare generic / explicit-any type annotations
                 self._check_bare_generic(nd.type_tag.tag, declared_type);
+                self._check_explicit_any(nd.type_tag.tag);
                 # Convert class type to instance for assignment checking.
                 # Type annotations like `x: int` resolve to the class `int`
                 # (instantiable), but the LHS of an assignment represents an
@@ -545,6 +547,7 @@ impl TypeCheckPass.exit_ability(self: TypeCheckPass, nd: uni.Ability) -> None {
     ) {
         ret_ann_type = self.evaluator.get_type_of_expression(nd.signature.return_type);
         self._check_bare_generic(nd.signature.return_type, ret_ann_type);
+        self._check_explicit_any(nd.signature.return_type);
     }
     # Check for missing return statements on non-None return type functions
     if (
@@ -755,6 +758,32 @@ impl TypeCheckPass._check_bare_generic(
     }
 }
 
+"""Emit W1037 for explicit `any` type annotations.
+
+`any` is the gradual-typing escape hatch: annotating something `any`
+silently disables member-access, call-signature, and assignment checking
+on it. That is occasionally intentional (interop boundaries, genuinely
+dynamic data), so this is a warning rather than an error — but most uses
+are oversights that hide real bugs behind an un-checkable type.
+
+`ann_node` is the annotation AST node (a type-tag expression or signature
+return type). Walks the whole subtree so nested forms each warn at their
+own `any` — `list[any]`, `any | None`, callable params/returns. Matches
+only the lowercase `any` builtin keyword; `Any` imported from `typing`
+resolves through a Name and is left to typeshed-style code."""
+impl TypeCheckPass._check_explicit_any(
+    self: TypeCheckPass, ann_node: uni.UniNode
+) -> None {
+    if isinstance(ann_node, uni.BuiltinType) and ann_node.value == "any" {
+        self.emit(W1037, node_override=ann_node);
+    }
+    for sub in ann_node.get_all_sub_nodes(uni.BuiltinType) {
+        if sub.value == "any" {
+            self.emit(W1037, node_override=sub);
+        }
+    }
+}
+
 """Exit a type alias node."""
 impl TypeCheckPass.exit_type_alias(self: TypeCheckPass, nd: uni.TypeAlias) -> None { }
 
@@ -819,6 +848,7 @@ impl TypeCheckPass.exit_param_var(self: TypeCheckPass, nd: uni.ParamVar) -> None
             and nd.find_parent_of_type(uni.ImplDef) is None
         ) {
             self._check_bare_generic(nd.type_tag.tag, declared_type);
+            self._check_explicit_any(nd.type_tag.tag);
         }
     }
 }
@@ -849,9 +879,10 @@ impl TypeCheckPass.exit_has_var(self: TypeCheckPass, nd: uni.HasVar) -> None {
     if (sym := nd.sym) {
         declared_type = self.evaluator.get_type_of_symbol(sym);
         nd.type = declared_type;
-        # Warn on bare generic type annotations (e.g. has items: list instead of list[T])
+        # Warn on bare generic / explicit-any annotations (e.g. has items: list)
         if nd.type_tag and nd.type_tag.tag {
             self._check_bare_generic(nd.type_tag.tag, declared_type);
+            self._check_explicit_any(nd.type_tag.tag);
         }
         # Walker-specific: `has reports` is the typed view of the walker's
         # report channel. Require a list shape so `report X` (write side)

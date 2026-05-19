@@ -349,6 +349,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Generic type \"{type}\" used without type arguments, defaulting to"
          " \"{type}[Any]\"; consider adding explicit type arguments"
      ),
+     # Explicit `any` annotation warning
+     W1037 = _warn(
+         "W1037",
+         Category.TYPE,
+         "Explicit 'any' type annotation disables type checking here;"
+         " consider a more specific type"
+     ),
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
      E1041 = _err("E1041", Category.TYPE, "Type \"{type}\" is not awaitable"),
