@@ -3463,3 +3463,8 @@ impl DesktopTarget.start(
         cleanup();
     }
 }
+
+"""Resolve asset base path dynamically based on runtime context headers."""
+impl DesktopTarget.resolve_asset_base(headers: dict[str, str]) -> str {
+    return "/";
+}

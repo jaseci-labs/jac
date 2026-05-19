@@ -31,4 +31,6 @@ obj WebTarget(ClientTarget) {
     override def start(
         entry_file: Path, project_dir: Path, api_port: int = 8000
     ) -> None;
+
+    override def resolve_asset_base(headers: dict[str, str]) -> str;
 }

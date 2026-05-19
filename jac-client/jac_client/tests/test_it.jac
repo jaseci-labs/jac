@@ -2287,3 +2287,40 @@ test "multi_segment_route_asset_resolution" {
         os.chdir(original_cwd);
     }
 }
+
+test "polymorphic client target asset base path resolution" {
+    import from pathlib { Path }
+    import from jac_client.plugin.src.targets.registry {
+        get_target_factory,
+        TargetType
+    }
+
+    # Setup a dummy project directory for factory instantiation
+    dummy_dir = Path("/tmp/dummy_jac_project");
+
+    # 1. Get WebTarget from factory
+    factory = get_target_factory();
+    web_target = factory.create_by_type(TargetType.WEB, dummy_dir);
+
+    # Test WebTarget resolve_asset_base
+    # Case A: Standard root-relative fallback
+    assert web_target.resolve_asset_base({}) == "/";
+
+    # Case B: Standard lowercase header
+    assert web_target.resolve_asset_base(
+        {"x-forwarded-prefix": "/my-custom-prefix"}
+    ) == "/my-custom-prefix/";
+    assert web_target.resolve_asset_base(
+        {"x-forwarded-prefix": "/my-custom-prefix/"}
+    ) == "/my-custom-prefix/";
+
+    # Case C: Case-insensitive header fallback
+    assert web_target.resolve_asset_base({"X-Forwarded-Prefix": "/Another-Prefix"}) == "/Another-Prefix/";
+
+    # 2. Get DesktopTarget from factory
+    desktop_target = factory.create_by_type(TargetType.DESKTOP, dummy_dir);
+
+    # Test DesktopTarget resolve_asset_base (always root-relative)
+    assert desktop_target.resolve_asset_base({"x-forwarded-prefix": "/ignored"}) == "/";
+    assert desktop_target.resolve_asset_base({}) == "/";
+}

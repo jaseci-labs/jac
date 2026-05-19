@@ -225,6 +225,9 @@ def _generate_index_html(
     import from jac_client.plugin.client { HeaderBuilder }
 
     static_base = bundler.config_loader.get_static_base_path();
+    if not static_base {
+        static_base = "/";
+    }
     if static_base and not static_base.endswith('/') {
         static_base = static_base + '/';
     }
@@ -264,4 +267,15 @@ def _generate_index_html(
 </html>''';
     index_html = dist_dir / 'index.html';
     index_html.write_text(html_content, encoding='utf-8');
+}
+
+"""Resolve asset base path dynamically based on runtime context headers."""
+impl WebTarget.resolve_asset_base(headers: dict[str, str]) -> str {
+    prefix = headers.get("x-forwarded-prefix")
+    or headers.get("X-Forwarded-Prefix")
+    or "/";
+    if prefix and not prefix.endswith('/') {
+        prefix = prefix + '/';
+    }
+    return prefix;
 }
