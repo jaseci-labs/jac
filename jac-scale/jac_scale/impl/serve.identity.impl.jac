@@ -16,6 +16,7 @@
                                password.
 """
 
+import from jac_scale.audit { client_ip as _audit_client_ip, emit as _audit_emit }
 import from jac_scale.auth_tokens { AuthTokenStore }
 import from jac_scale.identity_storage { IdentityTakenError }
 import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
@@ -297,10 +298,16 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
 # ============================================================================
 impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
     async def verify_identity_handler(
-        body_data: VerifyIdentityRequest
+        request: Request, body_data: VerifyIdentityRequest
     ) -> TransportResponse {
+        source_ip = _audit_client_ip(request);
         record = AuthTokenStore.instance().consume_token(body_data.token, 'verify');
         if record is None {
+            _audit_emit(
+                'identity_verification.failed',
+                reason='invalid_or_expired_token',
+                source_ip=source_ip
+            );
             return TransportResponse.fail(
                 code='INVALID_TOKEN',
                 message='Verification token is invalid or expired',
@@ -310,6 +317,11 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
         user_id = record.get('user_id', '');
         identity_value = record.get('identity_value', '') or '';
         if not user_id or not identity_value {
+            _audit_emit(
+                'identity_verification.failed',
+                reason='token_missing_fields',
+                source_ip=source_ip
+            );
             return TransportResponse.fail(
                 code='INVALID_TOKEN',
                 message='Verification token is invalid',
@@ -318,12 +330,25 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
         }
         ok = self.user_manager.set_identity_verified(user_id, identity_value);
         if not ok {
+            _audit_emit(
+                'identity_verification.failed',
+                reason='identity_not_found_or_already_verified',
+                user_id=user_id,
+                identity_value=identity_value,
+                source_ip=source_ip
+            );
             return TransportResponse.fail(
                 code='NOT_FOUND',
                 message='Identity not found for user',
                 meta=Meta(extra={'http_status': 404})
             );
         }
+        _audit_emit(
+            'identity_verification.completed',
+            user_id=user_id,
+            identity_value=identity_value,
+            source_ip=source_ip
+        );
         return TransportResponse.success(
             data={'status': 'verified', 'identity': identity_value},
             meta=Meta(extra={'http_status': 200})
@@ -348,7 +373,7 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
 # ============================================================================
 impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
     async def forgot_password_handler(
-        body_data: ForgotPasswordRequest
+        request: Request, body_data: ForgotPasswordRequest
     ) -> TransportResponse {
         (_id_type, _raw_value, normalized) = _normalize_identity(body_data.identity);
         ok_response = TransportResponse.success(
@@ -425,8 +450,15 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
             ttl,
             extra_footer=' — your password will remain unchanged'
         );
-        emailer.send_email(
+        sent = emailer.send_email(
             to_addr=recipient_raw, subject='Reset your password', body_text=body_text
+        );
+        _audit_emit(
+            'password_reset.requested',
+            user_id=user.get('user_id', ''),
+            identity_value=recipient_normalized,
+            source_ip=_audit_client_ip(request),
+            email_sent=bool(sent)
         );
         return ok_response;
     }
@@ -449,10 +481,16 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
 # ============================================================================
 impl JacAPIServerAuth.register_reset_password_endpoint -> None {
     async def reset_password_handler(
-        body_data: ResetPasswordRequest
+        request: Request, body_data: ResetPasswordRequest
     ) -> TransportResponse {
+        source_ip = _audit_client_ip(request);
         record = AuthTokenStore.instance().consume_token(body_data.token, 'reset');
         if record is None {
+            _audit_emit(
+                'password_reset.failed',
+                reason='invalid_or_expired_token',
+                source_ip=source_ip
+            );
             return TransportResponse.fail(
                 code='INVALID_TOKEN',
                 message='Reset token is invalid or expired',
@@ -461,6 +499,11 @@ impl JacAPIServerAuth.register_reset_password_endpoint -> None {
         }
         user_id = record.get('user_id', '');
         if not user_id {
+            _audit_emit(
+                'password_reset.failed',
+                reason='token_missing_user',
+                source_ip=source_ip
+            );
             return TransportResponse.fail(
                 code='INVALID_TOKEN',
                 message='Reset token is invalid',
@@ -471,6 +514,12 @@ impl JacAPIServerAuth.register_reset_password_endpoint -> None {
             user_id, body_data.new_password
         );
         if result.get('error') {
+            _audit_emit(
+                'password_reset.failed',
+                reason='user_gone',
+                user_id=user_id,
+                source_ip=source_ip
+            );
             return TransportResponse.fail(
                 code='NOT_FOUND',
                 message=result.get('error', 'User not found'),
@@ -479,6 +528,7 @@ impl JacAPIServerAuth.register_reset_password_endpoint -> None {
         }
         # Drop any other outstanding reset tokens for this user.
         AuthTokenStore.instance().revoke_user_tokens(user_id, 'reset');
+        _audit_emit('password_reset.completed', user_id=user_id, source_ip=source_ip);
         return TransportResponse.success(
             data={'status': 'password_reset'}, meta=Meta(extra={'http_status': 200})
         );
