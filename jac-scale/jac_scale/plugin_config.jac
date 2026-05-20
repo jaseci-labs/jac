@@ -325,6 +325,18 @@ class JacScalePluginConfig {
                                     "description": "SPA base route"
                                 }
                             }
+                        },
+                        "logs": {
+                            "type": "dict",
+                            "default": {},
+                            "description": "Centralised log aggregation via Loki + Promtail (M-14). Off by default. When enabled, deploys the full monitoring stack (Prometheus + Grafana + Loki + Promtail) into the app namespace; Promtail tails every pod's stdout/stderr from `/var/log/pods` and ships to Loki, queried via Grafana's `Pod Logs` dashboard. v0 uses ephemeral `emptyDir` for Loki storage (suitable for dev/staging); persistent backends land in M-14.c.",
+                            "nested": {
+                                "enabled": {
+                                    "type": "bool",
+                                    "default": False,
+                                    "description": "Enable the Loki+Promtail logging pipeline. Implies the full monitoring stack (Prometheus + Grafana) because the Pod Logs dashboard view lives in Grafana."
+                                }
+                            }
                         }
                     }
                 },

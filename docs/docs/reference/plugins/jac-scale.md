@@ -2950,6 +2950,36 @@ hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 replicas = 2
 hpa = { enabled = false }
 ```
+
+### Centralised Logs
+
+Microservice mode can deploy a Loki + Grafana Alloy log aggregation pipeline alongside the existing Prometheus + Grafana monitoring stack. Off by default.
+
+```toml
+[plugins.scale.microservices.logs]
+enabled = true
+```
+
+When enabled, `jac start --scale` deploys:
+
+- **Loki** -- single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by `emptyDir` (logs are ephemeral and reset on pod restart; suitable for dev and staging).
+- **Grafana Alloy** -- DaemonSet on every node (tolerates `NoSchedule`). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. River-syntax config; supersedes Promtail (EOL 2026-03-02).
+- **Prometheus + Grafana** -- the full monitoring stack comes along because the Pod Logs dashboard view lives inside Grafana. Equivalent to setting `[plugins.scale.kubernetes].monitoring_enabled = true` and `loki_enabled = true` on the monolith target.
+
+A **Pod Logs** dashboard is added to Grafana automatically, with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
+
+| Component | Resource | Reach |
+|-----------|----------|-------|
+| Loki | Deployment + ClusterIP Service `<app>-loki-service:3100` | Cluster-internal only |
+| Alloy | DaemonSet | Per node; reads host `/var/log/pods` (read-only) |
+| Grafana | Deployment + Service, NodePort/NLB via Ingress | `/grafana` on the app's external endpoint |
+
+> **Storage caveat.** Loki uses `emptyDir` in v0 (PR #5731). Loki pod restart drops in-flight chunks. Persistent storage modes (PVC, S3-compatible object storage) land in M-14.c.
+
+> **Trace correlation.** Microservice mode already propagates `X-Trace-Id` (K-12). Lines from every service touched by one request carry the same trace id; grep for it in Grafana with `{namespace="<ns>"} |~ "trace=<id>"`. Structured-JSON emission with `trace_id` as a first-class queryable field ships in M-14.b.
+
+---
+
 ## Setting Up Kubernetes
 
 ### Docker Desktop (Easiest)
