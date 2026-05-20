@@ -6,7 +6,6 @@ the same CLI commands work for both local and K8s targets.
 
 import subprocess;
 import logging;
-import from typing { Any }
 import from pathlib { Path }
 import from jac_scale.abstractions.service_deployer { ServiceDeployer }
 import from jac_scale.microservices.service_registry {

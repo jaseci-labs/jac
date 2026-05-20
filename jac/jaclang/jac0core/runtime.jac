@@ -474,7 +474,7 @@ system,
     ) -> T;
 
     """Jac's report stmt feature."""
-    static def log_report(expr: Any, custom: bool = False) -> None;
+    static def log_report(expr: any, custom: bool = False) -> None;
 
     """Jac's apply_dir stmt feature.
 
@@ -521,11 +521,11 @@ system,
 
     """Jac's assign comprehension feature."""
     static def assign_all(
-        target: list[T], attr_val: tuple[(tuple[str], tuple[Any])]
+        target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
     ) -> list[T];
 
     """Jac's safe subscript feature."""
-    static def safe_subscript(`obj: Any, key: Any) -> Any;
+    static def safe_subscript(`obj: any, key: any) -> any;
 
     """Jac's root getter."""
     static def root -> Root;
@@ -620,7 +620,7 @@ class JacAPIServer {
         Returns the unwrapped result from the TransportResponse envelope.
         Raises RuntimeError on transport or application-level failure.
         """
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any;
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any;
 
     """Execute an sv-to-sv walker spawn over HTTP.
 
@@ -637,8 +637,8 @@ class JacAPIServer {
         contract as sv_service_call.
         """
     static def sv_walker_call(
-        module_name: str, walker_name: str, args: dict, stub_cls: Any
-    ) -> Any;
+        module_name: str, walker_name: str, args: dict, stub_cls: any
+    ) -> any;
 
     """Return the current sv-service registry as a {module_name: base_url} dict.
 
@@ -731,10 +731,10 @@ class JacByLLM {
     static def `sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable;
 
     """Call the LLM model."""
-    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> Any;
+    static def call_llm(model: LLMModel, mt_run: MTRuntime) -> any;
 
     """Async variant of call_llm; offloads the LLM call so the event loop stays free."""
-    static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> Any;
+    static async def acall_llm(model: LLMModel, mt_run: MTRuntime) -> any;
 
     """Python library mode decorator for Jac's by llm() syntax."""
     static def `by(model: LLMModel) -> Callable;
@@ -748,7 +748,7 @@ class JacByLLM {
         Currently not implemented - raises NotImplementedError.
         Plugins like byllm can override this via the plugin hook system.
         """
-    static def by_operator(lhs: Any, rhs: Any) -> Any;
+    static def by_operator(lhs: any, rhs: any) -> any;
 
     """Return the default LLM model for use with 'by llm()' syntax.
 
@@ -845,7 +845,7 @@ code.
     static def thread_run(func: Callable, *args: object) -> Future;
 
     """Wait for a thread to finish."""
-    static def thread_wait(future: Any) -> None;
+    static def thread_wait(future: any) -> None;
 }
 
 """Plugin configuration hooks for jac.toml integration.
@@ -961,7 +961,7 @@ class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacE
         Returns:
             Storage instance (LocalStorage by default)
         """
-    static def store(base_path: str = './storage', create_dirs: bool = True) -> Any;
+    static def store(base_path: str = './storage', create_dirs: bool = True) -> any;
 }
 
 """Generate three helper classes based on a plugin class.
@@ -974,8 +974,8 @@ class JacRuntimeInterface(JacClassReferences, JacAccessValidation, JacNode, JacE
         Tuple of (SpecClass, ImplClass, ProxyClass).
     """
 def generate_plugin_helpers(
-    plugin_class: type[Any]
-) -> tuple[(type[Any], type[Any], type[Any])] {
+    plugin_class: type[any]
+) -> tuple[(type[any], type[any], type[any])] {
     spec_methods = {};
     impl_methods = {};
     proxy_methods = {};
@@ -1109,11 +1109,11 @@ class JacRuntime(JacRuntimeInterface) {
         operations. It persists across program resets and can be reused.
         """
     @classmethod
-    def get_compiler(cls: Any) -> JacCompiler;
+    def get_compiler(cls: any) -> JacCompiler;
 
     """Get or create the JacProgram instance."""
     @classmethod
-    def get_program(cls: Any) -> JacProgram;
+    def get_program(cls: any) -> JacProgram;
 
     """Set the base path for the machine.
 
@@ -1133,10 +1133,10 @@ class JacRuntime(JacRuntimeInterface) {
     returned token lets the caller restore the prior value in a `finally`
     block, which keeps concurrent requests (each in its own asyncio Task
     with its own ContextVar view) from trampling each other's state."""
-    static def push_request_context(context: ExecutionContext) -> Any;
+    static def push_request_context(context: ExecutionContext) -> any;
 
     """Reset the request-scoped context using a token from `push_request_context`."""
-    static def reset_request_context(token: Any) -> None;
+    static def reset_request_context(token: any) -> None;
 
     """Clear request-scoped context and commit changes."""
     static def clear_request_context -> None;

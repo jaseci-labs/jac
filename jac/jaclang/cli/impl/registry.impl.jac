@@ -192,7 +192,7 @@ impl CommandRegistry._apply_pending_extensions(name: str) -> None {
 
 """Build argparse subparser for a command."""
 impl CommandRegistry._build_subparser(
-    subparsers: Any, spec: CommandSpec
+    subparsers: any, spec: CommandSpec
 ) -> argparse.ArgumentParser {
     import from jaclang.cli.command { CommandSpec }
     # Build description with examples

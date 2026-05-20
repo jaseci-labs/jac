@@ -34,7 +34,16 @@ obj Lexer {
         jsx_closing_tag: bool = False,  # True when scanning a closing tag </...>
         prev_token_kind:
             TokenKind | None = None,  # Previous token kind for JSX disambiguation
-        comments: list[tuple[str, int, int, int, int, int, int, bool]] = [];
+        comments: list[tuple[str, int, int, int, int, int, int, bool]] = [],
+        # `view` declarator tracking (statement-position JSX disambiguation).
+        # The view body is a statement region: a bare `<Tag>` after `}` or a
+        # sibling JSX close tag must lex as JSX, not as a `<` comparison.
+        _view_decl_state: int = 0,  # 0 idle, 1 saw `view` keyword
+        _view_decl_armed: bool = False,  # saw `view NAME`, awaiting body `{`
+        _brace_depth: int = 0,  # running { } nesting depth
+        _paren_depth: int = 0,  # running ( ) nesting depth
+        _bracket_depth: int = 0,  # running [ ] nesting depth
+        _view_body_depths: list[int] = [];  # brace depths at which view bodies open
 
     # Mode management
     def push_mode(mode: LexerMode);
@@ -43,6 +52,8 @@ obj Lexer {
     def in_fstring -> bool;
     def in_jsx -> bool;
     def prev_is_value -> bool;
+    def in_view_body -> bool;
+    def _track_view_context(tok: Token);
     # Character access
     def current -> str;
     def peek(offset: int = 1) -> str;

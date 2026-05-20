@@ -1451,7 +1451,7 @@ impl JacBasics.field(
 }
 
 """Jac's report stmt feature."""
-impl JacBasics.log_report(expr: Any, custom: bool = False) -> None {
+impl JacBasics.log_report(expr: any, custom: bool = False) -> None {
     ctx = JacRuntimeInterface.get_context();
     if custom {
         ctx.custom = expr;
@@ -1480,7 +1480,7 @@ impl JacBasics.refs(
             last.nd = post_filter;
         } else {
             orig_nd = last.nd;
-            last.nd = lambda i: Any : (orig_nd(i) and post_filter(i));
+            last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
         }
     }
     # Try topology index optimization for non-edge-only queries
@@ -1661,7 +1661,7 @@ impl JacBasics.disconnect(
 
 """Jac's assign comprehension feature."""
 impl JacBasics.assign_all(
-    target: list[T], attr_val: tuple[(tuple[str], tuple[Any])]
+    target: list[T], attr_val: tuple[(tuple[str], tuple[any])]
 ) -> list[T] {
     for `obj in target {
         (attrs, values) = attr_val;
@@ -1673,7 +1673,7 @@ impl JacBasics.assign_all(
 }
 
 """Jac's safe subscript feature."""
-impl JacBasics.safe_subscript(`obj: Any, key: Any) -> Any {
+impl JacBasics.safe_subscript(`obj: any, key: any) -> any {
     try {
         return `obj[key];
     } except (KeyError, IndexError, TypeError) {
@@ -1951,7 +1951,7 @@ Two response shapes are honoured:
     of a str-ified generator object. See jac/jaclang/runtimelib/
     sv_sse.jac for the framing contract.
 """
-impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) -> Any {
+impl JacAPIServer.sv_service_call(module_name: str, func_name: str, args: dict) -> any {
     import from jaclang.runtimelib { sv_client }
     import from jaclang.runtimelib.sv_sse { consume_sse_stream }
 
@@ -2033,8 +2033,8 @@ Plugins override this method to add auth, retries, circuit breakers,
 or tracing the same way they override sv_service_call.
 """
 impl JacAPIServer.sv_walker_call(
-    module_name: str, walker_name: str, args: dict, stub_cls: Any
-) -> Any {
+    module_name: str, walker_name: str, args: dict, stub_cls: any
+) -> any {
     import from jaclang.runtimelib { sv_client }
 
     label = f"{module_name}.{walker_name}";
@@ -2096,8 +2096,8 @@ the TestClient instance is owned by sv_client._test_clients and lives
 beyond the call.
 """
 def _wrap_sse_keepalive(
-    stream_cm: Any, resp: Any, client: Any, func_label: str
-) -> Any {
+    stream_cm: any, resp: any, client: any, func_label: str
+) -> any {
     import from jaclang.runtimelib.sv_sse { consume_sse_stream }
     try {
         for ev in consume_sse_stream(resp, func_label) {
@@ -2284,11 +2284,11 @@ impl JacByLLM.`sem(semstr: str, inner_semstr: dict[(str, str)]) -> Callable {
 }
 
 """Call the LLM model."""
-impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
+impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> any {
     import from jaclang.utils { NonGPT }
     try {
         random_value_for_type = cast(
-            Callable[([Any], Any)], NonGPT.random_value_for_type
+            Callable[([any], Any)], NonGPT.random_value_for_type
         );
     } except AttributeError {
         def random_value_for_type(_t: object) -> object {
@@ -2314,13 +2314,13 @@ impl JacByLLM.call_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
 Uses await so this impl compiles to an async def, matching the static async def declaration
 and ensuring inspect.iscoroutinefunction returns True even when byllm is not installed.
 """
-impl JacByLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> Any {
+impl JacByLLM.acall_llm(model: LLMModel, mt_run: MTRuntime) -> any {
     import asyncio;
     import from jaclang.utils { NonGPT }
     await asyncio.sleep(0);
     try {
         random_value_for_type = cast(
-            Callable[([Any], Any)], NonGPT.random_value_for_type
+            Callable[([any], Any)], NonGPT.random_value_for_type
         );
     } except AttributeError {
         def random_value_for_type(_t: object) -> object {
@@ -2397,7 +2397,7 @@ allowed
     Currently not implemented - raises NotImplementedError.
     Plugins like byllm can override this via the plugin hook system.
     """
-impl JacByLLM.by_operator(lhs: Any, rhs: Any) -> Any {
+impl JacByLLM.by_operator(lhs: any, rhs: any) -> any {
     raise NotImplementedError(
         "The 'by' operator is not yet implemented. This feature is reserved for future use."
     );
@@ -2688,7 +2688,7 @@ impl JacUtils.thread_run(func: Callable, *args: object) -> Future {
 }
 
 """Wait for a thread to finish."""
-impl JacUtils.thread_wait(future: Any) -> None {
+impl JacUtils.thread_wait(future: any) -> None {
     return future.result();
 }
 
@@ -2813,7 +2813,7 @@ impl JacRuntimeInterface.get_user_manager(base_path: str) -> UserManager {
     """
 impl JacRuntimeInterface.store(
     base_path: str = './storage', create_dirs: bool = True
-) -> Any {
+) -> any {
     import from jaclang.runtimelib.storage { LocalStorage }
     return LocalStorage(base_path=base_path, create_dirs=create_dirs);
 }
@@ -2823,7 +2823,7 @@ impl JacRuntimeInterface.store(
     The compiler is separate from the program and handles all compilation
     operations. It persists across program resets and can be reused.
     """
-impl JacRuntime.get_compiler(cls: Any) -> JacCompiler {
+impl JacRuntime.get_compiler(cls: any) -> JacCompiler {
     if (cls.compiler is None) {
         import from jaclang.jac0core.compiler { JacCompiler }
         cls.compiler = JacCompiler();
@@ -2832,7 +2832,7 @@ impl JacRuntime.get_compiler(cls: Any) -> JacCompiler {
 }
 
 """Get or create the JacProgram instance."""
-impl JacRuntime.get_program(cls: Any) -> JacProgram {
+impl JacRuntime.get_program(cls: any) -> JacProgram {
     if (cls.program is None) {
         import from jaclang.jac0core.program { JacProgram }
         cls.program = JacProgram();
@@ -2865,12 +2865,12 @@ impl JacRuntime.set_request_context(context: ExecutionContext) -> None {
 }
 
 """Push a request-scoped execution context; returns a reset token."""
-impl JacRuntime.push_request_context(context: ExecutionContext) -> Any {
+impl JacRuntime.push_request_context(context: ExecutionContext) -> any {
     return _request_context.set(context);
 }
 
 """Reset the request-scoped context using a push token."""
-impl JacRuntime.reset_request_context(token: Any) -> None {
+impl JacRuntime.reset_request_context(token: any) -> None {
     _request_context.reset(token);
 }
 

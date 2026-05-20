@@ -65,7 +65,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="signature", kind=6),
                  FieldDesc(name="decorators", kind=5),
                  FieldDesc(name="type_params", kind=5),
-                 FieldDesc(name="accessor_kind", kind=0)
+                 FieldDesc(name="accessor_kind", kind=0),
+                 FieldDesc(name="is_view", kind=2)
              )
          ),
          NodeSpec(
@@ -921,7 +922,8 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="attributes", kind=5),
                  FieldDesc(name="children", kind=5),
                  FieldDesc(name="is_self_closing", kind=2),
-                 FieldDesc(name="is_fragment", kind=2)
+                 FieldDesc(name="is_fragment", kind=2),
+                 FieldDesc(name="dynamic_tag", kind=6)
              )
          ),
          NodeSpec(

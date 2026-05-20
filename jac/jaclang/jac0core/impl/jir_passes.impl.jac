@@ -2,7 +2,6 @@
 import struct;
 import sys;
 import zlib;
-import from typing { Any }
 
 # =============================================================================
 # JirWriter implementation
@@ -523,7 +522,7 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
 impl JirReader._read_trailing_sections(data: bytes) -> dict[int, bytes] {
     import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
     try {
-        magic_bytes: Any = SECTIONS_MAGIC;
+        magic_bytes: any = SECTIONS_MAGIC;
         pos = data.find(magic_bytes, HEADER_SIZE);
         if pos < 0 {
             return {};
@@ -735,7 +734,7 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
 
     # Construct ir_node via __new__ (skips init)
     cls = class_map[spec.class_name];
-    ir_node: Any = cls.__new__(cls);
+    ir_node: any = cls.__new__(cls);
     nd = ir_node.__dict__;
 
     # Read fields and set directly on the ir_node
@@ -1139,7 +1138,7 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     }
 
     # Create Symbol with __new__ (skip init); getattr avoids type-checker arity check
-    sym: Any = getattr(Symbol, '__new__')(Symbol);
+    sym: any = getattr(Symbol, '__new__')(Symbol);
     sym.defn = defn_nodes;
     sym.uses = [];
     sym.imported = imported;

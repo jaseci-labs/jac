@@ -1,4 +1,4 @@
-import from typing { Any, overload }
+import from typing { overload }
 
 obj Foo {
     @overload
@@ -22,7 +22,7 @@ with entry {
     # @overload
     # def __pow__(self, value: float, mod: None = None, /) -> Any: ...
     x: float = 3.14 ** 42;  # <-- Ok
-    y: Any = 3.14 ** 2.71;  # <-- Ok
+    y: any = 3.14 ** 2.71;  # <-- Ok
 
     foo: Foo = Foo();
     foo.do_something(10);  # <-- Ok

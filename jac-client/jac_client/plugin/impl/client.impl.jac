@@ -90,7 +90,7 @@ impl JacClient.render_page(
     function_name: str,
     args: dict[(str, Any)],
     username: str
-) -> dict[str, Any] {
+) -> dict[str, any] {
     introspector.load();
     available_exports = (
         set(introspector._client_manifest.get('exports', []))

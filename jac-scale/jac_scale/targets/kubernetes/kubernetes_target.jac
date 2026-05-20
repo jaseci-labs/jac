@@ -385,8 +385,8 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Build volumes and build container configuration for code sync via code-server."""
     def _build_volumes_config(
-        app_name: str, app_config: AppConfig, namespace: str, core_v1: Any, apps_v1: Any
-    ) -> dict[str, Any] {
+        app_name: str, app_config: AppConfig, namespace: str, core_v1: any, apps_v1: any
+    ) -> dict[str, any] {
         pvc_name = f"{app_name}-code-pvc";
         pvc_size = self.k8s_config.pvc_size;
         sync_image = self.k8s_config.busybox_image;
@@ -436,7 +436,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Deploy code-server: a single-replica busybox httpd that serves code from the PVC over HTTP."""
-    def _deploy_code_server(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _deploy_code_server(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         code_server_name = f"{app_name}-code-server";
         code_server_labels = {'app': code_server_name};
         pvc_name = f"{app_name}-code-pvc";
@@ -579,7 +579,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Deploy all enabled databases and their optional dashboards."""
     def _deploy_databases(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
+        app_name: str, namespace: str, apps_v1: any, core_v1: any, cluster_env: str
     ) {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
@@ -897,7 +897,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Create a dedicated ServiceAccount with no automounted token for a deployment."""
     def _create_service_account(
-        sa_name: str, app_label: str, namespace: str, core_v1: Any
+        sa_name: str, app_label: str, namespace: str, core_v1: any
     ) {
         sa_body = {
             'apiVersion': 'v1',
@@ -933,7 +933,7 @@ obj KubernetesTarget(DeploymentTarget) {
     helper injects it and creates/skips if it already exists.
     """
     def _apply_provider_service_account(
-        sa_spec: dict[str, Any], namespace: str, core_v1: Any
+        sa_spec: dict[str, any], namespace: str, core_v1: any
     ) {
         sa_spec['metadata']['namespace'] = namespace;
         sa_name = sa_spec['metadata']['name'];
@@ -963,7 +963,7 @@ obj KubernetesTarget(DeploymentTarget) {
       - Redis: allows ingress on 6379 from main app, allows egress to DNS and intra-namespace
       - Other components: deny all ingress, allow egress to DNS and intra-namespace
     """
-    def _deploy_network_policy(app_name: str, namespace: str, networking_v1: Any) {
+    def _deploy_network_policy(app_name: str, namespace: str, networking_v1: any) {
         # Common egress rules for all policies
         common_egress_rules = [
             # DNS — explicit kube-system selector so CNIs that evaluate policy
@@ -1553,8 +1553,8 @@ obj KubernetesTarget(DeploymentTarget) {
     def _wait_for_deletion(
         app_name: str,
         namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
+        apps_v1: any,
+        core_v1: any,
         max_wait: int = 60,
         poll_interval: float = 1.0
     ) -> None {
@@ -1755,14 +1755,14 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Destroy all databases, caches, and their dashboards."""
-    def _destroy_databases(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_databases(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         self._destroy_database(app_name, namespace, apps_v1, core_v1);
         self._destroy_cache(app_name, namespace, apps_v1, core_v1);
         self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
     }
 
     def _destroy_application(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
         autoscaling_v2 = client.AutoscalingV2Api();
         delete_if_exists(
@@ -1836,7 +1836,7 @@ obj KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def _destroy_database(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_database(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         mongodb_name = f"{app_name}-mongodb";
         delete_if_exists(
             apps_v1.delete_namespaced_stateful_set,
@@ -1859,7 +1859,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_cache(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_cache(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         redis_name = f"{app_name}-redis";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, redis_name, namespace, 'Deployment'
@@ -1885,7 +1885,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         express_name = f"{app_name}-mongo-express";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, express_name, namespace, 'Deployment'
@@ -1933,7 +1933,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def _destroy_component(
-        app_name: str, namespace: str, component: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, component: str, apps_v1: any, core_v1: any
     ) {
         if component == 'application' {
             self._destroy_application(app_name, namespace, apps_v1, core_v1);

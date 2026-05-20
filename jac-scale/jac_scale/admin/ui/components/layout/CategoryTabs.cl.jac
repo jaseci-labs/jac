@@ -2,10 +2,10 @@
 
 cl {
     def:pub CategoryTabs(
-        categories: list, activeCategory: str, onCategoryChange: Any
+        categories: list, activeCategory: str, onCategoryChange: any
     ) -> JsxElement {
-        def makeHandler(catId: str, defaultTab: str) -> Any {
-            return lambda e: Any { onCategoryChange(catId, defaultTab); };
+        def makeHandler(catId: str, defaultTab: str) -> any {
+            return lambda e: any { onCategoryChange(catId, defaultTab); };
         }
 
         return

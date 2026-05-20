@@ -59,21 +59,23 @@ import from byllm.lib { Model }         # selective - NO `;`
 import ".styles/global.css";            # file - takes `;`
 ```
 
-**Client imports (inside `.cl.jac` files, or under `to cl:` in `main.jac`):**
+**Client imports (inside `.cl.jac` files, or inside a `cl { }` block in `main.jac`):**
 
 ```
 import from .button { Button }                        # relative (dots)
 import from "@jac/runtime" { Router, Routes, Route }  # npm (quoted)
 ```
 
-**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no header needed). Then `to cl:` opens the client section: CSS import, top-level component, `def:pub app()`:
+**`main.jac` is the one mixed-context file.** Server imports go at the top (server is the default context - no block needed). Then a `cl { ... }` block holds the client section: CSS import, top-level component, `def:pub app()`:
 
 ```
 import from services.recipe { ApiResponse, save_profile }   # server: no leading dot
-cl import ".styles.global.css";                             # CSS: cl import prefix required
-to cl:
-import from .components.AppShell { AppShell }               # client: relative dots
-def:pub app() -> JsxElement { return <AppShell />; }
+
+cl {
+    import ".styles.global.css";                            # CSS import
+    import from .components.AppShell { AppShell }            # client: relative dots
+    def:pub app() -> JsxElement { return <AppShell />; }
+}
 ```
 
 **Relative imports - what each dot means (Python-style):**

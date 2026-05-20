@@ -972,6 +972,48 @@ test "valid: function with return on all paths" {
 
 
 # ══════════════════════════════════════════════════════════════════
+#  view_body_check — `view` declarator body rules (ViewLowerPass)
+# ══════════════════════════════════════════════════════════════════
+test "view body check flags a value-returning return (E2019)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    assert has_diagnostic_code(program, "E2019") , (
+        "a `return <value>;` in a view body should raise E2019"
+    );
+}
+
+test "view body check flags return inside a template loop (E2020)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `for { return; }` AND nested `for { match { case _: return; } }`
+    # should both fire — verifies `_check_body` recurses through `match`.
+    n = count_diagnostic_code(program, "E2020");
+    assert n >= 2 , (
+        f"E2020 should fire for both shallow and nested `return;` in loops, got {n}"
+    );
+}
+
+test "view body check flags break inside a template loop (E2021)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `for { break; }` AND nested `for { try { break; } except: ... }`
+    # should both fire — verifies `_check_body` recurses through `try`.
+    n = count_diagnostic_code(program, "E2021");
+    assert n >= 2 , (
+        f"E2021 should fire for both shallow and nested `break;` in loops, got {n}"
+    );
+}
+
+test "view body check warns on a keyless while (W2019)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `while { <span/> }` AND nested `while { try { <span/> } }` AND
+    # `while { switch { case _: <span/> } }` should all fire — verifies
+    # `_emits_keyless_jsx` recurses through `try` and `switch`.
+    n = count_diagnostic_code(program, "W2019", in_warnings=True);
+    assert n >= 3 , (
+        f"W2019 should fire for shallow, try-wrapped, and switch-wrapped keyless `while`, got {n}"
+    );
+}
+
+
+# ══════════════════════════════════════════════════════════════════
 #  ENTRY POINT — register parametrized tests
 # ══════════════════════════════════════════════════════════════════
 with entry {

@@ -169,7 +169,7 @@ def _get_git_config -> tuple[str, str, str] {
 def _request_with_retry(
     method: str,
     url: str,
-    json: dict[str, Any] | None = None,
+    json: dict[str, any] | None = None,
     timeout: int = 10,
     max_retries: int = 60,
     retry_interval: float = 2.0

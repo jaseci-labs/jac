@@ -1,7 +1,6 @@
 """File covering plugin implementation."""
 import os;
 import pathlib;
-import from typing { Any }
 import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
@@ -936,7 +935,7 @@ class JacScalePlugin {
     RuntimeError (we cannot replay events that were already consumed).
     """
     @hookimpl
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any {
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jaclang.runtimelib.sv_sse { consume_sse_stream }
@@ -1083,8 +1082,8 @@ class JacScalePlugin {
     """
     @hookimpl
     static def sv_walker_call(
-        module_name: str, walker_name: str, args: dict, stub_cls: Any
-    ) -> Any {
+        module_name: str, walker_name: str, args: dict, stub_cls: any
+    ) -> any {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
@@ -1175,8 +1174,8 @@ The TestClient branch passes `client=None` because the TestClient
 instance is owned by sv_client._test_clients and outlives the call.
 """
 def _wrap_sse_keepalive_scale(
-    stream_cm: Any, resp: Any, client: Any, func_label: str
-) -> Any {
+    stream_cm: any, resp: any, client: any, func_label: str
+) -> any {
     import from jaclang.runtimelib.sv_sse { consume_sse_stream }
     try {
         for ev in consume_sse_stream(resp, func_label) {
@@ -1340,7 +1339,7 @@ Shared between the retry and test-client paths in sv_service_call so
 both observe the same error semantics. Raises RuntimeError with the
 envelope's error message when ok=false.
 """
-def _unwrap_sv_envelope(data: Any, module_name: str, func_name: str) -> Any {
+def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
     if isinstance(data, dict) and data.get("ok") {
         result_envelope = data.get("data");
         if isinstance(result_envelope, dict) and ("result" in result_envelope) {
@@ -1366,8 +1365,8 @@ can read both like a locally-spawned walker. Raises RuntimeError on
 envelope-level failure, matching `_unwrap_sv_envelope`.
 """
 def _hydrate_walker_envelope(
-    data: Any, module_name: str, walker_name: str, stub_cls: Any
-) -> Any {
+    data: any, module_name: str, walker_name: str, stub_cls: any
+) -> any {
     if isinstance(data, dict) and data.get("ok") {
         envelope = data.get("data") or {};
         result_dict = envelope.get("result") if isinstance(envelope, dict) else None;

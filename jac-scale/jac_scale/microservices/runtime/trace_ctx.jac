@@ -16,18 +16,17 @@ through and how long did each hop take."
 import uuid;
 import logging;
 import from contextvars { ContextVar }
-import from typing { Any }
 
 # Per-request trace id. Empty when outside a request context.
 glob _trace_id: ContextVar[str] = ContextVar("_sv_trace_id", default="");
 
 """Set the current request's trace id. Returns a Token for reset."""
-def set_current_trace(trace_id: str | None) -> Any {
+def set_current_trace(trace_id: str | None) -> any {
     return _trace_id.set(trace_id or "");
 }
 
 """Reset the trace-id ContextVar to its previous value."""
-def reset_current_trace(token_obj: Any) {
+def reset_current_trace(token_obj: any) {
     _trace_id.reset(token_obj);
 }
 

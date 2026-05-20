@@ -42,9 +42,9 @@ test "shortcoming_22_destructure_non_iterable" {
     program = compile_and_check("checker_bug_destructure_non_iterable.jac");
 
     # Expected: 3 errors (int, bool, NoneType are not iterable)
-    assert len(program.errors_had) >= 3 , f"#22: No type checking on destructuring RHS. "
+    assert len(program.errors_had) >= 3 , "#22: No type checking on destructuring RHS. "
     f"Expected at least 3 type errors but got {len(program.errors_had)}. "
-    f"'(a, b) = 5' should error because int is not iterable.";
+    "'(a, b) = 5' should error because int is not iterable.";
 }
 
 # =========================================================================
@@ -54,9 +54,9 @@ test "shortcoming_23_set_to_frozenset_unsound" {
     program = compile_and_check("checker_bug_set_to_frozenset.jac");
 
     # Expected: 2 errors (set not assignable to frozenset)
-    assert len(program.errors_had) >= 2 , f"#23: set assignable to frozenset. "
+    assert len(program.errors_had) >= 2 , "#23: set assignable to frozenset. "
     f"Expected at least 2 type errors but got {len(program.errors_had)}. "
-    f"set should NOT be assignable to frozenset (different mutability).";
+    "set should NOT be assignable to frozenset (different mutability).";
 }
 
 # =========================================================================
@@ -69,9 +69,9 @@ test "shortcoming_24_list_compr_unknown" {
     program = compile_and_check("checker_bug_list_compr_unknown.jac");
 
     # Expected: at least 1 error (list assigned to str)
-    assert len(program.errors_had) >= 1 , f"#24: List comprehensions return UnknownType. "
+    assert len(program.errors_had) >= 1 , "#24: List comprehensions return UnknownType. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"[x*2 for x in nums] should infer as list, not Unknown.";
+    "[x*2 for x in nums] should infer as list, not Unknown.";
 }
 
 # =========================================================================
@@ -83,9 +83,9 @@ test "shortcoming_25_dict_compr_unknown" {
     program = compile_and_check("checker_bug_dict_compr_unknown.jac");
 
     # Expected: 1 error (dict assigned to str)
-    assert len(program.errors_had) >= 1 , f"#25: Dict comprehensions return UnknownType. "
+    assert len(program.errors_had) >= 1 , "#25: Dict comprehensions return UnknownType. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"Dict comprehensions should infer as dict, not Unknown.";
+    "Dict comprehensions should infer as dict, not Unknown.";
 }
 
 # =========================================================================
@@ -98,9 +98,9 @@ test "shortcoming_26_lambda_unknown" {
     program = compile_and_check("checker_bug_lambda_unknown.jac");
 
     # Expected: at least 1 error (callable assigned to str, or wrong return type)
-    assert len(program.errors_had) >= 1 , f"#26: Lambda expressions return UnknownType. "
+    assert len(program.errors_had) >= 1 , "#26: Lambda expressions return UnknownType. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"Lambda should infer as callable, not Unknown.";
+    "Lambda should infer as callable, not Unknown.";
 }
 
 # =========================================================================
@@ -113,9 +113,9 @@ test "shortcoming_30_try_except_no_narrowing" {
     program = compile_and_check("checker_bug_try_except_no_narrowing.jac");
 
     # Expected: at least 1 error (ValueError assigned to int, or raise non-exception)
-    assert len(program.errors_had) >= 1 , f"#30: Try/except has no exception type narrowing. "
+    assert len(program.errors_had) >= 1 , "#30: Try/except has no exception type narrowing. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"'except ValueError as e:' should narrow e to ValueError.";
+    "'except ValueError as e:' should narrow e to ValueError.";
 }
 
 # =========================================================================
@@ -128,9 +128,9 @@ test "shortcoming_31_with_stmt_no_check" {
     program = compile_and_check("checker_bug_with_stmt_no_check.jac");
 
     # Expected: at least 1 error (int is not a context manager, or file assigned to int)
-    assert len(program.errors_had) >= 1 , f"#31: With statement does not check context managers. "
+    assert len(program.errors_had) >= 1 , "#31: With statement does not check context managers. "
     f"Expected at least 1 type error but got {len(program.errors_had)}. "
-    f"'with 42 as x:' should error because int is not a context manager.";
+    "'with 42 as x:' should error because int is not a context manager.";
 }
 
 # =========================================================================
@@ -143,9 +143,9 @@ test "shortcoming_33_for_iter_type" {
     program = compile_and_check("checker_bug_for_iter_type.jac");
 
     # Expected: 2 errors (int and bool are not iterable)
-    assert len(program.errors_had) >= 2 , f"#33: For loop does not check iterability. "
+    assert len(program.errors_had) >= 2 , "#33: For loop does not check iterability. "
     f"Expected at least 2 type errors but got {len(program.errors_had)}. "
-    f"'for x in 42:' should error because int is not iterable.";
+    "'for x in 42:' should error because int is not iterable.";
 }
 
 # =========================================================================
@@ -159,7 +159,7 @@ test "shortcoming_34_return_none_implicit" {
     program = compile_and_check("checker_bug_return_none_implicit.jac");
 
     # Expected: 2 errors (maybe_return and always_missing can implicitly return None)
-    assert len(program.errors_had) >= 2 , f"#34: Missing return not detected. "
+    assert len(program.errors_had) >= 2 , "#34: Missing return not detected. "
     f"Expected at least 2 type errors but got {len(program.errors_had)}. "
-    f"Functions declared -> int should error if they can return None.";
+    "Functions declared -> int should error if they can return None.";
 }

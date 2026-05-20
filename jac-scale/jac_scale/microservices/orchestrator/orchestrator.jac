@@ -6,7 +6,6 @@ prior function-call API for plugin.jac + tests."""
 import time;
 import atexit;
 import logging;
-import from typing { Any }
 import from jaclang.cli.console { console }
 import from jac_scale.microservices.service_registry {
     ServiceRegistry,
@@ -27,7 +26,7 @@ glob logger = logging.getLogger(__name__);
 
 """Lifecycle methods block on gateway.start()."""
 obj MicroserviceOrchestrator {
-    has ms_config: dict[str, Any];
+    has ms_config: dict[str, any];
 
     """Build client bundle -> registry -> spawn deployers -> wait for
     health -> print banner -> start gateway -> stop all on shutdown."""
@@ -151,7 +150,7 @@ obj MicroserviceOrchestrator {
     }
 
     """Read client.dist_dir; defaults to `.jac/client/dist`."""
-    def _client_dist_dir(client_config: dict[str, Any]) -> str {
+    def _client_dist_dir(client_config: dict[str, any]) -> str {
         if not client_config {
             return DEFAULT_CLIENT_DIST_DIR;
         }
@@ -160,7 +159,7 @@ obj MicroserviceOrchestrator {
 
     """Parse static_mounts entries into {url_prefix, local_path} dicts;
     skips malformed entries."""
-    def _parse_static_mounts(client_config: dict[str, Any]) -> list[dict[str, str]] {
+    def _parse_static_mounts(client_config: dict[str, any]) -> list[dict[str, str]] {
         out: list[dict[str, str]] = [];
         if not client_config {
             return out;
@@ -182,7 +181,7 @@ obj MicroserviceOrchestrator {
 
     """Build FE bundle on the host if configured + not already built."""
     def _build_client_bundle_if_needed(
-        client_config: dict[str, Any], client_dist: str
+        client_config: dict[str, any], client_dist: str
     ) -> None {
         client_entry: str = str(dict(client_config).get("entry", ""))
             if client_config
@@ -257,7 +256,7 @@ obj MicroserviceOrchestrator {
     """Gateway URL, per-service status icons, optional client + mount lines."""
     def _print_startup_banner(
         registry: ServiceRegistry,
-        client_config: dict[str, Any],
+        client_config: dict[str, any],
         client_dist: str,
         gateway_host: str,
         gateway_port: int,
@@ -309,15 +308,15 @@ obj MicroserviceOrchestrator {
 # ---------------------------------------------------------------------------
 
 # Module-level wrappers preserve the legacy function-call API.
-def build_registry(ms_config: dict[str, Any]) -> ServiceRegistry {
+def build_registry(ms_config: dict[str, any]) -> ServiceRegistry {
     return MicroserviceOrchestrator(ms_config=ms_config)._build_registry();
 }
 
-def start_microservice_mode(ms_config: dict[str, Any]) {
+def start_microservice_mode(ms_config: dict[str, any]) {
     MicroserviceOrchestrator(ms_config=ms_config).start_local();
 }
 
-def start_gateway_only(ms_config: dict[str, Any]) {
+def start_gateway_only(ms_config: dict[str, any]) {
     MicroserviceOrchestrator(ms_config=ms_config).start_gateway_only();
 }
 
