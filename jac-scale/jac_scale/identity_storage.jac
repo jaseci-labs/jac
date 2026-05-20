@@ -30,9 +30,14 @@ import from sqlalchemy {
     delete,
     update
 }
+import from sqlalchemy.exc { IntegrityError }
+import from jac_scale._optdeps.pymongo { DuplicateKeyError }
 import from jaclang.jac0core.constant { Constants as Con }
 
 glob logger = logging.getLogger(__name__);
+
+"""Raised by storage backends when an identity uniqueness constraint fires."""
+obj IdentityTakenError(Exception) {}
 
 """Abstract base for identity storage backends.
 

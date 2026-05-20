@@ -17,6 +17,7 @@
 """
 
 import from jac_scale.auth_tokens { AuthTokenStore }
+import from jac_scale.identity_storage { IdentityTakenError }
 import from jac_scale.utils { authenticate_or_fail }
 
 # ============================================================================
@@ -95,7 +96,8 @@ impl JacAPIServerAuth.register_add_identity_endpoint -> None {
                 meta=Meta(extra={'http_status': 400})
             );
         }
-        # Reject if any user already owns this identity.
+        # Fast-path rejection. Storage uniqueness is the source of truth;
+        # the IdentityTakenError catch below closes the TOCTOU race.
         if self.user_manager.is_identity_taken(normalized) {
             return TransportResponse.fail(
                 code='IDENTITY_TAKEN',
@@ -110,7 +112,16 @@ impl JacAPIServerAuth.register_add_identity_endpoint -> None {
             'verified': False,
             'is_recovery': bool(body_data.is_recovery)
         };
-        if not self.user_manager.add_identity(user_id, identity_doc) {
+        try {
+            added = self.user_manager.add_identity(user_id, identity_doc);
+        } except IdentityTakenError {
+            return TransportResponse.fail(
+                code='IDENTITY_TAKEN',
+                message=f"This {id_type} is already registered",
+                meta=Meta(extra={'http_status': 409})
+            );
+        }
+        if not added {
             return TransportResponse.fail(
                 code='NOT_FOUND',
                 message='User not found',

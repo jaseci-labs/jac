@@ -224,38 +224,42 @@ impl SqliteIdentityStorage._add_identity(
     user_id: str, identity: dict[str, any]
 ) -> bool {
     t = self._table;
-    with self._engine.begin() as conn {
-        row = conn.execute(
-            select(t.c.identities).where(t.c.user_id == user_id)
-        ).first();
-        if not row {
-            return False;
-        }
-        identities = list(row[0] or []);
-        identities.append(identity);
-        now = datetime.now(UTC).isoformat();
-        conn.execute(
-            update(t).where(t.c.user_id == user_id).values(
-                identities=identities, updated_at=now
-            )
-        );
-        # Sync lookup tables (OR IGNORE prevents duplicate key errors)
-        if identity.get('type') == 'sso' and identity.get('provider') {
+    try {
+        with self._engine.begin() as conn {
+            row = conn.execute(
+                select(t.c.identities).where(t.c.user_id == user_id)
+            ).first();
+            if not row {
+                return False;
+            }
+            # Claim the lookup row first - PK violation here aborts the txn.
+            if identity.get('type') == 'sso' and identity.get('provider') {
+                conn.execute(
+                    self._sso_lookups.insert().values(
+                        provider=identity['provider'],
+                        external_id=identity.get('external_id', ''),
+                        user_id=user_id
+                    )
+                );
+            } elif identity.get('value_normalized') {
+                conn.execute(
+                    self._identity_lookups.insert().values(
+                        value_normalized=identity['value_normalized'], user_id=user_id
+                    )
+                );
+            }
+            identities = list(row[0] or []);
+            identities.append(identity);
+            now = datetime.now(UTC).isoformat();
             conn.execute(
-                self._sso_lookups.insert().prefix_with('OR IGNORE').values(
-                    provider=identity['provider'],
-                    external_id=identity.get('external_id', ''),
-                    user_id=user_id
+                update(t).where(t.c.user_id == user_id).values(
+                    identities=identities, updated_at=now
                 )
             );
-        } elif identity.get('value_normalized') {
-            conn.execute(
-                self._identity_lookups.insert().prefix_with('OR IGNORE').values(
-                    value_normalized=identity['value_normalized'], user_id=user_id
-                )
-            );
+            return True;
         }
-        return True;
+    } except IntegrityError {
+        raise IdentityTakenError();
     }
 }
 

@@ -90,13 +90,17 @@ impl MongoIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] 
 impl MongoIdentityStorage._add_identity(
     user_id: str, identity: dict[str, any]
 ) -> bool {
-    result = self.users_col.update_one(
-        {'user_id': user_id},
-        {
-            '$push': {'identities': identity},
-            '$set': {'updated_at': datetime.now(UTC).isoformat()}
-        }
-    );
+    try {
+        result = self.users_col.update_one(
+            {'user_id': user_id},
+            {
+                '$push': {'identities': identity},
+                '$set': {'updated_at': datetime.now(UTC).isoformat()}
+            }
+        );
+    } except DuplicateKeyError {
+        raise IdentityTakenError();
+    }
     return result.matched_count > 0;
 }
 

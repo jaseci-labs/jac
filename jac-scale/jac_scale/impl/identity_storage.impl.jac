@@ -246,7 +246,13 @@ impl IdentityStorage.link_sso_account(
         'linked_at': now
     };
 
-    if not self._add_identity(user_id, identity_doc) {
+    try {
+        added = self._add_identity(user_id, identity_doc);
+    } except IdentityTakenError {
+        # Lost a race with another linker for the same SSO account.
+        return {'error': 'This SSO account is already linked to another user'};
+    }
+    if not added {
         return {'error': 'User not found'};
     }
     return {
