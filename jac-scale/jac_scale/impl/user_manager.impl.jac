@@ -138,22 +138,7 @@ Replaces the existing password credential, or creates one if none exists.
 impl JacScaleUserManager.reset_password_by_user_id(
     user_id: str, new_password: str
 ) -> dict[str, str] {
-    storage = self._identity_storage;
-    credentials = storage._get_credentials(user_id);
-    new_hash = storage.hash_password(new_password);
-    password_set = False;
-    for cred in credentials {
-        if cred.get('type') == 'password' {
-            cred['password_hash'] = new_hash;
-            cred.pop('algorithm', None);
-            password_set = True;
-        }
-    }
-    if not password_set {
-        credentials.append({'type': 'password', 'password_hash': new_hash});
-    }
-    storage._update_credentials(user_id, credentials);
-    return {'user_id': user_id, 'message': 'Password updated successfully'};
+    return self._identity_storage.reset_password(user_id, new_password);
 }
 
 """Append an identity (email, username, etc.) to an existing user."""
