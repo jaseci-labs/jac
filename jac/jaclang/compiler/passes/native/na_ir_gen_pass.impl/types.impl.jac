@@ -342,7 +342,7 @@ Returns "f64" for DoubleType, "ptr" for PointerType, and "i64" for all integer t
 (i8, i16, i32, i64, bool). This matches the classification used in _resolve_jac_type's
 AtomTrailer branches so collection helper keys are consistent.
 """
-impl NaIRGenPass._llvm_to_spec(t: Any) -> str {
+impl NaIRGenPass._llvm_to_spec(t: any) -> str {
     if isinstance(t, ir.DoubleType) {
         return "f64";
     }
@@ -794,7 +794,9 @@ impl NaIRGenPass._emit_binary_op(
             slen = self.builder.call(strlen_fn, [str_val], name="rep.slen");
             total = self.builder.mul(slen, int_val, name="rep.total");
             alloc = self.builder.add(total, ir.Constant(i64, 1), name="rep.alloc");
+            self._set_rc_ctx("str_repeat", "");
             buf = self.builder.call(self.rc_alloc_fn, [alloc], name="rep.buf");
+            self._clear_rc_ctx();
             func = self.builder.basic_block.function;
             entry_bb = self.builder.basic_block;
             loop_bb = func.append_basic_block(name="rep.loop");
@@ -1199,6 +1201,11 @@ impl NaIRGenPass._emit_binary_op(
     if op == Tok.KW_OR {
         return self.builder.or_(left, right, name="or");
     }
+    # Unknown operator — surface a loud error instead of silently emitting
+    # a function body that reads garbage at runtime. Catches walrus (`:=`,
+    # WALRUS_EQ), pipe-forward (`|>`), and any other binary operator the
+    # NA pass doesn't lower yet.
+    self.emit(E5090, node_override=self.cur_node, kind="binary operator", name=op);
     return None;
 }
 

@@ -95,6 +95,13 @@ jobs:
       - name: Build standalone binary
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # `pex --scie eager` invokes `science`, which queries
+          # api.github.com/repos/astral-sh/python-build-standalone for the
+          # latest CPython interpreter release. Unauthenticated calls share
+          # the runner's IP-pool 60/hour quota and routinely fail on macOS
+          # runners. Pass the workflow token so science makes authenticated
+          # 5000/hour calls instead.
+          SCIENCE_AUTH_API_GITHUB_COM_BEARER: ${{ github.token }}
         run: |
           VERSION="${{ needs.resolve-versions.outputs.jaclang_version }}"
           ASSET="jac-${VERSION}-${{ matrix.platform }}"
@@ -183,6 +190,8 @@ jobs:
       - name: Build standalone binary
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # See jaclang job above for why this is needed.
+          SCIENCE_AUTH_API_GITHUB_COM_BEARER: ${{ github.token }}
         run: |
           VERSION="${{ needs.resolve-versions.outputs.jaseci_version }}"
           ASSET="jaseci-${VERSION}-${{ matrix.platform }}"

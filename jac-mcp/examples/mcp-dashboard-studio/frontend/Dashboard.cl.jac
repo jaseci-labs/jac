@@ -31,9 +31,9 @@ def:pub DashboardPage -> JsxElement {
         ast_copied: bool = False,
         code_scroll: int = 0;
     #  Method declarations -- bodies are in Dashboard.impl.jac
-    def get_first_report(spawn_res: Any) -> dict;
+    def get_first_report(spawn_res: any) -> dict;
     def busy(tool: str) -> bool;
-    def pretty_json(val: Any) -> str;
+    def pretty_json(val: any) -> str;
     def connect_notice(res: dict, url: str) -> str;
     async def connect -> None;
     def disconnect -> None;
@@ -88,7 +88,7 @@ def:pub DashboardPage -> JsxElement {
                             <input
                                 type="text"
                                 value={server_url}
-                                onChange={lambda e: Any { server_url = e.target.value; }}
+                                onChange={lambda e: any { server_url = e.target.value; }}
                                 placeholder={DEFAULT_URL}
                                 className="w-72 bg-zinc-900/60 border border-white/[0.08] rounded-lg px-3 py-1.5 text-xs text-zinc-400 placeholder-zinc-700 font-mono focus:outline-none focus:border-orange-500/40 focus:text-zinc-200 transition"
                             />
@@ -131,8 +131,8 @@ def:pub DashboardPage -> JsxElement {
                         <input
                             type="text"
                             value={query}
-                            onChange={lambda e: Any { query = e.target.value; }}
-                            onKeyPress={lambda e: Any { if e.key == "Enter" {
+                            onChange={lambda e: any { query = e.target.value; }}
+                            onKeyPress={lambda e: any { if e.key == "Enter" {
                                 runTool("search_docs", {"query": query});
                             }}}
                             placeholder="Search Jac documentation..."
@@ -286,8 +286,8 @@ def:pub DashboardPage -> JsxElement {
                                 </div>
                                 <textarea
                                     value={code}
-                                    onChange={lambda e: Any { code = e.target.value; }}
-                                    onScroll={lambda e: Any { code_scroll = e.target.scrollTop; }}
+                                    onChange={lambda e: any { code = e.target.value; }}
+                                    onScroll={lambda e: any { code_scroll = e.target.scrollTop; }}
                                     spellCheck={False}
                                     className="flex-1 resize-none bg-[#0d0e10] pl-3 pr-4 py-4 font-mono text-xs leading-6 text-zinc-100 outline-none placeholder-zinc-700"
                                     placeholder="# Paste your Jac code here..."
@@ -319,7 +319,7 @@ def:pub DashboardPage -> JsxElement {
                             </div>
                             <textarea
                                 value={python_input}
-                                onChange={lambda e: Any { python_input = e.target.value; }}
+                                onChange={lambda e: any { python_input = e.target.value; }}
                                 rows={5}
                                 spellCheck={False}
                                 className={inputCls + " resize-y"}
@@ -387,7 +387,7 @@ def:pub DashboardPage -> JsxElement {
                             <input
                                 type="text"
                                 value={error_message}
-                                onChange={lambda e: Any { error_message = e.target.value; }}
+                                onChange={lambda e: any { error_message = e.target.value; }}
                                 placeholder="Paste an error message..."
                                 className={inputCls}
                             />
@@ -420,7 +420,7 @@ def:pub DashboardPage -> JsxElement {
                                 <input
                                     type="text"
                                     value={example_name}
-                                    onChange={lambda e: Any { example_name = e.target.value; }}
+                                    onChange={lambda e: any { example_name = e.target.value; }}
                                     placeholder="Category name..."
                                     className={inputCls + " flex-1"}
                                 />

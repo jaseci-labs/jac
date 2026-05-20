@@ -27,7 +27,7 @@ import from subprocess { PIPE, Popen, run }
 import from urllib.error { HTTPError, URLError }
 import from urllib.request { Request, urlopen }
 
-import from .test_helpers {
+import from test_helpers {
     get_env_with_npm,
     get_free_port,
     get_jac_command,
@@ -47,6 +47,7 @@ def run_jac_setup_desktop(project_dir: Path) -> tuple[int, str, str] {
     env = get_env_with_npm();
 
     # Try the CLI command
+    # Pass input="n\n" to avoid hanging on interactive prompts (e.g. install Tauri CLI)
     result = run(
         [*jac_cmd, "setup", "desktop"],
         cwd=project_dir,
@@ -54,6 +55,7 @@ def run_jac_setup_desktop(project_dir: Path) -> tuple[int, str, str] {
         text=True,
         env=env,
         timeout=120,
+        input="n\n",
     );
 
     # If CLI command doesn't exist, return a special error
@@ -966,5 +968,164 @@ cl {
             "Copied image should have same content as original"
         );
         print("[DEBUG] Desktop asset copying test passed!");
+    }
+}
+
+test "desktop build generates index.html with correct paths" {
+    import from subprocess { run }
+
+    if not is_jac_setup_available() {
+        pytest.skip("'jac setup' CLI command not available");
+    }
+
+    fixtures_dir = Path(__file__).parent / "fixtures";
+    app_dir = fixtures_dir / "multi_segment_app";
+
+    if not app_dir.exists() {
+        pytest.skip("multi_segment_app fixture not found");
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_dir = Path(temp_dir) / "multi_segment_app";
+        import shutil;
+        shutil.copytree(app_dir, project_dir);
+        jac_cmd = get_jac_command();
+        env = get_env_with_npm();
+        # Setup desktop target first
+        (returncode, stdout, stderr) = run_jac_setup_desktop(project_dir);
+        assert returncode == 0 , f"Desktop setup failed: {stderr}";
+        # Install npm packages
+        npm_result = run(
+            [*jac_cmd, "add", "--npm"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=180,
+        );
+        if npm_result.returncode != 0 {
+            pytest.skip(f"npm install failed: {npm_result.stderr}");
+        }
+        # We try to build. It might fail at the Tauri step if Rust is missing,
+        # but it should have generated index.html by then.
+        build_result = run(
+            [*jac_cmd, "build", "main.jac", "--client", "desktop"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=300,
+        );
+        dist_dir = project_dir / ".jac" / "client" / "dist";
+        index_html = dist_dir / "index.html";
+        assert index_html.exists() , "index.html should be generated";
+        html_content = index_html.read_text();
+        assert "/client." in html_content , (
+            f"index.html should use absolute paths by default. Content:\n{html_content}"
+        );
+    }
+}
+
+test "desktop build generates index.html with custom base_path" {
+    import from subprocess { run }
+
+    if not is_jac_setup_available() {
+        pytest.skip("'jac setup' CLI command not available");
+    }
+
+    print(
+        "[DEBUG] Starting test_desktop_build_generates_index_html_with_custom_base_path"
+    );
+
+    fixtures_dir = Path(__file__).parent / "fixtures";
+    app_dir = fixtures_dir / "multi_segment_app";
+
+    if not app_dir.exists() {
+        pytest.skip("multi_segment_app fixture not found");
+    }
+
+    with tempfile.TemporaryDirectory() as temp_dir {
+        project_dir = Path(temp_dir) / "multi_segment_app";
+        import shutil;
+        shutil.copytree(app_dir, project_dir);
+        # Update jac.toml with custom base_path
+        jac_toml_path = project_dir / "jac.toml";
+        jac_toml_content = jac_toml_path.read_text();
+        if "[plugins.client]" in jac_toml_content {
+            jac_toml_content = jac_toml_content.replace(
+                "[plugins.client]", "[plugins.client]\nbase_path = \"/myapp/\""
+            );
+        } else {
+            jac_toml_content += "\n[plugins.client]\nbase_path = \"/myapp/\"\n";
+        }
+        jac_toml_path.write_text(jac_toml_content);
+        jac_cmd = get_jac_command();
+        env = get_env_with_npm();
+        # Setup desktop target first
+        (returncode, stdout, stderr) = run_jac_setup_desktop(project_dir);
+        assert returncode == 0 , f"Desktop setup failed: {stderr}";
+        # Install npm packages
+        npm_result = run(
+            [*jac_cmd, "add", "--npm"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=180,
+        );
+        if npm_result.returncode != 0 {
+            pytest.skip(f"npm install failed: {npm_result.stderr}");
+        }
+        # We try to build. It might fail at the Tauri step if Rust is missing,
+        # but it should have generated index.html by then.
+        build_result = run(
+            [*jac_cmd, "build", "main.jac", "--client", "desktop"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=300,
+        );
+        dist_dir = project_dir / ".jac" / "client" / "dist";
+        index_html = dist_dir / "index.html";
+        assert index_html.exists() , "index.html should be generated";
+        html_content = index_html.read_text();
+        # Assert JS script uses base path
+        assert "/myapp/client." in html_content , (
+            f"index.html should use custom base path for JS. Content:\n{html_content}"
+        );
+        # Check Vite config
+        vite_config_path = project_dir / ".jac" / "client" / "configs" / "vite.config.js";
+        assert vite_config_path.exists() , "vite.config.js should be generated";
+        vite_config_content = vite_config_path.read_text();
+        assert 'base: "/myapp/"' in vite_config_content , (
+            f"vite.config.js should have base set to /myapp/. Content:\n{vite_config_content}"
+        );
+        # Test 2: base_path = "./"
+        # Update jac.toml again
+        jac_toml_content = jac_toml_path.read_text();
+        jac_toml_content = jac_toml_content.replace(
+            'base_path = "/myapp/"', 'base_path = "./"'
+        );
+        jac_toml_path.write_text(jac_toml_content);
+        # Run build again (should be fast as node_modules exist)
+        build_result2 = run(
+            [*jac_cmd, "build", "main.jac", "--client", "desktop"],
+            cwd=project_dir,
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=300,
+        );
+        assert index_html.exists() , "index.html should still be generated";
+        html_content2 = index_html.read_text();
+        assert "./client." in html_content2 , (
+            f"index.html should use relative base path for JS. Content:\n{html_content2}"
+        );
+        # Check Vite config for Test 2
+        vite_config_content2 = vite_config_path.read_text();
+        assert 'base: "./"' in vite_config_content2 , (
+            f"vite.config.js should have base set to ./. Content:\n{vite_config_content2}"
+        );
     }
 }

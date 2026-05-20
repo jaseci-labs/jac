@@ -35,6 +35,7 @@ The CLI is extensible through plugins. When you install plugins like `jac-scale`
 | `jac jacpack` | Manage project templates (.jacpack files) |
 | `jac eject` | Compile a project to standalone Python + JavaScript (zero `.jac` files) |
 | `jac grammar` | Extract and print the Jac grammar |
+| `jac guide` | Show curated Jac reference guides |
 | `jac script` | Run project scripts |
 | `jac py2jac` | Convert Python to Jac |
 | `jac jac2py` | Convert Jac to Python |
@@ -228,7 +229,7 @@ jac start --scale --build
 
 ### jac create
 
-Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files.
+Initialize a new Jac project with configuration. Creates a project folder with the given name containing the project files, including an `AGENTS.md` that points AI coding agents at `jac guide`.
 
 ```bash
 jac create [-h] [-f] [-u USE] [-l] [name]
@@ -1054,6 +1055,8 @@ Sync the project environment to `jac.toml`. Installs all Python (pip), git, and 
 
 ```bash
 jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
+            [--force-reinstall] [--no-cache-dir] [--pre] [--dry-run]
+            [--no-deps] [--quiet] [--prefer-binary]
 ```
 
 | Option | Description | Default |
@@ -1062,6 +1065,13 @@ jac install [-h] [-e EDITABLE] [-d] [-x group [group ...]] [-v]
 | `-d, --dev` | Include dev dependencies | `False` |
 | `-x, --extras` | Install one or more `[optional-dependencies]` groups | `[]` |
 | `-v, --verbose` | Show detailed output | `False` |
+| `--force-reinstall` | Reinstall all packages even if they are already up-to-date | `False` |
+| `--no-cache-dir` | Disable the pip download cache | `False` |
+| `--pre` | Include pre-release and development versions | `False` |
+| `--dry-run` | Show what would be installed without actually installing anything | `False` |
+| `--no-deps` | Don't install package dependencies | `False` |
+| `--quiet` | Suppress pip output | `False` |
+| `--prefer-binary` | Prefer pre-built wheels over source distributions | `False` |
 
 **Examples:**
 
@@ -1086,9 +1096,23 @@ jac install -e .
 
 # Editable install from anywhere (no need to cd into the package)
 jac install -e /path/to/lib
+
+# Reinstall all packages from scratch (ignores cached state)
+jac install --force-reinstall
+
+# Include pre-release versions
+jac install --pre
+
+# Preview what would be installed without doing it
+jac install --dry-run
+
+# Install without using pip's download cache
+jac install --no-cache-dir
 ```
 
 Optional groups are declared under `[optional-dependencies]` in `jac.toml`. See the [Configuration Reference](../config/index.md#optional-dependencies).
+
+> **Note:** The pip passthrough flags (`--force-reinstall`, `--no-cache-dir`, etc.) are forwarded directly to the underlying pip invocation. Use `jac update` to upgrade packages to their latest versions.
 
 ---
 
@@ -1222,7 +1246,7 @@ jac purge
 
 ### jac bundle
 
-Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`.
+Build a standards-compliant Python wheel (`.whl`) from your project's `jac.toml`. The wheel is `pip install`-ready and requires no `pyproject.toml` or `setuptools`. After building, upload to PyPI (or a private registry) with `twine upload dist/*`. For the full end-to-end workflow, see the [Publishing Packages](../publishing.md) guide.
 
 ```bash
 jac bundle [-h] [-o OUTPUT]
@@ -1234,10 +1258,12 @@ jac bundle [-h] [-o OUTPUT]
 
 **What it does:**
 
-1. Reads `[package]` from `jac.toml` and validates required fields (`name`, `version`).
-2. Discovers source files under the package directory (defaults to the directory named after the package). Includes `*.jac`, `*.py`, `*.pyi`, `*.lark`, `py.typed`, and `*.jir` by default.
-3. Generates a PEP 427-compliant `.whl` archive with a `METADATA`, `WHEEL`, `RECORD`, and optional `entry_points.txt`.
+1. Reads `[project]` from `jac.toml` and validates required fields (`name`, `version`).
+2. Discovers source files under the package directory (defaults to the directory named after the project, or the explicit `[project.include]` `packages` list). Includes `*.jac`, `*.py`, `*.pyi`, `*.lark`, `py.typed`, and `*.jir` by default.
+3. Generates a PEP 427-compliant `.whl` archive with `METADATA`, `WHEEL`, `RECORD`, `top_level.txt`, and optional `entry_points.txt`. The build is reproducible (fixed ZIP timestamps).
 4. Writes `<name>-<version>-py3-none-any.whl` to the output directory.
+
+> **Note on bytecode:** `jac bundle` ships `.jir` files only if they already exist in your source tree. To pre-compile `.jac` → `.jir` before bundling (so installs skip compilation), run `jac` precompilation first; `jac bundle` itself does not regenerate stale `.jir` files.
 
 **Examples:**
 
@@ -1257,13 +1283,15 @@ pip install dist/mylib-1.0.0-py3-none-any.whl
 
 **Requirements:**
 
-A `[package]` section must exist in `jac.toml`. At minimum:
+A `[project]` section must exist in `jac.toml`. At minimum:
 
 ```toml
-[package]
+[project]
 name = "mylib"
 version = "1.0.0"
 ```
+
+See the [Configuration Reference](../config/index.md#project) for the full set of publishing fields (`license`, `readme`, `authors`, `[project.include]`, and more).
 
 ---
 
@@ -1464,6 +1492,44 @@ jac jac2js app.jac
 ---
 
 ## Utility Commands
+
+### jac guide
+
+Show the curated Jac reference guides bundled with the compiler -- the authoritative spec for writing correct, idiomatic Jac. AI coding agents and humans can read them straight from the CLI; nothing to install.
+
+```bash
+jac guide [-h] [-s SEARCH] [-e EXPORT] [-j] [topic]
+```
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `topic` | Guide name to display (omit to list every guide) | None |
+| `-s, --search` | List only guides matching a keyword | None |
+| `-e, --export` | Export all guides as a Claude Code skills directory at this path | None |
+| `-j, --json` | Emit machine-readable JSON (for tools and agents) | `False` |
+
+**Examples:**
+
+```bash
+# List every available guide
+jac guide
+
+# Print a specific guide
+jac guide jac-types
+
+# Find guides by keyword
+jac guide --search walker
+
+# Machine-readable list for tooling and agents
+jac guide --json
+
+# Export the guides as auto-loading Agent Skills
+jac guide --export ~/.claude/skills
+```
+
+See [Agent Skills and MCP](../../quick-guide/agent-skills-and-mcp.md) for using the guides with AI assistants.
+
+---
 
 ### jac grammar
 
@@ -1774,9 +1840,9 @@ Expected project layout:
 
 ```
 mylib/
-├── jac.toml          ← must contain [package] section
+├── jac.toml          ← must contain [project] section
 ├── README.md
-└── mylib/            ← source dir (matches [package] name)
+└── mylib/            ← source dir (matches [project] name)
     ├── __init__.jac
     └── utils.jac
 ```

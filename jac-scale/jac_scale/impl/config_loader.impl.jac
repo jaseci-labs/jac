@@ -4,7 +4,7 @@ impl JacScaleConfig.get_plugin_name(self: JacScaleConfig) -> str {
 }
 
 """Get default configuration structure for scale."""
-impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, any] {
     return {
         'jwt': {
             'secret': 'supersecretkey_for_testing_only!',
@@ -144,7 +144,7 @@ impl JacScaleConfig.get_default_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get JWT configuration from jac.toml."""
-impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     jwt_config = config.get('jwt', {});
     return {
@@ -155,7 +155,7 @@ impl JacScaleConfig.get_jwt_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get SSO configuration from jac.toml."""
-impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     sso_config = config.get('sso', {});
     google_config = sso_config.get('google', {});
@@ -180,7 +180,7 @@ impl JacScaleConfig.get_sso_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get database configuration from jac.toml."""
-impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     db_config = config.get('database', {});
     return {
@@ -199,7 +199,7 @@ impl JacScaleConfig.get_database_config(self: JacScaleConfig) -> dict[str, Any] 
 }
 
 """Get Kubernetes configuration from jac.toml."""
-impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     k8s_config = config.get('kubernetes', {});
     # Handle docker_image_name default (needs app_name)
@@ -219,7 +219,7 @@ impl JacScaleConfig.get_kubernetes_config(self: JacScaleConfig) -> dict[str, Any
 }
 
 """Get server configuration from jac.toml."""
-impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     server_config = config.get('server', {});
     return {
@@ -230,7 +230,7 @@ impl JacScaleConfig.get_server_config(self: JacScaleConfig) -> dict[str, Any] {
 }
 
 """Get webhook configuration from jac.toml."""
-impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_webhook_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     webhook_config = config.get('webhook', {});
     return {
@@ -276,7 +276,7 @@ impl sanitize_prometheus_namespace(name: str) -> str {
 Combines HTTP metrics endpoint settings and Kubernetes monitoring stack settings.
 'enabled' controls both the /metrics endpoint and Prometheus + Grafana deployment.
 """
-impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     monitoring_config = config.get('monitoring', {});
     default_buckets = [
@@ -319,7 +319,7 @@ impl JacScaleConfig.get_monitoring_config(self: JacScaleConfig) -> dict[str, Any
 """Get event-streaming config from jac.toml.
 Reads `[plugins.scale.events]`. `enabled` is the master switch; `url` defaults to None so the caller can fall back to `database.redis_url`.
 """
-impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_events_config(self: JacScaleConfig) -> dict[str, any] {
     import from jac_scale.events.broker { RetryPolicy }
     config = self.load();
     events_config = config.get('events', {});
@@ -362,14 +362,14 @@ impl reset_scale_config -> None {
 }
 
 """Get telemetry configuration from jac.toml."""
-impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_telemetry_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     telemetry_config = config.get('telemetry', {});
     return {'max_traces': int(telemetry_config.get('max_traces', 1000))};
 }
 
 """Get scheduler configuration from jac.toml."""
-impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_scheduler_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     scheduler_config = config.get('scheduler', {});
     return {
@@ -431,7 +431,7 @@ Schema: `routes: {module_name: prefix}` - services are discovered via
 `sv import`; the routes table only controls public URL routing on the
 gateway.
 """
-impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     ms_config = config.get('microservices', {});
     client_config = ms_config.get('client', {});
@@ -488,7 +488,7 @@ impl JacScaleConfig.get_microservices_config(self: JacScaleConfig) -> dict[str, 
 }
 
 """Get admin configuration from jac.toml."""
-impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, Any] {
+impl JacScaleConfig.get_admin_config(self: JacScaleConfig) -> dict[str, any] {
     config = self.load();
     admin_config = config.get('admin', {});
     return {

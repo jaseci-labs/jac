@@ -22,6 +22,74 @@ for the user-facing native pathway see [Native Compilation](../reference/languag
 
 ---
 
+## The Typical Polyglot Today
+
+A typical full-stack feature today is built from three separate toolchains
+that never see each other. Each language has its own parser, type system,
+and codegen, and the "interop" is whatever the developer hand-writes at the
+edges (HTTP payloads, FFI declarations, JSON contracts).
+
+```mermaid
+graph TB
+    subgraph C["Native (C)"]
+        C_SRC[".c source"] --> C_CPP[cpp preprocessor]
+        C_CPP --> C_LEX[lexer / tokens]
+        C_LEX --> C_PARSE[clang parser]
+        C_PARSE --> C_SEMA[sema / type check]
+        C_SEMA --> C_IR["AST → LLVM IR"]
+        C_IR --> C_OPT[LLVM optimizer]
+        C_OPT --> C_BACKEND[backend codegen]
+        C_BACKEND --> C_ASM[assembler]
+        C_ASM --> C_LINK[linker]
+        C_LINK --> C_OUT[".o / ELF / Mach-O"]
+    end
+
+    subgraph PY["Server (Python)"]
+        PY_SRC[".py source"] --> PY_TOKEN[tokenizer]
+        PY_TOKEN --> PY_PARSE[CPython parser]
+        PY_PARSE --> PY_SYMTAB[symbol table]
+        PY_SYMTAB --> PY_CHECK[mypy / pyright]
+        PY_CHECK --> PY_IR["AST → IR"]
+        PY_IR --> PY_COMPILE[bytecode compiler]
+        PY_COMPILE --> PY_PEEPHOLE[peephole optimizer]
+        PY_PEEPHOLE --> PY_MARSHAL[marshal]
+        PY_MARSHAL --> PY_WRITE[".pyc writer"]
+        PY_WRITE --> PY_OUT[".pyc bytecode"]
+    end
+
+    subgraph TS["Client (TypeScript)"]
+        TS_SRC[".ts source"] --> TS_SCAN[scanner / tokens]
+        TS_SCAN --> TS_PARSE[tsc parser]
+        TS_PARSE --> TS_BIND[binder / symbols]
+        TS_BIND --> TS_RESOLVE[type resolver]
+        TS_RESOLVE --> TS_CHECK[type checker]
+        TS_CHECK --> TS_FLOW[flow analysis]
+        TS_FLOW --> TS_XFORM[transformers]
+        TS_XFORM --> TS_EMIT[JS emitter]
+        TS_EMIT --> TS_BUNDLE[bundler]
+        TS_BUNDLE --> TS_OUT[".js + bundle"]
+    end
+
+    TS_SRC ~~~ PY_SRC ~~~ C_SRC
+    TS_SCAN ~~~ PY_TOKEN ~~~ C_CPP
+    TS_PARSE ~~~ PY_PARSE ~~~ C_LEX
+    TS_BIND ~~~ PY_SYMTAB ~~~ C_PARSE
+    TS_RESOLVE ~~~ PY_CHECK ~~~ C_SEMA
+    TS_CHECK ~~~ PY_IR ~~~ C_IR
+    TS_FLOW ~~~ PY_COMPILE ~~~ C_OPT
+    TS_XFORM ~~~ PY_PEEPHOLE ~~~ C_BACKEND
+    TS_EMIT ~~~ PY_MARSHAL ~~~ C_ASM
+    TS_BUNDLE ~~~ PY_WRITE ~~~ C_LINK
+    TS_OUT ~~~ PY_OUT ~~~ C_OUT
+```
+
+Three disconnected pipelines, three languages to know, and every
+cross-boundary call is a hand-rolled contract that the toolchain cannot
+verify. Jac collapses this into a single front end with three backends, so
+the interop boundaries become a compiler concern instead of a developer one.
+
+---
+
 ## Pipeline at a Glance
 
 ```mermaid

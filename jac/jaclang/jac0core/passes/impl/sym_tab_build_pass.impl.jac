@@ -86,6 +86,38 @@ impl SymTabBuildPass.exit_global_vars(
     }
 }
 
+impl SymTabBuildPass.enter_global_stmt(
+    self: SymTabBuildPass, nd: uni.GlobalStmt
+) -> None {
+    # `global x;` from inside a function: pull the module-level symbol into
+    # the enclosing python scope so subsequent assignments rebind the global
+    # instead of creating a shadow local that bind_assignment_targets would
+    # type as Unknown.
+    py_scope = find_python_scope_node_of(nd);
+    if py_scope is None or isinstance(py_scope, uni.Module) {
+        return;
+    }
+    for name_atom in nd.target {
+        sym_name = name_atom.sym_name if name_atom?.sym_name else None;
+        if not sym_name {
+            continue;
+        }
+        if sym_name in py_scope.names_in_scope {
+            continue;
+        }
+        module = py_scope.find_parent_of_type(uni.Module);
+        if module is None {
+            continue;
+        }
+        global_sym = module.names_in_scope.get(sym_name);
+        if global_sym is None {
+            continue;
+        }
+        py_scope.names_in_scope[sym_name] = global_sym;
+        global_sym.add_use(name_atom.name_spec);
+    }
+}
+
 impl SymTabBuildPass.exit_assignment(
     self: SymTabBuildPass, nd: uni.Assignment
 ) -> None {
@@ -632,6 +664,18 @@ impl SymTabBuildPass.exit_match_case(self: SymTabBuildPass, nd: uni.MatchCase) -
     self.pop_scope();
 }
 
+impl SymTabBuildPass.enter_switch_case(
+    self: SymTabBuildPass, nd: uni.SwitchCase
+) -> None {
+    self.push_scope_and_link(nd);
+}
+
+impl SymTabBuildPass.exit_switch_case(
+    self: SymTabBuildPass, nd: uni.SwitchCase
+) -> None {
+    self.pop_scope();
+}
+
 impl find_python_scope_node_of(nd: uni.UniNode) -> (UniScopeNode | None) {
     scope_types = uni.UniScopeNode.get_python_scoping_nodes();
     while nd.parent {
@@ -715,6 +759,13 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                     ) {
                         outer.add_use(i.name_spec);
                     } else {
+                        # Python semantics: a function-scope assignment binds a
+                        # NEW local, even when a module global of the same name
+                        # exists. Rebinding the global requires an explicit
+                        # `global x;` (handled by enter_global_stmt, which puts
+                        # the module symbol in scope so the branch above fires).
+                        # Keeping this a local is what makes na ⊆ sv hold: the
+                        # native and sv pathways then agree on scoping.
                         py_scope.def_insert(i, single_decl='local var');
                     }
                 } else {

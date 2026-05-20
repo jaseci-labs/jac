@@ -2,7 +2,6 @@
 import struct;
 import sys;
 import zlib;
-import from typing { Any }
 
 # =============================================================================
 # JirWriter implementation
@@ -523,7 +522,7 @@ impl JirReader.read_module(data: bytes) -> (Module | None) {
 impl JirReader._read_trailing_sections(data: bytes) -> dict[int, bytes] {
     import from jaclang.jac0core.jir { HEADER_SIZE, SECTIONS_MAGIC, read_sections }
     try {
-        magic_bytes: Any = SECTIONS_MAGIC;
+        magic_bytes: any = SECTIONS_MAGIC;
         pos = data.find(magic_bytes, HEADER_SIZE);
         if pos < 0 {
             return {};
@@ -603,6 +602,7 @@ impl JirReader._init_caches -> None {
         NameAtom,
         Expr,
         AstSymbolNode,
+        AstSymbolStubNode,
         WalkerStmtOnlyNode,
         Source,
         ParamVar,
@@ -613,7 +613,20 @@ impl JirReader._init_caches -> None {
         ModulePath,
         ModuleItem,
         SpecialVarRef,
-        ContextAwareNode
+        ContextAwareNode,
+        MultiString,
+        FString,
+        ListVal,
+        SetVal,
+        TupleVal,
+        DictVal,
+        ListCompr,
+        DictCompr,
+        IndexSlice,
+        EdgeOpRef,
+        FilterCompr,
+        AssignCompr,
+        JsxElement
     }
     import from jaclang.jac0core.constant {
         SymbolAccess,
@@ -627,6 +640,7 @@ impl JirReader._init_caches -> None {
     self._CodeLocInfo = CodeLocInfo;
     self._Expr = Expr;
     self._AstSymbolNode = AstSymbolNode;
+    self._AstSymbolStubNode = AstSymbolStubNode;
     self._WalkerStmtOnlyNode = WalkerStmtOnlyNode;
     self._Source = Source;
     self._ParamVar = ParamVar;
@@ -643,6 +657,27 @@ impl JirReader._init_caches -> None {
     self._CodeContext_SERVER = CodeContext.SERVER;
 
     self._uni_types = (UniScopeNode, UniCFGNode, NameAtom);
+
+    # Stub-symbol category per AstSymbolStubNode subclass — mirrors the
+    # sym_type each class's postinit passes to AstSymbolStubNode._init_stub.
+    # Used to fabricate name_spec during JIR deserialization so the round-trip
+    # restores the same _sym_category the live compile produced. SetCompr and
+    # GenCompr inherit ListCompr's postinit, so they don't need entries.
+    self._stub_sym_types = {
+        MultiString: SymbolType.STRING,
+        FString: SymbolType.STRING,
+        ListVal: SymbolType.SEQUENCE,
+        SetVal: SymbolType.SEQUENCE,
+        TupleVal: SymbolType.SEQUENCE,
+        DictVal: SymbolType.SEQUENCE,
+        ListCompr: SymbolType.SEQUENCE,
+        DictCompr: SymbolType.SEQUENCE,
+        IndexSlice: SymbolType.SEQUENCE,
+        EdgeOpRef: SymbolType.SEQUENCE,
+        FilterCompr: SymbolType.SEQUENCE,
+        AssignCompr: SymbolType.SEQUENCE,
+        JsxElement: SymbolType.OBJECT_ARCH
+    };
 
     # Build reverse lookup: enum_value_string -> enum_member
     self._enum_cache = {};
@@ -699,7 +734,7 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
 
     # Construct ir_node via __new__ (skips init)
     cls = class_map[spec.class_name];
-    ir_node: Any = cls.__new__(cls);
+    ir_node: any = cls.__new__(cls);
     nd = ir_node.__dict__;
 
     # Read fields and set directly on the ir_node
@@ -916,6 +951,34 @@ impl JirReader._read_node(data: (bytes | memoryview), pos: int, idx: int) -> int
         ;
     }
 
+    # AstSymbolStubNode (MultiString, FString, ListVal, SetVal, TupleVal,
+    # DictVal, {List,Dict,Set,Gen}Compr, IndexSlice, EdgeOpRef, FilterCompr,
+    # AssignCompr, JsxElement): fabricate stub name_spec if not already
+    # populated. Each class's postinit normally calls
+    # AstSymbolStubNode._init_stub, which builds a stub Name via
+    # Name.gen_stub_from_node and wires it as self.name_spec. JIR doesn't
+    # persist that fabricated Name (it's not part of any declared field on
+    # the stub node), and the earlier name_spec fallbacks above all miss
+    # because these nodes neither expose a 'name'/'name_ref' field nor have
+    # a NameAtom in their kid list. Without this restoration, downstream
+    # passes that walk AtomTrailer chains and touch chain[0].sym (notably
+    # DeclImplMatchPass._resolve_symbols_in_subtree, invoked from
+    # TypeEvaluator._reattach_impl_modules after a JIR cache hit) raise
+    # AttributeError: '<StubClass>' object has no attribute 'name_spec'
+    # whenever a literal sits at the head of an attribute chain
+    # (e.g. "x".upper(), [..].method(), or a JSX subtree on a trailer).
+    if (isinstance(ir_node, self._AstSymbolStubNode) and nd.get('name_spec') is None) {
+        sym_type = self._stub_sym_types.get(type(ir_node), self._SymbolType_UNKNOWN);
+        try {
+            ir_node._init_stub(sym_type);
+        } except Exception {
+            # Best-effort: if loc/kid wiring isn't complete enough for
+            # gen_stub_from_node, leave name_spec unset. Callers that touch
+            # it will still surface a clearer error than a silent miss.
+            ;
+        }
+    }
+
     nodes[idx] = ir_node;
 
     # Read overlays (isinstance checks satisfy type checker; flags guarantee correctness)
@@ -1075,7 +1138,7 @@ impl JirReader._read_symbol(data: (bytes | memoryview), pos: int) -> tuple {
     }
 
     # Create Symbol with __new__ (skip init); getattr avoids type-checker arity check
-    sym: Any = getattr(Symbol, '__new__')(Symbol);
+    sym: any = getattr(Symbol, '__new__')(Symbol);
     sym.defn = defn_nodes;
     sym.uses = [];
     sym.imported = imported;

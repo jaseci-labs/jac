@@ -5,7 +5,7 @@ node A {
     has val2: int = 0;
 
     # suggested to be `with access {}`
-    def __jac_access__ -> Any {
+    def __jac_access__ -> any {
         ###############################################
         #              YOUR PROCESS HERE              #
         ###############################################
