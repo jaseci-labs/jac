@@ -757,13 +757,6 @@ obj IngressDeployer {
         rbac_v1: Any,
         networking_v1: Any
     ) {
-        if self.k8s_config.shared_ingress and not self.k8s_config.domain {
-            raise Exception(
-                "shared_ingress=True requires 'domain' to be set so the shared controller "
-                "can route requests by host. Set 'domain' in KubernetesConfig "
-                "(e.g. myapp.example.com)."
-            );
-        }
         if not self.k8s_config.shared_ingress {
             self._deploy_nginx_controller(
                 app_name,

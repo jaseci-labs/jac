@@ -1243,6 +1243,14 @@ obj KubernetesTarget(DeploymentTarget) {
                 self.k8s_config.memory_limit
             );
             details["validate_resource_limits"] = "Successful";
+            if self.k8s_config.shared_ingress and not self.k8s_config.domain {
+                raise Exception(
+                    "shared_ingress=True requires 'domain' to be set so the shared controller "
+                    "can route requests by host. Set 'domain' in KubernetesConfig "
+                    "(e.g. myapp.example.com)."
+                );
+            }
+            details["validate_shared_ingress"] = "Successful";
             # 2. Initialize Kubernetes clients
             try {
                 k8s_cluster_config.load_kube_config();
