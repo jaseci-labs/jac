@@ -81,3 +81,6 @@ CLAUDE.local.md
 jactastic/**
 .mcp.json
 .gstack/
+
+# jac ai session log output
+.jac_ai_sessions/

@@ -21,6 +21,7 @@ obj AgentRequest {
         model: str = "",
         n_ctx: int = 0,
         safe: bool = False,
+        log: bool = False,
         cwd: str = "",
         code_intel: CodeIntelligence | None = None;
 }
@@ -32,7 +33,11 @@ Roots a `CodeIntelligence` at the current working directory; the agent's
 semantic tools share this single handle, so the project is compiled once.
 """
 def build_agent_request(
-    prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False
+    prompt: str = "",
+    model: str = "",
+    n_ctx: int = 0,
+    safe: bool = False,
+    log: bool = False
 ) -> AgentRequest {
     cwd = os.getcwd();
     return AgentRequest(
@@ -40,6 +45,7 @@ def build_agent_request(
         model=model,
         n_ctx=n_ctx,
         safe=safe,
+        log=log,
         cwd=cwd,
         code_intel=CodeIntelligence(proj_dir=cwd)
     );

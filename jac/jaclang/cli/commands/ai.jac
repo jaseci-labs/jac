@@ -49,6 +49,13 @@ glob registry = get_registry();
             default=False,
             help="Confirm every file write and code execution (off by default)"
         ),
+        Arg.create(
+            "log",
+            kind=ArgKind.FLAG,
+            typ=bool,
+            default=False,
+            help="Write a beautiful HTML session log (interaction + diffs) to .jac_ai_sessions/"
+        ),
 
     ],
     examples=[
@@ -58,8 +65,18 @@ glob registry = get_registry();
         ("jac ai -m local:gemma-4-e2b", "Use a smaller/faster local model"),
         ("jac ai --n_ctx 32768", "Give the local model a larger context window"),
         ("jac ai --safe", "Approve each file write and command before it runs"),
+        (
+            "jac ai --log",
+            "Save an HTML session log with the full interaction and diffs"
+        ),
 
     ],
     group="general"
 )
-def ai(prompt: str = "", model: str = "", n_ctx: int = 0, safe: bool = False) -> int;
+def ai(
+    prompt: str = "",
+    model: str = "",
+    n_ctx: int = 0,
+    safe: bool = False,
+    log: bool = False
+) -> int;

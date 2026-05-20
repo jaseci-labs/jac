@@ -14,8 +14,11 @@ import os;
 import re;
 import sys;
 import time;
+import html;
+import difflib;
 import subprocess;
 import from pathlib { Path }
+import from datetime { datetime }
 
 import from byllm.lib { Model }
 import from byllm.config_loader { get_byllm_config }
@@ -61,6 +64,26 @@ glob agent_ci: any = None,
      # Set by write_file/edit_file after a successful write; the next semantic
      # query rebuilds the project model so lookups reflect the new source.
      agent_ci_dirty: bool = False;
+
+#===============================================================================
+# SESSION LOG STATE
+#===============================================================================
+# When `--log` is passed, the session records every turn -- the user's
+# message, the agent's reasoning and answer, each tool call and result, and a
+# unified diff of every file the agent wrote -- and renders it to a single
+# self-contained HTML file. The file is rewritten after every turn, so a
+# session cut short by a crash or Ctrl-C still leaves a complete log behind.
+glob log_enabled: bool = False,
+     # Absolute path of the HTML log for this session; set by `run_agent`.
+     log_path: str = "",
+     # When the session started -- shown in the log header.
+     log_session_started: datetime | None = None,
+     # One dict per turn: {"user", "blocks", "started", "stats"}. `blocks` is
+     # the ordered interaction stream (thought / answer / tool_call /
+     # tool_result / diff entries) the HTML renderer walks.
+     log_turns: list[dict[str, any]] = [],
+     # The turn currently being recorded; tool helpers append diff blocks to it.
+     log_current_turn: dict[str, any] | None = None;
 
 """Pick which model `jac ai` should run.
 
@@ -224,6 +247,337 @@ def write_feedback(path: str) -> str {
 }
 
 #===============================================================================
+# SESSION LOG -- record the interaction + diffs and render them to HTML
+#===============================================================================
+"""HTML-escape any value for safe inclusion in the session log."""
+def esc(value: any) -> str {
+    return html.escape(str(value));
+}
+
+
+"""Open a new turn in the session log; later helpers append blocks to it."""
+def log_start_turn(message: str) {
+    global log_current_turn;
+    if not log_enabled {
+        return;
+    }
+    turn: dict[str, any] = {
+        "user": message,
+        "blocks": [],
+        "started": time.time(),
+        "stats": {}
+    };
+    log_turns.append(turn);
+    log_current_turn = turn;
+}
+
+
+"""Append a structured interaction block to the turn being recorded."""
+def log_block(block: dict[str, any]) {
+    if not log_enabled or log_current_turn is None {
+        return;
+    }
+    log_current_turn["blocks"].append(block);
+}
+
+
+"""Record a run of streamed model text, merging consecutive same-kind tokens.
+
+The model streams `thought` and `answer` text one token at a time; merging
+them into a single block keeps the rendered log readable instead of one
+`<div>` per token. A tool call between two runs breaks the merge, so each
+contiguous stretch of reasoning or response stays its own block.
+"""
+def log_text(kind: str, content: str) {
+    if not log_enabled or log_current_turn is None or not content {
+        return;
+    }
+    blocks = log_current_turn["blocks"];
+    if blocks and blocks[-1].get("kind") == kind {
+        blocks[-1]["text"] = str(blocks[-1]["text"]) + content;
+    } else {
+        blocks.append({"kind": kind, "text": content});
+    }
+}
+
+
+"""Record a unified diff for a file the agent just wrote.
+
+Called by `write_file`/`edit_file` with the file's contents before and after
+the write, so the log shows exactly what changed. An empty `old_text` means
+the file was newly created.
+"""
+def log_diff(path: str, old_text: str, new_text: str) {
+    if not log_enabled or log_current_turn is None {
+        return;
+    }
+    diff_lines = list(
+        difflib.unified_diff(
+            old_text.splitlines(),
+            new_text.splitlines(),
+            fromfile=path,
+            tofile=path,
+            lineterm="",
+            n=3
+        )
+    );
+    log_current_turn["blocks"].append(
+        {"kind": "diff", "path": path, "diff": diff_lines, "created": old_text == ""}
+    );
+}
+
+
+"""Close the current turn, attach its stats, and rewrite the HTML log.
+
+The whole file is re-rendered after every turn so a session ended by a crash
+or Ctrl-C still leaves a complete, openable log on disk.
+"""
+def log_finish_turn(stats: dict[str, any]) {
+    if not log_enabled or log_current_turn is None {
+        return;
+    }
+    log_current_turn["stats"] = stats;
+    try {
+        Path(log_path).write_text(render_log_html());
+    } except Exception { }
+}
+
+
+# Self-contained styling for the HTML log -- a dark, modern theme; embedded so
+# the log file is a single portable artifact with no external assets.
+glob LOG_CSS = """
+*{box-sizing:border-box;}
+html,body{margin:0;}
+body{background:radial-gradient(1100px 560px at 50% -200px,#1a2336 0%,#0b0e14 60%);
+color:#e6edf3;font:15px/1.65 ui-sans-serif,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;}
+.wrap{max-width:940px;margin:0 auto;padding:28px 22px 96px;}
+.hdr{text-align:center;padding:34px 0 30px;border-bottom:1px solid #222b3a;margin-bottom:34px;}
+.brand{font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:#8aa4ff;font-weight:600;}
+.hdr h1{margin:8px 0 4px;font-size:30px;font-weight:700;letter-spacing:-.02em;}
+.hdr .sub{color:#8b97a8;font-size:14px;}
+.stats{display:flex;gap:14px;justify-content:center;margin-top:22px;flex-wrap:wrap;}
+.stat{background:#11161f;border:1px solid #222b3a;border-radius:12px;padding:12px 20px;min-width:104px;}
+.stat .num{display:block;font-size:22px;font-weight:700;}
+.stat .lbl{display:block;font-size:12px;color:#8b97a8;text-transform:uppercase;letter-spacing:.06em;}
+.empty{color:#8b97a8;text-align:center;padding:40px;}
+.turn{background:#11161f;border:1px solid #222b3a;border-radius:16px;padding:22px;margin-bottom:22px;position:relative;}
+.turn-tag{position:absolute;top:-11px;left:20px;background:#8aa4ff;color:#0b0e14;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:3px 11px;border-radius:999px;}
+.msg-user{display:flex;gap:12px;margin:10px 0 18px;}
+.msg-user .role{flex:none;width:46px;font-size:12px;font-weight:700;color:#4c8dff;text-transform:uppercase;letter-spacing:.05em;padding-top:2px;}
+.msg-user .utext{flex:1;background:#161c28;border:1px solid #222b3a;border-left:3px solid #4c8dff;border-radius:8px;padding:10px 14px;white-space:pre-wrap;word-break:break-word;}
+.block{margin:12px 0;}
+.blabel{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:#8b97a8;margin-bottom:5px;}
+.btext{white-space:pre-wrap;word-break:break-word;}
+.block.thought .btext{color:#8b97a8;font-style:italic;border-left:2px solid #b083f0;padding-left:12px;}
+.block.thought .blabel{color:#b083f0;}
+.bhead{display:flex;align-items:center;gap:9px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13.5px;font-weight:600;margin-bottom:6px;}
+.badge{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:6px;}
+.badge.tool{background:rgba(227,179,65,.16);color:#e3b341;}
+.badge.result{background:rgba(138,164,255,.16);color:#8aa4ff;}
+.badge.diff{background:rgba(88,196,220,.16);color:#58c4dc;}
+pre{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:13px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
+.args{background:#161c28;border:1px solid #222b3a;border-radius:8px;padding:10px 13px;color:#8b97a8;}
+.argk{color:#8aa4ff;font-weight:600;}
+details.result{background:#161c28;border:1px solid #222b3a;border-radius:8px;}
+details.result summary{cursor:pointer;padding:9px 13px;font-size:13px;color:#8b97a8;display:flex;align-items:center;gap:9px;list-style:none;}
+details.result summary::-webkit-details-marker{display:none;}
+details.result[open] summary{border-bottom:1px solid #222b3a;}
+details.result pre{padding:11px 13px;color:#e6edf3;max-height:420px;overflow:auto;}
+.diffbody{border:1px solid #222b3a;border-radius:8px;overflow:hidden;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;line-height:1.6;}
+.dl{padding:1px 13px;white-space:pre-wrap;word-break:break-word;}
+.dl.add{background:rgba(63,185,80,.14);color:#56d364;}
+.dl.del{background:rgba(248,81,73,.13);color:#f4807a;}
+.dl.hunk{background:rgba(88,196,220,.1);color:#58c4dc;}
+.dl.fmeta{color:#8b97a8;}
+.dl.meta{color:#8b97a8;font-style:italic;}
+.dl.ctx{color:#8b97a8;}
+.turn-foot{margin-top:16px;padding-top:12px;border-top:1px dashed #222b3a;font-size:12.5px;color:#8b97a8;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+""";
+
+
+"""Render one summary card for the log header."""
+def _stat_card(value: int, label: str) -> str {
+    return f'<div class="stat"><span class="num">{value}</span>' + f'<span class="lbl">{esc(
+        label
+    )}</span></div>';
+}
+
+
+"""Render a tool call's arguments as escaped, key-highlighted lines."""
+def _log_fmt_args(args: object) -> str {
+    if not isinstance(args, dict) {
+        return esc(args);
+    }
+    lines: list[str] = [];
+    for (key, value) in args.items() {
+        sval = str(value);
+        if len(sval) > 1200 {
+            sval = sval[:1200] + f"\n… [{len(sval) - 1200} more chars]";
+        }
+        lines.append(f'<span class="argk">{esc(key)}</span>  {esc(sval)}');
+    }
+    return "\n".join(lines) or "(no arguments)";
+}
+
+
+"""Render unified-diff lines as colour-coded HTML rows."""
+def _render_diff(diff_lines: any) -> str {
+    dl = list(diff_lines);
+    if not dl {
+        return '<div class="dl meta">(no textual changes)</div>';
+    }
+    rows: list[str] = [];
+    for raw in dl[:2000] {
+        line = str(raw);
+        cls = "ctx";
+        if line.startswith("+++") or line.startswith("---") {
+            cls = "fmeta";
+        } elif line.startswith("@@") {
+            cls = "hunk";
+        } elif line.startswith("+") {
+            cls = "add";
+        } elif line.startswith("-") {
+            cls = "del";
+        }
+        rows.append(f'<div class="dl {cls}">{esc(line) or "&nbsp;"}</div>');
+    }
+    if len(dl) > 2000 {
+        rows.append(f'<div class="dl meta">… {len(dl) - 2000} more diff lines</div>');
+    }
+    return "".join(rows);
+}
+
+
+"""Render one interaction block (reasoning, response, tool call, ...) to HTML."""
+def _render_block(block: any) -> str {
+    kind = str(block.get("kind", ""));
+    if kind == "thought" {
+        return '<div class="block thought"><div class="blabel">Reasoning</div>' + f'<div class="btext">{esc(
+            block.get("text", "")
+        )}</div></div>';
+    }
+    if kind == "answer" {
+        return '<div class="block answer"><div class="blabel">Response</div>' + f'<div class="btext">{esc(
+            block.get("text", "")
+        )}</div></div>';
+    }
+    if kind == "tool_call" {
+        return '<div class="block tool"><div class="bhead">' + f'<span class="badge tool">tool</span>{esc(
+            block.get("tool", "?")
+        )}</div>' + f'<pre class="args">{_log_fmt_args(
+            block.get("args", {})
+        )}</pre></div>';
+    }
+    if kind == "tool_result" {
+        result = str(block.get("result", ""));
+        return '<details class="block result"><summary>' + f'<span class="badge result">result</span>{esc(
+            preview_result(result)
+        )}' + f'</summary><pre>{esc(result)}</pre></details>';
+    }
+    if kind == "diff" {
+        verb = "created" if block.get("created", False) else "edited";
+        return '<div class="block diff"><div class="bhead">' + f'<span class="badge diff">{verb}</span>{esc(
+            block.get("path", "")
+        )}</div>' + f'<div class="diffbody">{_render_diff(
+            list(block.get("diff", []))
+        )}</div></div>';
+    }
+    return "";
+}
+
+
+"""Render a turn's stat line: duration, tool calls, files changed, tokens."""
+def _fmt_log_stats(stats: any) -> str {
+    parts: list[str] = [f"{float(str(stats.get('elapsed', 0.0))):.1f}s"];
+    n_tools = (
+        int(str(stats.get("n_read", 0))) + int(str(stats.get("n_write", 0))) + int(
+            str(stats.get("n_run", 0))
+        )
+    );
+    if n_tools {
+        parts.append(f"{n_tools} tool call" + ("" if n_tools == 1 else "s"));
+    }
+    n_files = int(str(stats.get("n_files", 0)));
+    if n_files {
+        parts.append(f"{n_files} file" + ("" if n_files == 1 else "s") + " changed");
+    }
+    tokens = str(stats.get("tokens", ""));
+    if tokens {
+        parts.append(tokens);
+    }
+    return "  ·  ".join(parts);
+}
+
+
+"""Render one recorded turn -- the user message and its interaction blocks."""
+def _render_turn(idx: int, turn: dict[str, any]) -> str {
+    out: list[str] = [f'<section class="turn"><div class="turn-tag">Turn {idx}</div>'];
+    out.append(
+        '<div class="msg-user"><div class="role">You</div>' + f'<div class="utext">{esc(
+            turn.get("user", "")
+        )}</div></div>'
+    );
+    for block in turn["blocks"] {
+        out.append(_render_block(block));
+    }
+    stats = turn.get("stats", {});
+    if stats {
+        out.append(f'<div class="turn-foot">{esc(_fmt_log_stats(stats))}</div>');
+    }
+    out.append("</section>");
+    return "".join(out);
+}
+
+
+"""Render the whole session as one self-contained HTML document.
+
+Walks every recorded turn -- the user's message, the agent's reasoning and
+response, each tool call and result, and every file diff -- into a styled,
+dependency-free page. Re-run after each turn by `log_finish_turn`.
+"""
+def render_log_html -> str {
+    started = log_session_started;
+    started_str = started.strftime("%Y-%m-%d %H:%M") if started is not None else "";
+    files_changed: set[str] = set();
+    n_tools = 0;
+    for turn in log_turns {
+        for block in turn["blocks"] {
+            kind = block.get("kind");
+            if kind == "tool_call" {
+                n_tools += 1;
+            } elif kind == "diff" {
+                files_changed.add(str(block.get("path", "")));
+            }
+        }
+    }
+    n_turns = len(log_turns);
+    body: list[str] = [
+        '<header class="hdr"><div class="brand">⬡ Jac AI</div>' + '<h1>Session Log</h1>' + f'<div class="sub">{esc(
+            started_str
+        )} &nbsp;·&nbsp; ' + f'{esc(
+            agent_model.model_name
+        )}</div><div class="stats">' + _stat_card(
+            n_turns, "turn" if n_turns == 1 else "turns"
+        ) + _stat_card(n_tools, "tool calls") + _stat_card(
+            len(files_changed), "files changed"
+        ) + '</div></header>'
+    ];
+    if not log_turns {
+        body.append('<div class="empty">No turns recorded yet.</div>');
+    }
+    for (idx, turn) in enumerate(log_turns, 1) {
+        body.append(_render_turn(idx, turn));
+    }
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8">' + '<meta name="viewport" content="width=device-width, initial-scale=1">' + f'<title>Jac AI Session — {esc(
+            started_str
+        )}</title><style>' + LOG_CSS + '</style></head><body><div class="wrap">' + "".join(
+            body
+        ) + '</div></body></html>'
+    );
+}
+
+#===============================================================================
 # TOOLS -- plain typed functions; byLLM turns the annotations into JSON schema
 #===============================================================================
 def read_file(path: str) -> str {
@@ -244,8 +598,17 @@ def write_file(path: str, content: str) -> str {
     }
     try {
         p = Path(path);
+        # Capture the prior contents so the session log can diff the write;
+        # an absent file logs as a creation.
+        old = "";
+        try {
+            old = p.read_text();
+        } except Exception {
+            old = "";
+        }
         p.parent.mkdir(parents=True, exist_ok=True);
         p.write_text(content);
+        log_diff(path, old, content);
         return f"OK: wrote {len(content)} chars to {path}" + write_feedback(path);
     } except Exception as e {
         return f"ERROR writing {path}: {e}";
@@ -277,7 +640,9 @@ def edit_file(path: str, old_text: str, new_text: str) -> str {
         return "DENIED: the user declined this edit.";
     }
     try {
-        Path(path).write_text(original.replace(old_text, new_text));
+        updated = original.replace(old_text, new_text);
+        Path(path).write_text(updated);
+        log_diff(path, original, updated);
         return f"OK: edited {path}" + write_feedback(path);
     } except Exception as e {
         return f"ERROR writing {path}: {e}";
@@ -770,6 +1135,9 @@ def print_banner {
             style="yellow"
         );
     }
+    if log_enabled {
+        console.print(f"  session log: {log_path}", style="muted");
+    }
     console.print("  type a request, /help for commands, /exit to quit", style="muted");
     console.print("");
 }
@@ -781,6 +1149,15 @@ def print_help {
     console.print("  /guides  list the bundled Jac reference guides", style="muted");
     console.print("  /stats   toggle the per-turn stat line", style="muted");
     console.print("  /exit    quit the session", style="muted");
+}
+
+
+"""Point the user at the HTML session log; a no-op unless `--log` recorded one."""
+def report_log {
+    if log_enabled and log_turns {
+        console.print("");
+        console.print(f"  session log saved to {log_path}", style="muted");
+    }
 }
 
 
@@ -942,6 +1319,9 @@ to stdout as they land, so the whole turn streams live; `tool_call` and
 """
 def run_turn(message: str) {
     console.print("");
+    # Open a session-log turn (a no-op unless `--log` is set); the event loop
+    # and the write tools fill it in as the turn unfolds.
+    log_start_turn(message);
     # `ask` is typed `-> str` for byLLM's streaming contract, but with
     # logging=True it actually yields StreamEvent objects -- iterate via an
     # `any`-typed handle so attribute access type-checks.
@@ -965,9 +1345,11 @@ def run_turn(message: str) {
             if kind == "thought" or kind == "chunk" {
                 # Stream every model token live -- reasoning and answer alike.
                 # console.print buffers and takes no flush arg, so write direct.
-                out.write(str(data.get("content", "")));
+                token = str(data.get("content", ""));
+                out.write(token);
                 out.flush();
                 streamed = True;
+                log_text("thought" if kind == "thought" else "answer", token);
             } elif kind == "tool_call" {
                 if streamed {
                     out.write("\n");
@@ -992,6 +1374,7 @@ def run_turn(message: str) {
                     n_read += 1;
                 }
                 console.print(f"  ⏺ {fmt_tool_call(tool, args)}", style="cyan");
+                log_block({"kind": "tool_call", "tool": tool, "args": args});
             } elif kind == "usage" {
                 # byLLM emits one `usage` event at stream end with token totals
                 # aggregated across every LLM call in the turn.
@@ -1005,9 +1388,9 @@ def run_turn(message: str) {
                     out.flush();
                     streamed = False;
                 }
-                console.print(
-                    f"    {preview_result(str(data.get('result', '')))}", style="dim"
-                );
+                result_text = str(data.get("result", ""));
+                console.print(f"    {preview_result(result_text)}", style="dim");
+                log_block({"kind": "tool_result", "result": result_text});
             } elif kind == "steps_done" {
                 if streamed {
                     out.write("\n");
@@ -1033,9 +1416,22 @@ def run_turn(message: str) {
     } finally {
         # Always render the turn summary -- a turn cut short by an error or an
         # interrupt is exactly when its stats are most worth seeing.
+        elapsed = time.time() - started;
         if show_stats {
-            print_stats(time.time() - started, n_read, n_write, n_run, files, usage);
+            print_stats(elapsed, n_read, n_write, n_run, files, usage);
         }
+        # Close the log turn and rewrite the HTML file (no-op unless --log);
+        # done last so a crashed turn still leaves a complete log on disk.
+        log_finish_turn(
+            {
+                "elapsed": elapsed,
+                "n_read": n_read,
+                "n_write": n_write,
+                "n_run": n_run,
+                "n_files": len(files),
+                "tokens": _format_tokens(usage)
+            }
+        );
     }
 }
 
@@ -1049,7 +1445,7 @@ otherwise starts an interactive read-eval-print loop. Always returns 0 -- a
 failed turn reports its error but does not abort the session.
 """
 def run_agent(req: object) -> int {
-    global agent_model,yolo_mode,agent_ci,show_stats;
+    global agent_model,yolo_mode,agent_ci,show_stats,log_enabled,log_path,log_session_started,log_turns,log_current_turn;
     # `req` is an AgentRequest; access it untyped so attribute reads
     # type-check without importing the class into this byLLM-only module.
     r: any = req;
@@ -1064,11 +1460,26 @@ def run_agent(req: object) -> int {
     if r.model or r.n_ctx > 0 {
         agent_model = build_model(str(r.model), int(r.n_ctx));
     }
+    # With `--log`, give this session a fresh HTML log under .jac_ai_sessions/,
+    # named by start time so successive sessions never clobber one another.
+    log_enabled = bool(r.log);
+    log_turns = [];
+    log_current_turn = None;
+    if log_enabled {
+        log_session_started = datetime.now();
+        logs_dir = Path(str(r.cwd or os.getcwd())) / ".jac_ai_sessions";
+        try {
+            logs_dir.mkdir(parents=True, exist_ok=True);
+        } except Exception { }
+        stamp = log_session_started.strftime("%Y%m%d-%H%M%S");
+        log_path = str(logs_dir / f"session-{stamp}.html");
+    }
     print_banner();
     reset_history();
 
     if initial_prompt {
         run_turn(initial_prompt);
+        report_log();
         return 0;
     }
 
@@ -1112,6 +1523,7 @@ def run_agent(req: object) -> int {
         run_turn(line);
     }
 
+    report_log();
     console.print("Bye.");
     return 0;
 }
