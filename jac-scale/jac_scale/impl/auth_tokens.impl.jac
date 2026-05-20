@@ -82,7 +82,11 @@ impl AuthTokenStore.consume_token(token: str, purpose: str) -> (dict[str, Any] |
     if record is None {
         return None;
     }
-    self._delete(record.get('token_hash', ''));
+    # Single-use arbitration: only the caller whose _delete actually removed
+    # the record wins. Concurrent consumers of the same token get None here.
+    if not self._delete(record.get('token_hash', '')) {
+        return None;
+    }
     return record;
 }
 
@@ -124,7 +128,7 @@ impl AuthTokenStore._find(token_hash: str, purpose: str) -> (dict[str, Any] | No
     return record;
 }
 
-"""Storage primitive: remove a record by hash."""
+"""Storage primitive: atomically remove a record by hash."""
 impl AuthTokenStore._delete(token_hash: str) -> bool {
     if self._db is not None {
         try {
@@ -136,11 +140,7 @@ impl AuthTokenStore._delete(token_hash: str) -> bool {
             );
         }
     }
-    if token_hash in self._in_memory {
-        del self._in_memory[token_hash];
-        return True;
-    }
-    return False;
+    return self._in_memory.pop(token_hash, None) is not None;
 }
 
 """Storage primitive: delete all (user_id, purpose) records."""
