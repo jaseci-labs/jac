@@ -394,7 +394,7 @@ test "end-to-end: scaffold through release APK generation" {
         print(f"[step 1 stdout]\n{result.stdout}");
         print(f"[step 1 stderr]\n{result.stderr}");
         assert result.returncode == 0 , f"jac setup mobile failed:\n{result.stderr}";
-        assert (project_dir / "mobile").is_dir() , "mobile/ not created by scaffold";
+        assert (project_dir / ".jac" / "mobile").is_dir() , ".jac/mobile/ not created by scaffold";
         # ── Step 2: build web bundle and prepare .jac/mobile/ ─────────────────
         build_env = os.environ.copy();
         build_env["JAC_MOBILE_API_URL"] = "https://api.example.com";
