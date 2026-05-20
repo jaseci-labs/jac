@@ -10,7 +10,7 @@ Covers:
   6. all-in-one .gitignore excludes mobile/
 
   Build pipeline helpers:
-  7. _prepare_build_dir copies scaffold files to .jac/mobile/
+  7. jac setup mobile scaffolds directly into .jac/mobile/
   8. _copy_web_bundle_to_mobile copies index.html, client.js, styles.css
   9. Backend URL injection: JAC_MOBILE_API_URL overrides jac.toml
   10. Backend URL injection: falls back to [mobile.features].api_url in jac.toml
@@ -32,7 +32,6 @@ import from jaclang.project.config { get_config }
 
 import from test_helpers { get_jac_command }
 import from jac_client.plugin.src.targets.mobile.bundle_helpers {
-    _prepare_build_dir,
     _copy_web_bundle_to_mobile
 }
 import from jac_client.plugin.src.targets.mobile.dev_helpers { _write_build_config }
@@ -74,8 +73,8 @@ test "jac setup mobile scaffolds mobile directory structure" {
         assert result.returncode == 0 , (
             f"jac setup mobile failed (rc={result.returncode}):\n{result.stderr}"
         );
-        mobile_dir = project_dir / "mobile";
-        assert mobile_dir.is_dir() , "mobile/ directory not created";
+        mobile_dir = project_dir / ".jac" / "mobile";
+        assert mobile_dir.is_dir() , ".jac/mobile/ directory not created";
         for expected in [
             mobile_dir / "app.json",
             mobile_dir / "package.json",
@@ -83,7 +82,6 @@ test "jac setup mobile scaffolds mobile directory structure" {
             mobile_dir / "app" / "index.tsx",
             mobile_dir / "app" / "_layout.tsx",
             mobile_dir / "assets" / "jac-app" / "create-bundle.js",
-            mobile_dir / ".gitignore",
 
         ] {
             assert expected.exists() , f"expected file missing: {expected.name}";
@@ -106,7 +104,7 @@ test "jac setup mobile generates placeholder icon files" {
             timeout=60
         );
         assert result.returncode == 0 , f"jac setup mobile failed:\n{result.stderr}";
-        assets_dir = project_dir / "mobile" / "assets";
+        assets_dir = project_dir / ".jac" / "mobile" / "assets";
         for icon in ["icon.png", "splash.png", "adaptive-icon.png", "favicon.png"] {
             assert (assets_dir / icon).exists() , f"placeholder icon missing: {icon}";
             assert (assets_dir / icon).stat().st_size > 0 , f"icon is empty: {icon}";
@@ -207,7 +205,7 @@ test "all-in-one .gitignore excludes mobile/" {
 
 
 # ── Build pipeline helpers ────────────────────────────────────────────────────
-test "_prepare_build_dir copies scaffold files to .jac/mobile/" {
+test "jac setup mobile scaffolds directly into .jac/mobile/" {
     with tempfile.TemporaryDirectory() as tmp {
         project_dir = Path(tmp);
         (project_dir / "jac.toml").write_text(_MINIMAL_JAC_TOML);
@@ -221,12 +219,9 @@ test "_prepare_build_dir copies scaffold files to .jac/mobile/" {
             timeout=60
         );
         assert result.returncode == 0 , f"jac setup mobile failed:\n{result.stderr}";
-        mobile_src_dir = project_dir / "mobile";
+        # setup now scaffolds directly into .jac/mobile/ — no mobile/ folder
+        assert not (project_dir / "mobile").exists() , "mobile/ should not be created in project root";
         mobile_build_dir = project_dir / ".jac" / "mobile";
-        mobile_build_dir.mkdir(parents=True, exist_ok=True);
-        # Create stub node_modules so _prepare_build_dir skips yarn install
-        (mobile_build_dir / "node_modules").mkdir();
-        _prepare_build_dir(mobile_src_dir, mobile_build_dir);
         for expected in [
             mobile_build_dir / "app.json",
             mobile_build_dir / "package.json",

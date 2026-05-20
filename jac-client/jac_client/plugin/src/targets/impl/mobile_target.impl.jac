@@ -2,7 +2,7 @@
 
 Helper functions are split into focused submodules under targets/mobile/:
   setup_helpers  — scaffolding generators (_generate_*, _add_mobile_config, …)
-  bundle_helpers — web→mobile bundle pipeline (_prepare_build_dir, _create_mobile_bundle, …)
+  bundle_helpers — web→mobile bundle pipeline (_ensure_mobile_deps, _create_mobile_bundle, …)
   dev_helpers    — dev-server utilities (_get_local_ip, _start_backend_server, …)
 """
 import from pathlib { Path }
@@ -21,10 +21,9 @@ import from jac_client.plugin.src.targets.mobile.setup_helpers {
     _check_mobile_dependencies,
     _install_yarn_dependencies,
     _generate_placeholder_icons,
-    _generate_gitignore
 }
 import from jac_client.plugin.src.targets.mobile.bundle_helpers {
-    _prepare_build_dir,
+    _ensure_mobile_deps,
     _copy_web_bundle_to_mobile,
     _create_mobile_bundle
 }
@@ -46,19 +45,17 @@ import from jac_client.plugin.src.targets.mobile.dev {
 }
 
 # ============================================================================
-# MobileTarget.setup — scaffold the mobile/ source directory
+# MobileTarget.setup — scaffold directly into .jac/mobile/
 # ============================================================================
 """Setup mobile target — scaffold React Native/Expo project structure."""
 impl MobileTarget.setup(project_dir: Path) -> None {
-    mobile_dir = project_dir / "mobile";
+    mobile_dir = project_dir / ".jac" / "mobile";
 
     console.print("\n📱 Setting up mobile target (React Native/Expo)", style="bold");
     console.print(f"  Project directory: {project_dir}", style="muted");
     console.print(
-        f"  Source directory: {mobile_dir.relative_to(project_dir)}", style="muted"
-    );
-    console.print(
-        f"  Build artifacts: .jac/mobile/ (not tracked in git)", style="muted"
+        f"  Build directory: .jac/mobile/ (gitignored, regenerated on demand)",
+        style="muted"
     );
 
     if mobile_dir.exists() {
@@ -74,7 +71,7 @@ impl MobileTarget.setup(project_dir: Path) -> None {
         }
     }
 
-    console.print("  Creating mobile/ directory structure...", style="muted");
+    console.print("  Creating .jac/mobile/ directory structure...", style="muted");
     try {
         mobile_dir.mkdir(parents=True, exist_ok=True);
         (mobile_dir / "app").mkdir(exist_ok=True);
@@ -120,7 +117,6 @@ impl MobileTarget.setup(project_dir: Path) -> None {
             "[mobile] in jac.toml"
         ),
         (lambda : _generate_placeholder_icons(mobile_dir), "placeholder icons"),
-        (lambda : _generate_gitignore(mobile_dir), ".gitignore"),
 
     ] {
         try {
@@ -144,14 +140,31 @@ impl MobileTarget.setup(project_dir: Path) -> None {
     }
 
     console.success("Mobile target setup complete!");
-    console.print("\n💡 Source files created in mobile/ directory", style="bold");
-    console.print(
-        "   Dependencies & bundles will be in .jac/mobile/ during build/dev",
-        style="muted"
-    );
     console.print("\nNext steps:", style="bold");
-    console.print("  jac build main.jac --client mobile -p android", style="muted");
-    console.print("  jac start main.jac --client mobile --dev", style="muted");
+    console.print("  1. Set your backend URL in jac.toml:", style="muted");
+    console.print("       [mobile.features]", style="muted");
+    console.print("       api_url = \"https://your-backend.com\"", style="muted");
+    console.print(
+        "  2. Dev mode  (view live on phone via Expo Go app):", style="muted"
+    );
+    console.print("       npm install -g yarn   # one-time install", style="muted");
+    console.print("       jac start main.jac --client mobile --dev", style="muted");
+    console.print(
+        "  3. Build APK locally (requires JDK 17 + Android SDK):", style="muted"
+    );
+    console.print(
+        "       jac build main.jac --client mobile -p android", style="muted"
+    );
+    console.print(
+        "       cd .jac/mobile && npx expo prebuild --platform android", style="muted"
+    );
+    console.print("       cd android && ./gradlew assembleRelease", style="muted");
+    console.print(
+        "  4. Build APK in CI (no Android SDK needed locally):", style="muted"
+    );
+    console.print(
+        "       Trigger 'Build Mobile Apps' workflow in GitHub Actions", style="muted"
+    );
 }
 
 # ============================================================================
@@ -167,18 +180,18 @@ impl MobileTarget.build(
 ) -> Path {
     console.print("\n📱 Building mobile app (React Native)", style="bold");
 
-    mobile_src_dir = project_dir / "mobile";
-    if not mobile_src_dir.exists() {
-        raise RuntimeError("Mobile target not set up. Run 'jac setup mobile' first.");
-    }
     mobile_build_dir = project_dir / ".jac" / "mobile";
+    if not mobile_build_dir.exists() {
+        console.print("  Running setup automatically...", style="muted");
+        self.setup(project_dir);
+    }
 
     import from jac_client.plugin.src.mobile_config { MobileConfig }
     mobile_config = MobileConfig(project_dir=project_dir);
     mobile_config.validate();
 
-    console.print("  Step 1: Preparing build directory...", style="muted");
-    _prepare_build_dir(mobile_src_dir, mobile_build_dir);
+    console.print("  Step 1: Ensuring dependencies...", style="muted");
+    _ensure_mobile_deps(mobile_build_dir);
 
     console.print("  Step 2: Building web bundle...", style="muted");
     web_bundle_path = super.build(entry_file, project_dir, platform);
@@ -211,20 +224,24 @@ impl MobileTarget.build(
 # ============================================================================
 """Start mobile dev server — Vite HMR + backend + Expo dev client."""
 impl MobileTarget.dev(
-    entry_file: Path, project_dir: Path, api_port: int = MOBILE_DEV_API_PORT
+    entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
 ) -> None {
     import signal;
     import sys;
     import os;
+    # port is the primary port passed by the CLI; use it as api_port when
+    # api_port is not set independently.
+    if api_port <= 0 {
+        api_port = port if port > 0 else MOBILE_DEV_API_PORT;
+    }
     console.print("\n📱 Starting mobile dev server (Expo + HMR)", style="bold");
 
-    mobile_src_dir = project_dir / "mobile";
-    if not mobile_src_dir.exists() {
-        raise RuntimeError("Mobile target not set up. Run 'jac setup mobile' first.");
-    }
     mobile_build_dir = project_dir / ".jac" / "mobile";
-
-    _prepare_build_dir(mobile_src_dir, mobile_build_dir);
+    if not mobile_build_dir.exists() {
+        console.print("  Running setup automatically...", style="muted");
+        self.setup(project_dir);
+    }
+    _ensure_mobile_deps(mobile_build_dir);
 
     plat = os.environ.get("JAC_MOBILE_PLATFORM", "auto");
     host_override = os.environ.get("JAC_MOBILE_DEV_HOST", "");
@@ -343,13 +360,12 @@ impl MobileTarget.start(
     import os;
     console.print("\n📱 Starting mobile app (bundle mode, no HMR)", style="bold");
 
-    mobile_src_dir = project_dir / "mobile";
-    if not mobile_src_dir.exists() {
-        raise RuntimeError("Mobile target not set up. Run 'jac setup mobile' first.");
-    }
     mobile_build_dir = project_dir / ".jac" / "mobile";
-
-    _prepare_build_dir(mobile_src_dir, mobile_build_dir);
+    if not mobile_build_dir.exists() {
+        console.print("  Running setup automatically...", style="muted");
+        self.setup(project_dir);
+    }
+    _ensure_mobile_deps(mobile_build_dir);
 
     local_ip = _get_local_ip();
     console.print(f"  Detected local IP: {local_ip}", style="muted");

@@ -80,7 +80,9 @@ import { WebView } from 'react-native-webview';
 
 // Dev mode: load from Vite dev server for HMR
 // Production: load from bundled HTML
-const USE_DEV_SERVER = __DEV__; // Automatically enabled in dev mode
+// Bundle mode is the default: avoids downloading large JS deps over WiFi.
+// Set to true only if you need HMR (and accept that large deps load over network).
+const USE_DEV_SERVER = false;
 
 let JAC_BUNDLE_HTML: string | null = null;
 if (!USE_DEV_SERVER) {

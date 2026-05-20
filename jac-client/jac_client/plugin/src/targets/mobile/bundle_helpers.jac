@@ -10,41 +10,19 @@ import subprocess;
 import shutil;
 import json;
 
-"""Copy source files from mobile/ into .jac/mobile/ and install deps."""
-def _prepare_build_dir(mobile_src_dir: Path, mobile_build_dir: Path) {
+"""Ensure icons and yarn deps are present in the .jac/mobile/ build directory.
+
+Called before every build/dev/start — no file copy needed since setup() now
+scaffolds directly into .jac/mobile/.
+"""
+def _ensure_mobile_deps(mobile_build_dir: Path) {
     import from jac_client.plugin.src.targets.mobile.setup_helpers {
-        _install_yarn_dependencies
+        _install_yarn_dependencies,
+        _generate_placeholder_icons
     }
-    console.print("  Preparing build directory...", style="muted");
-    mobile_build_dir.mkdir(parents=True, exist_ok=True);
-
-    for file_name in ["app.json", "package.json", "tsconfig.json"] {
-        src_file = mobile_src_dir / file_name;
-        if src_file.exists() {
-            shutil.copy2(src_file, mobile_build_dir / file_name);
-        }
-    }
-
-    for dir_name in ["app", "assets"] {
-        src_dir = mobile_src_dir / dir_name;
-        dst_dir = mobile_build_dir / dir_name;
-        if src_dir.exists() {
-            if dst_dir.exists() {
-                shutil.rmtree(dst_dir);
-            }
-            shutil.copytree(src_dir, dst_dir);
-        }
-    }
-    console.print("  ✔ Source files copied to .jac/mobile/", style="success");
-
-    # Icons are gitignored in the source tree; regenerate them in the build dir
-    # if any are missing (e.g. fresh CI clone or first build after setup).
     _icon_names = ["icon.png", "splash.png", "adaptive-icon.png", "favicon.png"];
     _assets_dir = mobile_build_dir / "assets";
     if any(not (_assets_dir / _n).exists() for _n in _icon_names) {
-        import from jac_client.plugin.src.targets.mobile.setup_helpers {
-            _generate_placeholder_icons
-        }
         _generate_placeholder_icons(mobile_build_dir);
     }
 

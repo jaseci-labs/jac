@@ -25,7 +25,7 @@ obj MobileTarget(WebTarget) {
 
     """Start mobile dev server - start web dev server and launch Expo dev."""
     override def dev(
-        entry_file: Path, project_dir: Path, api_port: int = 8000
+        entry_file: Path, project_dir: Path, port: int = 8000, api_port: int = 0
     ) -> None;
 
     """Start mobile app - build web bundle and launch React Native with built bundle."""
