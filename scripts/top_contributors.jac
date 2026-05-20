@@ -4,7 +4,6 @@ import argparse;
 import subprocess;
 import from collections { defaultdict }
 import from datetime { UTC, datetime, timedelta }
-import from typing { Any }
 
 glob tabel_css = """
 <style>
@@ -118,9 +117,9 @@ def get_commits_from_git(days: int) -> list[dict[str, str]] {
 """Process commits to get contributor stats for a specific period."""
 def process_contributors(
     commits: list[dict[str, str]], days: int
-) -> list[dict[str, Any]] {
+) -> list[dict[str, any]] {
     since_date = (datetime.now(UTC) - timedelta(days=days)).date();
-    contributors: dict[str, dict[str, Any]] = defaultdict(
+    contributors: dict[str, dict[str, any]] = defaultdict(
         lambda : {"commits": 0, "active_days": set(), "names": defaultdict(int)}
     );
     for commit in commits {
@@ -153,7 +152,7 @@ def process_contributors(
 }
 
 """Generate an HTML table from contributor data and return as string."""
-def generate_html_table(contributors: list[dict[str, Any]], days: int) -> str {
+def generate_html_table(contributors: list[dict[str, any]], days: int) -> str {
     if not contributors {
         return f"<p>No contributions found in the last {days} days.</p>";
     }

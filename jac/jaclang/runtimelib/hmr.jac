@@ -5,7 +5,7 @@ Uses AST-based classification to determine client vs server declarations.
 """
 
 import from pathlib { Path }
-import from typing { Any, Callable }
+import from typing { Callable }
 import type from jaclang.runtimelib.watcher {
     JacFileWatcher,
     FileChangeEvent,
@@ -16,7 +16,7 @@ import type from jaclang.runtimelib.watcher {
 obj HotReloader {
     has base_path: str,
         module_name: str,
-        watcher: Any,  # JacFileWatcher - using Any to avoid circular import
+        watcher: any,  # JacFileWatcher - using Any to avoid circular import
         _client_output_dir: str = ".jac/client/compiled",
         _running: bool = False,
         _overlay_entry: bool = False;
@@ -24,7 +24,7 @@ obj HotReloader {
     def start -> None;
     def stop -> None;
     def on_file_change(
-        event: Any
+        event: any
     ) -> None;  # FileChangeEvent - using Any to avoid circular import
 
 

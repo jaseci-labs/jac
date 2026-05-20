@@ -15,10 +15,10 @@ When your application grows beyond a single view, you need routing -- the abilit
     If your app is a single-page application (like the [AI Day Planner tutorial](../first-app/build-ai-day-planner.md)), you don't need routing -- a single `def:pub app -> JsxElement` entry point is sufficient. Add routing when your app needs multiple distinct pages (e.g., dashboard, settings, profile).
 
 !!! tip "Browser APIs in client code"
-    Inside `cl { }` blocks, standard JavaScript browser APIs like `URLSearchParams`, `parseInt`, `setInterval`, `clearInterval`, `localStorage`, and `JSON` are available since client code compiles to JavaScript.
+    Inside client-side code (a `.cl.jac` file or a `to cl:` section), standard JavaScript browser APIs like `URLSearchParams`, `parseInt`, `setInterval`, `clearInterval`, `localStorage`, and `JSON` are available since client code compiles to JavaScript.
 
-!!! note "Route params and `jac check`"
-    `useParams()` and `useSearchParams()` return JS-flavored objects whose dynamic property access (`params.id`, `params.slug`) works at runtime but is not yet typed in the static checker. Snippets that read those props show `E1030` warnings under isolated `jac check`, even though they run cleanly under `jac start`.
+!!! note "Reading route params"
+    `useParams()` returns a `dict`. Read parameters with subscript access -- `params["id"]`, `params["slug"]` -- not dotted attribute access. Dotted access (`params.id`) fails `jac check` with `error[E1030]: Type "dict" has no attribute "id"`.
 
 Jac-client supports two routing approaches:
 
@@ -94,7 +94,7 @@ to cl:
 
 def:pub page() -> JsxElement {
     params = useParams();
-    userId = params.id;
+    userId = params["id"];
 
     # Mock data lookup
     users = {
@@ -129,7 +129,7 @@ to cl:
 
 def:pub page() -> JsxElement {
     params = useParams();
-    slug = params.slug;  # e.g., "getting-started-with-jac"
+    slug = params["slug"];  # e.g., "getting-started-with-jac"
 
     return <article>
         <Link to="/posts">← All Posts</Link>
@@ -560,7 +560,7 @@ cl import from "@jac/runtime" { useNavigate, jacIsLoggedIn }
 
 to cl:
 
-def:pub ProtectedRoute(props: dict) -> JsxElement {
+def:pub ProtectedRoute(children: any = None) -> JsxElement {
     navigate = useNavigate();
     isAuthenticated = jacIsLoggedIn();
 
@@ -574,7 +574,7 @@ def:pub ProtectedRoute(props: dict) -> JsxElement {
         return <div>Redirecting...</div>;
     }
 
-    return <div>{props.children}</div>;
+    return <div>{children}</div>;
 }
 ```
 
@@ -825,7 +825,7 @@ cl import from "@jac/runtime" {
 
 | Hook | Returns | Usage |
 |------|---------|-------|
-| `useParams()` | `dict` | `params.id`, `params.slug` |
+| `useParams()` | `dict` | `params["id"]`, `params["slug"]` |
 | `useNavigate()` | function | `navigate("/path")`, `navigate(-1)` |
 | `useLocation()` | object | `location.pathname`, `location.search` |
 
@@ -850,7 +850,7 @@ cl import from "@jac/runtime" {
 | Concept | Usage |
 |---------|-------|
 | Navigation links | `<Link to="/path">Text</Link>` |
-| URL parameters | `params = useParams(); params.id` |
+| URL parameters | `params = useParams(); params["id"]` |
 | Programmatic nav | `navigate("/path")` or `navigate(-1)` |
 | Query strings | `useLocation().search` + `URLSearchParams` |
 | Nested routes | `<Outlet />` renders child routes |

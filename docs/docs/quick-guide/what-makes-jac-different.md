@@ -12,26 +12,26 @@ This page focuses on the three concepts that Jac adds beyond traditional program
 
 ## 1. How can one language target frontends, backends, and native binaries at the same time?
 
-Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace with a **section header** (or **statement prefix**) inside a file, or with a **file extension**:
+Similar to namespaces, the Jac language introduces the concept of **codespaces**. A Jac program can contain code that runs in different environments. You denote the codespace with a **braced block** (or **section header** or **statement prefix**) inside a file, or with a **file extension**:
 
 ```mermaid
 graph LR
     JAC["main.jac"] --> SV["Server (PyPI Ecosystem)
-    to sv:"]
+    sv { }"]
     JAC --> CL["Client (NPM Ecosystem)
-    to cl:"]
+    cl { }"]
     JAC --> NA["Native (C ABI)
-    to na:"]
+    na { }"]
 ```
 
-**Section headers** -- partition a file into codespaces at module scope:
+**Braced blocks** -- bracket a region of a file for one codespace:
 
-- `to sv:` -- following code runs on the server (compiles to Python)
-- `to cl:` -- following code runs in the browser (compiles to JavaScript)
-- `to na:` -- following code runs natively compiled on the host machine (compiles to native binary)
-- Code before any header defaults to the server codespace. A header applies until the next `to X:` header or end of file.
+- `sv { ... }` -- code inside the braces runs on the server (compiles to Python)
+- `cl { ... }` -- code inside the braces runs in the browser (compiles to JavaScript)
+- `na { ... }` -- code inside the braces compiles natively for the host machine (compiles to a native binary)
+- Code outside any block defaults to the server codespace. Blocks also work inside a function or class body.
 
-A single-statement prefix (`cl def foo() ...`) tags one declaration. The older braced form (`cl { ... }`) still works for inner-scope overrides, but at module scope emits **W0064** pointing at the section-header form.
+**Section headers** (`to sv:` / `to cl:` / `to na:`) are an alternative -- a header sets the default codespace for every following module-level element until the next header or end of file, convenient for a file that is mostly one codespace. A single-statement prefix (`cl def foo() ...`) tags one declaration.
 
 **File extensions** -- set the default top-level codespace for a file, e.g., for a module `prog`:
 
@@ -42,7 +42,7 @@ A single-statement prefix (`cl def foo() ...`) tags one declaration. The older b
 
 Any `.jac` file can still use all codespace forms regardless of its extension. The extension only changes what the default is for untagged code.
 
-Here's a file that uses two codespaces via section headers:
+Here's a file that uses two codespaces via a braced block:
 
 ```jac
 # Server codespace (default)
@@ -55,21 +55,21 @@ def:pub add_todo(title: str) -> dict {
     return {"id": jid(todo[0]), "title": todo[0].title};
 }
 
-to cl:
+cl {
+    def:pub app -> JsxElement {
+        has items: list = [];
 
-def:pub app -> JsxElement {
-    has items: list = [];
+        async def add -> None {
+            todo = await add_todo("New");
+            items = items + [todo];
+        }
 
-    async def add -> None {
-        todo = await add_todo("New");
-        items = items + [todo];
+        return <div>
+            <button onClick={lambda -> None { add(); }}>
+                Add
+            </button>
+        </div>;
     }
-
-    return <div>
-        <button onClick={lambda -> None { add(); }}>
-            Add
-        </button>
-    </div>;
 }
 ```
 

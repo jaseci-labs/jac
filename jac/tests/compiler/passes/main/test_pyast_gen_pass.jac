@@ -315,7 +315,7 @@ with entry {
     prog = JacProgram();
     prog.compile(file_path="test_match.jac", use_str=code);
     assert not prog.errors_had , (
-        f"Match with empty wildcard body should compile cleanly, "
+        "Match with empty wildcard body should compile cleanly, "
         f"got: {[str(e) for e in prog.errors_had]}"
     );
 }

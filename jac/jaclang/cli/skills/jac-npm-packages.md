@@ -56,7 +56,7 @@ import from react { useRef, useCallback, useMemo, useContext }
 import from react { useRef }
 
 def:pub TextInput() -> JsxElement {
-    inputRef: Any = useRef(None);
+    inputRef: any = useRef(None);
     def handle_click(e: MouseEvent) {
         if inputRef.current { inputRef.current.focus(); }
     }
@@ -73,8 +73,8 @@ def:pub TextInput() -> JsxElement {
 import from react { useRef, useCallback }
 
 def:pub FileUploader() -> JsxElement {
-    fileInputRef: Any = useRef(None);
-    triggerPicker: Any = useCallback(lambda {
+    fileInputRef: any = useRef(None);
+    triggerPicker: any = useCallback(lambda {
         if fileInputRef.current { fileInputRef.current.click(); }
     }, []);
     return <div>
@@ -91,7 +91,7 @@ import from react { useRef }
 
 def:pub SearchBox() -> JsxElement {
     has query: str = "";
-    inputRef: Any = useRef(None);
+    inputRef: any = useRef(None);
     async can with [query] entry {
         if inputRef.current { inputRef.current.focus(); }
     }

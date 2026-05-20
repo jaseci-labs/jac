@@ -4,7 +4,6 @@ auto_build_and_distribute image pipeline. Registered as
 `kubernetes-microservice` in DeploymentTargetFactory."""
 
 import logging;
-import from typing { Any }
 import from jac_scale.targets.kubernetes.kubernetes_target { KubernetesTarget }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deployment_result { DeploymentResult }
@@ -253,7 +252,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     """Delegates to MicroserviceManifestBuilder. deploy() populates
     _deploy_context first; direct callers (tests) get an empty context
     which produces pod specs without DB env / init containers."""
-    def generate_manifests(app_config: AppConfig) -> dict[str, Any] {
+    def generate_manifests(app_config: AppConfig) -> dict[str, any] {
         app_name = app_config.app_name or self.k8s_config.app_name;
         image = self._handle_image_registry(app_name, app_config);
 
@@ -325,7 +324,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     (cross-service `sv import` calls need it at startup); HPAs/PDBs after
     Deployments so the targetRef isn't transiently unresolved; Ingress
     last to avoid a transient `no backend` event."""
-    def apply_manifests(bundle: dict[str, Any]) {
+    def apply_manifests(bundle: dict[str, any]) {
         self._load_kube_config();
         apps_v1 = client.AppsV1Api();
         core_v1 = client.CoreV1Api();
@@ -434,7 +433,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     # PVC is the exception: create-on-404, otherwise no-op (PVCs are mostly
     # immutable post-bind; patch would error or orphan the PV).
     def _apply_or_replace_service(
-        core_v1: any, namespace: str, manifest: dict[str, Any]
+        core_v1: any, namespace: str, manifest: dict[str, any]
     ) {
         name: str = manifest["metadata"]["name"];
         try {
@@ -451,7 +450,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
         }
     }
 
-    def _apply_or_replace_pvc(core_v1: any, namespace: str, manifest: dict[str, Any]) {
+    def _apply_or_replace_pvc(core_v1: any, namespace: str, manifest: dict[str, any]) {
         name: str = manifest["metadata"]["name"];
         try {
             core_v1.read_namespaced_persistent_volume_claim(
@@ -476,7 +475,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def _apply_or_replace_deployment(
-        apps_v1: any, namespace: str, manifest: dict[str, Any]
+        apps_v1: any, namespace: str, manifest: dict[str, any]
     ) {
         name: str = manifest["metadata"]["name"];
         try {
@@ -496,7 +495,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def _apply_or_replace_hpa(
-        autoscaling_v2: any, namespace: str, manifest: dict[str, Any]
+        autoscaling_v2: any, namespace: str, manifest: dict[str, any]
     ) {
         name: str = manifest["metadata"]["name"];
         try {
@@ -518,7 +517,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def _apply_or_replace_pdb(
-        policy_v1: any, namespace: str, manifest: dict[str, Any]
+        policy_v1: any, namespace: str, manifest: dict[str, any]
     ) {
         name: str = manifest["metadata"]["name"];
         try {
@@ -540,7 +539,7 @@ obj KubernetesMicroserviceTarget(KubernetesTarget) {
     }
 
     def _apply_or_replace_ingress(
-        networking_v1: any, namespace: str, manifest: dict[str, Any]
+        networking_v1: any, namespace: str, manifest: dict[str, any]
     ) {
         name: str = manifest["metadata"]["name"];
         try {

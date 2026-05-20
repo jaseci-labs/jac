@@ -9,7 +9,7 @@ import os;
 import re;
 import sys;
 import threading;
-import from typing { Any, Callable, Dict, List, Optional, Union }
+import from typing { Callable, Dict, List, Optional, Union }
 
 import from .types {
     Position,
@@ -46,8 +46,8 @@ glob logger = logging.getLogger("jaclang.lsp.server"),
 # ---------------------------------------------------------------------------
 def _to_camel_case(name: str) -> str;
 def _to_snake_case(name: str) -> str;
-def to_dict(`obj: Any) -> Any;
-def from_dict(data: Any, cls: Any) -> Any;
+def to_dict(`obj: any) -> any;
+def from_dict(data: any, cls: any) -> any;
 
 # ---------------------------------------------------------------------------
 # PositionCodec — UTF-16 ↔ UTF-32 position conversion
@@ -82,12 +82,12 @@ obj TextDocument {
     @property
     def lines -> list[str];
 
-    def apply_change(change: Any) -> None;
+    def apply_change(change: any) -> None;
     def _apply_incremental_change(
         change: TextDocumentContentChangeEvent_Type1
     ) -> None;
 
-    def _apply_full_change(change: Any) -> None;
+    def _apply_full_change(change: any) -> None;
 }
 
 # ---------------------------------------------------------------------------
@@ -105,7 +105,7 @@ obj Workspace {
     def get_text_document(doc_uri: str) -> TextDocument;
     def put_text_document(text_document: TextDocumentItem) -> None;
     def update_text_document(
-        text_doc: VersionedTextDocumentIdentifier, change: Any
+        text_doc: VersionedTextDocumentIdentifier, change: any
     ) -> None;
 
     def remove_text_document(doc_uri: str) -> None;
@@ -119,9 +119,9 @@ obj LanguageServer {
     has name: str = "",
         version: str = "",
         _features: dict[str, Callable] = {},
-        _feature_options: dict[str, Any] = {},
+        _feature_options: dict[str, any] = {},
         _workspace: Optional[Workspace] = None,
-        _transport_writer: Optional[Any] = None,
+        _transport_writer: Optional[any] = None,
         _write_lock: threading.Lock by postinit,
         _next_request_id: int = 0,
         _shutdown_flag: bool = False;
@@ -133,18 +133,18 @@ obj LanguageServer {
     @property
     def lsp -> LanguageServer;
 
-    def feature(method: str, options: Any = None) -> Callable;
+    def feature(method: str, options: any = None) -> Callable;
     def start_io -> None;
     def publish_diagnostics(uri: str, diagnostics: list) -> None;
-    def show_message(message: str, msg_type: Any = None) -> None;
-    def show_message_log(message: str, msg_type: Any = None) -> None;
-    def send_request(method: str, params: Any = None) -> None;
+    def show_message(message: str, msg_type: any = None) -> None;
+    def show_message_log(message: str, msg_type: any = None) -> None;
+    def send_request(method: str, params: any = None) -> None;
     def shutdown -> None;
     # Internal transport methods
-    def _send_notification(method: str, params: Any) -> None;
-    def _send_response(msg_id: Any, result: Any) -> None;
+    def _send_notification(method: str, params: any) -> None;
+    def _send_response(msg_id: any, result: any) -> None;
     def _write_message(body: dict) -> None;
-    def _read_message(stream: Any) -> Optional[dict];
+    def _read_message(stream: any) -> Optional[dict];
     def _dispatch(msg: dict) -> None;
     def _handle_initialize(params: dict) -> dict;
     def _build_capabilities -> dict;

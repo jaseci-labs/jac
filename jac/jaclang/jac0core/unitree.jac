@@ -1253,7 +1253,8 @@ obj JsxElement(AtomExpr) {
         attributes: (Sequence[JsxAttribute] | None),
         children: (Sequence[(JsxChild | JsxElement)] | None),
         is_self_closing: bool,
-        is_fragment: bool;
+        is_fragment: bool,
+        dynamic_tag: (Expr | None) = None;
 
     def postinit -> None;
     def get_body_start_line -> (int | None);
@@ -1303,6 +1304,25 @@ obj JsxText(JsxChild) {
 """JsxExpression node type for Jac Ast."""
 obj JsxExpression(JsxChild) {
     has expr: Expr;
+
+    def postinit -> None;
+}
+
+"""JsxSlot: a `{...}` JSX child whose body is a sequence of statements.
+
+When a `{...}` slot in JSX child position contains anything other than a
+single expression -- a JSX statement, control flow yielding JSX, an
+assignment followed by an expression, an explicit `return` guard -- the
+parser emits a `JsxSlot` instead of `JsxExpression`. The slot lowers to
+an IIFE that runs the body and returns either the accumulated JSX
+children fragment (if any JSX was emitted statement-by-statement) or the
+value of the last expression.
+
+Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
+`JsxExpression` so the cheap path (no IIFE) is preserved.
+"""
+obj JsxSlot(JsxChild) {
+    has body: list[UniNode];
 
     def postinit -> None;
 }

@@ -3,7 +3,7 @@
 This provides a standard interface for file/blob storage operations that can be
 overridden by plugins (like jac-scale) to provide cloud storage backends.
 """
-import from typing { Any, BinaryIO, Generator }
+import from typing { BinaryIO, Generator }
 
 """Abstract base class for storage implementations."""
 class Storage {
@@ -57,7 +57,7 @@ class Storage {
     ) -> Generator[str, None, None] abs;
 
     """Get metadata for a file (size, modified, created, is_dir, name)."""
-    def get_metadata(self: Storage, path: str) -> dict[str, Any] abs;
+    def get_metadata(self: Storage, path: str) -> dict[str, any] abs;
 
     """Copy a file within storage."""
     def copy(self: Storage, source: str, destination: str) -> bool abs;

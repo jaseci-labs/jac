@@ -1,6 +1,6 @@
 [project]
 name = "jac-client"
-version = "0.3.16"
+version = "0.3.17"
 description = "Build full-stack web applications with Jac - one language for frontend and backend."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -24,7 +24,7 @@ packages = ["jac_client*"]
 "jac_client" = ["templates/**/*", "templates/**/.*"]
 
 [dependencies]
-jaclang = ">=0.15.2"
+jaclang = ">=0.15.3"
 
 [dev-dependencies]
 "python-dotenv" = "==1.0.1"

@@ -31,7 +31,6 @@ Gateway error codes:
   INTERNAL_ERROR      - 500 - unexpected exception
 """
 
-import from typing { Any }
 import from fastapi.responses { JSONResponse }
 
 """Build a JSONResponse with the standard error envelope.

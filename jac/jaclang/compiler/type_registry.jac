@@ -123,6 +123,8 @@ glob JAC_TYPE_REGISTRY = JacTypeRegistry(
              "id","hash","jid",
              # Portable constructor (server: Cls(*args); cl: Reflect.construct)
              "new",
+             # JSX raw-HTML opt-in (returns a marker recognised by __jacJsx)
+             "unsafe_html",
              # Representation
              "repr","format","ascii",
              # Char/ord conversion

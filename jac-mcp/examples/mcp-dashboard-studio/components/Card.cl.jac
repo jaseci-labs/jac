@@ -1,5 +1,5 @@
 """Card, CardHeader, CardBody layout components."""
-def:pub Card(children: Any, className: str = "") -> JsxElement {
+def:pub Card(children: any, className: str = "") -> JsxElement {
     return
         <div className={"bg-slate-900 border border-slate-800 rounded-lg " + className}>
             {children}
@@ -16,7 +16,7 @@ def:pub CardHeader(title: str, subtitle: str = "") -> JsxElement {
         </div>;
 }
 
-def:pub CardBody(children: Any, className: str = "p-4") -> JsxElement {
+def:pub CardBody(children: any, className: str = "p-4") -> JsxElement {
     return
         <div className={className}>{children}</div>;
 }

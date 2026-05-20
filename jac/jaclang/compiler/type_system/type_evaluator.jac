@@ -325,6 +325,9 @@ obj TypeEvaluator {
     # Check if a type is Any, object, Unknown, or TypeVar.
     def is_any_type(ty: TypeBase) -> bool;
     def is_explicit_any(ty: TypeBase) -> bool;
+    # Check if a type is `NoneType` (the type of the literal `None`),
+    # in either its class or instance form.
+    def is_none_type(ty: TypeBase) -> bool;
     def _is_strict_site(nd: uni.UniNode) -> bool;
     """True when the pass is currently checking a native (.na.jac) module."""
     def _in_native_context -> bool;
@@ -399,7 +402,7 @@ obj TypeEvaluator {
         node_: uni.Name
     ) -> (types.EnumMemberType | None);
     # gets member type and specializes it with class type_args
-    def get_type_of_member(member: Any, class_type: types.ClassType) -> TypeBase;
+    def get_type_of_member(member: any, class_type: types.ClassType) -> TypeBase;
     # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
     # Now uses type_utils.apply_solved_type_vars
     def specialize_member_type(
@@ -529,7 +532,7 @@ obj TypeEvaluator {
 
     def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
-        method_member: Any, caller_type: types.ClassType
+        method_member: any, caller_type: types.ClassType
     ) -> TypeBase;
 
     # -------------------------------------------------------------------------

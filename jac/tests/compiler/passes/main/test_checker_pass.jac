@@ -1263,14 +1263,39 @@ test "union_reassignment" {
     );
 }
 
-test "unannotated_reassignment_widens" {
+test "inferred_local_type_frozen" {
+    # An unannotated local is frozen to the type inferred at its first
+    # binding; reassigning an incompatible type is an error. The
+    # `None`-sentinel pattern is the one exception (the type evolves).
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_inferred_type_frozen.jac"),
+        options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got {len(
+        program.errors_had
+    )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
+    assert program.errors_had[0].code.code == "E1001";
+    assert_error_pretty_found(
+        """
+        a = "some str";  # <-- Error
+    """,
+        program.errors_had[0].pretty_print()
+    );
+}
+
+test "unannotated_reassignment_frozen" {
+    # `None`-sentinel variables evolve their inferred type; every other
+    # unannotated variable is frozen to its first-binding type, and
+    # annotated variables enforce their annotation.
     program = JacProgram();
     mod = program.compile(
         os.path.join(CHECKER_FIXTURES, "checker_none_sentinel_reassignment.jac"),
         options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got {len(
+    assert len(program.errors_had) == 3 , f"Expected 3 type errors, but got {len(
         program.errors_had
     )}: " + "\n".join([err.pretty_print() for err in program.errors_had]);
     assert_error_pretty_found(
@@ -1286,6 +1311,13 @@ test "unannotated_reassignment_widens" {
         ^^^^^^^^^^^
     """,
         program.errors_had[1].pretty_print()
+    );
+    assert_error_pretty_found(
+        """
+        count = "bad";  # <-- Error
+        ^^^^^^^^^^^^^^
+    """,
+        program.errors_had[2].pretty_print()
     );
 }
 
@@ -1782,7 +1814,7 @@ test "property_assignment_type_checking" {
     #   3. b.readonly_val = 1           — read-only   (@property no setter)
     #   4. h.base.cached_num = "wrong"  — str to int  (chained @cached_property)
     #   5. h.base.readonly_val = 2      — read-only   (chained @property no setter)
-    assert len(program.errors_had) == 5 , f"Expected 5 errors, got " + f"{len(
+    assert len(program.errors_had) == 5 , "Expected 5 errors, got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -1869,7 +1901,7 @@ test "property_cfg_narrowing" {
     TypeCheckPass(ir_in=mod, prog=program);
     # Property access inside truthiness guards should narrow (e.g., int | None -> int)
     # No E1053 or E1002 errors — properties are narrowed like regular fields
-    assert len(program.errors_had) == 0 , f"Expected 0 errors, got " + f"{len(
+    assert len(program.errors_had) == 0 , "Expected 0 errors, got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -1885,7 +1917,7 @@ test "native_property_setter_type_checking" {
         options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 2 , f"Expected 2 errors, got " + f"{len(
+    assert len(program.errors_had) == 2 , "Expected 2 errors, got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     # 1. assignment of str to a float-typed writable property
@@ -1905,7 +1937,7 @@ test "type_narrowing" {
 
     # 13 errors: partial union member access now returns resolved types
     # instead of Unknown, preventing one cascading E1002 error.
-    assert len(program.errors_had) == 13 , f"Expected exactly 13 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 13 , "Expected exactly 13 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -2456,7 +2488,7 @@ test "match_type_narrowing" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     # Should have exactly 2 errors (E1 and E2 in the test file)
-    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 2 , "Expected exactly 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -2484,7 +2516,7 @@ test "union_subclass_to_base_assignment" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     # Should have exactly 1 error (E1 - wrong type inside match case)
-    assert len(program.errors_had) == 1 , f"Expected exactly 1 type error, but got " + f"{len(
+    assert len(program.errors_had) == 1 , "Expected exactly 1 type error, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -2506,7 +2538,7 @@ test "compound_and_narrowing" {
 
     # CFG correctly reports x.offspring error after early-exit if-body
     # (line 203: Animal has no offspring — only reachable on false branch).
-    assert len(program.errors_had) == 2 , f"Expected 2 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 2 , "Expected 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -2520,7 +2552,7 @@ test "assert_isinstance_narrowing" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     # Expect exactly 1 error: the failure case where truthy assert doesn't narrow union
-    assert len(program.errors_had) == 1 , f"Expected 1 type error (truthy assert failure case), but got " + f"{len(
+    assert len(program.errors_had) == 1 , "Expected 1 type error (truthy assert failure case), but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -2539,7 +2571,7 @@ test "assignment_narrowing" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     # All cases should pass - assignment narrows union types appropriately
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 0 , "Expected 0 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -2552,7 +2584,7 @@ test "parenthesized_bool_cond" {
         options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 0 , "Expected 0 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -2567,7 +2599,7 @@ test "assignment_barrier" {
     # The widening reassignment in `widen_via_reassign` resets `x` to
     # `int | None`, so `return x` against the `int` return type is the
     # only expected error.
-    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+    assert len(program.errors_had) == 1 , "Expected 1 type error, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
@@ -2584,7 +2616,7 @@ test "pre_expr_narrowing" {
     # All three shapes (early-return guard, OR-inverse guard, if-wrap)
     # must carry the enclosing statement's narrowing into ternary
     # branches so member access on the narrowed type succeeds.
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 0 , "Expected 0 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -2599,7 +2631,7 @@ test "ternary_bool_cond_narrowing" {
     TypeCheckPass(ir_in=mod, prog=program);
     # All four shapes must narrow cleanly: AND-in-true, OR-inverse-in-else
     # (bare and parenthesized), and the plain if/else control.
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 0 , "Expected 0 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -2615,7 +2647,7 @@ test "starred_unpack_barrier" {
     # After `(head, *rest) = ...` inside `if rest is not None`, rest
     # must reset to list[int] | None. The typed-local assignment then
     # fails because list[int] | None is not assignable to list[int].
-    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+    assert len(program.errors_had) == 1 , "Expected 1 type error, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
@@ -2632,7 +2664,7 @@ test "tuple_unpack_barrier" {
     TypeCheckPass(ir_in=mod, prog=program);
     # After `(x, _) = reset_pair()` inside `if x is not None`, x must
     # reset to int | None. `return x` then fails against int.
-    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+    assert len(program.errors_had) == 1 , "Expected 1 type error, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
@@ -2650,7 +2682,7 @@ test "destructure_element_narrowing" {
     # Four narrowing cases must succeed; only `no_narrow_non_strict`
     # should error because its RHS element type matches the declared
     # type and therefore fails the strict-narrowing check.
-    assert len(program.errors_had) == 1 , f"Expected 1 type error, but got " + f"{len(
+    assert len(program.errors_had) == 1 , "Expected 1 type error, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     msg = program.errors_had[0].pretty_print();
@@ -2665,7 +2697,7 @@ test "match_case_reassign_reset" {
         options=NO_TC
     );
     TypeCheckPass(ir_in=mod, prog=program);
-    assert len(program.errors_had) == 4 , f"Expected 4 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 4 , "Expected 4 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
     assert 'Cannot assign int to Shape' in program.errors_had[0].pretty_print();
@@ -2684,7 +2716,7 @@ test "guard_narrowing" {
     TypeCheckPass(ir_in=mod, prog=program);
 
     # All cases should pass - if guard narrows T|None to T
-    assert len(program.errors_had) == 0 , f"Expected 0 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 0 , "Expected 0 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 }
@@ -3968,6 +4000,33 @@ test "bare_generic_in_signatures_emits_w1036" {
     )}:\n" + "\n---\n".join(w.pretty_print() for w in bare_generic_warnings);
 }
 
+test "explicit_any_annotations_emit_w1037" {
+    # Explicit `any` annotations disable type checking, so each one — on a
+    # param, return type, field, assignment, or nested inside a generic or
+    # union — should produce a W1037 warning. Specific types must not warn.
+    program = JacProgram();
+    mod = program.compile(
+        os.path.join(CHECKER_FIXTURES, "checker_explicit_any.jac"), options=NO_TC
+    );
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    explicit_any_warnings = [
+        w
+        for w in program.warnings_had
+        if "W1037" in w.pretty_print()
+    ];
+    # Expected sites (6 total):
+    #   1. `x: any`          param type on `takes_any`
+    #   2. `-> any`          return type on `takes_any`
+    #   3. `y: any = 5`      annotated assignment
+    #   4. `list[any]`       nested any in a generic param
+    #   5. `any | None`      any branch of a union return type
+    #   6. `payload: any`    field annotation
+    assert len(explicit_any_warnings) == 6 , f"Expected 6 W1037 warnings, got {len(
+        explicit_any_warnings
+    )}:\n" + "\n---\n".join(w.pretty_print() for w in explicit_any_warnings);
+}
+
 """Test callable() type narrowing - validates narrowing unions by callability."""
 test "callable_narrowing" {
     program = JacProgram();
@@ -3976,7 +4035,7 @@ test "callable_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 4 , f"Expected exactly 4 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 4 , "Expected exactly 4 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -4022,7 +4081,7 @@ test "type_alias_narrowing" {
     );
     TypeCheckPass(ir_in=mod, prog=program);
 
-    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 2 , "Expected exactly 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -4055,7 +4114,7 @@ test "param_isinstance_narrowing" {
     # The guarded cases should all pass thanks to isinstance narrowing.
     # Error 1: attribute "bark" not found on object
     # Error 2: cascade — return type Unknown vs expected str
-    assert len(program.errors_had) == 2 , f"Expected exactly 2 type errors, but got " + f"{len(
+    assert len(program.errors_had) == 2 , "Expected exactly 2 type errors, but got " + f"{len(
         program.errors_had
     )}:\n" + "\n---\n".join(err.pretty_print() for err in program.errors_had);
 
@@ -4744,7 +4803,7 @@ test "as_cast_resolves_any_assignment" {
         for e in program.errors_had
         if e.code and e.code.code == "E0002"
     ];
-    assert len(parse_errs) == 0 , f"`expr as Type` should parse, got E0002:\n" + "\n---\n".join(
+    assert len(parse_errs) == 0 , "`expr as Type` should parse, got E0002:\n" + "\n---\n".join(
         e.pretty_print() for e in parse_errs
     );
 }

@@ -27,6 +27,11 @@ license = "MIT"
 readme = "README.md"
 requires-python = ">=3.12"
 keywords = ["jac", "jaseci", "ai"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Framework :: Jac",
+]
 authors = [{ name = "Your Name", email = "you@example.com" }]
 maintainers = [{ name = "Your Name", email = "you@example.com" }]
 
@@ -39,6 +44,13 @@ issues = "https://github.com/you/mylib/issues"
 jaclang = ">=0.15.1"
 requests = ">=2.28.0"
 ```
+
+Classifiers appear as `Classifier:` headers in the wheel's `METADATA` and control how your package is displayed and filtered on PyPI (license badge, Python version tags, topic categories). Browse the full list at [pypi.org/classifiers](https://pypi.org/classifiers/).
+
+!!! warning "`classifiers` must be a TOML array"
+    Writing `classifiers` as a plain string instead of an array is a TOML type
+    error and will produce malformed wheel metadata. Always use `[...]` syntax
+    as shown above.
 
 Runtime dependencies declared under `[dependencies]` are written into the wheel's `METADATA` as `Requires-Dist` entries, so `pip install mylib` pulls them in automatically. `[dev-dependencies]` are **not** shipped. `[optional-dependencies.<group>]` become wheel extras (`pip install mylib[<group>]`).
 

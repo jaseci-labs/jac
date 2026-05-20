@@ -1,6 +1,6 @@
 [project]
 name = "jac-scale"
-version = "0.2.18"
+version = "0.2.19"
 description = "Plugin for Jac enabling fully abstracted and automated deployment and scaling with FastAPI, Redis, MongoDB, and Kubernetes integration."
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -29,7 +29,7 @@ jac_scale = [
 
 [dependencies]
 rich = ">=13.0.0"
-jaclang = ">=0.15.2"
+jaclang = ">=0.15.3"
 python-dotenv = ">=1.2.1,<2.0.0"
 fastapi = ">=0.121.3,<0.122.0"
 "uvicorn[standard]" = ">=0.38.0,<0.39.0"

@@ -113,8 +113,8 @@ obj NodeAnchor(Anchor) {
 
     def __getstate__ -> dict[(str, object)];
     def is_populated -> bool;
-    def get_topology_index -> Any;
-    def set_topology_index(index: Any) -> None;
+    def get_topology_index -> any;
+    def set_topology_index(index: any) -> None;
     def edge_delta -> (tuple[(set[UUID], set[UUID])] | None);
 }
 
@@ -154,8 +154,8 @@ obj Archetype {
     @cached_property
     def __jac__ -> Anchor;
 
-    def __init_subclass__(cls: Any, **kwargs: object) -> None;
-    def __setattr__(name: str, value: Any) -> None;
+    def __init_subclass__(cls: any, **kwargs: object) -> None;
+    def __setattr__(name: str, value: any) -> None;
     def postinit -> None;
     def __repr__ -> str;
     def __jac_access__ -> (AccessLevel | str | int | None);
@@ -186,7 +186,7 @@ class WalkerArchetype(Archetype) {
     with entry {
         __jac_async__: ClassVar[bool] = False;
         __jac_base__: ClassVar[bool] = True;
-        reports: list[Any] = field(default_factory=`list);
+        reports: list[any] = field(default_factory=`list);
     }
 
     @cached_property
@@ -231,7 +231,7 @@ obj Root(NodeArchetype) {
 """Object-Spatial Function."""
 obj ObjectSpatialFunction {
     has name: str,
-        func: Callable[([Any, Any], Any)];
+        func: Callable[([any, any], Any)];
 
     @cached_property
     def trigger -> (type | UnionType | tuple[((type | UnionType), ...)] | None);

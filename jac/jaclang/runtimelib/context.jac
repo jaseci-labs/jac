@@ -3,7 +3,7 @@
 import from contextvars { ContextVar }
 import from dataclasses { MISSING }
 import from queue { Queue }
-import from typing { Any, cast }
+import from typing { cast }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, PermissionDenied, Root }
@@ -38,13 +38,13 @@ Fields:
 """
 obj ExecutionContext {
     has mem: Memory by postinit,
-        reports: list[Any] = [],
+        reports: list[any] = [],
         # Request-scoped accumulator of permission-denial diagnostics.
         # Drained by the server response builder into `warnings: [...]`
         # on the wire so callers can see why a write silently no-opped.
         # Always per-instance (not shared with `_parent` fork).
         diagnostics: list[PermissionDenied] = [],
-        custom: Any = MISSING,
+        custom: any = MISSING,
         system_root: NodeAnchor by postinit,
         user_root: NodeAnchor by postinit,
         entry_node: NodeAnchor by postinit,

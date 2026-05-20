@@ -5,7 +5,6 @@ singleton + wrapper functions preserve the prior function-call API."""
 import logging;
 import threading;
 import time;
-import from typing { Any }
 import from threading { Lock as _DrainLock }
 
 glob logger = logging.getLogger(__name__),
@@ -26,8 +25,8 @@ obj DrainCoordinator {
         _drain_started_ts: float | None = None,
         _drain_timeout_s: float = 10.0,
         _inflight: int = 0,
-        _lock: Any by postinit,
-        _zero_event: Any by postinit;
+        _lock: any by postinit,
+        _zero_event: any by postinit;
 
     def postinit {
         self._lock = _DrainLock();
@@ -161,10 +160,10 @@ def reset_drain {
 }
 
 
-def build_drain_middleware(service_label: str = "service") -> Any {
+def build_drain_middleware(service_label: str = "service") -> any {
     import from jac_scale.microservices.runtime.errors { service_unavailable }
 
-    async def drain_middleware(request: Any, call_next: Any) -> Any {
+    async def drain_middleware(request: any, call_next: any) -> any {
         # `getattr` (vs attr access) keeps the unit-test bare-`object()`
         # request shape working alongside production Starlette Requests.
         url = request?.url;
@@ -190,11 +189,11 @@ def build_drain_middleware(service_label: str = "service") -> Any {
 """Wrap uvicorn.Server.handle_exit so SIGTERM/SIGINT flips the drain
 flag before uvicorn's own exit handler runs. Call after constructing
 the Server, before `server.run()`."""
-def install_signal_drain(server: Any, timeout_s: float = 10.0) {
+def install_signal_drain(server: any, timeout_s: float = 10.0) {
     _default_coordinator.set_timeout(timeout_s);
     orig_handle_exit = server.handle_exit;
 
-    def wrapped_handle_exit(sig: Any, frame: Any) {
+    def wrapped_handle_exit(sig: any, frame: any) {
         _default_coordinator.start_drain(timeout_s);
         orig_handle_exit(sig, frame);
     }

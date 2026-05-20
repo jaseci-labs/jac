@@ -1001,6 +1001,12 @@ glob JAC_RUNTIME_JS_OBJECT: str = r"""{
       }
       return obj._jac_id;
     },
+    // unsafe_html(x) returns a sentinel object that the JSX flattener
+    // recognises and renders as raw HTML via dangerouslySetInnerHTML.
+    // Named "unsafe" so the security implication is visible at the use site.
+    unsafe_html(html) {
+      return { __jacUnsafeHtml: String(html == null ? "" : html) };
+    },
     hash(obj) { return _jac.builtin.id(obj); },
     repr(obj) { return JSON.stringify(obj); },
     pow(base, exp, mod) {

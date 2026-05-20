@@ -2,7 +2,6 @@
 tests stub get_microservices_config; this catches bugs in the loader
 itself - e.g. when the ingress block was dropped from the return dict)."""
 
-import from typing { Any }
 import from jac_scale.config_loader { JacScaleConfig }
 
 

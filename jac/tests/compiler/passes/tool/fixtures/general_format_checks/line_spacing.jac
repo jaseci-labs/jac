@@ -8,7 +8,7 @@ glob DIA = 10;
 # this comment is for walker
 walker decorator_walk {
     def hash(func: Callable) -> Callable {
-        def inner(a: Any) {
+        def inner(a: any) {
             print(("#" * 20));
             func(a);
             print(("#" * 20));
@@ -17,7 +17,7 @@ walker decorator_walk {
     }
 
     def exclaim(func: Callable) -> Callable {
-        def inner(b: Any) {
+        def inner(b: any) {
             print(("!" * 20));
             func(b);
             print(("!" * 20));
@@ -26,7 +26,7 @@ walker decorator_walk {
     }
 
     def tilde(func: Callable) -> Callable {
-        def inner(c: Any) {
+        def inner(c: any) {
             print(("~" * 20));
             func(c);
             print(("~" * 20));
@@ -34,7 +34,7 @@ walker decorator_walk {
         return inner;
     }
 
-    def greeter(name: Any) {
+    def greeter(name: any) {
         print("Hello, " + name + "!");
     }
 
