@@ -11,7 +11,6 @@ successful `pull` warms the cache and removes the first-run prompt.
 
 import os;
 import sys;
-import from typing { Any }
 import from jaclang.cli.registry { get_registry, CommandRegistry }
 import from jaclang.cli.command { Arg, ArgKind }
 import from jaclang.cli.console { console }

@@ -222,7 +222,7 @@ test "connect_disconnect_missing_rhs" {
         for e in prog.errors_had
         if e.code and e.code.code == "E0004"
     ];
-    assert len(bad) == 0 , f"E0004 leaked through after E0026 fix:\n" + "\n---\n".join(
+    assert len(bad) == 0 , "E0004 leaked through after E0026 fix:\n" + "\n---\n".join(
         e.pretty_print() for e in bad
     );
 }
@@ -547,8 +547,8 @@ na def na_fn -> int { return 3; }
     }
 }
 
-test "cl/sv/na braced-block deprecation warning" {
-    # Braced block form emits W0064 for each block
+test "cl/sv/na block and section-header forms parse without warning" {
+    # Braced block form parses cleanly -- it is no longer deprecated
     source = """
 cl { def a() -> int { return 1; } }
 sv { def b() -> int { return 2; } }
@@ -564,9 +564,9 @@ na { def c() -> int { return 3; } }
             w_codes.append(c.code);
         }
     }
-    assert w_codes.count("W0064") == 3;
+    assert "W0064" not in w_codes;
 
-    # Section headers and single-statement prefix forms do not warn
+    # Section headers and single-statement prefix forms also parse cleanly
     source = """
 to cl:
 def a() -> int { return 1; }
@@ -941,8 +941,8 @@ test "decorated class in code block parses as archetype" {
     (mod, err) = rd_parse(load_fixture("decorated_decl_in_code_block.jac"), "");
     assert not err , "Parser reported errors for decorated declarations in code blocks";
 
-    def collect(nd: uni.UniNode) -> list {
-        results: list = [];
+    def collect(nd: uni.UniNode) -> list[uni.Archetype] {
+        results: list[uni.Archetype] = [];
         if isinstance(nd, uni.Archetype) {
             results.append(nd);
         }

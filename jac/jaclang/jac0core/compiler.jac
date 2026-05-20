@@ -6,7 +6,6 @@ import os;
 import sys;
 import types;
 import from threading { Event }
-import from typing { Any }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.jir {
     SEC_BYTECODE,
@@ -68,6 +67,7 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
     }
     _ir_sched_loading = True;
     try {
+        import from jaclang.compiler.passes.main.view_lower_pass { ViewLowerPass }
         import from jaclang.compiler.passes.main.cfg_build_pass { CFGBuildPass }
         import from jaclang.compiler.passes.main.mtir_gen_pass { MTIRGenPass }
         import from jaclang.compiler.passes.main.sem_def_match_pass { SemDefMatchPass }
@@ -77,7 +77,10 @@ def get_ir_gen_sched -> list[type[Transform[uni.Module, uni.Module]]] {
         # Pre-compile shared analysis modules so codegen passes can import them
         import jaclang.compiler.symbol_utils;
         import jaclang.compiler.passes.main.layout_pass;
+        # ViewLowerPass runs first: it desugars `view` declarators into plain
+        # `def:pub -> JsxElement` abilities before any other pass sees them.
         return [
+            ViewLowerPass,
             ASTValidationPass,
             SymTabBuildPass,
             DeclImplMatchPass,
@@ -341,7 +344,7 @@ obj JacCompiler {
     def internal_program -> JacProgram;
 
     @classmethod
-    def _get_jaclang_root(cls: Any) -> str;
+    def _get_jaclang_root(cls: any) -> str;
 
     def _resolve_program(file_path: str, target_program: JacProgram) -> JacProgram;
     def get_native_interop_setup(
@@ -360,14 +363,14 @@ obj JacCompiler {
         full_target: str,
         target_program: JacProgram,
         cached_ir: str,
-        cached_interop: (dict[str, Any] | None)
+        cached_interop: (dict[str, any] | None)
     ) -> None;
 
     def _load_native_from_bitcode(
         full_target: str,
         target_program: JacProgram,
         section_data: bytes,
-        cached_interop: (dict[str, Any] | None)
+        cached_interop: (dict[str, any] | None)
     ) -> None;
 
     def _restore_sections(

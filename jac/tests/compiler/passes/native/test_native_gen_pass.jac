@@ -809,7 +809,7 @@ test "chess play random moves stress" {
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
     assert "Game ended." in result.stdout , (
-        f"Expected 'Game ended.' in output.\n"
+        "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
 }
@@ -1652,12 +1652,12 @@ test "cache marker non native file has no llvmir section in jir" {
         data = cache_path.read_bytes();
         magic_bytes = SECTIONS_MAGIC;
         pos = data.find(magic_bytes, HEADER_SIZE);
-        secs: dict = {};
+        secs: dict[int, bytes] = {};
         if pos >= 0 {
             secs = read_sections(data, pos + len(magic_bytes));
         }
         assert SEC_LLVM_IR not in secs , (
-            f"Non-native file should not have SEC_LLVM_IR in JIR cache"
+            "Non-native file should not have SEC_LLVM_IR in JIR cache"
         );
     } except Exception as e {
         os.unlink(jac_file);
@@ -1990,13 +1990,13 @@ test "auto promote chess.jac runs via cli" {
         f"stderr: {result.stderr[-500:] if result.stderr else '(empty)'}"
     );
     assert "Game ended." in result.stdout , (
-        f"Expected 'Game ended.' in output.\n"
+        "Expected 'Game ended.' in output.\n"
         f"stdout tail: {result.stdout[-500:] if result.stdout else '(empty)'}"
     );
     # Verify the native execution message appears (may be line-wrapped by Rich)
     combined = " ".join((result.stdout + result.stderr).split());
     assert "executed natively" in combined , (
-        f"Expected native execution message.\n" f"output tail: {combined[-500:]}"
+        "Expected native execution message.\n" f"output tail: {combined[-500:]}"
     );
 }
 
@@ -2178,9 +2178,9 @@ test "string_enums comparison" {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "color_cmp", ctypes.c_int64, ctypes.c_int64);
-    assert f(0) == 10 , f"color_cmp(RED=0) should be 10";
-    assert f(1) == 20 , f"color_cmp(GREEN=1) should be 20";
-    assert f(2) == 30 , f"color_cmp(BLUE=2) should be 30";
+    assert f(0) == 10 , "color_cmp(RED=0) should be 10";
+    assert f(1) == 20 , "color_cmp(GREEN=1) should be 20";
+    assert f(2) == 30 , "color_cmp(BLUE=2) should be 30";
 }
 
 test "string_enums value access" {
@@ -2189,8 +2189,8 @@ test "string_enums value access" {
     entry_fn();
     f = get_func(eng, "color_value", ctypes.c_char_p, ctypes.c_int64);
     assert f(0) == b"red" , f"Color.RED.value should be 'red', got {f(0)}";
-    assert f(1) == b"green" , f"Color.GREEN.value should be 'green'";
-    assert f(2) == b"blue" , f"Color.BLUE.value should be 'blue'";
+    assert f(1) == b"green" , "Color.GREEN.value should be 'green'";
+    assert f(2) == b"blue" , "Color.BLUE.value should be 'blue'";
 }
 
 test "string_enums name access" {
@@ -2199,8 +2199,8 @@ test "string_enums name access" {
     entry_fn();
     f = get_func(eng, "color_name", ctypes.c_char_p, ctypes.c_int64);
     assert f(0) == b"RED" , f"Color.RED.name should be 'RED', got {f(0)}";
-    assert f(1) == b"GREEN" , f"Color.GREEN.name should be 'GREEN'";
-    assert f(2) == b"BLUE" , f"Color.BLUE.name should be 'BLUE'";
+    assert f(1) == b"GREEN" , "Color.GREEN.name should be 'GREEN'";
+    assert f(2) == b"BLUE" , "Color.BLUE.name should be 'BLUE'";
 }
 
 test "string_enums direction value" {
@@ -2208,8 +2208,8 @@ test "string_enums direction value" {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "direction_value", ctypes.c_char_p, ctypes.c_int64);
-    assert f(0) == b"N" , f"Direction.NORTH.value should be 'N'";
-    assert f(1) == b"S" , f"Direction.SOUTH.value should be 'S'";
+    assert f(0) == b"N" , "Direction.NORTH.value should be 'N'";
+    assert f(1) == b"S" , "Direction.SOUTH.value should be 'S'";
 }
 
 test "string_enums int enum still works" {
@@ -2231,7 +2231,7 @@ test "enum_import enum comparison" {
     entry_fn = get_func(eng, "jac_entry", None);
     entry_fn();
     f = get_func(eng, "use_imported_enum", ctypes.c_int64);
-    assert f() == 1 , f"TokenKind.KW_IF == TokenKind.KW_IF should return 1";
+    assert f() == 1 , "TokenKind.KW_IF == TokenKind.KW_IF should return 1";
 }
 
 test "enum_import ordinal" {

@@ -34,14 +34,14 @@ obj TestResponse {
     has status_code: int,
         headers: dict[str, str],
         text: str,
-        _json_cache: (dict[str, Any] | None) = None;
+        _json_cache: (dict[str, any] | None) = None;
 
-    def json -> dict[str, Any];
+    def json -> dict[str, any];
     @property
     def ok -> bool;
 
     @property
-    def data -> (dict[str, Any] | None);
+    def data -> (dict[str, any] | None);
 }
 
 """Test client for JacAPIServer - no socket/port required.
@@ -65,27 +65,27 @@ obj JacTestClient {
     def _ensure_initialized -> None;
     def get(
         path: str,
-        params: (dict[str, Any] | None) = None,
+        params: (dict[str, any] | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
     def post(
         path: str,
-        json: (dict[str, Any] | None) = None,
+        json: (dict[str, any] | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
     def put(
         path: str,
-        json: (dict[str, Any] | None) = None,
+        json: (dict[str, any] | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
     def request(
         method: str,
         path: str,
-        json: (dict[str, Any] | None) = None,
-        params: (dict[str, Any] | None) = None,
+        json: (dict[str, any] | None) = None,
+        params: (dict[str, any] | None) = None,
         headers: (dict[str, str] | None) = None
     ) -> TestResponse;
 
@@ -105,7 +105,7 @@ obj JacTestClient {
     def server -> JacAPIServer;
 
     @property
-    def user_manager -> Any;
+    def user_manager -> any;
 
     def reload -> None;
     def close -> None;

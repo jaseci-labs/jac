@@ -12,7 +12,7 @@ impl JacToJSCompiler.add_runtime_imports(js_code: str) -> str {
 """Extract client globals from manifest and module."""
 impl JacToJSCompiler.extract_globals(
     manifest: (ClientManifest | None), module: ModuleType
-) -> dict[str, Any] {
+) -> dict[str, any] {
     return self._extract_client_globals(manifest, module);
 }
 

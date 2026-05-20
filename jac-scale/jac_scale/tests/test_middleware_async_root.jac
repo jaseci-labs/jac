@@ -17,7 +17,6 @@ Context: there are two call sites for aset_user_root:
      of auth status and is intentionally excluded from these assertions.
 """
 
-import from typing { Any }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jac_scale.tests.scale_test_client {
     ScaleTestClient,
@@ -34,7 +33,7 @@ test "middleware calls aset_user_root on top-level context for authenticated req
     middleware_calls: list[str] = [];
     original_aset = ExecutionContext.aset_user_root;
 
-    async def tracking_aset(self: Any, root_id: str) {
+    async def tracking_aset(self: any, root_id: str) {
         if self._parent is None {
             middleware_calls.append(root_id);
         }
@@ -86,7 +85,7 @@ test "middleware skips aset_user_root on top-level context for unauthenticated r
     middleware_calls: list[str] = [];
     original_aset = ExecutionContext.aset_user_root;
 
-    async def tracking_aset(self: Any, root_id: str) {
+    async def tracking_aset(self: any, root_id: str) {
         if self._parent is None {
             middleware_calls.append(root_id);
         }

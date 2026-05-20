@@ -7,7 +7,7 @@ represents the first such production Jac program.
 import inspect;
 import from argparse { ArgumentParser, ArgumentError }
 import cmd;
-import from typing { Any, Callable }
+import from typing { Callable }
 
 obj Interface {
     has functions: list[callable] = [];

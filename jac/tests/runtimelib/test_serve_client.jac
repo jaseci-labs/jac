@@ -1854,7 +1854,7 @@ test "concurrent multi-user requests do not race on ctx.user_root" {
         }
         # Sanity: each user got a unique root.
         assert len(set(root_ids.values())) == 3;
-        async def run_probe(walker_cls: Any) -> list {
+        async def run_probe(walker_cls: any) -> list {
             tasks = [
                 exec_mgr.spawn_walker(walker_cls, {"sleep_s": 0.1}, uname)
                 for uname in users

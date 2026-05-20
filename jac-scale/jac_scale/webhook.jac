@@ -15,7 +15,6 @@ import logging;
 import secrets;
 import jwt;
 import from datetime { UTC, datetime, timedelta }
-import from typing { Any }
 import from pydantic { BaseModel, Field }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 import from jac_scale.config_loader { get_scale_config }

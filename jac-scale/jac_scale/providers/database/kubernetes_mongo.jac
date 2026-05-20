@@ -7,7 +7,7 @@ import from jac_scale.config_loader { get_scale_config }
 """MongoDB provider for Kubernetes deployments."""
 obj KubernetesMongoProvider(DatabaseProvider) {
     has target: (DeploymentTarget | None) = None,
-        config: dict[str, Any] = {},
+        config: dict[str, any] = {},
         app_name: str by postinit,
         connection_string: str = '';
 
@@ -15,7 +15,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
         self.app_name = self.config.get('app_name', 'jaseci');
     }
 
-    def deploy(config: dict[str, Any] = {}) -> dict[str, Any] {
+    def deploy(config: dict[str, any] = {}) -> dict[str, any] {
         mongodb_name = f"{self.app_name}-mongodb";
         mongodb_port = 27017;
         mongodb_service_name = f"{mongodb_name}-service";
@@ -218,7 +218,7 @@ obj KubernetesMongoProvider(DatabaseProvider) {
     """
     def deploy_dashboard(
         username: str = 'admin', password: str = 'admin'
-    ) -> dict[str, Any] {
+    ) -> dict[str, any] {
         mongodb_service_name = f"{self.app_name}-mongodb-service";
         mongodb_secret_name = f"{self.app_name}-mongodb-secret";
         express_name = f"{self.app_name}-mongo-express";

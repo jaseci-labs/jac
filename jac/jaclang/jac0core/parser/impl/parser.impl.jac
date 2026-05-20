@@ -1585,7 +1585,7 @@ impl Parser.parse_atomic_chain -> Expr {
 }
 
 """Create an attribute Name node from a keyword token (used for dot-access on keywords)."""
-impl Parser._make_attr_from_keyword(name_tok: Any) {
+impl Parser._make_attr_from_keyword(name_tok: any) {
     special_kinds = [
         TokenKind.KW_INIT,
         TokenKind.KW_POST_INIT,
@@ -3190,26 +3190,33 @@ impl Parser.parse_jsx_element -> Expr {
             kid=kid
         );
     }
-    # Regular element: <Tag>...</Tag> or <Tag />
+    # Regular element: <Tag>...</Tag> / <Tag /> — or a dynamic tag <@expr ...>.
     open_start_uni = self.consume_uni(TokenKind.JSX_OPEN_START);
     open_kid: list = [open_start_uni];
-    # Parse tag name (may be dotted: UI.Button, Form.Input.Text).
-    # Name parts are emitted as `Name` nodes (not bare tokens) so the
-    # symbol resolver, semantic-token emitter, and goto-definition in
-    # the LSP can link a JSX tag to its component declaration.
-    name_tok = self.expect(TokenKind.JSX_NAME);
-    name = self.make_name(name_tok);
-    name_parts: list = [name];
-    name_kid: list = [name];
-    while self.match_tok(TokenKind.DOT) {
-        name_kid.append(self.make_uni_token(self.previous()));
-        next_name_tok = self.expect(TokenKind.JSX_NAME);
-        next_name = self.make_name(next_name_tok);
-        name_parts.append(next_name);
-        name_kid.append(next_name);
+    # Parse tag name. A `@` introduces a dynamic-tag expression; otherwise the
+    # name is a (possibly dotted: UI.Button) component/host name. Name parts
+    # are emitted as `Name` nodes (not bare tokens) so the symbol resolver,
+    # semantic-token emitter, and goto-definition in the LSP can link a JSX
+    # tag to its component declaration.
+    elem_name: JsxElementName | None = None;
+    dyn_tag: Expr | None = None;
+    if self.check(TokenKind.DECOR_OP) {
+        dyn_tag = self._parse_jsx_dynamic_tag(open_kid);
+    } else {
+        name_tok = self.expect(TokenKind.JSX_NAME);
+        name = self.make_name(name_tok);
+        name_parts: list = [name];
+        name_kid: list = [name];
+        while self.match_tok(TokenKind.DOT) {
+            name_kid.append(self.make_uni_token(self.previous()));
+            next_name_tok = self.expect(TokenKind.JSX_NAME);
+            next_name = self.make_name(next_name_tok);
+            name_parts.append(next_name);
+            name_kid.append(next_name);
+        }
+        elem_name = JsxElementName(parts=name_parts, kid=name_kid);
+        open_kid.append(elem_name);
     }
-    elem_name = JsxElementName(parts=name_parts, kid=name_kid);
-    open_kid.append(elem_name);
     # Parse attributes
     attrs = self.parse_jsx_attributes();
     open_kid.extend(attrs);
@@ -3223,6 +3230,7 @@ impl Parser.parse_jsx_element -> Expr {
             children=None,
             is_self_closing=True,
             is_fragment=False,
+            dynamic_tag=dyn_tag,
             kid=open_kid
         );
     }
@@ -3235,28 +3243,34 @@ impl Parser.parse_jsx_element -> Expr {
         children=None,
         is_self_closing=False,
         is_fragment=False,
+        dynamic_tag=dyn_tag,
         kid=open_kid
     );
     kid.append(opening);
     # Parse children
     children = self.parse_jsx_children();
     kid.extend(children);
-    # Parse closing tag: </Tag>
+    # Parse closing tag: </Tag> or </@expr>
     close_start_uni = self.consume_uni(TokenKind.JSX_CLOSE_START);
     close_kid: list = [close_start_uni];
-    close_name_tok = self.expect(TokenKind.JSX_NAME);
-    close_name_node = self.make_name(close_name_tok);
-    close_parts: list = [close_name_node];
-    close_name_kid: list = [close_name_node];
-    while self.match_tok(TokenKind.DOT) {
-        close_name_kid.append(self.make_uni_token(self.previous()));
-        cn_tok = self.expect(TokenKind.JSX_NAME);
-        cn = self.make_name(cn_tok);
-        close_parts.append(cn);
-        close_name_kid.append(cn);
+    close_elem_name: JsxElementName | None = None;
+    if self.check(TokenKind.DECOR_OP) {
+        self._consume_jsx_dynamic_close(close_kid);
+    } else {
+        close_name_tok = self.expect(TokenKind.JSX_NAME);
+        close_name_node = self.make_name(close_name_tok);
+        close_parts: list = [close_name_node];
+        close_name_kid: list = [close_name_node];
+        while self.match_tok(TokenKind.DOT) {
+            close_name_kid.append(self.make_uni_token(self.previous()));
+            cn_tok = self.expect(TokenKind.JSX_NAME);
+            cn = self.make_name(cn_tok);
+            close_parts.append(cn);
+            close_name_kid.append(cn);
+        }
+        close_elem_name = JsxElementName(parts=close_parts, kid=close_name_kid);
+        close_kid.append(close_elem_name);
     }
-    close_elem_name = JsxElementName(parts=close_parts, kid=close_name_kid);
-    close_kid.append(close_elem_name);
     close_kid.append(self.consume_uni(TokenKind.JSX_TAG_END));
     closing = JsxElement(
         name=close_elem_name,
@@ -3273,8 +3287,59 @@ impl Parser.parse_jsx_element -> Expr {
         children=children,
         is_self_closing=False,
         is_fragment=False,
+        dynamic_tag=dyn_tag,
         kid=kid
     );
+}
+
+"""Parse a dynamic-tag expression after `<@`: an identifier (optionally
+dotted, `<@UI.Box>`) or a brace-wrapped expression (`<@{expr}>`). The `@`
+token and the parsed expression are appended to `open_kid`."""
+impl Parser._parse_jsx_dynamic_tag(open_kid: list) -> Expr {
+    at_uni = self.make_uni_token(self.advance());  # consume `@`
+    open_kid.append(at_uni);
+    if self.check(TokenKind.LBRACE) {
+        lb_uni = self.make_uni_token(self.advance());
+        expr = self.parse_expression();
+        rb_uni = self.consume_uni(TokenKind.RBRACE);
+        open_kid.append(lb_uni);
+        open_kid.append(expr);
+        open_kid.append(rb_uni);
+        return expr;
+    }
+    name_tok = self.expect(TokenKind.JSX_NAME);
+    expr = self.make_name(name_tok);
+    while self.match_tok(TokenKind.DOT) {
+        dot_uni = self.make_uni_token(self.previous());
+        attr_tok = self.expect(TokenKind.JSX_NAME);
+        attr = self.make_name(attr_tok);
+        expr = AtomTrailer(
+            target=expr,
+            right=attr,
+            is_attr=True,
+            is_null_ok=False,
+            kid=[expr, dot_uni, attr]
+        );
+    }
+    open_kid.append(expr);
+    return expr;
+}
+
+"""Consume a dynamic closing tag `</@expr>` loosely (the runtime tag match
+is not enforced); the consumed tokens are appended to `close_kid`."""
+impl Parser._consume_jsx_dynamic_close(close_kid: list) {
+    close_kid.append(self.make_uni_token(self.advance()));  # `@`
+    if self.check(TokenKind.LBRACE) {
+        close_kid.append(self.make_uni_token(self.advance()));
+        close_kid.append(self.parse_expression());
+        close_kid.append(self.consume_uni(TokenKind.RBRACE));
+        return;
+    }
+    close_kid.append(self.make_name(self.expect(TokenKind.JSX_NAME)));
+    while self.match_tok(TokenKind.DOT) {
+        close_kid.append(self.make_uni_token(self.previous()));
+        close_kid.append(self.make_name(self.expect(TokenKind.JSX_NAME)));
+    }
 }
 
 """Parse JSX opening element and return (name, attrs, is_self_closing)."""
@@ -3596,6 +3661,7 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_NODE,
         TokenKind.KW_EDGE,
         TokenKind.KW_WALKER,
+        TokenKind.KW_VIEW,
         TokenKind.KW_CLASS,
         TokenKind.KW_ENUM,
         TokenKind.KW_IMPL,
@@ -3607,6 +3673,10 @@ impl Parser.parse_element_stmt{
         TokenKind.KW_NATIVE
     ) {
         return self.parse_docstring_target();
+    }
+    # `view` declarator — sugar for `def:pub -> JsxElement`.
+    if self.check(TokenKind.KW_VIEW) {
+        return self.parse_view();
     }
     if self.check_any(TokenKind.KW_DEF, TokenKind.KW_CAN) {
         return self.parse_ability();
@@ -3758,6 +3828,13 @@ impl Parser.parse_docstring_target{
         result.add_kids_left([elem_doc]);
         return result;
     }
+    # `view` declarator — sugar for `def:pub -> JsxElement`.
+    if self.check(TokenKind.KW_VIEW) {
+        result = self.parse_view();
+        result.doc = elem_doc;
+        result.add_kids_left([elem_doc]);
+        return result;
+    }
     # cl / sv / na single-stmt prefix: recurse into parse_element_stmt so the
     # prefix is consumed and code_context is tagged on the inner element. The
     # docstring attaches to that inner element, not to the context prefix.
@@ -3778,12 +3855,10 @@ impl Parser.parse_docstring_target{
 
 """Parse client block: cl { stmts } or cl stmt"""
 impl Parser.parse_client_block -> ClientBlock {
-    cl_sloc = self.current().loc;
     cl_tok = self.consume_uni(TokenKind.KW_CLIENT);
     kid: list = [cl_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
-        self.emit_warn(W0064, loc=cl_sloc, keyword="cl");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3811,12 +3886,10 @@ impl Parser.parse_client_block -> ClientBlock {
 
 """Parse server block: sv { stmts } or sv stmt"""
 impl Parser.parse_server_block -> ServerBlock {
-    sv_sloc = self.current().loc;
     sv_tok = self.consume_uni(TokenKind.KW_SERVER);
     kid: list = [sv_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
-        self.emit_warn(W0064, loc=sv_sloc, keyword="sv");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3843,12 +3916,10 @@ impl Parser.parse_server_block -> ServerBlock {
 
 """Parse native block: na { stmts } or na stmt"""
 impl Parser.parse_native_block -> NativeBlock {
-    na_sloc = self.current().loc;
     na_tok = self.consume_uni(TokenKind.KW_NATIVE);
     kid: list = [na_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
-        self.emit_warn(W0064, loc=na_sloc, keyword="na");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3993,6 +4064,19 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.RBRACE) or self.at_end() {
         return None;
+    }
+    # In a `view` body a leading JSX element is a template statement. Parse
+    # exactly one element so that a following `if`/`for`/etc. begins a fresh
+    # statement instead of being absorbed as a ternary or operator tail of
+    # the JSX expression (`<jsx> if cond else ...`).
+    if self._view_body_depth > 0
+    and self.check_any(TokenKind.JSX_OPEN_START, TokenKind.JSX_FRAG_OPEN) {
+        jsx = self.parse_jsx_element();
+        jsx_kid: list = [jsx];
+        if self.match_tok(TokenKind.SEMI) {
+            jsx_kid.append(self.make_semi());
+        }
+        return ExprStmt(expr=jsx, in_fstring=False, kid=jsx_kid);
     }
     # Allow imports inside code blocks
     if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
@@ -4169,6 +4253,9 @@ impl Parser.parse_statement{
     expr_kid: list = [expr];
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
+    } elif isinstance(expr, JsxElement) and self._view_body_depth > 0 {
+        # Inside a `view` body the template is statement-based: a bare JSX
+        # element is template content and needs no trailing `;`.
     } elif isinstance(expr, Name) and expr.value == "new" {
         # `new` is an ambient builtin; a bare `new` followed by another atom
         # is JS-style `new Foo(...)` usage. Emit the migration-friendly
@@ -6122,7 +6209,7 @@ impl Parser.parse_ability -> Ability {
 
 """Handle override/static modifiers that may appear after async keyword."""
 impl Parser._parse_post_async_modifiers(
-    is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+    is_override: bool, override_tok: any, is_static: bool, static_tok: any
 ) -> tuple {
     if not is_override and self.match_tok(TokenKind.KW_OVERRIDE) {
         is_override = True;
@@ -6133,6 +6220,70 @@ impl Parser._parse_post_async_modifiers(
         static_tok = self.previous();
     }
     return (is_override, override_tok, is_static, static_tok);
+}
+
+"""Parse a `view` declarator.
+
+`view Name[generics](params) { body }` is parsed as a faithful `Ability`
+with `is_view = True`: the real `view` keyword token is kept in the kid list,
+the body holds the author's raw statement template, and no `:pub` access or
+`-> JsxElement` return type is synthesized here. The desugaring into an
+ordinary `def:pub -> JsxElement` is done later by `ViewLowerPass`, so the
+`jac format` pipeline (which does not run that pass) round-trips `view`
+syntax faithfully. The generic list and parameter list are both optional, so
+`view Name { body }` is valid."""
+impl Parser.parse_view -> Ability {
+    view_uni = self.consume_uni(TokenKind.KW_VIEW);  # `defview`
+    name_tok = self.expect_name();
+    name = self.make_name(name_tok);
+    # Optional generic params: view Name[T](...)
+    type_params: list | None = None;
+    tp_lb_uni: UniToken | None = None;
+    tp_rb_uni: UniToken | None = None;
+    tp_comma_unis: list = [];
+    if self.match_tok(TokenKind.LSQUARE) {
+        tp_lb_uni = self.make_uni_token(self.previous());
+        (type_params, tp_comma_unis) = self.parse_type_params();
+        tp_rb_uni = self.consume_uni(TokenKind.RSQUARE);
+    }
+    signature = self.parse_func_signature();
+    body_lb_uni = self.consume_uni(TokenKind.LBRACE);
+    self._view_body_depth += 1;
+    raw_stmts = self.parse_code_block_stmts();
+    self._view_body_depth -= 1;
+    body_rb_uni = self.consume_uni(TokenKind.RBRACE);
+    # Faithful kid list — `view` token kept; `ViewLowerPass` rewrites it.
+    kid: list = [view_uni, name];
+    if type_params is not None {
+        kid.append(tp_lb_uni);
+        for (i, tp) in enumerate(type_params) {
+            if i > 0 {
+                kid.append(tp_comma_unis[i - 1]);
+            }
+            kid.append(tp);
+        }
+        kid.append(tp_rb_uni);
+    }
+    kid.append(signature);
+    kid.append(body_lb_uni);
+    kid.extend(raw_stmts);
+    kid.append(body_rb_uni);
+    return Ability(
+        name_ref=name,
+        is_async=False,
+        is_override=False,
+        is_static=False,
+        is_classmethod=False,
+        is_abstract=False,
+        access=None,
+        signature=signature,
+        body=raw_stmts,
+        kid=kid,
+        doc=None,
+        decorators=[],
+        type_params=type_params,
+        is_view=True
+    );
 }
 
 impl Parser.parse_func_signature -> FuncSignature {

@@ -128,7 +128,22 @@ obj KubernetesTarget(DeploymentTarget) {
         liveness_probe['periodSeconds'] = self.k8s_config.liveness_period;
         liveness_probe['failureThreshold'] = self.k8s_config.liveness_failure_threshold;
 
-        return {'readiness': probe_config, 'liveness': liveness_probe};
+        startup_probe = {
+            'httpGet': {
+                'path': health_check_path,
+                'port': self.k8s_config.container_port,
+                'scheme': 'HTTP'
+            },
+            'initialDelaySeconds': 10,
+            'periodSeconds': 10,
+            'failureThreshold': 90
+        };
+
+        return {
+            'readiness': probe_config,
+            'liveness': liveness_probe,
+            'startup': startup_probe
+        };
     }
 
     """Build Kubernetes service configuration.
@@ -176,11 +191,26 @@ obj KubernetesTarget(DeploymentTarget) {
             'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
         );
         # Remove repos that don't exist yet on Debian testing (trixie) to prevent
-        # apt-get update from failing with "no Release file" errors.
+        # apt-get update from hanging/failing on missing Release files.
+        # Legacy one-line format lives in *.list; modern python:3.x-slim images
+        # (Debian trixie) use the deb822 *.sources format where the suites are
+        # combined on a single `Suites:` line — the *.list-only sed misses it,
+        # so we also strip the trixie-updates token from `Suites:` lines there.
         commands.append(
             'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
         );
-        commands.append('apt-get update');
+        commands.append(
+            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
+        );
+        # Make apt-get update resilient: bounded retries + short network
+        # timeouts so an unreachable suite (e.g. the deb822 trixie-security
+        # stanza) fails fast instead of stalling the pod for minutes, and
+        # `|| true` keeps a partial-but-usable index from aborting the build
+        # (git/curl/unzip resolve from the main trixie suite, which Hits).
+        commands.append(
+            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+            '-o Acquire::https::Timeout=20 update || true'
+        );
 
         # Install base packages (curl and unzip needed for Bun installation)
         base_packages = ['git', 'curl', 'unzip'];
@@ -196,7 +226,20 @@ obj KubernetesTarget(DeploymentTarget) {
 
         if app_config.experimental {
             commands.append('rm -rf jaseci');
-            clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {config.jaseci_repo_url}";
+            # The pod has no SSH key/known_hosts, so a `git@host:owner/repo`
+            # or `ssh://` URL makes the clone hang then fail. Normalize the
+            # common GitHub SCP-style SSH form to anonymous HTTPS so the
+            # in-cluster clone works for public repos without credentials.
+            repo_url = config.jaseci_repo_url;
+            if repo_url.startswith('git@') and ':' in repo_url {
+                host_path = repo_url[4:];
+                host = host_path.split(':', 1)[0];
+                path = host_path.split(':', 1)[1];
+                repo_url = f"https://{host}/{path}";
+            } elif repo_url.startswith('ssh://git@') {
+                repo_url = 'https://' + repo_url[len('ssh://git@'):];
+            }
+            clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {repo_url}";
             commands.append(clone_cmd);
             commands.append('cd ./jaseci');
             if config.jaseci_commit {
@@ -317,7 +360,8 @@ obj KubernetesTarget(DeploymentTarget) {
             'ports': [{'containerPort': self.k8s_config.container_port}],
             'env': self.env_list,
             'readinessProbe': probe_configs['readiness'],
-            'livenessProbe': probe_configs['liveness']
+            'livenessProbe': probe_configs['liveness'],
+            'startupProbe': probe_configs['startup']
         };
 
         if secret_ref_name {
@@ -341,8 +385,8 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Build volumes and build container configuration for code sync via code-server."""
     def _build_volumes_config(
-        app_name: str, app_config: AppConfig, namespace: str, core_v1: Any, apps_v1: Any
-    ) -> dict[str, Any] {
+        app_name: str, app_config: AppConfig, namespace: str, core_v1: any, apps_v1: any
+    ) -> dict[str, any] {
         pvc_name = f"{app_name}-code-pvc";
         pvc_size = self.k8s_config.pvc_size;
         sync_image = self.k8s_config.busybox_image;
@@ -392,7 +436,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Deploy code-server: a single-replica busybox httpd that serves code from the PVC over HTTP."""
-    def _deploy_code_server(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _deploy_code_server(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         code_server_name = f"{app_name}-code-server";
         code_server_labels = {'app': code_server_name};
         pvc_name = f"{app_name}-code-pvc";
@@ -535,7 +579,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Deploy all enabled databases and their optional dashboards."""
     def _deploy_databases(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
+        app_name: str, namespace: str, apps_v1: any, core_v1: any, cluster_env: str
     ) {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
@@ -853,7 +897,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Create a dedicated ServiceAccount with no automounted token for a deployment."""
     def _create_service_account(
-        sa_name: str, app_label: str, namespace: str, core_v1: Any
+        sa_name: str, app_label: str, namespace: str, core_v1: any
     ) {
         sa_body = {
             'apiVersion': 'v1',
@@ -889,7 +933,7 @@ obj KubernetesTarget(DeploymentTarget) {
     helper injects it and creates/skips if it already exists.
     """
     def _apply_provider_service_account(
-        sa_spec: dict[str, Any], namespace: str, core_v1: Any
+        sa_spec: dict[str, any], namespace: str, core_v1: any
     ) {
         sa_spec['metadata']['namespace'] = namespace;
         sa_name = sa_spec['metadata']['name'];
@@ -919,7 +963,7 @@ obj KubernetesTarget(DeploymentTarget) {
       - Redis: allows ingress on 6379 from main app, allows egress to DNS and intra-namespace
       - Other components: deny all ingress, allow egress to DNS and intra-namespace
     """
-    def _deploy_network_policy(app_name: str, namespace: str, networking_v1: Any) {
+    def _deploy_network_policy(app_name: str, namespace: str, networking_v1: any) {
         # Common egress rules for all policies
         common_egress_rules = [
             # DNS — explicit kube-system selector so CNIs that evaluate policy
@@ -1509,8 +1553,8 @@ obj KubernetesTarget(DeploymentTarget) {
     def _wait_for_deletion(
         app_name: str,
         namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
+        apps_v1: any,
+        core_v1: any,
         max_wait: int = 60,
         poll_interval: float = 1.0
     ) -> None {
@@ -1711,14 +1755,14 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Destroy all databases, caches, and their dashboards."""
-    def _destroy_databases(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_databases(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         self._destroy_database(app_name, namespace, apps_v1, core_v1);
         self._destroy_cache(app_name, namespace, apps_v1, core_v1);
         self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
     }
 
     def _destroy_application(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
         autoscaling_v2 = client.AutoscalingV2Api();
         delete_if_exists(
@@ -1792,7 +1836,7 @@ obj KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def _destroy_database(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_database(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         mongodb_name = f"{app_name}-mongodb";
         delete_if_exists(
             apps_v1.delete_namespaced_stateful_set,
@@ -1815,7 +1859,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_cache(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_cache(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         redis_name = f"{app_name}-redis";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, redis_name, namespace, 'Deployment'
@@ -1841,7 +1885,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         express_name = f"{app_name}-mongo-express";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, express_name, namespace, 'Deployment'
@@ -1889,7 +1933,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def _destroy_component(
-        app_name: str, namespace: str, component: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, component: str, apps_v1: any, core_v1: any
     ) {
         if component == 'application' {
             self._destroy_application(app_name, namespace, apps_v1, core_v1);

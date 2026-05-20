@@ -472,7 +472,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
         walker_fields = self.introspector.introspect_walker(
             self.get_walkers()[walker_name]
         )['fields'];
-        walker_kwargs: dict[str, Any] = {};
+        walker_kwargs: dict[str, any] = {};
         if isinstance(body_data, dict) {
             for (field_name, value) in body_data.items() {
                 if field_name in walker_fields and field_name != '_jac_spawn_node' {

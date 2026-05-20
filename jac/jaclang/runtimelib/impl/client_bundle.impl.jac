@@ -14,7 +14,7 @@ impl _lookup_module_in_hub(path_key: str, hub: dict) -> (Module | None) {
 }
 
 """Run EsastGenPass if JS missing (Windows may skip ES pass during initial compile)."""
-impl _ensure_js_generated(mod: Module, program: Any) -> None {
+impl _ensure_js_generated(mod: Module, program: any) -> None {
     if mod and not mod.gen.js {
         import from jaclang.compiler.passes.ecmascript.esast_gen_pass { EsastGenPass }
         EsastGenPass(ir_in=mod, prog=program);
@@ -189,7 +189,7 @@ Dictionary of global names to their values
 """
 impl ClientBundleBuilder._extract_client_globals(
     manifest: (ClientManifest | None), module: ModuleType
-) -> dict[str, Any] {
+) -> dict[str, any] {
     client_globals_map: dict[(str, Any)] = {};
     if manifest {
         for name in manifest.globals {

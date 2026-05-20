@@ -10,7 +10,6 @@ function call - propagation happens automatically.
 """
 
 import from contextvars { ContextVar }
-import from typing { Any }
 
 # Per-request auth token. Set by middleware, read by sv_service_call hookimpl.
 glob _auth_token: ContextVar[str] = ContextVar("_sv_auth_token", default="");
@@ -20,12 +19,12 @@ glob _auth_token: ContextVar[str] = ContextVar("_sv_auth_token", default="");
 Returns a Token object; pass to reset_current_auth() to clean up.
 Stores the full header value (e.g., 'Bearer xyz...') or empty string.
 """
-def set_current_auth(token: str | None) -> Any {
+def set_current_auth(token: str | None) -> any {
     return _auth_token.set(token or "");
 }
 
 """Reset the auth context var to its previous value."""
-def reset_current_auth(token_obj: Any) {
+def reset_current_auth(token_obj: any) {
     _auth_token.reset(token_obj);
 }
 

@@ -9,10 +9,16 @@ impl EsJsxProcessor.init(self: EsJsxProcessor, pass_ref: EsastGenPass) -> None {
 """Process JSX element into __jacJsx(tag, props, children) call."""
 impl EsJsxProcessor.element(self: EsJsxProcessor, nd: uni.JsxElement) -> Expression {
     es = self.es;
-    if (nd.is_fragment or not nd.name) {
-        tag_expr: Expression = self.pass_ref.sync_loc(
-            es.Literal(value=None), jac_node=nd
+    if nd.dynamic_tag is not None {
+        # Dynamic tag `<@expr ...>` — the tag is the expression's value
+        # (a host-tag string, a view reference, or a `str | type`).
+        tag_expr: Expression = cast(
+            'Expression',
+            nd.dynamic_tag.gen.es_ast
+            or self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd)
         );
+    } elif (nd.is_fragment or not nd.name) {
+        tag_expr = self.pass_ref.sync_loc(es.Literal(value=None), jac_node=nd);
     } else {
         tag_expr = cast(
             'Expression',
@@ -241,8 +247,10 @@ impl PyJsxProcessor.init(self: PyJsxProcessor, pass_ref: PyastGenPass) -> None {
 impl PyJsxProcessor.element(
     self: PyJsxProcessor, nd: uni.JsxElement
 ) -> list[ast3.AST] {
-    if (nd.is_fragment or not nd.name) {
-        tag_arg: ast3.expr = self.pass_ref.sync(ast3.Constant(value=None), nd);
+    if nd.dynamic_tag is not None {
+        tag_arg: ast3.expr = cast(ast3.expr, nd.dynamic_tag.gen.py_ast[0]);
+    } elif (nd.is_fragment or not nd.name) {
+        tag_arg = self.pass_ref.sync(ast3.Constant(value=None), nd);
     } else {
         tag_arg = cast(ast3.expr, nd.name.gen.py_ast[0]);
     }

@@ -31,7 +31,7 @@ impl WebhookUtils.create_api_key_token(
     default_expiry = int(
         get_scale_config().get_webhook_config()['api_key_expiry_days']
     );
-    payload: dict[str, Any] = {
+    payload: dict[str, any] = {
         'type': 'api_key',
         'api_key_id': api_key_id,
         'sub': user_id,
@@ -170,7 +170,7 @@ impl ApiKeyManager.create_api_key(
 
 """List all API keys for a user (metadata only, not the keys)."""
 impl ApiKeyManager.list_api_keys(user_id: str) -> TransportResponse {
-    keys: list[dict[str, Any]] = [];
+    keys: list[dict[str, any]] = [];
     if self._db is not None {
         cursor = self._db.find(
             self._collection, {'user_id': user_id, 'revoked': False}

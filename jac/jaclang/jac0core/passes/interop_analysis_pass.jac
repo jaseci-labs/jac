@@ -3,7 +3,6 @@
 Walks the module AST to detect calls between different codespace contexts
 (server/Python, native/LLVM, client/JavaScript) and builds an InteropManifest.
 """
-import from typing { Any }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.codeinfo {
@@ -55,7 +54,7 @@ linking
 
     """Walk a module AST collecting Ability nodes by name."""
     def _collect_abilities(
-        self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+        self: InteropAnalysisPass, nd: any, out: dict[str, any]
     ) -> None;
 
     """Walk a module AST collecting public walker Archetype nodes by name.
@@ -66,7 +65,7 @@ linking
     are not exposed at `/walker/<name>` on the HTTP boundary.
     """
     def _collect_pub_walkers(
-        self: InteropAnalysisPass, nd: Any, out: dict[str, Any]
+        self: InteropAnalysisPass, nd: any, out: dict[str, any]
     ) -> None;
 
     """Extract `has` field (name, type-name) pairs from a walker archetype.
@@ -76,14 +75,14 @@ linking
     Used by `_register_sv_to_sv_import` to derive RPC param shape.
     """
     def _extract_walker_has_fields(
-        self: InteropAnalysisPass, walker_nd: Any
+        self: InteropAnalysisPass, walker_nd: any
     ) -> tuple[list[str], list[str]];
 
     """Find an Archetype or Enum node by name via AST walk."""
-    def _find_archetype(self: InteropAnalysisPass, nd: Any, target: str) -> Any;
+    def _find_archetype(self: InteropAnalysisPass, nd: any, target: str) -> any;
 
     """Parse a source file standalone (no semantic analysis)."""
-    def _parse_only_source_module(self: InteropAnalysisPass, file_path: str) -> Any;
+    def _parse_only_source_module(self: InteropAnalysisPass, file_path: str) -> any;
 
     """Record function definition and its context."""
     def enter_ability(self: InteropAnalysisPass, nd: uni.Ability) -> None;

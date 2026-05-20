@@ -64,9 +64,9 @@ impl ObjectSpatialPath.convert(
     if callable(filter) {
         return filter;
     } elif isinstance(filter, `list) {
-        return lambda i: Any : (i in filter);
+        return lambda i: any : (i in filter);
     }
-    return lambda i: Any : (i == filter);
+    return lambda i: any : (i == filter);
 }
 
 """Append destination."""
@@ -282,7 +282,7 @@ impl NodeAnchor.edge_delta -> (tuple[(set[UUID], set[UUID])] | None) {
 }
 
 """Get decoded topology index (lazy-decoded from blob)."""
-impl NodeAnchor.get_topology_index -> Any {
+impl NodeAnchor.get_topology_index -> any {
     import from jaclang.runtimelib.topology_index { TopologyIndex }
     if self.topology_index_data {
         return TopologyIndex.decode(self.topology_index_data);
@@ -291,7 +291,7 @@ impl NodeAnchor.get_topology_index -> Any {
 }
 
 """Set topology index from TopologyIndex object (encodes to blob)."""
-impl NodeAnchor.set_topology_index(index: Any) -> None {
+impl NodeAnchor.set_topology_index(index: any) -> None {
     self.topology_index_data = index.encode();
 }
 
@@ -317,7 +317,7 @@ impl Archetype.__jac__ -> Anchor {
 }
 
 """Configure subclasses."""
-impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
+impl Archetype.__init_subclass__(cls: any, **kwargs: object) -> None {
     super.__init_subclass__(**kwargs);
     if not cls.__dict__.get('__jac_base__', False) {
         import from jaclang { JacRuntimeInterface as _ }
@@ -329,7 +329,7 @@ impl Archetype.__init_subclass__(cls: Any, **kwargs: object) -> None {
 }
 
 """Set attribute on archetype and track dirty fields after initialization."""
-impl Archetype.__setattr__(name: str, value: Any) -> None {
+impl Archetype.__setattr__(name: str, value: any) -> None {
     object.__setattr__(self, name, value);
     if self.__dict__.get('__jac_initialized__', False) and not name.startswith('_') {
         dirty: set[str] = self.__dict__.get('__jac_dirty_fields__');

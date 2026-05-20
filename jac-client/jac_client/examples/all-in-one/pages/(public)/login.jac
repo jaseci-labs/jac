@@ -8,7 +8,7 @@ cl {
 
         navigate = useNavigate();
 
-        async def handleLogin(e: Any) -> None {
+        async def handleLogin(e: any) -> None {
             e.preventDefault();
             error = "";
             if not username or not password {
@@ -23,11 +23,11 @@ cl {
             }
         }
 
-        def handleUsernameChange(e: Any) {
+        def handleUsernameChange(e: any) {
             username = e.target.value;
         }
 
-        def handlePasswordChange(e: Any) {
+        def handlePasswordChange(e: any) {
             password = e.target.value;
         }
 
