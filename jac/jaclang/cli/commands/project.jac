@@ -377,13 +377,24 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
             help="Output directory for the built .whl file",
             short="o"
         ),
+        Arg.create(
+            "precompile",
+            typ=bool,
+            default=False,
+            help="Precompile .jac → .jir for every python3.X on PATH that has jaclang installed, then bundle",
+            short="p"
+        ),
 
     ],
     examples=[
         ("jac bundle", "Build wheel into dist/"),
+        (
+            "jac bundle --precompile",
+            "Precompile for all Py-versions on PATH then bundle"
+        ),
         ("jac bundle -o /tmp/wheels", "Build to custom output directory"),
 
     ],
     group="project"
 )
-def bundle(output: str = "dist") -> int;
+def bundle(output: str = "dist", precompile: bool = False) -> int;
