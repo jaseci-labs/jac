@@ -6,7 +6,11 @@ expose them. They're single-use: consume_token() deletes on success.
 
 Persistence: MongoDB if [plugins.scale.database] mongodb_uri is set,
 otherwise an in-memory dict. The collection name comes from
-[plugins.scale.auth] token_collection.
+[plugins.scale.auth] token_collection. The in-memory store is per-worker
+and non-durable across restarts; running multiple Uvicorn workers without
+Mongo configured will fail verification / reset intermittently because
+each worker holds its own token set (see the loud startup warning in
+AuthTokenStore.postinit).
 """
 import hashlib;
 import logging;

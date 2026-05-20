@@ -14,7 +14,9 @@ impl AuthTokenStore.postinit -> None {
                 col.create_index('expires_at', expireAfterSeconds=0);
                 col.create_index('token_hash', unique=True);
             } except Exception as e {
-                logger.debug(f"Could not create auth_tokens indexes: {e}");
+                # Operationally significant: without these indexes the store
+                # loses TTL pruning and uniqueness enforcement.
+                logger.warning(f"Could not create auth_tokens indexes: {e}");
             }
         } except Exception as e {
             logger.warning(
@@ -105,15 +107,23 @@ impl AuthTokenStore.revoke_user_tokens(user_id: str, purpose: str) -> int {
     return self._delete_user(user_id, purpose);
 }
 
-"""Storage primitive: insert a record into Mongo or fallback dict."""
+"""Storage primitive: insert a record into Mongo or fallback dict.
+
+The in-memory fallback is per-process and not durable. When Mongo is
+configured but a single write fails, the record lands only in this
+worker's dict, which means subsequent Mongo reads from any worker will
+not find it (and other workers will not see it at all). Treat the fallback
+as best-effort recovery; the loud error log is the signal for ops.
+"""
 impl AuthTokenStore._persist(record: dict[str, Any]) -> None {
     if self._db is not None {
         try {
             self._db.insert_one(self._collection, dict(record));
             return;
         } except Exception as e {
-            logger.warning(
-                f"MongoDB persist failed for auth token, using in-memory: {e}"
+            logger.error(
+                f"MongoDB persist failed for auth token, falling back to "
+                f"in-memory (not visible across workers, not durable): {e}"
             );
         }
     }

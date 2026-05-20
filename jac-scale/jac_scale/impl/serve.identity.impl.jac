@@ -16,7 +16,7 @@
                                password.
 """
 
-import from jac_scale.audit { client_ip as _audit_client_ip, emit as _audit_emit }
+import from jac_scale.audit { client_ip, emit as _audit_emit }
 import from jac_scale.auth_tokens { AuthTokenStore }
 import from jac_scale.identity_storage { IdentityTakenError }
 import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
@@ -83,19 +83,16 @@ def _build_link_email(
     return body;
 }
 
-"""Issue a fresh action token + materialise the click-through URL.
+"""Issue a fresh action token and materialise the click-through URL.
 
 Revokes any prior outstanding tokens of the same purpose for this user, then
 creates a new one and substitutes it into the configured URL template. If no
 template is set, the raw token is returned as the link so it remains usable
 in dev / test setups.
-
-Returns `(token, link)` so callers can use the link in the email body and
-keep the token for follow-up assertions or logging.
 """
 def _issue_link_token(
     user_id: str, purpose: str, identity_value: str, ttl_seconds: int, url_template: str
-) -> tuple[str, str] {
+) -> str {
     store = AuthTokenStore.instance();
     store.revoke_user_tokens(user_id, purpose);
     token = store.create_token(
@@ -104,8 +101,33 @@ def _issue_link_token(
         ttl_seconds=ttl_seconds,
         identity_value=identity_value
     );
-    link = url_template.replace('{token}', token) if url_template else token;
-    return (token, link);
+    return url_template.replace('{token}', token) if url_template else token;
+}
+
+"""Build a TransportResponse.fail with an http_status meta extra and
+optional additional `extra` keys (e.g. retry_after_seconds on 429)."""
+def _fail(
+    code: str, message: str, status: int, extra: dict[str, Any] | None = None
+) -> TransportResponse {
+    meta_extra: dict[str, Any] = {'http_status': status};
+    if extra {
+        meta_extra.update(extra);
+    }
+    return TransportResponse.fail(
+        code=code, message=message, meta=Meta(extra=meta_extra)
+    );
+}
+
+"""Build a TransportResponse.success with an http_status meta extra
+and optional additional `extra` keys."""
+def _ok(
+    data: dict[str, Any], status: int = 200, extra: dict[str, Any] | None = None
+) -> TransportResponse {
+    meta_extra: dict[str, Any] = {'http_status': status};
+    if extra {
+        meta_extra.update(extra);
+    }
+    return TransportResponse.success(data=data, meta=Meta(extra=meta_extra));
 }
 
 # ============================================================================
@@ -124,20 +146,13 @@ impl JacAPIServerAuth.register_add_identity_endpoint -> None {
         }
         (id_type, raw_value, normalized) = _normalize_identity(body_data.identity);
         if not normalized {
-            return TransportResponse.fail(
-                code='VALIDATION_ERROR',
-                message='Identity value is required',
-                meta=Meta(extra={'http_status': 400})
-            );
+            return _fail('VALIDATION_ERROR', 'Identity value is required', 400);
         }
+        taken_msg = f"This {id_type} is already registered";
         # Fast-path rejection. Storage uniqueness is the source of truth;
         # the IdentityTakenError catch below closes the TOCTOU race.
         if self.user_manager.is_identity_taken(normalized) {
-            return TransportResponse.fail(
-                code='IDENTITY_TAKEN',
-                message=f"This {id_type} is already registered",
-                meta=Meta(extra={'http_status': 409})
-            );
+            return _fail('IDENTITY_TAKEN', taken_msg, 409);
         }
         identity_doc = {
             'type': id_type,
@@ -149,23 +164,12 @@ impl JacAPIServerAuth.register_add_identity_endpoint -> None {
         try {
             added = self.user_manager.add_identity(user_id, identity_doc);
         } except IdentityTakenError {
-            return TransportResponse.fail(
-                code='IDENTITY_TAKEN',
-                message=f"This {id_type} is already registered",
-                meta=Meta(extra={'http_status': 409})
-            );
+            return _fail('IDENTITY_TAKEN', taken_msg, 409);
         }
         if not added {
-            return TransportResponse.fail(
-                code='NOT_FOUND',
-                message='User not found',
-                meta=Meta(extra={'http_status': 404})
-            );
+            return _fail('NOT_FOUND', 'User not found', 404);
         }
-        return TransportResponse.success(
-            data={'status': 'added', 'verified': False},
-            meta=Meta(extra={'http_status': 200})
-        );
+        return _ok(data={'status': 'added', 'verified': False});
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -196,20 +200,17 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
             return auth_err;
         }
         (id_type, raw_value, normalized) = _normalize_identity(body_data.identity);
-        if id_type != 'email' or not normalized {
-            return TransportResponse.fail(
-                code='VALIDATION_ERROR',
-                message='An email identity value is required',
-                meta=Meta(extra={'http_status': 400})
+        if not normalized {
+            return _fail('VALIDATION_ERROR', 'Identity value is required', 400);
+        }
+        if id_type != 'email' {
+            return _fail(
+                'VALIDATION_ERROR', 'Only email identities can be verified', 400
             );
         }
         user = self.user_manager.get_user(user_id);
         if user is None {
-            return TransportResponse.fail(
-                code='NOT_FOUND',
-                message='User not found',
-                meta=Meta(extra={'http_status': 404})
-            );
+            return _fail('NOT_FOUND', 'User not found', 404);
         }
         # Find the requested identity on this user.
         target: dict[str, Any] | None = None;
@@ -223,46 +224,42 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
             }
         }
         if target is None {
-            return TransportResponse.fail(
-                code='NOT_FOUND',
-                message='Identity not found on this user',
-                meta=Meta(extra={'http_status': 404})
-            );
+            return _fail('NOT_FOUND', 'Identity not found on this user', 404);
         }
         if target.get('verified') {
-            return TransportResponse.success(
-                data={'status': 'already_verified'},
-                meta=Meta(extra={'http_status': 200})
-            );
+            return _ok(data={'status': 'already_verified'});
         }
         # Per-user throttle so an authenticated caller cannot spam verification
         # emails to themselves or others on their account.
         (_, sv_limiter) = _get_identity_limiters();
         (allowed, retry_after) = sv_limiter.consume(user_id);
         if not allowed {
-            return TransportResponse.fail(
-                code='RATE_LIMITED',
-                message='Too many verification requests, please try again later',
-                meta=Meta(
-                    extra={
-                        'http_status': 429,
-                        'retry_after_seconds': int(retry_after) + 1
-                    }
-                )
+            _audit_emit(
+                'identity_verification.rate_limited',
+                user_id=user_id,
+                identity_value=normalized,
+                source_ip=client_ip(request),
+                retry_after_seconds=int(retry_after) + 1
+            );
+            return _fail(
+                'RATE_LIMITED',
+                'Too many verification requests, please try again later',
+                429,
+                extra={'retry_after_seconds': int(retry_after) + 1}
             );
         }
         emailer = self.get_emailer();
         if emailer is None or not emailer.is_ready() {
-            return TransportResponse.fail(
-                code='EMAIL_DISABLED',
-                message='Email features are not configured on this server',
-                meta=Meta(extra={'http_status': 503})
+            return _fail(
+                'EMAIL_DISABLED',
+                'Email features are not configured on this server',
+                503
             );
         }
         auth_cfg = get_scale_config().get_auth_config();
         ttl = auth_cfg.get('verify_token_ttl_seconds', 86400);
         url_template = auth_cfg.get('verify_url_template', '');
-        (_token, link) = _issue_link_token(
+        link = _issue_link_token(
             user_id=user_id,
             purpose='verify',
             identity_value=normalized,
@@ -274,9 +271,9 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
         sent = emailer.send_email(
             to_addr=recipient, subject='Verify your email address', body_text=body_text
         );
-        return TransportResponse.success(
+        return _ok(
             data={'status': 'pending_verification', 'email_sent': bool(sent)},
-            meta=Meta(extra={'http_status': 202})
+            status=202
         );
     }
     self.server.add_endpoint(
@@ -300,7 +297,7 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
     async def verify_identity_handler(
         request: Request, body_data: VerifyIdentityRequest
     ) -> TransportResponse {
-        source_ip = _audit_client_ip(request);
+        source_ip = client_ip(request);
         record = AuthTokenStore.instance().consume_token(body_data.token, 'verify');
         if record is None {
             _audit_emit(
@@ -308,10 +305,8 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
                 reason='invalid_or_expired_token',
                 source_ip=source_ip
             );
-            return TransportResponse.fail(
-                code='INVALID_TOKEN',
-                message='Verification token is invalid or expired',
-                meta=Meta(extra={'http_status': 400})
+            return _fail(
+                'INVALID_TOKEN', 'Verification token is invalid or expired', 400
             );
         }
         user_id = record.get('user_id', '');
@@ -322,26 +317,39 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
                 reason='token_missing_fields',
                 source_ip=source_ip
             );
-            return TransportResponse.fail(
-                code='INVALID_TOKEN',
-                message='Verification token is invalid',
-                meta=Meta(extra={'http_status': 400})
-            );
+            return _fail('INVALID_TOKEN', 'Verification token is invalid', 400);
         }
-        ok = self.user_manager.set_identity_verified(user_id, identity_value);
-        if not ok {
+        flipped = self.user_manager.set_identity_verified(user_id, identity_value);
+        if not flipped {
+            # Distinguish "already verified" (legit retry) from "identity gone".
+            user = self.user_manager.get_user(user_id);
+            if user is not None {
+                for ident in user.get('identities', []) {
+                    if (ident.get('value_normalized') or '') == identity_value
+                    and ident.get('verified') {
+                        _audit_emit(
+                            'identity_verification.already_verified',
+                            user_id=user_id,
+                            identity_value=identity_value,
+                            source_ip=source_ip
+                        );
+                        return _ok(
+                            data={
+                                'status': 'already_verified',
+                                'identity': identity_value
+                            }
+                        );
+                    }
+                }
+            }
             _audit_emit(
                 'identity_verification.failed',
-                reason='identity_not_found_or_already_verified',
+                reason='identity_not_found',
                 user_id=user_id,
                 identity_value=identity_value,
                 source_ip=source_ip
             );
-            return TransportResponse.fail(
-                code='NOT_FOUND',
-                message='Identity not found for user',
-                meta=Meta(extra={'http_status': 404})
-            );
+            return _fail('NOT_FOUND', 'Identity not found for user', 404);
         }
         _audit_emit(
             'identity_verification.completed',
@@ -349,10 +357,7 @@ impl JacAPIServerAuth.register_verify_identity_endpoint -> None {
             identity_value=identity_value,
             source_ip=source_ip
         );
-        return TransportResponse.success(
-            data={'status': 'verified', 'identity': identity_value},
-            meta=Meta(extra={'http_status': 200})
-        );
+        return _ok(data={'status': 'verified', 'identity': identity_value});
     }
     self.server.add_endpoint(
         JEndPoint(
@@ -376,13 +381,13 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
         request: Request, body_data: ForgotPasswordRequest
     ) -> TransportResponse {
         (_id_type, _raw_value, normalized) = _normalize_identity(body_data.identity);
-        ok_response = TransportResponse.success(
+        ok_response = _ok(
             data={
                 'status': 'ok',
                 'message': 'If that account exists, a reset link has been sent.'
-            },
-            meta=Meta(extra={'http_status': 200})
+            }
         );
+        source_ip = client_ip(request);
         if not normalized {
             return ok_response;
         }
@@ -423,21 +428,24 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
         }
         # Per-recipient throttle. The 200 envelope already hides whether the
         # account exists, and we keep that promise on rate-limit too instead
-        # of returning 429 (which would leak the existence signal).
+        # of returning 429 (which would leak the existence signal). The audit
+        # log is server-internal so we still emit a structured event for ops.
         (fp_limiter, _) = _get_identity_limiters();
         (allowed, retry_after) = fp_limiter.consume(recipient_normalized or '');
         if not allowed {
-            logger.warning(
-                "forgot-password rate limited for %s, retry_after=%.1fs",
-                recipient_normalized,
-                retry_after
+            _audit_emit(
+                'password_reset.rate_limited',
+                user_id=user.get('user_id', ''),
+                identity_value=recipient_normalized,
+                source_ip=source_ip,
+                retry_after_seconds=int(retry_after) + 1
             );
             return ok_response;
         }
         auth_cfg = get_scale_config().get_auth_config();
         ttl = auth_cfg.get('reset_token_ttl_seconds', 1800);
         url_template = auth_cfg.get('reset_url_template', '');
-        (_token, link) = _issue_link_token(
+        link = _issue_link_token(
             user_id=user.get('user_id', ''),
             purpose='reset',
             identity_value=recipient_normalized or '',
@@ -457,7 +465,7 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
             'password_reset.requested',
             user_id=user.get('user_id', ''),
             identity_value=recipient_normalized,
-            source_ip=_audit_client_ip(request),
+            source_ip=source_ip,
             email_sent=bool(sent)
         );
         return ok_response;
@@ -483,7 +491,7 @@ impl JacAPIServerAuth.register_reset_password_endpoint -> None {
     async def reset_password_handler(
         request: Request, body_data: ResetPasswordRequest
     ) -> TransportResponse {
-        source_ip = _audit_client_ip(request);
+        source_ip = client_ip(request);
         record = AuthTokenStore.instance().consume_token(body_data.token, 'reset');
         if record is None {
             _audit_emit(
@@ -491,24 +499,17 @@ impl JacAPIServerAuth.register_reset_password_endpoint -> None {
                 reason='invalid_or_expired_token',
                 source_ip=source_ip
             );
-            return TransportResponse.fail(
-                code='INVALID_TOKEN',
-                message='Reset token is invalid or expired',
-                meta=Meta(extra={'http_status': 400})
-            );
+            return _fail('INVALID_TOKEN', 'Reset token is invalid or expired', 400);
         }
         user_id = record.get('user_id', '');
+        identity_value = record.get('identity_value', '') or '';
         if not user_id {
             _audit_emit(
                 'password_reset.failed',
                 reason='token_missing_user',
                 source_ip=source_ip
             );
-            return TransportResponse.fail(
-                code='INVALID_TOKEN',
-                message='Reset token is invalid',
-                meta=Meta(extra={'http_status': 400})
-            );
+            return _fail('INVALID_TOKEN', 'Reset token is invalid', 400);
         }
         result = self.user_manager.reset_password_by_user_id(
             user_id, body_data.new_password
@@ -518,20 +519,20 @@ impl JacAPIServerAuth.register_reset_password_endpoint -> None {
                 'password_reset.failed',
                 reason='user_gone',
                 user_id=user_id,
+                identity_value=identity_value,
                 source_ip=source_ip
             );
-            return TransportResponse.fail(
-                code='NOT_FOUND',
-                message=result.get('error', 'User not found'),
-                meta=Meta(extra={'http_status': 404})
-            );
+            return _fail('NOT_FOUND', result.get('error', 'User not found'), 404);
         }
         # Drop any other outstanding reset tokens for this user.
         AuthTokenStore.instance().revoke_user_tokens(user_id, 'reset');
-        _audit_emit('password_reset.completed', user_id=user_id, source_ip=source_ip);
-        return TransportResponse.success(
-            data={'status': 'password_reset'}, meta=Meta(extra={'http_status': 200})
+        _audit_emit(
+            'password_reset.completed',
+            user_id=user_id,
+            identity_value=identity_value,
+            source_ip=source_ip
         );
+        return _ok(data={'status': 'password_reset'});
     }
     self.server.add_endpoint(
         JEndPoint(

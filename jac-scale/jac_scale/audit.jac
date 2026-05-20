@@ -11,6 +11,9 @@ headers. Identity values should be the normalized form (lowercase, trimmed).
 import logging;
 import from datetime { UTC, datetime }
 import from typing { Any }
+import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
+    _resolve_client_ip as client_ip
+}
 
 glob _audit_logger = logging.getLogger('jac_scale.audit');
 
@@ -27,19 +30,4 @@ def emit(event: str, **fields: Any) {
     };
     payload.update(fields);
     _audit_logger.info(event, extra={'audit': payload});
-}
-
-"""Resolve the originating client IP from a FastAPI / Starlette Request.
-
-Honours X-Forwarded-For when behind a load balancer; falls back to the
-direct socket peer. Returns 'unknown' when neither is available so audit
-fields stay non-null.
-"""
-def client_ip(request: Any) -> str {
-    xff = request.headers.get('X-Forwarded-For');
-    if xff {
-        return xff.split(',')[0].strip();
-    }
-    client = request?.client;
-    return getattr(client, 'host', 'unknown') if client else 'unknown';
 }
