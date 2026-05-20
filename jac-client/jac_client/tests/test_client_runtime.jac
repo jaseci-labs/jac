@@ -1,25 +1,26 @@
-"""Regression test for the undefined JSX child crash.
+"""Static regression tests for `plugin/impl/client_runtime.impl.jac`.
 
-The `__jacJsx` runtime in `plugin/impl/client_runtime.impl.jac` walks each
-child in `childrenArray` and accesses `child.__jacUnsafeHtml`. If the guard
-above that access only filters `None` (JS `null`), an `undefined` child --
-which is what a missing prop, an unspread key, or a slot that early-returns
-without a value compiles to -- crashes at render with:
+These tests grep the runtime source for guards / shapes that broke in
+production. They are static checks rather than live bundle tests, so they
+cost nothing in CI and fail immediately if someone re-narrows a guard or
+removes a load-bearing branch.
 
-    TypeError: Cannot read properties of undefined (reading '__jacUnsafeHtml')
-
-This test pins the source-side fix: the per-child guard must reject both
-`None` and `undefined` before the property access. It is a static check on
-the runtime source, not a live bundle test, so it costs nothing in CI and
-fails immediately if someone re-narrows the guard.
+Add a new test here when a runtime regression is fixed and the fix can be
+pinned to a recognisable source-level shape (guard, branch order, marker
+access). Use this file rather than spawning a per-bug test file.
 """
 
-import os;
 import from pathlib { Path }
 
 
-"""The `__jacJsx` per-child guard must filter both None and undefined."""
-test "child guard handles undefined" {
+"""The `__jacJsx` per-child guard must filter both None and undefined.
+
+Background: post-#6042 the guard only rejected `None` (JS `null`), so any
+JSX child that evaluated to `undefined` -- missing prop, unspread key, slot
+that early-returned without a value -- crashed at render with
+`TypeError: Cannot read properties of undefined (reading '__jacUnsafeHtml')`.
+"""
+test "jacJsx child guard rejects None and undefined" {
     runtime_path = (
         Path(__file__).parent.parent / "plugin" / "impl" / "client_runtime.impl.jac"
     );
