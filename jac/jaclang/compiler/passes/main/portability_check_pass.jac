@@ -24,8 +24,8 @@ directly instead of UniPass.
 """
 obj PortabilityCheckPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
-        prog: Any,
-        cancel_token: Any = None;
+        prog: any,
+        cancel_token: any = None;
 
     def postinit -> None;
     def transform(ir_in: uni.Module) -> uni.Module;

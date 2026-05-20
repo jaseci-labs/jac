@@ -312,12 +312,16 @@ def:pub EventListPage() -> JsxElement {
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {[<TableRow key={e["id"]}>
-                            <TableCell>{e["name"]}</TableCell>
-                            <TableCell>
-                                <Badge variant="outline">{e["status"]}</Badge>
-                            </TableCell>
-                        </TableRow> for e in events if e != None]}
+                        {for e in events {
+                            if e != None {
+                                <TableRow key={e["id"]}>
+                                    <TableCell>{e["name"]}</TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline">{e["status"]}</Badge>
+                                    </TableCell>
+                                </TableRow>
+                            }
+                        }}
                     </TableBody>
                 </Table>
             </CardContent>

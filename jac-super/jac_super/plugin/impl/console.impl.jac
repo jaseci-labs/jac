@@ -54,7 +54,7 @@ obj JacSuperConsole(BaseJacConsole) {
     `markup=True`. Auto-highlighting (`highlight`) is left at Rich's default
     so numbers, strings, paths, and keywords still get their accent colors.
     """
-    def print(*args: Any, **kwargs: Any) {
+    def print(*args: any, **kwargs: any) {
         # Extract style if provided, otherwise use default
         style = kwargs.pop('style', None);
         file = kwargs.pop('file', None);
@@ -74,7 +74,7 @@ obj JacSuperConsole(BaseJacConsole) {
     }
 
     """Override status to use Rich console status."""
-    def status(*args: Any, **kwargs: Any) -> object {
+    def status(*args: any, **kwargs: any) -> object {
         return self._console.status(*args, **kwargs);
     }
 
@@ -122,7 +122,7 @@ obj JacSuperConsole(BaseJacConsole) {
     }
 
     """Override print_urls to use Rich URL styling."""
-    def print_urls(urls: Any, symbol: str = '➜') {
+    def print_urls(urls: any, symbol: str = '➜') {
         items = urls.items() if isinstance(urls, dict) else urls;
         for (label, url) in items {
             padded_label = f"{label}:".ljust(10);

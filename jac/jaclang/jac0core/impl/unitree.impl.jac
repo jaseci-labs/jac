@@ -2153,6 +2153,11 @@ impl JsxExpression.postinit -> None {
 }
 
 
+impl JsxSlot.postinit -> None {
+    JsxChild.postinit(self);
+}
+
+
 impl JsxComment.postinit -> None {
     JsxChild.postinit(self);
 }

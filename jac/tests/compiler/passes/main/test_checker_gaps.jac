@@ -68,10 +68,10 @@ test "gap 35 augmented assign no operator check" {
     # Expected: at least 5 errors for invalid augmented operations:
     #   str += int, str += list, list -= int, int += str, bool //= float, str /= str
     # Actual: 0 errors (aug_op is completely ignored in exit_assignment)
-    assert len(program.errors_had) >= 5 , f"Gap #35: Augmented assignment has no operator validation. "
+    assert len(program.errors_had) >= 5 , "Gap #35: Augmented assignment has no operator validation. "
     f"Expected at least 5 type errors but got {len(program.errors_had)}. "
-    f"The type checker ignores nd.aug_op entirely in exit_assignment. "
-    f"str += int, list -= int, int += str, bool //= float, str /= str all go unchecked.";
+    "The type checker ignores nd.aug_op entirely in exit_assignment. "
+    "str += int, list -= int, int += str, bool //= float, str /= str all go unchecked.";
 }
 
 # =========================================================================
@@ -94,10 +94,10 @@ test "gap 36 await returns unknown" {
     # Expected: at least 4 errors (await int->str, await dict->int,
     #   await str->int, await int->str, await int->bool)
     # Actual: 0 errors (AwaitExpr returns UnknownType, assignable to anything)
-    assert len(program.errors_had) >= 4 , f"Gap #36: AwaitExpr returns UnknownType. "
+    assert len(program.errors_had) >= 4 , "Gap #36: AwaitExpr returns UnknownType. "
     f"Expected at least 4 type errors but got {len(program.errors_had)}. "
-    f"No case handler exists for AwaitExpr in _get_type_of_expression_core. "
-    f"await coroutine() falls through to UnknownType instead of the return type.";
+    "No case handler exists for AwaitExpr in _get_type_of_expression_core. "
+    "await coroutine() falls through to UnknownType instead of the return type.";
 }
 
 # =========================================================================
@@ -118,9 +118,9 @@ test "gap 37 yield type checking" {
     # Expected: at least 3 errors for yield type mismatches:
     #   yield "hello" in int gen, yield [1,2] in int gen, yield 3.14 in int gen,
     #   yield 42 in str gen, yield from str_list in int gen
-    assert len(program.errors_had) >= 3 , f"Gap #37: YieldExpr type checking. "
+    assert len(program.errors_had) >= 3 , "Gap #37: YieldExpr type checking. "
     f"Expected at least 3 type errors but got {len(program.errors_had)}. "
-    f"Yield expressions should check value type against declared return type.";
+    "Yield expressions should check value type against declared return type.";
 }
 
 # =========================================================================
@@ -142,10 +142,10 @@ test "gap 38 generic typevar binding" {
     #   Box.get()->str, Box.set("hello"), Pair.first()->int, Pair.second()->str,
     #   Stack.push("pi"), Stack.peek()->str, nested Box[list[int]].get()->list[str]
     # Actual: 0 errors (TypeVar T is not properly bound/substituted)
-    assert len(program.errors_had) >= 6 , f"Gap #38: Generic TypeVar binding is incomplete. "
+    assert len(program.errors_had) >= 6 , "Gap #38: Generic TypeVar binding is incomplete. "
     f"Expected at least 6 type errors but got {len(program.errors_had)}. "
-    f"TypeVar bindings are not propagated through generic class methods. "
-    f"Box[int].get() does not resolve T=int in the return type.";
+    "TypeVar bindings are not propagated through generic class methods. "
+    "Box[int].get() does not resolve T=int in the return type.";
 }
 
 # =========================================================================
@@ -169,10 +169,10 @@ test "gap 40 while condition not checked" {
     #   nonexistent method, wrong arg type, incompatible comparison, chained error
     # Actual: 2 errors (function arg errors caught by exit_func_call, but
     #   nonexistent method and str > int comparison NOT caught)
-    assert len(program.errors_had) >= 3 , f"Gap #40: WhileStmt condition is not type-checked. "
+    assert len(program.errors_had) >= 3 , "Gap #40: WhileStmt condition is not type-checked. "
     f"Expected at least 3 type errors but got {len(program.errors_had)}. "
-    f"No exit_while_stmt handler exists in the type checker pass. "
-    f"Nonexistent methods and wrong arg types in while conditions go unchecked.";
+    "No exit_while_stmt handler exists in the type checker pass. "
+    "Nonexistent methods and wrong arg types in while conditions go unchecked.";
 }
 
 # =========================================================================
@@ -196,10 +196,10 @@ test "gap 41 assert stmt not checked" {
     #   nonexistent method (1), double errors in both (2)
     # Note: str > int comparison (case 5) is NOT caught because
     # str.__gt__ inherits from object.__gt__ which accepts any type.
-    assert len(program.errors_had) >= 5 , f"Gap #41: AssertStmt is not type-checked. "
+    assert len(program.errors_had) >= 5 , "Gap #41: AssertStmt is not type-checked. "
     f"Expected at least 5 type errors but got {len(program.errors_had)}. "
-    f"No exit_assert_stmt handler exists. Nonexistent method calls and "
-    f"binary comparison errors in assert conditions are missed.";
+    "No exit_assert_stmt handler exists. Nonexistent method calls and "
+    "binary comparison errors in assert conditions are missed.";
 }
 
 # =========================================================================
@@ -219,9 +219,9 @@ test "gap 42 delete stmt not checked" {
     # Expected: at least 3 errors:
     #   nonexistent attr, wrong index type, nested nonexistent attr, outer nonexistent
     # Actual: 0 errors (delete target is not type-evaluated)
-    assert len(program.errors_had) >= 3 , f"Gap #42: DeleteStmt is not type-checked. "
+    assert len(program.errors_had) >= 3 , "Gap #42: DeleteStmt is not type-checked. "
     f"Expected at least 3 type errors but got {len(program.errors_had)}. "
-    f"No exit_delete_stmt handler exists. del obj.nonexistent goes unchecked.";
+    "No exit_delete_stmt handler exists. del obj.nonexistent goes unchecked.";
 }
 
 # =========================================================================
@@ -245,10 +245,10 @@ test "gap 43 walker stmts not checked" {
     #   report wrong arg, report nonexistent method
     # Actual: 2 errors (function arg errors caught, but visit-to-non-node
     #   and nonexistent method on self NOT caught)
-    assert len(program.errors_had) >= 4 , f"Gap #43: Walker statements not type-checked. "
+    assert len(program.errors_had) >= 4 , "Gap #43: Walker statements not type-checked. "
     f"Expected at least 4 type errors but got {len(program.errors_had)}. "
-    f"No handlers exist for VisitStmt/DisengageStmt/ReportStmt. "
-    f"visit 42 and report with type errors go completely unchecked.";
+    "No handlers exist for VisitStmt/DisengageStmt/ReportStmt. "
+    "visit 42 and report with type errors go completely unchecked.";
 }
 
 # =========================================================================
@@ -270,10 +270,10 @@ test "gap 44 context manager exit not checked" {
     #   EnterOnlyManager missing __exit__ (x2 for single and multi),
     #   alias type binding (str->int, list[int]->str)
     # Actual: 0 errors (only __enter__ is checked, __exit__ and alias ignored)
-    assert len(program.errors_had) >= 2 , f"Gap #44: Context manager __exit__ not checked. "
+    assert len(program.errors_had) >= 2 , "Gap #44: Context manager __exit__ not checked. "
     f"Expected at least 2 type errors but got {len(program.errors_had)}. "
-    f"exit_with_stmt only checks __enter__, never validates __exit__. "
-    f"Also missing: alias type binding from __enter__ return type.";
+    "exit_with_stmt only checks __enter__, never validates __exit__. "
+    "Also missing: alias type binding from __enter__ return type.";
 }
 
 # =========================================================================
@@ -338,10 +338,10 @@ test "gap 46 impl file standalone scope resolution" {
     # is checked without its parent module's scope. The fix should use
     # discover_base_file() to find checker_gap_impl_scope.jac and compile
     # through the parent, so Calculator, self.value, int, str all resolve.
-    assert len(program.errors_had) == 3 , f"Gap #46: Impl file standalone scope resolution. "
+    assert len(program.errors_had) == 3 , "Gap #46: Impl file standalone scope resolution. "
     f"Expected exactly 3 type errors but got {len(program.errors_had)}. "
-    f"Impl files compiled standalone should use discover_base_file() to find "
-    f"the parent module and check in its full scope context. "
+    "Impl files compiled standalone should use discover_base_file() to find "
+    "the parent module and check in its full scope context. "
     f"Errors: {[e.pretty_print() for e in program.errors_had[:5]]}";
 }
 
@@ -378,10 +378,10 @@ test "gap 47 undeclared attr assignment on archetypes" {
     #
     # Actual (gap): 0 errors — _populate_self_member_symbols adds all
     # self.x = value assignments to the symbol table unconditionally.
-    assert len(program.errors_had) >= 4 , f"Gap #47: Undeclared attr on archetypes. "
+    assert len(program.errors_had) >= 4 , "Gap #47: Undeclared attr on archetypes. "
     f"Expected at least 4 type errors but got {len(program.errors_had)}. "
-    f"obj/node/edge/walker should not allow self.attr = value for attrs "
-    f"not declared in the 'has' block. Only 'class' allows dynamic attrs.";
+    "obj/node/edge/walker should not allow self.attr = value for attrs "
+    "not declared in the 'has' block. Only 'class' allows dynamic attrs.";
 }
 
 # =========================================================================
@@ -432,10 +432,10 @@ test "gap 48 type checker self check" {
         for e in program.errors_had
         if "has no attribute" in str(e) or "Type is Unknown" in str(e)
     ];
-    assert len(false_positives) <= 120 , f"Gap #48: TypeCheckPass self-check. "
+    assert len(false_positives) <= 120 , "Gap #48: TypeCheckPass self-check. "
     f"Expected <= 40 false positives but got {len(false_positives)} "
     f"({len(program.errors_had)} total errors). "
-    f"Significant improvement from 125+ baseline via __init__ param/body fallback. "
+    "Significant improvement from 125+ baseline via __init__ param/body fallback. "
     f"Sample: {[e.pretty_print()[:100] for e in false_positives[:5]]}";
 }
 
@@ -469,10 +469,10 @@ test "gap 49 type checking forward ref" {
     # Actual (gap): 'Path' from TYPE_CHECKING import may resolve to
     # Literal["Path"] or Unknown, so p has wrong type and either
     # false positives or missed errors occur.
-    assert len(program.errors_had) == 2 , f"Gap #49: TYPE_CHECKING forward ref. "
+    assert len(program.errors_had) == 2 , "Gap #49: TYPE_CHECKING forward ref. "
     f"Expected exactly 2 type errors but got {len(program.errors_had)}. "
-    f"String annotations referencing TYPE_CHECKING-guarded imports should "
-    f"resolve to the actual imported type, not Literal or Unknown. "
+    "String annotations referencing TYPE_CHECKING-guarded imports should "
+    "resolve to the actual imported type, not Literal or Unknown. "
     f"Errors: {[e.pretty_print() for e in program.errors_had[:5]]}";
 }
 
@@ -516,10 +516,10 @@ test "gap 50 postinit assignment tracking" {
         if "checker_gap_postinit_tracking.jac" in (e.loc.mod_path or "")
         and 44 <= e.loc.first_line <= 51
     ];
-    assert len(incomplete_errors) >= 1 , f"Gap #50: postinit missing assignment not caught. "
-    f"Incomplete.postinit never assigns to self.z (by postinit field), but "
-    f"no error is produced. The type checker should validate that postinit "
-    f"bodies assign to ALL 'by postinit' fields. "
+    assert len(incomplete_errors) >= 1 , "Gap #50: postinit missing assignment not caught. "
+    "Incomplete.postinit never assigns to self.z (by postinit field), but "
+    "no error is produced. The type checker should validate that postinit "
+    "bodies assign to ALL 'by postinit' fields. "
     f"Total errors: {len(program.errors_had)}, Incomplete errors: {len(
         incomplete_errors
     )}. "
@@ -536,7 +536,7 @@ test "gap 51 property on union type returns function type" {
         for e in program.errors_had
         if "checker_gap_property.jac" in (e.loc.mod_path or "")
     ];
-    assert len(fixture_errors) == 0 , f"Gap #51: Property on union type not unwrapped. "
+    assert len(fixture_errors) == 0 , "Gap #51: Property on union type not unwrapped. "
     f"Expected 0 errors but got {len(fixture_errors)}. "
     f"Errors: {[e.pretty_print()[:100] for e in fixture_errors]}";
 }

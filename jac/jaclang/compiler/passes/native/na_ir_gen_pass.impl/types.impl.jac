@@ -342,7 +342,7 @@ Returns "f64" for DoubleType, "ptr" for PointerType, and "i64" for all integer t
 (i8, i16, i32, i64, bool). This matches the classification used in _resolve_jac_type's
 AtomTrailer branches so collection helper keys are consistent.
 """
-impl NaIRGenPass._llvm_to_spec(t: Any) -> str {
+impl NaIRGenPass._llvm_to_spec(t: any) -> str {
     if isinstance(t, ir.DoubleType) {
         return "f64";
     }

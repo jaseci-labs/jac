@@ -20,7 +20,7 @@ impl _is_enabled -> bool {
 }
 
 """Get the root NodeAnchor that owns this anchor."""
-impl _get_root_anchor(anchor: Any) -> Any {
+impl _get_root_anchor(anchor: any) -> any {
     import from jaclang.jac0core.archetype { NodeAnchor as NA, Root }
     if anchor.root is None {
         # The anchor might BE the root node itself
@@ -68,7 +68,7 @@ impl _get_type_mro(`obj: object) -> list[str] {
 }
 
 """Called after an edge is created between source and target."""
-impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
+impl on_edge_created(source: any, target: any, `edge: any) -> None {
     if not _is_enabled() {
         return;
     }
@@ -113,7 +113,7 @@ impl on_edge_created(source: Any, target: Any, `edge: Any) -> None {
 }
 
 """Called when an edge is destroyed."""
-impl on_edge_destroyed(source: Any, target: Any, `edge: Any) -> None {
+impl on_edge_destroyed(source: any, target: any, `edge: any) -> None {
     if not _is_enabled() {
         return;
     }
@@ -137,7 +137,7 @@ impl on_edge_destroyed(source: Any, target: Any, `edge: Any) -> None {
 }
 
 """Called when a node is saved/persisted. Ensures it's in the root's index."""
-impl on_node_saved(node_anchor: Any) -> None {
+impl on_node_saved(node_anchor: any) -> None {
     if not _is_enabled() {
         return;
     }
@@ -171,7 +171,7 @@ impl on_node_saved(node_anchor: Any) -> None {
 }
 
 """Called when a node is destroyed."""
-impl on_node_destroyed(node_anchor: Any) -> None {
+impl on_node_destroyed(node_anchor: any) -> None {
     if not _is_enabled() {
         return;
     }
@@ -253,7 +253,7 @@ impl _filter_has_predicates(filt: (Callable | None)) -> bool {
 
 """Use the topology index to resolve which node UUIDs will survive
 the type-only filters in a path chain."""
-impl plan_query(path: Any) -> (set[UUID] | None) {
+impl plan_query(path: any) -> (set[UUID] | None) {
     if not _is_enabled() {
         return None;
     }
@@ -314,7 +314,7 @@ Walks each origin node's edges in their natural order and yields targets
 whose ID is in the planned set. This preserves the same traversal order
 as the non-indexed edges_to_nodes path.
 """
-impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list[Any] {
+impl batch_load_nodes(node_ids: set[UUID], origin: (list | None) = None) -> list[any] {
     import from jaclang { JacRuntimeInterface as Jac }
     ctx = Jac.get_context();
     import from jaclang.jac0core.archetype { NodeAnchor }
@@ -397,7 +397,7 @@ breaks the ordering invariant the slice is paying for.
 
 Returns None to signal "no pushdown" — callers fall back to the unsliced fast
 path or to the slow path."""
-impl plan_query_ordered(path: Any, slc: slice) -> (list[UUID] | None) {
+impl plan_query_ordered(path: any, slc: slice) -> (list[UUID] | None) {
     if not _is_enabled() {
         return None;
     }
@@ -458,7 +458,7 @@ bounded set in canonical order, so we just batch-load and preserve order.
 This skips the edge-anchor bulk prefetch that the unsliced path needs for
 ordering — the topology index already encoded the ordering, so the storage
 layer is asked for exactly the requested subset."""
-impl batch_load_nodes_by_ids(node_ids: list[UUID]) -> list[Any] {
+impl batch_load_nodes_by_ids(node_ids: list[UUID]) -> list[any] {
     import from jaclang { JacRuntimeInterface as Jac }
     import from jaclang.jac0core.archetype { NodeAnchor }
     import from jaclang.runtimelib.memory { TieredMemory }

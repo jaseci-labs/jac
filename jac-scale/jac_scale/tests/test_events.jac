@@ -9,7 +9,7 @@ import from jac_scale.events.broker {
     RetryPolicy,
     HealthStatus
 }
-import from typing { Any, Callable }
+import from typing { Callable }
 import from jac_scale.events.publisher { publish, set_broker }
 import from jac_scale.events.subscriber { subscribe, get_subscriptions }
 
@@ -24,7 +24,7 @@ obj _ExplodingBroker(EventStreamBroker) {
 
     def register_handler(
         topic: str,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
         start_from: str = "latest"
@@ -110,7 +110,7 @@ obj _CapturingBroker(EventStreamBroker) {
 
     def register_handler(
         topic: str,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
         start_from: str = "latest"

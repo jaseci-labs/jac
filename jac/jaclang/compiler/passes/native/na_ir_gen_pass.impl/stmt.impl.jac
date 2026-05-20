@@ -169,7 +169,17 @@ impl NaIRGenPass._codegen_stmt(nd: uni.UniNode) -> None {
     } elif isinstance(nd, uni.GlobalStmt) {
         # `global`/`nonlocal` are declarations consumed by the symbol
         # table; the corresponding Name/Assignment nodes do the actual
-        # codegen, so emitting nothing here is correct.
+        # codegen. We still record the declared names so a later
+        # `x = ...` in this function rebinds the module global instead of
+        # allocating a function-local (see _codegen_assignment). Without an
+        # explicit `global x;`, a function-scope assignment is a local —
+        # matching CPython and the sv pathway.
+        for _g_target in nd.target {
+            _g_name = self._get_name(_g_target);
+            if _g_name is not None {
+                self._declared_globals.add(_g_name);
+            }
+        }
     } elif isinstance(nd, uni.PyInlineCode) {
         # ::py:: blocks are intentionally stripped from native output —
         # they target the Python pathway only.
@@ -1159,8 +1169,14 @@ impl NaIRGenPass._codegen_assignment(nd: uni.Assignment) -> None {
                 }
             }
             self.builder.store(coerced, alloca);
-        } elif var_name in self.global_vars {
-            # Store to global variable (handles `global var; var = expr`)
+        } elif var_name in self.global_vars
+        and (self._in_module_scope or var_name in self._declared_globals) {
+            # Store to a module global. Only reached for module-level code
+            # (_in_module_scope) or after an explicit `global var;` declared
+            # the name in this function (_declared_globals). A bare
+            # function-scope assignment to a glob-named variable does NOT land
+            # here — it falls through to the `else` branch and allocates a
+            # function-local, matching CPython and the sv pathway.
             global_var = self.global_vars[var_name];
             if nd.aug_op is not None {
                 aug_op_val = nd.aug_op.value;

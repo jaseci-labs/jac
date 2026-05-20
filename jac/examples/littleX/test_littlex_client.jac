@@ -3,7 +3,6 @@
 import os;
 import time;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.runtimelib.testing { JacTestClient }
 import from tempfile { mkdtemp }
 
@@ -18,7 +17,7 @@ def make_client -> JacTestClient {
 }
 
 """Helper to create a user and return the response data."""
-def create_user(client: JacTestClient, username: str, password: str) -> dict[str, Any] {
+def create_user(client: JacTestClient, username: str, password: str) -> dict[str, any] {
     response = client.register_user(username, password);
     return response.data;
 }

@@ -92,7 +92,7 @@ impl LocalStorage.list_files(
     }
 }
 
-impl LocalStorage.get_metadata(self: LocalStorage, path: str) -> dict[str, Any] {
+impl LocalStorage.get_metadata(self: LocalStorage, path: str) -> dict[str, any] {
     file_path = self._resolve_path(path);
     if not file_path.exists() {
         raise FileNotFoundError(f"File not found: {path}");

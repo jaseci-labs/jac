@@ -94,6 +94,27 @@ test "generate_metadata produces correct METADATA 2.4 output" {
     assert 'opencv-python-headless>=4.0; extra == "video"' in meta;
 }
 
+test "generate_metadata emits Classifier headers in order" {
+    cfg = JacConfig.from_toml_str(
+        '[project]\nname = "mypkg"\nversion = "1.0.0"\nclassifiers = [\n  "Programming Language :: Python :: 3",\n  "License :: OSI Approved :: MIT License",\n  "Framework :: Jac",\n]\n'
+    );
+    meta = generate_metadata(cfg);
+    assert "Classifier: Programming Language :: Python :: 3" in meta;
+    assert "Classifier: License :: OSI Approved :: MIT License" in meta;
+    assert "Classifier: Framework :: Jac" in meta;
+    lines = [
+        l
+        for l in meta.splitlines()
+        if l.startswith("Classifier:")
+    ];
+    assert lines == [
+        "Classifier: Programming Language :: Python :: 3",
+        "Classifier: License :: OSI Approved :: MIT License",
+        "Classifier: Framework :: Jac",
+
+    ];
+}
+
 test "generate_metadata raises when package section missing" {
     raised = False;
     try {

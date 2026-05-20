@@ -4,7 +4,7 @@
 # DependencyRegistry Implementation
 # ===============================================================================
 """Register a new dependency type from plugin hook data."""
-impl DependencyRegistry.register(dep_type_info: dict[str, Any]) -> None {
+impl DependencyRegistry.register(dep_type_info: dict[str, any]) -> None {
     import from jaclang.project.dep_registry { DependencyType }
     name = dep_type_info.get("name");
     if not name {

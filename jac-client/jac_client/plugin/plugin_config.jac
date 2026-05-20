@@ -12,7 +12,6 @@ import os;
 import shutil;
 import subprocess;
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.jac0core.runtime { hookimpl }
 import from jaclang.project.config { JacConfig }
 
@@ -20,7 +19,7 @@ import from jaclang.project.config { JacConfig }
 class JacClientPluginConfig {
     """Return plugin metadata."""
     @hookimpl
-    static def get_plugin_metadata -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "client",
             "version": "1.0.0",
@@ -30,7 +29,7 @@ class JacClientPluginConfig {
 
     """Return the plugin's configuration schema for [plugins.client]."""
     @hookimpl
-    static def get_config_schema -> dict[str, Any] {
+    static def get_config_schema -> dict[str, any] {
         return {
             "section": "client",
             "options": {
@@ -104,7 +103,7 @@ class JacClientPluginConfig {
 
     """Register npm as a dependency type for [dependencies.npm]."""
     @hookimpl
-    static def register_dependency_type -> dict[str, Any] {
+    static def register_dependency_type -> dict[str, any] {
         return {
             "name": "npm",
             "dev_name": "npm.dev",
@@ -118,8 +117,8 @@ class JacClientPluginConfig {
 
     """Register the client and fullstack project templates."""
     @hookimpl
-    static def register_project_template -> list[dict[str, Any]] {
-        templates: list[dict[str, Any]] = [];
+    static def register_project_template -> list[dict[str, any]] {
+        templates: list[dict[str, any]] = [];
 
         # Load templates from template directories
         for template_name in ["client", "fullstack"] {
@@ -137,7 +136,7 @@ class JacClientPluginConfig {
 # Template Loader
 # ===============================================================================
 """Load a template from a template directory containing jac.toml with [jacpack] section."""
-def _load_template(template_name: str) -> dict[str, Any] | None {
+def _load_template(template_name: str) -> dict[str, any] | None {
     import from jaclang.project.template_loader { load_template_from_directory }
     import from jaclang.cli.console { console }
 

@@ -675,14 +675,26 @@ impl Serializer._deserialize_archetype(
             }
             target = field_types[k];
             (coerced, ok) = Serializer.coerce(deser_v, target);
-            setattr(arch, k, coerced);
             if not ok {
-                logger.debug(
+                origin = get_origin(target);
+                args = get_args(target);
+                is_optional = (
+                    (origin is Union or origin is UnionType) and NoneType in args
+                );
+                if deser_v is None and not is_optional {
+                    raise TypeError(
+                        f"{module_name}.{type_name}.{k}: stored value is None "
+                        f"but field type {target} does not allow None — "
+                        "nested class likely removed"
+                    );
+                }
+                logger.warning(
                     f"Serializer: coercion fallback on {module_name}."
                     f"{type_name}.{k}: stored={type(deser_v).__name__}, "
                     f"target={target}; stored value kept as-is."
                 );
             }
+            setattr(arch, k, coerced);
         }
         if dropped {
             logger.debug(

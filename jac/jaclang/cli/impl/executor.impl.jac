@@ -9,7 +9,7 @@ import from jaclang.cli.console { console }
 # ===============================================================================
 """Execute a command with its hooks."""
 impl CommandExecutor.execute(
-    spec: CommandSpec, args: dict[str, Any]
+    spec: CommandSpec, args: dict[str, any]
 ) -> ExecutionResult {
     import from jaclang.cli.command { CommandSpec, HookContext }
     import from jaclang.cli.executor { ExecutionResult }
@@ -86,7 +86,7 @@ impl CommandExecutor.run_post_hooks(
 }
 
 """Execute the command handler."""
-impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, Any]) -> int {
+impl CommandExecutor.run_handler(spec: CommandSpec, args: dict[str, any]) -> int {
     import inspect;
     import from jaclang.cli.command { CommandSpec }
     if spec.handler is None {

@@ -4,7 +4,6 @@ Shared init / _get_jac_config / load are inherited from TargetConfig.
 Only desktop-specific methods live here.
 """
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.project.config { JacConfig, get_config }
 import from jaclang.project.plugin_config { deep_merge }
 import from jaclang.cli.console { console }
