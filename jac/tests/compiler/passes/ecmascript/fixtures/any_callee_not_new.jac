@@ -6,14 +6,13 @@ emitted `new handler(payload)` for any callee whose type was a
 `ClassType`, which broke async callbacks typed as `Any`.
 """
 
-import from typing { Any }
 
 cl {
-    async def invoke_any_async(handler: Any, payload: dict) {
+    async def invoke_any_async(handler: any, payload: dict) {
         await handler(payload);
     }
 
-    def invoke_any_sync(handler: Any, payload: dict) {
+    def invoke_any_sync(handler: any, payload: dict) {
         handler(payload);
     }
 }

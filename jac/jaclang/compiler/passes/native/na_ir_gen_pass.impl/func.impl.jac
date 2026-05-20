@@ -118,6 +118,11 @@ impl NaIRGenPass._codegen_ability(nd: uni.Ability) -> None {
     # Reset per-function borrowed-param promotion state (see _codegen_assignment).
     self._param_store_instr = {};
     self._param_promoted = set();
+    # Reset per-function global-scoping state. Inside an ability a bare
+    # assignment to a glob-named var is a local unless a `global x;` declares
+    # it — see GlobalStmt handling and _codegen_assignment.
+    self._declared_globals = set();
+    self._in_module_scope = False;
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, name, self._func_loc.get(name, nd.loc.first_line if nd.loc else 0)
@@ -300,6 +305,10 @@ impl NaIRGenPass._codegen_entry(nd: uni.ModuleCode) -> None {
     self.local_vars = {};
     self.var_dict_type = {};
     self.var_set_elem_type = {};
+    # Module-level code: an assignment to a glob is a genuine global store
+    # (module scope == global scope, as in CPython).
+    self._declared_globals = set();
+    self._in_module_scope = True;
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     entry_line = nd.loc.first_line if nd.loc else 0;
     self._attach_di_subprogram(func, "jac_entry", entry_line);

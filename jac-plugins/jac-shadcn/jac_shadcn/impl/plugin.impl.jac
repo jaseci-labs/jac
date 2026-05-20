@@ -2,7 +2,6 @@
 
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, HookContext }
-import from typing { Any }
 import from pathlib { Path }
 
 impl JacShadcnPlugin.create_cmd -> None {
@@ -116,7 +115,7 @@ impl _handle_shadcn_remove(ctx: HookContext) -> None {
     }
 }
 
-impl JacShadcnPlugin.register_project_template -> dict[str, Any] | None {
+impl JacShadcnPlugin.register_project_template -> dict[str, any] | None {
     import from jaclang.project.template_loader { load_template_from_directory }
     import from jaclang.cli.console { console }
 

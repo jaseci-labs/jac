@@ -1,4 +1,4 @@
-def total(values: Any) -> Any {
+def total(values: any) -> any {
     return sum(values);
 }
 

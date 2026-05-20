@@ -11,7 +11,7 @@ All other sections (project, plugins, dependencies, etc.) become the config
 for created projects.
 """
 
-import from typing { Any, Callable }
+import from typing { Callable }
 import from pathlib { Path }
 import from jaclang.project.template_registry { ProjectTemplate }
 

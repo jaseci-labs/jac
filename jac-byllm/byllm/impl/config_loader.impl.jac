@@ -7,7 +7,6 @@ The base class handles: init, load, get_jac_config, deep_merge, get_section.
 This file only implements plugin-specific methods.
 """
 import from pathlib { Path }
-import from typing { Any }
 
 """Get the plugin section name for byllm."""
 impl JacByllmConfig.get_plugin_name(self: JacByllmConfig) -> str {
@@ -15,7 +14,7 @@ impl JacByllmConfig.get_plugin_name(self: JacByllmConfig) -> str {
 }
 
 """Get default configuration structure for byllm."""
-impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, any] {
     return {
         'model': {
             'default_model': 'gpt-4o-mini',
@@ -49,7 +48,7 @@ impl JacByllmConfig.get_default_config(self: JacByllmConfig) -> dict[str, Any] {
 }
 
 """Get model configuration from jac.toml."""
-impl JacByllmConfig.get_model_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_model_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     model_config = config.get('model', {});
     return {
@@ -62,12 +61,12 @@ impl JacByllmConfig.get_model_config(self: JacByllmConfig) -> dict[str, Any] {
 }
 
 """Get default call parameters configuration from jac.toml."""
-impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     call_params = config.get('call_params', {});
     temperature = call_params.get('temperature', 0.7);
     max_tokens = call_params.get('max_tokens', 0);
-    result: dict[str, Any] = {'temperature': temperature};
+    result: dict[str, any] = {'temperature': temperature};
     # Only include max_tokens if it's set (non-zero)
     if max_tokens > 0 {
         result['max_tokens'] = max_tokens;
@@ -76,7 +75,7 @@ impl JacByllmConfig.get_call_params_config(self: JacByllmConfig) -> dict[str, An
 }
 
 """Get LiteLLM-specific configuration from jac.toml."""
-impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     litellm_config = config.get('litellm', {});
     return {
@@ -87,7 +86,7 @@ impl JacByllmConfig.get_litellm_config(self: JacByllmConfig) -> dict[str, Any] {
 }
 
 """Get fallback/resilience configuration from jac.toml."""
-impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     fallback_config = config.get('fallback', {});
     return {
@@ -98,7 +97,7 @@ impl JacByllmConfig.get_fallback_config(self: JacByllmConfig) -> dict[str, Any] 
 }
 
 """Get prompt caching configuration from jac.toml."""
-impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_prompt_caching_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     pc_config = config.get('prompt_caching', {});
     return {'enabled': bool(pc_config.get('enabled', True))};
@@ -122,7 +121,7 @@ impl get_byllm_config(project_dir: Path | None = None) -> JacByllmConfig {
 }
 
 """Get parallel tool-calling configuration from jac.toml."""
-impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_parallel_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     parallel_config = config.get('parallel', {});
     # Also check env var BYLLM_PARALLEL_TOOL_CALLING as override
@@ -143,7 +142,7 @@ impl JacByllmConfig.get_system_prompt(self: JacByllmConfig) -> str {
 }
 
 """Get compaction configuration from jac.toml."""
-impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     c = config.get('compaction', {});
     return {
@@ -156,7 +155,7 @@ impl JacByllmConfig.get_compaction_config(self: JacByllmConfig) -> dict[str, Any
 }
 
 """Get local-runtime configuration from jac.toml."""
-impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, Any] {
+impl JacByllmConfig.get_local_config(self: JacByllmConfig) -> dict[str, any] {
     config = self.load();
     local_cfg = config.get('local', {});
     return {

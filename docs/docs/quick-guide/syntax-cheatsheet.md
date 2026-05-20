@@ -1222,9 +1222,9 @@ with entry {
 # FULL-STACK DEVELOPMENT (Codespaces)
 # ============================================================
 # Jac code can target different execution environments:
-#   to sv: = server (Python/PyPI)
-#   to cl: = client (JavaScript/npm)
-#   to na: = native (C ABI)
+#   sv { } / to sv: = server (Python/PyPI)
+#   cl { } / to cl: = client (JavaScript/npm)
+#   na { } / to na: = native (C ABI)
 
 
 # ============================================================
@@ -1240,32 +1240,36 @@ def:pub get_todos() -> list {
     return [{"title": t.title} for t in [root -->][?:Todo]];
 }
 
-# Client section (compiles to JavaScript/React)
-to cl:
+# Client code in a braced block (compiles to JavaScript/React).
+# The braces bracket exactly the client region.
+cl {
+    def:pub app() -> JsxElement {
+        has items: list = [];
 
-def:pub app() -> JsxElement {
-    has items: list = [];
+        async can with entry {
+            items = await get_todos();
+        }
 
-    async can with entry {
-        items = await get_todos();
+        return <div>
+            {[<p key={i.title}>{i.title}</p> for i in items]}
+        </div>;
     }
-
-    return <div>
-        {[<p key={i.title}>{i.title}</p> for i in items]}
-    </div>;
 }
 
-# Return to server section
-to sv:
-
+# Code after the block is back in the server codespace
 node Secret { has value: str; }
+
+# Section header -- an alternative to a block; sets the codespace for
+# every following element until the next "to X:" header or end of file
+to cl:
+
+import from react { useEffect }
+
+to sv:
 
 # Single-statement form (no header, no braces)
 sv import from .database { connect_db }
 cl import from react { useState }
-
-# Braced form (cl { ... }) is still valid in inner scopes,
-# but emits W0064 at module scope -- prefer `to cl:` / `cl` prefix.
 
 
 # ============================================================
@@ -1297,16 +1301,34 @@ def:pub Counter() -> JsxElement {
     </div>;
 }
 
+# JSX `{...}` slots accept statement-form control flow as children.
+# Inside the slot, JSX statements push into the enclosing element's
+# children list; a bare `return;` ends the slot with whatever was emitted.
+def:pub Greeting(name: str) -> JsxElement {
+    return <div>
+        {if name == "" {
+            <p>(no name given)</p>
+            return;                   # bare return; = early-exit guard
+        }}
+        <h1>Hello, {name}!</h1>
+    </div>;
+}
+
+# Raw HTML opt-in (the name is the security review hint):
+#   <div>{unsafe_html(trusted_html_blob)}</div>
+
 # JSX syntax reference:
 # <div>text</div>               HTML elements
 # <Component prop="val" />      Component with props
-# {expression}                  JavaScript expression
+# {expression}                  Expression slot (one value)
+# {if .. for ..}                Statement slot (control flow as children)
 # {#* comment *#}               JSX comment (renders nothing)
-# {condition and <p>Show</p>}   Conditional render
-# {[<li>...</li> for x in xs]}  List rendering
-# <div {...props}>               Spread props
+# {unsafe_html(x)}              Raw HTML opt-in (escapes off)
+# <@expr />                     Dynamic tag (resolves expr at runtime)
+# <div {...props}>              Spread props
 # <div className="cls">         Class name (not "class")
 # <div style={{"color": "red"}} Inline styles
+# <@expr>...</@expr>            Dynamic tag (tag chosen by expression)
 
 
 # ============================================================

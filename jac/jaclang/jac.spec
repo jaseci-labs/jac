@@ -227,8 +227,10 @@ lambda_param ::=
 
 jsx_element ::=
     "<>" jsx_children "</>"
-    | JSX_OPEN_START JSX_NAME ("." JSX_NAME)* jsx_attributes
-      ("/>" | JSX_TAG_END jsx_children "</" JSX_NAME ("." JSX_NAME)* JSX_TAG_END)
+    | JSX_OPEN_START ("@" | JSX_NAME ("." JSX_NAME)*) jsx_attributes (
+          "/>"
+          | JSX_TAG_END jsx_children "</" ("@" | JSX_NAME ("." JSX_NAME)*) JSX_TAG_END
+      )
 
 jsx_attributes ::=
     (
@@ -238,7 +240,15 @@ jsx_attributes ::=
 
 jsx_children ::= jsx_child*
 
-jsx_child ::= JSX_TEXT jsx_child? | JSX_COMMENT | "{" expression "}" | jsx_element
+jsx_child ::=
+    JSX_TEXT jsx_child?
+    | JSX_COMMENT
+    | "{" (
+          ("for" | "while" | "if" | "match" | "switch" | "with" | "try" | "return")
+          code_block_stmts "}"
+          | expression (";"? code_block_stmts "}" | "}")
+      )
+    | jsx_element
 
 element_stmt ::=
     ";"
@@ -285,6 +295,7 @@ ctrl_stmt ::= ("break" | "continue" | "skip") ";" | "disengage" ";"
 
 statement ::=
     ";"
+    | jsx_element ";"?
     | import_stmt
     | if_stmt
     | while_stmt

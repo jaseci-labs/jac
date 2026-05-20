@@ -1585,7 +1585,7 @@ impl Parser.parse_atomic_chain -> Expr {
 }
 
 """Create an attribute Name node from a keyword token (used for dot-access on keywords)."""
-impl Parser._make_attr_from_keyword(name_tok: Any) {
+impl Parser._make_attr_from_keyword(name_tok: any) {
     special_kinds = [
         TokenKind.KW_INIT,
         TokenKind.KW_POST_INIT,
@@ -3190,26 +3190,33 @@ impl Parser.parse_jsx_element -> Expr {
             kid=kid
         );
     }
-    # Regular element: <Tag>...</Tag> or <Tag />
+    # Regular element: <Tag>...</Tag> / <Tag /> — or a dynamic tag <@expr ...>.
     open_start_uni = self.consume_uni(TokenKind.JSX_OPEN_START);
     open_kid: list = [open_start_uni];
-    # Parse tag name (may be dotted: UI.Button, Form.Input.Text).
-    # Name parts are emitted as `Name` nodes (not bare tokens) so the
-    # symbol resolver, semantic-token emitter, and goto-definition in
-    # the LSP can link a JSX tag to its component declaration.
-    name_tok = self.expect(TokenKind.JSX_NAME);
-    name = self.make_name(name_tok);
-    name_parts: list = [name];
-    name_kid: list = [name];
-    while self.match_tok(TokenKind.DOT) {
-        name_kid.append(self.make_uni_token(self.previous()));
-        next_name_tok = self.expect(TokenKind.JSX_NAME);
-        next_name = self.make_name(next_name_tok);
-        name_parts.append(next_name);
-        name_kid.append(next_name);
+    # Parse tag name. A `@` introduces a dynamic-tag expression; otherwise the
+    # name is a (possibly dotted: UI.Button) component/host name. Name parts
+    # are emitted as `Name` nodes (not bare tokens) so the symbol resolver,
+    # semantic-token emitter, and goto-definition in the LSP can link a JSX
+    # tag to its component declaration.
+    elem_name: JsxElementName | None = None;
+    dyn_tag: Expr | None = None;
+    if self.check(TokenKind.DECOR_OP) {
+        dyn_tag = self._parse_jsx_dynamic_tag(open_kid);
+    } else {
+        name_tok = self.expect(TokenKind.JSX_NAME);
+        name = self.make_name(name_tok);
+        name_parts: list = [name];
+        name_kid: list = [name];
+        while self.match_tok(TokenKind.DOT) {
+            name_kid.append(self.make_uni_token(self.previous()));
+            next_name_tok = self.expect(TokenKind.JSX_NAME);
+            next_name = self.make_name(next_name_tok);
+            name_parts.append(next_name);
+            name_kid.append(next_name);
+        }
+        elem_name = JsxElementName(parts=name_parts, kid=name_kid);
+        open_kid.append(elem_name);
     }
-    elem_name = JsxElementName(parts=name_parts, kid=name_kid);
-    open_kid.append(elem_name);
     # Parse attributes
     attrs = self.parse_jsx_attributes();
     open_kid.extend(attrs);
@@ -3223,6 +3230,7 @@ impl Parser.parse_jsx_element -> Expr {
             children=None,
             is_self_closing=True,
             is_fragment=False,
+            dynamic_tag=dyn_tag,
             kid=open_kid
         );
     }
@@ -3235,28 +3243,34 @@ impl Parser.parse_jsx_element -> Expr {
         children=None,
         is_self_closing=False,
         is_fragment=False,
+        dynamic_tag=dyn_tag,
         kid=open_kid
     );
     kid.append(opening);
     # Parse children
     children = self.parse_jsx_children();
     kid.extend(children);
-    # Parse closing tag: </Tag>
+    # Parse closing tag: </Tag> or </@expr>
     close_start_uni = self.consume_uni(TokenKind.JSX_CLOSE_START);
     close_kid: list = [close_start_uni];
-    close_name_tok = self.expect(TokenKind.JSX_NAME);
-    close_name_node = self.make_name(close_name_tok);
-    close_parts: list = [close_name_node];
-    close_name_kid: list = [close_name_node];
-    while self.match_tok(TokenKind.DOT) {
-        close_name_kid.append(self.make_uni_token(self.previous()));
-        cn_tok = self.expect(TokenKind.JSX_NAME);
-        cn = self.make_name(cn_tok);
-        close_parts.append(cn);
-        close_name_kid.append(cn);
+    close_elem_name: JsxElementName | None = None;
+    if self.check(TokenKind.DECOR_OP) {
+        self._consume_jsx_dynamic_close(close_kid);
+    } else {
+        close_name_tok = self.expect(TokenKind.JSX_NAME);
+        close_name_node = self.make_name(close_name_tok);
+        close_parts: list = [close_name_node];
+        close_name_kid: list = [close_name_node];
+        while self.match_tok(TokenKind.DOT) {
+            close_name_kid.append(self.make_uni_token(self.previous()));
+            cn_tok = self.expect(TokenKind.JSX_NAME);
+            cn = self.make_name(cn_tok);
+            close_parts.append(cn);
+            close_name_kid.append(cn);
+        }
+        close_elem_name = JsxElementName(parts=close_parts, kid=close_name_kid);
+        close_kid.append(close_elem_name);
     }
-    close_elem_name = JsxElementName(parts=close_parts, kid=close_name_kid);
-    close_kid.append(close_elem_name);
     close_kid.append(self.consume_uni(TokenKind.JSX_TAG_END));
     closing = JsxElement(
         name=close_elem_name,
@@ -3273,8 +3287,59 @@ impl Parser.parse_jsx_element -> Expr {
         children=children,
         is_self_closing=False,
         is_fragment=False,
+        dynamic_tag=dyn_tag,
         kid=kid
     );
+}
+
+"""Parse a dynamic-tag expression after `<@`: an identifier (optionally
+dotted, `<@UI.Box>`) or a brace-wrapped expression (`<@{expr}>`). The `@`
+token and the parsed expression are appended to `open_kid`."""
+impl Parser._parse_jsx_dynamic_tag(open_kid: list) -> Expr {
+    at_uni = self.make_uni_token(self.advance());  # consume `@`
+    open_kid.append(at_uni);
+    if self.check(TokenKind.LBRACE) {
+        lb_uni = self.make_uni_token(self.advance());
+        expr = self.parse_expression();
+        rb_uni = self.consume_uni(TokenKind.RBRACE);
+        open_kid.append(lb_uni);
+        open_kid.append(expr);
+        open_kid.append(rb_uni);
+        return expr;
+    }
+    name_tok = self.expect(TokenKind.JSX_NAME);
+    expr = self.make_name(name_tok);
+    while self.match_tok(TokenKind.DOT) {
+        dot_uni = self.make_uni_token(self.previous());
+        attr_tok = self.expect(TokenKind.JSX_NAME);
+        attr = self.make_name(attr_tok);
+        expr = AtomTrailer(
+            target=expr,
+            right=attr,
+            is_attr=True,
+            is_null_ok=False,
+            kid=[expr, dot_uni, attr]
+        );
+    }
+    open_kid.append(expr);
+    return expr;
+}
+
+"""Consume a dynamic closing tag `</@expr>` loosely (the runtime tag match
+is not enforced); the consumed tokens are appended to `close_kid`."""
+impl Parser._consume_jsx_dynamic_close(close_kid: list) {
+    close_kid.append(self.make_uni_token(self.advance()));  # `@`
+    if self.check(TokenKind.LBRACE) {
+        close_kid.append(self.make_uni_token(self.advance()));
+        close_kid.append(self.parse_expression());
+        close_kid.append(self.consume_uni(TokenKind.RBRACE));
+        return;
+    }
+    close_kid.append(self.make_name(self.expect(TokenKind.JSX_NAME)));
+    while self.match_tok(TokenKind.DOT) {
+        close_kid.append(self.make_uni_token(self.previous()));
+        close_kid.append(self.make_name(self.expect(TokenKind.JSX_NAME)));
+    }
 }
 
 """Parse JSX opening element and return (name, attrs, is_self_closing)."""
@@ -3397,14 +3462,78 @@ impl Parser.parse_jsx_child -> Expr {
         cmt_node = self.make_uni_token(cmt_tok);
         return JsxComment(value=cmt_node, kid=[cmt_node]);
     }
-    # Expression: {expr}
+    # `{...}` slot. When the body is a single expression (the common case
+    # like `{name}` or `{<p/>}`), emit `JsxExpression` so the lowering stays
+    # zero-cost. When the body is statement-form (control flow yielding JSX,
+    # assignments, an explicit `return` guard), emit `JsxSlot` and let the
+    # slot-lowering pass wrap it in an IIFE that runs the body and returns
+    # either the accumulated JSX fragment or the last expression value.
     if self.check(TokenKind.LBRACE) {
         lbrace = self.advance();  # consume {
         lbrace_uni = self.make_uni_token(lbrace);
+        # Peek the first non-trivia token to decide between expression slot
+        # and statement-form slot. Statement keywords ALWAYS mean a slot:
+        # `for`/`while`/`if`/`match`/`switch`/`with`/`try` -- and a bare
+        # `return` in a slot is the early-exit guard.
+        if self.check_any(
+            TokenKind.KW_FOR,
+            TokenKind.KW_WHILE,
+            TokenKind.KW_IF,
+            TokenKind.KW_MATCH,
+            TokenKind.KW_SWITCH,
+            TokenKind.KW_WITH,
+            TokenKind.KW_TRY,
+            TokenKind.KW_RETURN
+        ) {
+            self._view_body_depth += 1;
+            stmts = self.parse_code_block_stmts();
+            self._view_body_depth -= 1;
+            rbrace_uni = self.consume_uni(TokenKind.RBRACE);
+            kid: list = [lbrace_uni];
+            for s in stmts {
+                kid.append(s);
+            }
+            kid.append(rbrace_uni);
+            return JsxSlot(body=stmts, kid=kid);
+        }
+        # Expression-form slot. Try to parse exactly one expression; if a
+        # `;` separates additional statements, fall through to slot mode.
         expr = self.parse_expression();
+        if self.check(TokenKind.SEMI) {
+            # Multi-statement slot: rewind by treating the parsed expression
+            # as the first statement, then collect the rest.
+            first = ExprStmt(expr=expr, in_fstring=False, kid=[expr]);
+            stmts2: list = [first];
+            if self.match_tok(TokenKind.SEMI) {
+                prev_semi = self.previous();
+                stmts2.append(
+                    Semi(
+                        orig_src=self.get_source(),
+                        name=Tok.SEMI.value,
+                        value=prev_semi.value,
+                        line=prev_semi.loc.line,
+                        end_line=prev_semi.loc.end_line,
+                        col_start=prev_semi.loc.col_start,
+                        col_end=prev_semi.loc.col_end,
+                        pos_start=prev_semi.loc.pos_start,
+                        pos_end=prev_semi.loc.pos_end
+                    )
+                );
+            }
+            self._view_body_depth += 1;
+            stmts2.extend(self.parse_code_block_stmts());
+            self._view_body_depth -= 1;
+            rbrace_uni = self.consume_uni(TokenKind.RBRACE);
+            kid2: list = [lbrace_uni];
+            for s in stmts2 {
+                kid2.append(s);
+            }
+            kid2.append(rbrace_uni);
+            return JsxSlot(body=stmts2, kid=kid2);
+        }
         rbrace_uni = self.consume_uni(TokenKind.RBRACE);
-        kid: list = [lbrace_uni, expr, rbrace_uni];
-        return JsxExpression(expr=expr, kid=kid);
+        kid_expr: list = [lbrace_uni, expr, rbrace_uni];
+        return JsxExpression(expr=expr, kid=kid_expr);
     }
     # Nested JSX element
     if self.check(TokenKind.JSX_OPEN_START) or self.check(TokenKind.JSX_FRAG_OPEN) {
@@ -3778,12 +3907,10 @@ impl Parser.parse_docstring_target{
 
 """Parse client block: cl { stmts } or cl stmt"""
 impl Parser.parse_client_block -> ClientBlock {
-    cl_sloc = self.current().loc;
     cl_tok = self.consume_uni(TokenKind.KW_CLIENT);
     kid: list = [cl_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
-        self.emit_warn(W0064, loc=cl_sloc, keyword="cl");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3811,12 +3938,10 @@ impl Parser.parse_client_block -> ClientBlock {
 
 """Parse server block: sv { stmts } or sv stmt"""
 impl Parser.parse_server_block -> ServerBlock {
-    sv_sloc = self.current().loc;
     sv_tok = self.consume_uni(TokenKind.KW_SERVER);
     kid: list = [sv_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
-        self.emit_warn(W0064, loc=sv_sloc, keyword="sv");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3843,12 +3968,10 @@ impl Parser.parse_server_block -> ServerBlock {
 
 """Parse native block: na { stmts } or na stmt"""
 impl Parser.parse_native_block -> NativeBlock {
-    na_sloc = self.current().loc;
     na_tok = self.consume_uni(TokenKind.KW_NATIVE);
     kid: list = [na_tok];
     body: list = [];
     if self.match_tok(TokenKind.LBRACE) {
-        self.emit_warn(W0064, loc=na_sloc, keyword="na");
         kid.append(self.make_uni_token(self.previous()));
         while not self.check(TokenKind.RBRACE) and not self.at_end() {
             stmt = self.parse_element_stmt();
@@ -3993,6 +4116,19 @@ impl Parser.parse_statement{
     }
     if self.check(TokenKind.RBRACE) or self.at_end() {
         return None;
+    }
+    # In a `view` body a leading JSX element is a template statement. Parse
+    # exactly one element so that a following `if`/`for`/etc. begins a fresh
+    # statement instead of being absorbed as a ternary or operator tail of
+    # the JSX expression (`<jsx> if cond else ...`).
+    if self._view_body_depth > 0
+    and self.check_any(TokenKind.JSX_OPEN_START, TokenKind.JSX_FRAG_OPEN) {
+        jsx = self.parse_jsx_element();
+        jsx_kid: list = [jsx];
+        if self.match_tok(TokenKind.SEMI) {
+            jsx_kid.append(self.make_semi());
+        }
+        return ExprStmt(expr=jsx, in_fstring=False, kid=jsx_kid);
     }
     # Allow imports inside code blocks
     if self.check_any(TokenKind.KW_IMPORT, TokenKind.KW_INCLUDE) {
@@ -4169,6 +4305,9 @@ impl Parser.parse_statement{
     expr_kid: list = [expr];
     if self.match_tok(TokenKind.SEMI) {
         expr_kid.append(self.make_semi());
+    } elif isinstance(expr, JsxElement) and self._view_body_depth > 0 {
+        # Inside a `view` body the template is statement-based: a bare JSX
+        # element is template content and needs no trailing `;`.
     } elif isinstance(expr, Name) and expr.value == "new" {
         # `new` is an ambient builtin; a bare `new` followed by another atom
         # is JS-style `new Foo(...)` usage. Emit the migration-friendly
@@ -6122,7 +6261,7 @@ impl Parser.parse_ability -> Ability {
 
 """Handle override/static modifiers that may appear after async keyword."""
 impl Parser._parse_post_async_modifiers(
-    is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+    is_override: bool, override_tok: any, is_static: bool, static_tok: any
 ) -> tuple {
     if not is_override and self.match_tok(TokenKind.KW_OVERRIDE) {
         is_override = True;

@@ -173,6 +173,14 @@ obj NaIRGenPass(ModuleCodegenPass) {
         # Both are reset at the start of each function/method.
         _param_store_instr: dict[str, object] = {},
         _param_promoted: set[str] = set(),
+        # Python-scoping for module globals (keeps na ⊆ sv): only module-level
+        # code (_in_module_scope) or a name pulled in by an explicit `global x;`
+        # (_declared_globals) may rebind a module global. A bare function-scope
+        # assignment to a glob-named variable allocates a function-local
+        # instead — matching CPython and the sv (.sv.jac) pathway. Both are
+        # reset per function.
+        _declared_globals: set[str] = set(),
+        _in_module_scope: bool = False,
         # DWARF debug metadata (populated in postinit when JAC_NATIVE_DEBUG=1)
         di_file: object = None,
         di_cu: object = None,
@@ -227,7 +235,7 @@ obj NaIRGenPass(ModuleCodegenPass) {
     def _get_snprintf_fmt(fmt: str) -> ir.GlobalVariable;
     # Helper methods
     def _resolve_jac_type(type_expr: (uni.UniNode | None)) -> ir.Type;
-    def _llvm_to_spec(t: Any) -> str;
+    def _llvm_to_spec(t: any) -> str;
     def _resolve_callable_type(slice: uni.IndexSlice) -> ir.Type;
     def _resolve_func_ptr_type(sig: uni.FuncSignature) -> ir.Type;
     def _resolve_type_str(type_name: str) -> ir.Type;

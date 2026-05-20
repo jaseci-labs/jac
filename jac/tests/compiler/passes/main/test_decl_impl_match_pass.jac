@@ -221,7 +221,7 @@ test "impl has var type not shadowed" {
             "'tasks' Name node has no symbol — resolution failed"
         );
         assert not isinstance(name_node.sym.decl.name_of, uni.HasVar) , (
-            f"'tasks' should not resolve to HasVar, got "
+            "'tasks' should not resolve to HasVar, got "
             f"{type(name_node.sym.decl.name_of).__name__}"
         );
     }
@@ -324,7 +324,7 @@ test "standalone def/obj/node/walker in .impl.jac get symbol resolution" {
         }
         assert nm.sym is not None , (
             f"Read of local '{nm.value}' at line {nm.loc.first_line} "
-            f"in .impl.jac has unresolved .sym — resolver skipped this subtree"
+            "in .impl.jac has unresolved .sym — resolver skipped this subtree"
         );
         reads_checked += 1;
     }

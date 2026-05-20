@@ -759,41 +759,18 @@ impl bind_assignment_targets(nd: uni.Assignment) -> None {
                     ) {
                         outer.add_use(i.name_spec);
                     } else {
-                        # No local binding yet — if the name exists at module
-                        # scope, treat this as a global assignment instead of
-                        # creating a function-local that shadows it.
-                        module_a = i.find_parent_of_type(uni.Module);
-                        if (
-                            module_a is not None
-                            and i.sym_name in module_a.names_in_scope
-                            and not isinstance(py_scope, uni.Module)
-                        ) {
-                            module_a.names_in_scope[i.sym_name].add_use(i.name_spec);
-                            py_scope.names_in_scope[i.sym_name] = module_a.names_in_scope[
-                                i.sym_name
-                            ];
-                        } else {
-                            py_scope.def_insert(i, single_decl='local var');
-                        }
+                        # Python semantics: a function-scope assignment binds a
+                        # NEW local, even when a module global of the same name
+                        # exists. Rebinding the global requires an explicit
+                        # `global x;` (handled by enter_global_stmt, which puts
+                        # the module symbol in scope so the branch above fires).
+                        # Keeping this a local is what makes na ⊆ sv hold: the
+                        # native and sv pathways then agree on scoping.
+                        py_scope.def_insert(i, single_decl='local var');
                     }
                 } else {
                     i.sym_tab.def_insert(i, single_decl='local var');
                 }
-            } elif (
-                (nd.type_tag is None)
-                and isinstance(i.sym_tab, uni.Ability)
-                and (module := i.find_parent_of_type(uni.Module)) is not None
-                and i.sym_name in module.names_in_scope
-            ) {
-                # Function-scope unannotated assignment to a name that already
-                # exists at module scope: rebind the global rather than
-                # creating a shadow local. Mirrors the behaviour the user
-                # gets by writing `global x;` first, but lets long-standing
-                # native code skip the redundant declaration.
-                module.names_in_scope[i.sym_name].add_use(i.name_spec);
-                i.sym_tab.names_in_scope[i.sym_name] = module.names_in_scope[
-                    i.sym_name
-                ];
             } else {
                 # Tag enum members with the correct sym_category
                 if isinstance(i.sym_tab, uni.Enum) {

@@ -216,7 +216,7 @@ Supports:
 
 Returns the ProjectTemplate or None if resolution fails.
 """
-def _resolve_template(use: str, registry: Any) -> Any {
+def _resolve_template(use: str, registry: any) -> any {
     import from jaclang.project.template_loader {
         load_template_from_json,
         load_template_from_directory
@@ -305,7 +305,7 @@ def _quote_toml_key(k: str) -> str {
 def _render_config_to_toml(config: dict, project_name: str) -> str {
     lines: list[str] = [];
 
-    def render_value(v: Any) -> str {
+    def render_value(v: any) -> str {
         if isinstance(v, str) {
             # Replace {{name}} placeholder and escape for TOML
             v = v.replace("{{name}}", project_name);
