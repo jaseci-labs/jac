@@ -30,7 +30,7 @@ obj Emailer {
 
     Returns:
         True on success, False on failure. Implementations should log errors
-        rather than raising — callers treat False as a soft failure (e.g. the
+        rather than raising; callers treat False as a soft failure (e.g. the
         forgot-password endpoint should still respond 200 even if the email
         couldn't be delivered, to avoid leaking account existence).
     """

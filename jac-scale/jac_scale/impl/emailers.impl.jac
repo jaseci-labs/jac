@@ -22,7 +22,7 @@ impl SMTPEmailer.send_email(
     from_addr: (str | None) = None
 ) -> bool {
     if not self.enabled {
-        logger.warning("SMTPEmailer is disabled — skipping send to %s", to_addr);
+        logger.warning("SMTPEmailer is disabled, skipping send to %s", to_addr);
         return False;
     }
     sender = from_addr or self.from_address;

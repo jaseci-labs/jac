@@ -142,7 +142,7 @@ test "auth_tokens_revoke_all_for_user" {
     store = AuthTokenStore.instance();
     t1 = store.create_token(user_id="u4", purpose="reset", ttl_seconds=60);
     t2 = store.create_token(user_id="u4", purpose="reset", ttl_seconds=60);
-    # Different purpose for same user — should NOT be revoked.
+    # Different purpose for same user, should NOT be revoked.
     t3 = store.create_token(user_id="u4", purpose="verify", ttl_seconds=60);
     n = store.revoke_user_tokens("u4", "reset");
     assert n == 2;

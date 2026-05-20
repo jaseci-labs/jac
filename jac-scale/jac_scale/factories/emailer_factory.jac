@@ -2,9 +2,9 @@
 
 Resolution order for the `provider` field of [plugins.scale.emailer]:
 
-1. `'smtp'` — built-in SMTPEmailer.
+1. `'smtp'`: built-in SMTPEmailer.
 2. A name registered programmatically via emailer_factory.register(name, cls).
-3. A dotted import path of the form `'pkg.module:ClassName'` — imported
+3. A dotted import path of the form `'pkg.module:ClassName'`, imported
    dynamically, validated as a subclass of Emailer, and instantiated with the
    full emailer config dict.
 
@@ -41,7 +41,7 @@ def _import_dotted(path: str) -> type {
     if ':' in path {
         (mod_path, cls_name) = path.split(':', 1);
     } else {
-        # Fallback: 'pkg.module.ClassName' — split on the last dot.
+        # Fallback: 'pkg.module.ClassName', split on the last dot.
         if '.' not in path {
             raise ValueError(
                 f"Emailer provider '{path}' must be 'module.path:ClassName' or "

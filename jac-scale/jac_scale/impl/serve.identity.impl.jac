@@ -55,7 +55,7 @@ def _get_identity_limiters -> tuple[InProcessRateLimiter, InProcessRateLimiter] 
 }
 
 # ============================================================================
-# Private helpers — shared by the identity / password-reset endpoints
+# Private helpers shared by the identity / password-reset endpoints
 # ============================================================================
 """Normalize an `IdentityInput`-shaped dict into (type, raw_value, normalized)."""
 def _normalize_identity(identity_input: Any) -> tuple[str, str, str] {
@@ -70,7 +70,7 @@ def _normalize_identity(identity_input: Any) -> tuple[str, str, str] {
 
 `action` is the verb shown to the user (e.g. 'verify your email address',
 'reset your password'). `extra_footer` is appended after the standard
-"ignore this message" line — pass an empty string when nothing extra applies.
+"ignore this message" line; pass an empty string when nothing extra applies.
 """
 def _build_link_email(
     action: str, link: str, ttl_seconds: int, extra_footer: str = ''
@@ -448,7 +448,7 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
             'reset your password',
             link,
             ttl,
-            extra_footer=' — your password will remain unchanged'
+            extra_footer=', your password will remain unchanged'
         );
         sent = emailer.send_email(
             to_addr=recipient_raw, subject='Reset your password', body_text=body_text
