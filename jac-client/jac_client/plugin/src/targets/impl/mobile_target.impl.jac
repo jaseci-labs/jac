@@ -240,7 +240,7 @@ impl MobileTarget.dev(
     import signal;
     import sys;
 
-    hot_watcher: Any = None;
+    hot_watcher: any = None;
     (host_override, plat_mode) = _mobile_read_dev_env();
     vite_port = resolve_mobile_vite_port(project_dir, port);
     effective_api = api_port if api_port > 0 else port + 1;
@@ -373,7 +373,7 @@ impl MobileTarget.dev(
         console.print("  ✔ Stopped", style="success");
     }
 
-    def on_signal(signum: int, frame: Any) {
+    def on_signal(signum: int, frame: any) {
         sys.exit(0);
     }
     signal.signal(cast(int, signal.SIGINT), on_signal);

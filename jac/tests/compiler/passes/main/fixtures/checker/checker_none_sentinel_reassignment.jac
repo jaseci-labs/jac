@@ -20,5 +20,5 @@ with entry {
     strict: None = None;
     strict = 7;  # <-- Error
     count = 0;
-    count = "bad";  # <-- Ok (unannotated widens)(same as pyright)
+    count = "bad";  # <-- Error (unannotated var frozen to int at first bind)
 }

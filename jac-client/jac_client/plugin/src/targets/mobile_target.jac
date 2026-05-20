@@ -5,13 +5,13 @@ Wraps the web bundle with Capacitor to produce native Android APK or iOS app.
 Supports both platforms via --platform android|ios (defaults to android).
 """
 import from pathlib { Path }
-import from typing { Any, Optional }
+import from typing { Optional }
 import from jaclang.runtimelib.watcher { FileChangeEvent }
 import from jac_client.plugin.src.targets.web_target { WebTarget }
 
 """Binds Vite compiler state for JacFileWatcher HMR (decl only; see impl)."""
 obj _MobileHmrHandler {
-    has compiler: Any,
+    has compiler: any,
         entry_file: Path,
         project_dir: Path;
 

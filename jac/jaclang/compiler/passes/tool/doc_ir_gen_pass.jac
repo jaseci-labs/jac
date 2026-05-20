@@ -118,6 +118,7 @@ obj DocIRGenPass(UniPass) {
     def exit_dict_compr(nd: uni.DictCompr) -> None;
     def exit_k_w_pair(nd: uni.KWPair) -> None;
     def exit_await_expr(nd: uni.AwaitExpr) -> None;
+    def exit_cast_expr(nd: uni.CastExpr) -> None;
     def exit_yield_expr(nd: uni.YieldExpr) -> None;
     def exit_ctrl_stmt(nd: uni.CtrlStmt) -> None;
     def exit_delete_stmt(nd: uni.DeleteStmt) -> None;

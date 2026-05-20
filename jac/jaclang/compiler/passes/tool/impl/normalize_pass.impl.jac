@@ -1029,6 +1029,12 @@ impl NormalizePass.enter_await_expr(nd: uni.AwaitExpr) -> None {
     nd.set_kids(nodes=new_kid);
 }
 
+"""Normalize CastExpr kid list."""
+impl NormalizePass.enter_cast_expr(nd: uni.CastExpr) -> None {
+    new_kid: list[uni.UniNode] = [nd.value, nd.gen_token(Tok.KW_AS), nd.cast_type];
+    nd.set_kids(nodes=new_kid);
+}
+
 """Normalize GlobalStmt kid list."""
 impl NormalizePass.enter_global_stmt(nd: uni.GlobalStmt) -> None {
     new_kid: list[uni.UniNode] = [nd.gen_token(Tok.GLOBAL_OP)];

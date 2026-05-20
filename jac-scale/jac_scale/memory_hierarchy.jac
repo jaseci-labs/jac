@@ -34,7 +34,7 @@ glob logger = logging.getLogger(__name__),
      # Process-level singletons shared across all requests in a single server process.
      # A single dict so cross-module mutation works without global declarations in each package.
      # Keys: 'mongo_client', 'redis_client', 'mongo_available', 'redis_available', 'system_root'
-     _process_cache: dict[str, Any] = {};
+     _process_cache: dict[str, any] = {};
 
 """Get fresh database config to support dynamic env var changes (e.g., testcontainers)."""
 def _get_db_config -> dict {
@@ -92,8 +92,8 @@ Replaces SqliteMemory when MongoDB is available.
 """
 obj MongoBackend(PersistentMemory) {
     has client: MongoClient | None = None,
-        db: Any by postinit,
-        collection: Any by postinit,
+        db: any by postinit,
+        collection: any by postinit,
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,

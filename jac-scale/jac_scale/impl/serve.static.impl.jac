@@ -2,7 +2,6 @@
 import mimetypes;
 import from collections.abc { Callable }
 import from pathlib { Path }
-import from typing { Any }
 import from fastapi.responses { HTMLResponse, JSONResponse, Response }
 import from jac_scale.jserver.jserver {
     APIParameter,

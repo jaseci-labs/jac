@@ -58,9 +58,9 @@ The most common way to use native compilation is to tag elements of a regular `.
 
 There are three ways to select the native codespace inside a file:
 
-- **`to na:` section header** (preferred at module scope) -- every following module-level element compiles native until the next `to X:` header or end of file.
+- **`na { ... }` braced block** (recommended) -- every element inside the braces compiles native; the braces bracket exactly the tagged region. Also works inside inner scopes.
+- **`to na:` section header** -- every following module-level element compiles native until the next `to X:` header or end of file. Convenient for a module that is mostly native.
 - **`na` single-statement prefix** -- tags one declaration.
-- **`na { ... }` braced block** -- still valid inside inner scopes or small mixed fragments, but emits **W0064** at module scope pointing at the header form.
 
 ```jac
 # app.jac

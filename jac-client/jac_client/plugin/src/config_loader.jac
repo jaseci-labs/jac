@@ -6,7 +6,6 @@ Configuration is loaded from jac.toml under [plugins.client] section.
 Inherits from PluginConfigBase to eliminate boilerplate code.
 """
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.project.plugin_config { PluginConfigBase }
 
 """Client-specific configuration loader.
@@ -16,16 +15,16 @@ from the [plugins.client] section of jac.toml.
 """
 class JacClientConfig(PluginConfigBase) {
     override def get_plugin_name(self: JacClientConfig) -> str;
-    override def get_default_config(self: JacClientConfig) -> dict[str, Any];
-    override def load(self: JacClientConfig) -> dict[str, Any];
+    override def get_default_config(self: JacClientConfig) -> dict[str, any];
+    override def load(self: JacClientConfig) -> dict[str, any];
     def save(self: JacClientConfig) -> None;
-    def get_api_config(self: JacClientConfig) -> dict[str, Any];
+    def get_api_config(self: JacClientConfig) -> dict[str, any];
     def get_base_path(self: JacClientConfig) -> str;
-    def get_vite_config(self: JacClientConfig) -> dict[str, Any];
-    def get_ts_config(self: JacClientConfig) -> dict[str, Any];
-    def get_configs(self: JacClientConfig) -> dict[str, Any];
-    def get_package_config(self: JacClientConfig) -> dict[str, Any];
-    def get_npm_config(self: JacClientConfig) -> dict[str, Any];
+    def get_vite_config(self: JacClientConfig) -> dict[str, any];
+    def get_ts_config(self: JacClientConfig) -> dict[str, any];
+    def get_configs(self: JacClientConfig) -> dict[str, any];
+    def get_package_config(self: JacClientConfig) -> dict[str, any];
+    def get_npm_config(self: JacClientConfig) -> dict[str, any];
     def add_dependency(
         self: JacClientConfig, name: str, version: str, is_dev: bool = False
     ) -> None;
@@ -35,7 +34,7 @@ class JacClientConfig(PluginConfigBase) {
     ) -> bool;
 
     def get_paths_config(self: JacClientConfig) -> dict[str, str];
-    def get_pwa_config(self: JacClientConfig) -> dict[str, Any];
+    def get_pwa_config(self: JacClientConfig) -> dict[str, any];
     def is_pwa_enabled(self: JacClientConfig) -> bool;
     def check_runtime_version(self: JacClientConfig) -> tuple[bool, str, str];
     def sync_runtime_version(self: JacClientConfig) -> None;

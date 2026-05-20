@@ -263,12 +263,20 @@ impl _type_to_schema(
     if isinstance(ty, (FunctionType, MethodType)) {
         hints = get_type_hints(ty);
         hints.pop("return", None);
-        # Use MTIR info if available, otherwise fall back to introspection
+        # Use MTIR info if available, otherwise fall back to introspection.
+        # The function's own type hints are authoritative for *which* params
+        # exist, so iterate those and decorate with the MTIR semstring where
+        # the names line up - a mismatch between hints and info (e.g. a stale
+        # or mis-assigned info) must not crash schema generation.
         if info and info?.params and info.params {
+            sem_by_name = {p.name: p for p in info.params};
             params = {
-                param.name: _type_to_schema(
-                    hints[param.name], param.name, param.semstr, info=param
-                ) for param in info.params
+                param_name: _type_to_schema(
+                    param_type,
+                    param_name,
+                    sem_by_name[param_name].semstr if param_name in sem_by_name else "",
+                    info=sem_by_name.get(param_name)
+                ) for (param_name, param_type) in hints.items()
             };
         } else {
             # Fall back to introspecting the function's type hints

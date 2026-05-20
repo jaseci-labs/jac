@@ -2,13 +2,16 @@ access_tag ::= (":" ("pub" | "priv" | "protect")?)?
 
 module ::= STRING? element_stmt*
 
-expression ::= lambda_expr | concurrent_expr ("if" expression "else" expression)?
+expression ::=
+    lambda_expr | (cast | concurrent_expr) ("if" expression "else" expression)?
 
 concurrent_expr ::= ("flow" | "wait") walrus_assign | walrus_assign
 
 walrus_assign ::= by_expr (":=" by_expr)?
 
 by_expr ::= pipe ("by" by_expr)?
+
+cast ::= concurrent_expr ("as" pipe)*
 
 pipe ::= pipe_back ("|>" pipe_back)*
 
@@ -224,8 +227,10 @@ lambda_param ::=
 
 jsx_element ::=
     "<>" jsx_children "</>"
-    | JSX_OPEN_START JSX_NAME ("." JSX_NAME)* jsx_attributes
-      ("/>" | JSX_TAG_END jsx_children "</" JSX_NAME ("." JSX_NAME)* JSX_TAG_END)
+    | JSX_OPEN_START ("@" | JSX_NAME ("." JSX_NAME)*) jsx_attributes (
+          "/>"
+          | JSX_TAG_END jsx_children "</" ("@" | JSX_NAME ("." JSX_NAME)*) JSX_TAG_END
+      )
 
 jsx_attributes ::=
     (
@@ -249,6 +254,7 @@ element_stmt ::=
     | enum
     | test
     | docstring_target
+    | view
     | ability
     | global_var
     | impl_def
@@ -264,6 +270,7 @@ docstring_target ::=
         | global_var
         | "impl" impl_def
         | module_code
+        | view
         | ("cl" | "sv" | "na") element_stmt
     )?
 
@@ -282,6 +289,7 @@ ctrl_stmt ::= ("break" | "continue" | "skip") ";" | "disengage" ";"
 
 statement ::=
     ";"
+    | jsx_element ";"?
     | import_stmt
     | if_stmt
     | while_stmt
@@ -456,6 +464,9 @@ ability ::=
     ("@" atomic_chain)* "override"? "class"? "static"? ("async" "class"?)? access_tag
     (NAME | KWESC_NAME)? ("[" type_params "]")? ("with" expression | func_signature)
     ("{" code_block_stmts "}" | "by" expression ";" | "abs"? ";")
+
+view ::= "defview" (NAME | KWESC_NAME) ("[" type_params "]")? func_signature
+    "{" code_block_stmts "}"
 
 func_signature ::= ("(" func_params? ")")? ("->" pipe)?
 

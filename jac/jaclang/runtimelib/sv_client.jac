@@ -11,12 +11,11 @@ The wire contract is identical to cl-to-sv interop:
 """
 
 import os;
-import from typing { Any }
 
 # Module name -> base URL (set by jac start orchestration or test code)
 glob _registry: dict[str, str] = {},
      # Module name -> TestClient instance (set by tests for in-process routing)
-     _test_clients: dict[str, Any] = {},
+     _test_clients: dict[str, any] = {},
      # Consumer module name -> list of provider module names it sv-imports.
      # Populated at consumer module import time by compile-time-emitted
      # _declare_consumer_provider() calls in the generated stubs. Read at
@@ -37,7 +36,7 @@ def unregister(module_name: str) {
 }
 
 """Register an in-process TestClient for a service (testing only)."""
-def register_test_client(module_name: str, client: Any) {
+def register_test_client(module_name: str, client: any) {
     _test_clients[module_name] = client;
 }
 
@@ -137,7 +136,7 @@ tracing, or circuit breakers without touching this call site.
 Returns the unwrapped result from the TransportResponse envelope.
 Raises RuntimeError on failure.
 """
-def call(module_name: str, func_name: str, args: dict) -> Any {
+def call(module_name: str, func_name: str, args: dict) -> any {
     _ensure_available(module_name);
     import jaclang;
     return jaclang.JacRuntime.sv_service_call(module_name, func_name, args);
@@ -155,7 +154,7 @@ The returned object satisfies `isinstance(result, stub_cls)`, exposes
 the walker's `has` fields as attributes, and carries a `reports`
 attribute populated from the `data.reports` envelope key.
 """
-def spawn_walker(module_name: str, walker_name: str, args: dict, stub_cls: Any) -> Any {
+def spawn_walker(module_name: str, walker_name: str, args: dict, stub_cls: any) -> any {
     _ensure_available(module_name);
     import jaclang;
     return jaclang.JacRuntime.sv_walker_call(module_name, walker_name, args, stub_cls);
@@ -192,15 +191,15 @@ def ensure_all(module_names: list[str]) -> None {
     # Jac's type checker, so bind the names as Any locally and trust the
     # runtime contract.
     import from concurrent.futures { ThreadPoolExecutor, as_completed }
-    executor: Any = ThreadPoolExecutor(max_workers=8);
-    futures: dict[Any, str] = {};
+    executor: any = ThreadPoolExecutor(max_workers=8);
+    futures: dict[any, str] = {};
     for name in pending {
         futures[executor.submit(_ensure_available, name)] = name;
     }
     first_error: (Exception | None) = None;
     try {
         for future in as_completed(futures) {
-            fut: Any = future;
+            fut: any = future;
             if first_error is not None {
                 continue;
             }
@@ -209,7 +208,7 @@ def ensure_all(module_names: list[str]) -> None {
             } except Exception as e {
                 first_error = e;
                 for f in futures {
-                    f_any: Any = f;
+                    f_any: any = f;
                     if not f_any.done() {
                         f_any.cancel();
                     }

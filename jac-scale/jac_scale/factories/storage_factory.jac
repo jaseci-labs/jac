@@ -1,5 +1,4 @@
 """Factory for creating storage instances."""
-import from typing { Any }
 import os;
 import from jaclang.runtimelib.storage { Storage }
 import from jaclang.project.config { get_config }
@@ -26,7 +25,7 @@ Environment variables:
 """
 class StorageFactory {
     static def create(
-        storage_type: (StorageType | str), config: (dict[str, Any] | None) = None
+        storage_type: (StorageType | str), config: (dict[str, any] | None) = None
     ) -> Storage {
         # Convert string to enum if needed
         if isinstance(storage_type, str) {

@@ -4,8 +4,10 @@ import from jaclang.cli.commands { execution }
 import from jaclang.cli.commands { analysis }
 import from jaclang.cli.commands { transform }
 import from jaclang.cli.commands { project }
+import from jaclang.cli.commands { guide }
 import from jaclang.cli.commands { eject }
 import from jaclang.cli.commands { tools }
 import from jaclang.cli.commands { config }
 import from jaclang.cli.commands { db }
 import from jaclang.cli.commands { nacompile }
+import from jaclang.cli.commands { ai }

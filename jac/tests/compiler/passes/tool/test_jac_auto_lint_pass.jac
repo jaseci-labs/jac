@@ -792,26 +792,26 @@ test "nested class impl signature fixed" {
     # NOT: (self, shared, private) which would happen if bug exists
     assert "OuterClass.InnerClass.init" in impl_defs , "OuterClass.InnerClass.init impl not found";
     inner_init_params = get_impl_params(impl_defs["OuterClass.InnerClass.init"]);
-    assert inner_init_params == ["self", "name"] , f"OuterClass.InnerClass.init should be FIXED to [self, name] "
+    assert inner_init_params == ["self", "name"] , "OuterClass.InnerClass.init should be FIXED to [self, name] "
     f"(matching InnerClass.init decl), got: {inner_init_params}. "
-    f"Original impl had [self, a, b]. "
-    f"If you got [self, shared, private], the bug is that auto-lint looked up "
-    f"OuterClass.init instead of InnerClass.init.";
+    "Original impl had [self, a, b]. "
+    "If you got [self, shared, private], the bug is that auto-lint looked up "
+    "OuterClass.init instead of InnerClass.init.";
 
     # OuterClass.AnotherInner.init should be FIXED from (self, foo) to (self, x, y)
     # (plus kwonly z, but we only check positional params here)
     assert "OuterClass.AnotherInner.init" in impl_defs , "OuterClass.AnotherInner.init impl not found";
     another_init_params = get_impl_params(impl_defs["OuterClass.AnotherInner.init"]);
-    assert another_init_params == ["self", "x", "y"] , f"OuterClass.AnotherInner.init should be FIXED to [self, x, y] "
+    assert another_init_params == ["self", "x", "y"] , "OuterClass.AnotherInner.init should be FIXED to [self, x, y] "
     f"(matching AnotherInner.init decl), got: {another_init_params}. "
-    f"Original impl had [self, foo].";
+    "Original impl had [self, foo].";
 
     # OuterClass.process should be FIXED from (wrong) to (data)
     assert "OuterClass.process" in impl_defs , "OuterClass.process impl not found";
     process_params = get_impl_params(impl_defs["OuterClass.process"]);
-    assert process_params == ["data"] , f"OuterClass.process should be FIXED to [data] "
+    assert process_params == ["data"] , "OuterClass.process should be FIXED to [data] "
     f"(matching process decl), got: {process_params}. "
-    f"Original impl had [wrong].";
+    "Original impl had [wrong].";
 }
 
 # ── TestRemoveImportSemicolons ───────────────────────────────────────────

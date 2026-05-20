@@ -19,7 +19,7 @@ obj TransportRequest {
     has method: str,
         path: str,
         headers: dict[(str, str)] = {},
-        body: Any = None,
+        body: any = None,
         query_params: dict[(str, list[str])] = {},
         metadata: dict[(str, Any)] = {};
 }
@@ -28,7 +28,7 @@ obj TransportRequest {
 obj ErrorInfo {
     has code: str,
         message: str,
-        details: Any = None;
+        details: any = None;
 }
 
 """Metadata container for transport responses."""
@@ -43,12 +43,12 @@ obj Meta {
 obj TransportResponse {
     has type: MessageType = MessageType.RESPONSE.value,
         ok: bool = True,
-        data: Any = None,
+        data: any = None,
         error: (ErrorInfo | None) = None,
         meta: Meta = Meta();
 
     static def success(
-        data: Any = None,
+        data: any = None,
         msg_type: MessageType = MessageType.RESPONSE.value,
         meta: (Meta | None) = None
     ) -> TransportResponse;
@@ -56,7 +56,7 @@ obj TransportResponse {
     static def fail(
         code: str,
         message: str,
-        details: Any = None,
+        details: any = None,
         msg_type: MessageType = MessageType.ERROR.value,
         meta: (Meta | None) = None
     ) -> TransportResponse;
@@ -69,34 +69,34 @@ obj BaseTransport {
         on_close: (Callable[(..., Any)] | None) = None;
 
     async def connect -> None;
-    async def send(data: Any) -> None;
+    async def send(data: any) -> None;
     async def close -> None;
 }
 
 """HTTP Transport for stateless request/response."""
 obj HTTPTransport(BaseTransport) {
-    has handler: Any = None,
+    has handler: any = None,
         response_data: dict[(str, Any)] = {};
 
     def connect -> None;
-    def send(data: Any) -> None;
+    def send(data: any) -> None;
     def close -> None;
 }
 
 """Stream Transport for Server-Sent Events (SSE)."""
 obj StreamTransport(BaseTransport) {
-    has queue: Any = None;
+    has queue: any = None;
 
     async def connect -> None;
-    async def send(data: Any) -> None;
+    async def send(data: any) -> None;
     async def close -> None;
 }
 
 """WebSocket Transport for bidirectional communication."""
 obj WebSocketTransport(BaseTransport) {
-    has websocket: Any = None;
+    has websocket: any = None;
 
     async def connect -> None;
-    async def send(data: Any) -> None;
+    async def send(data: any) -> None;
     async def close -> None;
 }

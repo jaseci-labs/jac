@@ -691,7 +691,8 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
         type_params: (Sequence[TypeParam] | None) = None,
-        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
+        accessor_kind: str = "",  # "" | "property" | "setter" | "deleter"
+        is_view: bool = False;  # parsed from a `view` declarator (pre-lowering)
 
     def postinit -> None;
     @property
@@ -948,6 +949,16 @@ obj DisengageStmt(WalkerStmtOnlyNode, CodeBlockStmt) {
 """AwaitExpr node type for Jac Ast."""
 obj AwaitExpr(Expr) {
     has target: Expr;
+
+    def postinit -> None;
+}
+
+"""CastExpr node type for Jac Ast.
+Represents `value as cast_type` -- an unchecked, type-erased cast. At runtime
+it evaluates to `value` unchanged; statically its type is `cast_type`."""
+obj CastExpr(Expr) {
+    has value: Expr,
+        cast_type: Expr;
 
     def postinit -> None;
 }
@@ -1243,7 +1254,8 @@ obj JsxElement(AtomExpr) {
         attributes: (Sequence[JsxAttribute] | None),
         children: (Sequence[(JsxChild | JsxElement)] | None),
         is_self_closing: bool,
-        is_fragment: bool;
+        is_fragment: bool,
+        dynamic_tag: (Expr | None) = None;
 
     def postinit -> None;
     def get_body_start_line -> (int | None);

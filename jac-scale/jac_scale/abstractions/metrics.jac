@@ -3,7 +3,7 @@
 Provides a clean interface for collecting application metrics.
 All metrics implementations should inherit from MetricsCollector.
 """
-import from typing { Any, Callable }
+import from typing { Callable }
 
 """Abstract base class for metrics collection.
 
@@ -12,7 +12,7 @@ The interface focuses on common HTTP server metrics.
 """
 class MetricsCollector {
     """Initialize the metrics collector with configuration."""
-    def init(self: MetricsCollector, config: dict[str, Any] = {}) -> None;
+    def init(self: MetricsCollector, config: dict[str, any] = {}) -> None;
 
     """Record an HTTP request completion."""
     def record_request(
@@ -38,7 +38,7 @@ class MetricsCollector {
     ) -> None;
 
     """Get the handler for the metrics endpoint."""
-    def get_endpoint_handler(self: MetricsCollector) -> Callable[..., Any];
+    def get_endpoint_handler(self: MetricsCollector) -> Callable[..., any];
 
     """Check if metrics collection is enabled."""
     def is_enabled(self: MetricsCollector) -> bool;
@@ -50,7 +50,7 @@ All methods are safe to call but perform no operations.
 This ensures zero overhead when metrics are not needed.
 """
 class NoOpMetricsCollector(MetricsCollector) {
-    def init(self: NoOpMetricsCollector, config: dict[str, Any] = {}) { }
+    def init(self: NoOpMetricsCollector, config: dict[str, any] = {}) { }
     def record_request(
         self: NoOpMetricsCollector,
         method: str,
@@ -68,7 +68,7 @@ class NoOpMetricsCollector(MetricsCollector) {
         success: bool = True
     ) { }
 
-    def get_endpoint_handler(self: NoOpMetricsCollector) -> Callable[..., Any] {
+    def get_endpoint_handler(self: NoOpMetricsCollector) -> Callable[..., any] {
         def noop { }
         return noop;
     }
