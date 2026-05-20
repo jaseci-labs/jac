@@ -814,6 +814,7 @@ impl _parse_toml_data(
             license=proj.get("license", ""),
             readme=proj.get("readme", "README.md"),
             keywords=proj.get("keywords", []),
+            classifiers=proj.get("classifiers", []),
             requires_python=proj.get("requires-python", ""),
             jac_version=proj.get("jac-version", ""),
             entry_point=proj.get("entry-point", "main.jac"),

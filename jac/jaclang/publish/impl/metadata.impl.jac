@@ -136,6 +136,10 @@ impl generate_metadata(config: JacConfig, project_root: Path | None = None) -> s
     h("License-Expression", pkg.license);
     h("Keywords", ",".join(pkg.keywords));
 
+    for classifier in pkg.classifiers {
+        h("Classifier", classifier);
+    }
+
     h("Requires-Python", pkg.requires_python);
 
     for (label, url) in pkg.urls.items() {
