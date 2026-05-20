@@ -5,7 +5,6 @@ import from collections.abc { Callable }
 import from datetime { UTC, datetime, timedelta }
 import from pathlib { Path }
 import from pydantic { BaseModel, Field, ValidationError }
-import from typing { Any }
 import jwt;
 import json;
 import from os { getenv }
@@ -118,15 +117,15 @@ obj JacAPIServerCore {
     # Client error reporting
     def _register_client_error_endpoint -> None;
     # HMR support
-    def enable_hmr(hot_reloader: Any) -> None;
+    def enable_hmr(hot_reloader: any) -> None;
     def _register_endpoints -> None;
     def _refresh_dev_endpoints -> None;
     def _setup_scheduler -> None;
     def _setup_events -> None;
     # Metrics endpoint wrapper for admin-only access
     def _create_admin_metrics_handler(
-        original_handler: Callable[..., Any]
-    ) -> Callable[..., Any];
+        original_handler: Callable[..., any]
+    ) -> Callable[..., any];
 }
 
 """Walker, function, webhook, WebSocket endpoint registration and callbacks."""
@@ -196,7 +195,7 @@ obj JacAPIServerStatic {
 obj JacAPIServer(JacAPIServerCore, JacAPIServerAuth, JacAPIServerEndpoints, JacAPIServerStatic, JacAPIServerAdmin, JacAPIServerLLMTelemetry, JacAPIServerScheduler, JServer) {
     # HMR (Hot Module Replacement) support fields
     has _hmr_pending: bool = False,
-        _hot_reloader: Any | None = None,
+        _hot_reloader: any | None = None,
         _api_key_manager: ApiKeyManager | None = None,
         _metrics: MetricsCollector | None = None,
         _broker: EventStreamBroker | None = None,

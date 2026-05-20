@@ -34,8 +34,12 @@ obj JacSuperConsole(BaseJacConsole) {
         _console_stderr: RichConsole by postinit;
 
     def postinit {
+        # Use Rich's `stderr=True` (not `file=sys.stderr`) so the stream is
+        # resolved per call. Passing `file=` would freeze the stream object at
+        # construction, breaking `sys.stderr = io.StringIO()` redirection that
+        # in-process CLI tests rely on (issue #5995, Bug 1).
         self._console = RichConsole(theme=self.JAC_THEME);
-        self._console_stderr = RichConsole(theme=self.JAC_THEME, file=sys.stderr);
+        self._console_stderr = RichConsole(theme=self.JAC_THEME, stderr=True);
     }
 
     """Override print to use Rich console.
@@ -50,11 +54,16 @@ obj JacSuperConsole(BaseJacConsole) {
     `markup=True`. Auto-highlighting (`highlight`) is left at Rich's default
     so numbers, strings, paths, and keywords still get their accent colors.
     """
-    def print(*args: Any, **kwargs: Any) {
+    def print(*args: any, **kwargs: any) {
         # Extract style if provided, otherwise use default
         style = kwargs.pop('style', None);
         file = kwargs.pop('file', None);
         kwargs.setdefault('markup', False);
+        # Default to soft-wrap on so user content (long paths, JSON, code
+        # snippets) passes through unchanged. Rich's default reflows to the
+        # detected terminal width, violating the base `JacConsole.print`
+        # "pass through unchanged" contract (issue #5995, Bug 2).
+        kwargs.setdefault('soft_wrap', True);
         # Use appropriate console based on file
         console = self._console_stderr if (file == sys.stderr) else self._console;
         if style {
@@ -65,7 +74,7 @@ obj JacSuperConsole(BaseJacConsole) {
     }
 
     """Override status to use Rich console status."""
-    def status(*args: Any, **kwargs: Any) -> object {
+    def status(*args: any, **kwargs: any) -> object {
         return self._console.status(*args, **kwargs);
     }
 
@@ -113,7 +122,7 @@ obj JacSuperConsole(BaseJacConsole) {
     }
 
     """Override print_urls to use Rich URL styling."""
-    def print_urls(urls: Any, symbol: str = '➜') {
+    def print_urls(urls: any, symbol: str = '➜') {
         items = urls.items() if isinstance(urls, dict) else urls;
         for (label, url) in items {
             padded_label = f"{label}:".ljust(10);

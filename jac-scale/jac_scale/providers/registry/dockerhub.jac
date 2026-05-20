@@ -1,14 +1,11 @@
 """DockerHub registry implementation."""
-import os;
-import shutil;
-import from typing { Any }
 import from jac_scale._optdeps.docker { docker_module as docker, APIError, BuildError }
 import from jac_scale.abstractions.image_registry { ImageRegistry }
 import from jaclang.cli.console { console }
 
 """DockerHub image registry implementation."""
 obj DockerHubRegistry(ImageRegistry) {
-    has config: dict[str, Any] = {},
+    has config: dict[str, any] = {},
         docker_username: str by postinit,
         docker_password: str by postinit,
         build_platform: str by postinit,

@@ -25,7 +25,7 @@ cl {
     sv import from .typed_dict_return { get_metrics_map, get_single_metric }
 
     def:pub app -> JsxElement {
-        has metrics: Any = None;
+        has metrics: any = None;
 
         async can with entry {
             metrics = await get_metrics_map();

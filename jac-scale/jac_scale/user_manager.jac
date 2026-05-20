@@ -1,7 +1,6 @@
 import jwt;
 import logging;
 import from datetime { UTC, datetime, timedelta }
-import from typing { Any }
 import from fastapi { Request, Response }
 import from contextvars { ContextVar }
 import from jaclang.runtimelib.server { UserManager }
@@ -44,27 +43,27 @@ obj JacScaleUserManager(UserManager) {
     def postinit -> None;
     # Identity-based user CRUD
     def create_user(
-        identities: list[dict[str, Any]],
-        credential: dict[str, Any],
-        profile: dict[str, Any] | None = None
-    ) -> dict[str, Any];
+        identities: list[dict[str, any]],
+        credential: dict[str, any],
+        profile: dict[str, any] | None = None
+    ) -> dict[str, any];
 
     def create_internal_user(
         username: str, password: str, role: str = 'user'
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
-    def authenticate(identifier: str, password: str) -> dict[str, Any] | None;
-    def find_user_by_identity(value: str) -> dict[str, Any] | None;
+    def authenticate(identifier: str, password: str) -> dict[str, any] | None;
+    def find_user_by_identity(value: str) -> dict[str, any] | None;
     def user_exists(user_id: str) -> bool;
-    def get_user(user_id: str) -> dict[str, Any] | None;
+    def get_user(user_id: str) -> dict[str, any] | None;
     def get_root_id(user_id: str) -> str | None;
     def update_password(
         user_id: str, current_password: str, new_password: str
     ) -> dict[str, str];
 
     def update_profile(
-        user_id: str, profile_updates: dict[str, Any]
-    ) -> dict[str, Any];
+        user_id: str, profile_updates: dict[str, any]
+    ) -> dict[str, any];
 
     def close -> None;
     # JWT methods (use user_id as claim)
@@ -100,14 +99,14 @@ obj JacScaleUserManager(UserManager) {
 
     def is_password_required(user_id: str) -> bool;
     def bootstrap_admin_user -> dict[str, str];
-    def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, Any]];
+    def list_all_users(limit: int = 100, offset: int = 0) -> list[dict[str, any]];
     def delete_user(user_id: str) -> dict[str, str];
     def create_user_as_admin(
         username: str,
         password: str,
         role: str = 'user',
         requires_password_reset: bool = True
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
     # Backward compat helpers
     def get_username(user_id: str) -> str | None;

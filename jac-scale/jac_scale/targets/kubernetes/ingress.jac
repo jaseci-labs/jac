@@ -2,7 +2,6 @@
 import time;
 import subprocess;
 import bcrypt;
-import from typing { Any }
 import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
@@ -28,10 +27,10 @@ obj IngressDeployer {
         app_name: str,
         namespace: str,
         cluster_env: str,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         controller_name = f"{app_name}-ingress-nginx";
         cluster_resource_name = f"{namespace}-{app_name}-ingress-nginx";
@@ -188,7 +187,9 @@ obj IngressDeployer {
             },
             'data': {
                 'allow-snippet-annotations': 'true',
-                'annotations-risk-level': 'Critical'
+                'annotations-risk-level': 'Critical',
+                'use-gzip': 'true',
+                'gzip-types': 'application/javascript text/css application/json image/svg+xml'
             }
         };
         try {
@@ -295,7 +296,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'livenessProbe': {
                                     'httpGet': {
@@ -305,7 +307,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'resources': {
                                     'requests': {'cpu': '100m', 'memory': '90Mi'},
@@ -427,7 +430,7 @@ obj IngressDeployer {
     longer app health-check intervals (15 s each) while NGINX is still starting.
     """
     def _wait_for_nginx_ready(
-        app_name: str, namespace: str, apps_v1: Any, max_wait: int = 180
+        app_name: str, namespace: str, apps_v1: any, max_wait: int = 180
     ) -> None {
         controller_name = f"{app_name}-ingress-nginx";
         elapsed = 0;
@@ -475,8 +478,8 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        networking_v1: Any,
-        core_v1: Any
+        networking_v1: any,
+        core_v1: any
     ) {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
@@ -643,11 +646,15 @@ obj IngressDeployer {
             # /assets/... for the backend). RIPROXYPATH is also rewritten so the JS
             # frontend sets window.__RI_PROXY_PATH__ = 'cache-dashboard' and prefixes all
             # API/socket calls with /cache-dashboard (which nginx strips via rewrite-target).
-            # Accept-Encoding is cleared so nginx can apply sub_filter to uncompressed HTML.
+            # Accept-Encoding "" lets sub_filter work on raw HTML from the upstream.
+            # Compression is handled at the server level via the nginx ConfigMap
+            # (use-gzip: true), NOT in the snippet — gzip directives in location
+            # snippets can crash the ingress controller.
             redis_ingress_annotations: dict = {
                 'nginx.ingress.kubernetes.io/proxy-body-size': '0',
                 'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
                 'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+                'nginx.ingress.kubernetes.io/proxy-buffering': 'on',
                 'nginx.ingress.kubernetes.io/use-regex': 'true',
                 'nginx.ingress.kubernetes.io/rewrite-target': '/$2',
                 'nginx.ingress.kubernetes.io/configuration-snippet': (
@@ -728,10 +735,10 @@ obj IngressDeployer {
         app_name: str,
         namespace: str,
         cluster_env: str,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         self._deploy_nginx_controller(
             app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
@@ -747,9 +754,9 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        apps_v1: Any,
-        core_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        networking_v1: any
     ) {
         self._wait_for_nginx_ready(app_name, namespace, apps_v1);
         self._deploy_ingress_resource(
@@ -774,10 +781,10 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         self.start_controller(
             app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
@@ -805,9 +812,9 @@ obj IngressDeployer {
         app_name: str,
         namespace: str,
         cert_manager_email: str,
-        core_v1: Any,
-        apps_v1: Any,
-        custom_api: Any
+        core_v1: any,
+        apps_v1: any,
+        custom_api: any
     ) -> None {
         # Idempotency: if Issuer already exists, nothing to do
         try {
@@ -942,10 +949,10 @@ obj IngressDeployer {
     def enable_tls(
         app_name: str,
         namespace: str,
-        networking_v1: Any,
-        custom_api: Any,
-        core_v1: Any,
-        apps_v1: Any
+        networking_v1: any,
+        custom_api: any,
+        core_v1: any,
+        apps_v1: any
     ) -> None {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
@@ -1091,10 +1098,10 @@ obj IngressDeployer {
     def destroy(
         app_name: str,
         namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         controller_name = f"{app_name}-ingress-nginx";
         cluster_resource_name = f"{namespace}-{app_name}-ingress-nginx";

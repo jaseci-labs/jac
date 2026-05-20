@@ -2,7 +2,7 @@
 
 import time;
 import asyncio;
-import from jac_scale.microservices._rate_limit {
+import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
     InProcessRateLimiter,
     build_rate_limit_middleware
 }

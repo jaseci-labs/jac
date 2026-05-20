@@ -213,7 +213,7 @@ impl JacAPIServerAuth.register_me_endpoint -> None {
         # response clean.
         identities_out = [];
         for ident in user.get('identities', []) {
-            identity_out: dict[str, Any] = {
+            identity_out: dict[str, any] = {
                 'type': ident.get('type'),
                 'verified': ident.get('verified', False),
                 'is_recovery': ident.get('is_recovery', False)

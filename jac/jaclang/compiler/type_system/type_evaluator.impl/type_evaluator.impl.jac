@@ -1093,7 +1093,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Constrained TypeVar - check all constraint types
                     if base_type.constraints {
-                        found_member: Any = None;
+                        found_member: any = None;
                         for constraint_type in base_type.constraints {
                             if isinstance(constraint_type, types.ClassType) {
                                 if member := self._lookup_object_member(
@@ -1518,6 +1518,16 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
             # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
             return target_type;
+
+        case uni.CastExpr():
+            # `value as cast_type` -- an unchecked, type-erased cast. Evaluate
+            # the operand so errors inside it still surface, then report the
+            # named type as the expression's type (same resolution used for
+            # annotations).
+            self.get_type_of_expression(expr.value);
+            return self._convert_to_instance(
+                self.get_type_of_expression(expr.cast_type)
+            );
 
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
@@ -2005,6 +2015,15 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # FunctionType.specialize can substitute it with concrete type_args.
             # Mark as class type param so it can be distinguished from module-level TypeVars.
             return types.TypeVarType(name=node_.sym_name, is_class_type_param=True);
+
+        case uni.TypeAlias():
+            # Jac `type X = Y;` — resolve the alias to the type its RHS denotes,
+            # so uses of X in annotations (`v: X`) inherit Y's class and its
+            # operator overloads. Mirrors the Python `X: TypeAlias = Y` path.
+            if node_.value is not None {
+                return self._resolve_type_alias_rhs(node_.value);
+            }
+            return types.UnknownType();
 
         case uni.Ability():
             return self.get_type_of_ability(node_);
@@ -2775,6 +2794,23 @@ impl TypeEvaluator.is_explicit_any(ty: TypeBase) -> bool {
     return False;
 }
 
+"""Whether `ty` is `NoneType` — the type of the literal `None`.
+
+Both the class form and the instance form (`None` the value) are
+recognized, since either may surface depending on how the type was
+produced. Matched by shared identity against the prefetched
+`NoneType` class, the same way `is_any_type` matches `Any`.
+"""
+impl TypeEvaluator.is_none_type(ty: TypeBase) -> bool {
+    if not self.prefetch or not self.prefetch.none_type_class {
+        return False;
+    }
+    return (
+        isinstance(ty, types.ClassType)
+        and ty.shared == self.prefetch.none_type_class.shared
+    );
+}
+
 """Single source of truth for "should Layer 2 strict-Any apply at this
 AST site?". Every assignment-like check (annotated assignment, has-var
 initializer, function arg, return, yield, edge-connection assign)
@@ -2797,6 +2833,26 @@ impl TypeEvaluator._is_strict_site(nd: uni.UniNode) -> bool {
     result = not mod.is_raised_from_py;
     self._strict_site_cache[id(mod)] = result;
     return result;
+}
+
+"""True when the pass is currently checking a native (.na.jac) module.
+
+Native code reinterprets `int`, `str`, function refs and `obj` instances
+as 64-bit pointers, so a handful of cross-type assignments are sound there
+but not in regular Jac. Determined from the pass's current node."""
+impl TypeEvaluator._in_native_context -> bool {
+    if self._pass is None {
+        return False;
+    }
+    cur = self._pass?.cur_node;
+    if cur is None or not isinstance(cur, uni.UniNode) {
+        return False;
+    }
+    mod = cur.find_parent_of_type(uni.Module);
+    if mod is None or mod.loc is None {
+        return False;
+    }
+    return mod.loc.mod_path.endswith(".na.jac");
 }
 
 """Match a typing special form loaded from any stdlib typing stub.
@@ -3029,6 +3085,49 @@ impl TypeEvaluator.assign_type(
                     return self._assign_callable(src_type, call_type, strict);
                 }
             }
+        }
+        # Function reference → int: a function value is a 64-bit pointer in
+        # native code, so let it be passed where an int parameter is expected
+        # (e.g. clib callback slots `def cb(...) -> ...; uv_poll_start(..., cb)`).
+        # Restricted to the builtin int class, and only in native code so
+        # regular Jac keeps its function/int distinction.
+        if isinstance(dest_type, types.ClassType)
+        and dest_type.is_builtin("int")
+        and self._in_native_context() {
+            return True;
+        }
+    }
+    # Native pointer-bitcast escape hatches. In Jac native, `int`, `str`,
+    # and user-defined `obj` instances are all 64-bit pointer-sized values,
+    # so the runtime treats assignment between them as a no-op bitcast.
+    # The type checker historically diverges from that — these rules let
+    # ABI-shaped wrappers like `obj UVBuf { has base: str, ... }` continue
+    # to compile where `reader: UVBuf = ptr_int` would otherwise fail.
+    # Gated to native modules so regular Jac keeps strict int/str checking.
+    if isinstance(src_type, types.ClassType)
+    and isinstance(dest_type, types.ClassType)
+    and src_type.is_class_instance()
+    and dest_type.is_class_instance()
+    and self._in_native_context() {
+        src_is_ptr = (
+            src_type.is_builtin("int")
+            or src_type.is_builtin("str")
+            or not src_type.is_builtin()
+        );
+        dest_is_ptr = (
+            dest_type.is_builtin("int")
+            or dest_type.is_builtin("str")
+            or not dest_type.is_builtin()
+        );
+        if src_is_ptr
+        and dest_is_ptr
+        and (
+            src_type.is_builtin("int")
+            or src_type.is_builtin("str")
+            or dest_type.is_builtin("int")
+            or dest_type.is_builtin("str")
+        ) {
+            return True;
         }
     }
     # Everything is assignable to Any or TypeVar.

@@ -1,6 +1,6 @@
 # Full-Stack Project Setup
 
-Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: code inside `cl { }` blocks compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
+Jac's `jac-client` plugin lets you build full-stack web applications where the frontend (React-style JSX components) and backend (walkers, functions, graph operations) live in the same codebase -- even the same file. The compiler separates client and server code automatically: client-side code -- a `.cl.jac` file or anything under a `to cl:` section header -- compiles to JavaScript and runs in the browser, while everything else compiles to Python and runs on the server.
 
 This means no separate frontend repository, no REST API boilerplate, and no manual data serialization. When a client component calls a server function, the compiler generates the HTTP layer for you. Hot Module Replacement (HMR) is built in, so changes to both frontend and backend code reflect instantly during development.
 
@@ -29,6 +29,7 @@ myapp/
 ├── jac.toml              # Configuration
 ├── main.jac              # Entry point (frontend + backend)
 ├── README.md             # Project readme
+├── AGENTS.md             # Agent guide for the project
 ├── components/           # Reusable UI components
 │   └── Button.cl.jac     # Example button component
 ├── assets/               # Static assets (images, fonts)
@@ -57,7 +58,7 @@ walker:pub get_todos {
     }
 }
 
-# Frontend code (inside cl block)
+# Frontend code (client section)
 to cl:
 
 def:pub app() -> JsxElement {
@@ -75,16 +76,24 @@ def:pub app() -> JsxElement {
 [project]
 name = "myapp"
 version = "1.0.0"
-description = "Jac client application"
+description = "Jac client application: myapp"
 entry-point = "main.jac"
 
-[dependencies]
-
 [dependencies.npm]
-jac-client-node = "1.0.4"
+react = "^18.2.0"
+react-dom = "^18.2.0"
+react-router-dom = "^6.22.0"
+react-error-boundary = "^5.0.0"
+react-hook-form = "^7.71.0"
+zod = "^4.3.6"
+"@hookform/resolvers" = "^5.2.2"
 
 [dependencies.npm.dev]
-"@jac-client/dev-deps" = "1.0.0"
+vite = "^6.4.1"
+"@vitejs/plugin-react" = "^4.2.1"
+typescript = "^5.3.3"
+"@types/react" = "^18.2.0"
+"@types/react-dom" = "^18.2.0"
 
 [dev-dependencies]
 watchdog = ">=3.0.0"
@@ -123,9 +132,9 @@ Open http://localhost:8000/cl/app
 
 ---
 
-## Understanding `cl { }`
+## Understanding `to cl:`
 
-The `cl { }` block marks frontend (client) code:
+The `to cl:` section header marks frontend (client) code -- everything below it, until the next `to X:` header or end of file, compiles to JavaScript/React:
 
 ```jac
 # This is backend code (runs on server)
@@ -143,7 +152,7 @@ def:pub MyComponent() -> JsxElement {
 
 **Key rules:**
 
-- `cl { }` code compiles to JavaScript/React
+- Code under `to cl:` (or in a `.cl.jac` file) compiles to JavaScript/React
 - `def:pub` exports functions (like React components)
 - `app()` is the required entry point
 
@@ -185,7 +194,7 @@ myapp/
     └── About.cl.jac   # Frontend page
 ```
 
-**Note:** `.cl.jac` files are automatically client-side (no `cl { }` needed).
+**Note:** `.cl.jac` files are automatically client-side (no `to cl:` header needed).
 
 ---
 

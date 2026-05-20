@@ -9,3 +9,4 @@ loglevel notice
 lazyfree-lazy-eviction yes
 lazyfree-lazy-expire yes
 lazyfree-lazy-server-del yes{redis_keyspace_events_line}
+aclfile {redis_aclfile_path}

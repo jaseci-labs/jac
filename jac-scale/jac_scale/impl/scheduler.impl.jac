@@ -16,12 +16,12 @@ impl JacScaleScheduler.instance -> JacScaleScheduler {
 }
 
 """Set up the scheduler with a system token and optional server reference."""
-impl JacScaleScheduler.setup(system_token: str, server: Any | None = None) -> None {
+impl JacScaleScheduler.setup(system_token: str, server: any | None = None) -> None {
     self._system_token = system_token;
     self._server = server;
 
     # Register the dynamic handler via the public API in jaclang's scheduler.
-    def _dynamic_handler(task: Any) {
+    def _dynamic_handler(task: any) {
         self._execute_task(task.name, self._system_username, task.is_walker);
     }
     Scheduler.instance().dynamic_handler = _dynamic_handler;
@@ -83,12 +83,12 @@ impl JacScaleScheduler.stop -> None {
 
 """Register static tasks (STATIC trigger) with the base jaclang Scheduler."""
 impl JacScaleScheduler.register_static_tasks(
-    walkers: dict, functions: dict, server: Any
+    walkers: dict, functions: dict, server: any
 ) -> None {
     self._server = server;
     base_scheduler = Scheduler.instance();
 
-    def _make_target(_name: str, _is_walker: bool) -> Any {
+    def _make_target(_name: str, _is_walker: bool) -> any {
         def target {
             self._execute_task(_name, self._system_username, _is_walker);
         }

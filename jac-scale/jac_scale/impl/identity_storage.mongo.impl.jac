@@ -14,17 +14,17 @@ impl MongoIdentityStorage.ensure_indexes -> None {
 }
 
 """Insert a user document into MongoDB."""
-impl MongoIdentityStorage._store_user(user_doc: dict[str, Any]) -> None {
+impl MongoIdentityStorage._store_user(user_doc: dict[str, any]) -> None {
     self.users_col.insert_one(user_doc);
 }
 
 """Find a user by user_id (excludes credentials)."""
-impl MongoIdentityStorage.get_user_by_id(user_id: str) -> dict[str, Any] | None {
+impl MongoIdentityStorage.get_user_by_id(user_id: str) -> dict[str, any] | None {
     return self.users_col.find_one({'user_id': user_id}, {'_id': 0, 'credentials': 0});
 }
 
 """Find a user by any identity value (excludes credentials)."""
-impl MongoIdentityStorage.find_user_by_identity(value: str) -> dict[str, Any] | None {
+impl MongoIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] | None {
     normalized = value.lower().strip();
     return self.users_col.find_one(
         {'identities.value_normalized': normalized, 'status': {'$ne': 'disabled'}},
@@ -48,13 +48,13 @@ impl MongoIdentityStorage.delete_user(user_id: str) -> bool {
 }
 
 """Update arbitrary fields on a user document."""
-impl MongoIdentityStorage._update_fields(user_id: str, fields: dict[str, Any]) -> bool {
+impl MongoIdentityStorage._update_fields(user_id: str, fields: dict[str, any]) -> bool {
     result = self.users_col.update_one({'user_id': user_id}, {'$set': fields});
     return result.matched_count > 0;
 }
 
 """Get the credentials array for a user."""
-impl MongoIdentityStorage._get_credentials(user_id: str) -> list[dict[str, Any]] {
+impl MongoIdentityStorage._get_credentials(user_id: str) -> list[dict[str, any]] {
     user = self.users_col.find_one({'user_id': user_id}, {'credentials': 1, '_id': 0});
     if not user {
         return [];
@@ -64,7 +64,7 @@ impl MongoIdentityStorage._get_credentials(user_id: str) -> list[dict[str, Any]]
 
 """Replace the entire credentials array for a user."""
 impl MongoIdentityStorage._update_credentials(
-    user_id: str, credentials: list[dict[str, Any]]
+    user_id: str, credentials: list[dict[str, any]]
 ) -> None {
     self.users_col.update_one(
         {'user_id': user_id},
@@ -78,7 +78,7 @@ impl MongoIdentityStorage._update_credentials(
 }
 
 """Get the identities array for a user."""
-impl MongoIdentityStorage._get_identities(user_id: str) -> list[dict[str, Any]] {
+impl MongoIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
     user = self.users_col.find_one({'user_id': user_id}, {'identities': 1, '_id': 0});
     if not user {
         return [];
@@ -88,7 +88,7 @@ impl MongoIdentityStorage._get_identities(user_id: str) -> list[dict[str, Any]] 
 
 """Append an identity document to a user's identities array."""
 impl MongoIdentityStorage._add_identity(
-    user_id: str, identity: dict[str, Any]
+    user_id: str, identity: dict[str, any]
 ) -> bool {
     result = self.users_col.update_one(
         {'user_id': user_id},
@@ -115,7 +115,7 @@ impl MongoIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> b
 """Find which active user (if any) has a specific SSO link. Returns {user_id} or None."""
 impl MongoIdentityStorage._find_sso_link(
     platform: str, external_id: str
-) -> dict[str, Any] | None {
+) -> dict[str, any] | None {
     return self.users_col.find_one(
         {
             'identities': {
@@ -134,7 +134,7 @@ impl MongoIdentityStorage._find_sso_link(
 """Find a user by SSO provider and external_id (excludes credentials, skips disabled)."""
 impl MongoIdentityStorage.get_user_by_sso(
     platform: str, external_id: str
-) -> dict[str, Any] | None {
+) -> dict[str, any] | None {
     return self.users_col.find_one(
         {
             'identities': {
@@ -153,7 +153,7 @@ impl MongoIdentityStorage.get_user_by_sso(
 """List user documents excluding guest users and credentials."""
 impl MongoIdentityStorage.list_all_users(
     limit: int, offset: int
-) -> list[dict[str, Any]] {
+) -> list[dict[str, any]] {
     cursor = self.users_col.find(
         {'identities.value_normalized': {'$ne': Con.GUEST.value}},
         {'_id': 0, 'credentials': 0}
@@ -223,7 +223,7 @@ impl MongoIdentityStorage.migrate_legacy_users -> None {
         }
         seen_normalized.add(normalized);
 
-        new_doc: dict[str, Any] = {
+        new_doc: dict[str, any] = {
             'user_id': new_user_id,
             'status': 'disabled' if is_duplicate else 'active',
             'identities': [

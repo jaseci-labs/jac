@@ -213,10 +213,121 @@ Useful for custom endpoints with specific SSL/mTLS requirements.
 impl Model.model_call_http(
     url: str, token: str, payload: dict, ca_bundle: str
 ) -> object {
-    import requests;
+    import httpx;
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
-    response = requests.post(
-        url=url, headers=headers, json=payload, timeout=60, verify=ca_bundle or True,
-    );
+    with httpx.Client(verify=ca_bundle or True, timeout=60.0) as client {
+        response = client.post(url=url, headers=headers, json=payload);
+    }
+    return response.json();
+}
+
+"""Async non-streaming call: litellm.acompletion or AsyncOpenAI — never blocks the loop."""
+impl Model.model_call_no_stream_async(params: dict) -> dict {
+    try {
+        if self.http_client {
+            response = await self.model_call_http_async(
+                url=self.api_base,
+                token=self.api_key,
+                payload=params,
+                ca_bundle=self.config.get("ca_bundle", None),
+            );
+        } elif self.proxy {
+            if not self._async_proxy_client {
+                self._async_proxy_client = AsyncOpenAI(
+                    base_url=self.api_base, api_key=self.api_key or None
+                );
+            }
+            response = await self._async_proxy_client.chat.completions.create(**params);
+        } else {
+            response = await litellm.acompletion(
+                api_key=self.api_key or None, **params
+            );
+        }
+    } except litellm.exceptions.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
+        raise AuthenticationError(str(e));
+    } except openai.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
+        raise AuthenticationError(str(e));
+    } except litellm.exceptions.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
+        raise RateLimitError(str(e));
+    } except openai.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
+        raise RateLimitError(str(e));
+    } except litellm.exceptions.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
+        raise ModelNotFoundError(str(e));
+    } except openai.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
+        raise ModelNotFoundError(str(e));
+    } except Exception as e {
+        logger.error(f"LLM call failed with {type(e).__name__}: {e}");
+        raise;
+    }
+    return response;
+}
+
+"""Async streaming call: litellm.acompletion(stream=True), AsyncOpenAI, or custom endpoint."""
+impl Model.model_call_with_stream_async(params: dict) {
+    params["stream_options"] = (params.get("stream_options") or {}) | {
+        "include_usage": True
+    };
+    try {
+        if self.http_client {
+            response = await self.model_call_http_async(
+                url=self.api_base,
+                token=self.api_key,
+                payload=params | {"stream": True},
+                ca_bundle=self.config.get("ca_bundle", None),
+            );
+        } elif self.proxy {
+            if not self._async_proxy_client {
+                self._async_proxy_client = AsyncOpenAI(
+                    base_url=self.api_base, api_key=self.api_key or None
+                );
+            }
+            response = await self._async_proxy_client.chat.completions.create(
+                stream=True, **params
+            );
+        } else {
+            response = await litellm.acompletion(
+                stream=True, api_key=self.api_key or None, **params
+            );
+        }
+    } except litellm.exceptions.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
+        raise AuthenticationError(str(e));
+    } except openai.AuthenticationError as e {
+        logger.error(f"LLM AuthenticationError: {e}");
+        raise AuthenticationError(str(e));
+    } except litellm.exceptions.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
+        raise RateLimitError(str(e));
+    } except openai.RateLimitError as e {
+        logger.error(f"LLM RateLimitError: {e}");
+        raise RateLimitError(str(e));
+    } except litellm.exceptions.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
+        raise ModelNotFoundError(str(e));
+    } except openai.NotFoundError as e {
+        logger.error(f"LLM ModelNotFoundError: {e}");
+        raise ModelNotFoundError(str(e));
+    } except Exception as e {
+        logger.error(f"LLM call failed with {type(e).__name__}: {e}");
+        raise;
+    }
+    return response;
+}
+
+"""Async HTTP call to a custom LLM endpoint via httpx.AsyncClient."""
+impl Model.model_call_http_async(
+    url: str, token: str, payload: dict, ca_bundle: str
+) -> object {
+    import httpx;
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {token}"};
+    async with httpx.AsyncClient(verify=ca_bundle or True, timeout=60.0) as client {
+        response = await client.post(url=url, headers=headers, json=payload);
+    }
     return response.json();
 }

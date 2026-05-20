@@ -21,7 +21,6 @@ Encoding format (version 2):
 """
 
 import struct;
-import from typing { Any }
 import from uuid { UUID }
 
 glob SELF_ROOT: UUID = UUID(int=0),

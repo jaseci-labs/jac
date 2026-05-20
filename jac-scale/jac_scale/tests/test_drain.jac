@@ -4,7 +4,7 @@ import asyncio;
 import json;
 import time;
 import threading;
-import from jac_scale.microservices._drain {
+import from jac_scale.microservices.gateway_internals.drain {
     is_draining,
     inflight,
     start_drain,

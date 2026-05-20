@@ -142,9 +142,10 @@ jobs:
           pattern: ${{ matrix.precompile_artifact }}-*
           merge-multiple: true
 
-      # Install jaclang for packages that need extra build commands
-      - name: Install jaclang (for build commands)
-        if: matrix.extra_build_cmd != ''
+      # Install jaclang for plugin builds (jac bundle) and for any extra build commands.
+      # jaclang itself uses python -m build, so it doesn't need this step.
+      - name: Install jaclang
+        if: matrix.name != 'jaclang'
         run: pip install -e ./jac
 
       # Install the package itself for extra build commands
@@ -174,13 +175,22 @@ jobs:
         working-directory: ${{ matrix.dir }}
         run: ${{ matrix.extra_build_cmd }}
 
-      # Build the package
-      - name: Install build tools
+      # Build the package.
+      # jaclang uses python -m build (it bootstraps the toolchain and has no jac.toml).
+      # All other packages use `jac bundle`, which reads jac.toml as source of truth.
+      - name: Install build tools (jaclang)
+        if: matrix.name == 'jaclang'
         run: pip install build
 
-      - name: Build package
+      - name: Build jaclang wheel
+        if: matrix.name == 'jaclang'
         working-directory: ${{ matrix.dir }}
         run: python -m build
+
+      - name: Build plugin wheel
+        if: matrix.name != 'jaclang'
+        working-directory: ${{ matrix.dir }}
+        run: jac bundle
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4
