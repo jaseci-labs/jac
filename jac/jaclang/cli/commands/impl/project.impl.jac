@@ -1228,16 +1228,25 @@ impl bundle(output: str = "dist", precompile: bool = False) -> int {
                 f"\n  Precompiling for {len(pythons)} Python version(s)...",
                 style="muted"
             );
+            failed_versions: list[str] = [];
             for (pyexe, pyver) in pythons {
                 console.print(f"    → {pyver}...", style="muted");
                 err = _run_precompile_in_venv(
                     pyexe, script_path, project_root_str, dep_specs
                 );
                 if err is not None {
-                    console.error(f"Precompile failed for {pyver}: {err}");
-                    return 1;
+                    console.warning(f"  ✘ {pyver} skipped: {err}");
+                    failed_versions.append(pyver);
+                } else {
+                    console.print(f"  ✔ {pyver}", style="success");
                 }
-                console.print(f"  ✔ {pyver}", style="success");
+            }
+            if failed_versions {
+                console.warning(
+                    "Precompilation incomplete — "
+                    f"{len(failed_versions)}/{len(pythons)} version(s) failed: "
+                    f"{', '.join(failed_versions)}"
+                );
             }
         }
     }
