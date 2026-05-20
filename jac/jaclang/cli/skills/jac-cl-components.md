@@ -96,10 +96,9 @@ def:pub ItemList(items: list[Item]) -> JsxElement {
 
 **Use a statement slot when** the body has control flow, the row has multiple JSX elements, you need an empty-state guard, you want `enumerate` with destructuring, or you'd otherwise reach for a nested ternary / `cond and <X />` chain. **Use an expression slot / list comprehension when** it's a single value or a one-line `[<li>...</li> for i in items]`.
 
-Caveats specific to slot bodies (also true of comprehensions):
+Caveats specific to slot bodies:
 
 - A bare `return;` inside a slot exits the slot, **not** the enclosing function - the rest of the JSX still renders. Useful for "show empty state, stop here."
-- `T | None` narrowing from the surrounding function does NOT carry into a slot body (E1099). Pull narrowed attrs into typed locals *before* the JSX. See the pitfall below.
 - Slot iteration that yields keyless JSX siblings earns a `W2019` warning - add `key={...}` on the inner element.
 
 ## Pitfalls
@@ -138,7 +137,6 @@ has posts: list[Post] = [];          # `p` in `for p in posts` is typed Post
 - **JSX ternary is Python-style:** `{X if cond else Y}`. NOT `{cond ? X : Y}` (parse error even inside JSX). Short-circuit also works: `{cond and <X />}`.
 - **Iterate with statement slots (`{for x in xs { <li>...</li> }}`), NOT `.map()`.** `items.map(...)` on a Jac list fails E1030. A `{...}` slot whose body starts with `for`/`if`/`while`/`match`/`switch`/`with`/`try` is a **statement slot**: each JSX statement inside pushes a child into the parent. It handles `enumerate` cleanly (`for (i, x) in enumerate(items)` - parens required; bare `i, x` parse-fails E0001), composes multi-element rows naturally, and supports an empty-state guard via bare `return;` (see "Statement slots" below). Inline `[<li>...</li> for i in items]` still works for one-line element-per-item lists.
 - **Dict / hook access (`useParams()[k]`, `useLocation()[k]`, generic `[key]`) returns `any` and yields JS `undefined` for missing keys.** Since `undefined !== null` in JS, both `x is None` and `x is not None` MISS undefined - `params["id"] is not None` returns True even when `:id` isn't in the route, and `str(undefined)` produces the literal string `"undefined"`. **Use a truthy check (`if x` / `if not x`) for hook/dict values - it catches both `None` and `undefined`.** The narrowing-friendly `is not None` form is still correct for typed Optionals (`T | None` from `sv import`-ed functions, function params, etc.) where `undefined` can't appear. (Also: `params.get("id")` runtime-fails in the browser since `useParams` returns a plain JS object - always use `[key]`.)
-- **`T | None` narrowing doesn't reach inside JSX statement slots, list comprehensions, or short-circuits.** After `if x is None { return ...; }`, direct `x.attr` works in the function body - but `{for i in x.parts { ... }}` or `{[<li>{x.attr}</li> for i in range(len(x.attr))]}` inside JSX fails E1099 because the slot/comprehension body is its own scope. **Workaround:** pull each used attribute into a typed local *before* the JSX block (e.g. `title: str = x.title; parts: list[str] = x.parts;`), then reference the locals from JSX. See `jac-types` for the full BROKEN/CORRECT pair.
 - **`unsafe_html(x)` opts out of escaping for raw HTML.** Ambient builtin (no import). `{unsafe_html(c.html_blob)}` renders the string as raw HTML via `dangerouslySetInnerHTML` (React) or `innerHTML` (bare-serve). Use ONLY with trusted content - the `unsafe_` prefix is the security-review marker at the call site; never wrap user input or anything that crossed an unsanitized boundary.
 - **Guard None/null/undefined when iterating or dotting into server data.** Runtime-only failure (`Cannot read properties of null/undefined`), nothing at compile. Four hot spots - single-level access is the most common:
 

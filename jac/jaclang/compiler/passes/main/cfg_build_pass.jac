@@ -82,6 +82,7 @@ obj CFGBuildPass(UniPass) {
     # Other
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     # Scope boundaries
     def exit_ability(nd: uni.Ability) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;
