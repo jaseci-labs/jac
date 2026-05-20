@@ -2369,3 +2369,66 @@ test "render_page base tag injection" {
     assert '<base href="/my-reverse-proxy/">' in html_proxy;
     assert 'src="/my-reverse-proxy/static/client.js' in html_proxy;
 }
+
+test "live server dynamic base resolution" {
+    import from pathlib { Path }
+    import from subprocess { Popen }
+    import from urllib.request { Request, urlopen }
+    import gc;
+    import os;
+    import shutil;
+
+    # 1. Resolve paths to the existing fixture
+    tests_dir = os.path.dirname(__file__);
+    fixture_path = os.path.join(tests_dir, "fixtures", "multi_segment_app");
+    assert os.path.isdir(fixture_path) , f"Fixture directory missing at {fixture_path}";
+
+    # Clean stale local compiler cache to prevent import conflicts
+    shutil.rmtree(Path(fixture_path) / ".jac" / "cache", ignore_errors=True);
+
+    original_cwd = os.getcwd();
+    server = None;
+    try {
+        os.chdir(fixture_path);
+
+        # Note: The client is already built by the preceding test in this file
+        port = get_free_port();
+
+        # 2. Spin up the live server
+        server = Popen(
+            get_jac_command() + ["start", "main.jac", "--port", str(port)],
+            stdout=None,
+            stderr=None,
+            text=True,
+            env=get_env_with_npm()
+        );
+        wait_for_port("127.0.0.1", port, timeout=300.0);
+        base_url = f"http://localhost:{port}";
+        _wait_for_endpoint(base_url, timeout=300.0);
+
+        # 3. Assert direct GET (no header) has root base path
+        req_direct = Request(f"{base_url}/dashboard/settings");
+        with urlopen(req_direct, timeout=30) as resp {
+            html_direct = resp.read().decode("utf-8");
+            assert '<base href="/">' in html_direct;
+            assert 'src="/static/client.js' in html_direct;
+        }
+
+        # 4. Assert proxied GET (with header) has custom base path
+        req_proxy = Request(
+            f"{base_url}/dashboard/settings",
+            headers={"X-Forwarded-Prefix": "/my-reverse-proxy"}
+        );
+        with urlopen(req_proxy, timeout=30) as resp {
+            html_proxy = resp.read().decode("utf-8");
+            assert '<base href="/my-reverse-proxy/">' in html_proxy;
+            assert 'src="/my-reverse-proxy/static/client.js' in html_proxy;
+        }
+    } finally {
+        if server {
+            server.terminate();
+            server.wait(timeout=5);
+        }
+        os.chdir(original_cwd);
+    }
+}
