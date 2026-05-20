@@ -1232,7 +1232,7 @@ obj MonitoringDeployer {
 
     """Deploy Loki as a single-process log store.
 
-    Loki is always ClusterIP — Grafana and Promtail talk to it internally.
+    Loki is always ClusterIP — Grafana and Alloy talk to it internally.
     Data is stored in emptyDir so it is ephemeral (suitable for dev/staging).
     """
     def _deploy_loki(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
@@ -1430,99 +1430,145 @@ obj MonitoringDeployer {
         }
     }
 
-    """Deploy Promtail as a DaemonSet to tail pod logs and ship them to Loki.
+    """Deploy Grafana Alloy as a DaemonSet to tail pod logs and ship them to Loki.
 
-    Promtail uses Kubernetes SD to discover pods, reads logs from /var/log/pods
-    on each node, and forwards them to the Loki ClusterIP service.
+    Alloy is Grafana's OpenTelemetry-compatible successor to Promtail
+    (Promtail went EOL on 2026-03-02). Same job: K8s SD discovers pods,
+    Alloy reads logs from /var/log/pods on each node and forwards them
+    to the Loki ClusterIP service. River-syntax config; otherwise the
+    DaemonSet shape, RBAC, hostPath mounts, and security context are
+    a port of the Promtail layout PR #5731 introduced.
     """
-    def _deploy_promtail(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _deploy_alloy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         loki_name = f"{app_name}-loki";
-        promtail_name = f"{app_name}-promtail";
-        promtail_sa_name = f"{promtail_name}-sa";
-        cluster_role_name = f"{namespace}-{promtail_name}";
-        cluster_role_binding_name = f"{namespace}-{promtail_name}";
+        alloy_name = f"{app_name}-alloy";
+        alloy_sa_name = f"{alloy_name}-sa";
+        cluster_role_name = f"{namespace}-{alloy_name}";
+        cluster_role_binding_name = f"{namespace}-{alloy_name}";
         rbac_v1 = client.RbacAuthorizationV1Api();
         loki_push_url = f"http://{loki_name}-service:3100/loki/api/v1/push";
 
-        promtail_config_yaml = (
-            "server:\n"
-            "  http_listen_port: 9080\n"
-            "  grpc_listen_port: 0\n"
-            "positions:\n"
-            "  filename: /run/promtail/positions.yaml\n"
-            "clients:\n"
-            f"  - url: {loki_push_url}\n"
-            "scrape_configs:\n"
-            "  - job_name: kubernetes-pods\n"
-            "    kubernetes_sd_configs:\n"
-            "      - role: pod\n"
-            "    pipeline_stages:\n"
-            "      - cri: {}\n"
-            "    relabel_configs:\n"
-            "      - source_labels: [__meta_kubernetes_pod_node_name]\n"
-            "        target_label: __host__\n"
-            "      - action: labelmap\n"
-            "        regex: __meta_kubernetes_pod_label_(.+)\n"
-            "      - source_labels: [__meta_kubernetes_namespace]\n"
-            "        target_label: namespace\n"
-            "      - source_labels: [__meta_kubernetes_pod_name]\n"
-            "        target_label: pod\n"
-            "      - source_labels: [__meta_kubernetes_pod_container_name]\n"
-            "        target_label: container\n"
-            "      - action: replace\n"
-            "        separator: /\n"
-            "        source_labels:\n"
-            "          - __meta_kubernetes_pod_uid\n"
-            "          - __meta_kubernetes_pod_container_name\n"
-            "        target_label: __path__\n"
-            "        replacement: /var/log/pods/*$1/*.log\n"
+        # River-syntax pipeline. Mirrors the Promtail relabel + CRI flow:
+        # discovery.kubernetes finds pods, discovery.relabel lifts
+        # namespace/pod/container labels and rewrites __path__ to the
+        # pod's per-container log file under /var/log/pods, local.file_match
+        # globs those paths, loki.source.file tails them, loki.process
+        # parses the containerd CRI wrapper, loki.write pushes to Loki.
+        alloy_config_river = (
+            "logging {\n"
+            "  level  = \"info\"\n"
+            "  format = \"logfmt\"\n"
+            "}\n"
+            "\n"
+            "discovery.kubernetes \"pods\" {\n"
+            "  role = \"pod\"\n"
+            "}\n"
+            "\n"
+            "discovery.relabel \"pods\" {\n"
+            "  targets = discovery.kubernetes.pods.targets\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_pod_node_name\"]\n"
+            "    target_label  = \"__host__\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    action = \"labelmap\"\n"
+            "    regex  = \"__meta_kubernetes_pod_label_(.+)\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_namespace\"]\n"
+            "    target_label  = \"namespace\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_pod_name\"]\n"
+            "    target_label  = \"pod\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    source_labels = [\"__meta_kubernetes_pod_container_name\"]\n"
+            "    target_label  = \"container\"\n"
+            "  }\n"
+            "\n"
+            "  rule {\n"
+            "    action        = \"replace\"\n"
+            "    separator     = \"/\"\n"
+            "    source_labels = [\n"
+            "      \"__meta_kubernetes_pod_uid\",\n"
+            "      \"__meta_kubernetes_pod_container_name\",\n"
+            "    ]\n"
+            "    target_label = \"__path__\"\n"
+            "    replacement  = \"/var/log/pods/*$1/*.log\"\n"
+            "  }\n"
+            "}\n"
+            "\n"
+            "local.file_match \"pods\" {\n"
+            "  path_targets = discovery.relabel.pods.output\n"
+            "}\n"
+            "\n"
+            "loki.source.file \"pods\" {\n"
+            "  targets    = local.file_match.pods.targets\n"
+            "  forward_to = [loki.process.cri.receiver]\n"
+            "}\n"
+            "\n"
+            "loki.process \"cri\" {\n"
+            "  forward_to = [loki.write.default.receiver]\n"
+            "\n"
+            "  stage.cri {}\n"
+            "}\n"
+            "\n"
+            "loki.write \"default\" {\n"
+            "  endpoint {\n"
+            f"    url = \"{loki_push_url}\"\n"
+            "  }\n"
+            "}\n"
         );
-        promtail_configmap = {
+        alloy_configmap = {
             'apiVersion': 'v1',
             'kind': 'ConfigMap',
             'metadata': {
-                'name': f"{promtail_name}-config",
+                'name': f"{alloy_name}-config",
                 'namespace': namespace,
-                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
             },
-            'data': {'promtail.yaml': promtail_config_yaml}
+            'data': {'config.alloy': alloy_config_river}
         };
         try {
             core_v1.read_namespaced_config_map(
-                name=f"{promtail_name}-config", namespace=namespace
+                name=f"{alloy_name}-config", namespace=namespace
             );
             core_v1.replace_namespaced_config_map(
-                name=f"{promtail_name}-config",
-                namespace=namespace,
-                body=promtail_configmap
+                name=f"{alloy_name}-config", namespace=namespace, body=alloy_configmap
             );
         } except ApiException as e {
             if e.status == 404 {
                 core_v1.create_namespaced_config_map(
-                    namespace=namespace, body=promtail_configmap
+                    namespace=namespace, body=alloy_configmap
                 );
             } else {
                 raise;
             }
         }
 
-        promtail_sa = {
+        alloy_sa = {
             'apiVersion': 'v1',
             'kind': 'ServiceAccount',
             'metadata': {
-                'name': promtail_sa_name,
+                'name': alloy_sa_name,
                 'namespace': namespace,
-                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
             }
         };
         try {
             core_v1.read_namespaced_service_account(
-                name=promtail_sa_name, namespace=namespace
+                name=alloy_sa_name, namespace=namespace
             );
         } except ApiException as e {
             if e.status == 404 {
                 core_v1.create_namespaced_service_account(
-                    namespace=namespace, body=promtail_sa
+                    namespace=namespace, body=alloy_sa
                 );
             } else {
                 raise;
@@ -1534,7 +1580,7 @@ obj MonitoringDeployer {
             'kind': 'ClusterRole',
             'metadata': {
                 'name': cluster_role_name,
-                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
             },
             'rules': [
                 {
@@ -1566,7 +1612,7 @@ obj MonitoringDeployer {
             'kind': 'ClusterRoleBinding',
             'metadata': {
                 'name': cluster_role_binding_name,
-                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
             },
             'roleRef': {
                 'apiGroup': 'rbac.authorization.k8s.io',
@@ -1576,7 +1622,7 @@ obj MonitoringDeployer {
             'subjects': [
                 {
                     'kind': 'ServiceAccount',
-                    'name': promtail_sa_name,
+                    'name': alloy_sa_name,
                     'namespace': namespace
                 }
             ]
@@ -1591,42 +1637,49 @@ obj MonitoringDeployer {
             }
         }
 
-        promtail_daemonset = {
+        alloy_daemonset = {
             'apiVersion': 'apps/v1',
             'kind': 'DaemonSet',
             'metadata': {
-                'name': promtail_name,
+                'name': alloy_name,
                 'namespace': namespace,
-                'labels': {'app': promtail_name, 'managed': 'jac-scale'}
+                'labels': {'app': alloy_name, 'managed': 'jac-scale'}
             },
             'spec': {
-                'selector': {'matchLabels': {'app': promtail_name}},
+                'selector': {'matchLabels': {'app': alloy_name}},
                 'template': {
-                    'metadata': {
-                        'labels': {'app': promtail_name, 'managed': 'jac-scale'}
-                    },
+                    'metadata': {'labels': {'app': alloy_name, 'managed': 'jac-scale'}},
                     'spec': {
                         'automountServiceAccountToken': True,
-                        'serviceAccountName': promtail_sa_name,
+                        'serviceAccountName': alloy_sa_name,
                         'tolerations': [{'operator': 'Exists', 'effect': 'NoSchedule'}],
                         'securityContext': {
                             'seccompProfile': {'type': 'RuntimeDefault'}
                         },
                         'containers': [
                             {
-                                'name': 'promtail',
-                                'image': 'grafana/promtail:3.4.2',
+                                'name': 'alloy',
+                                'image': 'grafana/alloy:v1.6.0',
                                 'securityContext': {
+                                    # /var/log/pods is root-owned on the
+                                    # node so the agent runs as root with
+                                    # all capabilities dropped. Same
+                                    # hardening Promtail used in #5731.
                                     'runAsUser': 0,
                                     'allowPrivilegeEscalation': False,
                                     'capabilities': {'drop': ['ALL']}
                                 },
-                                'args': ['-config.file=/etc/promtail/promtail.yaml'],
-                                'ports': [{'containerPort': 9080, 'name': 'http'}],
+                                'args': [
+                                    'run',
+                                    '--server.http.listen-addr=0.0.0.0:12345',
+                                    '--storage.path=/var/lib/alloy/data',
+                                    '/etc/alloy/config.alloy'
+                                ],
+                                'ports': [{'containerPort': 12345, 'name': 'http'}],
                                 'volumeMounts': [
                                     {
-                                        'name': 'promtail-config-vol',
-                                        'mountPath': '/etc/promtail'
+                                        'name': 'alloy-config-vol',
+                                        'mountPath': '/etc/alloy'
                                     },
                                     {
                                         'name': 'varlogpods',
@@ -1638,14 +1691,17 @@ obj MonitoringDeployer {
                                         'mountPath': '/var/lib/docker/containers',
                                         'readOnly': True
                                     },
-                                    {'name': 'positions', 'mountPath': '/run/promtail'}
+                                    {
+                                        'name': 'alloy-data',
+                                        'mountPath': '/var/lib/alloy/data'
+                                    }
                                 ]
                             }
                         ],
                         'volumes': [
                             {
-                                'name': 'promtail-config-vol',
-                                'configMap': {'name': f"{promtail_name}-config"}
+                                'name': 'alloy-config-vol',
+                                'configMap': {'name': f"{alloy_name}-config"}
                             },
                             {
                                 'name': 'varlogpods',
@@ -1655,18 +1711,23 @@ obj MonitoringDeployer {
                                 'name': 'varlogcontainers',
                                 'hostPath': {'path': '/var/lib/docker/containers'}
                             },
-                            {'name': 'positions', 'emptyDir': {}}
+                            # WAL / positions equivalent. emptyDir so a
+                            # restarted Alloy pod re-tails files from
+                            # the start; Loki dedupes within a small
+                            # window so duplicates are harmless. For
+                            # production use a hostPath instead.
+                            {'name': 'alloy-data', 'emptyDir': {}}
                         ]
                     }
                 }
             }
         };
         try {
-            apps_v1.read_namespaced_daemon_set(name=promtail_name, namespace=namespace);
+            apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
         } except ApiException as e {
             if e.status == 404 {
                 apps_v1.create_namespaced_daemon_set(
-                    namespace=namespace, body=promtail_daemonset
+                    namespace=namespace, body=alloy_daemonset
                 );
             } else {
                 raise;
@@ -1674,7 +1735,7 @@ obj MonitoringDeployer {
         }
 
         if self.logger {
-            self.logger.info(f"Promtail deployed for '{app_name}'");
+            self.logger.info(f"Alloy deployed for '{app_name}'");
         }
     }
 
@@ -1693,19 +1754,19 @@ obj MonitoringDeployer {
         self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, cluster_env);
         if self.k8s_config.loki_enabled {
             self._deploy_loki(app_name, namespace, apps_v1, core_v1);
-            self._deploy_promtail(app_name, namespace, apps_v1, core_v1);
+            self._deploy_alloy(app_name, namespace, apps_v1, core_v1);
         }
         self._deploy_grafana(app_name, namespace, apps_v1, core_v1, cluster_env);
     }
 
-    """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter, Loki, Promtail."""
+    """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter, Loki, Alloy."""
     def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         prometheus_name = f"{app_name}-prometheus";
         grafana_name = f"{app_name}-grafana";
         ksm_name = f"{app_name}-kube-state-metrics";
         ne_name = f"{app_name}-node-exporter";
         loki_name = f"{app_name}-loki";
-        promtail_name = f"{app_name}-promtail";
+        alloy_name = f"{app_name}-alloy";
         cluster_role_name = f"{namespace}-{ksm_name}";
         cluster_role_binding_name = f"{namespace}-{ksm_name}";
 
@@ -1811,11 +1872,9 @@ obj MonitoringDeployer {
             }
         }
 
-        # Promtail resources
+        # Alloy resources
         try {
-            apps_v1.delete_namespaced_daemon_set(
-                name=promtail_name, namespace=namespace
-            );
+            apps_v1.delete_namespaced_daemon_set(name=alloy_name, namespace=namespace);
         } except ApiException as e {
             if e.status != 404 {
                 raise;
@@ -1823,7 +1882,7 @@ obj MonitoringDeployer {
         }
         try {
             core_v1.delete_namespaced_config_map(
-                name=f"{promtail_name}-config", namespace=namespace
+                name=f"{alloy_name}-config", namespace=namespace
             );
         } except ApiException as e {
             if e.status != 404 {
@@ -1832,23 +1891,23 @@ obj MonitoringDeployer {
         }
         try {
             core_v1.delete_namespaced_service_account(
-                name=f"{promtail_name}-sa", namespace=namespace
+                name=f"{alloy_name}-sa", namespace=namespace
             );
         } except ApiException as e {
             if e.status != 404 {
                 raise;
             }
         }
-        promtail_cr_name = f"{namespace}-{promtail_name}";
+        alloy_cr_name = f"{namespace}-{alloy_name}";
         try {
-            rbac_v1.delete_cluster_role(name=promtail_cr_name);
+            rbac_v1.delete_cluster_role(name=alloy_cr_name);
         } except ApiException as e {
             if e.status != 404 {
                 raise;
             }
         }
         try {
-            rbac_v1.delete_cluster_role_binding(name=promtail_cr_name);
+            rbac_v1.delete_cluster_role_binding(name=alloy_cr_name);
         } except ApiException as e {
             if e.status != 404 {
                 raise;

@@ -615,47 +615,48 @@ test "deploy all in one" {
     assert loki_sa.automount_service_account_token is False;
     print(f"Loki ServiceAccount '{loki_name}-sa' exists with token automount disabled");
 
-    # Validate Promtail DaemonSet, ConfigMap, ServiceAccount, ClusterRole, ClusterRoleBinding
-    promtail_name = f"{app_name}-promtail";
-    promtail_cr_name = f"{namespace}-{promtail_name}";
+    # Validate Alloy DaemonSet, ConfigMap, ServiceAccount, ClusterRole, ClusterRoleBinding
+    alloy_name = f"{app_name}-alloy";
+    alloy_cr_name = f"{namespace}-{alloy_name}";
 
-    promtail_ds = apps_v1.read_namespaced_daemon_set(
-        name=promtail_name, namespace=namespace
+    alloy_ds = apps_v1.read_namespaced_daemon_set(name=alloy_name, namespace=namespace);
+    assert alloy_ds.metadata.name == alloy_name;
+    alloy_container = alloy_ds.spec.template.spec.containers[0];
+    assert alloy_container.image.startswith("grafana/alloy:") , (
+        f"expected grafana/alloy image, got {alloy_container.image}"
     );
-    assert promtail_ds.metadata.name == promtail_name;
-    promtail_container = promtail_ds.spec.template.spec.containers[0];
-    assert promtail_container.image == "grafana/promtail:3.4.2";
-    tolerations = promtail_ds.spec.template.spec.tolerations;
+    tolerations = alloy_ds.spec.template.spec.tolerations;
     assert any(
         t.operator == "Exists" and t.effect == "NoSchedule" for t in tolerations
-    ) , "Promtail must tolerate NoSchedule to run on all nodes";
-    print(f"Promtail DaemonSet '{promtail_name}' exists with NoSchedule toleration");
+    ) , "Alloy must tolerate NoSchedule to run on all nodes";
+    print(f"Alloy DaemonSet '{alloy_name}' exists with NoSchedule toleration");
 
-    promtail_config = core_v1.read_namespaced_config_map(
-        name=f"{promtail_name}-config", namespace=namespace
+    alloy_config = core_v1.read_namespaced_config_map(
+        name=f"{alloy_name}-config", namespace=namespace
     );
-    assert "promtail.yaml" in promtail_config.data;
-    promtail_yaml = promtail_config.data["promtail.yaml"];
-    assert "/loki/api/v1/push" in promtail_yaml;
-    assert f"{loki_name}-service" in promtail_yaml;
-    assert "kubernetes_sd_configs" in promtail_yaml;
-    print(
-        f"Promtail ConfigMap '{promtail_name}-config' exists pointing to Loki with K8s SD"
+    assert "config.alloy" in alloy_config.data;
+    alloy_river = alloy_config.data["config.alloy"];
+    assert "/loki/api/v1/push" in alloy_river;
+    assert f"{loki_name}-service" in alloy_river;
+    # Alloy uses River blocks; assert the two components that drive
+    # K8s SD + Loki push, equivalent to Promtail's kubernetes_sd_configs.
+    assert "discovery.kubernetes" in alloy_river;
+    assert "loki.write" in alloy_river;
+    print(f"Alloy ConfigMap '{alloy_name}-config' exists pointing to Loki with K8s SD");
+
+    alloy_sa = core_v1.read_namespaced_service_account(
+        name=f"{alloy_name}-sa", namespace=namespace
     );
+    assert alloy_sa.metadata.name == f"{alloy_name}-sa";
+    print(f"Alloy ServiceAccount '{alloy_name}-sa' exists");
 
-    promtail_sa = core_v1.read_namespaced_service_account(
-        name=f"{promtail_name}-sa", namespace=namespace
-    );
-    assert promtail_sa.metadata.name == f"{promtail_name}-sa";
-    print(f"Promtail ServiceAccount '{promtail_name}-sa' exists");
+    alloy_cr = rbac_v1.read_cluster_role(name=alloy_cr_name);
+    assert alloy_cr.metadata.name == alloy_cr_name;
+    print(f"Alloy ClusterRole '{alloy_cr_name}' exists");
 
-    promtail_cr = rbac_v1.read_cluster_role(name=promtail_cr_name);
-    assert promtail_cr.metadata.name == promtail_cr_name;
-    print(f"Promtail ClusterRole '{promtail_cr_name}' exists");
-
-    promtail_crb = rbac_v1.read_cluster_role_binding(name=promtail_cr_name);
-    assert promtail_crb.metadata.name == promtail_cr_name;
-    print(f"Promtail ClusterRoleBinding '{promtail_cr_name}' exists");
+    alloy_crb = rbac_v1.read_cluster_role_binding(name=alloy_cr_name);
+    assert alloy_crb.metadata.name == alloy_cr_name;
+    print(f"Alloy ClusterRoleBinding '{alloy_cr_name}' exists");
 
     # Validate kube-state-metrics Deployment, Service, ServiceAccount, ClusterRole,ClusterRoleBinding
     ksm_deploy = apps_v1.read_namespaced_deployment(name=ksm_name, namespace=namespace);
@@ -1478,8 +1479,8 @@ test "deploy all in one" {
 
     # Verify Loki resources are gone
     loki_name = f"{app_name}-loki";
-    promtail_name = f"{app_name}-promtail";
-    promtail_cr_name = f"{namespace}-{promtail_name}";
+    alloy_name = f"{app_name}-alloy";
+    alloy_cr_name = f"{namespace}-{alloy_name}";
 
     try {
         apps_v1.read_namespaced_deployment(loki_name, namespace=namespace);
@@ -1511,47 +1512,45 @@ test "deploy all in one" {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    # Verify Promtail resources are gone
+    # Verify Alloy resources are gone
     try {
-        apps_v1.read_namespaced_daemon_set(promtail_name, namespace=namespace);
-        raise AssertionError("Promtail DaemonSet should have been deleted");
+        apps_v1.read_namespaced_daemon_set(alloy_name, namespace=namespace);
+        raise AssertionError("Alloy DaemonSet should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
-        core_v1.read_namespaced_config_map(
-            f"{promtail_name}-config", namespace=namespace
-        );
-        raise AssertionError("Promtail ConfigMap should have been deleted");
+        core_v1.read_namespaced_config_map(f"{alloy_name}-config", namespace=namespace);
+        raise AssertionError("Alloy ConfigMap should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
         core_v1.read_namespaced_service_account(
-            name=f"{promtail_name}-sa", namespace=namespace
+            name=f"{alloy_name}-sa", namespace=namespace
         );
-        raise AssertionError("Promtail ServiceAccount should have been deleted");
+        raise AssertionError("Alloy ServiceAccount should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
-        rbac_v1.read_cluster_role(name=promtail_cr_name);
-        raise AssertionError("Promtail ClusterRole should have been deleted");
+        rbac_v1.read_cluster_role(name=alloy_cr_name);
+        raise AssertionError("Alloy ClusterRole should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
     try {
-        rbac_v1.read_cluster_role_binding(name=promtail_cr_name);
-        raise AssertionError("Promtail ClusterRoleBinding should have been deleted");
+        rbac_v1.read_cluster_role_binding(name=alloy_cr_name);
+        raise AssertionError("Alloy ClusterRoleBinding should have been deleted");
     } except ApiException as e {
         assert e.status == 404 , f"Expected 404, got {e.status}";
     }
 
-    print("Loki and Promtail cleanup verified");
+    print("Loki and Alloy cleanup verified");
 
     # Verify MongoDB ServiceAccount is gone
     try {

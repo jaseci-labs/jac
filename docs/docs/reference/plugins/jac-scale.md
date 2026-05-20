@@ -2013,7 +2013,7 @@ mongodb_dashboard = true  # Deploy Mongo Express UI (default: false)
 |----------------|-------------|---------|
 | `redis_dashboard` | Deploy RedisInsight dashboard UI | `false` |
 | `mongodb_dashboard` | Deploy Mongo Express dashboard UI | `false` |
-| `loki_enabled` | Deploy Loki + Promtail log pipeline and add Pod Logs dashboard to Grafana | `false` |
+| `loki_enabled` | Deploy Loki + Alloy log pipeline and add Pod Logs dashboard to Grafana | `false` |
 
 #### Dashboard Credentials
 
@@ -2474,7 +2474,7 @@ jac_mcp = "latest"     # Optional MCP server plugin
 
 ### Monitoring Stack
 
-jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Promtail for log aggregation) into the same namespace as your application.
+jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-state-metrics + node-exporter, and optionally Loki + Grafana Alloy for log aggregation) into the same namespace as your application.
 
 | Component | Purpose |
 |-----------|---------|
@@ -2482,8 +2482,8 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 | **Grafana** | Dashboard UI - served via NGINX Ingress at `/grafana` (NodePort locally, NLB on AWS) |
 | **kube-state-metrics** | K8s object state: pod counts, replica health, restart counts |
 | **node-exporter** | Host-level metrics: CPU, memory, disk, network per node |
-| **Loki** _(optional)_ | Log store - receives logs from Promtail (ClusterIP, ephemeral storage) |
-| **Promtail** _(optional)_ | DaemonSet that tails `/var/log/pods` on every node and ships to Loki |
+| **Loki** _(optional)_ | Log store - receives logs from Alloy (ClusterIP, ephemeral storage) |
+| **Grafana Alloy** _(optional)_ | DaemonSet that tails `/var/log/pods` on every node and ships to Loki (replaces Promtail, which went EOL on 2026-03-02) |
 
 **Defaults:**
 
@@ -2491,7 +2491,7 @@ jac-scale can deploy a full observability stack (Prometheus + Grafana + kube-sta
 |----------|---------|-------------|
 | `enabled` | `false` | Deploy the monitoring stack and expose the app's `/metrics` endpoint |
 | `k8s_metrics_enabled` | `true` | Include kube-state-metrics and node-exporter exporters |
-| `loki_enabled` | `false` | Deploy Loki + Promtail and add a Pod Logs dashboard to Grafana |
+| `loki_enabled` | `false` | Deploy Loki + Grafana Alloy and add a Pod Logs dashboard to Grafana |
 | `prometheus_admin_password` | `Adminpassword123` | Grafana `admin` login password |
 
 **To enable in `jac.toml`:**
@@ -2527,7 +2527,7 @@ On AWS clusters, the NGINX Ingress controller is exposed via a Network Load Bala
 When enabled, two additional components are deployed:
 
 - **Loki** - single-process log store (port 3100, ClusterIP). Uses filesystem/TSDB storage backed by an `emptyDir` volume; logs are ephemeral and reset on pod restart. Suitable for dev and staging environments.
-- **Promtail** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery.
+- **Grafana Alloy** - DaemonSet deployed on every node (tolerates `NoSchedule` taints). Tails `/var/log/pods`, labels each stream with `namespace`, `pod`, and `container`, and pushes to Loki via Kubernetes service discovery. Configured in River syntax. (Alloy is the OpenTelemetry-compatible successor to Promtail, which went EOL on 2026-03-02.)
 
 A **Pod Logs** dashboard is automatically added to Grafana with two panels: log volume (lines/min by namespace/pod) and a live log viewer.
 
@@ -2950,9 +2950,6 @@ hpa = { enabled = true, min = 2, max = 10, cpu_target = 60 }
 replicas = 2
 hpa = { enabled = false }
 ```
-
----
-
 ## Setting Up Kubernetes
 
 ### Docker Desktop (Easiest)
