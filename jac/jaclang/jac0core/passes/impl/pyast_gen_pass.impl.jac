@@ -2,7 +2,7 @@
 
 """Get the set of builtin names, cached after first successful access."""
 @classmethod
-impl PyastGenPass._get_builtin_names(cls: Any) -> set[str] {
+impl PyastGenPass._get_builtin_names(cls: any) -> set[str] {
     if (cls._builtin_names is None) {
         try {
             import jaclang.runtimelib.builtin as builtin_mod;
@@ -16,7 +16,7 @@ impl PyastGenPass._get_builtin_names(cls: Any) -> set[str] {
 
 """Read __all__ from typing_ambient.pyi, cached after first access."""
 @classmethod
-impl PyastGenPass._get_ambient_typing_names(cls: Any) -> set[str] {
+impl PyastGenPass._get_ambient_typing_names(cls: any) -> set[str] {
     if (cls._ambient_typing_names is not None) {
         return cls._ambient_typing_names;
     }
@@ -4020,6 +4020,29 @@ impl PyastGenPass.exit_bool(nd: uni.Bool) -> None {
 }
 
 impl PyastGenPass.exit_builtin_type(nd: uni.BuiltinType) -> None {
+    # The lowercase `any` keyword overloads two distinct Python identifiers:
+    # as a TYPE (annotations, generics, Annotated args, Optional args, runtime
+    # type values) it is Jac's top type and must resolve to `typing.Any` so
+    # eager annotation consumers (Pydantic BaseModel field setup, FastAPI
+    # parameter inference, dataclasses.get_type_hints) get the gradual-type
+    # semantics they expect; as a CALL like `any(iter)` it is the builtin
+    # iterable predicate `builtins.any`. The Jac parser collapses both forms
+    # to a `BuiltinType` node, so distinguish by call-position: if this node
+    # is the immediate `func` of an enclosing `FuncCall`, keep `any`;
+    # otherwise emit `Any` (auto-importing it from typing).
+    if nd.sym_name == "any" {
+        parent = nd.parent;
+        is_call_func = (
+            parent is not None
+            and isinstance(parent, uni.FuncCall)
+            and parent.target is nd
+        );
+        if not is_call_func {
+            self.typing_imports.add("Any");
+            nd.gen.py_ast = [self.sync(ast3.Name(id="Any", ctx=nd.py_ctx_func()))];
+            return;
+        }
+    }
     nd.gen.py_ast = [self.sync(ast3.Name(id=nd.sym_name, ctx=nd.py_ctx_func()))];
 }
 

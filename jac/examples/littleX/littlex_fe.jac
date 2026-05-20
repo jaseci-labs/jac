@@ -164,7 +164,7 @@ cl {
     }
 
     # Handle login form submission
-    async def handle_login(event: Any) {
+    async def handle_login(event: any) {
         event.preventDefault();
         username = document.getElementById("username").value;
         password = document.getElementById("password").value;
@@ -259,7 +259,7 @@ cl {
     }
 
     # Handle signup form submission
-    async def handle_signup(event: Any) -> None {
+    async def handle_signup(event: any) -> None {
         event.preventDefault();
         username = document.getElementById("signup-username").value;
         password = document.getElementById("signup-password").value;
@@ -330,7 +330,7 @@ cl {
     }
 
     # Helper to build navigation bar
-    def build_nav_bar(route: str) -> Any {
+    def build_nav_bar(route: str) -> any {
         if not jacIsLoggedIn() or route == "/login" or route == "/signup" {
             return None;
         }

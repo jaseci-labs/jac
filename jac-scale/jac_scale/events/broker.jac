@@ -1,12 +1,12 @@
 """Event-streaming broker abstraction. Defines EventStreamBroker, Event, RetryPolicy, HealthStatus; concrete impls live in events/streams."""
-import from typing { Any, Callable }
+import from typing { Callable }
 import from datetime { datetime, UTC }
 import uuid;
 
 """CloudEvents-style envelope used for every publish/consume. `event_type` defaults to empty and is auto-filled from the topic by the publish() facade."""
 obj Event {
     has event_type: str = "",
-        data: dict[str, Any] = {},
+        data: dict[str, any] = {},
         id: str = str(uuid.uuid4()),
         source: str = "jac-scale",
         time: str = datetime.now(UTC).isoformat(),
@@ -28,7 +28,7 @@ obj RetryPolicy {
 obj HealthStatus {
     has healthy: bool,
         broker: str,
-        details: dict[str, Any] = {};
+        details: dict[str, any] = {};
 }
 
 """Abstract base for an event-streaming broker.
@@ -49,7 +49,7 @@ obj EventStreamBroker {
     """
     def register_handler(
         topic: str,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
         start_from: str = "latest"

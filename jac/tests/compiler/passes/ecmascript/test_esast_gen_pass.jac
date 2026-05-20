@@ -14,8 +14,8 @@ glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
      );
 
 """Collect every ESTree node in a depth-first traversal."""
-def walk_es_nodes(nd: es.Node) -> list {
-    result: list = [nd];
+def walk_es_nodes(nd: es.Node) -> list[es.Node] {
+    result: list[es.Node] = [nd];
     for value in vars(nd).values() {
         if isinstance(value, es.Node) {
             result.extend(walk_es_nodes(value));
@@ -527,5 +527,103 @@ test "single-`props` component definition warns W5015" {
     );
     assert not any("SingleKeyStyle" in m for m in msgs) , (
         f"SingleKeyStyle (typed single-key bundle) should not warn, got: {msgs}"
+    );
+}
+
+test "view declarator compiles to a jsx component" {
+    # Phase 1 of the `view` design: `view Name(...) { ... }` is sugar for
+    # `def:pub Name(...) -> JsxElement { ... }` with a statement-based body.
+    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # Each `view` lowers to a plain function declaration.
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "Badge" in func_names , "view Badge should lower to a function";
+    assert "ItemRow" in func_names , "view ItemRow should lower to a function";
+    assert "ItemList" in func_names , "view ItemList should lower to a function";
+    # `view Divider { ... }` — the parameter list is optional.
+    assert "Divider" in func_names , (
+        "no-parens `view Divider { }` should lower to a function"
+    );
+
+    # The statement body is lowered to a children accumulator that the view
+    # returns as a single JSX fragment.
+    assert "__jac_view_kids" in js_code , (
+        "view body should lower to a `__jac_view_kids` accumulator"
+    );
+    assert "__jac_view_kids = []" in js_code , "accumulator should be initialized";
+    assert "__jac_view_kids.push(" in js_code , (
+        "each JSX statement should append to the accumulator in O(1)"
+    );
+    assert "__jacJsx" in js_code , "JSX should still lower to __jacJsx calls";
+
+    # `has` fields inside a view keep the existing auto-`useState` wiring.
+    assert 'const [heading, setHeading] = useState("Items")' in js_code , (
+        "has field in a view should generate useState"
+    );
+    assert "setHeading(" in js_code , (
+        "assignment to a view has-field should use the generated setter"
+    );
+
+    # Public components are exported.
+    assert "export {" in js_code , "views should be exported";
+    export_line = js_code.strip().split("\n")[-1];
+    assert "Badge" in export_line
+    and "ItemRow" in export_line
+    and "ItemList" in export_line
+    and "Divider" in export_line , "all four views should be exported";
+}
+
+test "view statement-position control flow lowers to statements" {
+    es_ast = compile_to_esast(fixture_path("view_basic.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    # `if`/`else` at view-body level yields content in both branches.
+    assert "Nothing here." in js_code , "the if-branch content should render";
+    assert "Showing items." in js_code , "the else-branch content should render";
+
+    # A statement `for` over the params lowers to a real loop (not a .map
+    # comprehension) that appends each element to the accumulator.
+    assert "items" in js_code , "the for loop should iterate the items param";
+    has_loop = ("for (" in js_code) or ("for(" in js_code);
+    assert has_loop , "a statement `for` in a view should emit a JS loop";
+}
+
+test "view dynamic tags resolve the tag at runtime" {
+    # Phase 2: `<@expr />` — the JSX tag is an expression, not a static name.
+    es_ast = compile_to_esast(fixture_path("view_dynamic_tag.cl.jac"));
+    js_code = es_to_js(es_ast);
+
+    func_names = {
+        nd.id.name
+        for nd in es_ast.body
+        if isinstance(nd, es.FunctionDeclaration) and nd.id
+    };
+    assert "Box" in func_names
+    and "Icon" in func_names
+    and "Panel" in func_names
+    and "Demo" in func_names;
+
+    # A dynamic tag lowers to `__jacJsx(<expr>, ...)` — the tag is the value
+    # of the expression, never a quoted string of the identifier itself.
+    assert "__jacJsx(as_," in js_code , (
+        "<@as_> should pass the `as_` value as the tag"
+    );
+    assert '__jacJsx("as_"' not in js_code , (
+        "the dynamic tag identifier must not be emitted as a string literal"
+    );
+    assert "__jacJsx(tag," in js_code , "<@tag> should pass the `tag` value";
+    assert "__jacJsx(glyph," in js_code , (
+        "the brace-wrapped dynamic tag <@{glyph}> should pass the `glyph` value"
+    );
+
+    # Static tags around the dynamic one are unaffected.
+    assert '__jacJsx("div",' in js_code , "static host tags stay string tags";
+    assert "__jacJsx(Box," in js_code , (
+        "a view used as a normal element stays a component reference"
     );
 }

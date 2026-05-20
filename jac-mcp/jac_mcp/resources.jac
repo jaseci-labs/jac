@@ -4,7 +4,6 @@ This module provides read-only reference material that AI models can load
 for context: grammar specs, documentation, examples, and curated guides.
 """
 
-import from typing { Any }
 import from pathlib { Path }
 
 """Find the repo root by walking up from jaclang package location."""

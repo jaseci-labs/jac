@@ -82,8 +82,8 @@ impl JacAPIServerCore.postinit -> None {
     if custom_headers {
         class CustomHeadersMiddleware(BaseHTTPMiddleware) {
             async def dispatch(
-                self: CustomHeadersMiddleware, request: Any, call_next: Any
-            ) -> Any {
+                self: CustomHeadersMiddleware, request: any, call_next: any
+            ) -> any {
                 response = await call_next(request);
                 for (header_name, header_value) in custom_headers.items() {
                     response.headers[header_name] = header_value;
@@ -103,8 +103,8 @@ impl JacAPIServerCore.postinit -> None {
         # Add metrics middleware to track request timing
         class MetricsMiddleware(BaseHTTPMiddleware) {
             async def dispatch(
-                self: MetricsMiddleware, request: Any, call_next: Any
-            ) -> Any {
+                self: MetricsMiddleware, request: any, call_next: any
+            ) -> any {
                 # Skip metrics endpoint itself
                 if request.url.path == metrics_endpoint {
                     return await call_next(request);
@@ -291,7 +291,7 @@ impl JacAPIServerCore.start(
         _self = self;
         @self.server.app.middleware("http")
         async def hmr_refresh_middleware(
-            request: StarletteRequest, call_next: Any
+            request: StarletteRequest, call_next: any
         ) -> StarletteResponse {
             if _self._hmr_pending {
                 _self._refresh_dev_endpoints();
@@ -348,7 +348,7 @@ impl JacAPIServerCore._print_startup_banner(dev: bool, no_client: bool) -> None 
 """Configure OpenAPI security scheme to only apply to walker endpoints that require auth."""
 impl JacAPIServerCore._configure_openapi_security -> None {
     import from fastapi.openapi.utils { get_openapi }
-    def custom_openapi -> dict[str, Any] {
+    def custom_openapi -> dict[str, any] {
         if self.server.app.openapi_schema {
             return self.server.app.openapi_schema;
         }
@@ -571,10 +571,10 @@ impl JacAPIServerCore._register_client_error_endpoint -> None {
 }
 
 """Enable HMR mode - file changes trigger reload on next request."""
-impl JacAPIServerCore.enable_hmr(hot_reloader: Any) -> None {
+impl JacAPIServerCore.enable_hmr(hot_reloader: any) -> None {
     self._hot_reloader = hot_reloader;
     # Callback when file changes - sets pending flag
-    def on_change(event: Any) {
+    def on_change(event: any) {
         self._hmr_pending = True;
         logger.debug(f"Change detected: {event.path}");
     }
@@ -646,8 +646,8 @@ impl JacAPIServerCore._setup_scheduler -> None {
 
 """Create a wrapper around the metrics endpoint that requires admin authentication."""
 impl JacAPIServerCore._create_admin_metrics_handler(
-    original_handler: Callable[..., Any]
-) -> Callable[..., Any] {
+    original_handler: Callable[..., any]
+) -> Callable[..., any] {
     import from fastapi { Request }
     import from fastapi.responses { Response, JSONResponse }
     import from jaclang.runtimelib.transport { TransportResponse, Meta }

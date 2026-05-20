@@ -5,7 +5,6 @@ import os;
 import shutil;
 import asyncio;
 import from tempfile { mkdtemp }
-import from typing { Any }
 import from dataclasses { dataclass }
 import from types { TracebackType }
 import unittest.mock;
@@ -75,8 +74,8 @@ obj MockUserInfo {
         picture: str = "https://example.com/picture.jpg";
 
     """Mirror SSOUserInfo.profile_fields() so production code can call it."""
-    def profile_fields -> dict[str, Any] {
-        fields: dict[str, Any] = {};
+    def profile_fields -> dict[str, any] {
+        fields: dict[str, any] = {};
         for key in ['display_name', 'first_name', 'last_name', 'picture'] {
             val = getattr(self, key, None);
             if val {

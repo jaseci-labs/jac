@@ -13,7 +13,7 @@ import type from jaclang.compiler.type_system.types {
     EnumMemberType
 }
 
-impl _typebase_to_tag(t: Any) -> (str | None) {
+impl _typebase_to_tag(t: any) -> (str | None) {
     if t is None {
         return None;
     }

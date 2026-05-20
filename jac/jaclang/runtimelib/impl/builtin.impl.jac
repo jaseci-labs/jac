@@ -97,12 +97,12 @@ impl __getattr__(name: str) -> object {
 }
 
 """Get commit lazily."""
-impl _get_commit -> Callable[..., Any] {
+impl _get_commit -> Callable[..., any] {
     return _get_jac().commit;
 }
 
 """Get storage backend lazily."""
-impl _get_store -> Callable[..., Any] {
+impl _get_store -> Callable[..., any] {
     return _get_jac().store;
 }
 
@@ -123,7 +123,7 @@ bottom, and `register(Root)` runs earlier), producing a circular
 `@archetype_alias`. Deferring the Serializer import past preamble-time
 lets the module finish loading through the normal path.
 """
-impl _get_archetype_alias -> Callable[..., Any] {
+impl _get_archetype_alias -> Callable[..., any] {
     def factory(old_name: str) -> Callable {
         def decorator(cls: type) -> type {
             import from jaclang.runtimelib.serializer { Serializer }
@@ -136,32 +136,32 @@ impl _get_archetype_alias -> Callable[..., Any] {
 }
 
 """Get save lazily."""
-impl _get_save -> Callable[..., Any] {
+impl _get_save -> Callable[..., any] {
     return _get_jac().save;
 }
 
 """Get allroots lazily."""
-impl _get_allroots -> Callable[..., Any] {
+impl _get_allroots -> Callable[..., any] {
     return _get_jac().get_all_root;
 }
 
 """Get revoke lazily."""
-impl _get_revoke -> Callable[..., Any] {
+impl _get_revoke -> Callable[..., any] {
     return _get_jac().perm_revoke;
 }
 
 """Get grant lazily."""
-impl _get_grant -> Callable[..., Any] {
+impl _get_grant -> Callable[..., any] {
     return _get_jac().perm_grant;
 }
 
 """Get jobj lazily."""
-impl _get_jobj -> Callable[..., Any] {
+impl _get_jobj -> Callable[..., any] {
     return _get_jac().get_object;
 }
 
 """Get jid lazily."""
-impl _get_jid -> Callable[..., Any] {
+impl _get_jid -> Callable[..., any] {
     return _get_jac().object_ref;
 }
 
@@ -183,12 +183,12 @@ The cl backend rewrites `new(...)` calls at compile time into
 `Reflect.construct(...)` (see ESBuiltinEmitter.emit_new), so this runtime
 implementation is only invoked when the call survives to the server target.
 """
-impl new(cls: Any, *args: Any) -> Any {
+impl new(cls: any, *args: any) -> any {
     return cls(*args);
 }
 
 """REST API decorator factory."""
-impl restspec(**specs: Any) -> Callable {
+impl restspec(**specs: any) -> Callable {
     import from jaclang { JacRuntimeInterface as Jac }
     SpecsCls = Jac.get_api_server_class().RestSpecs;
     def decorator(cls: type) -> type {
@@ -199,7 +199,7 @@ impl restspec(**specs: Any) -> Callable {
 }
 
 """Schedule decorator factory — attaches ScheduleSpec to a walker or function."""
-impl schedule(**kwargs: Any) -> Callable {
+impl schedule(**kwargs: any) -> Callable {
     import from jaclang.runtimelib.scheduler { ScheduleSpec }
     import from jaclang.runtimelib.builtin { ScheduleTrigger }
     trigger = kwargs.pop("trigger", ScheduleTrigger.STATIC);

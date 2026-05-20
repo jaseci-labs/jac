@@ -3,7 +3,7 @@ import json;
 import from abc { abstractmethod }
 import from collections.abc { Callable }
 import from enum { StrEnum }
-import from typing { Any, ClassVar, override }
+import from typing { ClassVar, override }
 import type from enum { IntEnum }
 import type from jaclang.jac0core.constructs { AccessLevel, NodeArchetype }
 import type from jaclang.jac0core.runtime { LLMModel }
@@ -25,25 +25,25 @@ def _get_jac -> type[JacRuntimeInterface];
 
 def _get_access_level -> type[AccessLevel];
 
-def _get_jid -> Callable[..., Any];
+def _get_jid -> Callable[..., any];
 
-def _get_jobj -> Callable[..., Any];
+def _get_jobj -> Callable[..., any];
 
-def _get_grant -> Callable[..., Any];
+def _get_grant -> Callable[..., any];
 
-def _get_revoke -> Callable[..., Any];
+def _get_revoke -> Callable[..., any];
 
-def _get_allroots -> Callable[..., Any];
+def _get_allroots -> Callable[..., any];
 
-def _get_save -> Callable[..., Any];
+def _get_save -> Callable[..., any];
 
-def _get_commit -> Callable[..., Any];
+def _get_commit -> Callable[..., any];
 
-def _get_store -> Callable[..., Any];
+def _get_store -> Callable[..., any];
 
 def _get_llm -> LLMModel;
 
-def _get_archetype_alias -> Callable[..., Any];
+def _get_archetype_alias -> Callable[..., any];
 
 def __getattr__(name: str) -> object;
 
@@ -61,9 +61,9 @@ def printgraph(
 
 def _jac_graph_json(file: (str | None) = None) -> str;
 
-def restspec(**specs: Any) -> Callable;
+def restspec(**specs: any) -> Callable;
 
-def schedule(**kwargs: Any) -> Callable;
+def schedule(**kwargs: any) -> Callable;
 
 """Portable constructor: returns ``cls(*args)``.
 
@@ -73,7 +73,7 @@ same source code can be written once and used in any codespace. In a
 ``Reflect.construct(cls, [args])`` (the JS spelling for ``new cls(...)``),
 since JavaScript classes require ``new``.
 """
-def new(cls: Any, *args: Any) -> Any;
+def new(cls: any, *args: any) -> any;
 
 glob __all__ = [
          'printgraph',

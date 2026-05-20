@@ -6,14 +6,13 @@ configuration system, registering:
 - Config schema for [plugins.byllm] section
 """
 
-import from typing { Any }
 import from jaclang.jac0core.runtime { hookimpl }
 
 """Plugin configuration hooks for jac-byllm."""
 class JacByllmPluginConfig {
     """Return plugin metadata."""
     @hookimpl
-    static def get_plugin_metadata -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "byllm",
             "version": "0.4.8",
@@ -23,7 +22,7 @@ class JacByllmPluginConfig {
 
     """Return the plugin's configuration schema for [plugins.byllm]."""
     @hookimpl
-    static def get_config_schema -> dict[str, Any] {
+    static def get_config_schema -> dict[str, any] {
         return {
             "section": "byllm",
             "options": {

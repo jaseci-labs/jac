@@ -24,7 +24,7 @@ def full_varargs_signature(
     *args: int,
     kw_req: bool,
     kw_opt: str = "default",
-    **kwargs: Any
+    **kwargs: any
 ) -> dict {
     return {
         "pos": pos,

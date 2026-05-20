@@ -787,10 +787,11 @@ test "configuration error on bare dict return type" {
     assert raised , "Expected ConfigurationError for bare dict return type";
 }
 
-# UnknownToolError is raised in BaseLLM.dispatch_no_streaming when the LLM responds
-# with a tool_call whose name is not registered in MTRuntime.tools.
+# An unregistered tool name is recovered, not fatal: dispatch_no_streaming
+# returns a tool call that reports the error back so the model can retry,
+# rather than crashing the whole turn.
 # model_call_no_stream is mocked so no real API key is needed.
-test "unknown tool error when llm calls unregistered tool" {
+test "unregistered tool call is recovered not fatal" {
     model = Model(model_name="test-model");
     messages_list = [
         Message(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
@@ -814,18 +815,20 @@ test "unknown tool error when llm calls unregistered tool" {
 
     };
 
-    raised = False;
     with unittest.mock.patch.object(
         model, "model_call_no_stream", return_value=fake_response
     ) {
-        try {
-            model.dispatch_no_streaming(mt_run);
-        } except UnknownToolError as e {
-            raised = True;
-            assert "nonexistent_tool" in str(e) , f"Error should name the tool, got: {e}";
-        }
+        result = model.dispatch_no_streaming(mt_run);
     }
-    assert raised , "Expected UnknownToolError for unregistered tool name";
+    # No exception: the unknown tool is surfaced as a recoverable tool result.
+    assert len(result.tool_calls) == 1 , "Expected one recovered tool call";
+    err_result = result.tool_calls[0]();
+    assert "nonexistent_tool" in str(err_result.content) , (
+        f"Recovered result should name the tool, got: {err_result.content}"
+    );
+    assert "Tool error" in str(err_result.content) , (
+        f"Recovered result should be a tool error, got: {err_result.content}"
+    );
 }
 
 # FinishToolError is raised inside the finish_tool closure when the final output

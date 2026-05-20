@@ -134,7 +134,7 @@ async def _do_connect(client: McpClient, transport_type: str) {
 }
 
 async def _do_call_tool(
-    client: McpClient, name: str, arguments: dict[str, Any]
+    client: McpClient, name: str, arguments: dict[str, any]
 ) -> str {
     state = _get_state(client);
     logger.debug(f"[MCP] call_tool {name}({arguments})");
@@ -237,7 +237,7 @@ impl McpClient.get_tools(names: list[str] | None = None) -> list {
     ];
 }
 
-impl McpClient.call_tool(name: str, arguments: dict[str, Any]) -> str {
+impl McpClient.call_tool(name: str, arguments: dict[str, any]) -> str {
     state = _get_state(self);
     if not state.connected {
         self.connect();
@@ -261,7 +261,7 @@ impl McpClient.close -> None {
 }
 
 # ─── McpTool ────────────────────────────────────────────────────────────────
-impl McpTool.__call__(**kwargs: Any) -> str {
+impl McpTool.__call__(**kwargs: any) -> str {
     try {
         return self._client.call_tool(self.name, kwargs);
     } except Exception as e {
@@ -274,7 +274,7 @@ impl McpTool.get_name -> str {
     return self.name;
 }
 
-impl McpTool.get_json_schema -> dict[str, Any] {
+impl McpTool.get_json_schema -> dict[str, any] {
     return {
         "type": "function",
         "function": {
