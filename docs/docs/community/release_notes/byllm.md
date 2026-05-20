@@ -2,7 +2,18 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **byLLM** (formerly MTLLM). For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## byllm 0.6.6 (Latest Release)
+## byllm 0.6.9 (Latest Release)
+
+### New Features
+
+- **Tool calling for local models**: byLLM now supports tool calling on backends without server-side tool support by rendering the tool protocol into the prompt and recovering tool calls from the reply.
+
+### Bug Fixes
+
+- **Fix: `by llm()` no longer stalls the server in async walkers**: Using `by llm()` inside an `async` walker previously blocked the entire event loop for the full LLM round-trip (0.5–30 s), freezing every other concurrent request. It now runs fully non-blocking via `litellm.acompletion`, `AsyncOpenAI`, and `httpx.AsyncClient`. No code changes needed. Sync walkers are unaffected.
+- **Fix: CI dependency alignment check restored for `byllm`**: `httpx>=0.27.0` was missing from `jac.toml` after being added to `pyproject.toml` in #5944, causing the CI alignment check to fail. Both files are now in sync.
+
+## byllm 0.6.6
 
 ### New Features
 

@@ -2,7 +2,17 @@
 
 This document provides a summary of new features, improvements, and bug fixes in each version of **Jac-Scale**. For details on changes that might require updates to your existing code, please refer to the [Breaking Changes](../breaking-changes.md) page.
 
-## jac-scale 0.2.16 (Latest Release)
+## jac-scale 0.2.19 (Latest Release)
+
+### Bug Fixes
+
+- **Fix: Redis authentication and RedisInsight dashboard connectivity in K8s**: Refactored Redis configuration loading and ACL rule definitions, added username/password secrets to deployment tests, opened metrics endpoints for unauthenticated scraping, tuned liveness/readiness probe timeouts and failure thresholds, enabled gzip compression and improved HTML handling on the Redis Ingress, and configured RedisInsight to auto-accept the EULA with a provided encryption key so the dashboard connects out of the box.
+- **jac-scale: fix blocking event-loop call in request middleware**: `request_context_middleware` was calling `ctx.set_user_root()` synchronously inside an `async def` handler, blocking the uvicorn event loop on every authenticated request. Switched to `await ctx.aset_user_root()` so the user-root anchor load goes through the non-blocking async Redis/MongoDB path.
+- **Fix: cascade-quarantine dangling edges on schema drift**: When a `NodeAnchor`'s archetype becomes unresolvable (e.g. a node type is removed between deploys), `MongoBackend` now also quarantines every connected `EdgeAnchor` and strips those IDs from the source node's `data.edges`, preventing permanently corrupt traversal state. Recovery (`recover-all`) re-links edges back to their source node, fully restoring graph connectivity.
+- **Fix: `_put_node_atomic` no longer clobbers archetype scalars from concurrent walkers**: Replaced the shallow `$mergeObjects` pipeline (which wholesale-replaced `data.archetype` on every commit) with per-field `data.archetype.<field>` dot-notation writes that only touch dirty fields. Concurrent walkers on separate pods can now safely write different scalar fields to the same node without reverting each other's changes. The atomic edge-merge guarantee from PR #5644 is fully preserved.
+- **Fix: identity storage uses Jac-native `any`**: `identity_storage.jac` now imports the Jac `any` keyword instead of Python's `typing.Any`, clearing W1104 and cascading type errors across all storage methods.
+
+## jac-scale 0.2.16
 
 ### New Features
 
