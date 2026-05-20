@@ -1,7 +1,7 @@
 """Tests for the streaming + WebSocket proxy modules (ROADMAP P15)."""
 
 import asyncio;
-import from jac_scale.microservices._ws_forward {
+import from jac_scale.microservices.gateway_internals.middleware.ws_forward {
     _to_ws_scheme,
     _select_handshake_headers
 }
@@ -275,7 +275,10 @@ test "ws route rejects with 1012 during drain" {
         ServiceStatus
     }
     import from jac_scale.microservices.gateway { MicroserviceGateway }
-    import from jac_scale.microservices._drain { reset_drain, start_drain }
+    import from jac_scale.microservices.gateway_internals.drain {
+        reset_drain,
+        start_drain
+    }
     import from fastapi.testclient { TestClient }
 
     reset_drain();

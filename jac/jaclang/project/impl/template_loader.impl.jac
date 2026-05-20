@@ -16,7 +16,7 @@ The [jacpackk.options] section contains:
 - post_create_hook: Module path to post-create hook function
 """
 
-import from typing { Any, Callable }
+import from typing { Callable }
 import from pathlib { Path }
 import from jaclang.project.template_registry { ProjectTemplate }
 import from jaclang.jac0core.helpers { read_toml_with_encoding }
@@ -73,7 +73,7 @@ impl load_template_from_directory(
         );
     }
     # Build config from jac.toml (everything except [jacpack] section)
-    config: dict[str, Any] = {};
+    config: dict[str, any] = {};
     for (key, value) in jac_config.items() {
         if key != "jacpack" {
             config[key] = value;

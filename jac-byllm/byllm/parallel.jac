@@ -68,7 +68,7 @@ Usage (Jac):
         mark_serialize(run_command);
     }
 """
-def mark_serialize(func: Any) -> Any {
+def mark_serialize(func: any) -> any {
     setattr(func, '_serialize', True);
     return func;
 }
@@ -78,13 +78,13 @@ def mark_serialize(func: Any) -> Any {
 # Internal helpers
 # ---------------------------------------------------------------------------
 """Check if a callable is an async coroutine function."""
-def _is_async(func: Any) -> bool {
+def _is_async(func: any) -> bool {
     return bool(inspect.iscoroutinefunction(func));
 }
 
 
 """Find the index of `item` in `seq` by object identity (id()), not __eq__."""
-def _index_by_identity(seq: list, item: Any) -> int {
+def _index_by_identity(seq: list, item: any) -> int {
     target_id = id(item);
     for (i, elem) in enumerate(seq) {
         if id(elem) == target_id {
@@ -96,7 +96,7 @@ def _index_by_identity(seq: list, item: Any) -> int {
 
 
 """Call a synchronous tool, optionally wrapping in a thread with timeout."""
-def _call_sync(tc: Any, timeout: Any) -> Any {
+def _call_sync(tc: any, timeout: any) -> any {
     if timeout is None {
         return tc();
     }
@@ -124,8 +124,8 @@ def _call_sync(tc: Any, timeout: Any) -> Any {
 
 
 """Call an async tool via asyncio.run() with optional timeout."""
-def _call_async(tc: Any, timeout: Any) -> Any {
-    async def _run -> Any {
+def _call_async(tc: any, timeout: any) -> any {
+    async def _run -> any {
         coro = tc.tool.func(**tc.args);
         if timeout is not None {
             return await asyncio.wait_for(coro, timeout=timeout);
@@ -146,7 +146,7 @@ If the tool is an async function, runs it via asyncio.run().
 TimeoutError / asyncio.TimeoutError are reported with a consistent
 "timed out after Xs" message; all other errors fall to the generic catch.
 """
-def _run_one(tc: Any) -> tuple {
+def _run_one(tc: any) -> tuple {
     t0 = time.time();
     timeout = tc.tool.timeout_sec;
     try {
@@ -210,7 +210,7 @@ For the parallel path, results are yielded as workers complete
 (out of input order). The caller is responsible for reordering
 if input-order is needed (e.g. for mt_run.add_message).
 """
-def dispatch_batch(tool_calls: list) -> Any {
+def dispatch_batch(tool_calls: list) -> any {
     n = len(tool_calls);
     if n == 0 {
         return;

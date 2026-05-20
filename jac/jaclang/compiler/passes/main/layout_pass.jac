@@ -60,7 +60,7 @@ obj ArchetypeLayout {
 Backends call this lazily instead of LayoutPass being in the schedule.
 Avoids re-entrancy issues with the self-hosting compiler bootstrap.
 """
-def get_layout_registry(module: uni.Module, prog: Any = None) -> LayoutRegistry {
+def get_layout_registry(module: uni.Module, prog: any = None) -> LayoutRegistry {
     reg = module.gen.layout_registry;
     if reg is not None {
         return reg;
@@ -94,8 +94,8 @@ directly instead of UniPass.
 """
 obj LayoutPass(Transform[uni.Module, uni.Module]) {
     has ir_in: uni.Module,
-        prog: Any,
-        cancel_token: Any = None,
+        prog: any,
+        cancel_token: any = None,
         registry: LayoutRegistry by postinit;
 
     def postinit -> None;

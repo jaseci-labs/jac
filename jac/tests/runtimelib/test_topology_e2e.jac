@@ -6,7 +6,6 @@ correct results. Uses real Jac edge/filter syntax so regressions in the
 compiler pipeline (exit_edge_ref_trailer, exit_filter_compr) are caught.
 """
 
-import from typing { Any }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.project.config { JacConfig, set_config }
@@ -210,7 +209,7 @@ test "plan_query bypasses index when no hop is filtered" {
         );
 
         # Edge-type filter alone is enough to engage the index.
-        edge_filter = lambda e: Any : isinstance(e, EdgeX);
+        edge_filter = lambda e: any : isinstance(e, EdgeX);
         edge_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, edge_filter)]
         );
@@ -219,7 +218,7 @@ test "plan_query bypasses index when no hop is filtered" {
         );
 
         # Node-type filter alone also engages the index.
-        node_filter = lambda n: Any : isinstance(n, TypeA);
+        node_filter = lambda n: any : isinstance(n, TypeA);
         node_typed_path = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, node_filter)]
         );
@@ -287,7 +286,7 @@ test "plan_query bails when a hop has predicates beyond type" {
         # `n.val > 5` introduces LOAD_ATTR + COMPARE_OP — _filter_has_predicates
         # returns True. On a single-hop (and therefore final) chain, plan_query
         # still engages: the runtime post-applies the predicate.
-        pred_filter = lambda n: Any : isinstance(n, TypeA) and n.val > 5;
+        pred_filter = lambda n: any : isinstance(n, TypeA) and n.val > 5;
         single_hop_pred = ObjectSpatialPath(
             [r], [ObjectSpatialDestination(EdgeDir.OUT, None, pred_filter)]
         );

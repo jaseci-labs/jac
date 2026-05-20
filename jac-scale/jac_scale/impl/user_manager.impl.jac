@@ -44,17 +44,17 @@ impl JacScaleUserManager.postinit -> None {
 # ============================================================================
 """Create a user with identity-based model."""
 impl JacScaleUserManager.create_user(
-    identities: list[dict[str, Any]],
-    credential: dict[str, Any],
-    profile: dict[str, Any] | None = None
-) -> dict[str, Any] {
+    identities: list[dict[str, any]],
+    credential: dict[str, any],
+    profile: dict[str, any] | None = None
+) -> dict[str, any] {
     return self._identity_storage.create_user(identities, credential, profile);
 }
 
 """Convenience method for creating internal users (guest, system, admin)."""
 impl JacScaleUserManager.create_internal_user(
     username: str, password: str, role: str = 'user'
-) -> dict[str, Any] {
+) -> dict[str, any] {
     result = self.create_user(
         identities=[{'type': 'username', 'value': username}],
         credential={'type': 'password', 'password': password}
@@ -68,12 +68,12 @@ impl JacScaleUserManager.create_internal_user(
 """Authenticate by any identity value (username or email) + password."""
 impl JacScaleUserManager.authenticate(
     identifier: str, password: str
-) -> dict[str, Any] | None {
+) -> dict[str, any] | None {
     return self._identity_storage.authenticate(identifier, password);
 }
 
 """Find a user by any identity value."""
-impl JacScaleUserManager.find_user_by_identity(value: str) -> dict[str, Any] | None {
+impl JacScaleUserManager.find_user_by_identity(value: str) -> dict[str, any] | None {
     return self._identity_storage.find_user_by_identity(value);
 }
 
@@ -86,7 +86,7 @@ impl JacScaleUserManager.user_exists(user_id: str) -> bool {
 }
 
 """Get user by user_id or identity value."""
-impl JacScaleUserManager.get_user(user_id: str) -> dict[str, Any] | None {
+impl JacScaleUserManager.get_user(user_id: str) -> dict[str, any] | None {
     user = self._identity_storage.get_user_by_id(user_id);
     if not user {
         user = self._identity_storage.find_user_by_identity(user_id);
@@ -130,14 +130,14 @@ impl JacScaleUserManager.update_password(
 }
 
 impl JacScaleUserManager.update_profile(
-    user_id: str, profile_updates: dict[str, Any]
-) -> dict[str, Any] {
+    user_id: str, profile_updates: dict[str, any]
+) -> dict[str, any] {
     user = self.get_user(user_id);
     if not user {
         return {'error': 'User not found'};
     }
     raw_profile = user.get('profile');
-    current_profile: dict[str, Any] = (
+    current_profile: dict[str, any] = (
         raw_profile if isinstance(raw_profile, dict) else {}
     );
     merged = dict(current_profile);
@@ -346,14 +346,14 @@ impl JacScaleUserManager.sso_callback(
             # touched — developer-set profile fields are untouched.
             if sso_fields {
                 raw_profile = existing.get('profile') if existing else None;
-                current_profile: dict[str, Any] = (
+                current_profile: dict[str, any] = (
                     raw_profile if isinstance(raw_profile, dict) else {}
                 );
                 # Defensive: legacy users from before reserved-key enforcement
                 # may have a non-dict at profile.sso. Treat as empty rather
                 # than crashing on dict-style assignment below.
                 raw_sso = current_profile.get('sso');
-                current_sso: dict[str, Any] = (
+                current_sso: dict[str, any] = (
                     raw_sso if isinstance(raw_sso, dict) else {}
                 );
                 current_sso[platform] = sso_fields;
@@ -494,7 +494,7 @@ impl JacScaleUserManager.is_password_required(user_id: str) -> bool {
 
 impl JacScaleUserManager.list_all_users(
     limit: int = 100, offset: int = 0
-) -> list[dict[str, Any]] {
+) -> list[dict[str, any]] {
     return self._identity_storage.list_all_users(limit, offset);
 }
 
@@ -559,7 +559,7 @@ impl JacScaleUserManager.create_user_as_admin(
     password: str,
     role: str = 'user',
     requires_password_reset: bool = True
-) -> dict[str, Any] {
+) -> dict[str, any] {
     valid_roles = [r.value for r in UserRole];
     if role not in valid_roles {
         return {'error': f"Invalid role. Must be one of: {', '.join(valid_roles)}"};

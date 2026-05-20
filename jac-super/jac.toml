@@ -1,6 +1,6 @@
 [project]
 name = "jac-super"
-version = "0.1.14"
+version = "0.1.15"
 description = "Enhanced console output for Jac CLI with Rich formatting"
 authors = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
 maintainers = [{ name = "Jason Mars", email = "jason@mars.ninja" }]
@@ -21,7 +21,7 @@ changelog = "https://github.com/jaseci-labs/jaseci/blob/main/docs/docs/community
 packages = ["jac_super*"]
 
 [dependencies]
-jaclang = ">=0.15.2"
+jaclang = ">=0.15.3"
 rich = ">=13.0.0"
 
 [entrypoints.jac]

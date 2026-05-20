@@ -18,7 +18,6 @@ import glob;
 import tempfile;
 import contextlib;
 import from pathlib { Path }
-import from typing { Any }
 
 import from jaclang { JacRuntime as Jac }
 import from jaclang.jac0core.constant { Constants as Con }
@@ -39,13 +38,13 @@ def make_client(fixture_file: str = "test_api.jac") -> ScaleTestClient {
 }
 
 """Extract data from TransportResponse envelope format."""
-def extract_data(json_response: dict[str, Any]) -> dict[str, Any] {
+def extract_data(json_response: dict[str, any]) -> dict[str, any] {
     if isinstance(json_response, dict) and "ok" in json_response {
         if json_response.get("ok") and json_response.get("data") is not None {
             return json_response["data"];
         } elif not json_response.get("ok") and json_response.get("error") {
             error_info = json_response["error"];
-            result: dict[str, Any] = {
+            result: dict[str, any] = {
                 "error": error_info.get("message", "Unknown error")
             };
             if "code" in error_info {
@@ -61,8 +60,8 @@ def extract_data(json_response: dict[str, Any]) -> dict[str, Any] {
 obj ScaleTestClient {
     has _jac_file: str,
         _base_path: str,
-        _server: Any | None = None,
-        _client: Any | None = None,
+        _server: any | None = None,
+        _client: any | None = None,
         _tmp_dir: str | None = None;
 
     """Create test client from a .jac file path."""
@@ -136,9 +135,9 @@ obj ScaleTestClient {
     def get(
         path: str,
         headers: dict[str, str] | None = None,
-        params: dict[str, Any] | None = None,
+        params: dict[str, any] | None = None,
         allow_redirects: bool = True
-    ) -> Any {
+    ) -> any {
         return self._client.get(
             path, headers=headers or {}, params=params, follow_redirects=allow_redirects
         );
@@ -147,13 +146,13 @@ obj ScaleTestClient {
     """Make a POST request with JSON body."""
     def post(
         path: str,
-        json: dict[str, Any] | None = None,
+        json: dict[str, any] | None = None,
         headers: dict[str, str] | None = None,
-        data: dict[str, Any] | None = None,
+        data: dict[str, any] | None = None,
         content: str | bytes | None = None,
-        files: Any | None = None
-    ) -> Any {
-        kwargs: dict[str, Any] = {"headers": headers or {}};
+        files: any | None = None
+    ) -> any {
+        kwargs: dict[str, any] = {"headers": headers or {}};
         if json is not None {
             kwargs["json"] = json;
         }
@@ -172,14 +171,14 @@ obj ScaleTestClient {
     """Make a PUT request with JSON body."""
     def put(
         path: str,
-        json: dict[str, Any] | None = None,
+        json: dict[str, any] | None = None,
         headers: dict[str, str] | None = None
-    ) -> Any {
+    ) -> any {
         return self._client.put(path, json=json, headers=headers or {});
     }
 
     """Make a DELETE request."""
-    def delete(path: str, headers: dict[str, str] | None = None) -> Any {
+    def delete(path: str, headers: dict[str, str] | None = None) -> any {
         return self._client.delete(path, headers=headers or {});
     }
 
@@ -258,13 +257,13 @@ obj ScaleTestClient {
 
     """Get the underlying server instance."""
     @property
-    def server -> Any {
+    def server -> any {
         return self._server;
     }
 
     """Get the underlying Starlette TestClient."""
     @property
-    def raw_client -> Any {
+    def raw_client -> any {
         return self._client;
     }
 

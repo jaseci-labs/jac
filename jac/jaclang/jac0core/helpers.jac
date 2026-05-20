@@ -48,7 +48,7 @@ def get_uni_nodes_as_snake_case -> list {
     ];
     ordered_classes = sorted(
         uni_node_classes,
-        key=lambda cls: Any : source_code.find(f"class {cls.__name__}")
+        key=lambda cls: any : source_code.find(f"class {cls.__name__}")
     );
     snake_names = [];
     for cls in ordered_classes {
@@ -285,7 +285,7 @@ def format_related_spans(
 
 """Jac debugger."""
 class Jdb(pdb.Pdb) {
-    def init(self: Jdb, *args: Any, **kwargs: Any) -> None;
+    def init(self: Jdb, *args: any, **kwargs: any) -> None;
     def has_breakpoint(self: Jdb, bytecode: bytes) -> bool;
 }
 

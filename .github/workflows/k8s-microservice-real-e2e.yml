@@ -10,9 +10,11 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'jac-scale/jac_scale/microservices/k8s_target.jac'
-      - 'jac-scale/jac_scale/microservices/k8s_deployer.jac'
-      - 'jac-scale/jac_scale/microservices/orchestrator.jac'
+      - 'jac-scale/jac_scale/targets/kubernetes/microservice/**'
+      - 'jac-scale/jac_scale/microservices/**'
+      - 'jac-scale/jac_scale/abstractions/service_deployer.jac'
+      - 'jac-scale/jac_scale/abstractions/image_distributor.jac'
+      - 'jac-scale/jac_scale/abstractions/models/deploy_context.jac'
       - 'jac-scale/jac_scale/factories/deployment_factory.jac'
       - 'jac-scale/jac_scale/plugin.jac'
       - 'jac-scale/scripts/k8s_microservice_real_e2e.sh'

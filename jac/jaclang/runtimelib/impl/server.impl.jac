@@ -316,7 +316,7 @@ the authoritative result for the caller; reports are auxiliary. Anything
 else falls into the normal serialize-and-envelope path.
 """
 impl ExecutionManager._finalize_call_response(
-    call_state: CallState, result: Any
+    call_state: CallState, result: any
 ) -> dict[str, JsonValue] | Generator | AsyncGenerator {
     call_state.reports.put_nowait(call_state._sentinel);
     reports = await self.report_collector(call_state);
@@ -696,7 +696,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
     import from jaclang.jac0core.constant { Tokens as Tok }
     endpoint_effects: dict = {};
     # Find a module-level ability (a `def`) by name within a module AST.
-    def find_ability_in_ast(ast_mod: Any, fname: str) -> Any {
+    def find_ability_in_ast(ast_mod: any, fname: str) -> any {
         if not ast_mod {
             return None;
         }
@@ -714,7 +714,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
     # Recursively check if an AST subtree contains write operations. Follows
     # calls into module-level helper defs (interprocedural) so a graph
     # mutation hidden behind a helper still marks the caller as a writer.
-    def has_write_ops(`node: Any, ast_mod: Any, seen: set) -> bool {
+    def has_write_ops(`node: any, ast_mod: any, seen: set) -> bool {
         if isinstance(`node, uni.DeleteStmt) {
             return True;
         }
@@ -770,7 +770,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
         return False;
     }
     # Get module AST from compilation hub
-    def get_module_ast(mod_path: str) -> Any {
+    def get_module_ast(mod_path: str) -> any {
         ast_mod = Jac.program.mod.hub.get(mod_path);
         if not ast_mod {
             ast_mod = Jac.program.compile(mod_path);
@@ -778,7 +778,7 @@ impl ModuleIntrospector._analyze_endpoint_effects -> None {
         return ast_mod;
     }
     # Analyze a walker archetype AST node for read/write effects
-    def analyze_walker_in_ast(mod_ast: Any, walker_name: str) -> (dict | None) {
+    def analyze_walker_in_ast(mod_ast: any, walker_name: str) -> (dict | None) {
         for item in mod_ast.body {
             if not isinstance(item, uni.Archetype) {
                 continue;
@@ -1000,7 +1000,7 @@ impl ModuleIntrospector.get_client_functions -> dict[str, Callable[(..., Any)]] 
 """Get callable signature information."""
 impl ModuleIntrospector.introspect_callable(
     func: Callable[(..., Any)]
-) -> dict[str, Any] {
+) -> dict[str, any] {
     try {
         sig = inspect.signature(func);
         type_hints = get_type_hints(func);
@@ -1028,7 +1028,7 @@ impl ModuleIntrospector.introspect_callable(
 """Get walker field information."""
 impl ModuleIntrospector.introspect_walker(
     walker_cls: type[WalkerArchetype]
-) -> dict[str, Any] {
+) -> dict[str, any] {
     try {
         sig = inspect.signature(walker_cls.init);
         try {
@@ -1044,7 +1044,7 @@ impl ModuleIntrospector.introspect_walker(
     # the parameter default as `dataclasses._HAS_DEFAULT_FACTORY` -- a sentinel
     # that crashes Pydantic if it leaks into request-body schema generation.
     # Pre-resolve those by calling the factory once.
-    factory_defaults: dict[str, Any] = {};
+    factory_defaults: dict[str, any] = {};
     if dataclasses.is_dataclass(walker_cls) {
         for dc_field in dataclasses.fields(walker_cls) {
             if dc_field.default_factory is dataclasses.MISSING {
@@ -1057,7 +1057,7 @@ impl ModuleIntrospector.introspect_walker(
             }
         }
     }
-    fields: dict[str, dict[str, Any]] = {};
+    fields: dict[str, dict[str, any]] = {};
     for (name, param) in sig.parameters.items() {
         if (name in ('self', 'args', 'kwargs')) {
             continue;
@@ -1123,7 +1123,7 @@ impl ModuleIntrospector.ensure_bundle -> str {
 """Render HTML page for client function."""
 impl ModuleIntrospector.render_page(
     function_name: str, args: dict[(str, Any)], username: str
-) -> dict[str, Any] {
+) -> dict[str, any] {
     return Jac.render_page(self, function_name, args, username);
 }
 
@@ -1146,7 +1146,7 @@ impl ModuleIntrospector.is_auth_required_for_walker(walker_name: str) -> bool {
 }
 
 """Collect client-exposed global values."""
-impl ModuleIntrospector._collect_client_globals -> dict[str, Any] {
+impl ModuleIntrospector._collect_client_globals -> dict[str, any] {
     if not self._module {
         return {};
     }
@@ -1551,7 +1551,7 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
         }
 
         """Read and parse JSON from request body."""
-        def _read_json(self: JacRequestHandler) -> dict[str, Any] {
+        def _read_json(self: JacRequestHandler) -> dict[str, any] {
             content_length = int(self.headers.get('Content-Length', 0));
             body = self.rfile.read(content_length).decode()
                 if (content_length > 0)
@@ -2067,21 +2067,21 @@ impl JacAPIServer.get_walkers -> dict[str, type[WalkerArchetype]] {
 }
 
 """Introspect callable (backward compatibility)."""
-impl JacAPIServer.introspect_callable(func: Callable[(..., Any)]) -> dict[str, Any] {
+impl JacAPIServer.introspect_callable(func: Callable[(..., Any)]) -> dict[str, any] {
     return self.introspector.introspect_callable(func);
 }
 
 """Introspect walker (backward compatibility)."""
 impl JacAPIServer.introspect_walker(
     walker_cls: type[WalkerArchetype]
-) -> dict[str, Any] {
+) -> dict[str, any] {
     return self.introspector.introspect_walker(walker_cls);
 }
 
 """Render client page (backward compatibility)."""
 impl JacAPIServer.render_client_page(
     function_name: str, args: dict[(str, Any)], username: str
-) -> dict[str, Any] {
+) -> dict[str, any] {
     return self.introspector.render_page(function_name, args, username);
 }
 

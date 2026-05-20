@@ -63,9 +63,9 @@ def _compute_age(item: Item) -> int {
 
 ## Pitfalls
 
-- `async def:pub` is required when the endpoint uses `await` (external API calls, LLM endpoints). Missing `async` on a body that awaits is a parse/type error.
+- Mark an endpoint `async def:pub` when its body uses `await` (external API calls, LLM endpoints), so the result is awaited rather than handed back as an unresolved coroutine.
 - To delete a node: `del node;` - removes it and all its edges from the graph. Run it inside a loop that matches the id; don't try to pass nodes by reference from the client.
-- Every client-callable endpoint needs an explicit return type. `def:pub add_item(title: str)` with no `-> T` is an error.
+- Give every client-callable endpoint an explicit return type. The return type IS the client's wire format (next bullet); an endpoint with no `-> T` hands the client nothing useful back.
 - **Return type IS the wire format.** Client gets dot access when you return typed nodes/objs (`list[Item]` → `items[0].title`). Returning raw `dict` or `list` loses typing on the client side.
 - `def:pub` = public endpoint (anonymous), `def:priv` = authenticated endpoint (per-user). A plain `def` is **also registered** - as an authenticated endpoint, same as `def:priv`. Only a leading `_` (`def _helper(...)`) keeps a function off the API. See `jac-sv-auth` for the full auth-model semantics.
 - **Use `jid(node)` for cross-RPC node identity; `id(node)` silently breaks lookups.** `id()` returns Python's in-memory address, which changes every server restart AND differs across worker processes - a lookup `for n in [root -->] { if id(n) == client_id { ... } }` returns no match every time, no error, just empty results. Use `jid(node)` (returns a stable persistent string) and compare with `if jid(n) == client_id`.

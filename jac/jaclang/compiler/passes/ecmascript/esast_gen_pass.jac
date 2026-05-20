@@ -319,7 +319,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.Expression;
 
     def _extract_return_type(
-        ability_node: uni.Ability, func_name: str, manifest: Any
+        ability_node: uni.Ability, func_name: str, manifest: any
     ) -> str;
 
     def _wrap_return_with_boundary(

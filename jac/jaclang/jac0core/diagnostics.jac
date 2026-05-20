@@ -255,12 +255,6 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "JSX spread '{{...expr}}' is JS-idiomatic. Prefer '{{**expr}}' in Jac.",
          "Jac uses ** for dict unpacking — use {**expr} instead of {...expr} in JSX attributes."
      ),
-     W0064 = _warn(
-         "W0064",
-         Category.SYNTAX,
-         "'{keyword} {{ ... }}' block syntax is deprecated. Use the 'to {keyword}:' section header instead.",
-         "Replace 'cl {{ ... }}' / 'sv {{ ... }}' / 'na {{ ... }}' with 'to cl:' / 'to sv:' / 'to na:' at module level. The section applies until the next 'to X:' header or end of file."
-     ),
      # Lexer errors
      E0100 = _err("E0100", Category.SYNTAX, "Unterminated string literal"),
      E0101 = _err("E0101", Category.SYNTAX, "Unterminated block comment"),
@@ -271,6 +265,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
      E0106 = _err("E0106", Category.SYNTAX, "Unexpected character in JSX tag: '{ch}'"),
      E0107 = _err(
          "E0107", Category.SYNTAX, "Lexer stuck at EOF in mode {mode} (pos={pos})"
+     ),
+     # Lexer: warnings
+     W0100 = _warn(
+         "W0100",
+         Category.SYNTAX,
+         "Invalid escape sequence '{esc}'",
+         "Double the backslash for a literal backslash, or prefix the string with r to make it raw."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Type errors (E1xxx) — type checker and type evaluator
@@ -341,6 +342,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          Category.TYPE,
          "Generic type \"{type}\" used without type arguments, defaulting to"
          " \"{type}[Any]\"; consider adding explicit type arguments"
+     ),
+     # Explicit `any` annotation warning
+     W1037 = _warn(
+         "W1037",
+         Category.TYPE,
+         "Explicit 'any' type annotation disables type checking here;"
+         " consider a more specific type"
      ),
      # Subscript / await
      E1040 = _err("E1040", Category.TYPE, "Type \"{type}\" is not subscriptable"),
@@ -552,6 +560,13 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "Expression type could not be resolved (Unknown)",
          "Often fixed by adding a more specific type annotation to the relevant declaration (e.g., 'list[Task]' instead of bare 'list', or annotating an unannotated parameter or attribute). Can also indicate an unresolved import, a forward reference the checker cannot bind, or fallout from an upstream error."
      ),
+     W1052 = _warn(
+         "W1052",
+         Category.TYPE,
+         "JSX component '{component}' uses an untyped props bag ('props: any');"
+         " its JSX props cannot be type-checked",
+         "Declare explicit typed parameters (e.g. 'def MyComp(title: str, count: int) -> JsxElement'), or annotate 'props' with a typed object. An untyped 'props: any' parameter opts the component out of all prop name and type validation."
+     ),
      # Import warnings
      W1100 = _warn("W1100", Category.IMPORT, "Module not found"),
      W1101 = _warn(
@@ -686,6 +701,31 @@ glob E0001 = _err("E0001", Category.SYNTAX, "Expected '{expected}', got '{got}'"
          "E2018",
          Category.SEMANTIC,
          "Undefined name '{name}' in {position} — this position requires a defined type"
+     ),
+     E2019 = _err(
+         "E2019",
+         Category.SEMANTIC,
+         "A 'defview' renders template content and cannot 'return' a value. "
+         "Drop the value to use a bare 'return;' guard, or write a "
+         "'def ... -> JsxElement' for a value-returning component."
+     ),
+     E2020 = _err(
+         "E2020",
+         Category.SEMANTIC,
+         "'return' is not allowed inside a '{loop}' loop in a 'defview' body. "
+         "Use 'continue' to skip an iteration."
+     ),
+     E2021 = _err(
+         "E2021",
+         Category.SEMANTIC,
+         "'{kw}' is not allowed inside a '{loop}' loop in a 'defview' body. "
+         "Use 'continue' to skip an iteration."
+     ),
+     W2019 = _warn(
+         "W2019",
+         Category.SEMANTIC,
+         "'while' loop in a 'defview' renders JSX without a 'key' attribute — "
+         "add 'key=' so siblings keep their identity across re-renders."
      ),
      # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
      # Lint warnings (W3xxx)

@@ -5,7 +5,7 @@ implemented as Jac objs (no attrs/cattrs dependency).
 """
 
 import from enum { IntEnum, StrEnum }
-import from typing { Any, Dict, List, Optional, Union }
+import from typing { Dict, List, Optional, Union }
 
 # ---------------------------------------------------------------------------
 # Method name constants

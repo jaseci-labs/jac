@@ -58,7 +58,7 @@ walker transfer_employee {
 cl {
     def:pub app -> JsxElement {
         has departments: list = [],
-            selectedDept: Any = None;
+            selectedDept: any = None;
 
         async can with entry {
             result = root spawn get_org_tree();

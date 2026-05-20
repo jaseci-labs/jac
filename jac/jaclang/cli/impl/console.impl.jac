@@ -6,7 +6,6 @@ or modified - only internal CLI chrome (prefixes, symbols) gets styled.
 import os;
 import sys;
 import from contextlib { contextmanager }
-import from typing { Any }
 
 # ===============================================================================
 # ANSI Color Codes - Raw and Simple
@@ -70,7 +69,7 @@ impl JacConsole._should_use_color -> bool {
 }
 
 """Print to stdout. User data passes through unchanged - no processing."""
-impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
+impl JacConsole.print(*args: any, **kwargs: any) -> None {
     # Filter out Rich-specific kwargs for compatibility
     kwargs.pop('markup', None);
     kwargs.pop('highlight', None);
@@ -119,7 +118,7 @@ impl JacConsole.print(*args: Any, **kwargs: Any) -> None {
 }
 
 """Context manager for status during long operations."""
-impl JacConsole.status(*args: Any, **kwargs: Any) -> object {
+impl JacConsole.status(*args: any, **kwargs: any) -> object {
     if args {
         msg = args[0] if isinstance(args[0], str) else str(args[0]);
         if self.use_color {
@@ -213,7 +212,7 @@ impl JacConsole.print_header(title: str, version: str | None = None) -> None {
 }
 
 """Print a list of labeled URLs."""
-impl JacConsole.print_urls(urls: Any, symbol: str = '') -> None {
+impl JacConsole.print_urls(urls: any, symbol: str = '') -> None {
     # Use Unicode arrow if emoji supported, otherwise ASCII
     if not symbol {
         symbol = '>' if not self.use_emoji else '➜';
