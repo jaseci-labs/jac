@@ -4,7 +4,6 @@ import threading;
 import time;
 import uuid;
 import from collections { OrderedDict }
-import from typing { Any }
 import from fastapi { Request }
 import from fastapi.responses { JSONResponse }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
@@ -31,8 +30,8 @@ obj LLMCallRecord {
         latency_ms: float = 0,
         status: str = "success",
         error: str | None = None,
-        messages: Any = None,
-        response: Any = None,
+        messages: any = None,
+        response: any = None,
         timestamp: float = 0;
 
     def to_dict -> dict {
@@ -127,8 +126,8 @@ obj Trace {
 obj TelemetryStore {
     """Thread-safe in-memory telemetry store with trace correlation."""
     has max_traces: int = 1000,
-        _lock: Any = None,
-        _traces: Any = None;
+        _lock: any = None,
+        _traces: any = None;
 
     def postinit {
         self._lock = threading.Lock();
@@ -595,9 +594,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
             def log_success_event(
                 self: JacLLMLogger,
                 kwargs: dict,
-                response_obj: Any,
-                start_time: Any,
-                end_time: Any
+                response_obj: any,
+                start_time: any,
+                end_time: any
             ) {
                 try {
                     slp = kwargs.get("standard_logging_object", {}) or {};
@@ -630,9 +629,9 @@ impl JacAPIServerLLMTelemetry.register_llm_telemetry_endpoints -> None {
             def log_failure_event(
                 self: JacLLMLogger,
                 kwargs: dict,
-                response_obj: Any,
-                start_time: Any,
-                end_time: Any
+                response_obj: any,
+                start_time: any,
+                end_time: any
             ) {
                 try {
                     slp = kwargs.get("standard_logging_object", {}) or {};

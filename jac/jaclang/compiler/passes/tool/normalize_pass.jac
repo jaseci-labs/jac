@@ -59,6 +59,7 @@ obj NormalizePass(UniPass) {
     def enter_visit_stmt(nd: uni.VisitStmt) -> None;
     def enter_disengage_stmt(nd: uni.DisengageStmt) -> None;
     def enter_await_expr(nd: uni.AwaitExpr) -> None;
+    def enter_cast_expr(nd: uni.CastExpr) -> None;
     def enter_global_stmt(nd: uni.GlobalStmt) -> None;
     def enter_non_local_stmt(nd: uni.NonLocalStmt) -> None;
     def enter_assignment(nd: uni.Assignment) -> None;

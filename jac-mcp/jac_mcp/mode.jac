@@ -1,7 +1,5 @@
 """Mode selection: gates which tools/prompts the MCP server exposes."""
 
-import from typing { Any }
-
 glob VALID_MODES: list[str] = ["lite", "standard", "full"],
      DEFAULT_MODE: str = "full";
 

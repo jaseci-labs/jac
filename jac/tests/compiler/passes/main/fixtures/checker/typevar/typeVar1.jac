@@ -3,7 +3,7 @@
 From Pyright sample: typeVar1.py
 """
 
-import from typing { Any, TypeVar }
+import from typing { TypeVar }
 
 with entry {
     T1 = TypeVar("T1");  # Ok
@@ -11,7 +11,7 @@ with entry {
     # TypeVar name does not match variable name
     T2 = TypeVar("T3");  # Error
 
-    T4: Any = TypeVar("T4");  # Ok
+    T4: any = TypeVar("T4");  # Ok
 
     my_dict = {};
 

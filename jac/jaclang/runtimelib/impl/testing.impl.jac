@@ -5,14 +5,13 @@ import json;
 import re;
 import from http.server { BaseHTTPRequestHandler }
 import from pathlib { Path }
-import from typing { Any }
 import from urllib.parse { urlencode, urlparse }
 
 import from jaclang { JacRuntime as Jac }
 import from jaclang.runtimelib.server { JacAPIServer }
 
 """Parse response body as JSON."""
-impl TestResponse.json -> dict[str, Any] {
+impl TestResponse.json -> dict[str, any] {
     if self._json_cache is None {
         try {
             self._json_cache = json.loads(self.text);
@@ -29,7 +28,7 @@ impl TestResponse.ok -> bool {
 }
 
 """Get data from response, handling TransportResponse envelope."""
-impl TestResponse.data -> (dict[str, Any] | None) {
+impl TestResponse.data -> (dict[str, any] | None) {
     response_json = self.json();
     # Handle TransportResponse envelope format
     if "data" in response_json {
@@ -80,7 +79,7 @@ impl JacTestClient._ensure_initialized -> None {
 """Make a GET request."""
 impl JacTestClient.get(
     path: str,
-    params: (dict[str, Any] | None) = None,
+    params: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     return self.request("GET", path, params=params, headers=headers);
@@ -89,7 +88,7 @@ impl JacTestClient.get(
 """Make a POST request with JSON body."""
 impl JacTestClient.post(
     path: str,
-    json: (dict[str, Any] | None) = None,
+    json: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     return self.request("POST", path, json=json, headers=headers);
@@ -98,7 +97,7 @@ impl JacTestClient.post(
 """Make a PUT request with JSON body."""
 impl JacTestClient.put(
     path: str,
-    json: (dict[str, Any] | None) = None,
+    json: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     return self.request("PUT", path, json=json, headers=headers);
@@ -108,8 +107,8 @@ impl JacTestClient.put(
 impl JacTestClient.request(
     method: str,
     path: str,
-    json: (dict[str, Any] | None) = None,
-    params: (dict[str, Any] | None) = None,
+    json: (dict[str, any] | None) = None,
+    params: (dict[str, any] | None) = None,
     headers: (dict[str, str] | None) = None
 ) -> TestResponse {
     import json as json_mod;
@@ -229,7 +228,7 @@ impl JacTestClient._execute_request(
             mock_self.requestline = f"{method} {path} HTTP/1.1";
         }
 
-        def log_message(mock_self: MockHandler, format: str, *args: Any) {
+        def log_message(mock_self: MockHandler, format: str, *args: any) {
             # Suppress logging during tests
             ;
         }
@@ -281,7 +280,7 @@ impl JacTestClient.server -> JacAPIServer {
 }
 
 """Get the user manager."""
-impl JacTestClient.user_manager -> Any {
+impl JacTestClient.user_manager -> any {
     self._ensure_initialized();
     return self._server.user_manager;
 }
@@ -305,7 +304,7 @@ impl JacTestClient.reload -> None {
         class MockWatcher {
             has additional_patterns: list[str] = [];
 
-            def add_callback(cb: Any) { }
+            def add_callback(cb: any) { }
             def start { }
             def stop { }
         }

@@ -224,5 +224,5 @@ test "obj bare assignment to has var name still warns as unused" {
         for w in warning_msgs
         if "defined but never used" in w
     ];
-    assert len(unused_warnings) > 0 , f"Expected unused variable warning for bare 'x' in obj method, got none";
+    assert len(unused_warnings) > 0 , "Expected unused variable warning for bare 'x' in obj method, got none";
 }

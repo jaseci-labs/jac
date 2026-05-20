@@ -18,10 +18,10 @@ impl IdentityStorage.verify_password(password: str, password_hash: str) -> bool 
 
 """Create a new user with identities and a credential."""
 impl IdentityStorage.create_user(
-    identities: list[dict[str, Any]],
-    credential: dict[str, Any],
-    profile: dict[str, Any] | None = None
-) -> dict[str, Any] {
+    identities: list[dict[str, any]],
+    credential: dict[str, any],
+    profile: dict[str, any] | None = None
+) -> dict[str, any] {
     import from jaclang.jac0core.constructs { Root }
     import from jaclang { JacRuntime as Jac }
 
@@ -48,7 +48,7 @@ impl IdentityStorage.create_user(
     now = datetime.now(UTC).isoformat();
 
     # Normalize identities and check uniqueness
-    normalized_identities: list[dict[str, Any]] = [];
+    normalized_identities: list[dict[str, any]] = [];
     for identity in identities {
         id_type = identity.get('type', '');
         raw_value = identity.get('value', '');
@@ -74,7 +74,7 @@ impl IdentityStorage.create_user(
     }
 
     # Hash credential
-    credentials: list[dict[str, Any]] = [];
+    credentials: list[dict[str, any]] = [];
     if credential.get('type') == 'password' {
         password_hash = IdentityStorage.hash_password(credential['password']);
         credentials.append({'type': 'password', 'password_hash': password_hash});
@@ -110,7 +110,7 @@ impl IdentityStorage.user_exists_by_id(user_id: str) -> bool {
 """Authenticate by looking up any identity matching identifier, then checking password."""
 impl IdentityStorage.authenticate(
     identifier: str, password: str
-) -> dict[str, Any] | None {
+) -> dict[str, any] | None {
     user = self.find_user_by_identity(identifier);
     if user is None {
         return None;
@@ -220,7 +220,7 @@ impl IdentityStorage.get_username(user_id: str) -> str | None {
 }
 
 """Generic field updater."""
-impl IdentityStorage.update_user_fields(user_id: str, fields: dict[str, Any]) -> bool {
+impl IdentityStorage.update_user_fields(user_id: str, fields: dict[str, any]) -> bool {
     fields['updated_at'] = datetime.now(UTC).isoformat();
     return self._update_fields(user_id, fields);
 }

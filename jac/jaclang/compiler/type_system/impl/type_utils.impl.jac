@@ -87,10 +87,10 @@ and _assign_callable), which handles complex types like generics, unions, and
 aliases correctly.
 """
 impl class_implements_protocol(
-    cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
+    cls: types.ClassType, proto: types.ClassType, evaluator: any = None
 ) -> bool {
     # Get protocol methods from symbol table (handles stubs where get_methods() may fail)
-    proto_methods: dict[str, Any] = {};
+    proto_methods: dict[str, any] = {};
     proto_symtab = proto.shared.symbol_table;
     if isinstance(proto_symtab, uni.UniScopeNode) {
         for (name, sym) in proto_symtab.names_in_scope.items() {
@@ -107,7 +107,7 @@ impl class_implements_protocol(
     }
 
     # Collect methods from the class and all its MRO classes (first found wins)
-    cls_methods: dict[str, Any] = {};
+    cls_methods: dict[str, any] = {};
     for mro_cls in cls.shared.mro {
         mro_symtab = mro_cls.shared.symbol_table;
         if isinstance(mro_symtab, uni.UniScopeNode) {

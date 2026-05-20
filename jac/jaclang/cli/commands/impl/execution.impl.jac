@@ -7,7 +7,6 @@ import marshal;
 import os;
 import sys;
 import types;
-import from typing { Any }
 import from jaclang.cli.console { console }
 import from jaclang.cli.commands.cli_helpers {
     ensure_jac_runtime as _ensure_jac_runtime,
@@ -98,6 +97,18 @@ impl run(
     import from jaclang.project.config { get_config }
     # Re-discover config from the file's directory (handles absolute paths)
     _discover_config_from_file(filename);
+    # --no-cache: wipe all .jac_ir/ cache directories under the file's source tree.
+    if not cache {
+        import glob as _glob;
+        import shutil;
+        _src_root = os.path.dirname(os.path.abspath(filename)) or ".";
+        cache_dirs = _glob.glob(
+            os.path.join(_src_root, "**", ".jac_ir"), recursive=True
+        );
+        for cache_dir in cache_dirs {
+            shutil.rmtree(cache_dir, ignore_errors=True);
+        }
+    }
     # Resolve diagnostics level: CLI flag > jac.toml > default ("error")
     if not diagnostics {
         cfg = get_config();
@@ -575,7 +586,7 @@ def _print_startup_message(
 }
 
 """Start Vite dev server for HMR mode."""
-def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> Any {
+def _start_vite_dev_server(base_path: str, vite_port: int, api_port: int) -> any {
     import from pathlib { Path }
 
     try {

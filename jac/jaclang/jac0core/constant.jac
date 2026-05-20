@@ -201,6 +201,7 @@ class Tokens(StrEnum) {
         KW_AS = 'KW_AS';
         KW_EDGE = 'KW_EDGE';
         KW_WALKER = 'KW_WALKER';
+        KW_VIEW = 'KW_VIEW';
         KW_ASYNC = 'KW_ASYNC';
         KW_AWAIT = 'KW_AWAIT';
         KW_FLOW = 'KW_FLOW';
@@ -510,6 +511,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_TEST': 'test',
          'KW_TO': 'to',
          'KW_TRY': 'try',
+         'KW_VIEW': 'defview',
          'KW_VISIT': 'visit',
          'KW_VISITOR': 'visitor',
          'KW_WAIT': 'wait',
