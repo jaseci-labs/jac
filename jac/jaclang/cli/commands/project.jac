@@ -381,7 +381,7 @@ def jacpack(action: str = "", path: str = "", output: str = "") -> int;
             "precompile",
             typ=bool,
             default=False,
-            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables (Linux/macOS only)",
+            help="Precompile .jac → .jir for python3.X versions on PATH; requires python3.X executables",
             short="p"
         ),
 
