@@ -1130,21 +1130,22 @@ def _run_precompile_in_venv(
             return False;
         }
         if sys.platform == "win32" {
-            venv_pip = str(venv_dir / "Scripts" / "pip");
+            venv_python = str(venv_dir / "Scripts" / "python");
             venv_jac = str(venv_dir / "Scripts" / "jac");
         } else {
-            venv_pip = str(venv_dir / "bin" / "pip");
+            venv_python = str(venv_dir / "bin" / "python");
             venv_jac = str(venv_dir / "bin" / "jac");
         }
         if subprocess.run(
-            [venv_pip, "install", f"jaclang=={jac_version}", "--quiet"],
+            [venv_python, "-m", "pip", "install", f"jaclang=={jac_version}", "--quiet"],
             capture_output=True
         ).returncode != 0 {
             return False;
         }
         if dep_specs {
             if subprocess.run(
-                [venv_pip, "install"] + dep_specs + ["--quiet"], capture_output=True
+                [venv_python, "-m", "pip", "install"] + dep_specs + ["--quiet"],
+                capture_output=True
             ).returncode != 0 {
                 return False;
             }
@@ -1199,7 +1200,7 @@ impl bundle(output: str = "dist", precompile: bool = False) -> int {
 
         if not pythons {
             console.warning(
-                "No Python versions with jaclang found on PATH — skipping precompilation."
+                "No matching Python executables found on PATH — skipping precompilation."
             );
         } else {
             import from jaclang.project.dependencies { DependencyInstaller }
