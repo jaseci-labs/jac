@@ -409,9 +409,9 @@ def:pub Demo() -> JsxElement {
 
 Use `as_`, not `as` -- `as` is reserved in Jac for import aliases.
 
-### `try` with `pending`: Suspense-shaped fallback
+### `try` with `awaiting`: Suspense-shaped fallback
 
-A `try` slot can take a `pending` clause that names what to render while the work inside is still in flight. The cl-target compiler wraps the slot in a `<JacPending>` element from `@jac/runtime` -- a thin shim over `React.Suspense` -- so the `pending` body renders during the dispatched-but-not-joined window and the `try` body's content takes over once the underlying async work settles.
+A `try` slot can take an `awaiting` clause that names what to render while the work inside is still in flight. The cl-target compiler wraps the slot in a `<JacAwaiting>` element from `@jac/runtime` -- a thin shim over `React.Suspense` -- so the `awaiting` body renders during the dispatched-but-not-joined window and the `try` body's content takes over once the underlying async work settles.
 
 ```jac
 to cl:
@@ -428,7 +428,7 @@ def:pub UserPanel(user: User) -> JsxElement {
     return <section class="panel">
         {try {
             <UserCardView user={user}/>
-        } pending {
+        } awaiting {
             <UserCardSkeleton/>
         }}
     </section>;
@@ -439,10 +439,10 @@ The `try` body needs a Suspense-aware data primitive (today: a `use(promise)` ca
 
 **Notes:**
 
-- `pending` is a clause of `try`; bare `pending { ... }` is a parse error.
-- `finally` alongside `pending` is rejected (`E2022`) -- the cleanup timing relative to the in-flight window is ambiguous.
-- `except` clauses are still legal but in v1 they don't render through the `<JacPending>` wrapper -- wrap the slot with `<JacClientErrorBoundary>` for an error fallback.
-- On `sv` and `na` targets the `pending` body is silently dropped with a `W2020` warning; the construct compiles as an ordinary `try` until the streaming-SSR and native-thread lowerings land.
+- `awaiting` is a clause of `try`; bare `awaiting { ... }` is a parse error.
+- `finally` alongside `awaiting` is rejected (`E2022`) -- the cleanup timing relative to the in-flight window is ambiguous.
+- `except` clauses are still legal but in v1 they don't render through the `<JacAwaiting>` wrapper -- wrap the slot with `<JacClientErrorBoundary>` for an error fallback.
+- On `sv` and `na` targets the `awaiting` body is silently dropped with a `W2020` warning; the construct compiles as an ordinary `try` until the streaming-SSR and native-thread lowerings land.
 
 ### Raw HTML: `unsafe_html`
 
@@ -579,7 +579,7 @@ def:pub app() -> JsxElement {
 | Define component | `def:pub Name(title: str, count: int) -> JsxElement { }` |
 | Statement slot | `{for x in xs { <li>{x}</li> }}` inside a JSX element |
 | Early-exit guard | bare `return;` inside a statement slot |
-| Suspense fallback | `{try { <Resolved/> } pending { <Loading/> }}` (cl only) |
+| Suspense fallback | `{try { <Resolved/> } awaiting { <Loading/> }}` (cl only) |
 | Raw HTML opt-in | `{unsafe_html(trusted_html)}` |
 | Dynamic tag | `<@expr>...</@expr>` |
 | JSX element | `<div className="x">content</div>` |

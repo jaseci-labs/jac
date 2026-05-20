@@ -1146,9 +1146,9 @@ def:pub JsxExamples() -> JsxElement {
 }
 ```
 
-### Suspense Fallbacks: `try` with `pending`
+### Suspense Fallbacks: `try` with `awaiting`
 
-A `try` slot whose body needs to wait on async work can name its loading state with a `pending` clause. The cl lowering wraps the slot in `<JacPending fallback={...}>{...}</JacPending>` from `@jac/runtime` -- a `React.Suspense` shim -- so the `pending` body renders during the dispatched-but-not-joined window and the `try` body takes over once it settles. On `sv` and `na` targets the `pending` body is dropped with a `W2020` warning until the streaming-SSR and native-thread lowerings land.
+A `try` slot whose body needs to wait on async work can name its loading state with an `awaiting` clause. The cl lowering wraps the slot in `<JacAwaiting fallback={...}>{...}</JacAwaiting>` from `@jac/runtime` -- a `React.Suspense` shim -- so the `awaiting` body renders during the dispatched-but-not-joined window and the `try` body takes over once it settles. On `sv` and `na` targets the `awaiting` body is dropped with a `W2020` warning until the streaming-SSR and native-thread lowerings land.
 
 ```jac
 to cl:
@@ -1157,14 +1157,14 @@ def:pub Profile(user_id: int) -> JsxElement {
     return <article>
         {try {
             <ResolvedProfile id={user_id}/>
-        } pending {
+        } awaiting {
             <p>Loading profile…</p>
         }}
     </article>;
 }
 ```
 
-See the [components tutorial](../../tutorials/fullstack/components.md#try-with-pending-suspense-shaped-fallback) for the full model -- semantics, the `flow`/`wait` integration story, and the v1 caveats (`finally` rejected via `E2022`; `except` arms don't render through the wrapper yet).
+See the [components tutorial](../../tutorials/fullstack/components.md#try-with-awaiting-suspense-shaped-fallback) for the full model -- semantics, the `flow`/`wait` integration story, and the v1 caveats (`finally` rejected via `E2022`; `except` arms don't render through the wrapper yet).
 
 ### Comments inside JSX
 

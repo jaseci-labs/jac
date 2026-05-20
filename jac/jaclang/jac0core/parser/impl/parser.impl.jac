@@ -46,7 +46,7 @@ import from jaclang.jac0core.unitree {
     TryStmt,
     Except,
     FinallyStmt,
-    PendingClause,
+    AwaitingClause,
     WithStmt,
     ExprAsItem
 }
@@ -4514,20 +4514,20 @@ impl Parser.parse_try_stmt -> TryStmt {
     lb_uni = self.consume_uni(TokenKind.LBRACE);
     body = self.parse_code_block_stmts();
     rb_uni = self.consume_uni(TokenKind.RBRACE);
-    # Canonical clause order: try -> pending -> except -> else -> finally.
-    # `pending` is a contextual clause keyword; it binds the dispatched-
-    # but-not-joined window of any `flow`/`wait` work inside the `try`
-    # body. Lowered per target by view_lower_pass.
-    pending_body = None;
-    if self.check(TokenKind.KW_PENDING) {
-        pen_uni = self.make_uni_token(self.advance());
-        pen_lb = self.consume_uni(TokenKind.LBRACE);
-        pen_stmts = self.parse_code_block_stmts();
-        pen_rb = self.consume_uni(TokenKind.RBRACE);
-        pen_kid: list = [pen_uni, pen_lb];
-        pen_kid.extend(pen_stmts);
-        pen_kid.append(pen_rb);
-        pending_body = PendingClause(body=pen_stmts, kid=pen_kid);
+    # Canonical clause order: try -> awaiting -> except -> else -> finally.
+    # `awaiting` is the clause keyword; it binds the dispatched-but-not-
+    # joined window of any `flow`/`wait` work inside the `try` body.
+    # Lowered per target by view_lower_pass.
+    awaiting_body = None;
+    if self.check(TokenKind.KW_AWAITING) {
+        awaiting_uni = self.make_uni_token(self.advance());
+        awaiting_lb = self.consume_uni(TokenKind.LBRACE);
+        awaiting_stmts = self.parse_code_block_stmts();
+        awaiting_rb = self.consume_uni(TokenKind.RBRACE);
+        awaiting_kid: list = [awaiting_uni, awaiting_lb];
+        awaiting_kid.extend(awaiting_stmts);
+        awaiting_kid.append(awaiting_rb);
+        awaiting_body = AwaitingClause(body=awaiting_stmts, kid=awaiting_kid);
     }
     excepts: list = [];
     while self.check(TokenKind.KW_EXCEPT) {
@@ -4551,8 +4551,8 @@ impl Parser.parse_try_stmt -> TryStmt {
     kid: list = [try_uni, lb_uni];
     kid.extend(body);
     kid.append(rb_uni);
-    if pending_body {
-        kid.append(pending_body);
+    if awaiting_body {
+        kid.append(awaiting_body);
     }
     kid.extend(excepts);
     if else_body {
@@ -4565,7 +4565,7 @@ impl Parser.parse_try_stmt -> TryStmt {
         body=body,
         excepts=excepts,
         else_body=else_body,
-        pending_body=pending_body,
+        awaiting_body=awaiting_body,
         finally_body=finally_body,
         kid=kid
     );

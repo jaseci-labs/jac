@@ -822,21 +822,21 @@ obj ExprStmt(CodeBlockStmt) {
 obj TryStmt(AstElseBodyNode, CodeBlockStmt, UniScopeNode) {
     has body: Sequence[CodeBlockStmt],
         excepts: Sequence[Except],
-        pending_body: (PendingClause | None),
+        awaiting_body: (AwaitingClause | None),
         finally_body: (FinallyStmt | None);
 
     def postinit -> None;
 }
 
-"""PendingClause node type for Jac Ast.
+"""AwaitingClause node type for Jac Ast.
 
-Holds the `pending { ... }` arm of a `try` statement. Renders/produces a
-value during the dispatched-but-not-joined window of any `flow`/`wait`
+Holds the `awaiting { ... }` arm of a `try` statement. Renders/produces
+a value during the dispatched-but-not-joined window of any `flow`/`wait`
 work inside the `try` body. In a JSX slot on the `cl` target, lowered
-into the React `Suspense` fallback of the synthesized `<JacPending>`
+into the React `Suspense` fallback of the synthesized `<JacAwaiting>`
 wrapper. On `sv`/`na` the clause is currently ignored with W2020 until
 the streaming-SSR and native-thread lowerings land."""
-obj PendingClause(CodeBlockStmt, UniScopeNode) {
+obj AwaitingClause(CodeBlockStmt, UniScopeNode) {
     has body: Sequence[CodeBlockStmt];
 
     def postinit -> None;

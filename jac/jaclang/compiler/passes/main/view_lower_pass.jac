@@ -51,7 +51,7 @@ lowering to keep the pass robust against the diagnosed source.
 obj ViewLowerPass(UniPass) {
     """Per-pass counter used to name nested slot accumulators uniquely.
 
-    Each `pending`-lowering synthesizes inner `JsxSlot`s whose bodies
+    Each `awaiting`-lowering synthesizes inner `JsxSlot`s whose bodies
     are also lowered into IIFEs. JavaScript hoists `let`-bound names
     by scope, so re-using `__jac_view_kids` inside nested IIFEs makes
     them reassign the *outer* slot's accumulator instead of declaring
@@ -127,12 +127,12 @@ obj ViewLowerPass(UniPass) {
                 self._check_body(s.body, in_loop, loop_kw);
             } elif isinstance(s, uni.TryStmt) {
                 self._check_body(s.body, in_loop, loop_kw);
-                if s.pending_body is not None {
-                    # The pending body is rendered before any try-body work
-                    # completes; loop-context flags carry through so a
-                    # `pending` body inside a slot `for` still gets the
+                if s.awaiting_body is not None {
+                    # The awaiting body is rendered before any try-body work
+                    # completes; loop-context flags carry through so an
+                    # `awaiting` body inside a slot `for` still gets the
                     # same loop diagnostics.
-                    self._check_body(s.pending_body.body, in_loop, loop_kw);
+                    self._check_body(s.awaiting_body.body, in_loop, loop_kw);
                 }
                 for ex in s.excepts {
                     self._check_body(ex.body, in_loop, loop_kw);
@@ -197,8 +197,8 @@ obj ViewLowerPass(UniPass) {
                 if self._emits_keyless_jsx(s.body) {
                     return True;
                 }
-                if s.pending_body is not None
-                and self._emits_keyless_jsx(s.pending_body.body) {
+                if s.awaiting_body is not None
+                and self._emits_keyless_jsx(s.awaiting_body.body) {
                     return True;
                 }
                 for ex in s.excepts {
@@ -251,7 +251,7 @@ obj ViewLowerPass(UniPass) {
 
     `acc_name_str` names the accumulator local — the top-level slot uses
     `__jac_view_kids` (preserved for diagnostics that grep the emitted
-    JS); nested slots synthesized by the `pending` lowering supply a
+    JS); nested slots synthesized by the `awaiting` lowering supply a
     unique suffixed name so each IIFE gets its own JS binding."""
     def _lower_body(
         stmts: list, anchor: uni.UniNode, acc_name_str: str = VIEW_ACC
@@ -379,16 +379,16 @@ obj ViewLowerPass(UniPass) {
             return s;
         }
         if isinstance(s, uni.TryStmt) {
-            # A `try` with a `pending` clause shifts the rendering model:
+            # A `try` with an `awaiting` clause shifts the rendering model:
             # only one branch (fallback / resolved / failed) renders at a
             # time, instead of all branches contributing to the accumulator.
             # On the `cl` target the whole TryStmt is replaced by a single
-            # `<JacPending fallback={...}>{...}</JacPending>` wrapper that
+            # `<JacAwaiting fallback={...}>{...}</JacAwaiting>` wrapper that
             # forwards to React's Suspense; on `sv`/`na` we warn (W2020)
-            # and drop the pending body so the rest of the lowering treats
+            # and drop the awaiting body so the rest of the lowering treats
             # the construct as an ordinary try.
-            if s.pending_body is not None {
-                return self._lower_try_with_pending(s, anchor, acc_name_str);
+            if s.awaiting_body is not None {
+                return self._lower_try_with_awaiting(s, anchor, acc_name_str);
             }
             s.body = self._lower_stmt_list(s.body, s, anchor, acc_name_str);
             for ex in s.excepts {
@@ -524,24 +524,24 @@ obj ViewLowerPass(UniPass) {
         );
     }
 
-    # ----- pending-clause lowering -----------------------------------------
-    """Lower a `try { ... } pending { ... }` (and friends) inside a slot.
+    # ----- awaiting-clause lowering ----------------------------------------
+    """Lower a `try { ... } awaiting { ... }` (and friends) inside a slot.
 
     On the `cl` target this becomes a single
-    `acc.append(<JacPending fallback={<>{lowered-pending}</>}>{lowered-try}</JacPending>);`
+    `acc.append(<JacAwaiting fallback={<>{lowered-awaiting}</>}>{lowered-try}</JacAwaiting>);`
     statement — the React Suspense + ErrorBoundary wrap that the
-    `@jac/runtime`'s `JacPending` component supplies, with the try body's
-    JSX as children and the pending body's JSX as the fallback.
+    `@jac/runtime`'s `JacAwaiting` component supplies, with the try body's
+    JSX as children and the awaiting body's JSX as the fallback.
 
     On `sv`/`na` the wrapper has no analogue yet, so we emit W2020 and
-    fall through to the ordinary try lowering (the `pending` body is
+    fall through to the ordinary try lowering (the `awaiting` body is
     silently dropped so it doesn't double-render through the accumulator).
 
     Diagnostics enforced here:
-      * E2022 — `finally` is incompatible with `pending`; the finally body
+      * E2022 — `finally` is incompatible with `awaiting`; the finally body
         is stripped after the error to keep lowering well-formed.
-      * W2020 — `pending` on a non-`cl` target."""
-    def _lower_try_with_pending(
+      * W2020 — `awaiting` on a non-`cl` target."""
+    def _lower_try_with_awaiting(
         s: uni.TryStmt, anchor: uni.UniNode, acc_name_str: str = VIEW_ACC
     ) -> uni.UniNode {
         if s.finally_body is not None {
@@ -551,13 +551,13 @@ obj ViewLowerPass(UniPass) {
         if not s.in_client_context() {
             target = "na" if s.in_native_context() else "sv";
             self.emit(W2020, node_override=s, target=target);
-            # Leave `pending_body` on the AST as a render no-op: downstream
+            # Leave `awaiting_body` on the AST as a render no-op: downstream
             # codegen passes (pyast_gen_pass, na_ir_gen_pass) iterate
             # `body`/`excepts`/`else_body`/`finally_body` only, so the
-            # pending clause's statements naturally don't reach the
+            # awaiting clause's statements naturally don't reach the
             # generated runtime — they just remain attached for source-
             # level passes (the formatter round-trips them; the validation
-            # pass treats `pending` as a satisfying clause for E0040).
+            # pass treats `awaiting` as a satisfying clause for E0040).
             s.body = self._lower_stmt_list(s.body, s, anchor, acc_name_str);
             for ex in s.excepts {
                 self._lower_one(ex, anchor, acc_name_str);
@@ -568,32 +568,32 @@ obj ViewLowerPass(UniPass) {
             return s;
         }
         try_stmts: list = list(s.body);
-        pending_stmts: list = list(s.pending_body.body);
-        jsx_pending = self._make_jac_pending(try_stmts, pending_stmts, anchor);
-        return self._make_append(jsx_pending, anchor, acc_name_str);
+        awaiting_stmts: list = list(s.awaiting_body.body);
+        jsx_awaiting = self._make_jac_awaiting(try_stmts, awaiting_stmts, anchor);
+        return self._make_append(jsx_awaiting, anchor, acc_name_str);
     }
 
-    """Synthesize `<JacPending fallback={<>{...pending}</>}>{...try}</JacPending>`.
+    """Synthesize `<JacAwaiting fallback={<>{...awaiting}</>}>{...try}</JacAwaiting>`.
 
     Both branch bodies are wrapped in synthetic `JsxSlot`s so the
     es-codegen turns them into inline IIFEs that return their
     accumulated JSX fragment. The `fallback` attribute additionally
     wraps the slot in a JSX fragment so the attribute value is a plain
     `Expression` (a slot is a `JsxChild`, not an `Expr`)."""
-    def _make_jac_pending(
-        try_stmts: list, pending_stmts: list, anchor: uni.UniNode
+    def _make_jac_awaiting(
+        try_stmts: list, awaiting_stmts: list, anchor: uni.UniNode
     ) -> uni.JsxElement {
-        name_part = self._synth_name("JacPending", anchor);
+        name_part = self._synth_name("JacAwaiting", anchor);
         el_name = uni.JsxElementName(parts=[name_part], kid=[name_part]);
         fallback_attr = self._make_attr_expr(
-            "fallback", self._make_fragment_with_slot(pending_stmts, anchor), anchor
+            "fallback", self._make_fragment_with_slot(awaiting_stmts, anchor), anchor
         );
         try_slot = self._make_synthetic_slot(try_stmts, anchor);
         open_lt = self._synth_tok(Tok.LT.value, "<", anchor);
         open_gt = self._synth_tok(Tok.GT.value, ">", anchor);
         close_open = self._synth_tok(Tok.LT.value, "<", anchor);
         slash_tok = self._synth_tok(Tok.DIV.value, "/", anchor);
-        close_name = self._synth_name("JacPending", anchor);
+        close_name = self._synth_name("JacAwaiting", anchor);
         close_gt = self._synth_tok(Tok.GT.value, ">", anchor);
         kid: list = [
             open_lt,

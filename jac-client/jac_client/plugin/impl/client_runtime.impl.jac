@@ -505,14 +505,14 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
         <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-# Thin wrapper over React.Suspense for the `pending` template clause.
+# Thin wrapper over React.Suspense for the `awaiting` template clause.
 # When a child throws a Promise (the React Suspense protocol), the
 # `fallback` element renders until the Promise settles. `flow`/`wait`
 # don't throw Promises today, so the fallback only appears when the
 # try-body itself opts into a Suspense-aware primitive (e.g. `use()`,
 # a fetcher that suspends). The wrapper is still useful as the named
 # integration point so the language-level lowering stays stable.
-impl JacPending(props: dict) -> JsxElement {
+impl JacAwaiting(props: dict) -> JsxElement {
     return React.createElement(
         React.Suspense, {"fallback": props.fallback}, props.children
     );

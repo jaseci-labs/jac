@@ -100,7 +100,7 @@ Caveats specific to slot bodies:
 
 - A bare `return;` inside a slot exits the slot, **not** the enclosing function - the rest of the JSX still renders. Useful for "show empty state, stop here."
 - Slot iteration that yields keyless JSX siblings earns a `W2019` warning - add `key={...}` on the inner element.
-- `try { ... } pending { ... }` in a slot lowers to a `<JacPending fallback={...}>{...}</JacPending>` Suspense wrapper (cl only). The `pending` body shows during the dispatched-but-not-joined window of any Suspense-aware primitive inside the `try` body; today Jac's `flow`/`wait` don't suspend, so the fallback only fires when the `try` body opts into something Suspense-shaped (e.g. a fetcher that throws a promise). On `sv` / `na` the `pending` body is dropped with `W2020`. `finally` with `pending` is rejected (`E2022`).
+- `try { ... } awaiting { ... }` in a slot lowers to a `<JacAwaiting fallback={...}>{...}</JacAwaiting>` Suspense wrapper (cl only). The `awaiting` body shows during the dispatched-but-not-joined window of any Suspense-aware primitive inside the `try` body; today Jac's `flow`/`wait` don't suspend, so the fallback only fires when the `try` body opts into something Suspense-shaped (e.g. a fetcher that throws a promise). On `sv` / `na` the `awaiting` body is dropped with `W2020`. `finally` with `awaiting` is rejected (`E2022`).
 
 ## Pitfalls
 

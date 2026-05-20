@@ -102,7 +102,7 @@ import from jaclang.jac0core.unitree {
     TryStmt,
     Except,
     FinallyStmt,
-    PendingClause,
+    AwaitingClause,
     WithStmt,
     ExprAsItem
 }
