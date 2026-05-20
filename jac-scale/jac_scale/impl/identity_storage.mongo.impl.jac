@@ -104,12 +104,25 @@ impl MongoIdentityStorage._add_identity(
     return result.matched_count > 0;
 }
 
-"""Mark a single identity (matched by value_normalized) as verified."""
+"""Mark a single identity (matched by value_normalized) as verified.
+
+Returns True only when the verified flag actually flipped (matches SQLite
+semantics). The filter requires the identity to not already be verified, so
+matched_count > 0 implies an actual state change.
+"""
 impl MongoIdentityStorage._set_identity_verified(
     user_id: str, value_normalized: str
 ) -> bool {
     result = self.users_col.update_one(
-        {'user_id': user_id, 'identities.value_normalized': value_normalized},
+        {
+            'user_id': user_id,
+            'identities': {
+                '$elemMatch': {
+                    'value_normalized': value_normalized,
+                    'verified': {'$ne': True}
+                }
+            }
+        },
         {
             '$set': {
                 'identities.$.verified': True,
