@@ -421,7 +421,15 @@ impl JacScaleConfig.get_auth_config(self: JacScaleConfig) -> dict[str, Any] {
         ),
         'reset_url_template': auth_config.get('reset_url_template', ''),
         'verify_url_template': auth_config.get('verify_url_template', ''),
-        'token_collection': auth_config.get('token_collection', 'auth_tokens')
+        'token_collection': auth_config.get('token_collection', 'auth_tokens'),
+        'forgot_password_rate_per_hour': int(
+            auth_config.get('forgot_password_rate_per_hour', 3)
+        ),
+        'forgot_password_burst': int(auth_config.get('forgot_password_burst', 3)),
+        'send_verification_rate_per_hour': int(
+            auth_config.get('send_verification_rate_per_hour', 5)
+        ),
+        'send_verification_burst': int(auth_config.get('send_verification_burst', 5))
     };
 }
 

@@ -18,7 +18,40 @@
 
 import from jac_scale.auth_tokens { AuthTokenStore }
 import from jac_scale.identity_storage { IdentityTakenError }
+import from jac_scale.microservices.gateway_internals.middleware.rate_limit {
+    InProcessRateLimiter
+}
 import from jac_scale.utils { authenticate_or_fail }
+
+glob _forgot_password_limiter: InProcessRateLimiter | None = None,
+     _send_verification_limiter: InProcessRateLimiter | None = None;
+
+"""Lazily build the per-endpoint token-bucket limiters.
+
+forgot-password is keyed on the normalized recipient email so that
+rotating IPs cannot email-bomb a victim. send-verification is keyed on
+the authenticated user_id since the caller is already authenticated and
+existence leakage is not a concern there.
+"""
+def _get_identity_limiters -> tuple[InProcessRateLimiter, InProcessRateLimiter] {
+    global _forgot_password_limiter,_send_verification_limiter;
+    if _forgot_password_limiter is None or _send_verification_limiter is None {
+        auth_cfg = get_scale_config().get_auth_config();
+        fp_rate_per_hour = float(auth_cfg.get('forgot_password_rate_per_hour', 3));
+        sv_rate_per_hour = float(auth_cfg.get('send_verification_rate_per_hour', 5));
+        fp_burst = float(auth_cfg.get('forgot_password_burst', 3));
+        sv_burst = float(auth_cfg.get('send_verification_burst', 5));
+        _forgot_password_limiter = InProcessRateLimiter(
+            rate_per_sec=max(fp_rate_per_hour, 0.0) / 3600.0,
+            capacity=max(fp_burst, 1.0)
+        );
+        _send_verification_limiter = InProcessRateLimiter(
+            rate_per_sec=max(sv_rate_per_hour, 0.0) / 3600.0,
+            capacity=max(sv_burst, 1.0)
+        );
+    }
+    return (_forgot_password_limiter, _send_verification_limiter);
+}
 
 # ============================================================================
 # Private helpers — shared by the identity / password-reset endpoints
@@ -201,6 +234,22 @@ impl JacAPIServerAuth.register_send_verification_endpoint -> None {
                 meta=Meta(extra={'http_status': 200})
             );
         }
+        # Per-user throttle so an authenticated caller cannot spam verification
+        # emails to themselves or others on their account.
+        (_, sv_limiter) = _get_identity_limiters();
+        (allowed, retry_after) = sv_limiter.consume(user_id);
+        if not allowed {
+            return TransportResponse.fail(
+                code='RATE_LIMITED',
+                message='Too many verification requests, please try again later',
+                meta=Meta(
+                    extra={
+                        'http_status': 429,
+                        'retry_after_seconds': int(retry_after) + 1
+                    }
+                )
+            );
+        }
         emailer = self.get_emailer();
         if emailer is None or not emailer.is_ready() {
             return TransportResponse.fail(
@@ -345,6 +394,19 @@ impl JacAPIServerAuth.register_forgot_password_endpoint -> None {
             }
         }
         if not recipient_raw {
+            return ok_response;
+        }
+        # Per-recipient throttle. The 200 envelope already hides whether the
+        # account exists, and we keep that promise on rate-limit too instead
+        # of returning 429 (which would leak the existence signal).
+        (fp_limiter, _) = _get_identity_limiters();
+        (allowed, retry_after) = fp_limiter.consume(recipient_normalized or '');
+        if not allowed {
+            logger.warning(
+                "forgot-password rate limited for %s, retry_after=%.1fs",
+                recipient_normalized,
+                retry_after
+            );
             return ok_response;
         }
         auth_cfg = get_scale_config().get_auth_config();
