@@ -1110,10 +1110,13 @@ def _find_precompile_pythons -> list[tuple[str, str]] {
     return found;
 }
 
-"""Create a temp venv with pyexe, install jaclang + project deps, run precompile script."""
+"""Create a temp venv with pyexe, install jaclang + project deps, run precompile script.
+
+Returns None on success, or an error string describing what failed.
+"""
 def _run_precompile_in_venv(
     pyexe: str, script_path: str, project_root: str, dep_specs: list[str],
-) -> bool {
+) -> str | None {
     import sys;
     import subprocess;
     import tempfile;
@@ -1124,10 +1127,13 @@ def _run_precompile_in_venv(
 
     with tempfile.TemporaryDirectory() as tmp {
         venv_dir = Path(tmp) / "venv";
-        if subprocess.run(
+        venv_result = subprocess.run(
             [pyexe, "-m", "venv", str(venv_dir)], capture_output=True
-        ).returncode != 0 {
-            return False;
+        );
+        if venv_result.returncode != 0 {
+            return f"venv creation failed:\n{venv_result.stderr.decode(
+                errors='replace'
+            )}";
         }
         if sys.platform == "win32" {
             venv_python = str(venv_dir / "Scripts" / "python");
@@ -1136,22 +1142,31 @@ def _run_precompile_in_venv(
             venv_python = str(venv_dir / "bin" / "python");
             venv_jac = str(venv_dir / "bin" / "jac");
         }
-        if subprocess.run(
+        jac_install = subprocess.run(
             [venv_python, "-m", "pip", "install", f"jaclang=={jac_version}", "--quiet"],
             capture_output=True
-        ).returncode != 0 {
-            return False;
+        );
+        if jac_install.returncode != 0 {
+            return f"pip install jaclang=={jac_version} failed:\n{jac_install.stderr.decode(
+                errors='replace'
+            )}";
         }
         if dep_specs {
-            if subprocess.run(
+            deps_install = subprocess.run(
                 [venv_python, "-m", "pip", "install"] + dep_specs + ["--quiet"],
                 capture_output=True
-            ).returncode != 0 {
-                return False;
+            );
+            if deps_install.returncode != 0 {
+                return f"pip install project deps failed:\n{deps_install.stderr.decode(
+                    errors='replace'
+                )}";
             }
         }
         result = subprocess.run([venv_jac, "run", script_path, project_root]);
-        return result.returncode == 0;
+        if result.returncode != 0 {
+            return "precompile script exited with non-zero status";
+        }
+        return None;
     }
 }
 
@@ -1184,7 +1199,10 @@ impl bundle(output: str = "dist", precompile: bool = False) -> int {
     if precompile {
         import sys;
         _jac_path = sys.modules.get("jaclang")?.__path__;
-        _jac_root: Path | None = Path(str(_jac_path[0])) if _jac_path else None;
+        _jac_root: Path | None = None;
+        if _jac_path {
+            _jac_root = Path(str(_jac_path[0]));
+        }
         if _jac_root is None {
             console.error("Cannot locate jaclang package root for precompile script.");
             return 1;
@@ -1212,11 +1230,11 @@ impl bundle(output: str = "dist", precompile: bool = False) -> int {
             );
             for (pyexe, pyver) in pythons {
                 console.print(f"    → {pyver}...", style="muted");
-                ok = _run_precompile_in_venv(
+                err = _run_precompile_in_venv(
                     pyexe, script_path, project_root_str, dep_specs
                 );
-                if not ok {
-                    console.error(f"Precompile failed for {pyver}");
+                if err is not None {
+                    console.error(f"Precompile failed for {pyver}: {err}");
                     return 1;
                 }
                 console.print(f"  ✔ {pyver}", style="success");
