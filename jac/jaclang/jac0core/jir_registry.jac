@@ -65,8 +65,7 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="signature", kind=6),
                  FieldDesc(name="decorators", kind=5),
                  FieldDesc(name="type_params", kind=5),
-                 FieldDesc(name="accessor_kind", kind=0),
-                 FieldDesc(name="is_view", kind=2)
+                 FieldDesc(name="accessor_kind", kind=0)
              )
          ),
          NodeSpec(
@@ -1650,6 +1649,14 @@ glob NODE_SPECS: tuple = (
                  FieldDesc(name="with_from", kind=2)
              )
          ),
+         NodeSpec(
+             type_idx=146,
+             class_name="JsxSlot",
+             is_scope=False,
+             is_cfg=False,
+             is_name_atom=False,
+             fields=(FieldDesc(name="body", kind=5), )
+         ),
 
      ),
      NAME_TO_IDX: dict[str, int] = {
@@ -1799,6 +1806,7 @@ glob NODE_SPECS: tuple = (
          "WhileStmt": 143,
          "WithStmt": 144,
          "YieldExpr": 145,
+         "JsxSlot": 146,
 
      },
      IDX_TO_SPEC: dict[int, NodeSpec] = {spec.type_idx: spec for spec in NODE_SPECS};

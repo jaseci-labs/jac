@@ -1301,25 +1301,31 @@ def:pub Counter() -> JsxElement {
     </div>;
 }
 
-# `defview`: statement-form component, sugar for `def:pub ... -> JsxElement`.
-# Each top-level JSX element is a statement; no `return <jsx>;` wrapper.
-defview Greeting(name: str) {
-    <h1>Hello, {name}!</h1>
-    if name == "" {
-        <p>(no name given)</p>
-        return;                   # bare return; = early-exit guard
-    }
-    <p>Welcome to Jac.</p>
+# JSX `{...}` slots accept statement-form control flow as children.
+# Inside the slot, JSX statements push into the enclosing element's
+# children list; a bare `return;` ends the slot with whatever was emitted.
+def:pub Greeting(name: str) -> JsxElement {
+    return <div>
+        {if name == "" {
+            <p>(no name given)</p>
+            return;                   # bare return; = early-exit guard
+        }}
+        <h1>Hello, {name}!</h1>
+    </div>;
 }
+
+# Raw HTML opt-in (the name is the security review hint):
+#   <div>{unsafe_html(trusted_html_blob)}</div>
 
 # JSX syntax reference:
 # <div>text</div>               HTML elements
 # <Component prop="val" />      Component with props
-# {expression}                  JavaScript expression
+# {expression}                  Expression slot (one value)
+# {if .. for ..}                Statement slot (control flow as children)
 # {#* comment *#}               JSX comment (renders nothing)
-# {condition and <p>Show</p>}   Conditional render
-# {[<li>...</li> for x in xs]}  List rendering
-# <div {...props}>               Spread props
+# {unsafe_html(x)}              Raw HTML opt-in (escapes off)
+# <@expr />                     Dynamic tag (resolves expr at runtime)
+# <div {...props}>              Spread props
 # <div className="cls">         Class name (not "class")
 # <div style={{"color": "red"}} Inline styles
 # <@expr>...</@expr>            Dynamic tag (tag chosen by expression)

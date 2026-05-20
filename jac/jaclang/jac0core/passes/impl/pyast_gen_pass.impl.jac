@@ -4094,6 +4094,16 @@ impl PyastGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     self.jsx_processor.expression(nd);
 }
 
+"""Generate Python AST for JSX statement-form slots.
+
+Slots are a client-side concept (JSX in browser DOM); the server-side
+Python emit treats them as `None` so a slot used in mixed-target code
+type-checks and compiles. The slot's actual rendering happens in the
+client runtime via the IIFE emitted by the es-codegen path."""
+impl PyastGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    nd.gen.py_ast = [self.sync(ast3.Constant(value=None), nd)];
+}
+
 """Generate Python AST for JSX block comments — no-op; element processor skips it."""
 impl PyastGenPass.exit_jsx_comment(nd: uni.JsxComment) -> None {
     nd.gen.py_ast = [];

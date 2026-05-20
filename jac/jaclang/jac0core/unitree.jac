@@ -691,8 +691,7 @@ obj Ability(ContextAwareNode, AstAccessNode, ElementStmt, AstAsyncNode, ArchBloc
         signature: FuncSignature | EventSignature | None,
         decorators: (Sequence[Expr] | None) = None,
         type_params: (Sequence[TypeParam] | None) = None,
-        accessor_kind: str = "",  # "" | "property" | "setter" | "deleter"
-        is_view: bool = False;  # parsed from a `view` declarator (pre-lowering)
+        accessor_kind: str = "";  # "" | "property" | "setter" | "deleter"
 
     def postinit -> None;
     @property
@@ -1305,6 +1304,25 @@ obj JsxText(JsxChild) {
 """JsxExpression node type for Jac Ast."""
 obj JsxExpression(JsxChild) {
     has expr: Expr;
+
+    def postinit -> None;
+}
+
+"""JsxSlot: a `{...}` JSX child whose body is a sequence of statements.
+
+When a `{...}` slot in JSX child position contains anything other than a
+single expression -- a JSX statement, control flow yielding JSX, an
+assignment followed by an expression, an explicit `return` guard -- the
+parser emits a `JsxSlot` instead of `JsxExpression`. The slot lowers to
+an IIFE that runs the body and returns either the accumulated JSX
+children fragment (if any JSX was emitted statement-by-statement) or the
+value of the last expression.
+
+Single-expression slots (`{name}`, `{1 + 2}`, `{<p>hi</p>}`) still emit
+`JsxExpression` so the cheap path (no IIFE) is preserved.
+"""
+obj JsxSlot(JsxChild) {
+    has body: list[UniNode];
 
     def postinit -> None;
 }

@@ -1166,6 +1166,19 @@ impl UnparsePass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.jac = nd.expr.gen.jac;
 }
 
+"""JsxSlot: statement-form `{...}` slot — emit each kid in order so the
+raw `{ stmt; stmt; ... }` shape round-trips through the formatter."""
+impl UnparsePass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    parts: list[str] = [];
+    for k in nd.kid {
+        s = k.gen.jac;
+        if s is not None {
+            parts.append(s);
+        }
+    }
+    nd.gen.jac = "".join(parts);
+}
+
 """JsxComment: emit the raw `{#* ... *#}` text verbatim."""
 impl UnparsePass.exit_jsx_comment(nd: uni.JsxComment) -> None {
     nd.gen.jac = nd.value.value if isinstance(nd.value, uni.Token) else str(nd.value);

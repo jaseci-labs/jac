@@ -75,6 +75,19 @@ since JavaScript classes require ``new``.
 """
 def new(cls: any, *args: any) -> any;
 
+"""Mark a string as raw HTML for insertion into JSX children.
+
+Returns a sentinel ``dict`` (``{"__jacUnsafeHtml": <html>}``) that the
+client runtime recognises and renders via ``dangerouslySetInnerHTML``
+(jac-client / React) or ``element.innerHTML`` (bare-serve). On the server
+this is an identity wrapper -- the marker survives JSON serialisation so a
+walker can return pre-rendered HTML to a client view. Named ``unsafe_html``
+because the caller takes responsibility for trust: the wrapped string is
+emitted verbatim with no escaping. Anything that came from user input or
+an LLM must be sanitised first.
+"""
+def unsafe_html(html: any) -> dict;
+
 glob __all__ = [
          'printgraph',
          'jid',
@@ -95,5 +108,6 @@ glob __all__ = [
          'schedule',
          'ScheduleTrigger',
          'APIProtocol',
-         'archetype_alias'
+         'archetype_alias',
+         'unsafe_html'
      ];

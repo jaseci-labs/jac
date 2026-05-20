@@ -3025,6 +3025,37 @@ impl EsastGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     self.jsx_processor.expression(nd);
 }
 
+"""Process JSX statement-form slot.
+
+A `JsxSlot` whose body has been lowered by `ViewLowerPass` (statements,
+including `__jac_view_kids = []` init and the trailing fragment-return
+guard) is wrapped here in an arrow function and called inline. The IIFE
+result is the slot's child expression -- the rendered JSX fragment of
+everything the body accumulated."""
+impl EsastGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    body_stmts: list = [];
+    for stmt in nd.body {
+        if stmt.gen.es_ast is None {
+            continue;
+        }
+        if isinstance(stmt.gen.es_ast, `list) {
+            for sub in stmt.gen.es_ast {
+                if sub is not None {
+                    body_stmts.append(sub);
+                }
+            }
+        } else {
+            body_stmts.append(stmt.gen.es_ast);
+        }
+    }
+    block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=nd);
+    arrow = self.sync_loc(
+        es.ArrowFunctionExpression(params=[], body=block, async_=False), jac_node=nd
+    );
+    call = self.sync_loc(es.CallExpression(callee=arrow, arguments=[]), jac_node=nd);
+    nd.gen.es_ast = call;
+}
+
 """Process JSX text node."""
 impl EsastGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     self.jsx_processor.text(nd);
