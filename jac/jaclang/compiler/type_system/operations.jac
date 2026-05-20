@@ -134,11 +134,13 @@ def get_numeric_promotion_type(
 
     # Division always returns float
     if op == Tok.DIV {
+        assert evaluator.prefetch.float_class is not None;
         return evaluator._convert_to_instance(evaluator.prefetch.float_class);
     }
 
     # If either operand is float-like, result is float
     if left_is_float or right_is_float {
+        assert evaluator.prefetch.float_class is not None;
         return evaluator._convert_to_instance(evaluator.prefetch.float_class);
     }
 
@@ -150,6 +152,7 @@ def get_numeric_promotion_type(
 
     # If either is plain int, result is int (int is the widest integer)
     if not left_fw or not right_fw {
+        assert evaluator.prefetch.int_class is not None;
         return evaluator._convert_to_instance(evaluator.prefetch.int_class);
     }
 
@@ -268,6 +271,7 @@ def get_type_of_binary_operation(
             }
             # Although None is not a valid class, it can be used as a class in the type annotation.
             if isinstance(ty, jtypes.ClassType) {
+                assert evaluator.prefetch.none_type_class is not None;
                 return ty.shared == evaluator.prefetch.none_type_class.shared;
             }
             return False;
@@ -315,6 +319,7 @@ def get_type_of_binary_operation(
             }
             # Although None is not a valid class, it can be used as a class in the type annotation.
             if isinstance(ty, jtypes.ClassType) {
+                assert evaluator.prefetch.none_type_class is not None;
                 return ty.shared == evaluator.prefetch.none_type_class.shared;
             }
             return False;
