@@ -492,7 +492,9 @@ test "validate: route with no generated Deployment is an error (skips downstream
     diags = _validate({"deployments": {}}, ms_cfg, {"a": {"cpu_request": "100m"}});
     # Exactly one error: the missing-deployment one. Downstream checks
     # (HPA cpu_request baseline, no image, etc.) must NOT chain on None.
-    assert any(d.severity == "error" and "no generated Deployment" in d.message for d in diags);
+    assert any(
+        d.severity == "error" and "no generated Deployment" in d.message for d in diags
+    );
     assert not any("cpu_request is unset" in d.message for d in diags);
     assert not any("no image resolved" in d.message for d in diags);
 }
@@ -503,16 +505,7 @@ test "print_plan HPA card: cpu_target=0 renders as '(no CPU target)' not '0% CPU
         "deployments": {
             "a": {"spec": {"template": {"spec": {"containers": [{"image": "a:v1"}]}}}}
         },
-        "hpas": {
-            "a": {
-                "spec": {
-                    "minReplicas": 1,
-                    "maxReplicas": 3,
-                    # No Resource:cpu metric -> HPAView.cpu_target stays 0
-                    "metrics": []
-                }
-            }
-        }
+        "hpas": {"a": {"spec": {"minReplicas": 1, "maxReplicas": 3, "metrics": []}}}
     };
     (out, _) = _run_plan(bundle);
     assert "(no CPU target)" in out;
