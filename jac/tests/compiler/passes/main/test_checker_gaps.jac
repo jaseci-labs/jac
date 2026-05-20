@@ -34,7 +34,9 @@ import from jaclang.jac0core.compile_options { CompileOptions }
 import jaclang.jac0core.unitree as uni;
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
-     FIXTURES = os.path.join(JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"),
+     FIXTURES = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
+     ),
      CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      );
