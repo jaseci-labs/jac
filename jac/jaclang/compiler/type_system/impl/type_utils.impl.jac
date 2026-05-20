@@ -472,7 +472,10 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
     }
 
     # Check if it's a builtin stub (core Python stubs)
-    # Similar to Pyright's _isBuiltInStubFile list
+    # Similar to Pyright's _isBuiltInStubFile list. jac_builtins.pyi is the
+    # Jac-side companion (carries fixed-width numerics like i32 / f64) and
+    # must follow the same is_builtin_class discipline so registry-driven
+    # rules (numeric-kind same-kind assignability) recognise its types.
     if (
         normalized_path.endswith("stdlib/builtins.pyi")
         or normalized_path.endswith("stdlib/abc.pyi")
@@ -484,6 +487,7 @@ impl compute_module_source_flags(file_path: str) -> ModuleSourceFlags {
         or normalized_path.endswith("stdlib/types.pyi")
         or normalized_path.endswith("stdlib/typing.pyi")
         or normalized_path.endswith("stdlib/_typeshed/__init__.pyi")
+        or normalized_path.endswith("type_system/jac_builtins.pyi")
     ) {
         flags.is_builtin_stub = True;
     }

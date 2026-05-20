@@ -2583,6 +2583,25 @@ impl TypeEvaluator._assign_class(
     if src_type.is_builtin("int") and dest_type.is_builtin("float") {
         return True;
     }
+    # Same-kind primitives are mutually assignable. The registry encodes
+    # numeric kind (int / bool / iN / uN are IntKind; float / fN are
+    # FloatKind), so the type checker treats fixed-width variants as
+    # width refinements rather than unrelated subclasses. IntKind ->
+    # FloatKind is also allowed (the existing int -> float rule above
+    # extends here). FloatKind -> IntKind stays banned.
+    if src_type.is_builtin() and dest_type.is_builtin() {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, NumericKind }
+        src_kind = JAC_TYPE_REGISTRY.numeric_kind_of(src_type.shared.class_name);
+        dest_kind = JAC_TYPE_REGISTRY.numeric_kind_of(dest_type.shared.class_name);
+        if src_kind != NumericKind.NotNumeric and dest_kind != NumericKind.NotNumeric {
+            if src_kind == dest_kind {
+                return True;
+            }
+            if src_kind == NumericKind.IntKind and dest_kind == NumericKind.FloatKind {
+                return True;
+            }
+        }
+    }
     # Check if dest_type is a protocol and src_type implements it.
     # Protocol detection: A class is a protocol if:
     # 1. It has the prefetched Protocol class as a base class (exact match)

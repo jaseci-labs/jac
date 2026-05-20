@@ -42,9 +42,8 @@ glob BLACK_SYMBOLS: dict[PieceKind, str] = {
 # Column names as string (bytes literal for reference: b"abcdefgh")
 glob COL_NAMES: str = "abcdefgh";
 
-# ===================== Forward Declarations =====================
-obj Board;
-obj Piece;
+# Jac does module-wide symbol resolution, so types can reference each
+# other in any order without forward declarations.
 
 # ===================== Position as Tuple Helper =====================
 def pos_to_tuple(row: int, col: int) -> tuple[int, int] {
