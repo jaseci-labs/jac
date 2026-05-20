@@ -115,7 +115,7 @@ impl completions(shell: str = "bash", install: bool = False) -> int {
 }
 
 """Extract command data from registry into simple dicts for shellcode generation."""
-def _extract_commands(registry: Any) -> list {
+def _extract_commands(registry: any) -> list {
     import from jaclang.cli.command { ArgKind }
     commands = [];
     for (name, spec) in sorted(registry.commands.items()) {

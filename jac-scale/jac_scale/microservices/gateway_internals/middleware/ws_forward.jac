@@ -7,7 +7,6 @@ only; aiohttp manages its own WS handshake headers (Upgrade, Sec-*).
 import logging;
 import aiohttp;
 import asyncio;
-import from typing { Any }
 
 glob _logger = logging.getLogger(__name__),
      _WS_HOP_BY_HOP: set[str] = {"host","connection","upgrade","sec-websocket-key","sec-websocket-version","sec-websocket-extensions","sec-websocket-protocol","sec-websocket-accept","transfer-encoding","keep-alive"};
@@ -41,7 +40,7 @@ def _select_handshake_headers(client_headers: dict[str, str]) -> dict[str, str] 
 }
 
 
-async def _pump_client_to_upstream(client_ws: Any, upstream_ws: Any) {
+async def _pump_client_to_upstream(client_ws: any, upstream_ws: any) {
     try {
         while True {
             frame = await client_ws.receive();
@@ -60,7 +59,7 @@ async def _pump_client_to_upstream(client_ws: Any, upstream_ws: Any) {
 }
 
 
-async def _pump_upstream_to_client(upstream_ws: Any, client_ws: Any) {
+async def _pump_upstream_to_client(upstream_ws: any, client_ws: any) {
     try {
         async for msg in upstream_ws {
             if msg.type == aiohttp.WSMsgType.TEXT {
@@ -87,7 +86,7 @@ async def _pump_upstream_to_client(upstream_ws: Any, client_ws: Any) {
 """Caller must have called `client_ws.accept()` already. Closes both
 sockets when either side ends."""
 async def websocket_forward(
-    client_ws: Any,
+    client_ws: any,
     upstream_url: str,
     request_headers: dict[str, str],
     timeout: int = 30

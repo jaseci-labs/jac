@@ -203,11 +203,11 @@ impl JFastApiServer._create_response_model(
 """Convert string type to Python type."""
 impl JFastApiServer._get_python_type(
     self: JFastApiServer, type_string: str
-) -> type[Any] {
+) -> type[any] {
     if (type_string.startswith("<class '") and type_string.endswith("'>")) {
         type_string = type_string[8:-2];
     }
-    type_mapping: dict[(str, type[Any])] = {
+    type_mapping: dict[(str, type[any])] = {
         'str': str,
         'string': str,
         'int': int,
@@ -224,7 +224,7 @@ impl JFastApiServer._get_python_type(
 }
 
 """Check whether a type is a user-defined Jac archetype (obj/node/edge)."""
-def _is_jac_archetype(cls: Any) -> bool {
+def _is_jac_archetype(cls: any) -> bool {
     import from jaclang.jac0core.archetype { Archetype }
     try {
         return (
@@ -238,7 +238,7 @@ def _is_jac_archetype(cls: Any) -> bool {
 }
 
 """Recursively convert a validated Pydantic/dict payload into Jac obj instances."""
-def _pydantic_to_jac(data: Any, jac_cls: Any) -> Any {
+def _pydantic_to_jac(data: any, jac_cls: any) -> any {
     import from typing { get_type_hints, get_origin, get_args }
     import inspect;
     import from pydantic { BaseModel }
@@ -274,7 +274,7 @@ def _pydantic_to_jac(data: Any, jac_cls: Any) -> Any {
     if _is_jac_archetype(jac_cls) and isinstance(data, dict) {
         hints = get_type_hints(jac_cls.init);
         sig = inspect.signature(jac_cls.init);
-        kwargs: dict[str, Any] = {};
+        kwargs: dict[str, any] = {};
         for (key, value) in data.items() {
             if (key not in sig.parameters) {
                 continue;
@@ -294,8 +294,8 @@ obj types, generics (list[Obj], dict[str, Obj]), and Optional/Union. Falls
 back to the primitive string mapping when type_obj is None.
 """
 impl JFastApiServer._resolve_type(
-    self: JFastApiServer, type_string: str, type_obj: Any = None
-) -> Any {
+    self: JFastApiServer, type_string: str, type_obj: any = None
+) -> any {
     import from typing { get_origin, get_args, Union }
     import types;
     # Fast path: primitive string mapping
@@ -343,7 +343,7 @@ types (e.g. `TreeNode` with `children: list[TreeNode]`) terminate; the
 forward refs are resolved via `model_rebuild` once the real model exists.
 """
 impl JFastApiServer._build_pydantic_model(
-    self: JFastApiServer, jac_cls: Any
+    self: JFastApiServer, jac_cls: any
 ) -> type[BaseModel] {
     import from typing { get_type_hints, ForwardRef }
     model_name = jac_cls.__name__;
@@ -363,7 +363,7 @@ impl JFastApiServer._build_pydantic_model(
     }
     import dataclasses;
     dc_fields: dict[(str, Any)] = getattr(jac_cls, '__dataclass_fields__', {});
-    fields: dict[str, Any] = {};
+    fields: dict[str, any] = {};
     for (name, param) in sig.parameters.items() {
         if (name in ('self', 'args', 'kwargs')) {
             continue;
@@ -517,9 +517,9 @@ impl JFastApiServer._create_endpoint_function(
     self: JFastApiServer,
     callback: Callable[(..., Any)],
     parameters: list[APIParameter],
-    dependencies: list[Any],
+    dependencies: list[any],
     request_model: (type[BaseModel] | None) = None
-) -> Callable[..., Any] {
+) -> Callable[..., any] {
     sig = inspect.signature(callback);
     accepts_kwargs = any(
         (p.kind == inspect.Parameter.VAR_KEYWORD) for p in sig.parameters.values()
@@ -740,7 +740,7 @@ impl JFastApiServer._create_endpoint_function(
     params = ', '.join(param_strs);
     # Map body-param names to their Jac type objects so the wrapper can
     # reconstruct archetype instances from validated Pydantic data.
-    body_type_map: dict[str, Any] = {};
+    body_type_map: dict[str, any] = {};
     for param in body_params {
         if param.name
         and (param.type_obj is not None)
@@ -847,7 +847,7 @@ def endpoint_wrapper({params}):
         'create_model': create_model,
         'Dict': `dict,
         'List': `list,
-        'Any': Any,
+        'Any': any,
         'int': int,
         'str': str,
         'float': float,
@@ -1056,7 +1056,7 @@ impl JFastApiServer._get(
     return self;
 }
 
-impl JFastApiServer.set_user_manager(self: JFastApiServer, user_manager: Any) -> None {
+impl JFastApiServer.set_user_manager(self: JFastApiServer, user_manager: any) -> None {
     if user_manager is None {
         raise RuntimeError(
             "set_user_manager() called with None — jwt_validation_middleware will be "

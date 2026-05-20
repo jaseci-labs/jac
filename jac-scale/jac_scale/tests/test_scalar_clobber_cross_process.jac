@@ -25,7 +25,7 @@ import subprocess;
 import sys;
 import time;
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { cast }
 
 import requests;
 import from testcontainers.mongodb { MongoDbContainer }
@@ -41,7 +41,7 @@ def get_free_port -> int {
     }
 }
 
-def extract(json_response: Any) -> Any {
+def extract(json_response: any) -> any {
     if isinstance(json_response, list) and len(json_response) == 2 {
         json_response = json_response[1];
     }
@@ -88,7 +88,7 @@ def login(base_url: str, username: str) -> str {
 
 def call_walker(
     base_url: str, walker_name: str, token: str, payload: dict | None = None
-) -> Any {
+) -> any {
     res = requests.post(
         f"{base_url}/walker/{walker_name}",
         json=payload or {},
@@ -145,12 +145,12 @@ the failure message always shows the actual vs expected values.
 """
 def poll_counter(
     base_url: str, token: str, expected_a: int, expected_b: int, timeout: float = 5.0
-) -> dict[str, Any] {
+) -> dict[str, any] {
     deadline = time.time() + timeout;
-    result: dict[str, Any] = {};
+    result: dict[str, any] = {};
     while time.time() < deadline {
-        raw: Any = extract(call_walker(base_url, "ReadCounter", token));
-        result = cast(dict[str, Any], cast(list, raw["reports"])[0]);
+        raw: any = extract(call_walker(base_url, "ReadCounter", token));
+        result = cast(dict[str, any], cast(list, raw["reports"])[0]);
         if result.get("a") == expected_a and result.get("b") == expected_b {
             return result;
         }

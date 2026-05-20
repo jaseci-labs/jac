@@ -6,7 +6,6 @@ import os;
 import sys;
 import types;
 import from threading { Event }
-import from typing { Any }
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.jir {
     SEC_BYTECODE,
@@ -341,7 +340,7 @@ obj JacCompiler {
     def internal_program -> JacProgram;
 
     @classmethod
-    def _get_jaclang_root(cls: Any) -> str;
+    def _get_jaclang_root(cls: any) -> str;
 
     def _resolve_program(file_path: str, target_program: JacProgram) -> JacProgram;
     def get_native_interop_setup(
@@ -360,14 +359,14 @@ obj JacCompiler {
         full_target: str,
         target_program: JacProgram,
         cached_ir: str,
-        cached_interop: (dict[str, Any] | None)
+        cached_interop: (dict[str, any] | None)
     ) -> None;
 
     def _load_native_from_bitcode(
         full_target: str,
         target_program: JacProgram,
         section_data: bytes,
-        cached_interop: (dict[str, Any] | None)
+        cached_interop: (dict[str, any] | None)
     ) -> None;
 
     def _restore_sections(

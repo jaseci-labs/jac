@@ -1,6 +1,5 @@
 import random;
 import string;
-import from typing { Any }
 import from jaclang.runtimelib.transport { TransportResponse, Meta }
 
 """Extract path parameter names from a URL path template."""
@@ -41,7 +40,7 @@ def generate_random_password(length: int = 8) -> str {
 
 Returns the authenticated user_id or None.
 """
-def extract_bearer_token(authorization: str | None, user_manager: Any) -> str | None {
+def extract_bearer_token(authorization: str | None, user_manager: any) -> str | None {
     token: (str | None) = None;
     if (
         authorization
@@ -56,7 +55,7 @@ def extract_bearer_token(authorization: str | None, user_manager: Any) -> str | 
 """Extract Bearer token and return (user_id, None) on success or (None, error_response) on failure."""
 def authenticate_or_fail(
     authorization: str | None,
-    user_manager: Any,
+    user_manager: any,
     message: str = 'Authorization required'
 ) -> tuple[str | None, TransportResponse | None] {
     user_id = extract_bearer_token(authorization, user_manager);

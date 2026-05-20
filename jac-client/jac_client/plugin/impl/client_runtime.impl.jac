@@ -1,4 +1,4 @@
-impl __jacJsx(tag: Any, props: dict = {}, children: Any = []) -> JsxElement {
+impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     if tag == None {
         tag = React.Fragment;
     }
@@ -136,7 +136,7 @@ impl __cacheGet(key: str) -> dict {
 }
 
 # Store an entry in the cache with LRU eviction
-impl __cacheSet(key: str, data: Any, ttl: int) -> None {
+impl __cacheSet(key: str, data: any, ttl: int) -> None {
     state = __getCacheState();
     # Remove existing entry if present
     if state["cache"][key] {
@@ -197,7 +197,7 @@ impl __invalidateEndpoint(endpoint_key: str) -> None {
 # ============================================================================
 
 # Direct walker fetch (POST /walker/<name>[/<nodeId>])
-impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> Any {
+impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     url = f"{base_url}/walker/{`walker}";
@@ -226,7 +226,7 @@ impl __doWalkerFetch(`walker: str, nodeId: str, fields: dict) -> Any {
 }
 
 # Direct function fetch (POST /function/<name>)
-impl __doFuncFetch(function_name: str, args: dict) -> Any {
+impl __doFuncFetch(function_name: str, args: dict) -> any {
     token = __getLocalStorage("jac_token");
     base_url = __getApiBaseUrl();
     headers = {"Content-Type": "application/json"};
@@ -260,7 +260,7 @@ impl __doFuncFetch(function_name: str, args: dict) -> Any {
 # ============================================================================
 # AUTO-CACHE DISPATCH — shared by __jacSpawn and __jacCallFunction
 # ============================================================================
-impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: Any) -> Any {
+impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: any) -> any {
     effects = __getEndpointEffects();
     info = effects[endpoint_key];
     state = __getCacheState();
@@ -306,7 +306,7 @@ impl __cachedEndpointCall(endpoint_key: str, args_key: str, fetch_fn: Any) -> An
 # ============================================================================
 # PUBLIC API — __jacSpawn and __jacCallFunction with auto-caching
 # ============================================================================
-impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
+impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     # Auth walkers always skip cache
     if left == "login"
     or left == "signup"
@@ -319,32 +319,32 @@ impl __jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
     return await __cachedEndpointCall(
         endpoint_key,
         args_key,
-        lambda -> Any { return __doWalkerFetch(left, right, fields); }
+        lambda -> any { return __doWalkerFetch(left, right, fields); }
     );
 }
 
-impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> Any {
+impl jacSpawn(left: str, right: str = "", fields: dict = {}) -> any {
     return __jacSpawn(left, right, fields);
 }
 
-impl __jacCallFunction(function_name: str, args: dict = {}) -> Any {
+impl __jacCallFunction(function_name: str, args: dict = {}) -> any {
     endpoint_key = f"func:{function_name}";
     args_key = f"{endpoint_key}:{JSON.stringify(args)}";
     return await __cachedEndpointCall(
         endpoint_key,
         args_key,
-        lambda -> Any { return __doFuncFetch(function_name, args); }
+        lambda -> any { return __doFuncFetch(function_name, args); }
     );
 }
 
-impl __normalizeIdentity(x: Any) -> dict {
+impl __normalizeIdentity(x: any) -> dict {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
     return {"type": "username", "value": x};
 }
 
-impl __normalizeCredential(x: Any) -> dict {
+impl __normalizeCredential(x: any) -> dict {
     if x != None and Object.prototype.toString.call(x) == "[object Object]" {
         return x;
     }
@@ -489,7 +489,7 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
         <ReactRouterNavigate to={redirect} replace={True}/>;
 }
 
-impl ErrorFallback(error: str, resetErrorBoundary: Any) -> JsxElement {
+impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
     # Reporting happens in __jacReactErrorHandler (the boundary's onError prop)
     # which is the only place React exposes `info.componentStack`.
     return
@@ -1056,7 +1056,7 @@ to ErrorBoundary only receives `{error, resetErrorBoundary}` — `info` (and
 therefore `info.componentStack`, the only thing that names user components when
 the JS stack lives inside react-dom) is exclusively delivered to onError.
 Wiring this here is the one place we can capture it."""
-impl __jacReactErrorHandler(error: Any, info: Any) -> None {
+impl __jacReactErrorHandler(error: any, info: any) -> None {
     try {
         message = error.message if error else "Unknown error";
         stack = error.stack if error else "";
@@ -1078,7 +1078,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch synchronous errors (e.g., TypeError, ReferenceError)
     window.addEventListener(
         "error",
-        lambda event: Any { __jacReportError(
+        lambda event: any { __jacReportError(
             event.message or "Unknown error",
             event.error.stack if event.error else "",
             event.filename or "",
@@ -1088,7 +1088,7 @@ impl __jacInstallErrorHandlers -> None {
     # Catch unhandled promise rejections (e.g., failed fetch, async errors)
     window.addEventListener(
         "unhandledrejection",
-        lambda event: Any {
+        lambda event: any {
             reason = event.reason;
             message = "";
             stack = "";

@@ -113,7 +113,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
 
     """Get the set of builtin names, cached after first successful access."""
     @classmethod
-    def _get_builtin_names(cls: Any) -> set[str];
+    def _get_builtin_names(cls: any) -> set[str];
 
     """Get the curated ambient typing names. Single source of truth is
     `compiler/type_system/typing_ambient.pyi` — the same file TypeEvaluator
@@ -122,7 +122,7 @@ obj PyastGenPass(BaseAstGenPass[ast3.AST]) {
     a reference appears, keeping `typing.get_type_hints` / pydantic /
     FastAPI annotation introspection working at runtime."""
     @classmethod
-    def _get_ambient_typing_names(cls: Any) -> set[str];
+    def _get_ambient_typing_names(cls: any) -> set[str];
 
     def postinit -> None;
     """Enter node."""

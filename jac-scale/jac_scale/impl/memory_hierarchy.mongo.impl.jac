@@ -37,12 +37,12 @@ impl MongoBackend.postinit -> None {
 }
 
 """Get the `_quarantine` companion collection."""
-def _mongo_q_collection(backend: MongoBackend) -> Any {
+def _mongo_q_collection(backend: MongoBackend) -> any {
     return backend.db[backend.collection_name + '_quarantine'];
 }
 
 """Get the `_aliases` companion collection."""
-def _mongo_a_collection(backend: MongoBackend) -> Any {
+def _mongo_a_collection(backend: MongoBackend) -> any {
     return backend.db[backend.collection_name + '_aliases'];
 }
 
@@ -142,7 +142,7 @@ def _mongo_quarantine(
     arch_module: (str | None),
     arch_type: (str | None),
     fingerprint: (str | None),
-    data: Any,
+    data: any,
     error: str,
     from_format_version: (int | None) = None
 ) {

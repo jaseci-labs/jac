@@ -402,7 +402,7 @@ obj TypeEvaluator {
         node_: uni.Name
     ) -> (types.EnumMemberType | None);
     # gets member type and specializes it with class type_args
-    def get_type_of_member(member: Any, class_type: types.ClassType) -> TypeBase;
+    def get_type_of_member(member: any, class_type: types.ClassType) -> TypeBase;
     # Pyright: partiallySpecializeType - substitutes TypeVars using class type_args
     # Now uses type_utils.apply_solved_type_vars
     def specialize_member_type(
@@ -532,7 +532,7 @@ obj TypeEvaluator {
 
     def _strip_implicit_self_cls(method: types.FunctionType) -> types.FunctionType;
     def _get_method_with_overloads(
-        method_member: Any, caller_type: types.ClassType
+        method_member: any, caller_type: types.ClassType
     ) -> TypeBase;
 
     # -------------------------------------------------------------------------

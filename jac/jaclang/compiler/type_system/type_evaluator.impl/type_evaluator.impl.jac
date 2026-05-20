@@ -1093,7 +1093,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Constrained TypeVar - check all constraint types
                     if base_type.constraints {
-                        found_member: Any = None;
+                        found_member: any = None;
                         for constraint_type in base_type.constraints {
                             if isinstance(constraint_type, types.ClassType) {
                                 if member := self._lookup_object_member(

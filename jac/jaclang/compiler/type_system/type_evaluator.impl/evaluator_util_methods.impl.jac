@@ -192,7 +192,7 @@ from the receiver argument — `object.__new__(self.__class__)` must resolve
 `Self -> type(self.__class__)`, not the lookup-time class.
 """
 impl TypeEvaluator.get_type_of_member(
-    member: Any, class_type: types.ClassType
+    member: any, class_type: types.ClassType
 ) -> TypeBase {
     raw_type = self.get_type_of_symbol(member.symbol);
     if isinstance(raw_type, types.FunctionType) {

@@ -1,7 +1,7 @@
 """In-memory implementation of EventStreamBroker.
 Single-process, no persistence. Per-topic append-only lists + per-group integer offsets mimic Redis Streams semantics. Right for dev, tests, single-pod deployments without Redis.
 """
-import from typing { Any, Callable }
+import from typing { Callable }
 import from threading { Thread, Event as _ThreadStop, Lock }
 import from jac_scale.events.broker {
     EventStreamBroker,
@@ -16,7 +16,7 @@ glob _logger = logging.getLogger(__name__);
 
 """LocalEventStream. In-process append-only event log keyed by topic, with per-group offsets and competing-consumer fan-in within a group."""
 obj LocalEventStream(EventStreamBroker) {
-    has config: dict[str, Any] = {},
+    has config: dict[str, any] = {},
         _default_group: str = "jac-scale",
         _default_retry: RetryPolicy = RetryPolicy(),
         _stop_event: _ThreadStop = _ThreadStop(),
@@ -170,7 +170,7 @@ obj LocalEventStream(EventStreamBroker) {
         topic: str,
         group: str,
         event: Event,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         retry: RetryPolicy
     ) -> None {
         import inspect;
@@ -206,7 +206,7 @@ obj LocalEventStream(EventStreamBroker) {
     }
 
     def _consumer_loop(
-        topic: str, group: str, handler: Callable[[Event], Any], retry: RetryPolicy
+        topic: str, group: str, handler: Callable[[Event], any], retry: RetryPolicy
     ) -> None {
         while not self._stop_event.is_set() {
             events = self.consume(
@@ -223,7 +223,7 @@ obj LocalEventStream(EventStreamBroker) {
 
     def register_handler(
         topic: str,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
         start_from: str = "latest"

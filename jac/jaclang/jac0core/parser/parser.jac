@@ -491,7 +491,7 @@ obj Parser {
     def parse_await_expr -> Expr;
     def parse_pipe_call -> Expr;
     def parse_atomic_chain -> Expr;
-    def _make_attr_from_keyword(name_tok: Any);
+    def _make_attr_from_keyword(name_tok: any);
     def parse_index_slice -> IndexSlice;
     def parse_call_args(kid: list) -> list;
     def parse_call_arg -> Expr | KWPair;
@@ -586,7 +586,7 @@ obj Parser {
     def _consume_accessor_kind -> tuple[(str, Token)];
     def parse_ability -> Ability;
     def _parse_post_async_modifiers(
-        is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+        is_override: bool, override_tok: any, is_static: bool, static_tok: any
     ) -> tuple;
 
     def parse_func_signature -> FuncSignature;

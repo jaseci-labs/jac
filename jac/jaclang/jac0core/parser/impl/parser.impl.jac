@@ -1585,7 +1585,7 @@ impl Parser.parse_atomic_chain -> Expr {
 }
 
 """Create an attribute Name node from a keyword token (used for dot-access on keywords)."""
-impl Parser._make_attr_from_keyword(name_tok: Any) {
+impl Parser._make_attr_from_keyword(name_tok: any) {
     special_kinds = [
         TokenKind.KW_INIT,
         TokenKind.KW_POST_INIT,
@@ -6116,7 +6116,7 @@ impl Parser.parse_ability -> Ability {
 
 """Handle override/static modifiers that may appear after async keyword."""
 impl Parser._parse_post_async_modifiers(
-    is_override: bool, override_tok: Any, is_static: bool, static_tok: Any
+    is_override: bool, override_tok: any, is_static: bool, static_tok: any
 ) -> tuple {
     if not is_override and self.match_tok(TokenKind.KW_OVERRIDE) {
         is_override = True;

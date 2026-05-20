@@ -2,7 +2,6 @@
 import time;
 import subprocess;
 import bcrypt;
-import from typing { Any }
 import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
@@ -28,10 +27,10 @@ obj IngressDeployer {
         app_name: str,
         namespace: str,
         cluster_env: str,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         controller_name = f"{app_name}-ingress-nginx";
         cluster_resource_name = f"{namespace}-{app_name}-ingress-nginx";
@@ -431,7 +430,7 @@ obj IngressDeployer {
     longer app health-check intervals (15 s each) while NGINX is still starting.
     """
     def _wait_for_nginx_ready(
-        app_name: str, namespace: str, apps_v1: Any, max_wait: int = 180
+        app_name: str, namespace: str, apps_v1: any, max_wait: int = 180
     ) -> None {
         controller_name = f"{app_name}-ingress-nginx";
         elapsed = 0;
@@ -479,8 +478,8 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        networking_v1: Any,
-        core_v1: Any
+        networking_v1: any,
+        core_v1: any
     ) {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
@@ -736,10 +735,10 @@ obj IngressDeployer {
         app_name: str,
         namespace: str,
         cluster_env: str,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         self._deploy_nginx_controller(
             app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
@@ -755,9 +754,9 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        apps_v1: Any,
-        core_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        networking_v1: any
     ) {
         self._wait_for_nginx_ready(app_name, namespace, apps_v1);
         self._deploy_ingress_resource(
@@ -782,10 +781,10 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         self.start_controller(
             app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
@@ -813,9 +812,9 @@ obj IngressDeployer {
         app_name: str,
         namespace: str,
         cert_manager_email: str,
-        core_v1: Any,
-        apps_v1: Any,
-        custom_api: Any
+        core_v1: any,
+        apps_v1: any,
+        custom_api: any
     ) -> None {
         # Idempotency: if Issuer already exists, nothing to do
         try {
@@ -950,10 +949,10 @@ obj IngressDeployer {
     def enable_tls(
         app_name: str,
         namespace: str,
-        networking_v1: Any,
-        custom_api: Any,
-        core_v1: Any,
-        apps_v1: Any
+        networking_v1: any,
+        custom_api: any,
+        core_v1: any,
+        apps_v1: any
     ) -> None {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
@@ -1099,10 +1098,10 @@ obj IngressDeployer {
     def destroy(
         app_name: str,
         namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         controller_name = f"{app_name}-ingress-nginx";
         cluster_resource_name = f"{namespace}-{app_name}-ingress-nginx";

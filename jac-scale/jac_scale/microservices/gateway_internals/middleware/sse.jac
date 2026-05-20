@@ -28,7 +28,7 @@ import json;
 import asyncio;
 import logging;
 import from inspect { isgenerator }
-import from typing { Any, AsyncIterator, AsyncGenerator }
+import from typing { AsyncIterator, AsyncGenerator }
 
 
 glob _logger: logging.Logger = logging.getLogger("jac_scale.microservices.sse"),
@@ -36,10 +36,10 @@ glob _logger: logging.Logger = logging.getLogger("jac_scale.microservices.sse"),
      # datetime, etc. that the user's events may contain become string
      # representations instead of raising. Hoisted to module scope so we
      # don't re-bind it on every yield.
-     _DEFAULT: Any = str,
+     _DEFAULT: any = str,
      # Sentinel used to detect end-of-stream from the worker-thread side
      # (asyncio.to_thread can't propagate StopIteration cleanly).
-     _STOP: Any = object();
+     _STOP: any = object();
 
 
 """Drive `next(gen)` on a worker thread; return _STOP at end-of-stream.
@@ -47,7 +47,7 @@ glob _logger: logging.Logger = logging.getLogger("jac_scale.microservices.sse"),
 Hoisted out of sse_frame_stream because Jac doesn't support nested
 defs. Used only by the sync-generator branch.
 """
-def _next_or_stop(gen: Any) -> Any {
+def _next_or_stop(gen: any) -> any {
     try {
         return next(gen);
     } except StopIteration {
@@ -67,7 +67,7 @@ is converted to an `event: error` SSE chunk so the consumer can
 distinguish a graceful end-of-stream (`event: end`) from a producer-
 side failure. The exception is also logged.
 """
-async def sse_frame_stream(gen: Any) -> AsyncIterator[str] {
+async def sse_frame_stream(gen: any) -> AsyncIterator[str] {
     sync = isgenerator(gen);
     if not sync and not isinstance(gen, AsyncGenerator) {
         raise TypeError(

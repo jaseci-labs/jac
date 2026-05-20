@@ -14,9 +14,9 @@ impl JScaleExecutionContext.init(self: JScaleExecutionContext) -> None {
     }
     # ScaleTieredMemory gets storage config from environment variables
     self.mem = ScaleTieredMemory();
-    self.reports: list[Any] = [];
+    self.reports: list[any] = [];
     self.diagnostics: list[PermissionDenied] = [];
-    self.custom: Any = MISSING;
+    self.custom: any = MISSING;
     cached_root = _process_cache.get('system_root');
     if cached_root is not None {
         self.mem.__mem__[cached_root.id] = cached_root;
