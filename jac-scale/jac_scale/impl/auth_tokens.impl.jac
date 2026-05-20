@@ -7,15 +7,12 @@ impl AuthTokenStore.postinit -> None {
     db_cfg = get_scale_config().get_database_config();
     if db_cfg.get('mongodb_uri') {
         try {
-            self._db = Db(client=get_mongo_client(), db_name='jac_scale');
+            self._db = Db(client=get_mongo_client(), db_name='jac_db');
             # TTL index on expires_at - Mongo prunes expired records automatically.
             try {
-                self._db.client['jac_scale'][self._collection].create_index(
-                    'expires_at', expireAfterSeconds=0
-                );
-                self._db.client['jac_scale'][self._collection].create_index(
-                    'token_hash', unique=True
-                );
+                col = self._db._get_mongo_collection(self._collection);
+                col.create_index('expires_at', expireAfterSeconds=0);
+                col.create_index('token_hash', unique=True);
             } except Exception as e {
                 logger.debug(f"Could not create auth_tokens indexes: {e}");
             }
