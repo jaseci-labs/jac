@@ -1,12 +1,8 @@
 # Experimental Dockerfile: installs jaclang + jac-scale + jac-client from
-# LOCAL source (the repo's jac/, jac-scale/, jac-client/) for testing PR
-# code before PyPI ships. Build context = repo root (set by
-# k8s_microservice_real_e2e.sh).
-#
-# jac-client must come from local source too: it carries a hookimpl that
-# reads jaclang's app-identity API. When jaclang changes that API in a PR
-# (e.g. removing a static), PyPI's jac-client lags and crashes against
-# the new jaclang inside the container.
+# LOCAL source for testing PR code before PyPI ships. All three must be
+# local: jac-client carries a hookimpl into jaclang's app-identity API,
+# so a PyPI jac-client crashes against a PR that changes that API.
+# Build context = repo root (set by k8s_microservice_real_e2e.sh).
 
 FROM python:3.12-slim
 
@@ -34,9 +30,7 @@ COPY ${PROJECT_PATH} /app
 RUN if [ -f jac.toml ]; then jac install || true; fi
 RUN jac --version
 
-# Smoke: assert jaclang + jac-scale + jac-client are all installed from
-# /build/ (i.e. this PR's source), not from a PyPI release that may lag
-# behind the jaclang API this PR ships.
+# Fail fast if anything resolves to a PyPI install instead of /build/.
 RUN python -c "import jaclang, jac_scale, jac_client, os; \
 locs = {p.__name__: os.path.dirname(p.__file__) for p in (jaclang, jac_scale, jac_client)}; \
 bad = [(n, l) for n, l in locs.items() if not l.startswith('/build/')]; \
