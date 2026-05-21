@@ -201,7 +201,9 @@ test "dynamic jobs - all trigger types for walker and function" {
         # "1 hour in the future" semantics are stable regardless of CI/dev TZ.
         run_date = (
             datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
-        ).strftime("%Y-%m-%d %H:%M:%S");
+        ).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        );
 
         cases = [
             # (name, trigger_payload)
@@ -389,7 +391,6 @@ test "jobs validation and auth errors" {
             # Pydantic schema layer (CreateJobRequest) with FastAPI's default
             # 422 response, so they don't reach our custom handler and aren't
             # listed here.
-
         ];
 
         for (payload, expected_code) in invalid_request_cases {
@@ -439,7 +440,8 @@ test "ownership enforcement across users" {
 
         # Alice creates a job
         body_a = _post_job(
-            base_url, ha,
+            base_url,
+            ha,
             {
                 "walker_or_function": "DynamicScheduledWalker",
                 "trigger": "interval",
@@ -451,9 +453,7 @@ test "ownership enforcement across users" {
         assert job_id , "Expected job id on create";
 
         # Bob GET single → must not see it
-        resp = requests.get(
-            f"{base_url}/jobs/{job_id}", headers=hb, timeout=5
-        ).json();
+        resp = requests.get(f"{base_url}/jobs/{job_id}", headers=hb, timeout=5).json();
         assert not resp.get("ok") , "Bob must not see Alice's job";
         err = _err(resp);
         assert err is not None and err.get("code") == "NOT_FOUND" , (
@@ -492,9 +492,7 @@ test "ownership enforcement across users" {
         );
 
         # Alice can still access her own job
-        resp = requests.get(
-            f"{base_url}/jobs/{job_id}", headers=ha, timeout=5
-        ).json();
+        resp = requests.get(f"{base_url}/jobs/{job_id}", headers=ha, timeout=5).json();
         assert resp.get("ok") , "Alice must see her own job";
         assert _data(resp).get("job_id") == job_id;
 
@@ -526,10 +524,7 @@ test "static walkers and functions actually execute" {
         time.sleep(2.0);
 
         resp = requests.post(
-            f"{base_url}/function/get_execution_log",
-            json={},
-            headers=h,
-            timeout=5
+            f"{base_url}/function/get_execution_log", json={}, headers=h, timeout=5
         ).json();
         assert resp.get("ok") , f"get_execution_log call failed: {resp}";
         # Function endpoints wrap their return as data.result.<...>
@@ -547,8 +542,16 @@ test "static walkers and functions actually execute" {
 
         # Loose sanity check: at 0.3s interval over ~2s, expect at least 3
         # invocations of each — if we see only 1, something's gating execution.
-        walker_count = sum(1 for e in log if e == "static-interval-walker");
-        func_count = sum(1 for e in log if e == "static-interval-func");
+        walker_count = sum(
+            1
+            for e in log
+            if e == "static-interval-walker"
+        );
+        func_count = sum(
+            1
+            for e in log
+            if e == "static-interval-func"
+        );
         assert walker_count >= 3 , f"Expected >=3 walker fires, got {walker_count}";
         assert func_count >= 3 , f"Expected >=3 function fires, got {func_count}";
     } finally {
