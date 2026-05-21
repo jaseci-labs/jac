@@ -1374,7 +1374,8 @@ obj KubernetesTarget(DeploymentTarget) {
             #     Skipped in shared ingress mode — no NodePort is created.
             if not self.k8s_config.shared_ingress {
                 provider.validate_ports(
-                    node_port=self.k8s_config.ingress_node_port, current_namespace=namespace
+                    node_port=self.k8s_config.ingress_node_port,
+                    current_namespace=namespace
                 );
             }
 
