@@ -666,12 +666,20 @@ impl JacCompiler.compile(
         and not _native_typecheck_running
     ) {
         # A module is native-compiled if it is a .na.jac file (whole module
-        # in native context) or a .jac module flagged auto-promotable by
-        # UniTreeEnrichPass. Both — including entry-less .na.jac libraries —
-        # need the type checker run so NaIRGenPass can lower Expr.type.
+        # in native context) or a .jac module being auto-promoted to native
+        # in this program (the nacompile / `jac run --autonative` path sets
+        # `_auto_promote_native` on the program before compile). Plain .jac
+        # modules — even those tagged `native_compat=True` by UniTreeEnrichPass
+        # for having an `entry` block — do NOT trigger the implicit run; they
+        # follow the explicit `options.type_check` contract.
         mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
         is_native_mod = bool(mp) and mp.endswith('.na.jac');
-        if not is_native_mod and mod_targ?.gen and mod_targ.gen.native_compat {
+        if (
+            not is_native_mod
+            and getattr(actual_program, '_auto_promote_native', False)
+            and mod_targ?.gen
+            and mod_targ.gen.native_compat
+        ) {
             is_native_mod = True;
         }
         if is_native_mod {
@@ -681,32 +689,48 @@ impl JacCompiler.compile(
     if run_type_check {
         prev_native_tc = _native_typecheck_running;
         _native_typecheck_running = True;
-        # The implicit native run uses the central type checker purely for
-        # type inference — it annotates Expr.type for NaIRGenPass to lower.
-        # Native compilation keeps its own error discipline (the NA pass
-        # validates, and native numeric types like f64/i32 have conversion
-        # rules the strict checker does not model), so diagnostics from this
-        # inference-only run are discarded rather than blocking the build.
-        # An explicit `jac check` (options.type_check) keeps its diagnostics.
-        suppress_diags = not options.type_check;
+        # Explicit `jac check` (options.type_check=True) runs the full
+        # schedule — TypeCheckPass + StaticAnalysis + Portability + the
+        # enrich-pass-second-pass + Lint — and keeps all diagnostics.
+        #
+        # The implicit native run (.na.jac trigger) only needs Expr.type
+        # populated for NaIRGenPass, so it runs the inference-only schedule
+        # (TypeCheckPass alone). Rerunning UniTreeEnrichPass / Portability /
+        # Lint mutates AST state that NaIRGenPass and the cross-module linker
+        # depend on. Native compilation keeps its own error discipline (the
+        # NA pass validates, and native numeric types like f64/i32 have
+        # conversion rules the strict checker does not model), so diagnostics
+        # from this inference-only run are suppressed.
+        implicit_native = not options.type_check;
+        passes = get_native_inference_sched()
+            if implicit_native
+            else get_type_check_sched();
         err_mark = len(actual_program.errors_had);
         warn_mark = len(actual_program.warnings_had);
         try {
             self.run_schedule(
                 mod=mod_targ,
                 target_program=actual_program,
-                passes=get_type_check_sched(),
+                passes=passes,
                 cancel_token=options.cancel_token
             );
         } finally {
             _native_typecheck_running = prev_native_tc;
-            if suppress_diags {
+            if implicit_native {
                 del actual_program.errors_had[err_mark:];
                 del actual_program.warnings_had[warn_mark:];
             }
         }
     }
     if (not had_parse_errors and not options.no_cgen) {
+        # Re-pin _compile_options to *our* options before codegen runs.
+        # Earlier schedules may have invoked nested compile()s (e.g.
+        # TypeCheckPass loading an imported module to resolve a symbol),
+        # and each nested compile overwrites prog._compile_options. Native
+        # codegen (NaCompilePass) reads skip_native_engine / aot_mode from
+        # this slot; without the re-pin it would see the last nested
+        # caller's options instead of ours.
+        actual_program._compile_options = options;
         self.run_schedule(
             mod=mod_targ,
             target_program=actual_program,
