@@ -409,6 +409,41 @@ def:pub Demo() -> JsxElement {
 
 Use `as_`, not `as` -- `as` is reserved in Jac for import aliases.
 
+### `try` with `awaiting`: Suspense-shaped fallback
+
+A `try` slot can take an `awaiting` clause that names what to render while the work inside is still in flight. The cl-target compiler wraps the slot in a `<JacAwaiting>` element from `@jac/runtime` -- a thin shim over `React.Suspense` -- so the `awaiting` body renders during the dispatched-but-not-joined window and the `try` body's content takes over once the underlying async work settles.
+
+```jac
+to cl:
+
+def:pub UserCardSkeleton() -> JsxElement {
+    return <div class="card skeleton"><p>Loading user…</p></div>;
+}
+
+def:pub UserCardView(user: User) -> JsxElement {
+    return <div class="card"><h2>{user.name}</h2><p>{user.bio}</p></div>;
+}
+
+def:pub UserPanel(user: User) -> JsxElement {
+    return <section class="panel">
+        {try {
+            <UserCardView user={user}/>
+        } awaiting {
+            <UserCardSkeleton/>
+        }}
+    </section>;
+}
+```
+
+The `try` body needs a Suspense-aware data primitive (today: a `use(promise)` call or a Suspense-integrated fetcher inside the rendered subtree) for the fallback to actually fire. The wrapper is the language-level integration point -- once the `flow`/`wait` story plugs into `use()`, the same source picks up real async behavior with no call-site change.
+
+**Notes:**
+
+- `awaiting` is a clause of `try`; bare `awaiting { ... }` is a parse error.
+- `finally` alongside `awaiting` is rejected (`E2022`) -- the cleanup timing relative to the in-flight window is ambiguous.
+- `except` clauses are still legal but in v1 they don't render through the `<JacAwaiting>` wrapper -- wrap the slot with `<JacClientErrorBoundary>` for an error fallback.
+- On `sv` and `na` targets the `awaiting` body is silently dropped with a `W2020` warning; the construct compiles as an ordinary `try` until the streaming-SSR and native-thread lowerings land.
+
 ### Raw HTML: `unsafe_html`
 
 By default `{value}` is rendered as escaped text. The `unsafe_html(x)` ambient builtin returns a sentinel that the client runtime renders as raw HTML (via `dangerouslySetInnerHTML` on React, `innerHTML` on bare-serve). Use it only with content you trust -- the name is the security review hint at the call site:
@@ -544,6 +579,7 @@ def:pub app() -> JsxElement {
 | Define component | `def:pub Name(title: str, count: int) -> JsxElement { }` |
 | Statement slot | `{for x in xs { <li>{x}</li> }}` inside a JSX element |
 | Early-exit guard | bare `return;` inside a statement slot |
+| Suspense fallback | `{try { <Resolved/> } awaiting { <Loading/> }}` (cl only) |
 | Raw HTML opt-in | `{unsafe_html(trusted_html)}` |
 | Dynamic tag | `<@expr>...</@expr>` |
 | JSX element | `<div className="x">content</div>` |

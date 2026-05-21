@@ -3083,6 +3083,19 @@ impl EsastGenPass.exit_jsx_element_name(nd: uni.JsxElementName) -> None {
 
 """Process JSX element."""
 impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
+    # `<JacAwaiting>` is synthesized by ViewLowerPass to wrap a slot's
+    # `try { ... } awaiting { ... }` clause on the `cl` target. The
+    # component lives in `@jac/runtime`; auto-inject the import so the
+    # synthesized name resolves at runtime without forcing user code to
+    # import it explicitly.
+    if (
+        nd.name is not None
+        and nd.name.parts
+        and isinstance(nd.name.parts[0], uni.Name)
+        and nd.name.parts[0].value == "JacAwaiting"
+    ) {
+        self._inject_runtime_import("JacAwaiting", nd);
+    }
     nd.gen.es_ast = self.jsx_processor.element(nd);
 }
 

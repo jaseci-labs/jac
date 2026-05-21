@@ -62,6 +62,18 @@ def:pub __setLocalStorage(key: str, value: str) -> None;
 def:pub __removeLocalStorage(key: str) -> None;
 def:pub AuthGuard(redirect: str = "/login") -> JsxElement;
 def:pub ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement;
+
+# `<JacAwaiting fallback={...}>{children}</JacAwaiting>` — the compile-
+# time wrapper for a `try { ... } awaiting { ... }` template clause. The
+# view-lowering pass synthesizes this element on the `cl` target; the
+# `fallback` prop is the awaiting-clause's rendered fragment, the
+# children are the try-clause's rendered fragment. Today this is a thin
+# wrapper over `React.Suspense`; once the language's `flow`/`wait` story
+# integrates with `use()`, the same wrapper picks up real async behavior
+# with no change at the call site. The `error` slot tied to `except`
+# clauses is intentionally not part of v1 — wrap with a separate
+# `JacClientErrorBoundary` for now.
+def:pub JacAwaiting(props: dict) -> JsxElement;
 def:pub errorOverlay(filePath: str, errors: str) -> JsxElement;
 def:pub useJacForm(form_mode: str = "onTouched", schema: any) -> any;
 def:pub JacForm(props: dict) -> JsxElement;

@@ -1668,6 +1668,14 @@ impl FinallyStmt.postinit -> None {
 }
 
 
+impl AwaitingClause.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl IterForStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);

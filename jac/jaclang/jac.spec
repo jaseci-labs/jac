@@ -338,8 +338,8 @@ for_stmt ::=
     )
 
 try_stmt ::=
-    "try" "{" code_block_stmts "}" except_handler* else_stmt?
-    ("finally" "{" code_block_stmts "}")?
+    "try" "{" code_block_stmts "}" ("awaiting" "{" code_block_stmts "}")?
+    except_handler* else_stmt? ("finally" "{" code_block_stmts "}")?
 
 except_handler ::=
     "except" expression ("as" (NAME | KWESC_NAME))? "{" code_block_stmts "}"
