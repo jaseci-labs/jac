@@ -1143,16 +1143,19 @@ impl JFastApiServer.init(
         # Same pattern for distributed trace id. If the inbound request
         # lacks X-Trace-Id (e.g. client-to-service direct call, or a
         # test harness), mint one so every downstream hop has a shared
-        # correlator. Install the log filter so this service's logs
-        # get a [trace=xxxx] prefix matching the gateway's and every
-        # sibling service's.
+        # correlator. Install the JSON formatter (M-14.b) once at first
+        # request - emits structured JSON to stdout so Alloy + Loki get
+        # queryable `service`/`level`/`trace_id` fields. The function is
+        # idempotent and also installs the trace-id filter internally.
         import from jac_scale.microservices.runtime.trace_ctx {
             set_current_trace,
             reset_current_trace,
-            ensure_trace_id,
-            install_trace_log_filter
+            ensure_trace_id
         }
-        install_trace_log_filter();
+        import from jac_scale.microservices.runtime.log_emit {
+            install_structured_logging
+        }
+        install_structured_logging();
         trace_id = ensure_trace_id(request.headers.get('X-Trace-Id'));
         trace_token = set_current_trace(trace_id);
 
