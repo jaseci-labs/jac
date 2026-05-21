@@ -1,7 +1,6 @@
 """File covering plugin implementation."""
 import os;
 import pathlib;
-import from typing { Any }
 import from dotenv { load_dotenv }
 import from jaclang.cli.registry { get_registry }
 import from jaclang.cli.command { Arg, ArgKind, CommandPriority, HookContext }
@@ -35,7 +34,9 @@ def _scale_pre_hook(context: HookContext) -> None {
     if ms_config.get("enabled", False) and not is_sv_sibling {
         scale_flag = context.get_arg("scale", False);
         if not scale_flag {
-            import from jac_scale.microservices.orchestrator { start_microservice_mode }
+            import from jac_scale.microservices.orchestrator.orchestrator {
+                start_microservice_mode
+            }
             start_microservice_mode(ms_config);
             context.set_data("cancel_execution", True);
             context.set_data("cancel_return_code", 0);
@@ -123,7 +124,9 @@ def _scale_pre_hook(context: HookContext) -> None {
                 "Installing Jaseci packages from repository (experimental mode)..."
             );
         } elif target == "kubernetes-microservice" {
-            import from jac_scale.microservices._image_build { find_jaseci_repo_root }
+            import from jac_scale.microservices.images.build_helpers {
+                find_jaseci_repo_root
+            }
             repo = find_jaseci_repo_root(pathlib.Path(code_folder).resolve());
             if repo is not None {
                 console.print(
@@ -139,11 +142,11 @@ def _scale_pre_hook(context: HookContext) -> None {
         }
         # Opt into the python_image-fallback guard + auto-build only
         # on the production `jac start --scale` path. Tests using
-        # build=False for manifest-shape assertions don't see these env
-        # vars and fall through to parent behavior.
+        # build=False for manifest-shape assertions construct the
+        # target without these flags and fall through to parent behavior.
         if target == "kubernetes-microservice" {
-            os.environ["_JAC_SCALE_GUARD_FALLBACK_IMAGE"] = "1";
-            os.environ["_JAC_SCALE_AUTO_BUILD"] = "1";
+            deployment_target.auto_build = True;
+            deployment_target.guard_fallback_image = True;
         }
 
         # Deploy. Cancel execution on failure so we don't fall through to
@@ -593,7 +596,9 @@ class JacCmd {
             source="jac-scale"
         )
         def scale_cmd(action: str, service_name: str = "", lines: int = 50) -> int {
-            import from jac_scale.microservices.orchestrator { build_registry }
+            import from jac_scale.microservices.orchestrator.orchestrator {
+                build_registry
+            }
             import from jac_scale.microservices.local_deployer { LocalDeployer }
 
             scale_config = get_scale_config();
@@ -679,7 +684,9 @@ class JacCmd {
             } elif action == "gateway" {
                 # K8s gateway-only mode: no local service spawning, peer
                 # resolution via DNS through get_sv_registry.
-                import from jac_scale.microservices.orchestrator { start_gateway_only }
+                import from jac_scale.microservices.orchestrator.orchestrator {
+                    start_gateway_only
+                }
                 start_gateway_only(ms_config);
                 return 0;
             } else {
@@ -696,8 +703,14 @@ class JacCmd {
 """Jac Scale Plugin Implementation."""
 class JacScalePlugin {
     @hookimpl
-    static def create_j_context(user_root: (str | None)) -> ExecutionContext {
-        # Storage backend configured via environment (MONGODB_URI, etc.)
+    static def create_j_context(
+        user_root: (str | None),
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None
+    ) -> ExecutionContext {
+        # Storage backend configured via environment (MONGODB_URI, etc.) —
+        # base_path_dir / full_target_path are SQLite-backend artifacts that
+        # don't apply here, but the spec carries them so we accept the kwargs.
         ctx = JScaleExecutionContext();
         if user_root is not None {
             ctx.set_user_root(user_root);
@@ -758,7 +771,7 @@ class JacScalePlugin {
         import subprocess;
         import from jaclang.runtimelib { sv_client }
         import from pathlib { Path }
-        import from jac_scale.microservices._util {
+        import from jac_scale.microservices.runtime.util {
             pick_free_port,
             resolve_jac_binary,
             wait_for_health
@@ -779,8 +792,10 @@ class JacScalePlugin {
         if "KUBERNETES_SERVICE_HOST" in os.environ {
             try {
                 import from jac_scale.config_loader { get_scale_config }
-                import from jac_scale.microservices.k8s_target { k8s_safe_name }
-                import from jac_scale.microservices._util {
+                import from jac_scale.targets.kubernetes.microservice.manifest_builder {
+                    k8s_safe_name
+                }
+                import from jac_scale.microservices.runtime.util {
                     k8s_service_dns_url,
                     in_cluster_namespace
                 }
@@ -875,7 +890,9 @@ class JacScalePlugin {
         # K8s mode: build DNS map from configured routes.
         try {
             import from jac_scale.config_loader { get_scale_config }
-            import from jac_scale.microservices.k8s_deployer { build_k8s_registry }
+            import from jac_scale.targets.kubernetes.microservice.runtime_resolver {
+                build_k8s_registry
+            }
             ms_cfg = get_scale_config().get_microservices_config();
             routes: dict[str, str] = ms_cfg.get("routes", {});
             port: int = int(ms_cfg.get("gateway_port", 8000));
@@ -924,12 +941,12 @@ class JacScalePlugin {
     RuntimeError (we cannot replay events that were already consumed).
     """
     @hookimpl
-    static def sv_service_call(module_name: str, func_name: str, args: dict) -> Any {
+    static def sv_service_call(module_name: str, func_name: str, args: dict) -> any {
         import time;
         import from jaclang.runtimelib { sv_client }
         import from jaclang.runtimelib.sv_sse { consume_sse_stream }
-        import from jac_scale.microservices._auth_ctx { get_current_auth }
-        import from jac_scale.microservices._trace_ctx { get_current_trace }
+        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
+        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
 
         func_label = f"{module_name}.{func_name}";
 
@@ -1071,12 +1088,12 @@ class JacScalePlugin {
     """
     @hookimpl
     static def sv_walker_call(
-        module_name: str, walker_name: str, args: dict, stub_cls: Any
-    ) -> Any {
+        module_name: str, walker_name: str, args: dict, stub_cls: any
+    ) -> any {
         import time;
         import from jaclang.runtimelib { sv_client }
-        import from jac_scale.microservices._auth_ctx { get_current_auth }
-        import from jac_scale.microservices._trace_ctx { get_current_trace }
+        import from jac_scale.microservices.runtime.auth_ctx { get_current_auth }
+        import from jac_scale.microservices.runtime.trace_ctx { get_current_trace }
 
         label = f"{module_name}.{walker_name}";
 
@@ -1163,8 +1180,8 @@ The TestClient branch passes `client=None` because the TestClient
 instance is owned by sv_client._test_clients and outlives the call.
 """
 def _wrap_sse_keepalive_scale(
-    stream_cm: Any, resp: Any, client: Any, func_label: str
-) -> Any {
+    stream_cm: any, resp: any, client: any, func_label: str
+) -> any {
     import from jaclang.runtimelib.sv_sse { consume_sse_stream }
     try {
         for ev in consume_sse_stream(resp, func_label) {
@@ -1328,7 +1345,7 @@ Shared between the retry and test-client paths in sv_service_call so
 both observe the same error semantics. Raises RuntimeError with the
 envelope's error message when ok=false.
 """
-def _unwrap_sv_envelope(data: Any, module_name: str, func_name: str) -> Any {
+def _unwrap_sv_envelope(data: any, module_name: str, func_name: str) -> any {
     if isinstance(data, dict) and data.get("ok") {
         result_envelope = data.get("data");
         if isinstance(result_envelope, dict) and ("result" in result_envelope) {
@@ -1354,8 +1371,8 @@ can read both like a locally-spawned walker. Raises RuntimeError on
 envelope-level failure, matching `_unwrap_sv_envelope`.
 """
 def _hydrate_walker_envelope(
-    data: Any, module_name: str, walker_name: str, stub_cls: Any
-) -> Any {
+    data: any, module_name: str, walker_name: str, stub_cls: any
+) -> any {
     if isinstance(data, dict) and data.get("ok") {
         envelope = data.get("data") or {};
         result_dict = envelope.get("result") if isinstance(envelope, dict) else None;

@@ -192,6 +192,11 @@ impl EsastGenPass.exit_await_expr(nd: uni.AwaitExpr) -> None {
     nd.gen.es_ast = await_expr;
 }
 
+"""Process type-cast expression — type-erased, forward the operand."""
+impl EsastGenPass.exit_cast_expr(nd: uni.CastExpr) -> None {
+    nd.gen.es_ast = nd.value.gen.es_ast;
+}
+
 """Process ternary expression."""
 impl EsastGenPass.exit_if_else_expr(nd: uni.IfElseExpr) -> None {
     `test = cast(
@@ -727,7 +732,22 @@ impl EsastGenPass.exit_set_val(nd: uni.SetVal) -> None {
 impl EsastGenPass.exit_list_val(nd: uni.ListVal) -> None {
     elements: list[es.Expression | es.SpreadElement | None] = [];
     for item in nd.values {
-        if item.gen.es_ast {
+        # `[*xs, y]` — a star-unary element is an array spread, not a `!`
+        # unary. Emit a SpreadElement over the operand.
+        if (
+            isinstance(item, uni.UnaryExpr)
+            and item.op.name == Tok.STAR_MUL.value
+            and item.operand.gen.es_ast
+        ) {
+            elements.append(
+                self.sync_loc(
+                    es.SpreadElement(
+                        argument=cast(es.Expression, item.operand.gen.es_ast)
+                    ),
+                    jac_node=item
+                )
+            );
+        } elif item.gen.es_ast {
             elements.append(cast(es.Expression, item.gen.es_ast));
         }
     }
@@ -1071,7 +1091,7 @@ to the AST so codegen still handles unanalyzed call paths (e.g. local
 ``def`` calls in ``.cl.jac`` that never crossed the interop boundary).
 """
 impl EsastGenPass._extract_return_type(
-    ability_node: uni.Ability, func_name: str, manifest: Any
+    ability_node: uni.Ability, func_name: str, manifest: any
 ) -> str {
     if manifest {
         for b in manifest.server_exports_to_client {
@@ -1904,7 +1924,7 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
                 value_expr
                 or self._get_ast_or_default(
                     nd.value,
-                    default_factory=lambda _src: Any : es.Identifier(name='undefined')
+                    default_factory=lambda _src: any : es.Identifier(name='undefined')
                 )
             )
         );
@@ -1955,7 +1975,7 @@ impl EsastGenPass.exit_assignment(nd: uni.Assignment) -> None {
             value_expr
             or self._get_ast_or_default(
                 nd.value,
-                default_factory=lambda _src: Any : es.Identifier(name='undefined')
+                default_factory=lambda _src: any : es.Identifier(name='undefined')
             )
         )
     );
@@ -2208,7 +2228,7 @@ impl EsastGenPass.exit_unary_expr(nd: uni.UnaryExpr) -> None {
     operand = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.operand, default_factory=lambda _src: Any : es.Literal(value=0)
+            nd.operand, default_factory=lambda _src: any : es.Literal(value=0)
         )
     );
     op_tok = Tok(nd.op.name) if (nd.op.name in Tok.__members__) else None;
@@ -2243,7 +2263,7 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.left,
-            default_factory=lambda src: Any :
+            default_factory=lambda src: any :
                 es.Identifier(name=src.sym_name)
                     if isinstance(src, uni.Name)
                     else es.Identifier(name='left')
@@ -2254,7 +2274,7 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
             es.Expression,
             self._get_ast_or_default(
                 right_node,
-                default_factory=lambda src: Any :
+                default_factory=lambda src: any :
                     es.Identifier(name=src.sym_name)
                         if isinstance(src, uni.Name)
                         else es.Identifier(name='right')
@@ -2290,18 +2310,55 @@ impl EsastGenPass.exit_compare_expr(nd: uni.CompareExpr) -> None {
                 continue;
             }
         }
-        operator = ES_COMPARISON_OPS.get(op_tok) if op_tok else None;
-        operator = operator or '===';
-        comparison: (es.UnaryExpression | es.BinaryExpression);
-        if (op_tok == Tok.KW_NIN) {
-            in_expr = self.sync_loc(
-                es.BinaryExpression(operator='in', left=left, right=right), jac_node=nd
-            );
-            comparison = self.sync_loc(
-                es.UnaryExpression(operator='!', prefix=True, argument=in_expr),
+        comparison: es.Expression;
+        if (op_tok in (Tok.KW_IN, Tok.KW_NIN)) {
+            # The container type could not be resolved statically. A raw JS
+            # `in` is not a valid translation of Jac's `in`: it throws a
+            # TypeError on string operands and tests array indices rather
+            # than element values. Route through the runtime-polymorphic
+            # `_jac.poly.contains`, which dispatches on the value at runtime.
+            contains_callee = self.sync_loc(
+                es.MemberExpression(
+                    object=self.sync_loc(
+                        es.MemberExpression(
+                            object=self.sync_loc(
+                                es.Identifier(name='_jac'), jac_node=nd
+                            ),
+                            property=self.sync_loc(
+                                es.Identifier(name='poly'), jac_node=nd
+                            ),
+                            computed=False
+                        ),
+                        jac_node=nd
+                    ),
+                    property=self.sync_loc(es.Identifier(name='contains'), jac_node=nd),
+                    computed=False
+                ),
                 jac_node=nd
             );
+            self.needs_jac_runtime = True;
+            contains_call = self.sync_loc(
+                es.CallExpression(
+                    callee=cast(es.Expression, contains_callee),
+                    arguments=[cast(es.Expression, right), cast(es.Expression, left)]
+                ),
+                jac_node=nd
+            );
+            if (op_tok == Tok.KW_NIN) {
+                comparison = self.sync_loc(
+                    es.UnaryExpression(
+                        operator='!',
+                        prefix=True,
+                        argument=cast(es.Expression, contains_call)
+                    ),
+                    jac_node=nd
+                );
+            } else {
+                comparison = cast(es.Expression, contains_call);
+            }
         } else {
+            operator = ES_COMPARISON_OPS.get(op_tok) if op_tok else None;
+            operator = operator or '===';
             comparison = self.sync_loc(
                 es.BinaryExpression(operator=operator, left=left, right=right),
                 jac_node=nd
@@ -2341,14 +2398,14 @@ impl EsastGenPass.exit_bool_expr(nd: uni.BoolExpr) -> None {
     result: es.Expression = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.values[0], default_factory=lambda _src: Any : es.Literal(value=None)
+            nd.values[0], default_factory=lambda _src: any : es.Literal(value=None)
         )
     );
     for val in nd.values[1:] {
         right = cast(
             es.Expression,
             self._get_ast_or_default(
-                val, default_factory=lambda _src: Any : es.Literal(value=None)
+                val, default_factory=lambda _src: any : es.Literal(value=None)
             )
         );
         result = self.sync_loc(
@@ -2365,7 +2422,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.left,
-            default_factory=lambda src: Any :
+            default_factory=lambda src: any :
                 es.Identifier(name=src.sym_name)
                     if isinstance(src, uni.Name)
                     else es.Literal(value=0)
@@ -2375,7 +2432,7 @@ impl EsastGenPass.exit_binary_expr(nd: uni.BinaryExpr) -> None {
         es.Expression,
         self._get_ast_or_default(
             nd.right,
-            default_factory=lambda src: Any :
+            default_factory=lambda src: any :
                 es.Identifier(name=src.sym_name)
                     if isinstance(src, uni.Name)
                     else es.Literal(value=0)
@@ -2486,7 +2543,7 @@ impl EsastGenPass.exit_switch_case(nd: uni.SwitchCase) -> None {
     case_test: (es.Expression | None) = None;
     if (nd.pattern and isinstance(nd.pattern, uni.MatchValue)) {
         case_test = self._get_ast_or_default(
-            nd.pattern.value, default_factory=lambda _src: Any : es.Literal(value=None)
+            nd.pattern.value, default_factory=lambda _src: any : es.Literal(value=None)
         );
     }
     body_stmts = self._collect_stmt_body(nd.body);
@@ -2498,7 +2555,7 @@ impl EsastGenPass.exit_switch_case(nd: uni.SwitchCase) -> None {
 """Process switch statement."""
 impl EsastGenPass.exit_switch_stmt(nd: uni.SwitchStmt) -> None {
     `test = self._get_ast_or_default(
-        nd.target, default_factory=lambda _src: Any : es.Literal(value=None)
+        nd.target, default_factory=lambda _src: any : es.Literal(value=None)
     );
     cases: list[es.SwitchCase] = [];
     for stmt in nd.cases {
@@ -2517,7 +2574,7 @@ impl EsastGenPass.exit_expr_stmt(nd: uni.ExprStmt) -> None {
     expr = cast(
         es.Expression,
         self._get_ast_or_default(
-            nd.expr, default_factory=lambda _src: Any : es.Literal(value=None)
+            nd.expr, default_factory=lambda _src: any : es.Literal(value=None)
         )
     );
     expr_stmt = self.sync_loc(es.ExpressionStatement(expression=expr), jac_node=nd);
@@ -2914,7 +2971,7 @@ impl EsastGenPass.exit_iter_for_stmt(nd: uni.IterForStmt) -> None {
 """Process while statement."""
 impl EsastGenPass.exit_while_stmt(nd: uni.WhileStmt) -> None {
     `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: Any : es.Literal(value=True)
+        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
     );
     body = self._build_block_statement(nd, nd.body);
     while_stmt = self.sync_loc(es.WhileStatement(`test=`test, body=body), jac_node=nd);
@@ -2932,7 +2989,7 @@ impl EsastGenPass.exit_else_stmt(nd: uni.ElseStmt) -> None {
 """Process else-if clause."""
 impl EsastGenPass.exit_else_if(nd: uni.ElseIf) -> None {
     `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: Any : es.Literal(value=True)
+        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
     );
     consequent = self._build_block_statement(nd, nd.body);
     alternate: (es.Statement | None) = None;
@@ -2949,7 +3006,7 @@ impl EsastGenPass.exit_else_if(nd: uni.ElseIf) -> None {
 """Process if statement."""
 impl EsastGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
     `test = self._get_ast_or_default(
-        nd.condition, default_factory=lambda _src: Any : es.Literal(value=True)
+        nd.condition, default_factory=lambda _src: any : es.Literal(value=True)
     );
     consequent = self._build_block_statement(nd, nd.body);
     alternate: (es.Statement | None) = None;
@@ -2966,6 +3023,37 @@ impl EsastGenPass.exit_if_stmt(nd: uni.IfStmt) -> None {
 """Process JSX expression child."""
 impl EsastGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     self.jsx_processor.expression(nd);
+}
+
+"""Process JSX statement-form slot.
+
+A `JsxSlot` whose body has been lowered by `ViewLowerPass` (statements,
+including `__jac_view_kids = []` init and the trailing fragment-return
+guard) is wrapped here in an arrow function and called inline. The IIFE
+result is the slot's child expression -- the rendered JSX fragment of
+everything the body accumulated."""
+impl EsastGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    body_stmts: list = [];
+    for stmt in nd.body {
+        if stmt.gen.es_ast is None {
+            continue;
+        }
+        if isinstance(stmt.gen.es_ast, `list) {
+            for sub in stmt.gen.es_ast {
+                if sub is not None {
+                    body_stmts.append(sub);
+                }
+            }
+        } else {
+            body_stmts.append(stmt.gen.es_ast);
+        }
+    }
+    block = self.sync_loc(es.BlockStatement(body=body_stmts), jac_node=nd);
+    arrow = self.sync_loc(
+        es.ArrowFunctionExpression(params=[], body=block, async_=False), jac_node=nd
+    );
+    call = self.sync_loc(es.CallExpression(callee=arrow, arguments=[]), jac_node=nd);
+    nd.gen.es_ast = call;
 }
 
 """Process JSX text node."""
@@ -2995,6 +3083,19 @@ impl EsastGenPass.exit_jsx_element_name(nd: uni.JsxElementName) -> None {
 
 """Process JSX element."""
 impl EsastGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
+    # `<JacAwaiting>` is synthesized by ViewLowerPass to wrap a slot's
+    # `try { ... } awaiting { ... }` clause on the `cl` target. The
+    # component lives in `@jac/runtime`; auto-inject the import so the
+    # synthesized name resolves at runtime without forcing user code to
+    # import it explicitly.
+    if (
+        nd.name is not None
+        and nd.name.parts
+        and isinstance(nd.name.parts[0], uni.Name)
+        and nd.name.parts[0].value == "JacAwaiting"
+    ) {
+        self._inject_runtime_import("JacAwaiting", nd);
+    }
     nd.gen.es_ast = self.jsx_processor.element(nd);
 }
 
@@ -4668,6 +4769,44 @@ Returns dict with 'is_writer' (bool) and 'touches' (list of node type names).
 impl EsastGenPass._analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> dict {
     is_writer = False;
     touches: set[str] = set();
+    visited_funcs: set[int] = set();
+    """Resolve a called ability's body to a flat statement list (inline or impl).""";
+    def _ability_body(ab: uni.Ability) -> list {
+        ab_body = ab.body;
+        if isinstance(ab_body, list) {
+            return ab_body;
+        }
+        if isinstance(ab_body, uni.ImplDef) and isinstance(ab_body.body, Sequence) {
+            return [stmt for stmt in ab_body.body];
+        }
+        return [];
+    }
+    mod_def_index: dict[int, dict] = {};
+    """Resolve a called name to a module-level def in the call site's module.
+
+    Fallback for when the call's symbol is unresolved -- server walker bodies
+    introspected by the client pass never go through full symbol resolution,
+    so `_resolve_call_ability` (which relies on resolved symbols) returns
+    None. Looking the name up syntactically in the host module still finds
+    the helper.
+    """;
+    def _local_def(call_nd: uni.UniNode, name: str) -> (uni.Ability | None) {
+        host_mod = call_nd.find_parent_of_type(uni.Module);
+        if not host_mod {
+            return None;
+        }
+        index = mod_def_index.get(id(host_mod));
+        if index is None {
+            index = {};
+            for ab in host_mod.get_all_sub_nodes(uni.Ability) {
+                if isinstance(ab.name_ref, uni.Name) and not ab.is_method {
+                    index[ab.name_ref.sym_name] = ab;
+                }
+            }
+            mod_def_index[id(host_mod)] = index;
+        }
+        return index.get(name);
+    }
     """Recursively scan a node and its descendants for effects.""";
     def _scan(nd: uni.UniNode) {
         nonlocal is_writer;
@@ -4732,6 +4871,23 @@ impl EsastGenPass._analyze_body_effects(body_nodes: Sequence[uni.UniNode]) -> di
                     touches.add(target_sym.sym_name);
                     # Constructing a node/edge is a write
                     is_writer = True;
+                }
+            }
+            # Interprocedural: follow the call into a def/ability helper so
+            # graph mutations hidden behind a helper still mark the caller as
+            # a writer (and propagate any node types it touches). Without
+            # this, a walker that delegates its write to a plain `def` is
+            # misclassified as a reader and the client cache is never
+            # invalidated. The visited_funcs guard makes mutual/self
+            # recursion terminate.
+            callee = self._resolve_call_ability(nd);
+            if not callee and isinstance(nd.target, uni.Name) {
+                callee = _local_def(nd, nd.target.sym_name);
+            }
+            if callee and id(callee) not in visited_funcs {
+                visited_funcs.add(id(callee));
+                for stmt in _ability_body(callee) {
+                    _scan(stmt);
                 }
             }
         }
@@ -4979,7 +5135,7 @@ impl EsastGenPass._expr_from_node(
     nd: (uni.UniNode | None), `default: LiteralValue = None
 ) -> es.Expression {
     generated = self._get_ast_or_default(
-        nd, default_factory=lambda src: Any : es.Literal(value=`default)
+        nd, default_factory=lambda src: any : es.Literal(value=`default)
     );
     if isinstance(generated, es.Expression) {
         return generated;

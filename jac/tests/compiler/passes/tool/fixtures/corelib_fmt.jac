@@ -139,7 +139,7 @@ obj JacPlugin {
     ) -> Archetype;
 
     @hookimpl
-    static def visit_node(walker_obj: Any, expr: Any) -> bool;
+    static def visit_node(walker_obj: any, expr: any) -> bool;
 }
 
 impl Memory.get_obj(caller_id: UUID, item_id: UUID, `override: bool = False) -> Element {
@@ -465,7 +465,7 @@ impl JacPlugin.connect(
     left.connect_node(right.__jac__, edg.__jac__);
 }
 
-impl JacPlugin.visit_node(walker_obj: Any, expr: Any) -> bool {
+impl JacPlugin.visit_node(walker_obj: any, expr: any) -> bool {
     return walker_obj.__jac__.visit_node(expr);
 }
 

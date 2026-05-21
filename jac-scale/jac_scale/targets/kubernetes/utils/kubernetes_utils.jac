@@ -14,6 +14,7 @@ import from jac_scale._optdeps.kubernetes {
     ApiException,
     ConfigException
 }
+import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 import from requests.exceptions { RequestException }
 
 """Each companion component: (suffix, display_name, is_statefulset).
@@ -89,7 +90,7 @@ def check_deployment_status(
 
 def cluster_type -> str;
 
-def check_node_ports_available(node_port: int, current_namespace: str) -> None;
+def get_cluster_provider -> ClusterProvider;
 
 def ensure_pvc_exists(
     core_v1: client.CoreV1Api,

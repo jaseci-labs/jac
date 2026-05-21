@@ -1,7 +1,6 @@
 """Implementation for NativeStructView and NativeListView."""
 
 import ctypes;
-import from typing { Any }
 
 impl NativeStructView.postinit -> None {
     # from_address: NO copy -- creates view over C memory
@@ -17,7 +16,7 @@ impl NativeStructView.postinit -> None {
     }
 }
 
-impl NativeStructView.__getattr__(name: str) -> Any {
+impl NativeStructView.__getattr__(name: str) -> any {
     native = self._native;
     try {
         raw = getattr(native, name);
@@ -27,7 +26,7 @@ impl NativeStructView.__getattr__(name: str) -> Any {
     return self._resolve(name, raw);
 }
 
-impl NativeStructView._resolve(name: str, raw: Any) -> Any {
+impl NativeStructView._resolve(name: str, raw: any) -> any {
     finfo = self._field_meta.get(name);
     if finfo is None {
         return raw;
@@ -83,7 +82,7 @@ impl NativeStructView._resolve(name: str, raw: Any) -> Any {
     return raw;
 }
 
-impl NativeStructView.__getitem__(key: str) -> Any {
+impl NativeStructView.__getitem__(key: str) -> any {
     return getattr(self, key);
 }
 
@@ -91,11 +90,11 @@ impl NativeStructView.__contains__(key: str) -> bool {
     return key in self._field_meta;
 }
 
-impl NativeStructView.keys -> Any {
+impl NativeStructView.keys -> any {
     return self._field_meta.keys();
 }
 
-impl NativeStructView.items -> Any {
+impl NativeStructView.items -> any {
     return ((k, self[k]) for k in self.keys());
 }
 
@@ -137,7 +136,7 @@ impl NativeListView.__len__ -> int {
     return self._count;
 }
 
-impl NativeListView.__getitem__(index: Any) -> Any {
+impl NativeListView.__getitem__(index: any) -> any {
     if isinstance(index, slice) {
         return [self[i] for i in range(*index.indices(self._count))];
     }
@@ -168,13 +167,13 @@ impl NativeListView.__getitem__(index: Any) -> Any {
     return raw;
 }
 
-impl NativeListView.__iter__ -> Any {
+impl NativeListView.__iter__ -> any {
     for i in range(len(self)) {
         yield self[i];
     }
 }
 
-impl NativeListView.__eq__(other: Any) -> Any {
+impl NativeListView.__eq__(other: any) -> any {
     if isinstance(other, list) {
         return (len(self) == len(other) and all(a == b for (a, b) in zip(self, other)));
     }

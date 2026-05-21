@@ -5,7 +5,7 @@ import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.passes { UniPass }
 
 """Convert a TypeBase to a backend-neutral type tag string, or None."""
-def _typebase_to_tag(t: Any) -> (str | None);
+def _typebase_to_tag(t: any) -> (str | None);
 
 """Pre-compute backend hints on every Expr and Name node."""
 obj UniTreeEnrichPass(UniPass) {

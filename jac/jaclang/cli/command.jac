@@ -4,7 +4,7 @@ This module provides the foundational types for declaring CLI commands
 with structured metadata that enables auto-documentation and plugin extension.
 """
 
-import from typing { Any, Callable }
+import from typing { Callable }
 
 """Kind of command-line argument."""
 enum ArgKind {
@@ -32,11 +32,11 @@ Provides structured argument definitions that enable:
 obj Arg {
     has name: str,  # Parameter name
         kind: ArgKind = ArgKind.OPTION,  # Argument kind
-        typ: Any = str,  # Python type for conversion
-        `default: Any = None,  # Default value
+        typ: any = str,  # Python type for conversion
+        `default: any = None,  # Default value
         help: str = "",  # Help text for this argument
         short: str | None = None,  # Short flag, e.g., "-s" for "--session"
-        choices: list[Any] | None = None,  # Valid choices
+        choices: list[any] | None = None,  # Valid choices
         required: bool = False,  # Whether argument is required
         dest: str | None = None,  # Override destination variable name
         metavar: str | None = None,  # Display name in help
@@ -45,11 +45,11 @@ obj Arg {
     static def create(
         name: str,
         kind: ArgKind = ArgKind.OPTION,
-        typ: Any = str,
-        `default: Any = None,
+        typ: any = str,
+        `default: any = None,
         help: str = "",
         short: str | None = None,
-        choices: list[Any] | None = None,
+        choices: list[any] | None = None,
         required: bool = False,
         metavar: str | None = None
     ) -> Arg;
@@ -92,10 +92,10 @@ Provides a mutable context for:
 """
 obj HookContext {
     has command_name: str,  # Name of the command being executed
-        args: dict[str, Any],  # Parsed command arguments
-        data: dict[str, Any] = {};  # Mutable context for hook communication
+        args: dict[str, any],  # Parsed command arguments
+        data: dict[str, any] = {};  # Mutable context for hook communication
 
-    def get_arg(name: str, `default: Any = None) -> Any;
-    def set_data(key: str, value: Any) -> None;
-    def get_data(key: str, `default: Any = None) -> Any;
+    def get_arg(name: str, `default: any = None) -> any;
+    def set_data(key: str, value: any) -> None;
+    def get_data(key: str, `default: any = None) -> any;
 }

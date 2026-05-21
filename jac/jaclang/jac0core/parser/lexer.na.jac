@@ -34,7 +34,14 @@ obj Lexer {
         jsx_closing_tag: bool = False,  # True when scanning a closing tag </...>
         prev_token_kind:
             TokenKind | None = None,  # Previous token kind for JSX disambiguation
-        comments: list[tuple[str, int, int, int, int, int, int, bool]] = [];
+        comments: list[tuple[str, int, int, int, int, int, int, bool]] = [],
+        # JSX `{...}` slot tracking (statement-position JSX disambiguation).
+        # A slot body is a statement region: a bare `<Tag>` after `}` or a
+        # sibling JSX close tag must lex as JSX, not as a `<` comparison.
+        _brace_depth: int = 0,  # running { } nesting depth
+        _paren_depth: int = 0,  # running ( ) nesting depth
+        _bracket_depth: int = 0,  # running [ ] nesting depth
+        _view_body_depths: list[int] = [];  # brace depths at which slot bodies open
 
     # Mode management
     def push_mode(mode: LexerMode);
@@ -43,6 +50,8 @@ obj Lexer {
     def in_fstring -> bool;
     def in_jsx -> bool;
     def prev_is_value -> bool;
+    def in_view_body -> bool;
+    def _track_view_context(tok: Token);
     # Character access
     def current -> str;
     def peek(offset: int = 1) -> str;
@@ -57,6 +66,14 @@ obj Lexer {
     ) -> Token;
 
     def error(
+        message: str,
+        start_line: int,
+        start_col: int,
+        start_pos: int,
+        code_str: str = ""
+    );
+
+    def warning(
         message: str,
         start_line: int,
         start_col: int,

@@ -115,7 +115,7 @@ def lookup_symtab(
 ) -> (Symbol | None);
 
 def class_implements_protocol(
-    cls: types.ClassType, proto: types.ClassType, evaluator: Any = None
+    cls: types.ClassType, proto: types.ClassType, evaluator: any = None
 ) -> bool;
 
 # Generator / Iterator return-type helpers.

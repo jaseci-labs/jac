@@ -1,7 +1,6 @@
 """Prometheus and Grafana monitoring stack deployer for Kubernetes."""
 import re;
 import hashlib;
-import from typing { Any }
 import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
@@ -10,6 +9,7 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     delete_k8s_secret,
     resize_pvc_if_needed
 }
+import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 
 """Deploys and destroys a Prometheus + Grafana monitoring stack scoped to an app namespace.
 
@@ -38,7 +38,11 @@ obj MonitoringDeployer {
       - node-exporter for host-level node metrics (CPU, memory, disk, network)
     """
     def _deploy_prometheus(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any,
+        provider: ClusterProvider
     ) {
         prometheus_name = f"{app_name}-prometheus";
         ksm_name = f"{app_name}-kube-state-metrics";
@@ -57,8 +61,7 @@ obj MonitoringDeployer {
             }
         }
 
-        # Use the service port (80 on AWS LoadBalancer, container_port on local NodePort)
-        service_port = 80 if cluster_env == 'aws' else self.k8s_config.container_port;
+        service_port = provider.prometheus_scrape_port(self.k8s_config.container_port);
 
         scrape_config = (
             "global:\n"
@@ -301,7 +304,7 @@ obj MonitoringDeployer {
     A ClusterRole is required so it can list/watch cluster-wide resources.
     """
     def _deploy_kube_state_metrics(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
         ksm_name = f"{app_name}-kube-state-metrics";
         ksm_sa_name = f"{ksm_name}-sa";
@@ -543,7 +546,7 @@ obj MonitoringDeployer {
     to it correctly.
     """
     def _deploy_node_exporter(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
         ne_name = f"{app_name}-node-exporter";
 
@@ -666,9 +669,7 @@ obj MonitoringDeployer {
       - jac-scale.json: Jaseci app HTTP metrics (requests, latency, errors)
       - k8s-metrics.json: Kubernetes cluster metrics (nodes, pods, deployments)
     """
-    def _deploy_grafana(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
-    ) {
+    def _deploy_grafana(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         grafana_name = f"{app_name}-grafana";
         prometheus_name = f"{app_name}-prometheus";
         grafana_secret_name = f"{grafana_name}-secret";
@@ -1250,7 +1251,11 @@ obj MonitoringDeployer {
 
     """Deploy the full monitoring stack (Prometheus, kube-state-metrics, node-exporter, Grafana) for an app namespace."""
     def deploy(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
+        app_name: str,
+        namespace: str,
+        apps_v1: Any,
+        core_v1: Any,
+        provider: ClusterProvider
     ) -> None {
         if not self.k8s_config.monitoring_enabled {
             return;
@@ -1260,12 +1265,12 @@ obj MonitoringDeployer {
             self._deploy_kube_state_metrics(app_name, namespace, apps_v1, core_v1);
             self._deploy_node_exporter(app_name, namespace, apps_v1, core_v1);
         }
-        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, cluster_env);
-        self._deploy_grafana(app_name, namespace, apps_v1, core_v1, cluster_env);
+        self._deploy_prometheus(app_name, namespace, apps_v1, core_v1, provider);
+        self._deploy_grafana(app_name, namespace, apps_v1, core_v1);
     }
 
     """Destroy all monitoring resources: Prometheus, Grafana, kube-state-metrics, node-exporter."""
-    def destroy(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def destroy(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         prometheus_name = f"{app_name}-prometheus";
         grafana_name = f"{app_name}-grafana";
         ksm_name = f"{app_name}-kube-state-metrics";

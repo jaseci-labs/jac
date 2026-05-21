@@ -67,7 +67,7 @@ obj _FakeTool {
     has name_str: str,
         serialize: bool = False,
         timeout_sec: float | None = None,
-        func: Any = None;
+        func: any = None;
 
     def postinit {
         self.func = _noop;
@@ -85,9 +85,9 @@ obj _FakeTC {
         tc_serialize: bool = False,
         tc_should_raise: bool = False,
         call_count: int = 0,
-        call_thread: Any = None,
+        call_thread: any = None,
         call_id: str = "",
-        tool: Any = None;
+        tool: any = None;
 
     def postinit {
         self.call_id = f"call_{self.tc_name}";
@@ -467,7 +467,7 @@ obj _MockMTRun {
     has call_params: dict = {},
         tools: list = [],
         stream: bool = False,
-        mtir: Any = None,
+        mtir: any = None,
         messages: list = [];
 
     def get_msg_list -> list {
@@ -481,7 +481,7 @@ obj _MockMTRun {
         return [t.get_json_schema() for t in self.tools];
     }
 
-    def get_output_schema -> Any {
+    def get_output_schema -> any {
         return None;
     }
 }

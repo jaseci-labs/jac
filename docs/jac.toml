@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 
 [project.include]
-modules = ["jac_syntax_highlighter"]
+packages = ["jac_syntax_highlighter"]
 
 [dependencies]
 "pygments" = "<2.20"

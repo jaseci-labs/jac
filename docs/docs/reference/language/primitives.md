@@ -43,24 +43,28 @@ A **codespace** determines *where* your code runs. You select a codespace with a
 
 Code outside any tagged region defaults to the server codespace.
 
-### Section headers (preferred)
+### Braced blocks (recommended)
 
-A `to cl:` / `to sv:` / `to na:` header sets the default codespace for **every following module-level element** until the next header or end of file. This keeps cl/sv/na-heavy modules flat -- no wrapping block, no trailing brace far from the opening:
+A `cl { ... }` / `sv { ... }` / `na { ... }` block tags every element inside it for that codespace. The braces make the boundary explicit -- the opening keyword and closing brace bracket exactly the tagged region -- which is the clearest way to mix codespaces in one file:
 
 ```jac
-to cl:
+cl {
+    def:pub Greeting(props: dict) -> JsxElement {
+        return <h1>Hello, {props.name}!</h1>;
+    }
 
-def:pub Greeting(props: dict) -> JsxElement {
-    return <h1>Hello, {props.name}!</h1>;
-}
-
-def:pub Counter() -> JsxElement {
-    has count: int = 0;
-    return <button onClick={lambda { count = count + 1; }}>{count}</button>;
+    def:pub Counter() -> JsxElement {
+        has count: int = 0;
+        return <button onClick={lambda { count = count + 1; }}>{count}</button>;
+    }
 }
 ```
 
-Headers can be interleaved to partition a mixed module:
+Blocks also work inside a class or function body to locally override the active codespace.
+
+### Section headers
+
+A `to cl:` / `to sv:` / `to na:` header sets the default codespace for **every following module-level element** until the next header or end of file. Headers are an alternative to blocks -- convenient for a module that is mostly one codespace, since they avoid a wrapping block and a trailing brace far from the opening:
 
 ```jac
 to sv:
@@ -76,7 +80,7 @@ async def load() -> None {
 }
 ```
 
-### Statement prefix and braced block
+### Statement prefix
 
 The single-statement prefix is ideal for a one-off override:
 
@@ -85,15 +89,6 @@ The single-statement prefix is ideal for a one-off override:
 def add(a: int, b: int) -> int { return a + b; }
 
 cl def greet(name: str) -> str { return "Hello, " + name; }
-```
-
-The braced block still works -- and is useful for **inner-scope overrides** inside a class or function, or for small mixed-codespace fragments -- but at module scope it now emits **W0064** pointing at the section-header form:
-
-<!-- jac-skip -->
-```jac
-cl {   # W0064: prefer `to cl:` at module level
-    def:pub Counter() -> JsxElement { ... }
-}
 ```
 
 ### Cross-Codespace Interop

@@ -12,8 +12,6 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     check_deployment_status,
-    check_node_ports_available,
-    cluster_type,
     create_k8s_secret,
     delete_k8s_secret,
     delete_if_exists,
@@ -21,11 +19,13 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     check_K8s_status,
     ensure_namespace_exists,
     ensure_pvc_exists,
+    get_cluster_provider,
     load_env_variables,
     validate_resource_limits,
     sync_code_to_pvc,
     resize_pvc_if_needed
 }
+import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
 import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
@@ -128,7 +128,22 @@ obj KubernetesTarget(DeploymentTarget) {
         liveness_probe['periodSeconds'] = self.k8s_config.liveness_period;
         liveness_probe['failureThreshold'] = self.k8s_config.liveness_failure_threshold;
 
-        return {'readiness': probe_config, 'liveness': liveness_probe};
+        startup_probe = {
+            'httpGet': {
+                'path': health_check_path,
+                'port': self.k8s_config.container_port,
+                'scheme': 'HTTP'
+            },
+            'initialDelaySeconds': 10,
+            'periodSeconds': 10,
+            'failureThreshold': 90
+        };
+
+        return {
+            'readiness': probe_config,
+            'liveness': liveness_probe,
+            'startup': startup_probe
+        };
     }
 
     """Build Kubernetes service configuration.
@@ -137,7 +152,7 @@ obj KubernetesTarget(DeploymentTarget) {
     controller, so no direct NodePort or cloud LoadBalancer is needed.
     """
     def _build_service_config(
-        app_name: str, cluster_env: str, health_check_path: str
+        app_name: str, health_check_path: str
     ) -> dict[(str, Any)] {
         service = {
             'apiVersion': 'v1',
@@ -176,11 +191,26 @@ obj KubernetesTarget(DeploymentTarget) {
             'echo \'APT::Sandbox::User "root";\' > /etc/apt/apt.conf.d/00sandbox'
         );
         # Remove repos that don't exist yet on Debian testing (trixie) to prevent
-        # apt-get update from failing with "no Release file" errors.
+        # apt-get update from hanging/failing on missing Release files.
+        # Legacy one-line format lives in *.list; modern python:3.x-slim images
+        # (Debian trixie) use the deb822 *.sources format where the suites are
+        # combined on a single `Suites:` line — the *.list-only sed misses it,
+        # so we also strip the trixie-updates token from `Suites:` lines there.
         commands.append(
             'sed -i \'/trixie-updates\\|trixie-security/d\' /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null || true'
         );
-        commands.append('apt-get update');
+        commands.append(
+            'sed -i -E \'/^Suites:/ s/[[:space:]]+trixie-updates//g\' /etc/apt/sources.list.d/*.sources 2>/dev/null || true'
+        );
+        # Make apt-get update resilient: bounded retries + short network
+        # timeouts so an unreachable suite (e.g. the deb822 trixie-security
+        # stanza) fails fast instead of stalling the pod for minutes, and
+        # `|| true` keeps a partial-but-usable index from aborting the build
+        # (git/curl/unzip resolve from the main trixie suite, which Hits).
+        commands.append(
+            'apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=20 '
+            '-o Acquire::https::Timeout=20 update || true'
+        );
 
         # Install base packages (curl and unzip needed for Bun installation)
         base_packages = ['git', 'curl', 'unzip'];
@@ -196,7 +226,20 @@ obj KubernetesTarget(DeploymentTarget) {
 
         if app_config.experimental {
             commands.append('rm -rf jaseci');
-            clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {config.jaseci_repo_url}";
+            # The pod has no SSH key/known_hosts, so a `git@host:owner/repo`
+            # or `ssh://` URL makes the clone hang then fail. Normalize the
+            # common GitHub SCP-style SSH form to anonymous HTTPS so the
+            # in-cluster clone works for public repos without credentials.
+            repo_url = config.jaseci_repo_url;
+            if repo_url.startswith('git@') and ':' in repo_url {
+                host_path = repo_url[4:];
+                host = host_path.split(':', 1)[0];
+                path = host_path.split(':', 1)[1];
+                repo_url = f"https://{host}/{path}";
+            } elif repo_url.startswith('ssh://git@') {
+                repo_url = 'https://' + repo_url[len('ssh://git@'):];
+            }
+            clone_cmd = f"git clone --branch {config.jaseci_branch} --single-branch {repo_url}";
             commands.append(clone_cmd);
             commands.append('cd ./jaseci');
             if config.jaseci_commit {
@@ -317,7 +360,8 @@ obj KubernetesTarget(DeploymentTarget) {
             'ports': [{'containerPort': self.k8s_config.container_port}],
             'env': self.env_list,
             'readinessProbe': probe_configs['readiness'],
-            'livenessProbe': probe_configs['liveness']
+            'livenessProbe': probe_configs['liveness'],
+            'startupProbe': probe_configs['startup']
         };
 
         if secret_ref_name {
@@ -341,8 +385,8 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Build volumes and build container configuration for code sync via code-server."""
     def _build_volumes_config(
-        app_name: str, app_config: AppConfig, namespace: str, core_v1: Any, apps_v1: Any
-    ) -> dict[str, Any] {
+        app_name: str, app_config: AppConfig, namespace: str, core_v1: any, apps_v1: any
+    ) -> dict[str, any] {
         pvc_name = f"{app_name}-code-pvc";
         pvc_size = self.k8s_config.pvc_size;
         sync_image = self.k8s_config.busybox_image;
@@ -392,7 +436,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Deploy code-server: a single-replica busybox httpd that serves code from the PVC over HTTP."""
-    def _deploy_code_server(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _deploy_code_server(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         code_server_name = f"{app_name}-code-server";
         code_server_labels = {'app': code_server_name};
         pvc_name = f"{app_name}-code-pvc";
@@ -534,9 +578,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Deploy all enabled databases and their optional dashboards."""
-    def _deploy_databases(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any, cluster_env: str
-    ) {
+    def _deploy_databases(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
             mongodb_service_name = f"{mongodb_name}-service";
@@ -853,7 +895,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Create a dedicated ServiceAccount with no automounted token for a deployment."""
     def _create_service_account(
-        sa_name: str, app_label: str, namespace: str, core_v1: Any
+        sa_name: str, app_label: str, namespace: str, core_v1: any
     ) {
         sa_body = {
             'apiVersion': 'v1',
@@ -889,7 +931,7 @@ obj KubernetesTarget(DeploymentTarget) {
     helper injects it and creates/skips if it already exists.
     """
     def _apply_provider_service_account(
-        sa_spec: dict[str, Any], namespace: str, core_v1: Any
+        sa_spec: dict[str, any], namespace: str, core_v1: any
     ) {
         sa_spec['metadata']['namespace'] = namespace;
         sa_name = sa_spec['metadata']['name'];
@@ -919,7 +961,7 @@ obj KubernetesTarget(DeploymentTarget) {
       - Redis: allows ingress on 6379 from main app, allows egress to DNS and intra-namespace
       - Other components: deny all ingress, allow egress to DNS and intra-namespace
     """
-    def _deploy_network_policy(app_name: str, namespace: str, networking_v1: Any) {
+    def _deploy_network_policy(app_name: str, namespace: str, networking_v1: any) {
         # Common egress rules for all policies
         common_egress_rules = [
             # DNS — explicit kube-system selector so CNIs that evaluate policy
@@ -1129,11 +1171,11 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Wait for deployment to be ready and check status."""
     def _wait_for_deployment(
-        app_name: str, namespace: str, health_check_path: str, cluster_env: str
+        app_name: str, namespace: str, health_check_path: str, provider: ClusterProvider
     ) -> str {
         path = health_check_path;
         deployment_details = "";
-        if cluster_env == 'aws' {
+        if provider.needs_nlb_wait() {
             time.sleep(self.k8s_config.aws_nlb_wait);
             nlb_url = None;
             try {
@@ -1274,18 +1316,12 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
             }
 
-            # 4. Determine cluster type
-            cluster_env = cluster_type();
-            # 4b. On local clusters, verify that the requested NodePorts are not
-            #     already bound by a service in another namespace.
-            if cluster_env == 'local' {
-                # All services are ClusterIP behind ingress; only the ingress
-                # controller's NodePort needs a free port on the node.
-                check_node_ports_available(
-                    node_port=self.k8s_config.ingress_node_port,
-                    current_namespace=namespace
-                );
-            }
+            # 4. Determine cluster provider (encapsulates all provider-specific behaviour)
+            provider = get_cluster_provider();
+            # 4b. Validate NodePort availability (no-op on AWS, checked on local).
+            provider.validate_ports(
+                node_port=self.k8s_config.ingress_node_port, current_namespace=namespace
+            );
 
             # 5. Handle image registry if build is requested
             repository_name = self._handle_image_registry(app_name, app_config);
@@ -1346,9 +1382,7 @@ obj KubernetesTarget(DeploymentTarget) {
             details["create_service_account"] = "Successful";
 
             # 11b. Build service and deployment
-            service = self._build_service_config(
-                app_name, cluster_env, health_check_path
-            );
+            service = self._build_service_config(app_name, health_check_path);
             deployment = {
                 'apiVersion': 'apps/v1',
                 'kind': 'Deployment',
@@ -1389,17 +1423,11 @@ obj KubernetesTarget(DeploymentTarget) {
             networking_v1 = client.NetworkingV1Api();
             ingress_deployer = IngressDeployer(self.k8s_config, self.logger);
             ingress_deployer.start_controller(
-                app_name,
-                namespace,
-                cluster_env,
-                apps_v1,
-                core_v1,
-                rbac_v1,
-                networking_v1
+                app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
             );
 
             # 13. Deploy databases
-            self._deploy_databases(app_name, namespace, apps_v1, core_v1, cluster_env);
+            self._deploy_databases(app_name, namespace, apps_v1, core_v1);
             details["deploy_databases"] = "Successful";
             # 13b. Apply NetworkPolicy for the app pod
             self._deploy_network_policy(app_name, namespace, networking_v1);
@@ -1436,7 +1464,7 @@ obj KubernetesTarget(DeploymentTarget) {
             details["create_horizontal_auto_scaler"] = "Successful";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
-            monitoring.deploy(app_name, namespace, apps_v1, core_v1, cluster_env);
+            monitoring.deploy(app_name, namespace, apps_v1, core_v1, provider);
             details["deploy_monitoring"] = "Successful";
 
             # 15b. Finish ingress: wait for NGINX controller readiness (started at step 12b)
@@ -1457,7 +1485,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
             # 16. Wait for deployment and get service URL
             deployment_details = self._wait_for_deployment(
-                app_name, namespace, health_check_path, cluster_env
+                app_name, namespace, health_check_path, provider
             );
             details["health_check_of_deployment"] = deployment_details;
             service_url = self.get_service_url(app_name);
@@ -1509,8 +1537,8 @@ obj KubernetesTarget(DeploymentTarget) {
     def _wait_for_deletion(
         app_name: str,
         namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
+        apps_v1: any,
+        core_v1: any,
         max_wait: int = 60,
         poll_interval: float = 1.0
     ) -> None {
@@ -1711,14 +1739,14 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Destroy all databases, caches, and their dashboards."""
-    def _destroy_databases(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_databases(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         self._destroy_database(app_name, namespace, apps_v1, core_v1);
         self._destroy_cache(app_name, namespace, apps_v1, core_v1);
         self._destroy_dashboard(app_name, namespace, apps_v1, core_v1);
     }
 
     def _destroy_application(
-        app_name: str, namespace: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, apps_v1: any, core_v1: any
     ) {
         autoscaling_v2 = client.AutoscalingV2Api();
         delete_if_exists(
@@ -1792,7 +1820,7 @@ obj KubernetesTarget(DeploymentTarget) {
         }
     }
 
-    def _destroy_database(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_database(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         mongodb_name = f"{app_name}-mongodb";
         delete_if_exists(
             apps_v1.delete_namespaced_stateful_set,
@@ -1815,7 +1843,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_cache(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_cache(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         redis_name = f"{app_name}-redis";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, redis_name, namespace, 'Deployment'
@@ -1841,7 +1869,7 @@ obj KubernetesTarget(DeploymentTarget) {
         );
     }
 
-    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
+    def _destroy_dashboard(app_name: str, namespace: str, apps_v1: any, core_v1: any) {
         express_name = f"{app_name}-mongo-express";
         delete_if_exists(
             apps_v1.delete_namespaced_deployment, express_name, namespace, 'Deployment'
@@ -1889,7 +1917,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     def _destroy_component(
-        app_name: str, namespace: str, component: str, apps_v1: Any, core_v1: Any
+        app_name: str, namespace: str, component: str, apps_v1: any, core_v1: any
     ) {
         if component == 'application' {
             self._destroy_application(app_name, namespace, apps_v1, core_v1);
@@ -2163,17 +2191,13 @@ obj KubernetesTarget(DeploymentTarget) {
                 return f"http://{self.k8s_config.domain}";
             }
 
-            core_v1 = client.CoreV1Api();
-            cluster_env = cluster_type();
-
-            if cluster_env == 'aws' {
-                # Resolve the ingress controller's LoadBalancer endpoint
-                endpoint = self._get_lb_endpoint(app_name);
-                if endpoint {
-                    return f"http://{endpoint}";
-                }
-            } else {
-                return f"http://localhost:{self.k8s_config.ingress_node_port}";
+            provider = get_cluster_provider();
+            lb_endpoint = self._get_lb_endpoint(app_name)
+                if provider.needs_nlb_wait()
+                else None;
+            url = provider.service_url(lb_endpoint, self.k8s_config.ingress_node_port);
+            if url {
+                return url;
             }
         } except Exception as e {
             if self.logger {
@@ -2428,7 +2452,6 @@ obj KubernetesTarget(DeploymentTarget) {
         }
 
         # 4. Application service URL
-        is_aws = cluster_type() == 'aws';
         app_url = None;
         try {
             app_url = self.get_service_url(app_name);

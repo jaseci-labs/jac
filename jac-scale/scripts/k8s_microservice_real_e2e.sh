@@ -94,7 +94,7 @@ kubectl create namespace "${NAMESPACE}" --dry-run=client -o yaml | kubectl apply
 cd "${PROJECT_DIR}"
 python - <<PYEOF
 import sys, jaclang  # noqa: F401
-from jac_scale.microservices.k8s_target import KubernetesMicroserviceTarget
+from jac_scale.targets.kubernetes.microservice.target import KubernetesMicroserviceTarget
 from jac_scale.targets.kubernetes.kubernetes_config import KubernetesConfig
 from jac_scale.abstractions.config.app_config import AppConfig
 

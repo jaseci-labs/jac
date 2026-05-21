@@ -2,11 +2,11 @@
 import time;
 import subprocess;
 import bcrypt;
-import from typing { Any }
 import from jac_scale._optdeps.kubernetes { client, ApiException }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.abstractions.logger { Logger }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils { delete_if_exists }
+import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 
 """Deploys and manages an app-scoped NGINX Ingress controller plus Ingress routing rules.
 
@@ -27,7 +27,7 @@ obj IngressDeployer {
     def _deploy_nginx_controller(
         app_name: str,
         namespace: str,
-        cluster_env: str,
+        provider: ClusterProvider,
         apps_v1: Any,
         core_v1: Any,
         rbac_v1: Any,
@@ -188,7 +188,9 @@ obj IngressDeployer {
             },
             'data': {
                 'allow-snippet-annotations': 'true',
-                'annotations-risk-level': 'Critical'
+                'annotations-risk-level': 'Critical',
+                'use-gzip': 'true',
+                'gzip-types': 'application/javascript text/css application/json image/svg+xml'
             }
         };
         try {
@@ -295,7 +297,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'livenessProbe': {
                                     'httpGet': {
@@ -305,7 +308,8 @@ obj IngressDeployer {
                                     },
                                     'initialDelaySeconds': 10,
                                     'periodSeconds': 10,
-                                    'failureThreshold': 3
+                                    'timeoutSeconds': 5,
+                                    'failureThreshold': 5
                                 },
                                 'resources': {
                                     'requests': {'cpu': '100m', 'memory': '90Mi'},
@@ -331,69 +335,9 @@ obj IngressDeployer {
             }
         }
 
-        # --- Service: NodePort locally, NLB on AWS ---
-        if cluster_env == 'aws' {
-            controller_service = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': {
-                    'name': service_name,
-                    'namespace': namespace,
-                    'labels': {'app': controller_name, 'managed': 'jac-scale'},
-                    'annotations': {
-                        'service.beta.kubernetes.io/aws-load-balancer-type': 'nlb',
-                        'service.beta.kubernetes.io/aws-load-balancer-scheme': 'internet-facing'
-                    }
-                },
-                'spec': {
-                    'type': 'LoadBalancer',
-                    'selector': {'app': controller_name},
-                    'ports': [
-                        {
-                            'name': 'http',
-                            'protocol': 'TCP',
-                            'port': 80,
-                            'targetPort': 80
-                        },
-                        {
-                            'name': 'https',
-                            'protocol': 'TCP',
-                            'port': 443,
-                            'targetPort': 443
-                        }
-                    ]
-                }
-            };
-        } else {
-            controller_service = {
-                'apiVersion': 'v1',
-                'kind': 'Service',
-                'metadata': {
-                    'name': service_name,
-                    'namespace': namespace,
-                    'labels': {'app': controller_name, 'managed': 'jac-scale'}
-                },
-                'spec': {
-                    'type': 'NodePort',
-                    'selector': {'app': controller_name},
-                    'ports': [
-                        {
-                            'name': 'http',
-                            'protocol': 'TCP',
-                            'port': 80,
-                            'targetPort': 80,
-                            'nodePort': self.k8s_config.ingress_node_port
-                        },
-                        {
-                            'name': 'https',
-                            'protocol': 'TCP',
-                            'port': 443,
-                            'targetPort': 443
-                        }
-                    ]
-                }
-            };
-        }
+        controller_service = provider.ingress_controller_service(
+            service_name, namespace, controller_name, self.k8s_config.ingress_node_port
+        );
         try {
             core_v1.patch_namespaced_service(
                 name=service_name, namespace=namespace, body=controller_service
@@ -408,17 +352,9 @@ obj IngressDeployer {
             }
         }
 
-        if self.logger {
-            if cluster_env == 'aws' {
-                self.logger.info(
-                    f"NGINX ingress controller deployed for '{app_name}' (AWS NLB)"
-                );
-            } else {
-                self.logger.info(
-                    f"NGINX ingress controller deployed for '{app_name}' at localhost:{self.k8s_config.ingress_node_port}"
-                );
-            }
-        }
+        provider.log_ingress_deployed(
+            self.logger, app_name, self.k8s_config.ingress_node_port
+        );
     }
 
     """Wait for the NGINX controller Deployment to have at least one ready replica.
@@ -427,7 +363,7 @@ obj IngressDeployer {
     longer app health-check intervals (15 s each) while NGINX is still starting.
     """
     def _wait_for_nginx_ready(
-        app_name: str, namespace: str, apps_v1: Any, max_wait: int = 180
+        app_name: str, namespace: str, apps_v1: any, max_wait: int = 180
     ) -> None {
         controller_name = f"{app_name}-ingress-nginx";
         elapsed = 0;
@@ -475,8 +411,8 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        networking_v1: Any,
-        core_v1: Any
+        networking_v1: any,
+        core_v1: any
     ) {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
@@ -643,11 +579,15 @@ obj IngressDeployer {
             # /assets/... for the backend). RIPROXYPATH is also rewritten so the JS
             # frontend sets window.__RI_PROXY_PATH__ = 'cache-dashboard' and prefixes all
             # API/socket calls with /cache-dashboard (which nginx strips via rewrite-target).
-            # Accept-Encoding is cleared so nginx can apply sub_filter to uncompressed HTML.
+            # Accept-Encoding "" lets sub_filter work on raw HTML from the upstream.
+            # Compression is handled at the server level via the nginx ConfigMap
+            # (use-gzip: true), NOT in the snippet — gzip directives in location
+            # snippets can crash the ingress controller.
             redis_ingress_annotations: dict = {
                 'nginx.ingress.kubernetes.io/proxy-body-size': '0',
                 'nginx.ingress.kubernetes.io/proxy-read-timeout': '3600',
                 'nginx.ingress.kubernetes.io/proxy-send-timeout': '3600',
+                'nginx.ingress.kubernetes.io/proxy-buffering': 'on',
                 'nginx.ingress.kubernetes.io/use-regex': 'true',
                 'nginx.ingress.kubernetes.io/rewrite-target': '/$2',
                 'nginx.ingress.kubernetes.io/configuration-snippet': (
@@ -727,14 +667,14 @@ obj IngressDeployer {
     def start_controller(
         app_name: str,
         namespace: str,
-        cluster_env: str,
+        provider: ClusterProvider,
         apps_v1: Any,
         core_v1: Any,
         rbac_v1: Any,
         networking_v1: Any
     ) {
         self._deploy_nginx_controller(
-            app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
+            app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
         );
     }
 
@@ -747,9 +687,9 @@ obj IngressDeployer {
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        apps_v1: Any,
-        core_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        networking_v1: any
     ) {
         self._wait_for_nginx_ready(app_name, namespace, apps_v1);
         self._deploy_ingress_resource(
@@ -769,18 +709,18 @@ obj IngressDeployer {
     def deploy(
         app_name: str,
         namespace: str,
-        cluster_env: str,
+        provider: ClusterProvider,
         service_port: int,
         grafana_enabled: bool,
         redis_dashboard: bool,
         mongo_dashboard: bool,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         self.start_controller(
-            app_name, namespace, cluster_env, apps_v1, core_v1, rbac_v1, networking_v1
+            app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
         );
         self.finish_ingress(
             app_name,
@@ -805,9 +745,9 @@ obj IngressDeployer {
         app_name: str,
         namespace: str,
         cert_manager_email: str,
-        core_v1: Any,
-        apps_v1: Any,
-        custom_api: Any
+        core_v1: any,
+        apps_v1: any,
+        custom_api: any
     ) -> None {
         # Idempotency: if Issuer already exists, nothing to do
         try {
@@ -942,10 +882,10 @@ obj IngressDeployer {
     def enable_tls(
         app_name: str,
         namespace: str,
-        networking_v1: Any,
-        custom_api: Any,
-        core_v1: Any,
-        apps_v1: Any
+        networking_v1: any,
+        custom_api: any,
+        core_v1: any,
+        apps_v1: any
     ) -> None {
         ingress_name = f"{app_name}-ingress";
         redis_ingress_name = f"{app_name}-redis-insight-ingress";
@@ -1091,10 +1031,10 @@ obj IngressDeployer {
     def destroy(
         app_name: str,
         namespace: str,
-        apps_v1: Any,
-        core_v1: Any,
-        rbac_v1: Any,
-        networking_v1: Any
+        apps_v1: any,
+        core_v1: any,
+        rbac_v1: any,
+        networking_v1: any
     ) {
         controller_name = f"{app_name}-ingress-nginx";
         cluster_resource_name = f"{namespace}-{app_name}-ingress-nginx";

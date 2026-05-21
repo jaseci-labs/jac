@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="littleX logo">
+  <defs>
+    <linearGradient id="lxg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fb923c"/>
+      <stop offset="0.55" stop-color="#ea580c"/>
+      <stop offset="1" stop-color="#7c2d12"/>
+    </linearGradient>
+  </defs>
+  <!-- the X -->
+  <g fill="none" stroke="url(#lxg)" stroke-width="10" stroke-linecap="round">
+    <path d="M16 16 48 48"/>
+    <path d="M48 16 16 48"/>
+  </g>
+  <!-- graph edges -->
+  <g fill="none" stroke="#fcd34d" stroke-width="2" stroke-linecap="round" opacity="0.9">
+    <path d="M16 16 7 7"/>
+    <path d="M16 16 27 9"/>
+    <path d="M16 16 9 27"/>
+    <path d="M27 9 41 13"/>
+    <path d="M48 48 55 56"/>
+  </g>
+  <!-- graph nodes -->
+  <g fill="#fcd34d">
+    <circle cx="16" cy="16" r="3.8"/>
+    <circle cx="48" cy="48" r="3.8"/>
+    <circle cx="7" cy="7" r="3.4"/>
+    <circle cx="27" cy="9" r="3"/>
+    <circle cx="9" cy="27" r="3"/>
+    <circle cx="41" cy="13" r="2.6"/>
+    <circle cx="55" cy="56" r="3"/>
+  </g>
+  <!-- scattered accent dots -->
+  <g fill="#fb923c">
+    <circle cx="4" cy="17" r="1.7"/>
+    <circle cx="17" cy="3.5" r="1.7"/>
+    <circle cx="6" cy="36" r="1.4"/>
+  </g>
+</svg>

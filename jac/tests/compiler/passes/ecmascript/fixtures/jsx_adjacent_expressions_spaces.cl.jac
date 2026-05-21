@@ -15,7 +15,7 @@ JSX text normalization rules.
 """
 
 cl {
-    def:pub app() -> Any {
+    def:pub app() -> any {
         count: int = 5;
         amount: float = 1.5;
         unit: str = "lb";

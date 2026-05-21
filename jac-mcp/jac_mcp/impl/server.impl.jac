@@ -1,6 +1,5 @@
 """Implementation of MCP Server core."""
 
-import from typing { Any }
 import asyncio;
 import sys;
 import logging;

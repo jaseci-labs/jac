@@ -6,7 +6,7 @@ Tests full round-trip typed object passing from a separate .cl.jac file.
 sv import from .typed_bidirectional { place_order, update_item }
 
 def:pub app -> JsxElement {
-    has order: Any = None;
+    has order: any = None;
 
     async def checkout -> None {
         items = [
