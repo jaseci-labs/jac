@@ -1306,10 +1306,16 @@ obj JsxSpreadAttribute(JsxAttribute) {
     def postinit -> None;
 }
 
-"""JsxNormalAttribute node type for Jac Ast."""
+"""JsxNormalAttribute node type for Jac Ast.
+
+The `is_shorthand` flag marks attributes parsed from the `{name}` JSX
+attribute shorthand — semantically identical to `name={name}` but the
+formatter must round-trip the shorter spelling. Both `name` and `value`
+point at the same identifier when this flag is set."""
 obj JsxNormalAttribute(JsxAttribute) {
     has name: (Name | Token),
-        value: String | Expr | None;
+        value: String | Expr | None,
+        is_shorthand: bool = False;
 
     def postinit -> None;
 }

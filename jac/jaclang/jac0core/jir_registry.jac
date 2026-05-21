@@ -955,7 +955,11 @@ glob NODE_SPECS: tuple = (
              is_scope=False,
              is_cfg=False,
              is_name_atom=False,
-             fields=(FieldDesc(name="name", kind=4), FieldDesc(name="value", kind=6))
+             fields=(
+                 FieldDesc(name="name", kind=4),
+                 FieldDesc(name="value", kind=6),
+                 FieldDesc(name="is_shorthand", kind=2)
+             )
          ),
          NodeSpec(
              type_idx=82,

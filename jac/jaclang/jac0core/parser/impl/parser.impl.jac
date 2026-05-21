@@ -3388,21 +3388,54 @@ impl Parser.parse_jsx_attributes -> list {
                 JsxNormalAttribute(name=attr_name, value=attr_value, kid=attr_kid)
             );
         } elif self.check(TokenKind.LBRACE) {
-            # Spread attribute: {**expr} (preferred) or {...expr} (JS-idiomatic)
+            # `{`-led attribute. Three forms:
+            #   * `{**expr}` — preferred dict-spread (Jac idiom)
+            #   * `{...expr}` — JS-idiomatic spread (warned)
+            #   * `{name}`   — shorthand for `name={name}` when the body
+            #                  is a single bare identifier
+            # The shorthand is detected after parsing the inner expression:
+            # if the result is a single `Name` and no spread marker was
+            # consumed, we emit a `JsxNormalAttribute` with `is_shorthand`.
             self.advance();  # consume {
-            spread_kid: list = [self.make_uni_token(self.previous())];
+            lbrace_tok = self.make_uni_token(self.previous());
+            saw_spread_marker: bool = False;
+            spread_marker_kid: any = None;
             if self.check(TokenKind.STAR_POW) {
                 star_tok = self.advance();
-                spread_kid.append(self.make_uni_token(star_tok));
+                spread_marker_kid = self.make_uni_token(star_tok);
+                saw_spread_marker = True;
             } elif self.check(TokenKind.ELLIPSIS) {
                 self.emit_warn(W0063, loc=self.current().loc);
                 ellipsis_tok = self.advance();
-                spread_kid.append(self.make_ellipsis(ellipsis_tok));
+                spread_marker_kid = self.make_ellipsis(ellipsis_tok);
+                saw_spread_marker = True;
             }
-            spread_expr = self.parse_expression();
-            spread_kid.append(spread_expr);
-            spread_kid.append(self.consume_uni(TokenKind.RBRACE));
-            attrs.append(JsxSpreadAttribute(expr=spread_expr, kid=spread_kid));
+            inner_expr = self.parse_expression();
+            rbrace_tok = self.consume_uni(TokenKind.RBRACE);
+            if not saw_spread_marker and isinstance(inner_expr, Name) {
+                # `{name}` shorthand — lower to `name={name}` with the
+                # shorthand flag so the formatter round-trips the source.
+                # The kid list is `{ NAME }` (no `=` token); both the
+                # attribute's `name` and `value` slots reference the
+                # same identifier node so downstream passes treat the
+                # attribute as if the author wrote `name={name}`.
+                attrs.append(
+                    JsxNormalAttribute(
+                        name=inner_expr,
+                        value=inner_expr,
+                        is_shorthand=True,
+                        kid=[lbrace_tok, inner_expr, rbrace_tok]
+                    )
+                );
+            } else {
+                spread_kid: list = [lbrace_tok];
+                if spread_marker_kid is not None {
+                    spread_kid.append(spread_marker_kid);
+                }
+                spread_kid.append(inner_expr);
+                spread_kid.append(rbrace_tok);
+                attrs.append(JsxSpreadAttribute(expr=inner_expr, kid=spread_kid));
+            }
         } else {
             break;
         }
