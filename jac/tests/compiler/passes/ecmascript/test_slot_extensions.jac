@@ -10,7 +10,7 @@ Tests are organised in the same Tier order as the issue:
   Tier 1 — pass-level extensions (no new syntax)
     1. Loop `for` auto-fragment + key derivation
     2. `except` arms integrated with `try { } awaiting { }`
-    3. E2023: `has` not allowed inside a JSX slot body
+    3. E2024: `has` not allowed inside a JSX slot body
     4. `static` JSX subtree hoisting
     5. `{name}` prop shorthand
 
@@ -209,14 +209,14 @@ test "rec 2: try/awaiting with except synthesises a JacClientErrorBoundary wrapp
     assert "Something went wrong" in js_code;
 }
 
-test "rec 3: E2023 — `has` declared inside a JSX slot body is rejected" {
+test "rec 3: E2024 — `has` declared inside a JSX slot body is rejected" {
     # A `has`-field inside a `{...}` slot's statement template would
     # compile to a conditional useState — a rules-of-hooks violation.
     # ViewLowerPass's `_check_body` should match `uni.HasVar` recursively
-    # and emit E2023.
+    # and emit E2024.
     prog = compile_for_diag("has_in_slot.jac");
-    assert has_code(prog, "E2023") , (
-        "declaring `has` inside a JSX slot body must raise E2023; " "errors were: " + str(
+    assert has_code(prog, "E2024") , (
+        "declaring `has` inside a JSX slot body must raise E2024; " "errors were: " + str(
             [(e.code.code if e.code else "?") + ": " + str(e) for e in prog.errors_had]
         )
     );

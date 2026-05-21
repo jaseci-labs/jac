@@ -29,7 +29,16 @@ Runs first in the IR-generation schedule, before `ASTValidationPass`.
 import jaclang.jac0core.unitree as uni;
 import from jaclang.jac0core.constant { Tokens as Tok }
 import from jaclang.jac0core.passes { UniPass }
-import from jaclang.jac0core.diagnostics { E2019, E2020, E2021, E2022, W2019, W2020 }
+import from jaclang.jac0core.diagnostics {
+    E2019,
+    E2020,
+    E2021,
+    E2022,
+    E2024,
+    W2019,
+    W2020,
+    W2021
+}
 
 """Name of the synthesized child accumulator local."""
 glob VIEW_ACC: str = "__jac_view_kids";
@@ -124,6 +133,11 @@ obj ViewLowerPass(UniPass) {
                 if in_loop and s.ctrl.value == "break" {
                     self.emit(E2021, node_override=s, kw=s.ctrl.value, loop=loop_kw);
                 }
+            } elif isinstance(s, uni.ArchHas) {
+                # `has`-fields declared inside a slot body would compile
+                # to a conditional `useState` — a rules-of-hooks violation.
+                # State belongs at the enclosing `def -> JsxElement` scope.
+                self.emit(E2024, node_override=s);
             } elif isinstance(s, uni.WhileStmt) {
                 if self._emits_keyless_jsx(s.body) {
                     self.emit(W2019, node_override=s);
@@ -131,6 +145,15 @@ obj ViewLowerPass(UniPass) {
                 self._check_body(s.body, True, "while");
                 self._check_else(s.else_body, in_loop, loop_kw);
             } elif isinstance(s, uni.InForStmt) or isinstance(s, uni.IterForStmt) {
+                # Keyless for-loop in a slot: until the auto-fragment
+                # lowering (#6082 item 1) lands, an unkeyed loop child
+                # contributes its JSX as flat siblings into the parent's
+                # children list, and a re-render with a reordered iterable
+                # loses iteration identity. W2021 names the fix at the
+                # source site.
+                if self._emits_keyless_jsx(s.body) {
+                    self.emit(W2021, node_override=s);
+                }
                 self._check_body(s.body, True, "for");
                 self._check_else(s.else_body, in_loop, loop_kw);
             } elif isinstance(s, uni.IfStmt) {
