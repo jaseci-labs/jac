@@ -2422,7 +2422,10 @@ impl JacByLLM.get_mtir_from_map(scope: str) -> (Info | None) {
                    Pass user's root ID for authenticated server requests.
 
     Storage backend is configured via plugins/environment, not per-context.
-    For file backend: auto-generates path from JacRuntime.base_path_dir.
+    For file backend: the new ctx's L3 path is derived from its own
+    `base_path_dir` / `full_target_path` (passed explicitly, or seeded
+    from `Jac.get_base_path_dir()` / `Jac.get_full_target_path()` for
+    bootstrap callers that haven't been migrated to explicit args).
     For database backends (jac-scale): configured via environment variables.
     """
 impl JacUtils.create_j_context(
@@ -2536,7 +2539,7 @@ impl JacUtils.create_archetype_from_source(
     keep_temporary_files: bool = False
 ) -> (types.ModuleType | None) {
     if not base_path {
-        base_path = JacRuntime.base_path_dir or os.getcwd();
+        base_path = JacRuntime.get_base_path_dir() or os.getcwd();
     }
     if (base_path and not os.path.exists(base_path)) {
         os.makedirs(base_path);
@@ -2584,7 +2587,7 @@ impl JacUtils.update_walker(
             old_module = JacRuntime.loaded_modules[module_name];
             result = JacRuntimeInterface.jac_import(
                 target=module_name,
-                base_path=(JacRuntime.base_path_dir or os.getcwd()),
+                base_path=(JacRuntime.get_base_path_dir() or os.getcwd()),
                 items=items,
                 reload_module=True,
                 lng='jac'
@@ -2824,18 +2827,28 @@ impl JacRuntime.get_full_target_path -> (str | None) {
     return _default_full_target_path[0];
 }
 
-"""Set the base path for the machine.
+"""Set the seed base path used to bootstrap new contexts.
 
     When base_path is None, L3 persistence is disabled (faster for tests).
+    Already-constructed contexts are unaffected — they carry their own
+    `base_path_dir` captured at postinit time.
     """
 impl JacRuntime.set_base_path(base_path: (str | None)) -> None {
     if (base_path is None) {
-        JacRuntime.base_path_dir = None;
+        _default_base_path_dir[0] = None;
     } else {
-        JacRuntime.base_path_dir = base_path
+        _default_base_path_dir[0] = base_path
             if os.path.isdir(base_path)
             else os.path.dirname(base_path);
     }
+}
+
+"""Set the seed target path used to bootstrap new contexts.
+
+    Already-constructed contexts are unaffected.
+    """
+impl JacRuntime.set_full_target_path(target_path: (str | None)) -> None {
+    _default_full_target_path[0] = target_path;
 }
 
 """Set the context for the machine."""
