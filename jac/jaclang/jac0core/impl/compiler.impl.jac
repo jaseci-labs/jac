@@ -652,19 +652,14 @@ impl JacCompiler.compile(
     }
     # Native-compiled modules consume the central type checker's results:
     # NaIRGenPass lowers Expr.type (via _lower_type) instead of running a
-    # parallel AST type resolver. Run the type-check schedule for any module
-    # that will be native-compiled even when options.type_check is off, so
-    # codegen has a single semantic source of truth. native_compat is set by
-    # UniTreeEnrichPass at the tail of get_ir_gen_sched, so it is known here.
-    # The _native_typecheck_running guard stops this implicit branch from
-    # recursing through the type-system modules it must itself compile.
-    global _native_typecheck_running;
+    # parallel AST type resolver. Run the type-check schedule for any .na.jac
+    # module (or auto-promoted .jac) even when options.type_check is off, so
+    # codegen has a single semantic source of truth. This covers transitive
+    # imports too: when one .na.jac imports another, the nested compile gets
+    # its own TypeCheckPass run, so cross-module annotations land with
+    # `.type` populated.
     run_type_check = options.type_check;
-    if (
-        not run_type_check
-        and not options.symtab_ir_only
-        and not _native_typecheck_running
-    ) {
+    if not run_type_check {
         # A module is native-compiled if it is a .na.jac file (whole module
         # in native context) or a .jac module being auto-promoted to native
         # in this program (the nacompile / `jac run --autonative` path sets
@@ -672,6 +667,13 @@ impl JacCompiler.compile(
         # modules — even those tagged `native_compat=True` by UniTreeEnrichPass
         # for having an `entry` block — do NOT trigger the implicit run; they
         # follow the explicit `options.type_check` contract.
+        #
+        # Includes the symtab_ir_only path: when TypeEvaluator imports a
+        # .na.jac module to resolve a cross-module symbol, it compiles with
+        # symtab_ir_only=True and no codegen. We still want TypeCheckPass to
+        # run so the imported module's annotations land with .type populated,
+        # because a later NaIRGenPass walk for native cross-module linking
+        # will lower those annotations.
         mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
         is_native_mod = bool(mp) and mp.endswith('.na.jac');
         if (
@@ -687,8 +689,6 @@ impl JacCompiler.compile(
         }
     }
     if run_type_check {
-        prev_native_tc = _native_typecheck_running;
-        _native_typecheck_running = True;
         # Explicit `jac check` (options.type_check=True) runs the full
         # schedule — TypeCheckPass + StaticAnalysis + Portability + the
         # enrich-pass-second-pass + Lint — and keeps all diagnostics.
@@ -715,7 +715,6 @@ impl JacCompiler.compile(
                 cancel_token=options.cancel_token
             );
         } finally {
-            _native_typecheck_running = prev_native_tc;
             if implicit_native {
                 del actual_program.errors_had[err_mark:];
                 del actual_program.warnings_had[warn_mark:];

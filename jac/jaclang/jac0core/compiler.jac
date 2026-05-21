@@ -45,12 +45,7 @@ def get_symtab_ir_sched -> list[type[Transform[uni.Module, uni.Module]]] {
 
 glob _ir_sched_loading = False,
      _codegen_sched_loading = False,
-     _typecheck_sched_loading = False,
-     # True while an (implicit, native-triggered) type-check schedule is
-     # executing. Guards against unbounded recursion: type checking a native
-     # module compiles the type-system modules, and the implicit native
-     # branch must not type-check those in turn.
-     _native_typecheck_running = False;
+     _typecheck_sched_loading = False;
 
 """Full IR generation schedule.
 
