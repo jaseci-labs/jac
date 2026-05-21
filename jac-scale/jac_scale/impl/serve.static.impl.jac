@@ -206,16 +206,10 @@ impl JacAPIServerStatic.register_page_endpoint -> None {
 """Create callback that extracts all query parameters from FastAPI Request."""
 impl JacAPIServerStatic.render_page_callback -> Callable[..., HTMLResponse] {
     """Render a page by name with all query parameters.""";
-    import from fastapi { Request }
-    def callback(
-        page_name: str, request: Request, **kwargs: JsonValue
-    ) -> HTMLResponse {
+    def callback(page_name: str, **kwargs: JsonValue) -> HTMLResponse {
         try {
-            request_ctx = {
-                "headers": {k.lower(): v for (k, v) in request.headers.items()}
-            };
             render_payload = self.introspector.render_page(
-                page_name, kwargs, Con.GUEST.value, request_ctx
+                page_name, kwargs, Con.GUEST.value
             );
             return HTMLResponse(content=render_payload['html']);
         } except ValueError as exc {
@@ -235,14 +229,10 @@ impl JacAPIServerStatic.render_base_route_callback(
     app_name: str
 ) -> Callable[..., HTMLResponse] {
     """Render the base route app.""";
-    import from fastapi { Request }
-    def callback(request: Request, **kwargs: JsonValue) -> HTMLResponse {
+    def callback(**kwargs: JsonValue) -> HTMLResponse {
         try {
-            request_ctx = {
-                "headers": {k.lower(): v for (k, v) in request.headers.items()}
-            };
             render_payload = self.introspector.render_page(
-                app_name, kwargs, Con.GUEST.value, request_ctx
+                app_name, kwargs, Con.GUEST.value
             );
             return HTMLResponse(content=render_payload['html']);
         } except ValueError as exc {
@@ -262,11 +252,10 @@ impl JacAPIServerStatic.render_base_route_callback(
 # ============================================================================
 """Serve root-level assets like /img.png, /icons/logo.svg, etc.
 Falls back to SPA HTML for extensionless paths when base_route_app is configured."""
-impl JacAPIServerStatic.serve_root_asset(file_path: str, request: Request) -> Response {
+impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     allowed_extensions = {'.png','.jpg','.jpeg','.gif','.webp','.svg','.ico','.woff','.woff2','.ttf','.otf','.eot','.mp4','.webm','.mp3','.wav','.css','.js','.json','.pdf','.txt','.xml'};
     file_ext = Path(file_path).suffix.lower();
     import from jaclang.project.config { get_config }
-    import from fastapi { Request }
     config = get_config();
     cl_route_prefix = config.serve.cl_route_prefix if config else "cl";
     api_prefixes = (f'{cl_route_prefix}/', 'walker/', 'function/', 'user/', 'static/');
@@ -277,11 +266,8 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str, request: Request) -> Re
             not file_ext and base_route_app and not file_path.startswith(api_prefixes)
         ) {
             try {
-                request_ctx = {
-                    "headers": {k.lower(): v for (k, v) in request.headers.items()}
-                };
                 render_payload = self.introspector.render_page(
-                    base_route_app, {}, Con.GUEST.value, request_ctx
+                    base_route_app, {}, Con.GUEST.value
                 );
                 return HTMLResponse(content=render_payload['html']);
             } except ValueError {

@@ -184,7 +184,7 @@ obj JacAPIServerStatic {
     def render_base_route_callback(app_name: str) -> Callable[..., HTMLResponse];
     def register_page_endpoint -> None;
     # Root asset serving
-    def serve_root_asset(file_path: str, request: Request) -> Response;
+    def serve_root_asset(file_path: str) -> Response;
     def register_root_asset_endpoint -> None;
     # Graph visualization
     def register_graph_endpoint -> None;
