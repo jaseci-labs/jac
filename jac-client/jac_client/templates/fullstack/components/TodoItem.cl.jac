@@ -1,7 +1,7 @@
 """Todo item component for displaying a single todo."""
 
 def:pub TodoItem(
-    todo: dict[str, Any],
+    todo: dict[str, any],
     onToggle: Callable[([str], None)],
     onDelete: Callable[([str], None)]
 ) -> JsxElement {

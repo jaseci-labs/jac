@@ -10,6 +10,7 @@ import ctypes;
 import os;
 import sys;
 import from pathlib { Path }
+import from typing { Callable }
 import jaclang;
 import from jaclang.jac0core.codeinfo { NativeFunctionInfo }
 import from jaclang.jac0core.program { JacProgram }
@@ -476,7 +477,7 @@ test "accelerate module compiles lexer" {
     lexer_mod = sys.modules[mod_name];
 
     # Save original functions so we can restore after test
-    saved: dict = {};
+    saved: dict[str, Callable] = {};
     for (name, obj) in list(lexer_mod.__dict__.items()) {
         if callable(obj) and not name.startswith("_") {
             saved[name] = obj;

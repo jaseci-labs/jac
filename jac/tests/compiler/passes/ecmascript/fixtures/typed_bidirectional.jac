@@ -53,7 +53,7 @@ cl {
 
     def:pub app -> JsxElement {
         has cart: list = [],
-            order: Any = None;
+            order: any = None;
 
         async def checkout -> None {
             items = [

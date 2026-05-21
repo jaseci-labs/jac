@@ -17,7 +17,7 @@ import subprocess;
 import sys;
 import time;
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { cast }
 
 import redis;
 import requests;
@@ -35,7 +35,7 @@ def get_free_port -> int {
     }
 }
 
-def extract(resp: Any) -> Any {
+def extract(resp: any) -> any {
     if isinstance(resp, list) and len(resp) == 2 {
         resp = resp[1];
     }
@@ -57,7 +57,7 @@ def register_user(base_url: str, username: str) -> str {
 
 def call_walker(
     base_url: str, walker_name: str, token: str, payload: dict | None = None
-) -> Any {
+) -> any {
     res = requests.post(
         f"{base_url}/walker/{walker_name}",
         json=payload or {},
@@ -95,7 +95,7 @@ def start_server(fixtures_dir: Path, jac_file: Path, port: int) -> subprocess.Po
     raise RuntimeError(f"server failed\nSTDOUT:\n{stdout}\nSTDERR:\n{stderr}");
 }
 
-def redis_commands_processed(r: Any) -> int {
+def redis_commands_processed(r: any) -> int {
     """Read total_commands_processed from Redis INFO stats.""";
     return int(r.info("stats")["total_commands_processed"]);
 }

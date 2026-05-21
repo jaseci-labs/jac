@@ -13,8 +13,8 @@ with entry {
 """Handles compilation of Jac files to JavaScript."""
 obj JacToJSCompiler {
     has _compile_to_js: Callable[([Path], tuple[(str, (ModuleType | None))])],
-        _extract_client_exports: Callable[([Any], list[str])],
-        _extract_client_globals: Callable[([Any, ModuleType], dict[(str, Any)])];
+        _extract_client_exports: Callable[([any], list[str])],
+        _extract_client_globals: Callable[([any, ModuleType], dict[(str, Any)])];
 
     def compile_module(
         module_path: Path
@@ -23,7 +23,7 @@ obj JacToJSCompiler {
     def extract_exports(manifest: (ClientManifest | None)) -> list[str];
     def extract_globals(
         manifest: (ClientManifest | None), module: ModuleType
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
     def add_runtime_imports(js_code: str) -> str;
 }

@@ -384,7 +384,11 @@ impl ASTValidationPass.enter_archetype(
 impl ASTValidationPass.enter_try_stmt(
     self: ASTValidationPass, nd: uni.TryStmt
 ) -> None {
-    if len(nd.excepts) == 0 and nd.finally_body is None {
+    # `awaiting` counts as a clause for the "non-empty try" rule — a
+    # `try { ... } awaiting { ... }` is a complete construct on its own
+    # (the resolved value's exceptions just propagate to the enclosing
+    # ErrorBoundary).
+    if len(nd.excepts) == 0 and nd.finally_body is None and nd.awaiting_body is None {
         self.emit(E0040, node_override=nd);
     }
     # E0071: bare except must be last

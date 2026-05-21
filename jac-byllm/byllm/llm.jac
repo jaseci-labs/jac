@@ -15,7 +15,7 @@ import from typing { Generator }
 import from byllm.mtir { MTRuntime }
 import litellm;
 import from litellm._logging { _disable_debugging }
-import from openai { OpenAI }
+import from openai { OpenAI, AsyncOpenAI }
 import openai;
 import from byllm.exceptions {
     AuthenticationError,
@@ -31,6 +31,7 @@ import from byllm.types {
     LiteLLMMessage,
     MockToolCall,
     StreamEvent,
+    Tool,
     ToolCall,
     Message,
     MessageRole,
@@ -41,6 +42,7 @@ import from byllm.config_loader { get_byllm_config }
 import from byllm.telemetry { _emit_agent_telemetry, _current_invocation_id }
 import from byllm.parallel { dispatch_batch, _index_by_identity, _PARALLEL_TOOL_HINT }
 import from byllm.schema { inject_schema_hint }
+import from byllm.tool_protocol { inject_tool_hint, recover_tool_calls }
 
 # Load configuration purely from jac.toml
 glob _byllm_config = get_byllm_config(),
@@ -73,10 +75,15 @@ obj BaseLLM {
         api_key: str = "",
         call_params: dict[(str, object)] = {},
         ctx_window: int = 0,
+        # False for backends without server-side tool calling (in-process
+        # llama.cpp): byllm renders the tool protocol into the prompt and
+        # recovers tool calls from the reply itself. See `byllm.tool_protocol`.
+        supports_native_tools: bool = True,
         _usage_history: list = [];
 
     def __call__(**kwargs: object) -> BaseLLM;
     def invoke(mt_run: MTRuntime) -> object;
+    async def ainvoke(mt_run: MTRuntime) -> object;
     def _invoke_react_loop(mt_run: MTRuntime) -> object;
     def _invoke_react_loop_streaming(
         mt_run: MTRuntime
@@ -87,8 +94,16 @@ obj BaseLLM {
     def format_prompt(params: dict) -> str;
     def dispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
     def dispatch_streaming(mt_run: MTRuntime) -> Generator[str, None, None];
+    def dispatch_streaming_with_tools(
+        mt_run: MTRuntime, out: list[CompletionResult]
+    ) -> Generator[str, None, None];
+
+    async def adispatch_no_streaming(mt_run: MTRuntime) -> CompletionResult;
+    async def adispatch_streaming(mt_run: MTRuntime);
     def model_call_no_stream(params: dict) -> dict;
     def model_call_with_stream(params: dict) -> Generator[str, None, None];
+    async def model_call_no_stream_async(params: dict) -> dict;
+    async def model_call_with_stream_async(params: dict);
     def _stream_final_answer(mt_run: MTRuntime) -> Generator[str, None, None];
     def _force_final_answer(mt_run: MTRuntime) -> object;
     def _attempt_recovery(mt_run: MTRuntime) -> CompletionResult | None;
@@ -166,13 +181,20 @@ obj Model(BaseLLM) {
     has proxy: bool = False,
         http_client: bool = False,
         _mock_delegate: MockLLM | None = None,
-        _local_delegate: BaseLLM | None = None;
+        _local_delegate: BaseLLM | None = None,
+        _async_proxy_client: AsyncOpenAI | None = None;
 
     def postinit -> None;
     override def invoke(mt_run: MTRuntime) -> object;
     def model_call_no_stream(params: dict) -> dict;
+    async def model_call_no_stream_async(params: dict) -> dict;
     def model_call_with_stream(params: dict);
+    async def model_call_with_stream_async(params: dict);
     def model_call_http(
+        url: str, token: str, payload: dict, ca_bundle: str | bool
+    ) -> object;
+
+    async def model_call_http_async(
         url: str, token: str, payload: dict, ca_bundle: str | bool
     ) -> object;
 }

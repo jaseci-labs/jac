@@ -9,7 +9,7 @@ transpilers, and code analysis tools.
 
 Reference: https://github.com/estree/estree
 """
-import from typing { Any, TypeAlias }
+import from typing { TypeAlias }
 import from typing { Literal as TypingLiteral }
 
 glob SourceType: TypeAlias = TypingLiteral[('script', 'module')],
@@ -580,4 +580,4 @@ glob Statement = ExpressionStatement | BlockStatement | EmptyStatement | Debugge
          ImportDeclaration | ExportNamedDeclaration | ExportDefaultDeclaration | ExportAllDeclaration
      );
 
-def es_node_to_dict(nd: Node) -> dict[str, Any];
+def es_node_to_dict(nd: Node) -> dict[str, any];

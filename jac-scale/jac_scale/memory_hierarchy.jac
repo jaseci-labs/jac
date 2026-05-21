@@ -25,6 +25,7 @@ import from jaclang.runtimelib.memory {
     TieredMemory,
     SqliteMemory
 }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.config_loader { get_scale_config }
@@ -34,7 +35,7 @@ glob logger = logging.getLogger(__name__),
      # Process-level singletons shared across all requests in a single server process.
      # A single dict so cross-module mutation works without global declarations in each package.
      # Keys: 'mongo_client', 'redis_client', 'mongo_available', 'redis_available', 'system_root'
-     _process_cache: dict[str, Any] = {};
+     _process_cache: dict[str, any] = {};
 
 """Get fresh database config to support dynamic env var changes (e.g., testcontainers)."""
 def _get_db_config -> dict {
@@ -92,8 +93,8 @@ Replaces SqliteMemory when MongoDB is available.
 """
 obj MongoBackend(PersistentMemory) {
     has client: MongoClient | None = None,
-        db: Any by postinit,
-        collection: Any by postinit,
+        db: any by postinit,
+        collection: any by postinit,
         db_name: str = 'jac_db',
         collection_name: str = '_anchors',
         mongo_url: (str | None) = None,
@@ -127,6 +128,11 @@ obj MongoBackend(PersistentMemory) {
 
     def commit(anchor: (Anchor | None) = None) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
+    # Pushdown protocol — Mongo declares native type+field+id_in+slice support.
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
+    # One-time index setup (idempotent). Called from postinit.
+    def ensure_indexes -> None;
     # PersistentMemory-specific
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;

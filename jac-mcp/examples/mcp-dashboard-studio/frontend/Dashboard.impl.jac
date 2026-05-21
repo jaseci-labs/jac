@@ -1,6 +1,6 @@
 """Implementations for DashboardPage."""
 
-impl DashboardPage.get_first_report(spawn_res: Any) -> dict {
+impl DashboardPage.get_first_report(spawn_res: any) -> dict {
     if spawn_res {
         reps = spawn_res["reports"] if "reports" in spawn_res else [];
         if reps and len(reps) > 0 {
@@ -19,7 +19,7 @@ impl DashboardPage.busy(tool: str) -> bool {
     return loading == tool;
 }
 
-impl DashboardPage.pretty_json(val: Any) -> str {
+impl DashboardPage.pretty_json(val: any) -> str {
     return JSON.stringify(val, null, 2);
 }
 
@@ -128,7 +128,7 @@ impl DashboardPage.runTool(tool: str, args: dict) -> None {
     active_tool = tool;
     notice = start_notice(tool);
     try {
-        spawn_res: Any = None;
+        spawn_res: any = None;
         if tool == "validate_jac" {
             spawn_res = await root spawn validate_jac(code=args["code"]);
         } elif tool == "check_syntax" {

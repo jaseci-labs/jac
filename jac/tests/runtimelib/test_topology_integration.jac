@@ -190,7 +190,7 @@ test "concurrent edge adds merged in sqlite sync" {
 layer — only the sliced subset should hit SQLite, not every neighbor."""
 test "edge-ref slice bounds sqlite l3 fetches" {
     tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    orig_base = JacRuntime.get_base_path_dir();
     try {
         cfg = JacConfig();
         cfg.run.topology_index = True;
@@ -249,7 +249,7 @@ size from SQLite. Pre-fix this fell through to `plan_query`, which loaded
 all 200 leaves before slicing in Python."""
 test "edge-ref multi-hop slice bounds sqlite l3 fetches" {
     tmpdir = mkdtemp();
-    orig_base = JacRuntime.base_path_dir;
+    orig_base = JacRuntime.get_base_path_dir();
     try {
         cfg = JacConfig();
         cfg.run.topology_index = True;

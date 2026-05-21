@@ -159,7 +159,10 @@ impl NaIRGenPass._emit_dict_helpers(
     old_vals_i8 = b.bitcast(old_vals, i8_ptr, name="old.vals.i8");
     new_vals_i8 = b.bitcast(new_vals, i8_ptr, name="new.vals.i8");
     b.call(memcpy_fn, [new_vals_i8, old_vals_i8, old_vals_bytes]);
-    b.call(free_fn, [old_vals_i8]);
+    if self.rc_safe_free_fn is None {
+        self._emit_rc_helpers();
+    }
+    b.call(self.rc_safe_free_fn, [old_vals_i8]);
     b.store(new_vals, vals_p2);
     b.branch(append_bb);
     # Append block

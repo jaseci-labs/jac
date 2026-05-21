@@ -147,18 +147,18 @@ test "name_spec restored on AstSymbolStubNode after JIR round-trip" {
     );
 
     # Sanity check: postinit-driven fresh AST has name_spec on every stub node.
-    fresh_counts: dict = {};
+    fresh_counts: dict[str, int] = {};
     for cls in stub_classes {
         nodes = mod.get_all_sub_nodes(cls);
         fresh_counts[cls.__name__] = len(nodes);
         assert len(nodes) > 0 , (
             f"Fixture should contain at least one {cls.__name__}; "
-            f"adjust jir_stub_name_spec.jac"
+            "adjust jir_stub_name_spec.jac"
         );
         for n in nodes {
             assert n.name_spec is not None , (
                 f"Fresh {cls.__name__} has no name_spec — postinit chain "
-                f"is broken (this is not a JIR bug, fixture or class is misdefined)"
+                "is broken (this is not a JIR bug, fixture or class is misdefined)"
             );
         }
     }
@@ -180,11 +180,11 @@ test "name_spec restored on AstSymbolStubNode after JIR round-trip" {
         for n in nodes {
             assert n.name_spec is not None , (
                 f"JIR deserializer dropped name_spec on {cls.__name__}. "
-                f"JirReader._read_node must fabricate a stub Name for "
-                f"AstSymbolStubNode subclasses the same way "
-                f"AstSymbolStubNode._init_stub does — otherwise "
-                f"DeclImplMatchPass._resolve_symbols_in_subtree crashes with "
-                f"AttributeError on chain[0].sym after a JIR cache hit."
+                "JirReader._read_node must fabricate a stub Name for "
+                "AstSymbolStubNode subclasses the same way "
+                "AstSymbolStubNode._init_stub does — otherwise "
+                "DeclImplMatchPass._resolve_symbols_in_subtree crashes with "
+                "AttributeError on chain[0].sym after a JIR cache hit."
             );
             # `.sym` reads self.name_spec.sym — must not raise.
             _ = n.sym;
