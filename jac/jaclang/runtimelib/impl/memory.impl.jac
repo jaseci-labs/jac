@@ -15,6 +15,7 @@ import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),
      # Bumped when the on-disk row layout changes in a way that requires
@@ -45,6 +46,25 @@ impl Memory.ahas(id: UUID) -> bool {
 
 impl Memory.acommit(anchor: (Anchor | None) = None) -> None {
     await asyncio.to_thread(self.commit, anchor);
+}
+
+# =============================================================================
+# Memory — default pushdown protocol
+# =============================================================================
+# Default: backend declares no native pushdown. The planner sees an empty
+# capability set, skips `execute_plan` entirely, and uses the universal floor
+# (topology_index narrowing → batch_get). Backends with real native filters
+# (Mongo compound index, Postgres jsonb GIN) override both methods.
+impl Memory.capabilities -> set[str] {
+    return set();
+}
+
+impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    # Default-implementation backends never get called here: the planner
+    # gates on `capabilities()` first. Returning an empty generator keeps
+    # the type contract honest if someone bypasses the planner.
+    return;
+    yield ;
 }
 
 """Serialize an anchor to the tuple of columns stored in the anchors table."""
@@ -1683,6 +1703,36 @@ impl TieredMemory.reset_l3_fetch_count -> None {
 impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     if self.l3 {
         self.l3.sync();
+    }
+}
+
+"""TieredMemory capabilities mirror L3 — that's where pushdown lives. L1/L2
+exist for cache hits, not for query planning."""
+impl TieredMemory.capabilities -> set[str] {
+    if self.l3 is not None {
+        return self.l3.capabilities();
+    }
+    return set();
+}
+
+"""Delegate pushdown to L3 and promote loaded anchors into L1 so subsequent
+gets are cache hits (same pattern as `batch_get`)."""
+impl TieredMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    if self.l3 is None {
+        return;
+    }
+    for anchor in self.l3.execute_plan(plan) {
+        # Promote to L1 unless already there
+        existing = self.__mem__.get(anchor.id);
+        if existing is None {
+            self.__mem__[anchor.id] = anchor;
+            if self.l2 {
+                self.l2.put(anchor);
+            }
+            yield anchor;
+        } else {
+            yield existing;
+        }
     }
 }
 

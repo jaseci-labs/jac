@@ -23,6 +23,7 @@ import from collections.abc { Callable, Generator, Iterable }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 
 glob logger = logging.getLogger(__name__),
      __all__ = [
@@ -67,6 +68,19 @@ obj Memory {
     def get_gc -> list[Anchor] abs;
     def remove_from_gc(anchor: Anchor) -> None abs;
     def get_mem -> dict[UUID, Anchor] abs;
+    # ---- Pushdown protocol ----
+    # Backends opt into native query pushdown by declaring `capabilities()` and
+    # implementing `execute_plan()`. The runtime planner consults
+    # `capabilities()` against a `QueryPlan.needs()` set and routes accordingly:
+    #   - all needs covered → backend's `execute_plan` is authoritative
+    #   - partial coverage → planner narrows via topology_index, hands a
+    #     reduced plan (typically with `id_in` populated) to the backend
+    #   - no coverage      → universal floor (topology_index → batch_get)
+    # See `jaclang.runtimelib.query_plan` for the capability vocabulary and
+    # `jaclang.runtimelib.planner` for the strategy chooser. Defaults below
+    # mean a backend that does nothing extra still gets the floor for free.
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
     # ---- Async hot-path mirrors ----
     # Non-abstract: default implementations delegate to the sync variant via
     # asyncio.to_thread so every existing backend (SQLite, Volatile, Tiered)
@@ -306,4 +320,7 @@ obj TieredMemory(VolatileMemory) {
     def `has(id: UUID) -> bool;
     def commit(anchor: (Anchor | None) = None) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
+    # Pushdown protocol — delegate to L3 (the only tier that can push down).
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
 }
