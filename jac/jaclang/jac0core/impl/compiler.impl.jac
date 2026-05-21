@@ -661,12 +661,13 @@ impl JacCompiler.compile(
     run_type_check = options.type_check;
     if not run_type_check {
         # A module is native-compiled if it is a .na.jac file (whole module
-        # in native context) or a .jac module being auto-promoted to native
-        # in this program (the nacompile / `jac run --autonative` path sets
-        # `_auto_promote_native` on the program before compile). Plain .jac
-        # modules — even those tagged `native_compat=True` by UniTreeEnrichPass
-        # for having an `entry` block — do NOT trigger the implicit run; they
-        # follow the explicit `options.type_check` contract.
+        # in native context), contains any `na { ... }` block (a .jac file
+        # with embedded native code), or is being auto-promoted to native in
+        # this program (the nacompile / `jac run --autonative` path sets
+        # `_auto_promote_native` on the program before compile). All three
+        # cases require Expr.type populated on annotations so NaIRGenPass
+        # can lower them via _lower_type. Plain .jac modules with no native
+        # surface follow the explicit `options.type_check` contract.
         #
         # Includes the symtab_ir_only path: when TypeEvaluator imports a
         # .na.jac module to resolve a cross-module symbol, it compiles with
@@ -676,6 +677,14 @@ impl JacCompiler.compile(
         # will lower those annotations.
         mp = mod_targ.loc.mod_path if (mod_targ?.loc and mod_targ.loc) else file_path;
         is_native_mod = bool(mp) and mp.endswith('.na.jac');
+        if not is_native_mod and mod_targ?.body {
+            for _stmt in mod_targ.body {
+                if isinstance(_stmt, uni.NativeBlock) {
+                    is_native_mod = True;
+                    break;
+                }
+            }
+        }
         if (
             not is_native_mod
             and getattr(actual_program, '_auto_promote_native', False)

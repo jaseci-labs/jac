@@ -63,7 +63,9 @@ impl NaIRGenPass._lower_class_type(t: any) -> (ir.Type | None) {
     if cname in ("NoneType", "None") {
         return ir.VoidType();
     }
-    if cname in ("any", "object") {
+    # Both Jac's lowercase `any` and the central checker's normalised
+    # `Any` ClassType wrapper lower to the boxed jacval representation.
+    if cname in ("any", "Any", "object") {
         return self.jacval_type;
     }
     # User-defined enum -> backing integer type.
