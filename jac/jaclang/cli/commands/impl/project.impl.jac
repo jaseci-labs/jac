@@ -1096,11 +1096,13 @@ impl jacpack(action: str = "", path: str = "", output: str = "") -> int {
     return 1;
 }
 
+glob _PRECOMPILE_MINOR_RANGE: range = range(11, 15);
+
 """Return (executable, version_tag) for every python3.X found on PATH."""
 def _find_precompile_pythons -> list[tuple[str, str]] {
     import shutil;
     found: list[tuple[str, str]] = [];
-    for minor in range(11, 15) {
+    for minor in _PRECOMPILE_MINOR_RANGE {
         exe: str | None = shutil.which(f"python3.{minor}");
         if not exe {
             continue;
