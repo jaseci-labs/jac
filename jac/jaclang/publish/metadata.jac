@@ -1,7 +1,6 @@
 """METADATA 2.4 string generator for jac bundle — in-memory, nothing written to disk."""
 
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.project.config { JacConfig, PersonConfig }
 
 glob METADATA_VERSION: str = "2.4";

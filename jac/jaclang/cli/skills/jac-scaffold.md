@@ -42,26 +42,14 @@ Before running `jac create`:
 
 An existing workspace usually already has a project. Scaffolding into it creates a nested mess. Inspect it first.
 
-## Adapt the output - the `fullstack` template ships deprecated syntax
-
-The `fullstack` template's `main.jac` still uses the old `cl { ... }` / `sv { ... }` braced blocks, which trigger **W0064**. (The `client` template is already on the modern `to cl:` form - no adaptation needed.) After scaffolding `fullstack`:
-
-1. Open `main.jac`
-2. Replace the `sv { ... }` block with plain top-level imports (server is the default context)
-3. Replace the `cl { ... }` block with a `to cl:` section header
-4. Move client imports under `to cl:`
-
-See `jac-fullstack-patterns` for the canonical `main.jac` shape after this fix.
-
 ## Post-scaffold checklist
 
 After `jac create`:
 
 1. `cd <project>`
-2. For the `fullstack` template, adapt the `cl { }` / `sv { }` blocks (see above) before running anything
-3. Add any additional npm deps to `jac.toml` (see `jac-npm-packages` skill for format)
-4. `jac install` - run after all jac.toml changes are final
-5. `jac start --dev main.jac` (background, for hot reload). NOT `jac serve` (deprecated).
+2. Add any additional npm deps to `jac.toml` (see `jac-npm-packages` skill for format)
+3. `jac install` - run after all jac.toml changes are final
+4. `jac start --dev main.jac` (background, for hot reload). NOT `jac serve` (deprecated).
 
 ## Pitfalls
 

@@ -245,7 +245,7 @@ def trigger_access_validation_test(
 
 test "walker simple persistent" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         captured = capture_start();
@@ -269,7 +269,7 @@ test "walker simple persistent" {
 
 test "entrypoint root" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.enter(
@@ -297,7 +297,7 @@ test "entrypoint root" {
 
 test "entrypoint non root" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.enter(
@@ -333,7 +333,7 @@ test "entrypoint non root" {
 
 test "get edge" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
@@ -364,7 +364,7 @@ test "get edge" {
 
 test "filter on edge get edge" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
@@ -383,7 +383,7 @@ test "filter on edge get edge" {
 
 test "filter on edge get node" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
@@ -402,7 +402,7 @@ test "filter on edge get node" {
 
 test "filter on node get node" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
@@ -421,7 +421,7 @@ test "filter on node get node" {
 
 test "filter on edge visit" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
@@ -440,7 +440,7 @@ test "filter on edge visit" {
 
 test "filter on node visit" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.run(filename=os.path.join(FIXTURES, "simple_node_connection.jac"));
@@ -459,7 +459,7 @@ test "filter on node visit" {
 
 test "indirect reference node" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         execution.enter(
@@ -484,7 +484,7 @@ test "indirect reference node" {
 
 test "walker purger" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         captured = capture_start();
@@ -548,7 +548,7 @@ test "walker purger" {
 
 test "other root access" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         ##############################################
@@ -653,7 +653,7 @@ test "other root access" {
 
 test "savable object" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         captured = capture_start();
@@ -722,7 +722,7 @@ test "savable object" {
 
 test "traversing save" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         captured = capture_start();
@@ -755,7 +755,7 @@ test "traversing save" {
 
 test "custom access validation" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         ##############################################
@@ -944,7 +944,7 @@ test "run persistent reuse" {
     import from pickle { loads }
 
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         # Database path is auto-generated at _tmpdir/.jac/data/main.db
@@ -1005,7 +1005,7 @@ test "run persistent reuse" {
 
 test "user isolation via set user root" {
     _tmpdir = mkdtemp();
-    _orig_base = Jac.base_path_dir;
+    _orig_base = Jac.get_base_path_dir();
     Jac.set_base_path(_tmpdir);
     try {
         # Create two separate user roots

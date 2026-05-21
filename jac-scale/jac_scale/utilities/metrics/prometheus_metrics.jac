@@ -3,7 +3,7 @@
 Provides HTTP request metrics, active request tracking, and optional
 walker execution timing using the prometheus-client library.
 """
-import from typing { Any, Callable }
+import from typing { Callable }
 import from jac_scale.abstractions.metrics { MetricsCollector }
 import from jac_scale._optdeps.prometheus {
     Counter,
@@ -42,7 +42,7 @@ Exposes standard HTTP metrics that can be scraped by Prometheus:
 - Optional walker execution timing
 """
 obj PrometheusMetricsCollector(MetricsCollector) {
-    has config: dict[str, Any] = {},
+    has config: dict[str, any] = {},
         _enabled: bool by postinit,
         _namespace: str by postinit,
         _include_walker_metrics: bool by postinit,
@@ -143,7 +143,7 @@ obj PrometheusMetricsCollector(MetricsCollector) {
         }
     }
 
-    def get_endpoint_handler -> Callable[..., Any] {
+    def get_endpoint_handler -> Callable[..., any] {
         registry = self._registry;
         def metrics_endpoint -> Response {
             return Response(

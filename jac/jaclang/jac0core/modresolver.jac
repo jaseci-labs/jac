@@ -246,7 +246,12 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
     if (os.path.exists(other_target) and os.path.isfile(other_target)) {
         return (os.path.normpath(other_target), 'other');
     }
-    # Check typeshed FIRST for non-relative imports (before Python stdlib fallback)
+    # Local files in base_dir take priority over typeshed for non-relative
+    # imports. Without this a local `ast.na.jac` (or .jac / .py) sitting
+    # next to the importer is silently shadowed by `stdlib/ast.pyi`, so
+    # the type checker sees an unrelated module's symbols (or none at
+    # all). Mirrors the same fix applied to NaIRGenPass's struct
+    # registration; covered by the fix_shadow_entry.na.jac fixture.
     if not target.startswith('.') {
         parts = target.split('.');
         level = 0;
@@ -254,6 +259,10 @@ def resolve_module(target: str, base_path: str) -> tuple[(str, str)] {
             level += 1;
         }
         actual_parts = parts[level:];
+        res = _candidate_from(base_dir, actual_parts);
+        if res {
+            return res;
+        }
         typeshed_paths = get_typeshed_paths();
         for typeshed_dir in typeshed_paths {
             res = _candidate_from_typeshed(typeshed_dir, actual_parts);

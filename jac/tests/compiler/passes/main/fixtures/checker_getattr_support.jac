@@ -5,7 +5,7 @@ class StrProxy {
 }
 
 class AnyProxy {
-    def __getattr__(self: AnyProxy, name: str) -> Any { return None; }
+    def __getattr__(self: AnyProxy, name: str) -> any { return None; }
 }
 
 class MixedClass {

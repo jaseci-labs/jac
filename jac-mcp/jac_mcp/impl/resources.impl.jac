@@ -1,6 +1,5 @@
 """Implementation of resource providers."""
 
-import from typing { Any }
 import from pathlib { Path }
 import json;
 import from urllib.request { urlopen, Request }
@@ -558,7 +557,7 @@ def _read_example_dir(dir_path: str) -> str {
 }
 
 """Fetch JSON from a URL, returns parsed dict/list or None on failure."""
-def _github_api_get(url: str) -> Any {
+def _github_api_get(url: str) -> any {
     try {
         req = Request(
             url,

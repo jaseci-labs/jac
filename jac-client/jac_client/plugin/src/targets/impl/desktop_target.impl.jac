@@ -1,6 +1,6 @@
 """Implementation of DesktopTarget methods."""
 import from pathlib { Path }
-import from typing { Optional, Any }
+import from typing { Optional }
 import from jaclang.cli.console { console }
 import from jaclang.project.config { get_config }
 import from jac_client.plugin.src.config_loader { JacClientConfig }
@@ -3129,7 +3129,7 @@ impl DesktopTarget.dev(
         }
         console.print("  ✔ Dev servers stopped", style="success");
     }
-    def signal_handler(signum: int, frame: Any) {
+    def signal_handler(signum: int, frame: any) {
         cleanup();
         sys.exit(0);
     }
@@ -3331,7 +3331,7 @@ def _run_tauri_dev(tauri_dir: Path) -> subprocess.Popen {
 }
 
 """Start backend API server as a subprocess, returning the Popen handle."""
-def _start_backend_server(entry_file: Path, project_dir: Path, port: int) -> Any {
+def _start_backend_server(entry_file: Path, project_dir: Path, port: int) -> any {
     import subprocess;
     import sys;
     server_process = subprocess.Popen(
@@ -3431,7 +3431,7 @@ impl DesktopTarget.start(
         }
         console.print("  ✔ App stopped", style="success");
     }
-    def signal_handler(signum: int, frame: Any) {
+    def signal_handler(signum: int, frame: any) {
         cleanup();
         sys.exit(0);
     }

@@ -16,7 +16,6 @@ import logging;
 import threading;
 import time;
 import hashlib;
-import from typing { Any }
 import from threading { Lock as _RLLock }
 
 glob logger = logging.getLogger(__name__),
@@ -74,7 +73,7 @@ impl InProcessRateLimiter.consume(key: str) -> tuple[bool, float] {
 }
 
 
-def _resolve_client_ip(request: Any) -> str {
+def _resolve_client_ip(request: any) -> str {
     xff = request.headers.get("X-Forwarded-For");
     if xff {
         return xff.split(",")[0].strip();
@@ -84,7 +83,7 @@ def _resolve_client_ip(request: Any) -> str {
 }
 
 
-def _resolve_user_key(request: Any) -> str | None {
+def _resolve_user_key(request: any) -> str | None {
     auth = request.headers.get("Authorization");
     if not auth {
         return None;
@@ -95,7 +94,7 @@ def _resolve_user_key(request: Any) -> str | None {
 
 """Build the rate-limit middleware from a config dict. Returns None when
 disabled so the caller can skip registration entirely."""
-def build_rate_limit_middleware(cfg: dict[str, Any]) -> Any {
+def build_rate_limit_middleware(cfg: dict[str, any]) -> any {
     if not cfg.get("enabled") {
         return None;
     }
@@ -120,7 +119,7 @@ def build_rate_limit_middleware(cfg: dict[str, Any]) -> Any {
 
     import from jac_scale.microservices.runtime.errors { error_response }
 
-    async def rate_limit_middleware(request: Any, call_next: Any) -> Any {
+    async def rate_limit_middleware(request: any, call_next: any) -> any {
         path: str = request.url.path;
         if path in exempt {
             return await call_next(request);

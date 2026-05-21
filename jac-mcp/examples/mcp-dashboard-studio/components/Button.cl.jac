@@ -1,8 +1,8 @@
 """Reusable button with variant and size props."""
 
 def:pub Button(
-    children: Any,
-    onClick: Any = None,
+    children: any,
+    onClick: any = None,
     variant: str = "primary",
     size: str = "md",
     disabled: bool = False,

@@ -195,6 +195,7 @@ def _extract_script_args(registry: object) -> list {
 
 """Load project configuration from jac.toml if present."""
 def _load_project_config {
+    import from jaclang.jac0core.helpers { MalformedJacTomlError }
     try {
         import from jaclang.project.config { get_config, set_config }
         import from jaclang.project.dependencies { add_venv_to_path }
@@ -211,9 +212,31 @@ def _load_project_config {
 
         # Initialize plugin-registered project templates
         _initialize_template_registry();
+    } except MalformedJacTomlError as exc {
+        # The CLI is the right layer to hard-exit on malformed jac.toml:
+        # the user is explicitly invoking jac, so blocking with an
+        # actionable banner is the most helpful response. Library users
+        # (notebooks, scripts) see only a warning from get_disabled_plugins
+        # and keep working.
+        _exit_on_malformed_jac_toml(exc);
     } except Exception {
     # Silently ignore if project module not available or config discovery fails
     }
+}
+
+
+"""Print actionable red banner and exit 2 on malformed jac.toml. Called
+from _load_project_config when the CLI encounters a parse failure."""
+def _exit_on_malformed_jac_toml(exc: 'Any') {
+    import sys;
+    sys.stderr.write(
+        f"\n\033[31mERROR: jac.toml is malformed: {exc.original}\033[0m\n"
+        f"  File: {exc.file_path}\n"
+        "  Fix the syntax error in jac.toml and re-run.\n"
+        "  Common causes: missing closing quote, unbalanced brackets, "
+        "trailing comma, missing `=`.\n\n"
+    );
+    sys.exit(2);
 }
 
 """Initialize the dependency registry from plugin hooks."""

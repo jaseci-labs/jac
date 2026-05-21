@@ -3,8 +3,9 @@
 import from pathlib { Path }
 
 # Diagnostic codes that map directly to a specific guide. A code listed here
-# wins over the category fallback below.
-glob _CODE_GUIDE_MAP: dict[str, str] = {"W0064": "jac-fullstack-patterns",},
+# wins over the category fallback below. Currently empty -- diagnostics route
+# to a guide via the category fallback.
+glob _CODE_GUIDE_MAP: dict[str, str] = {},
      # Fallback by diagnostic Category value when no exact code match is found.
      _CATEGORY_GUIDE_MAP: dict[str, str] = {"type": "jac-types",};
 

@@ -17,7 +17,6 @@ import from jac_scale.microservices.runtime.util {
     DEFAULT_GATEWAY_HOST,
     DEFAULT_CLIENT_DIST_DIR
 }
-import from typing { Any }
 
 glob logger = logging.getLogger(__name__),
      HOP_BY_HOP_HEADERS: set[str] = {"host","transfer-encoding","connection","keep-alive"};
@@ -46,9 +45,9 @@ obj MicroserviceGateway {
         # Prometheus metrics registry + collectors. None when
         # prometheus_client isn't installed; the dispatcher no-ops
         # instrumentation in that case.
-        _metrics_registry: Any = None,
-        _metrics_requests: Any = None,
-        _metrics_duration: Any = None;
+        _metrics_registry: any = None,
+        _metrics_requests: any = None,
+        _metrics_duration: any = None;
 
     """Create the FastAPI app and register routes."""
     def setup -> FastAPI;

@@ -1,6 +1,6 @@
 # React-Style Components
 
-Jac's client-side code uses JSX syntax (the same HTML-in-code approach popularized by React) to build UI components. Components are functions declared inside `cl { }` blocks that return `JsxElement` values. Each prop is a named parameter -- the type-checker validates every JSX call site per attribute -- and components compose just like in React, with conditional rendering, list mapping, and event handling.
+Jac's client-side code uses JSX syntax (the same HTML-in-code approach popularized by React) to build UI components. Components are functions declared in client-side code -- a `.cl.jac` file or a `to cl:` section -- that return `JsxElement` values. Each prop is a named parameter -- the type-checker validates every JSX call site per attribute -- and components compose just like in React, with conditional rendering, list mapping, and event handling.
 
 The key difference from a standard React setup: there's no separate JavaScript project, no webpack configuration, and no build toolchain to manage. You write components in Jac syntax, the compiler generates optimized JavaScript, and the dev server bundles and serves it automatically.
 
@@ -34,6 +34,37 @@ def:pub app() -> JsxElement {
 - `def:pub` exports the component
 - Each prop is a named parameter -- `<Greeting name="Alice" />` is type-checked against the `name: str` declaration
 - Self-closing tags: `<Component />`
+
+---
+
+## Typed props and `children`
+
+Declare **every prop as its own named, typed parameter**. The type-checker keys per-attribute validation on parameter names, so each `<Card title="..." />` call site is checked against the declared types -- unknown props, type mismatches, and missing required props are all caught at `jac check` time.
+
+`children` -- the JSX nested between a component's tags -- is just a regular parameter named `children`. It is not special-cased: React's reconciler fills it in and the compiler destructures it like any other prop. (The only genuinely reserved attribute names are `key` and `ref`.)
+
+```jac
+to cl:
+
+def:pub Card(title: str, description: str = "", children: any = None) -> JsxElement {
+    return <div className="card">
+        <h2>{title}</h2>
+        <p>{description}</p>
+        {children}
+    </div>;
+}
+
+def:pub app() -> JsxElement {
+    return <Card title="Welcome" description="Hello!">
+        <p>This is the card content.</p>
+    </Card>;
+}
+```
+
+!!! warning "`children` must have a default value"
+    The prop validator counts only JSX **attributes** toward matched parameters -- nested content does *not* count. A `children` parameter with no default is therefore treated as a *required* prop, and any call site that passes another attribute fails with `error[E1102]: Component 'Card' requires prop 'children'`. Always declare it as `children: any = None`.
+
+There is no `ReactNode`-style union type in Jac, and a children value can be an element, a string, a number, or a list of those -- so `any` is the honest type for a `children` parameter. The parameter type governs only how you use `children` inside the body; it is never checked against the nested content.
 
 ---
 
@@ -236,7 +267,7 @@ def:pub LoginForm() -> JsxElement {
 ```jac
 to cl:
 
-def:pub Card(title: str, children: Any) -> JsxElement {
+def:pub Card(title: str, children: any = None) -> JsxElement {
     return <div className="card">
         <div className="card-header">{title}</div>
         <div className="card-body">{children}</div>
@@ -285,12 +316,122 @@ def:pub app() -> JsxElement {
 
 ---
 
+## JSX Slots: Control Flow as Children
+
+A component is just `def:pub Name(...) -> JsxElement { return <jsx>; }`. The interesting work happens inside the JSX itself, where every `{...}` is a **slot** -- a place where Jac code computes a child. Slots come in two shapes:
+
+- **Expression slot** (the usual case): `{name}`, `{user.profile.email}`, `{<Badge />}` -- whatever's inside renders directly.
+- **Statement slot**: when a slot begins with a statement keyword (`if`, `for`, `while`, `match`, `switch`, `with`, `try`, `return`), it switches into template mode. Each JSX statement inside the slot is appended to the element's children; control flow yields the JSX in its branches.
+
+The two forms share the same `{...}` syntax -- the compiler decides which shape applies from the body's first token.
+
+```jac
+to cl:
+
+def:pub Greeting(name: str) -> JsxElement {
+    return <div class="card">
+        {if name == "" {
+            <p>Hello, stranger</p>
+        } else {
+            <h1>Hello, {name}</h1>
+            <p>Welcome back.</p>
+        }}
+    </div>;
+}
+```
+
+**Key points:**
+
+- `{...}` slots replace inline comprehensions and nested ternaries -- the same `if`/`for`/`while`/etc. you write at function-body level works as a child.
+- A bare `return;` inside a statement slot is the **guard** form: rendering stops, the children accumulated so far become the slot's value.
+- A statement slot with no JSX renders to an empty fragment. Mix as needed: `<header>` and `<footer>` sit beside a `{for ... { ... }}` slot in the same parent.
+- The slot's bracketed shape is what disambiguates the keyword -- bare `for example` in JSX text remains plain text.
+
+### `for` and `while` loops
+
+`for it in items { <Row item={it} /> }` inside a slot lowers to a `JS` `for` loop that pushes each `<Row>` to the element's children -- not a comprehension over a `.map()`. Same shape for the `for x = 0 to n by 1 { ... }` form and for `while`.
+
+```jac
+to cl:
+
+def:pub ItemList(items: list[str]) -> JsxElement {
+    return <>
+        {if len(items) == 0 {
+            <p class="empty">Nothing here.</p>
+            return;
+        }}
+        <h2>Items</h2>
+        {for (i, item) in enumerate(items) {
+            <li key={i}>{item}</li>
+        }}
+    </>;
+}
+```
+
+`while` slots that emit keyless JSX get a `W2019` warning -- siblings produced by a loop need a stable `key=` so a re-render keeps their identity.
+
+### `has`-fields and Handlers
+
+A `def:pub -> JsxElement` body can declare `has`-fields and nested `def` handlers exactly like a regular component. `has`-fields keep the auto-`useState` wiring -- assigning to one rewrites to the generated setter:
+
+```jac
+to cl:
+
+def:pub Counter() -> JsxElement {
+    has count: int = 0;
+
+    def bump {
+        count = count + 1;
+    }
+
+    return <button onClick={bump}>Count: {count}</button>;
+}
+```
+
+### Dynamic Tags
+
+`<@expr />` chooses its element tag from an expression instead of a fixed name. The expression can be an identifier, a dotted access, or a brace-wrapped expression `<@{expr}>`, and resolves to a host-tag string, another component, or a `str | type` value:
+
+```jac
+to cl:
+
+def:pub Box(as_: str, children: any = None) -> JsxElement {
+    return <@as_ className="box">{children}</@as_>;
+}
+
+def:pub Demo() -> JsxElement {
+    return <>
+        <Box as_="article">Inside an article element</Box>
+        <Box as_="section">Inside a section element</Box>
+    </>;
+}
+```
+
+Use `as_`, not `as` -- `as` is reserved in Jac for import aliases.
+
+### Raw HTML: `unsafe_html`
+
+By default `{value}` is rendered as escaped text. The `unsafe_html(x)` ambient builtin returns a sentinel that the client runtime renders as raw HTML (via `dangerouslySetInnerHTML` on React, `innerHTML` on bare-serve). Use it only with content you trust -- the name is the security review hint at the call site:
+
+```jac
+to cl:
+
+def:pub Comment(c: dict) -> JsxElement {
+    return <article>
+        <h3>{c["author"]}</h3>
+        <div class="body">{unsafe_html(c["trusted_html"])}</div>
+    </article>;
+}
+```
+
+---
+
 ## Separate Component Files
 
 ### Header.cl.jac
 
 ```jac
-# No cl { } needed for .cl.jac files
+# No `to cl:` header needed for .cl.jac files
 
 def:pub Header(title: str) -> JsxElement {
     return <header>
@@ -401,13 +542,17 @@ def:pub app() -> JsxElement {
 | Concept | Syntax |
 |---------|--------|
 | Define component | `def:pub Name(title: str, count: int) -> JsxElement { }` |
+| Statement slot | `{for x in xs { <li>{x}</li> }}` inside a JSX element |
+| Early-exit guard | bare `return;` inside a statement slot |
+| Raw HTML opt-in | `{unsafe_html(trusted_html)}` |
+| Dynamic tag | `<@expr>...</@expr>` |
 | JSX element | `<div className="x">content</div>` |
 | Expression | `{expression}` |
 | Click handler | `onClick={lambda -> None { ... }}` |
 | Input handler | `onChange={lambda e: ChangeEvent { ... }}` |
 | List rendering | `{[<li>{x}</li> for x in items]}` |
 | Conditional | `{("A" if condition else "B")}` |
-| Children | `def:pub Card(children: Any) { ... }` then `{children}` |
+| Children | `def:pub Card(children: any = None) { ... }` then `{children}` |
 | Forwarding bundle | `def:pub Wrap(props: dict)` (suppress W5015) |
 | Import component | `import from "./File.cl.jac" { Component }` |
 
