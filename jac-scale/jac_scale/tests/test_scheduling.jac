@@ -117,12 +117,23 @@ def _dump_server_stderr(proc: subprocess.Popen | None, label: str) -> None {
         return;
     }
     with contextlib.suppress(Exception) {
-        err = proc.stderr.read();
-        if err {
-            print(
-                f"\n===== {label} SERVER STDERR =====\n{err}\n===== END STDERR =====\n"
-            );
+        proc.terminate();
+    }
+    err: str = "";
+    try {
+        (_, err) = proc.communicate(timeout=5);
+    } except subprocess.TimeoutExpired {
+        with contextlib.suppress(Exception) {
+            proc.kill();
         }
+        try {
+            (_, err) = proc.communicate(timeout=2);
+        } except Exception { }
+    } except Exception { }
+    if err {
+        print(
+            f"\n===== {label} SERVER STDERR =====\n{err}\n===== END STDERR =====\n"
+        );
     }
 }
 
