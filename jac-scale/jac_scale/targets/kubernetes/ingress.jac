@@ -461,12 +461,58 @@ obj IngressDeployer {
             );
         }
 
-        # Always deploy with a wildcard rule (no host).
-        # The domain is stored in the jac-scale/domain annotation so that
-        # --enable-tls can read it and add the host + TLS together in one step.
-        # Setting host here without TLS causes nginx to restrict routing to that
+        # Read the existing Ingress before replacing it so we can restore TLS
+        # state that --enable-tls previously wrote.  replace_namespaced_ingress
+        # is a full PUT — without this guard every redeployment wipes spec.tls,
+        # the rule host, and the cert-manager/ssl-redirect annotations, leaving
+        # the app reachable on HTTP only and serving the controller's default
+        # self-signed cert on HTTPS.
+        existing_tls: list = [];
+        existing_host: (str | None) = None;
+        existing_tls_annotations: dict = {};
+        try {
+            prev_api = client.ApiClient();
+            prev_ingress = networking_v1.read_namespaced_ingress(
+                name=ingress_name, namespace=namespace
+            );
+            prev_dict = prev_api.sanitize_for_serialization(prev_ingress);
+            prev_spec = prev_dict.get('spec', {});
+            prev_tls = prev_spec.get('tls', []);
+            prev_rules = prev_spec.get('rules', []);
+            prev_host = None;
+            if prev_rules {
+                prev_host = prev_rules[0].get('host');
+            }
+            if prev_tls or prev_host {
+                existing_tls = prev_tls;
+                existing_host = prev_host;
+                prev_ann = prev_dict.get('metadata', {}).get('annotations', {});
+                for tls_key in [
+                    'cert-manager.io/issuer',
+                    'nginx.ingress.kubernetes.io/ssl-redirect',
+                    'nginx.ingress.kubernetes.io/force-ssl-redirect'
+                ] {
+                    if prev_ann.get(tls_key) {
+                        existing_tls_annotations[tls_key] = prev_ann.get(tls_key);
+                    }
+                }
+            }
+        } except ApiException as e {
+            if e.status != 404 {
+                raise;
+            }
+        }
+
+        # Deploy with a wildcard rule (no host) unless TLS is already configured,
+        # in which case restore the host so the existing cert stays valid.
+        # The domain is stored in the jac-scale/domain annotation so that the
+        # first --enable-tls run can add the host + TLS together in one step;
+        # setting host without TLS causes nginx to restrict routing to that
         # domain before the cert exists, making the app unreachable via IP/NLB.
         main_rule: dict = {'http': {'paths': paths}};
+        if existing_host {
+            main_rule['host'] = existing_host;
+        }
 
         ingress_annotations: dict = {
             'nginx.ingress.kubernetes.io/proxy-body-size': '0',
@@ -498,7 +544,12 @@ obj IngressDeployer {
         if self.k8s_config.cert_manager_email {
             ingress_annotations['jac-scale/cert-email'] = self.k8s_config.cert_manager_email;
         }
+        ingress_annotations.update(existing_tls_annotations);
 
+        main_ingress_spec: dict = {'ingressClassName': ingress_class, 'rules': [main_rule]};
+        if existing_tls {
+            main_ingress_spec['tls'] = existing_tls;
+        }
         main_ingress = {
             'apiVersion': 'networking.k8s.io/v1',
             'kind': 'Ingress',
@@ -508,7 +559,7 @@ obj IngressDeployer {
                 'labels': {'app': app_name, 'managed': 'jac-scale'},
                 'annotations': ingress_annotations
             },
-            'spec': {'ingressClassName': ingress_class, 'rules': [main_rule]}
+            'spec': main_ingress_spec
         };
         try {
             networking_v1.replace_namespaced_ingress(
@@ -615,9 +666,56 @@ obj IngressDeployer {
                     }
                 }
             ];
-            # Same as main ingress: always wildcard rule; host added by --enable-tls.
-            redis_rule: dict = {'http': {'paths': redis_paths}};
+            # Same TLS-preservation logic as the main Ingress: read the existing
+            # RedisInsight Ingress before replacing it so the host and spec.tls
+            # written by --enable-tls survive redeployment.
+            ri_existing_tls: list = [];
+            ri_existing_host: (str | None) = None;
+            ri_existing_tls_annotations: dict = {};
+            try {
+                ri_prev_api = client.ApiClient();
+                ri_prev_ingress = networking_v1.read_namespaced_ingress(
+                    name=redis_ingress_name, namespace=namespace
+                );
+                ri_prev_dict = ri_prev_api.sanitize_for_serialization(ri_prev_ingress);
+                ri_prev_spec = ri_prev_dict.get('spec', {});
+                ri_prev_tls = ri_prev_spec.get('tls', []);
+                ri_prev_rules = ri_prev_spec.get('rules', []);
+                ri_prev_host = None;
+                if ri_prev_rules {
+                    ri_prev_host = ri_prev_rules[0].get('host');
+                }
+                if ri_prev_tls or ri_prev_host {
+                    ri_existing_tls = ri_prev_tls;
+                    ri_existing_host = ri_prev_host;
+                    ri_prev_ann = ri_prev_dict.get('metadata', {}).get('annotations', {});
+                    for ri_tls_key in [
+                        'cert-manager.io/issuer',
+                        'nginx.ingress.kubernetes.io/ssl-redirect',
+                        'nginx.ingress.kubernetes.io/force-ssl-redirect'
+                    ] {
+                        if ri_prev_ann.get(ri_tls_key) {
+                            ri_existing_tls_annotations[ri_tls_key] = ri_prev_ann.get(ri_tls_key);
+                        }
+                    }
+                }
+            } except ApiException as e {
+                if e.status != 404 {
+                    raise;
+                }
+            }
 
+            # Wildcard rule unless TLS is already configured on this Ingress.
+            redis_rule: dict = {'http': {'paths': redis_paths}};
+            if ri_existing_host {
+                redis_rule['host'] = ri_existing_host;
+            }
+            redis_ingress_annotations.update(ri_existing_tls_annotations);
+
+            redis_ingress_spec: dict = {'ingressClassName': ingress_class, 'rules': [redis_rule]};
+            if ri_existing_tls {
+                redis_ingress_spec['tls'] = ri_existing_tls;
+            }
             redis_ingress = {
                 'apiVersion': 'networking.k8s.io/v1',
                 'kind': 'Ingress',
@@ -627,7 +725,7 @@ obj IngressDeployer {
                     'labels': {'app': app_name, 'managed': 'jac-scale'},
                     'annotations': redis_ingress_annotations
                 },
-                'spec': {'ingressClassName': ingress_class, 'rules': [redis_rule]}
+                'spec': redis_ingress_spec
             };
             try {
                 networking_v1.replace_namespaced_ingress(
