@@ -664,6 +664,7 @@ impl PyastBuildPass.proc_try(nd: (py_ast.Try | py_ast.TryStar)) -> uni.TryStmt {
         body=valid_body,
         excepts=excepts,
         else_body=elsestmt if else_body else None,
+        awaiting_body=None,
         finally_body=finally_stmt_obj,
         kid=kid
     );

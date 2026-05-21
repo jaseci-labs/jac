@@ -61,14 +61,17 @@ _jac_runtime_ready = False
 
 
 def _ensure_jac_runtime():
-    """Initialise the Jac runtime exactly once per pytest session."""
+    """Verify that the Jac runtime can be imported, once per pytest session.
+
+    Skips the test if jaclang is broken or otherwise unimportable; otherwise
+    a no-op (Python's import system already handles real initialization).
+    """
     global _jac_runtime_ready
     if _jac_runtime_ready:
         return
     try:
-        from jaclang.jac0core.runtime import JacRuntime
+        from jaclang.jac0core.runtime import JacRuntime  # noqa: F401
 
-        JacRuntime.setup()
         _jac_runtime_ready = True
     except Exception as exc:
         pytest.skip(f"Jac runtime unavailable: {exc}")
@@ -103,11 +106,18 @@ def _fresh_jac_state(*, clear_modules: bool = True):
         JacRuntime.loaded_modules.clear()
 
     # Set up fresh state with isolated storage (temp directory avoids
-    # stale SQLite data from previous tests)
-    JacRuntime.base_path_dir = tempfile.mkdtemp()
+    # stale SQLite data from previous tests). Seed the bootstrap default
+    # so any subsequent `ExecutionContext()` without explicit args picks
+    # it up. The session-wide exec_ctx is constructed with the seed
+    # passed explicitly so its L3 path is locked in at construction.
+    fresh_base = tempfile.mkdtemp()
+    JacRuntime.set_base_path(fresh_base)
+    JacRuntime.set_full_target_path(None)
     JacRuntime.program = JacProgram()
     JacRuntime.pool = ThreadPoolExecutor()
-    JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(user_root=None)
+    JacRuntime.exec_ctx = JacRuntimeInterface.create_j_context(
+        user_root=None, base_path_dir=fresh_base, full_target_path=None
+    )
 
 
 # ---------------------------------------------------------------------------

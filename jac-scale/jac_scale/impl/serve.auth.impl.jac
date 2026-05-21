@@ -20,7 +20,7 @@ impl JacAPIServerAuth.register_register_endpoint -> None {
         identities = [i.model_dump(mode='json') for i in body_data.identities];
         credential = body_data.credential.model_dump(mode='json');
         try {
-            result = self.user_manager.create_user(
+            result = self.user_manager.create_user_with_identities(
                 identities, credential, body_data.profile
             );
             if 'error' in result {

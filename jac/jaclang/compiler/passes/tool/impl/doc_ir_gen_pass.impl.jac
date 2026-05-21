@@ -7,6 +7,19 @@ impl DocIRGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.doc_ir = self.concat(parts, ast_node=nd);
 }
 
+"""Generate DocIR for JSX statement-form slots.
+
+The slot's body is kept as raw statements (ViewLowerPass doesn't run in
+the formatter pipeline), so concatenating the kid doc_irs reproduces the
+source `{ stmt; stmt; ... }` shape verbatim."""
+impl DocIRGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        parts.append(i.gen.doc_ir);
+    }
+    nd.gen.doc_ir = self.concat(parts, ast_node=nd);
+}
+
 """Generate DocIR for JSX text — normalize via single source of truth."""
 impl DocIRGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     source_tok = nd.kid[0] if nd.kid else None;

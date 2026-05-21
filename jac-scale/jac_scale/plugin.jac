@@ -703,8 +703,14 @@ class JacCmd {
 """Jac Scale Plugin Implementation."""
 class JacScalePlugin {
     @hookimpl
-    static def create_j_context(user_root: (str | None)) -> ExecutionContext {
-        # Storage backend configured via environment (MONGODB_URI, etc.)
+    static def create_j_context(
+        user_root: (str | None),
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None
+    ) -> ExecutionContext {
+        # Storage backend configured via environment (MONGODB_URI, etc.) —
+        # base_path_dir / full_target_path are SQLite-backend artifacts that
+        # don't apply here, but the spec carries them so we accept the kwargs.
         ctx = JScaleExecutionContext();
         if user_root is not None {
             ctx.set_user_root(user_root);

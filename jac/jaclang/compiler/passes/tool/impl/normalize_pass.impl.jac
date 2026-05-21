@@ -798,6 +798,9 @@ impl NormalizePass.enter_try_stmt(nd: uni.TryStmt) -> None {
         new_kid.append(stmt);
     }
     new_kid.append(nd.gen_token(Tok.RBRACE));
+    if nd.awaiting_body {
+        new_kid.append(nd.awaiting_body);
+    }
     for exc in nd.excepts {
         new_kid.append(exc);
     }
@@ -807,6 +810,20 @@ impl NormalizePass.enter_try_stmt(nd: uni.TryStmt) -> None {
     if nd.finally_body {
         new_kid.append(nd.finally_body);
     }
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize AwaitingClause kid list."""
+impl NormalizePass.enter_awaiting_clause(nd: uni.AwaitingClause) -> None {
+    new_kid: list[uni.UniNode] = [
+        nd.gen_token(Tok.KW_AWAITING),
+        nd.gen_token(Tok.LBRACE),
+
+    ];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
 }
 
@@ -1700,6 +1717,23 @@ impl NormalizePass.enter_jsx_expression(nd: uni.JsxExpression) -> None {
         nd.gen_token(Tok.RBRACE),
 
     ];
+    nd.set_kids(nodes=new_kid);
+}
+
+"""Normalize JsxSlot kid list.
+
+A `JsxSlot` is a statement-form `{...}` JSX child whose kids are the raw
+brace tokens flanking the body statements (the parser emits
+`[LBRACE, ...body, RBRACE]`). Rebuild the kid list deterministically so
+later passes and the formatter can round-trip the slot regardless of how
+the body was produced.
+"""
+impl NormalizePass.enter_jsx_slot(nd: uni.JsxSlot) -> None {
+    new_kid: list[uni.UniNode] = [nd.gen_token(Tok.LBRACE)];
+    for stmt in nd.body {
+        new_kid.append(stmt);
+    }
+    new_kid.append(nd.gen_token(Tok.RBRACE));
     nd.set_kids(nodes=new_kid);
 }
 

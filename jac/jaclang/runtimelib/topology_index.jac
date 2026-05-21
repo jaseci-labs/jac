@@ -50,9 +50,18 @@ obj TopologyIndex {
         source_id: UUID, target_id: UUID, edge_type_name: (str | None) = None
     ) -> None;
 
+    """Walk the chain entirely inside this index.
+
+    With `bail_on_intermediate_foreign=True`, returns `None` the moment
+    any non-final hop lands on a node owned by a *different* root. Those
+    nodes' outgoing edges live in their own root's index, not this one,
+    so continuing here would silently undercount. The planner uses this
+    flag to fall back to the global edge walk in that situation."""
     def resolve_chain(
-        origin_ids: set[UUID], chain: list[tuple[(str | None), (str | None), int]]
-    ) -> set[UUID];
+        origin_ids: set[UUID],
+        chain: list[tuple[(str | None), (str | None), int]],
+        bail_on_intermediate_foreign: bool = False
+    ) -> (set[UUID] | None);
 
     """Single-hop ordered resolution: walk the canonical adj_list in
     insertion order, filtering by origin / edge_type / node_type / direction
