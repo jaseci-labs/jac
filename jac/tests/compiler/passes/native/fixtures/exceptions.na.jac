@@ -24,7 +24,13 @@ def test_try_no_exception() -> int {
     return result;
 }
 
-# Test 3: Exception with "as" binding — bind exception message
+# Test 3: Exception with "as" binding — bind exception message.
+# NOTE: native runtime represents Exception as a bare char* message
+# pointer, so `msg = e` produces the message directly. Python semantics
+# would expect `str(e)` here, but the native runtime doesn't yet
+# implement Exception.__str__, so the residual E1001 (`Cannot assign
+# Exception to str`) is accepted as a native-specific divergence —
+# same class as the runtime_errors None-dereference tests.
 def test_except_as_binding() -> str {
     msg: str = "none";
     try {

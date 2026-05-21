@@ -1123,8 +1123,15 @@ obj InnerCompr(AstAsyncNode, UniScopeNode, UniCFGNode) {
     def postinit -> None;
 }
 
-"""ListCompr node type for Jac Ast."""
-obj ListCompr(AtomExpr, UniScopeNode) {
+"""ListCompr node type for Jac Ast.
+
+Inherits UniCFGNode so the comprehension is a flow-sensitive node:
+cfg_build_pass wires each `if` filter as a CfgExpr predecessor whose
+true edge feeds back into the comprehension itself, so the existing
+CFG narrowing engine threads filter narrowing into the head expression
+without any side-channel state on the type evaluator.
+"""
+obj ListCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has out_expr: Expr,
         compr: list[InnerCompr];
 
@@ -1137,8 +1144,12 @@ obj GenCompr(ListCompr) {}
 """SetCompr node type for Jac Ast."""
 obj SetCompr(ListCompr) {}
 
-"""DictCompr node type for Jac Ast."""
-obj DictCompr(AtomExpr, UniScopeNode) {
+"""DictCompr node type for Jac Ast.
+
+Same UniCFGNode rationale as ListCompr -- the conditional filters wire
+through the CFG so narrowing flows into the head key/value expressions.
+"""
+obj DictCompr(AtomExpr, UniScopeNode, UniCFGNode) {
     has kv_pair: KVPair,
         compr: list[InnerCompr];
 

@@ -25,6 +25,7 @@ import from jaclang.runtimelib.memory {
     TieredMemory,
     SqliteMemory
 }
+import from jaclang.runtimelib.query_plan { QueryPlan }
 import from jaclang.runtimelib.utils { storage_key, to_uuid }
 import from jaclang.runtimelib.serializer { Serializer }
 import from jac_scale.config_loader { get_scale_config }
@@ -127,6 +128,11 @@ obj MongoBackend(PersistentMemory) {
 
     def commit(anchor: (Anchor | None) = None) -> None;
     def batch_get(ids: list[UUID]) -> dict[UUID, Anchor];
+    # Pushdown protocol — Mongo declares native type+field+id_in+slice support.
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
+    # One-time index setup (idempotent). Called from postinit.
+    def ensure_indexes -> None;
     # PersistentMemory-specific
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;

@@ -983,9 +983,6 @@ impl JacCmd.run_ai_agent(req: object) -> int {
     return run_agent(req);
 }
 
-"""Set Class References."""
-impl JacBasics.setup -> None { }
-
 """Get current execution context (request-scoped if available, else global)."""
 impl JacBasics.get_context -> ExecutionContext {
     # Try request-scoped context first (for web servers)
@@ -1483,48 +1480,21 @@ impl JacBasics.refs(
             last.nd = lambda i: any : (orig_nd(i) and post_filter(i));
         }
     }
-    # Try topology index optimization for non-edge-only queries
+    # Try the storage-aware planner for non-edge-only queries. The planner
+    # owns the strategy ladder: backend pushdown (e.g. Mongo `_id $in + field`
+    # predicates) → topology_index narrowing → batch_get materialization. It
+    # returns NodeAnchors when a fast path applies, or None to signal that
+    # the caller must fall back to the linear edge-walk below.
     if not path.edge_only {
-        import from jaclang.runtimelib.topo_utils {
-            plan_query,
-            plan_query_ordered,
-            batch_load_nodes,
-            batch_load_nodes_by_ids
-        }
-        # Storage-layer pagination: when a slice is requested and the chain is
-        # pushdown-eligible, the planner returns the bounded ordered UUID list
-        # so we only batch_get the sliced subset.
-        if slc is not None {
-            planned_ordered = plan_query_ordered(path, slc);
-            if planned_ordered is not None {
-                return batch_load_nodes_by_ids(planned_ordered);
-            }
-        }
-        planned_ids = plan_query(path);
-        if planned_ids is not None {
-            # Index resolved which nodes survive type filters.
-            # For single-hop, preserve edge-list order via origin walk.
-            # For multi-hop, load by ID (order not guaranteed by edges_to_nodes either).
-            destinations = path.destinations[:-1]
-                if path.edge_only
-                else path.destinations;
-            use_origin = path.origin if len(destinations) <= 1 else None;
-            nodes = batch_load_nodes(planned_ids, origin=use_origin);
-            destinations = path.destinations;
-            if destinations {
-                last_dest = destinations[-1];
-                if last_dest.nd {
-                    nodes = [
-                        n
-                        for n in nodes
-                        if last_dest.node_filter(n)
-                    ];
-                }
-            }
-            if slc is not None {
-                nodes = nodes[slc];
-            }
-            return nodes;
+        import from jaclang.runtimelib.planner { execute_path }
+        ctx = JacRuntimeInterface.get_context();
+        planned = execute_path(ctx.mem, path, slc);
+        if planned is not None {
+            return [
+                a.archetype
+                for a in planned
+                if a.archetype is not None
+            ];
         }
     }
     # Fallback: original approach
@@ -2454,12 +2424,21 @@ impl JacByLLM.get_mtir_from_map(scope: str) -> (Info | None) {
                    Pass user's root ID for authenticated server requests.
 
     Storage backend is configured via plugins/environment, not per-context.
-    For file backend: auto-generates path from JacRuntime.base_path_dir.
+    For file backend: the new ctx's L3 path is derived from its own
+    `base_path_dir` / `full_target_path` (passed explicitly, or seeded
+    from `Jac.get_base_path_dir()` / `Jac.get_full_target_path()` for
+    bootstrap callers that haven't been migrated to explicit args).
     For database backends (jac-scale): configured via environment variables.
     """
-impl JacUtils.create_j_context(user_root: (str | None)) -> ExecutionContext {
+impl JacUtils.create_j_context(
+    user_root: (str | None),
+    base_path_dir: (str | None) = None,
+    full_target_path: (str | None) = None
+) -> ExecutionContext {
     import from jaclang.runtimelib.context { ExecutionContext }
-    ctx = ExecutionContext();
+    ctx = ExecutionContext(
+        base_path_dir=base_path_dir, full_target_path=full_target_path
+    );
     if (user_root is not None) {
         ctx.set_user_root(user_root);
     }
@@ -2562,7 +2541,7 @@ impl JacUtils.create_archetype_from_source(
     keep_temporary_files: bool = False
 ) -> (types.ModuleType | None) {
     if not base_path {
-        base_path = JacRuntime.base_path_dir or os.getcwd();
+        base_path = JacRuntime.get_base_path_dir() or os.getcwd();
     }
     if (base_path and not os.path.exists(base_path)) {
         os.makedirs(base_path);
@@ -2610,7 +2589,7 @@ impl JacUtils.update_walker(
             old_module = JacRuntime.loaded_modules[module_name];
             result = JacRuntimeInterface.jac_import(
                 target=module_name,
-                base_path=(JacRuntime.base_path_dir or os.getcwd()),
+                base_path=(JacRuntime.get_base_path_dir() or os.getcwd()),
                 items=items,
                 reload_module=True,
                 lng='jac'
@@ -2840,28 +2819,43 @@ impl JacRuntime.get_program(cls: any) -> JacProgram {
     return cls.program;
 }
 
-"""Set the base path for the machine.
+"""Return the seed base path for new contexts."""
+impl JacRuntime.get_base_path_dir -> (str | None) {
+    return _default_base_path_dir[0];
+}
+
+"""Return the seed target path for new contexts."""
+impl JacRuntime.get_full_target_path -> (str | None) {
+    return _default_full_target_path[0];
+}
+
+"""Set the seed base path used to bootstrap new contexts.
 
     When base_path is None, L3 persistence is disabled (faster for tests).
+    Already-constructed contexts are unaffected — they carry their own
+    `base_path_dir` captured at postinit time.
     """
 impl JacRuntime.set_base_path(base_path: (str | None)) -> None {
     if (base_path is None) {
-        JacRuntime.base_path_dir = None;
+        _default_base_path_dir[0] = None;
     } else {
-        JacRuntime.base_path_dir = base_path
+        _default_base_path_dir[0] = base_path
             if os.path.isdir(base_path)
             else os.path.dirname(base_path);
     }
 }
 
+"""Set the seed target path used to bootstrap new contexts.
+
+    Already-constructed contexts are unaffected.
+    """
+impl JacRuntime.set_full_target_path(target_path: (str | None)) -> None {
+    _default_full_target_path[0] = target_path;
+}
+
 """Set the context for the machine."""
 impl JacRuntime.set_context(context: ExecutionContext) -> None {
     JacRuntime.exec_ctx = context;
-}
-
-"""Set request-scoped execution context (for web servers)."""
-impl JacRuntime.set_request_context(context: ExecutionContext) -> None {
-    _request_context.set(context);
 }
 
 """Push a request-scoped execution context; returns a reset token."""
@@ -2872,13 +2866,4 @@ impl JacRuntime.push_request_context(context: ExecutionContext) -> any {
 """Reset the request-scoped context using a push token."""
 impl JacRuntime.reset_request_context(token: any) -> None {
     _request_context.reset(token);
-}
-
-"""Clear request-scoped context and commit changes."""
-impl JacRuntime.clear_request_context -> None {
-    ctx = _request_context.get();
-    if ctx is not None {
-        ctx.close();
-        _request_context.set(None);
-    }
 }

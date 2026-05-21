@@ -63,7 +63,7 @@ def:pub ItemList() -> JsxElement {
     data = useItems();
     items = data["items"] or [];
     if data["loading"] { return <p>Loading...</p>; }
-    return <ul>{[<li key={jid(i)}>{i.name}</li> for i in items if i is not None]}</ul>;
+    return <ul>{for i in items { if i is not None { <li key={jid(i)}>{i.name}</li> } }}</ul>;
 }
 ```
 

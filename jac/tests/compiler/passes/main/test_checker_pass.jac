@@ -4807,3 +4807,149 @@ test "as_cast_resolves_any_assignment" {
         e.pretty_print() for e in parse_errs
     );
 }
+
+# ============================================================================
+# Issue #6058 — TypeEvaluator correctness for patterns native code uses.
+# Fixed-width primitives (iN, uN, fN) are width refinements of the same
+# numeric kind as int / float, not unrelated subclasses. Same-kind
+# assignment and arithmetic must typecheck.
+# ============================================================================
+test "numeric_kind_same_kind_assignment" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_numeric_kind_assign.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    typed_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in ("E1001", "E1002", "E1053", "E1055")
+    ];
+    assert len(typed_errs) == 0 , f"Expected no E1001/E1002/E1053/E1055 for same-kind / IntKind→FloatKind / fixed-width arithmetic, got {len(
+        typed_errs
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in typed_errs);
+}
+
+test "numeric_kind_disallows_float_to_int" {
+    path = os.path.join(CHECKER_FIXTURES, "checker_numeric_kind_disallowed.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    # Each of the 4 functions performs a FloatKind -> IntKind move (3 returns,
+    # 1 local assignment). All must remain type errors.
+    typed_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in ("E1001", "E1002")
+    ];
+    assert len(typed_errs) >= 4 , f"Expected ≥4 errors for FloatKind→IntKind moves, got {len(
+        typed_errs
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in typed_errs);
+}
+
+test "comprehension_filter_narrows_head" {
+    # `[x for x in xs if x is not None]` must type as `list[T]`, not
+    # `list[T | None]` -- the filter proves the head value is non-None.
+    # Generalises to subscript heads under stable loop-var indices.
+    path = os.path.join(CHECKER_FIXTURES, "checker_compr_filter_narrowing.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    narrow_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in ("E1099", "E1030", "E1001", "E1002")
+    ];
+    assert len(narrow_errs) == 0 , f"Expected comprehension filter narrowing to propagate to head, got {len(
+        narrow_errs
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in narrow_errs);
+}
+
+test "subscript_narrowing_stable_indices" {
+    # Repeated subscript expressions `x[i]` / `x[i][j]` must narrow as
+    # aliases when neither `x` nor the indices are reassigned between
+    # reads. Pyright's "narrowable expression" rule -- plain names,
+    # int literals, and loop variables count.
+    path = os.path.join(CHECKER_FIXTURES, "checker_subscript_narrowing_stable.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    narrow_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in ("E1099", "E1030", "E1001", "E1002")
+    ];
+    assert len(narrow_errs) == 0 , f"Expected stable-index subscript narrowing to propagate, got {len(
+        narrow_errs
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in narrow_errs);
+}
+
+test "enum_member_assignable_to_base_type" {
+    # `enum Color { RED = 1 }` — `Color.RED` is the int value 1.
+    # Returning / assigning it where the base type (int / str) is
+    # expected must typecheck. Surfaced in native fixtures
+    # string_enums.na.jac, ast.na.jac, na_enum_import.na.jac.
+    path = os.path.join(CHECKER_FIXTURES, "checker_enum_member_as_base.jac");
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    enum_errs = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in ("E1001", "E1002", "E1053")
+    ];
+    assert len(enum_errs) == 0 , f"Expected enum-member-as-base assignments to typecheck, got {len(
+        enum_errs
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in enum_errs);
+}
+
+test "local_module_shadows_stdlib_in_resolver" {
+    # `import from ast { ... }` from a file alongside a local `ast.na.jac`
+    # must resolve to the local file, not Python's stdlib ast.pyi. Without
+    # this the imported symbols decay to Unknown and propagate cascade
+    # errors (E1001 / E1030 / E1053). Symmetric with NaIRGenPass's
+    # struct-registration fix; covered by fix_shadow_entry.na.jac in the
+    # native fixture suite too.
+    path = os.path.join(
+        CHECKER_FIXTURES, "checker_local_shadows_stdlib", "entry.na.jac"
+    );
+    program = JacProgram();
+    mod = program.compile(path, options=NO_TC);
+    TypeCheckPass(ir_in=mod, prog=program);
+
+    cascade = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code in ("E1001", "E1002", "E1030", "E1053")
+    ];
+    assert len(cascade) == 0 , f"Expected no cascade errors when local ast.na.jac shadows stdlib, got {len(
+        cascade
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in cascade);
+}
+
+test "duplicate_archetype_decl_is_hard_error" {
+    # `obj Foo; obj Foo { ... }` is decl/decl — Jac only supports
+    # decl/impl. The second `obj` header must emit E0077.
+    path = os.path.join(CHECKER_FIXTURES, "checker_forward_decl_archetype.jac");
+    program = JacProgram();
+    program.compile(path, options=NO_TC);
+
+    e0077 = [
+        e
+        for e in program.errors_had
+        if e.code and e.code.code == "E0077"
+    ];
+    assert len(e0077) == 2 , f"Expected exactly 2 E0077 (one per duplicate `obj` pair), got {len(
+        e0077
+    )}:\n" + "\n---\n".join(e.pretty_print() for e in e0077);
+    assert "Piece" in e0077[0].pretty_print() , f"first E0077 should name 'Piece': {e0077[
+        0
+    ].pretty_print()}";
+    assert "Animal" in e0077[1].pretty_print() , f"second E0077 should name 'Animal': {e0077[
+        1
+    ].pretty_print()}";
+}
