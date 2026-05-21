@@ -251,7 +251,7 @@ test "deploy all in one" {
     print(f"Deployment result details: {details}");
     print(f"Deployment status: {result.message}");
     assert result.success is True;
-    assert len(details) == 13;
+    assert len(details) == 14;
 
     full_status = deployment_target.get_full_status(app_name);
     assert full_status is not None;
