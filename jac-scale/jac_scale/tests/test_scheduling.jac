@@ -21,9 +21,6 @@ import from jac_scale._optdeps.pymongo { PyMongoError }
 
 glob FIXTURES_DIR: Path = Path(__file__).parent / "fixtures";
 
-# =============================================================================
-# Helpers
-# =============================================================================
 def get_free_port -> int {
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s {
         s.bind(("", 0));
@@ -106,37 +103,6 @@ def _stop_server(proc: subprocess.Popen | None) {
     gc.collect();
 }
 
-"""Dump the subprocess's stderr so CI logs surface whatever the server actually said.
-
-Use this from a test's `finally` only when an assertion failed — the server's
-captured stderr is otherwise invisible and any silently-caught exception
-inside the scheduler/execution path stays buried.
-"""
-def _dump_server_stderr(proc: subprocess.Popen | None, label: str) -> None {
-    if proc is None or proc.stderr is None {
-        return;
-    }
-    with contextlib.suppress(Exception) {
-        proc.terminate();
-    }
-    err: str = "";
-    try {
-        (_, err) = proc.communicate(timeout=5);
-    } except subprocess.TimeoutExpired {
-        with contextlib.suppress(Exception) {
-            proc.kill();
-        }
-        try {
-            (_, err) = proc.communicate(timeout=2);
-        } except Exception { }
-    } except Exception { }
-    if err {
-        print(
-            f"\n===== {label} SERVER STDERR =====\n{err}\n===== END STDERR =====\n"
-        );
-    }
-}
-
 def _get_token(base_url: str, user: str = "testuser", pwd: str = "pass123") -> str {
     requests.post(
         f"{base_url}/user/register",
@@ -163,9 +129,6 @@ def _post_job(base_url: str, headers: dict, payload: dict) -> dict[str, any] {
     ).json();
 }
 
-# =============================================================================
-# Test 1: Endpoint filtering, /jobs routes, and system user
-# =============================================================================
 test "endpoint filtering and startup" {
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -224,9 +187,6 @@ test "endpoint filtering and startup" {
     }
 }
 
-# =============================================================================
-# Test 2: Dynamic jobs with all trigger types (interval / cron / date)
-# =============================================================================
 test "dynamic jobs - all trigger types for walker and function" {
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -279,9 +239,6 @@ test "dynamic jobs - all trigger types for walker and function" {
     }
 }
 
-# =============================================================================
-# Test 3: Full CRUD lifecycle
-# =============================================================================
 test "jobs crud lifecycle" {
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -349,9 +306,6 @@ test "jobs crud lifecycle" {
     }
 }
 
-# =============================================================================
-# Test 4: Validation and authentication errors
-# =============================================================================
 test "jobs validation and auth errors" {
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -462,9 +416,6 @@ test "jobs validation and auth errors" {
     }
 }
 
-# =============================================================================
-# Test 4: Ownership enforcement — user B cannot see/modify user A's job
-# =============================================================================
 test "ownership enforcement across users" {
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -545,9 +496,6 @@ test "ownership enforcement across users" {
     }
 }
 
-# =============================================================================
-# Test 5: Static walkers AND functions actually fire on their schedule
-# =============================================================================
 test "static walkers and functions actually execute" {
     port = get_free_port();
     base_url = f"http://localhost:{port}";
@@ -597,11 +545,6 @@ test "static walkers and functions actually execute" {
         # If we see only 1, something is gating execution.
         assert walker_count >= 3 , f"Expected >=3 walker fires, got {walker_count}";
         assert func_count >= 3 , f"Expected >=3 function fires, got {func_count}";
-    } except Exception {
-        # Surface whatever the server logged so CI shows the actual cause
-        # of a static-walker fire failure instead of just "log=[]".
-        _dump_server_stderr(sp, "static walkers");
-        raise;
     } finally {
         _stop_server(sp);
         _cleanup();
@@ -625,7 +568,6 @@ def _make_sched(user_exists_map: dict[str, bool] | None = None) -> JacScaleSched
     return sched;
 }
 
-# -- Cron validation -----------------------------------------------------------
 test "TriggerSpec.validate rejects malformed cron expressions" {
     bad_crons = ['99 99 99 99 99', 'not a cron', '* * *', '60 * * * *', '* 24 * * *'];
     for bad in bad_crons {
@@ -652,7 +594,6 @@ test "TriggerSpec.validate accepts well-formed cron expressions" {
     }
 }
 
-# -- 503 storage failure path --------------------------------------------------
 test "scheduler list_jobs propagates PyMongoError so endpoint can 503-map" {
     sched = _make_sched();
     sched._store = unittest.mock.MagicMock();
@@ -686,7 +627,6 @@ test "scheduler get_job propagates PyMongoError" {
     assert raised_pymongo , "PyMongoError from get_job must propagate";
 }
 
-# -- _user_is_live cache expiry ------------------------------------------------
 test "user_is_live caches positive answer for ttl seconds" {
     # First call hits user_manager.user_exists; subsequent calls within TTL
     # are served from cache. After TTL expiry, user_manager is hit again.
@@ -768,7 +708,6 @@ test "user_is_live evicts positive cache when user later disappears" {
     }
 }
 
-# -- Orphan transition (register_dynamic_tasks_from_db) ------------------------
 test "register_dynamic_tasks_from_db marks jobs orphaned when creator gone" {
     sched = _make_sched(user_exists_map={'alice': True, 'ghost': False});
     alive_job = {
@@ -863,7 +802,6 @@ test "register_dynamic_tasks_from_db restores system-owned jobs without user_exi
     assert raw.get('status') == 'active';
 }
 
-# -- Admin override path -------------------------------------------------------
 test "update_job with acting_as=None updates jobs created by any user (admin path)" {
     sched = _make_sched();
 
