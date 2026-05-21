@@ -2379,6 +2379,7 @@ test "hpa warn no logger is silent" {
     target._emit_hpa_warnings(
         None, None, ["cpu_request (cpu_utilization_target will be ignored)"], []
     );
+}
 # ---------------------------------------------------------------------------
 # Startup probe + resilient experimental runtime setup (no live cluster)
 # Covers: startup-probe gating, SSH->HTTPS clone normalization, and the
