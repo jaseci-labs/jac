@@ -21,7 +21,12 @@ import from testcontainers.redis { RedisContainer }
 import from jaclang.jac0core.runtime { JacRuntime }
 import from jaclang.runtimelib.context { ExecutionContext }
 import from jaclang.project.config { JacConfig, set_config }
-import from jac_scale.memory_hierarchy { MongoBackend, RedisBackend, ScaleTieredMemory }
+import from jac_scale.memory_hierarchy {
+    MongoBackend,
+    RedisBackend,
+    ScaleTieredMemory,
+    _process_cache
+}
 
 
 node _PushdownLead {
@@ -90,6 +95,14 @@ def _make_scale_memory -> tuple {
     mongo_uri = _get_mongo_uri();
     redis_url = _get_redis_url();
 
+    # Clear stale singleton clients so each call gets a live connection to
+    # the testcontainer URLs (the module-level cache may hold a client from
+    # the pytest plugin's initial context setup which points nowhere).
+    _process_cache.pop("mongo_client", None);
+    _process_cache.pop("redis_client", None);
+    _process_cache.pop("mongo_available", None);
+    _process_cache.pop("redis_available", None);
+
     os.environ["JAC_MONGO_URL"] = mongo_uri;
     os.environ["JAC_REDIS_URL"] = redis_url;
 
@@ -119,6 +132,8 @@ test "edge-ref slice bounds mongodb fetches" {
         (mem1, mongo1, redis1) = _make_scale_memory();
         ctx1 = ExecutionContext();
         ctx1.mem = mem1;
+        # Seed the injected memory with the system root so sync() can persist it.
+        ctx1.mem.put(ctx1.system_root);
         JacRuntime.set_context(ctx1);
 
         for i in range(100) {
@@ -176,6 +191,7 @@ test "edge-ref slice bounds redis cache promotions" {
         (mem1, mongo1, redis1) = _make_scale_memory();
         ctx1 = ExecutionContext();
         ctx1.mem = mem1;
+        ctx1.mem.put(ctx1.system_root);
         JacRuntime.set_context(ctx1);
 
         for i in range(100) {
@@ -244,6 +260,7 @@ test "field-predicate filter pushes down to mongodb" {
         (mem1, mongo1, redis1) = _make_scale_memory();
         ctx1 = ExecutionContext();
         ctx1.mem = mem1;
+        ctx1.mem.put(ctx1.system_root);
         JacRuntime.set_context(ctx1);
 
         for i in range(100) {
@@ -263,7 +280,12 @@ test "field-predicate filter pushes down to mongodb" {
         JacRuntime.set_context(ctx2);
 
         root_anchor = ctx2.mem.get(root_id);
-        assert root_anchor is not None;
+        assert root_anchor is not None , (
+            f"root_anchor not found in Phase 2 memory. root_id={root_id}, "
+            f"mongo2.client={mongo2.client is not None}, "
+            f"mongo2.collection={mongo2.collection is not None}, "
+            f"mongo2.db_name={mongo2.db_name}"
+        );
         r2 = root_anchor.archetype;
 
         mongo2.reset_counters();

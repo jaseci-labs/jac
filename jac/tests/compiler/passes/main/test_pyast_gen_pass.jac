@@ -513,8 +513,8 @@ test "FilterSpec emitted for predicate filters, not for type-only" {
     assert "FilterSpec(type_name='User'" in py_src , (
         "Expected FilterSpec(type_name='User', ...) for [?:User, age < 28].\nSource:\n" + py_src
     );
-    assert "'age'" in py_src and "'$lt'" in py_src , (
-        "Expected age/$lt predicate in FilterSpec dict.\nSource:\n" + py_src
+    assert "'age'" in py_src and "FieldPredicate" in py_src and "op='lt'" in py_src , (
+        "Expected age/FieldPredicate(op='lt',...) predicate in FilterSpec dict.\nSource:\n" + py_src
     );
 
     # Multi-predicate filter must also use FilterSpec

@@ -8,7 +8,7 @@ It mirrors the behavior of `jaclang/lib.jac` and intentionally keeps the API
 names stable because the Jac -> Python code generator emits imports for these.
 """
 import from jaclang.jac0core.archetype { GenericEdge, Root }
-import from jaclang.jac0core.filter_spec { FilterSpec }
+import from jaclang.jac0core.filter_spec { FilterSpec, FieldPredicate }
 import from jaclang.jac0core.archetype { ObjectSpatialFunction as DSFunc }
 import from jaclang.jac0core.archetype { ObjectSpatialPath as OPath }
 import from jaclang.jac0core.constant { EdgeDir }
@@ -45,6 +45,7 @@ glob __all__ = [
          'refs',
          'arefs',
          'FilterSpec',
+         'FieldPredicate',
          'filter_on',
          'assign_all',
          'safe_subscript',

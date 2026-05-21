@@ -36,8 +36,9 @@ composed by the planner, not by the backend.
 import from collections.abc { Callable }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor }
+import from jaclang.jac0core.filter_spec { FieldPredicate }
 
-glob __all__ = ['HopSpec', 'QueryPlan'];
+glob __all__ = ['HopSpec', 'FieldPredicate', 'QueryPlan'];
 
 
 """One hop in a path expression: `[edge_type? -[direction]-> node_type?]`.
@@ -67,14 +68,14 @@ Field reference:
   - `chain`           ordered list of HopSpec. Empty chain = "match anchors in
                       this root with no traversal" (e.g. for `query_by_type`-
                       style scans).
-  - `field_predicates` archetype-field constraints, keyed by bare field name
-                      with MongoDB-style operator values:
-                          `{'age': {'$lt': 28}, 'status': 'active'}`
-                      Backends prefix field names with whatever path they use
-                      (`data.archetype.<f>` in Mongo, jsonb path in PG).
-                      Operators understood across backends: `$eq`, `$ne`,
-                      `$lt`, `$lte`, `$gt`, `$gte`, `$in`, `$nin`. Anything
-                      else is backend-specific.
+  - `field_predicates` archetype-field constraints, keyed by bare field name.
+                      Each key maps to a list of `FieldPredicate` objects
+                      using backend-neutral operator names (`eq`, `ne`, `lt`,
+                      `lte`, `gt`, `gte`, `in`, `nin`). Multiple predicates
+                      on the same field are ANDed (e.g. `age >= 20 AND age < 28`).
+                      Backends translate ops to their native syntax:
+                          MongoDB: `{"$" + op: value}`
+                          Postgres: `field < %s` / `field = ANY(%s)` etc.
   - `id_in`           when the planner has already narrowed to a candidate
                       set (typically via the topology_index), this carries
                       that set so the backend can do a single `_id IN (...)`
@@ -93,7 +94,7 @@ Field reference:
 obj QueryPlan {
     has root_id: (UUID | None) = None,
         chain: list[HopSpec] = [],
-        field_predicates: dict = {},
+        field_predicates: dict[str, list[FieldPredicate]] = {},
         id_in: (set[UUID] | None) = None,
         slc: (slice | None) = None,
         node_type_final: (str | None) = None,

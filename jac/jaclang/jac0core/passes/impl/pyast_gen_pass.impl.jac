@@ -3642,14 +3642,15 @@ impl PyastGenPass.exit_connect_op(nd: uni.ConnectOp) -> None {
 
 impl PyastGenPass._build_predicates_ast(nd: uni.FilterCompr) -> (ast3.Dict | None) {
     _op_map: dict[str, str] = {
-        'Lt': '$lt',
-        'LtE': '$lte',
-        'Gt': '$gt',
-        'GtE': '$gte',
-        'Eq': '$eq',
-        'NotEq': '$ne'
+        'Lt': 'lt',
+        'LtE': 'lte',
+        'Gt': 'gt',
+        'GtE': 'gte',
+        'Eq': 'eq',
+        'NotEq': 'ne'
     };
-    fields: dict = {};
+    # Accumulate list[FieldPredicate] per field name
+    fields: dict[str, list] = {};
     for x in nd.compares {
         py = self.py_ast_val(x);
         if not isinstance(py, ast3.Compare) {
@@ -3661,8 +3662,8 @@ impl PyastGenPass._build_predicates_ast(nd: uni.FilterCompr) -> (ast3.Dict | Non
         if len(py.ops) != 1 or len(py.comparators) != 1 {
             return None;
         }
-        mongo_op = _op_map.get(`type(py.ops[0]).__name__);
-        if mongo_op is None {
+        op_name = _op_map.get(`type(py.ops[0]).__name__);
+        if op_name is None {
             return None;
         }
         if not isinstance(py.comparators[0], ast3.Constant) {
@@ -3670,31 +3671,30 @@ impl PyastGenPass._build_predicates_ast(nd: uni.FilterCompr) -> (ast3.Dict | Non
         }
         field = py.left.id;
         val = py.comparators[0].value;
-        if field in fields {
-            existing = fields[field];
-            if not isinstance(existing, dict) {
-                return None;
-            }
-            existing[mongo_op] = val;
-        } else {
-            if mongo_op == '$eq' {
-                fields[field] = val;
-            } else {
-                fields[field] = {mongo_op: val};
-            }
+        fp_call = self.sync(
+            ast3.Call(
+                func=self.sync(ast3.Name(id='FieldPredicate', ctx=ast3.Load())),
+                args=[],
+                keywords=[
+                    self.sync(
+                        ast3.keyword(arg='op', value=self.sync(ast3.Constant(op_name)))
+                    ),
+                    self.sync(
+                        ast3.keyword(arg='value', value=self.sync(ast3.Constant(val)))
+                    )
+                ]
+            )
+        );
+        if field not in fields {
+            fields[field] = [];
         }
+        fields[field].append(fp_call);
     }
     keys: list[ast3.expr] = [];
     values: list[ast3.expr] = [];
-    for (field, spec) in fields.items() {
+    for (field, preds) in fields.items() {
         keys.append(self.sync(ast3.Constant(field)));
-        if isinstance(spec, dict) {
-            inner_keys = [self.sync(ast3.Constant(k)) for k in spec.keys()];
-            inner_vals = [self.sync(ast3.Constant(v)) for v in spec.values()];
-            values.append(self.sync(ast3.Dict(keys=inner_keys, values=inner_vals)));
-        } else {
-            values.append(self.sync(ast3.Constant(spec)));
-        }
+        values.append(self.sync(ast3.List(elts=preds, ctx=ast3.Load())));
     }
     return self.sync(ast3.Dict(keys=keys, values=values));
 }
@@ -3780,6 +3780,7 @@ impl PyastGenPass.exit_filter_compr(nd: uni.FilterCompr) -> None {
         }
         if pred_ast is not None and type_name_str is not None {
             self.jaclib_imports.add('FilterSpec');
+            self.jaclib_imports.add('FieldPredicate');
             nd.gen.py_ast = [
                 self.sync(
                     ast3.Call(
