@@ -31,8 +31,11 @@ RUN if [ -f jac.toml ]; then jac install || true; fi
 RUN jac --version
 
 # Fail fast if anything resolves to a PyPI install instead of /build/.
-RUN python -c "import jaclang, jac_scale, jac_client, os; \
-locs = {p.__name__: os.path.dirname(p.__file__) for p in (jaclang, jac_scale, jac_client)}; \
+# Use __path__[0] rather than os.path.dirname(__file__) so the check
+# works for namespace packages too (jac_client ships without an
+# __init__.py, so its __file__ is None).
+RUN python -c "import jaclang, jac_scale, jac_client; \
+locs = {p.__name__: p.__path__[0] for p in (jaclang, jac_scale, jac_client)}; \
 bad = [(n, l) for n, l in locs.items() if not l.startswith('/build/')]; \
 assert not bad, f'expected local-source install, got PyPI: {bad}'; \
 print('local-source install verified:', locs)"
