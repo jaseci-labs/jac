@@ -1,10 +1,10 @@
-"""Phase 1 `defview` declarator: statement templates and control flow.
+"""JSX slots: statement templates and control flow inside `{...}` slots.
 
-Exercises the `defview` keyword as sugar for `def:pub -> JsxElement`: a
-statement-based body with sibling JSX statements, nested JSX elements, a
-defview calling another defview, a `has`-field with a nested `def` handler,
-defview-body-level `if`/`else` and `for`, a bare `return;` guard, and the
-no-parameter-list form (`defview Name { ... }`, parens omitted).
+Exercises the unified `{...}` slot model: each top-level `{...}` slot in
+JSX child position can carry statement-form templates -- multiple JSX
+children, control flow that yields content (`if`/`for`/`while`/etc.),
+and a `return;` guard. Components are plain `def:pub -> JsxElement`
+functions whose JSX `return` value contains the slots.
 """
 
 obj Item {
@@ -12,43 +12,49 @@ obj Item {
         done: bool = False;
 }
 
-"""A bare divider — no parameter list, parens omitted."""
-defview Divider {
-    <hr class="divider" />
+"""A bare divider component."""
+def:pub Divider -> JsxElement {
+    return
+        <hr class="divider"/>;
 }
 
-"""A small presentational view."""
-defview Badge(text: str) {
-    <span class="badge">{text}</span>
+"""A small presentational component."""
+def:pub Badge(text: str) -> JsxElement {
+    return
+        <span class="badge">{text}</span>;
 }
 
-defview ItemRow(item: Item) {
-    if item.done {
-        <Badge text="done" />
-    } else {
-        <Badge text="todo" />
-    }
-    <div class="row">
-        <span class="label">{item.label}</span>
-    </div>
+def:pub ItemRow(item: Item) -> JsxElement {
+    return
+        <div class="row">
+            {if item.done {
+                <Badge text="done"/>
+            } else {
+                <Badge text="todo"/>
+            } }
+            <span class="label">{item.label}</span>
+        </div>;
 }
 
-defview ItemList(items: list[Item]) {
+def:pub ItemList(items: list[Item]) -> JsxElement {
     has heading: str = "Items";
 
     def bump {
         heading = heading + "!";
     }
 
-    <h2 onClick={bump}>{heading}</h2>
-    if len(items) == 0 {
-        <p class="empty">Nothing here.</p>
-        return;
-    }
-    <p class="status">Showing items.</p>
-    <Divider />
-    for it in items {
-        <ItemRow key={jid(it)} item={it} />
-    }
-    <footer class="count">{len(items)} items</footer>
+    return
+        <>
+            <h2 onClick={bump}>{heading}</h2>
+            {if len(items) == 0 {
+                <p class="empty">Nothing here.</p>
+                return;
+            }}
+            <p class="status">Showing items.</p>
+            <Divider/>
+            {for it in items {
+                <ItemRow key={jid(it)} item={it}/>
+            }}
+            <footer class="count">{len(items)} items</footer>
+        </>;
 }

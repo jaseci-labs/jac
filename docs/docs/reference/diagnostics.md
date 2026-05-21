@@ -311,16 +311,18 @@ Emitted by static analysis and declaration-implementation matching passes.
 | `E2011` | Parameter count mismatch for ability {name} |
 | `E2012` | From the declaration of {name} |
 
-### `defview` Body Rules
+### JSX Slot Body Rules
 
-Emitted by `ViewLowerPass` when a `defview` declarator's statement template violates the body-shape rules. See the [components tutorial](../tutorials/fullstack/components.md#views-statement-form-components) for the underlying model.
+Emitted by `ViewLowerPass` when a `{...}` JSX slot's statement-template body violates the body-shape rules. See the [components tutorial](../tutorials/fullstack/components.md#jsx-slots-control-flow-as-children) for the underlying model.
 
 | Code | Message |
 |------|---------|
-| `E2019` | A 'defview' renders template content and cannot 'return' a value. Drop the value to use a bare 'return;' guard, or write a 'def ... -> JsxElement' for a value-returning component. |
-| `E2020` | 'return' is not allowed inside a '{loop}' loop in a 'defview' body. Use 'continue' to skip an iteration. |
-| `E2021` | '{kw}' is not allowed inside a '{loop}' loop in a 'defview' body. Use 'continue' to skip an iteration. |
-| `W2019` | 'while' loop in a 'defview' renders JSX without a 'key' attribute -- add 'key=' so siblings keep their identity across re-renders. |
+| `E2019` | A JSX slot renders template content and cannot 'return' a value. Drop the value to use a bare 'return;' guard, or move the value-producing expression outside the JSX slot. |
+| `E2020` | 'return' is not allowed inside a '{loop}' loop in a JSX slot. Use 'continue' to skip an iteration. |
+| `E2021` | '{kw}' is not allowed inside a '{loop}' loop in a JSX slot. Use 'continue' to skip an iteration. |
+| `E2022` | 'finally' is not allowed on a 'try' that has an 'awaiting' clause. The dispatched-but-not-joined window and finalization semantics are ambiguous together; move cleanup into an explicit mount/unmount hook or drop one of the clauses. |
+| `W2019` | 'while' loop in a JSX slot renders JSX without a 'key' attribute -- add 'key=' so siblings keep their identity across re-renders. |
+| `W2020` | 'awaiting' is not yet implemented on the '{target}' target -- the 'awaiting' clause body will be ignored at runtime. Only the 'cl' (react/preact) target currently lowers 'awaiting' to a Suspense fallback. |
 
 ---
 

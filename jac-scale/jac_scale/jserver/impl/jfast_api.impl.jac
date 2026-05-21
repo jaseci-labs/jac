@@ -1104,7 +1104,7 @@ impl JFastApiServer.init(
 
     async def request_context_middleware(request: Request, call_next: Callable) {
         ctx = JacRuntimeInterface.create_j_context(user_root=None);
-        JacRuntime.set_request_context(ctx);
+        req_token = JacRuntime.push_request_context(ctx);
 
         # Capture Authorization header for sv-to-sv auth propagation.
         # The sv_service_call hookimpl in plugin.jac reads this ContextVar
@@ -1162,7 +1162,8 @@ impl JFastApiServer.init(
             return response;
         } finally {
             try {
-                JacRuntime.clear_request_context();
+                JacRuntime.reset_request_context(req_token);
+                ctx.close();
             } except Exception as e {
                 logger.warning(f"Failed to clear request context: {e}", exc_info=True);
             }

@@ -3,6 +3,14 @@ cl import from ...components.Card.tsx { Card }
 sv import from ...main { ping_server, get_server_message, create_todo }
 
 cl {
+    def:pub UndefChildProbe(props: any) -> JsxElement {
+        return
+            <div data-testid="undef-child-probe" style={{"display": "none"}}>
+                {props.maybe}
+                <span data-testid="undef-child-probe-ok">ok</span>
+            </div>;
+    }
+
     def:pub page -> JsxElement {
         has count: int = 0,
             pingResult: str = "",
@@ -63,6 +71,7 @@ cl {
                     "fontFamily": "system-ui, -apple-system, sans-serif"
                 }}
             >
+                <UndefChildProbe/>
                 <h1>🍔 Router + Styling + Assets Demo</h1>
                 <p>
                     This home page combines

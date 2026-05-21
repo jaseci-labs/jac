@@ -34,6 +34,7 @@ obj ProjectConfig {
         license: str = "",
         readme: str = "README.md",
         keywords: list[str] = [],
+        classifiers: list[str] = [],
         requires_python: str = "",
         jac_version: str = "",
         entry_point: str = "main.jac",
