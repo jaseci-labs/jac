@@ -22,6 +22,7 @@ Gap index:
   #50 - postinit body not validated against by-postinit field declarations
   #51 - @property on union types returns FunctionType instead of return type
   #52 - Enum iteration variable resolves to Unknown (cascading E1032 / W1051)
+  #53 - discover_base_file misses .na.jac — self is Unknown in .impl.jac files
 """
 
 import os;
@@ -30,8 +31,12 @@ import jaclang;
 import from jaclang.compiler.passes.main.type_checker_pass { TypeCheckPass }
 import from jaclang.jac0core.program { JacProgram }
 import from jaclang.jac0core.compile_options { CompileOptions }
+import jaclang.jac0core.unitree as uni;
 
 glob JAC_ROOT = str(Path(jaclang.__file__).parent.parent),
+     FIXTURES = os.path.join(
+         JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures"
+     ),
      CHECKER_FIXTURES = os.path.join(
          JAC_ROOT, "tests", "compiler", "passes", "main", "fixtures", "checker"
      );
@@ -582,5 +587,24 @@ test "gap 52 class enum iteration yields enum instance" {
         "Gap #52: Class-based enum iteration should not emit W1051. Got "
         f"{len(fixture_warnings)} warnings: "
         f"{[w.pretty_print()[:120] for w in fixture_warnings]}"
+    );
+}
+
+# =========================================================================
+# Gap #53: discover_base_file misses .na.jac — self is Unknown in impl files
+#
+# discover_base_file searched for .jac and .cl.jac but not .na.jac, so impl
+# files backed by a .na.jac declaration were compiled standalone. Without the
+# declaration, self resolved as Unknown → E1032 on every self.x access.
+#
+# Fix: added '.na.jac' to the extension list in bccache.jac.
+# Impact: 1,073 false E1032 in lexer.impl.jac, 211 in parser.impl.jac.
+# =========================================================================
+test "gap 53 discover_base_file finds .na.jac for impl file" {
+    import from jaclang.jac0core.bccache { discover_base_file }
+    impl_path = os.path.join(FIXTURES, "na_impl", "impl", "counter.impl.jac");
+    base = discover_base_file(impl_path);
+    assert base is not None and base.endswith("counter.na.jac") , (
+        f"Gap #53: discover_base_file should find counter.na.jac, got {base}"
     );
 }
