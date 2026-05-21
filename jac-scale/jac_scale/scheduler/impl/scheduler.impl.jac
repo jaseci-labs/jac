@@ -72,8 +72,8 @@ Cron and date inputs are interpreted in the scheduler's default timezone (UTC).
 """
 impl TriggerSpec.apscheduler_kwargs -> dict {
     if self.trigger == 'interval' {
-        # validate() guarantees interval is not None for trigger='interval'.
-        return {'seconds': float(self.interval if self.interval is not None else 0)};
+        # validate() guarantees interval is not None and > 0 for trigger='interval'.
+        return {'seconds': float(self.interval)};
     }
     if self.trigger == 'cron' {
         fields = (self.cron or '').strip().split();
@@ -136,23 +136,30 @@ impl MongoJobStore.find_active_one(job_id: str) -> dict | None {
     );
 }
 
+"""Build a single-job mongo filter, merging an optional `where` predicate.
+
+Centralises the `{'job_id': ...} + where` pattern shared by update/delete so
+ownership/state predicates are applied identically across the two paths.
+"""
+def _job_filter(job_id: str, where: dict | None) -> dict[str, Any] {
+    f: dict[str, Any] = {'job_id': job_id};
+    if where {
+        f.update(where);
+    }
+    return f;
+}
+
 impl MongoJobStore.update(
     job_id: str, updates: dict, where: dict | None = None
 ) -> bool {
-    filter: dict[str, Any] = {'job_id': job_id};
-    if where {
-        filter.update(where);
-    }
-    result = self._db.update_one(self._collection, filter, {'$set': updates});
+    result = self._db.update_one(
+        self._collection, _job_filter(job_id, where), {'$set': updates}
+    );
     return result.modified_count > 0;
 }
 
 impl MongoJobStore.delete(job_id: str, where: dict | None = None) -> bool {
-    filter: dict[str, Any] = {'job_id': job_id};
-    if where {
-        filter.update(where);
-    }
-    result = self._db.delete_one(self._collection, filter);
+    result = self._db.delete_one(self._collection, _job_filter(job_id, where));
     return result.deleted_count > 0;
 }
 
@@ -688,9 +695,7 @@ impl JacScaleScheduler._execute_task(
     try {
         if self._server is None {
             logger.error(f"Cannot execute {label} '{name}': server reference not set");
-            if job_id {
-                self._record_run(job_id, 'failed', 'server reference not set');
-            }
+            self._mark_failed(job_id, 'server reference not set');
             return;
         }
         introspector = self._server.introspector;
@@ -703,9 +708,7 @@ impl JacScaleScheduler._execute_task(
             logger.warning(
                 f"Scheduled {label} '{name}' is no longer registered in the server"
             );
-            if job_id {
-                self._record_run(job_id, 'failed', 'target not registered');
-            }
+            self._mark_failed(job_id, 'target not registered');
             return;
         }
 
@@ -730,9 +733,7 @@ impl JacScaleScheduler._execute_task(
                 if isinstance(result, dict) and 'error' in result {
                     err = str(result.get('error'));
                     logger.error(f"Scheduled {label} '{name}' error: {err}");
-                    if job_id {
-                        self._record_run(job_id, 'failed', err);
-                    }
+                    self._mark_failed(job_id, err);
                 } elif job_id {
                     self._record_run(job_id, 'succeeded');
                 }
@@ -751,9 +752,7 @@ impl JacScaleScheduler._execute_task(
         asyncio.run(_run());
     } except Exception as e {
         logger.error(f"Error executing {label} '{name}': {e}");
-        if job_id {
-            self._record_run(job_id, 'failed', str(e));
-        }
+        self._mark_failed(job_id, str(e));
     }
 }
 
@@ -768,6 +767,17 @@ impl JacScaleScheduler._record_run(
         self._require_store().record_run(job_id, status, error);
     } except Exception as e {
         logger.warning(f"Could not record run for job {job_id}: {e}");
+    }
+}
+
+"""Record a 'failed' run if job_id is provided. No-op for static jobs (job_id=None).
+
+Collapses the `if job_id { self._record_run(job_id, 'failed', ...); }` guard
+that every failure path in `_execute_task` would otherwise repeat.
+"""
+impl JacScaleScheduler._mark_failed(job_id: str | None, reason: str) -> None {
+    if job_id {
+        self._record_run(job_id, 'failed', reason);
     }
 }
 

@@ -141,6 +141,7 @@ obj JacScaleScheduler {
     ) -> None;
 
     def _record_run(job_id: str, status: str, error: str | None = None) -> None;
+    def _mark_failed(job_id: str | None, reason: str) -> None;
     # Checks user_manager.user_exists with a short TTL cache to avoid
     # a DB round-trip on every scheduled-job tick.
     def _user_is_live(user_id: str) -> bool;
