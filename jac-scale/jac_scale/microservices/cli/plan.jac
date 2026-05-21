@@ -96,12 +96,6 @@ obj PDBView {
 }
 
 
-obj MountView {
-    has name: str,
-        mount_path: str;
-}
-
-
 obj ServiceView {
     has name: str,
         image: str,
@@ -116,7 +110,7 @@ obj ServiceView {
         secret_ref_count: int = 0,
         hpa: HPAView | None = None,
         pdb: PDBView | None = None,
-        mounts: list[MountView] = [];
+        mounts: list[tuple[str, str]] = [];
 
     static def from_manifests(
         name: str, deployment: Any, hpa: Any, pdb: Any, route_path: str | None
@@ -160,16 +154,12 @@ obj ServiceView {
             }
         }
 
-        mounts: list[MountView] = [];
+        mounts: list[tuple[str, str]] = [];
         for m in lget(container, "volumeMounts") {
             if not isinstance(m, dict) {
                 continue;
             }
-            mounts.append(
-                MountView(
-                    name=sget(m, "name") or "?", mount_path=sget(m, "mountPath") or "?"
-                )
-            );
+            mounts.append((sget(m, "name") or "?", sget(m, "mountPath") or "?"));
         }
 
         return ServiceView(
@@ -237,7 +227,7 @@ obj ServiceView {
             console.print(f"    pdb:       maxUnavailable={self.pdb.max_unavailable}");
         }
         if self.mounts {
-            parts = [f"{m.name} @ {m.mount_path}" for m in self.mounts];
+            parts = [f"{n} @ {p}" for (n, p) in self.mounts];
             console.print(f"    mounts:    {', '.join(parts)}");
         }
         for d in _diags_for(diagnostics, self.name) {
@@ -293,115 +283,67 @@ obj IngressView {
 }
 
 
-obj ClusterView {
-    has rate_limit_rpm: int | None = None,
-        cors_origins: list[str] | None = None,
-        user_secret_name: str | None = None,
-        user_secret_key_count: int = 0;
+def _render_cluster_wide(bundle: Any, ms_cfg: Any) -> None {
+    lines: list[str] = [];
 
-    static def from_bundle(bundle: Any, ms_cfg: Any) -> ClusterView {
-        rl = dget(ms_cfg, "rate_limit");
-        rpm: int | None = None;
-        if isinstance(rl, dict) and rl.get("enabled") {
-            rpm = iget(rl, "requests_per_minute", 0) or None;
+    rl = dget(ms_cfg, "rate_limit");
+    if isinstance(rl, dict) and rl.get("enabled") {
+        rpm = iget(rl, "requests_per_minute", 0);
+        if rpm {
+            lines.append(f"  rate_limit:  {rpm}/min per IP");
         }
-
-        cors = dget(ms_cfg, "cors");
-        cors_origins: list[str] | None = None;
-        if isinstance(cors, dict) and cors.get("enabled") {
-            raw = cors.get("allow_origins");
-            cors_origins = [str(o) for o in raw] if isinstance(raw, list) else [];
-        }
-
-        secret_name: str | None = None;
-        secret_keys: int = 0;
-        us = bundle.get("user_secret") if isinstance(bundle, dict) else None;
-        if isinstance(us, dict) {
-            secret_name = sget(dget(us, "metadata"), "name") or "?";
-            data = dget(us, "data") or dget(us, "stringData");
-            secret_keys = len(data);
-        }
-
-        return ClusterView(
-            rate_limit_rpm=rpm,
-            cors_origins=cors_origins,
-            user_secret_name=secret_name,
-            user_secret_key_count=secret_keys
-        );
     }
 
-    def render -> bool {
-        lines: list[str] = [];
-        if self.rate_limit_rpm is not None {
-            lines.append(f"  rate_limit:  {self.rate_limit_rpm}/min per IP");
+    cors = dget(ms_cfg, "cors");
+    if isinstance(cors, dict) and cors.get("enabled") {
+        raw = cors.get("allow_origins");
+        if isinstance(raw, list) and raw {
+            lines.append(f"  cors:        allow_origins={[str(o) for o in raw]}");
+        } else {
+            lines.append("  cors:        enabled");
         }
-        if self.cors_origins is not None {
-            if self.cors_origins {
-                lines.append(f"  cors:        allow_origins={self.cors_origins}");
-            } else {
-                lines.append("  cors:        enabled");
-            }
-        }
-        if self.user_secret_name is not None {
-            lines.append(
-                f"  user_secret: {self.user_secret_name} "
-                f"({self.user_secret_key_count} keys)"
-            );
-        }
-        if not lines {
-            return False;
-        }
-        console.print();
-        console.print("[bold]Cluster-wide[/bold]");
-        for line in lines {
-            console.print(line);
-        }
-        return True;
+    }
+
+    us = bundle.get("user_secret") if isinstance(bundle, dict) else None;
+    if isinstance(us, dict) {
+        name = sget(dget(us, "metadata"), "name") or "?";
+        data = dget(us, "data") or dget(us, "stringData");
+        lines.append(f"  user_secret: {name} ({len(data)} keys)");
+    }
+
+    if not lines {
+        return;
+    }
+    console.print();
+    console.print("[bold]Cluster-wide[/bold]");
+    for line in lines {
+        console.print(line);
     }
 }
 
 
-obj TotalsView {
-    has deployments: int,
-        services: int,
-        hpas: int,
-        pdbs: int,
-        pvcs: int,
-        ingress: int;
-
-    static def from_bundle(bundle: Any) -> TotalsView {
-        return TotalsView(
-            deployments=len(dget(bundle, "deployments")),
-            services=len(dget(bundle, "services")),
-            hpas=len(dget(bundle, "hpas")),
-            pdbs=len(dget(bundle, "pdbs")),
-            pvcs=len(dget(bundle, "pvcs")),
-            ingress=1 if (isinstance(bundle, dict) and bundle.get("ingress")) else 0
-        );
+def _render_totals(bundle: Any) -> None {
+    def _n(key: str, label: str) -> str | None {
+        n = len(dget(bundle, key));
+        return f"{n} {label}{'s' if n != 1 else ''}" if n else None;
     }
-
-    def render {
-        parts: list[str] = [
-            f"{self.deployments} deployment{'s' if self.deployments != 1 else ''}",
-            f"{self.services} service{'s' if self.services != 1 else ''}",
-
-        ];
-        if self.hpas {
-            parts.append(f"{self.hpas} HPA{'s' if self.hpas != 1 else ''}");
+    parts: list[str] = [];
+    n_dep = len(dget(bundle, "deployments"));
+    n_svc = len(dget(bundle, "services"));
+    parts.append(f"{n_dep} deployment{'s' if n_dep != 1 else ''}");
+    parts.append(f"{n_svc} service{'s' if n_svc != 1 else ''}");
+    for (key, label) in [("hpas", "HPA"), ("pdbs", "PDB"), ("pvcs", "PVC")] {
+        entry = _n(key, label);
+        if entry {
+            parts.append(entry);
         }
-        if self.pdbs {
-            parts.append(f"{self.pdbs} PDB{'s' if self.pdbs != 1 else ''}");
-        }
-        if self.pvcs {
-            parts.append(f"{self.pvcs} PVC{'s' if self.pvcs != 1 else ''}");
-        }
-        if self.ingress {
-            parts.append("1 ingress");
-        }
-        console.print();
-        console.print("[bold]Totals[/bold]");
-        console.print(f"  {', '.join(parts)}");
     }
+    if isinstance(bundle, dict) and bundle.get("ingress") {
+        parts.append("1 ingress");
+    }
+    console.print();
+    console.print("[bold]Totals[/bold]");
+    console.print(f"  {', '.join(parts)}");
 }
 
 
@@ -417,9 +359,7 @@ obj Plan {
         cluster_type: str,
         namespace: str,
         services: list[ServiceView],
-        ingress: IngressView | None,
-        cluster: ClusterView,
-        totals: TotalsView;
+        ingress: IngressView | None;
 
     static def from_target(target: Any, app_config: AppConfig) -> Plan {
         bundle_raw = target.generate_manifests(app_config);
@@ -478,9 +418,7 @@ obj Plan {
             cluster_type=detect_cluster_type(),
             namespace=str(target.k8s_config.namespace),
             services=services,
-            ingress=IngressView.from_manifest(bundle.get("ingress"), routes),
-            cluster=ClusterView.from_bundle(bundle, ms_cfg),
-            totals=TotalsView.from_bundle(bundle)
+            ingress=IngressView.from_manifest(bundle.get("ingress"), routes)
         );
     }
 
@@ -519,8 +457,8 @@ obj Plan {
         if self.ingress is not None {
             self.ingress.render();
         }
-        self.cluster.render();
-        self.totals.render();
+        _render_cluster_wide(self.bundle, self.ms_cfg);
+        _render_totals(self.bundle);
         self._render_yaml_or_hint(show_yaml);
     }
 

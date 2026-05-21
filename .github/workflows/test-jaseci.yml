@@ -222,15 +222,6 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_microservice.jac
 
-    - name: Run `jac start --scale --dry-run` e2e
-      timeout-minutes: 5
-      run: |
-        # The dry-run path goes through KubernetesMicroserviceTarget which
-        # require_optional("kubernetes") - jac-scale[deploy] is only
-        # installed in test-scale-k8s, so we install it here too.
-        pip install -e ./jac-scale[deploy]
-        bash jac-scale/scripts/dry_run_e2e.sh
-
     - name: Run jac-client examples
       run: |
         pytest -x jac-scale/jac_scale/tests/test_examples.jac

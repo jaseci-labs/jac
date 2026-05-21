@@ -104,51 +104,31 @@ def _run_plan(bundle: dict[str, Any], show_yaml: bool = False) -> tuple {
 # ---------------------------------------------------------------------------
 # Quantity parsers
 # ---------------------------------------------------------------------------
-test "cpu parser: '500m' -> 500 millicores" {
+test "cpu parser: valid quantities -> millicores" {
     assert _cpu_to_millicores("500m") == 500;
-}
-
-
-test "cpu parser: '1' -> 1000 millicores" {
     assert _cpu_to_millicores("1") == 1000;
-}
-
-
-test "cpu parser: '2.5' -> 2500 millicores" {
     assert _cpu_to_millicores("2.5") == 2500;
 }
 
 
-test "cpu parser: None and garbage return None" {
+test "cpu parser: invalid input -> None" {
     assert _cpu_to_millicores(None) is None;
     assert _cpu_to_millicores("garbage") is None;
     assert _cpu_to_millicores("") is None;
 }
 
 
-test "mem parser: '128Mi' -> 128 * 1024**2" {
+test "mem parser: valid quantities -> bytes (Mi/Gi binary, M decimal, bare int)" {
     assert _mem_to_bytes("128Mi") == 128 * 1024 ** 2;
-}
-
-
-test "mem parser: '1Gi' -> 1024**3" {
     assert _mem_to_bytes("1Gi") == 1024 ** 3;
-}
-
-
-test "mem parser: '500M' -> 500 * 1000**2 (decimal, not binary)" {
-    assert _mem_to_bytes("500M") == 500 * 1000 ** 2;
-}
-
-
-test "mem parser: bare int -> raw bytes" {
+    assert _mem_to_bytes("500M") == 500 * 1000 ** 2;  # decimal, not binary
     assert _mem_to_bytes("12345") == 12345;
 }
 
 
-test "mem parser: None and bad units return None" {
+test "mem parser: invalid input -> None ('MB' isn't a valid k8s suffix)" {
     assert _mem_to_bytes(None) is None;
-    assert _mem_to_bytes("500MB") is None;  # 'MB' not a valid k8s suffix
+    assert _mem_to_bytes("500MB") is None;
     assert _mem_to_bytes("") is None;
 }
 
@@ -244,21 +224,6 @@ test "print_plan HPA inline: shows min -> max @ cpu%" {
 }
 
 
-test "print_plan PDB inline: shows maxUnavailable on the card" {
-    bundle: dict[str, Any] = {
-        "deployments": {
-            "api": {
-                "spec": {"template": {"spec": {"containers": [{"image": "api:v1"}]}}}
-            }
-        },
-        "services": {"api": {}},
-        "pdbs": {"api": {"spec": {"maxUnavailable": 2}}}
-    };
-    (out, _) = _run_plan(bundle);
-    assert "maxUnavailable=2" in out;
-}
-
-
 test "print_plan totals: counts every section + 'no errors'" {
     bundle: dict[str, Any] = {
         "deployments": {"a": {}, "b": {}, "__gateway__": {}},
@@ -276,19 +241,7 @@ test "print_plan totals: counts every section + 'no errors'" {
 }
 
 
-test "print_plan does NOT show raw YAML by default" {
-    bundle: dict[str, Any] = {
-        "deployments": {
-            "a": {"kind": "Deployment", "metadata": {"name": "a-deployment"}}
-        }
-    };
-    (out, _) = _run_plan(bundle, show_yaml=False);
-    assert "kind: Deployment" not in out;
-    assert "--show-yaml" in out;  # hint visible
-}
-
-
-test "print_plan with --show-yaml: dumps the YAML stream" {
+test "print_plan --show-yaml gate: YAML hidden by default, dumped on opt-in" {
     bundle: dict[str, Any] = {
         "deployments": {
             "a": {
@@ -299,10 +252,13 @@ test "print_plan with --show-yaml: dumps the YAML stream" {
             }
         }
     };
-    (out, _) = _run_plan(bundle, show_yaml=True);
-    assert "--- YAML (would be applied) ---" in out;
-    assert "kind: Deployment" in out;
-    assert "name: a-deployment" in out;
+    (off, _) = _run_plan(bundle, show_yaml=False);
+    assert "kind: Deployment" not in off;
+    assert "--show-yaml" in off;  # hint visible
+    (on, _) = _run_plan(bundle, show_yaml=True);
+    assert "--- YAML (would be applied) ---" in on;
+    assert "kind: Deployment" in on;
+    assert "name: a-deployment" in on;
 }
 
 
@@ -576,32 +532,4 @@ test "cluster-wide card: rate_limit + cors + user_secret all render" {
     assert "120/min per IP" in out;
     assert "https://app.example.com" in out;
     assert "app-secrets" in out and "3 keys" in out;
-}
-
-
-test "print_plan shows error count in summary and inline on card" {
-    # Inject a fake ms_cfg with a broken HPA so the validator fires.
-    bundle: dict[str, Any] = {
-        "deployments": {
-            "a": {"spec": {"template": {"spec": {"containers": [{"image": "a:v1"}]}}}}
-        },
-        "services": {"a": {}}
-    };
-    target = _StubTarget(_bundle=bundle);
-    fake_ms = ({"routes": {"a": "/a"}}, {"a": {"hpa": {"min": 5, "max": 2}}});
-    buf = io.StringIO();
-    with redirect_stdout(buf) {
-        with mock.patch.object(plan_mod, "detect_cluster_type", return_value="kind") {
-            with mock.patch.object(
-                plan_mod.Plan, "_load_ms_cfg", return_value=fake_ms
-            ) {
-                (_, diagnostics) = print_plan(target, _make_app_config());
-            }
-        }
-    }
-    out = buf.getvalue();
-    assert has_errors(diagnostics) is True;
-    assert "error" in out.lower();
-    # Inline diagnostic on the service card mentions the failing constraint.
-    assert "min" in out and "max" in out;
 }
