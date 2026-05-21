@@ -531,17 +531,22 @@ test "static walkers and functions actually execute" {
         deadline = time.monotonic() + 8.0;
         while time.monotonic() < deadline {
             resp = requests.post(
-                f"{base_url}/function/get_execution_log",
-                json={},
-                headers=h,
-                timeout=5
+                f"{base_url}/function/get_execution_log", json={}, headers=h, timeout=5
             ).json();
             assert resp.get("ok") , f"get_execution_log call failed: {resp}";
             # Function endpoints wrap their return as data.result.<...>
             log = _data(resp).get("result", {}).get("log", []);
             assert isinstance(log, list) , f"Expected log list, got: {log}";
-            walker_count = sum(1 for e in log if e == "static-interval-walker");
-            func_count = sum(1 for e in log if e == "static-interval-func");
+            walker_count = sum(
+                1
+                for e in log
+                if e == "static-interval-walker"
+            );
+            func_count = sum(
+                1
+                for e in log
+                if e == "static-interval-func"
+            );
             if walker_count >= 3 and func_count >= 3 {
                 break;
             }
