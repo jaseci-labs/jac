@@ -382,8 +382,6 @@ impl JacScaleScheduler._execute_task(
         }
     } except Exception as e {
         logger.error(f"Error executing {label} '{name}': {e}");
-    } finally {
-        JacRuntime.clear_request_context();
     }
 }
 

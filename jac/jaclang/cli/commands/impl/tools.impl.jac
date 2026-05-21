@@ -5,10 +5,7 @@ Direct implementations - no delegation.
 
 import os;
 import from jaclang.cli.console { console }
-import from jaclang.cli.commands.cli_helpers {
-    ensure_jac_runtime as _ensure_jac_runtime,
-    proc_file as _proc_file
-}
+import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 """Run the specified AST tool with optional arguments."""
 impl tool(tool: str, args: list = []) -> int {
@@ -43,7 +40,6 @@ impl dot(
     to_screen: bool = False,
     format: str = "dot"
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.runtimelib.builtin { printgraph }
     (base, mod, jac_machine) = _proc_file(filename);

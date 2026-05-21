@@ -61,14 +61,17 @@ _jac_runtime_ready = False
 
 
 def _ensure_jac_runtime():
-    """Initialise the Jac runtime exactly once per pytest session."""
+    """Verify that the Jac runtime can be imported, once per pytest session.
+
+    Skips the test if jaclang is broken or otherwise unimportable; otherwise
+    a no-op (Python's import system already handles real initialization).
+    """
     global _jac_runtime_ready
     if _jac_runtime_ready:
         return
     try:
-        from jaclang.jac0core.runtime import JacRuntime
+        from jaclang.jac0core.runtime import JacRuntime  # noqa: F401
 
-        JacRuntime.setup()
         _jac_runtime_ready = True
     except Exception as exc:
         pytest.skip(f"Jac runtime unavailable: {exc}")

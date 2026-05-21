@@ -825,10 +825,21 @@ impl CFGBuildPass._wire_compr_filters(
     # (filter true-edge if any filter, last InnerCompr otherwise). The
     # narrowing engine walks back through the chain to find enclosing
     # narrowing, while filter narrowing applies on its true edge.
+    #
+    # When the immediately enclosing CFG node is an Assignment (the
+    # comprehension sits on its RHS), walk past it to find a non-
+    # Assignment ancestor. Otherwise narrowing for a Name on the
+    # assignment LHS that is also referenced inside the comprehension
+    # (`out = [t for t in out if ...]`) would resolve the Name through
+    # the in-progress write — a circular dependency on the comprehension
+    # being typed — and fall back to Unknown, blowing up the head
+    # expression with cascading E1032s. Skipping the Assignment lets the
+    # narrowing engine walk to the prior statement's CFG node, where
+    # the declared / last-written type for that Name is intact.
     encl: uni.UniNode | None = target_node.parent;
     while encl is not None {
         if isinstance(encl, uni.UniCFGNode)
-        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr)) {
+        and not isinstance(encl, (uni.InnerCompr, uni.CfgExpr, uni.Assignment)) {
             self.link_bbs(encl, comprs[0]);
             break;
         }

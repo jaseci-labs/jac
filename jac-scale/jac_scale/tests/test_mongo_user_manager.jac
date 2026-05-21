@@ -45,7 +45,7 @@ require_password_reset = true
                 um = JacScaleUserManager(base_path=tmpdir);
 
                 # Test: Create user (identity-based)
-                result = um.create_user(
+                result = um.create_user_with_identities(
                     identities=[{'type': 'username', 'value': 'test_user'}],
                     credential={'type': 'password', 'password': 'password123'}
                 );
@@ -54,7 +54,7 @@ require_password_reset = true
                 user_id = result["user_id"];
 
                 # Test: Duplicate user fails
-                result = um.create_user(
+                result = um.create_user_with_identities(
                     identities=[{'type': 'username', 'value': 'test_user'}],
                     credential={'type': 'password', 'password': 'other_password'}
                 );
@@ -116,7 +116,7 @@ require_password_reset = true
                 assert auth_result is not None;
 
                 # Test: Create second user for SSO linking
-                result2 = um.create_user(
+                result2 = um.create_user_with_identities(
                     identities=[{'type': 'username', 'value': 'user2'}],
                     credential={'type': 'password', 'password': 'pass2'}
                 );

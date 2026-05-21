@@ -28,6 +28,16 @@ runtime base archetypes (Node/Edge/Walker/Archetype/object). Concrete type
 appears at index 0."""
 def _get_type_mro(`obj: object) -> list[str];
 
+"""Record an edge in the given root's topology index. Used by
+`on_edge_created` to mirror cross-root edges into the indexes of both
+endpoint owners (otherwise reverse queries from the target side would
+miss the edge entirely)."""
+def _index_edge_into(root_anchor: any, source: any, target: any, `edge: any) -> None;
+
+"""Remove an edge from the given root's topology index. Mirror of
+`_index_edge_into` used by `on_edge_destroyed`."""
+def _unindex_edge_from(root_anchor: any, source: any, target: any, `edge: any) -> None;
+
 """Called after an edge is created between source and target."""
 def on_edge_created(source: any, target: any, `edge: any) -> None;
 

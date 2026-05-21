@@ -373,9 +373,6 @@ class JacCmd {
 
 """Jac Feature."""
 class JacBasics {
-    """Set Class References."""
-    static def setup -> None;
-
     """Get current execution context (request-scoped if available, else global)."""
     static def get_context -> ExecutionContext;
 
@@ -1171,25 +1168,23 @@ class JacRuntime(JacRuntimeInterface) {
         """
     static def set_full_target_path(target_path: (str | None)) -> None;
 
-    """Set the context for the machine (global, for backward compatibility)."""
+    """Install the process-global execution context for CLI and other
+    non-server callers. Server request paths use `push_request_context`
+    so each request has its own ContextVar-scoped ctx.
+    """
     static def set_context(context: ExecutionContext) -> None;
-
-    """Set request-scoped execution context (for web servers)."""
-    static def set_request_context(context: ExecutionContext) -> None;
 
     """Push a request-scoped execution context and return the reset token.
 
-    Prefer this over `set_request_context` for concurrent servers: the
-    returned token lets the caller restore the prior value in a `finally`
-    block, which keeps concurrent requests (each in its own asyncio Task
-    with its own ContextVar view) from trampling each other's state."""
+    The token lets the caller restore the prior value in a `finally`
+    block. This is the safe way to scope a ctx to a server request:
+    concurrent requests each get their own ContextVar view, and nested
+    pushes compose cleanly. Pair with `reset_request_context`.
+    """
     static def push_request_context(context: ExecutionContext) -> any;
 
     """Reset the request-scoped context using a token from `push_request_context`."""
     static def reset_request_context(token: any) -> None;
-
-    """Clear request-scoped context and commit changes."""
-    static def clear_request_context -> None;
 }
 
 """Context manager to temporarily disable external plugins.

@@ -983,9 +983,6 @@ impl JacCmd.run_ai_agent(req: object) -> int {
     return run_agent(req);
 }
 
-"""Set Class References."""
-impl JacBasics.setup -> None { }
-
 """Get current execution context (request-scoped if available, else global)."""
 impl JacBasics.get_context -> ExecutionContext {
     # Try request-scoped context first (for web servers)
@@ -2861,11 +2858,6 @@ impl JacRuntime.set_context(context: ExecutionContext) -> None {
     JacRuntime.exec_ctx = context;
 }
 
-"""Set request-scoped execution context (for web servers)."""
-impl JacRuntime.set_request_context(context: ExecutionContext) -> None {
-    _request_context.set(context);
-}
-
 """Push a request-scoped execution context; returns a reset token."""
 impl JacRuntime.push_request_context(context: ExecutionContext) -> any {
     return _request_context.set(context);
@@ -2874,13 +2866,4 @@ impl JacRuntime.push_request_context(context: ExecutionContext) -> any {
 """Reset the request-scoped context using a push token."""
 impl JacRuntime.reset_request_context(token: any) -> None {
     _request_context.reset(token);
-}
-
-"""Clear request-scoped context and commit changes."""
-impl JacRuntime.clear_request_context -> None {
-    ctx = _request_context.get();
-    if ctx is not None {
-        ctx.close();
-        _request_context.set(None);
-    }
 }

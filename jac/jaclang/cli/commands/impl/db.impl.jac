@@ -73,7 +73,6 @@ jac-scale; pure jaclang deployments hit it.
 def _load_app_and_get_l3(app_path: str) -> (PersistentMemory | None) {
     try {
         import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        Jac.setup();
         abs_path = os.path.abspath(app_path);
         (base, mod) = os.path.split(abs_path);
         if mod.endswith('.jac') {

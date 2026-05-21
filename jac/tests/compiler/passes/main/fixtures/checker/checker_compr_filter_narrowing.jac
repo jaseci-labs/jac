@@ -4,6 +4,11 @@ For `[x for x in xs if x is not None]`, the element type of the result
 must be `T` (not `T | None`) — the filter proves None can't reach the
 head. Same rule for dict / set comprehensions, and for chained
 subscripts under loop-var indices when the indices are stable.
+
+Also covers the self-reassignment shape `out = [t for t in out ...]`:
+the iteration source must resolve to its prior declared type, not
+circularly to the in-progress assignment's RHS (which would otherwise
+drop the comprehension's head to Unknown).
 """
 
 obj Cell {
@@ -28,6 +33,15 @@ def filter_iter_dict(xs: list[Cell | None]) -> dict[int, Cell] {
 # Set comprehension.
 def filter_iter_set(xs: list[Cell | None]) -> set[int] {
     return {x.color for x in xs if x is not None};
+}
+
+# Self-reassignment: `out = [t for t in out if ...]`. The Name on the
+# RHS of the comprehension must resolve through the assignment's
+# predecessors, not through the in-progress write being typed.
+def filter_self_reassign(items: list[Cell]) -> list[Cell] {
+    out = items;
+    out = [t for t in out if t.color > 0];
+    return out;
 }
 
 # Subscript-head: the head expression reads the same subscript the

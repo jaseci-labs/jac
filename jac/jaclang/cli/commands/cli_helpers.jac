@@ -3,17 +3,6 @@
 import os;
 import from jaclang.cli.console { console }
 
-glob _runtime_initialized = False;
-
-"""Initialize Jac runtime once on first use."""
-def ensure_jac_runtime {
-    global _runtime_initialized;
-    if not _runtime_initialized {
-        import from jaclang.jac0core.runtime { JacRuntime as Jac }
-        Jac.setup();
-        _runtime_initialized = True;
-    }
-}
 
 """Create JacRuntime and return the base path, module name, and runtime state.
 
