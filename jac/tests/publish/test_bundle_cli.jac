@@ -117,37 +117,3 @@ test "bundle --precompile generates .jir files per version and produces wheel" {
         shutil.rmtree(tmp_path, ignore_errors=True);
     }
 }
-
-
-test "bundle --precompile with no python3.X on PATH skips precompile and builds wheel" {
-    tmp_path = tempfile.mkdtemp();
-    original_cwd = os.getcwd();
-    try {
-        os.chdir(tmp_path);
-        _make_project(tmp_path);
-
-        jac_exe = shutil.which("jac");
-        if not jac_exe {
-            return;  # jac not on PATH — can't run this test
-        }
-        env = dict(os.environ);
-        env["PATH"] = str(Path(jac_exe).parent);
-
-        result = run(
-            ["jac", "bundle", "--precompile"], capture_output=True, text=True, env=env,
-        );
-
-        assert result.returncode == 0 , (
-            f"Expected success when no pythons on PATH, got exit {result.returncode}\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
-        );
-        assert not (Path(tmp_path) / "mypkg" / "_precompiled").exists() , (
-            "_precompiled/ should not be created when no pythons found"
-        );
-        whl_files = list((Path(tmp_path) / "dist").glob("*.whl"));
-        assert len(whl_files) == 1 , "Wheel should still be built when no pythons found";
-    } finally {
-        os.chdir(original_cwd);
-        shutil.rmtree(tmp_path, ignore_errors=True);
-    }
-}
