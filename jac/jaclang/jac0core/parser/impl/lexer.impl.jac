@@ -39,35 +39,18 @@ impl Lexer.in_jsx -> bool {
 }
 
 impl Lexer.in_view_body -> bool {
-    # True when the lexer cursor is lexically inside a `view` declarator body.
-    # Inside a view body the template is statement-based, so a `<Tag` that
-    # follows a `}` (end of a control-flow block) or a sibling JSX close tag
-    # must open a JSX element rather than be read as a `<` comparison.
+    # True when the lexer cursor is lexically inside a JSX `{...}` slot body.
+    # Inside a slot the template is statement-based, so a `<Tag` that
+    # follows a `}` (end of a control-flow block) or a sibling JSX close
+    # tag must open a JSX element rather than be read as a `<` comparison.
     return len(self._view_body_depths) > 0;
 }
 
 impl Lexer._track_view_context(tok: Token) {
-    # Recognize the `view NAME` declarator head and track the brace depth at
-    # which the view body opens, so in_view_body() is accurate. The body is
-    # armed as soon as `view NAME` is seen — the parameter list `(…)`, the
-    # generic list `[…]`, and the return hint are all optional, so the body
-    # `{` is simply the next brace at paren/bracket depth 0.
+    # Track brace depths so JSX `{...}` slot tracking (pushed by
+    # `scan_jsx_content` when the slot's LBRACE is emitted) pops on the
+    # matching slot RBRACE.
     k = tok.kind;
-    if self._view_decl_state == 0 {
-        if k == TokenKind.KW_VIEW {
-            self._view_decl_state = 1;
-        }
-    } elif self._view_decl_state == 1 {
-        if k == TokenKind.NAME or k == TokenKind.KWESC_NAME {
-            self._view_decl_armed = True;
-            self._view_decl_state = 0;
-        } elif k == TokenKind.KW_VIEW {
-            self._view_decl_state = 1;
-        } else {
-            self._view_decl_state = 0;
-        }
-    }
-    # Running nesting depths.
     if k == TokenKind.LPAREN {
         self._paren_depth += 1;
     } elif k == TokenKind.RPAREN {
@@ -82,12 +65,6 @@ impl Lexer._track_view_context(tok: Token) {
         }
     } elif k == TokenKind.LBRACE {
         self._brace_depth += 1;
-        if self._view_decl_armed
-        and self._paren_depth == 0
-        and self._bracket_depth == 0 {
-            self._view_body_depths.append(self._brace_depth);
-            self._view_decl_armed = False;
-        }
     } elif k == TokenKind.RBRACE {
         if len(self._view_body_depths) > 0
         and self._brace_depth == self._view_body_depths[-1] {
@@ -1113,7 +1090,12 @@ impl Lexer.scan_jsx_content -> Token {
         self.advance();  # consume {
         self.jsx_brace_depth_stack.append(self.jsx_brace_depth);
         self.jsx_brace_depth = 1;
-        self.push_mode(LexerMode.NORMAL);  # Parse expression in normal mode
+        self.push_mode(LexerMode.NORMAL);  # Parse slot body in normal mode
+        # Track the slot's brace depth so any nested JSX inside the slot
+        # body (statement-position JSX after a `}` close of a control-flow
+        # arm) is still lexed as JSX. The +1 anticipates the increment
+        # `_track_view_context` will apply on this LBRACE.
+        self._view_body_depths.append(self._brace_depth + 1);
         return self.make_token(TokenKind.LBRACE, "{", start_line, start_col, start_pos);
     }
     # Text content - collect until we hit a meaningful JSX delimiter or end.

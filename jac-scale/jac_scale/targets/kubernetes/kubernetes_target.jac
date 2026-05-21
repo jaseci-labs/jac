@@ -12,8 +12,6 @@ import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
 import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     COMPANION_DEFS,
     check_deployment_status,
-    check_node_ports_available,
-    cluster_type,
     create_k8s_secret,
     delete_k8s_secret,
     delete_if_exists,
@@ -21,11 +19,13 @@ import from jac_scale.targets.kubernetes.utils.kubernetes_utils {
     check_K8s_status,
     ensure_namespace_exists,
     ensure_pvc_exists,
+    get_cluster_provider,
     load_env_variables,
     validate_resource_limits,
     sync_code_to_pvc,
     resize_pvc_if_needed
 }
+import from jac_scale.targets.kubernetes.cluster_provider { ClusterProvider }
 import from jac_scale.providers.registry.dockerhub { DockerHubRegistry }
 import from jac_scale.providers.database.kubernetes_mongo { KubernetesMongoProvider }
 import from jac_scale.providers.database.kubernetes_redis { KubernetesRedisProvider }
@@ -152,7 +152,7 @@ obj KubernetesTarget(DeploymentTarget) {
     controller, so no direct NodePort or cloud LoadBalancer is needed.
     """
     def _build_service_config(
-        app_name: str, cluster_env: str, health_check_path: str
+        app_name: str, health_check_path: str
     ) -> dict[(str, Any)] {
         service = {
             'apiVersion': 'v1',
@@ -578,9 +578,7 @@ obj KubernetesTarget(DeploymentTarget) {
     }
 
     """Deploy all enabled databases and their optional dashboards."""
-    def _deploy_databases(
-        app_name: str, namespace: str, apps_v1: any, core_v1: any, cluster_env: str
-    ) {
+    def _deploy_databases(app_name: str, namespace: str, apps_v1: Any, core_v1: Any) {
         if self.k8s_config.mongodb_enabled {
             mongodb_name = f"{app_name}-mongodb";
             mongodb_service_name = f"{mongodb_name}-service";
@@ -1173,11 +1171,11 @@ obj KubernetesTarget(DeploymentTarget) {
 
     """Wait for deployment to be ready and check status."""
     def _wait_for_deployment(
-        app_name: str, namespace: str, health_check_path: str, cluster_env: str
+        app_name: str, namespace: str, health_check_path: str, provider: ClusterProvider
     ) -> str {
         path = health_check_path;
         deployment_details = "";
-        if cluster_env == 'aws' {
+        if provider.needs_nlb_wait() {
             time.sleep(self.k8s_config.aws_nlb_wait);
             nlb_url = None;
             try {
@@ -1318,18 +1316,12 @@ obj KubernetesTarget(DeploymentTarget) {
                 }
             }
 
-            # 4. Determine cluster type
-            cluster_env = cluster_type();
-            # 4b. On local clusters, verify that the requested NodePorts are not
-            #     already bound by a service in another namespace.
-            if cluster_env == 'local' {
-                # All services are ClusterIP behind ingress; only the ingress
-                # controller's NodePort needs a free port on the node.
-                check_node_ports_available(
-                    node_port=self.k8s_config.ingress_node_port,
-                    current_namespace=namespace
-                );
-            }
+            # 4. Determine cluster provider (encapsulates all provider-specific behaviour)
+            provider = get_cluster_provider();
+            # 4b. Validate NodePort availability (no-op on AWS, checked on local).
+            provider.validate_ports(
+                node_port=self.k8s_config.ingress_node_port, current_namespace=namespace
+            );
 
             # 5. Handle image registry if build is requested
             repository_name = self._handle_image_registry(app_name, app_config);
@@ -1390,9 +1382,7 @@ obj KubernetesTarget(DeploymentTarget) {
             details["create_service_account"] = "Successful";
 
             # 11b. Build service and deployment
-            service = self._build_service_config(
-                app_name, cluster_env, health_check_path
-            );
+            service = self._build_service_config(app_name, health_check_path);
             deployment = {
                 'apiVersion': 'apps/v1',
                 'kind': 'Deployment',
@@ -1433,17 +1423,11 @@ obj KubernetesTarget(DeploymentTarget) {
             networking_v1 = client.NetworkingV1Api();
             ingress_deployer = IngressDeployer(self.k8s_config, self.logger);
             ingress_deployer.start_controller(
-                app_name,
-                namespace,
-                cluster_env,
-                apps_v1,
-                core_v1,
-                rbac_v1,
-                networking_v1
+                app_name, namespace, provider, apps_v1, core_v1, rbac_v1, networking_v1
             );
 
             # 13. Deploy databases
-            self._deploy_databases(app_name, namespace, apps_v1, core_v1, cluster_env);
+            self._deploy_databases(app_name, namespace, apps_v1, core_v1);
             details["deploy_databases"] = "Successful";
             # 13b. Apply NetworkPolicy for the app pod
             self._deploy_network_policy(app_name, namespace, networking_v1);
@@ -1480,7 +1464,7 @@ obj KubernetesTarget(DeploymentTarget) {
             details["create_horizontal_auto_scaler"] = "Successful";
             # 15. Deploy monitoring stack (Prometheus / Grafana) if enabled
             monitoring = MonitoringDeployer(self.k8s_config, self.logger);
-            monitoring.deploy(app_name, namespace, apps_v1, core_v1, cluster_env);
+            monitoring.deploy(app_name, namespace, apps_v1, core_v1, provider);
             details["deploy_monitoring"] = "Successful";
 
             # 15b. Finish ingress: wait for NGINX controller readiness (started at step 12b)
@@ -1501,7 +1485,7 @@ obj KubernetesTarget(DeploymentTarget) {
 
             # 16. Wait for deployment and get service URL
             deployment_details = self._wait_for_deployment(
-                app_name, namespace, health_check_path, cluster_env
+                app_name, namespace, health_check_path, provider
             );
             details["health_check_of_deployment"] = deployment_details;
             service_url = self.get_service_url(app_name);
@@ -2207,17 +2191,13 @@ obj KubernetesTarget(DeploymentTarget) {
                 return f"http://{self.k8s_config.domain}";
             }
 
-            core_v1 = client.CoreV1Api();
-            cluster_env = cluster_type();
-
-            if cluster_env == 'aws' {
-                # Resolve the ingress controller's LoadBalancer endpoint
-                endpoint = self._get_lb_endpoint(app_name);
-                if endpoint {
-                    return f"http://{endpoint}";
-                }
-            } else {
-                return f"http://localhost:{self.k8s_config.ingress_node_port}";
+            provider = get_cluster_provider();
+            lb_endpoint = self._get_lb_endpoint(app_name)
+                if provider.needs_nlb_wait()
+                else None;
+            url = provider.service_url(lb_endpoint, self.k8s_config.ingress_node_port);
+            if url {
+                return url;
             }
         } except Exception as e {
             if self.logger {
@@ -2472,7 +2452,6 @@ obj KubernetesTarget(DeploymentTarget) {
         }
 
         # 4. Application service URL
-        is_aws = cluster_type() == 'aws';
         app_url = None;
         try {
             app_url = self.get_service_url(app_name);

@@ -168,11 +168,19 @@ obj MatchArgsToParamsResult {
         argument_errors: bool = False;
 }
 
-"""Wraps the identity of what is being narrowed (a symbol or a dotted expression)."""
+"""Wraps the identity of what is being narrowed (a symbol or a dotted expression).
+
+`deps` is the set of identifier names the key textually depends on
+beyond the key itself -- the base name plus any Name indices for
+subscript expressions (`x[r]` depends on `{x, r}`). The CFG
+assignment barrier consults this set so reassigning an index
+invalidates the narrowing without re-parsing the key string.
+"""
 obj NarrowingTarget {
     has key: str,  # "x" or "bmw.speed"
         declared_type: TypeBase,
-        symbol: uni.Symbol | None = None;  # None for expression-based narrowing
+        symbol: uni.Symbol | None = None,  # None for expression-based narrowing
+        deps: frozenset[str] = frozenset();
 }
 
 """Represents a narrowing operation from a conditional predicate."""

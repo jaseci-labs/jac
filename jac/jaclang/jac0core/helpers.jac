@@ -319,16 +319,48 @@ def read_file_with_encoding(file_path: str) -> str {
     );
 }
 
+import tomllib;
+
+"""Raised when read_toml_with_encoding hits a TOML parse failure.
+
+Subclasses tomllib.TOMLDecodeError so legacy callers that match on
+TOMLDecodeError keep working; new callers can match on
+MalformedJacTomlError to access the `file_path` and `original`
+attributes for actionable error messages. Library callers (jaclang
+import time, get_disabled_plugins) typically log + continue; CLI
+callers (`jac start`, etc.) print a banner and exit 2."""
+class MalformedJacTomlError(tomllib.TOMLDecodeError) {
+    has file_path: str,
+        original: tomllib.TOMLDecodeError;
+
+    def init(
+        self: MalformedJacTomlError, file_path: str, original: tomllib.TOMLDecodeError
+    ) {
+        tomllib.TOMLDecodeError.__init__(
+            self, f"jac.toml is malformed at {file_path}: {original}"
+        );
+        self.file_path = file_path;
+        self.original = original;
+    }
+}
+
+
 """Read and parse a TOML file with encoding fallback.
 
     tomllib does strict UTF-8 decode; this routes through
     read_file_with_encoding so non-UTF-8 files (e.g. UTF-16 with BOM) work.
-    Parse errors propagate as tomllib.TOMLDecodeError so callers can match
-    on the original exception type.
+    A TOML parse failure is re-raised as MalformedJacTomlError (a
+    tomllib.TOMLDecodeError subclass) carrying `file_path` and `original`
+    attributes. Legacy callers catching tomllib.TOMLDecodeError still
+    work; new callers should catch MalformedJacTomlError to surface
+    actionable errors.
     """
 def read_toml_with_encoding(file_path: str) -> dict {
-    import tomllib;
-    return tomllib.loads(read_file_with_encoding(file_path));
+    try {
+        return tomllib.loads(read_file_with_encoding(file_path));
+    } except tomllib.TOMLDecodeError as exc {
+        raise MalformedJacTomlError(file_path, exc);
+    }
 }
 
 """Return a short, readable type name for annotations."""
@@ -426,10 +458,27 @@ obj DistFacade {
     def version -> str;
 }
 
+"""Emit a one-line stderr warning when jac.toml fails to parse during
+library bootstrap. Library callers (import jaclang, get_disabled_plugins,
+the autonative check) MUST NOT exit - that would break notebooks,
+scripts, and `jac format` (which the user needs to fix the file). The
+CLI's _load_project_config is responsible for the hard-exit banner."""
+def _warn_malformed_jac_toml(exc: MalformedJacTomlError) {
+    import sys;
+    sys.stderr.write(
+        f"warning: jac.toml is malformed ({exc.file_path}): {exc.original}; "
+        "ignoring [plugins].disabled. "
+        "Run a `jac` CLI command for the actionable error.\n"
+    );
+}
+
+
 """Get list of disabled plugins from JAC_DISABLED_PLUGINS env var or jac.toml.
 
     Priority: JAC_DISABLED_PLUGINS env var > jac.toml
     Supports qualified names (package:plugin), short names, and "*" wildcard.
+    A malformed jac.toml is warned about and treated as no disable list,
+    so `import jaclang` never refuses to start.
 
     Returns:
         List of disabled plugin identifiers.
@@ -451,6 +500,9 @@ def get_disabled_plugins -> list {
             try {
                 data = read_toml_with_encoding(str(toml_path));
                 return data.get('plugins', {}).get('disabled', []);
+            } except MalformedJacTomlError as exc {
+                _warn_malformed_jac_toml(exc);
+                return [];
             } except Exception {
                 return [];
             }
@@ -462,6 +514,8 @@ def get_disabled_plugins -> list {
         try {
             data = read_toml_with_encoding(str(toml_path));
             return data.get('plugins', {}).get('disabled', []);
+        } except MalformedJacTomlError as exc {
+            _warn_malformed_jac_toml(exc);
         } except Exception {
             ;
         }
@@ -544,25 +598,40 @@ def load_plugins_with_disabling(
             # Surface plugin-load failures so users know why an installed
             # plugin's features (e.g. jac-scale's /docs and /graph routes)
             # are missing. Most common cause is an unmet runtime dep on
-            # the plugin's own side — name it explicitly and let the user
+            # the plugin's own side -- name it explicitly and let the user
             # decide whether to install the dep or disable the plugin via
             # JAC_DISABLED_PLUGINS / [plugins].disabled in jac.toml.
             # sys.stderr.write (not print) -- we're called from
             # jaclang/__init__.py during the foundational-module phase,
             # before cli.console is safe to import.
             import sys;
-            cause = type(exc).__name__;
-            if isinstance(exc, ModuleNotFoundError) and exc?.name {
+            if isinstance(exc, MalformedJacTomlError) {
+                # The malformed-toml warning is already emitted once by
+                # get_disabled_plugins. Repeating "Install the missing
+                # package" for every plugin that fails on the same parse
+                # error is exactly what the original bug report flagged.
+                sys.stderr.write(
+                    f"warning: plugin '{qualified_name}' failed to load -- "
+                    "jac.toml parse failure (see warning above).\n"
+                );
+            } elif isinstance(exc, ModuleNotFoundError) and exc?.name {
                 detail = f"missing dependency '{exc.name}'";
+                sys.stderr.write(
+                    f"warning: plugin '{qualified_name}' failed to load -- "
+                    f"{detail}. Install the missing package, or disable this "
+                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
+                    "jac.toml.\n"
+                );
             } else {
+                cause = type(exc).__name__;
                 detail = f"{cause}: {exc}";
+                sys.stderr.write(
+                    f"warning: plugin '{qualified_name}' failed to load -- "
+                    f"{detail}. Install the missing package, or disable this "
+                    "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
+                    "jac.toml.\n"
+                );
             }
-            sys.stderr.write(
-                f"warning: plugin '{qualified_name}' failed to load -- "
-                f"{detail}. Install the missing package, or disable this "
-                "plugin via JAC_DISABLED_PLUGINS / [plugins].disabled in "
-                "jac.toml.\n"
-            );
         }
     }
 }

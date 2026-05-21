@@ -827,16 +827,13 @@ impl Account.balance.deleter { self._balance = 0.0; }
 
 Jac separates *interface* (what an object has and can do) from *implementation* (how it does it). This separation enables cleaner architecture, easier testing, and better organization of large codebases. You declare the interface in one place and implement abilities in `impl` blocks -- even in separate files.
 
-### 1 Forward Declarations
+### 1 Mutual References
 
-Forward declarations let you reference a type before it's fully defined. This is essential for circular references (like User referencing Post and Post referencing User) and for organizing code across multiple files.
+Jac resolves symbols across the entire module before type-checking bodies, so types can reference each other in any order with no forward declarations. Forward declarations exist in some languages because their compiler walks top-to-bottom; Jac's doesn't.
 
 ```jac
-# Forward declarations
-obj User;
-obj Post;
-
-# Now define with mutual references
+# Define in any order -- the checker sees both types before it
+# resolves either body.
 obj User {
     has name: str;
     has posts: list[Post] = [];
@@ -847,6 +844,8 @@ obj Post {
     has author: User;
 }
 ```
+
+A second `obj User { ... }` block with the same name is a duplicate-declaration error (`E0077`). Jac's separation model is *decl + impl*, not *decl + decl* -- see Implementation Blocks below for the supported way to split a type across files.
 
 ### 2 Implementation Blocks
 

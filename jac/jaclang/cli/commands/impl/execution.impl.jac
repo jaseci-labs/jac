@@ -8,10 +8,7 @@ import os;
 import sys;
 import types;
 import from jaclang.cli.console { console }
-import from jaclang.cli.commands.cli_helpers {
-    ensure_jac_runtime as _ensure_jac_runtime,
-    proc_file as _proc_file
-}
+import from jaclang.cli.commands.cli_helpers { proc_file as _proc_file }
 
 """Discover jac.toml from the file's directory when an absolute/relative path is given.
 
@@ -27,8 +24,8 @@ def _discover_config_from_file(filename: str) -> None {
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
 
     file_path = Path(filename).resolve();
-    # Store entry file path for runtime utilities (called before _proc_file)
-    Jac.full_target_path = str(file_path);
+    # Seed the bootstrap target so new contexts get the right L3 identity.
+    Jac.set_full_target_path(str(file_path));
     file_dir = file_path.parent;
 
     # Preserve the active profile from any previously loaded config so that
@@ -92,7 +89,6 @@ impl run(
     diagnostics: str = "",
     args: list = []
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.project.config { get_config }
     # Re-discover config from the file's directory (handles absolute paths)
@@ -246,7 +242,6 @@ impl enter(
     `root: str = '',
     nd: str = ''
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from jaclang.jac0core.constructs { WalkerArchetype }
     # Re-discover config from the file's directory (handles absolute paths)
@@ -296,7 +291,6 @@ impl start(
     api_port: int = 0,
     no_client: bool = False
 ) -> int {
-    _ensure_jac_runtime();
     import from jaclang.jac0core.runtime { JacRuntime as Jac }
     import from pathlib { Path }
     if not Path(filename).exists() {

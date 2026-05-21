@@ -21,11 +21,27 @@ impl ExecutionContext.postinit -> None {
         self.system_root = self._parent.system_root;
         self.user_root = self._parent.user_root;
         self.entry_node = self._parent.entry_node;
+        self.base_path_dir = self._parent.base_path_dir;
+        self.full_target_path = self._parent.full_target_path;
         return;
     }
-    # Create TieredMemory - persistence only enabled if base_path_dir is explicitly set
-    # If base_path_dir is None, no L3 persistence (faster for tests)
-    self.mem = TieredMemory(base_path=JacRuntime.base_path_dir);
+    # Snapshot app identity from the module-level bootstrap seeds when
+    # the caller did not pass explicit values. Doing the snapshot here —
+    # rather than reading the seeds later from `get_name`/`get_db_path`
+    # — is what locks in this ctx's persistence path at construction
+    # time, immune to later seed mutations by sibling clients.
+    if self.base_path_dir is None {
+        self.base_path_dir = JacRuntime.get_base_path_dir();
+    }
+    if self.full_target_path is None {
+        self.full_target_path = JacRuntime.get_full_target_path();
+    }
+    # Create TieredMemory - persistence only enabled if base_path_dir is
+    # explicitly set. If base_path_dir is None, no L3 persistence (faster
+    # for tests).
+    self.mem = TieredMemory(
+        base_path=self.base_path_dir, target_path=self.full_target_path
+    );
     # Try to load system root from storage (TieredMemory handles L1/L3 lookup)
     system_root = cast((NodeAnchor | None), self.mem.get(UUID(Con.SUPER_ROOT_UUID)));
     # Create system root if not found

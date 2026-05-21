@@ -181,7 +181,7 @@ def discover_base_file(annex_path: str) -> (str | None) {
                 candidates.append((src.parent.parent, base_name));
             }
             for (directory, name) in candidates {
-                for ext in ('.jac', '.cl.jac') {
+                for ext in ('.jac', '.na.jac', '.cl.jac') {
                     path = directory / f"{name}{ext}";
                     if (path.is_file() and (path != src)) {
                         return str(path);

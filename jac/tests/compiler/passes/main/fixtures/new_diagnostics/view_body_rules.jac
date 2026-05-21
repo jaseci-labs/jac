@@ -1,7 +1,7 @@
-"""Fixture: `defview` body rule violations caught by ViewLowerPass.
+"""Fixture: JSX-slot body rule violations caught by ViewLowerPass.
 
-Exercises the view_body_check diagnostics:
-  - E2019: a `defview` cannot `return` a value.
+Exercises the slot-body diagnostics (`{...}` JSX child slots):
+  - E2019: a slot cannot `return` a value.
   - E2020: bare `return;` is not allowed inside a template loop.
   - E2021: `break` / `skip` are not allowed inside a template loop.
   - W2019: a `while` loop renders JSX without a `key` attribute.
@@ -11,68 +11,83 @@ position (loop wrapping a `match` / `switch` / `try`) so the recursion in
 `_check_body` and `_emits_keyless_jsx` is covered.
 """
 
-defview ValueReturn(x: int) {
-    <p>before</p>
-    return x + 1;
+def:pub ValueReturn(x: int) -> JsxElement {
+    return <div>
+        {<p>before</p>; return x + 1;}
+    </div>;
 }
 
-defview ReturnInLoop(items: list) {
-    for it in items {
-        <li key={it}>{it}</li>
-        return;
-    }
+def:pub ReturnInLoop(items: list) -> JsxElement {
+    return <ul>
+        {for it in items {
+            <li key={it}>{it}</li>
+            return;
+        }}
+    </ul>;
 }
 
-defview BreakInLoop(items: list) {
-    for it in items {
-        <li key={it}>{it}</li>
-        break;
-    }
+def:pub BreakInLoop(items: list) -> JsxElement {
+    return <ul>
+        {for it in items {
+            <li key={it}>{it}</li>
+            break;
+        }}
+    </ul>;
 }
 
-defview KeylessWhile(n: int) {
-    while n > 0 {
-        <span>tick</span>
-    }
+def:pub KeylessWhile(n: int) -> JsxElement {
+    return <div>
+        {while n > 0 {
+            <span>tick</span>
+        }}
+    </div>;
 }
 
 # --- Nested-recursion coverage --------------------------------------------
 
-defview ReturnInLoopUnderMatch(items: list, kind: str) {
-    for it in items {
-        <li key={it}>{it}</li>
-        match kind {
-            case "stop": return;
-        }
-    }
+def:pub ReturnInLoopUnderMatch(items: list, kind: str) -> JsxElement {
+    return <ul>
+        {for it in items {
+            <li key={it}>{it}</li>
+            match kind {
+                case "stop": return;
+            }
+        }}
+    </ul>;
 }
 
-defview BreakInLoopUnderTry(items: list) {
-    for it in items {
-        <li key={it}>{it}</li>
-        try {
-            break;
-        } except Exception {
-            <span key={it}>err</span>
-        }
-    }
+def:pub BreakInLoopUnderTry(items: list) -> JsxElement {
+    return <ul>
+        {for it in items {
+            <li key={it}>{it}</li>
+            try {
+                break;
+            } except Exception {
+                <span key={it}>err</span>
+            }
+        }}
+    </ul>;
 }
 
-defview KeylessWhileUnderTry(n: int) {
-    while n > 0 {
-        try {
-            <span>tick</span>
-        } except Exception {
-            <em>err</em>
-        }
-    }
+def:pub KeylessWhileUnderTry(n: int) -> JsxElement {
+    return <div>
+        {while n > 0 {
+            try {
+                <span>tick</span>
+            } except Exception {
+                <em>err</em>
+            }
+        }}
+    </div>;
 }
 
-defview KeylessWhileUnderSwitch(n: int, kind: str) {
-    while n > 0 {
-        switch kind {
-            case "a": <span>a</span>
-            default: <span>b</span>
-        }
-    }
+def:pub KeylessWhileUnderSwitch(n: int, kind: str) -> JsxElement {
+    return <div>
+        {while n > 0 {
+            switch kind {
+                case "a": <span>a</span>
+                default: <span>b</span>
+            }
+        }}
+    </div>;
 }

@@ -246,10 +246,19 @@ impl TopologyIndex.remove_edge(
 }
 
 """Walk the buckets using type filters. `chain` is a list of
-`(edge_type, node_type, direction)` where direction is 1=IN, 2=OUT, 3=ANY."""
+`(edge_type, node_type, direction)` where direction is 1=IN, 2=OUT, 3=ANY.
+
+When `bail_on_intermediate_foreign` is True, returns None if any hop
+*before* the final hop produces a node owned by another root -- those
+nodes' outgoing edges live in their owner's index, not this one, so the
+chain would silently miss them. The final hop is allowed to land on
+foreign nodes because their incoming edges are mirrored into this
+index by `_index_edge_into`."""
 impl TopologyIndex.resolve_chain(
-    origin_ids: set[UUID], chain: list[tuple[(str | None), (str | None), int]]
-) -> set[UUID] {
+    origin_ids: set[UUID],
+    chain: list[tuple[(str | None), (str | None), int]],
+    bail_on_intermediate_foreign: bool = False
+) -> (set[UUID] | None) {
     current_lids: set[int] = set();
     for uid in origin_ids {
         lid = self.node_to_lid.get(uid);
@@ -260,7 +269,8 @@ impl TopologyIndex.resolve_chain(
     if not current_lids {
         return set();
     }
-    for (edge_type, node_type, direction) in chain {
+    last_idx = len(chain) - 1;
+    for (hop_idx, (edge_type, node_type, direction)) in enumerate(chain) {
         etid = self.type_to_id.get(edge_type) if edge_type else None;
         ntid = self.type_to_id.get(node_type) if node_type else None;
         if edge_type and etid is None {
@@ -325,6 +335,13 @@ impl TopologyIndex.resolve_chain(
         current_lids = next_lids;
         if not current_lids {
             return set();
+        }
+        if bail_on_intermediate_foreign and hop_idx < last_idx {
+            for lid in current_lids {
+                if self.node_table[lid][2] != SELF_ROOT {
+                    return None;
+                }
+            }
         }
     }
     return {self.node_table[lid][0] for lid in current_lids};

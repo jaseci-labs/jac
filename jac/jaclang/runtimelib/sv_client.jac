@@ -117,7 +117,8 @@ def _ensure_available(module_name: str) -> None {
         return;
     }
     import jaclang;
-    base_path = jaclang.JacRuntime?.base_path_dir or '.';
+    bp = jaclang.JacRuntime.get_base_path_dir() if jaclang?.JacRuntime else None;
+    base_path = bp or '.';
     jaclang.JacRuntime.ensure_sv_service(module_name, base_path);
 }
 

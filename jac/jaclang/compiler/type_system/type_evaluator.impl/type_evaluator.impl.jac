@@ -370,7 +370,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return set_inst;
             }
 
-        # Comprehension handlers (SetCompr/GenCompr before ListCompr since they inherit from it)
+        # Comprehension handlers (SetCompr/GenCompr before ListCompr since
+        # they inherit from it). Filter narrowing flows into the head via
+        # the CFG (each `if` filter is wired as a CfgExpr predecessor of
+        # the comprehension by cfg_build_pass), so this case just walks
+        # the structural children in source order.
         case uni.SetCompr():
             if self.prefetch and self.prefetch.set_class {
                 set_inst = self._convert_to_instance(self.prefetch.set_class);
@@ -400,6 +404,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     self.get_type_of_expression(compr.collection);
                     if isinstance(compr.target, uni.Name) {
                         self.get_type_of_expression(compr.target);
+                    }
+                    if compr.conditional {
+                        for cond in compr.conditional {
+                            self.get_type_of_expression(cond);
+                        }
                     }
                 }
                 elem_type = self.get_type_of_expression(expr.out_expr);
@@ -2583,6 +2592,25 @@ impl TypeEvaluator._assign_class(
     if src_type.is_builtin("int") and dest_type.is_builtin("float") {
         return True;
     }
+    # Same-kind primitives are mutually assignable. The registry encodes
+    # numeric kind (int / bool / iN / uN are IntKind; float / fN are
+    # FloatKind), so the type checker treats fixed-width variants as
+    # width refinements rather than unrelated subclasses. IntKind ->
+    # FloatKind is also allowed (the existing int -> float rule above
+    # extends here). FloatKind -> IntKind stays banned.
+    if src_type.is_builtin() and dest_type.is_builtin() {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, NumericKind }
+        src_kind = JAC_TYPE_REGISTRY.numeric_kind_of(src_type.shared.class_name);
+        dest_kind = JAC_TYPE_REGISTRY.numeric_kind_of(dest_type.shared.class_name);
+        if src_kind != NumericKind.NotNumeric and dest_kind != NumericKind.NotNumeric {
+            if src_kind == dest_kind {
+                return True;
+            }
+            if src_kind == NumericKind.IntKind and dest_kind == NumericKind.FloatKind {
+                return True;
+            }
+        }
+    }
     # Check if dest_type is a protocol and src_type implements it.
     # Protocol detection: A class is a protocol if:
     # 1. It has the prefetched Protocol class as a base class (exact match)
@@ -3312,6 +3340,20 @@ impl TypeEvaluator.get_type_of_expression(
         or not isinstance(
             node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal)
         ) {
+            # Whole-expression CFG narrowing: chained subscripts like
+            # `self.squares[r][c]` aren't narrowed by the AtomTrailer
+            # case (which only narrows the immediate target one level
+            # at a time), so a comprehension filter
+            # `if self.squares[r][c] is not None` never reached the
+            # head. The cached `node_.type` is the un-narrowed result;
+            # per-call CFG narrowing yields the in-context view.
+            if isinstance(node_.type, (types.UnionType, types.ClassType)) {
+                if narrowed := self.get_narrowed_type_for_expr(
+                    node_, node_.type, node_
+                ) {
+                    return narrowed;
+                }
+            }
             return node_.type;
         }
     }
@@ -3327,6 +3369,13 @@ impl TypeEvaluator.get_type_of_expression(
         }
     }
     node_.type = result;
+    # Apply whole-expression CFG narrowing on the freshly-computed type
+    # as well, so callers see the in-context narrowed view immediately.
+    if isinstance(result, (types.UnionType, types.ClassType)) {
+        if narrowed := self.get_narrowed_type_for_expr(node_, result, node_) {
+            return narrowed;
+        }
+    }
     return result;
 }
 
@@ -3715,6 +3764,7 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
     expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
+    import from jaclang.compiler.symbol_utils { reference_key_deps }
     if not isinstance(declared_type, (types.UnionType, types.ClassType)) {
         return None;
     }
@@ -3727,7 +3777,11 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
     }
     self._flow_pending_keys.add(key);
     try {
-        narrowing_target = NarrowingTarget(key=key, declared_type=declared_type);
+        narrowing_target = NarrowingTarget(
+            key=key,
+            declared_type=declared_type,
+            deps=frozenset(reference_key_deps(expr)),
+        );
         flow_node = _find_cfg_node_for(at_node);
         if flow_node is not None {
             return self._get_type_from_flow_node(narrowing_target, flow_node, set());
@@ -3936,6 +3990,16 @@ impl TypeEvaluator._get_type_from_flow_node(
                     } else {
                         destructure_path = find_destructure_index_path(t, key);
                     }
+                    break;
+                }
+                # Dependency invalidation: assigning to a name the
+                # narrowed key depends on (e.g. `r = ...` for narrowed
+                # key `x[r]`) changes what the key denotes, so the
+                # narrowing must die. We can't re-derive a new type from
+                # the RHS, so this just falls through to `has_unnarrowed_pred`
+                # via the empty flat_target_matched / destructure_path path.
+                if target.deps and (target.deps & written_keys) {
+                    target_key_matched = True;
                     break;
                 }
             }

@@ -254,12 +254,12 @@ def dict_items_iter_sum() -> int {
     return total;
 }
 
-# dict .remove(k): remove by method call, returns 1 if key absent after removal
+# dict .pop(k, default): remove by method call, returns 1 if key absent after removal
 def dict_remove_method() -> int {
     d: dict[int, int] = {};
     d[1] = 10;
     d[2] = 20;
-    d.remove(1);
+    d.pop(1, 0);
     if 1 not in d {
         return 1;
     }
@@ -291,7 +291,7 @@ def dict_get_notfound() -> int {
 
 def dict_get_no_default() -> int {
     d: dict[int, int] = {1: 100, 2: 200};
-    return d.get(1);
+    return d.get(1, -1);
 }
 
 def global_dict_get_method() -> int {

@@ -12,7 +12,26 @@ impl __jacJsx(tag: any, props: dict = {}, children: any = []) -> JsxElement {
     }
     reactChildren = [];
     for child in childrenArray {
-        if child != None {
+        # Skip both `null` and `undefined`: a missing prop or omitted slot
+        # surfaces as `undefined` in the compiled bundle, and accessing
+        # `.__jacUnsafeHtml` on it would TypeError.
+        if child == None or child == undefined {
+            continue;
+        }
+        # `unsafe_html(...)` sentinel: wrap in a <span dangerouslySetInnerHTML>
+        # so the raw markup renders inline with surrounding siblings. Property
+        # access on primitives (string / number / boolean) returns `undefined`
+        # in JS, so the check naturally rejects non-marker children -- no
+        # `typeof` / `__isObject` guard needed. Both `null` and `undefined`
+        # children were filtered above, so this access is safe.
+        if child.__jacUnsafeHtml != undefined {
+            reactChildren.append(
+                React.createElement(
+                    "span",
+                    {"dangerouslySetInnerHTML": {"__html": child.__jacUnsafeHtml}}
+                )
+            );
+        } else {
             reactChildren.append(child);
         }
     }
@@ -487,6 +506,19 @@ impl AuthGuard(redirect: str = "/login") -> JsxElement {
     }
     return
         <ReactRouterNavigate to={redirect} replace={True}/>;
+}
+
+# Thin wrapper over React.Suspense for the `awaiting` template clause.
+# When a child throws a Promise (the React Suspense protocol), the
+# `fallback` element renders until the Promise settles. `flow`/`wait`
+# don't throw Promises today, so the fallback only appears when the
+# try-body itself opts into a Suspense-aware primitive (e.g. `use()`,
+# a fetcher that suspends). The wrapper is still useful as the named
+# integration point so the language-level lowering stays stable.
+impl JacAwaiting(props: dict) -> JsxElement {
+    return React.createElement(
+        React.Suspense, {"fallback": props.fallback}, props.children
+    );
 }
 
 impl ErrorFallback(error: str, resetErrorBoundary: any) -> JsxElement {
