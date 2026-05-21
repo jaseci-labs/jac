@@ -588,6 +588,7 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
         }
         for doc in cursor {
             if (anchor := self._load_anchor(doc)) {
+                self.execute_plan_fetch_count += 1;
                 yield anchor;
             }
         }
@@ -804,6 +805,7 @@ impl MongoBackend.batch_get(ids: list[UUID]) -> dict[UUID, Anchor] {
 impl MongoBackend.reset_counters -> None {
     self.fetch_count = 0;
     self.put_count = 0;
+    self.execute_plan_fetch_count = 0;
 }
 
 """Load anchor from raw MongoDB document, quarantining on failure."""

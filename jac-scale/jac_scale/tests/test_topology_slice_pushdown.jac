@@ -220,3 +220,79 @@ test "edge-ref slice bounds redis cache promotions" {
         set_config(JacConfig());
     }
 }
+
+
+"""[?:Type, field op const] must push predicates to MongoDB via execute_plan.
+
+Proof of pushdown: mongo.fetch_count == 0 (execute_plan uses collection.find()
+directly, not get/batch_get) AND mongo.execute_plan_fetch_count equals exactly
+the number of matching nodes (MongoDB applied the predicate, not Python).
+
+Without pushdown, the floor path would batch_get all neighbors (~110 anchors)
+then discard those failing the Python-side filter, so fetch_count would be ~110.
+"""
+test "field-predicate filter pushes down to mongodb" {
+    _reset_dbs();
+    orig_base = JacRuntime.get_base_path_dir();
+    cfg = JacConfig();
+    cfg.run.topology_index = True;
+    set_config(cfg);
+    JacRuntime.set_base_path("/tmp/_pushdown_field_pred");
+
+    try {
+        # --- Phase 1: build graph (100 leads idx 0-99, 10 others) ---
+        (mem1, mongo1, redis1) = _make_scale_memory();
+        ctx1 = ExecutionContext();
+        ctx1.mem = mem1;
+        JacRuntime.set_context(ctx1);
+
+        for i in range(100) {
+            root ++> _PushdownLead(idx=i);
+        }
+        for i in range(10) {
+            root ++> _PushdownOther(idx=i);
+        }
+        root_id = root.__jac__.id;
+        ctx1.mem.commit();
+        ctx1.close();
+
+        # --- Phase 2: fresh context (cold L1+L2), verify field pushdown ---
+        (mem2, mongo2, redis2) = _make_scale_memory();
+        ctx2 = ExecutionContext();
+        ctx2.mem = mem2;
+        JacRuntime.set_context(ctx2);
+
+        root_anchor = ctx2.mem.get(root_id);
+        assert root_anchor is not None;
+        r2 = root_anchor.archetype;
+
+        mongo2.reset_counters();
+
+        # idx < 50 matches exactly 50 of the 100 leads.
+        leads = [r2-->][?:_PushdownLead, idx<50];
+
+        # Correctness: right count and every result satisfies the predicate.
+        assert len(leads) == 50 , f"Expected 50 leads with idx < 50, got {len(leads)}";
+        for lead in leads {
+            assert lead.idx < 50 , f"Predicate not applied: got lead.idx={lead.idx}";
+        }
+
+        # Pushdown proof: execute_plan served exactly 50 docs from MongoDB.
+        assert mongo2.execute_plan_fetch_count == 50 , (
+            f"Expected execute_plan to fetch exactly 50 docs; "
+            f"got {mongo2.execute_plan_fetch_count}"
+        );
+
+        # fetch_count == 0 confirms the floor path (batch_get) was not used.
+        # Without pushdown, batch_get would be called with ~110 IDs.
+        assert mongo2.fetch_count == 0 , (
+            f"Expected fetch_count=0 (pushdown only); "
+            f"got {mongo2.fetch_count} - batch_get was used instead of execute_plan"
+        );
+
+        ctx2.close();
+    } finally {
+        JacRuntime.set_base_path(orig_base);
+        set_config(JacConfig());
+    }
+}

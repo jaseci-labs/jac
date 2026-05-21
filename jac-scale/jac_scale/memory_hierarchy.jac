@@ -100,7 +100,8 @@ obj MongoBackend(PersistentMemory) {
         mongo_url: (str | None) = None,
         _mem_ref: (dict[UUID, Anchor] | None) = None,
         fetch_count: int = 0,
-        put_count: int = 0;
+        put_count: int = 0,
+        execute_plan_fetch_count: int = 0;
 
     def postinit -> None;
     def set_memory_ref(mem: dict[UUID, Anchor]) -> None;
