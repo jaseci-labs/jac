@@ -52,6 +52,11 @@ worthwhile: queries that filter by archetype type (the common case, e.g.
 "all `User` nodes connected to root R") become IXSCAN instead of COLLSCAN.
 A descending `updated_at` index supports recency-based ops without forcing
 a full sort.
+
+The `(is_root, _id)` compound index backs `allroots()` pagination:
+`{is_root: true, _id: {$gt: cursor}}` + `.sort(_id).limit(n)` is a pure
+index walk regardless of how many non-Root NodeAnchors share the
+collection.
 """
 impl MongoBackend.ensure_indexes -> None {
     if self.collection is None {
@@ -66,6 +71,48 @@ impl MongoBackend.ensure_indexes -> None {
     self.collection.create_index(
         [('updated_at', DESCENDING)], name='updated_at_-1', background=True
     );
+    self.collection.create_index(
+        [('is_root', ASCENDING), ('_id', ASCENDING)],
+        name='is_root_1__id_1',
+        background=True
+    );
+    # Forward-compat backfill: any doc missing the `is_root` field is from
+    # a pre-unification write. Resolve its class once and set the flag.
+    # Runs once per connect against the small set of unmarked docs (after
+    # the first connect this matches zero docs).
+    try {
+        unmarked = self.collection.find(
+            {'is_root': {'$exists': False}, 'type': 'NodeAnchor'},
+            {'_id': 1, 'arch_module': 1, 'arch_type': 1}
+        );
+        root_ids: list[str] = [];
+        nonroot_ids: list[str] = [];
+        for doc in unmarked {
+            arch_module = doc.get('arch_module');
+            arch_type = doc.get('arch_type');
+            if not arch_module or not arch_type {
+                continue;
+            }
+            cls = Serializer._get_class(arch_module, arch_type);
+            if cls is not None and isinstance(cls, `type) and issubclass(cls, Root) {
+                root_ids.append(doc['_id']);
+            } else {
+                nonroot_ids.append(doc['_id']);
+            }
+        }
+        if root_ids {
+            self.collection.update_many(
+                {'_id': {'$in': root_ids}}, {'$set': {'is_root': True}}
+            );
+        }
+        if nonroot_ids {
+            self.collection.update_many(
+                {'_id': {'$in': nonroot_ids}}, {'$set': {'is_root': False}}
+            );
+        }
+    } except Exception as e {
+        logger.debug(f"MongoBackend: is_root backfill skipped: {e}");
+    }
 }
 
 """Get the `_quarantine` companion collection."""
@@ -132,19 +179,28 @@ def _derive_dirty_from_field_hashes(anchor: Anchor) -> set[str] {
 
 """Build a stored document for an anchor, including Layer 2 fingerprint
 and Layer 1 archetype identity fields. Parallels _anchor_to_row in
-SqliteMemory; kept here so schema evolution stays per-backend."""
+SqliteMemory; kept here so schema evolution stays per-backend.
+
+The `is_root` field is computed at write time and indexed (see
+`ensure_indexes`). This both fixes the pre-unification subclass-miss bug
+(matching only on literal `arch_type='Root'` excluded every
+`node Foo(Root)` subclass) and makes root enumeration an IXSCAN regardless
+of the Root:non-Root ratio in the collection.
+"""
 def _anchor_to_doc(anchor: Anchor) -> dict {
     data = Serializer.serialize(anchor, include_type=True);
     anchor_type = type(anchor).__name__;
     arch_module: (str | None) = None;
     arch_type: (str | None) = None;
     fingerprint: (str | None) = None;
+    is_root = False;
     if anchor.is_populated() and anchor.archetype is not None {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
         fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
+        is_root = isinstance(arch, Root);
     }
     return {
         'type': anchor_type,
@@ -153,7 +209,8 @@ def _anchor_to_doc(anchor: Anchor) -> dict {
         'fingerprint': fingerprint,
         'data': data,
         'format_version': 1,
-        'updated_at': datetime.now(timezone.utc).isoformat()
+        'updated_at': datetime.now(timezone.utc).isoformat(),
+        'is_root': is_root
     };
 }
 
@@ -472,41 +529,21 @@ impl MongoBackend.query(
     }
 }
 
-"""Get all root anchors using an indexed type filter (no full collection scan).
-
-Uses the `(arch_type, type)` compound index — IXSCAN, not COLLSCAN. The
-Python-side `isinstance` check is kept as a defense-in-depth filter in case
-schema drift left a non-Root archetype with `arch_type='Root'`.
-"""
-impl MongoBackend.get_roots -> Generator[Root, None, None] {
-    if self.client is None {
-        return;
-    }
-    try {
-        for doc in self.collection.find({'arch_type': 'Root', 'type': 'NodeAnchor'}) {
-            if (anchor := self._load_anchor(doc)) {
-                if isinstance(anchor.archetype, Root) {
-                    yield cast(Root, anchor.archetype);
-                }
-            }
-        }
-    } except Exception as e {
-        logger.debug(f"MongoDB get_roots failed: {e}");
-    }
-}
-
-
 """Declare MongoDB's native pushdown capabilities.
 
 MongoDB can apply: archetype-type filter (compound index), arbitrary
 declarative field predicates (`data.archetype.<f>` paths), `_id IN (...)`
 narrowing (primary index), and contiguous slicing (`skip`+`limit`).
 
+`root_filter` and `cursor` were added with the QueryPlan-unified
+`allroots()` path: the `(is_root, _id)` compound index lets root pages
+walk the index directly under `{is_root: true, _id: {$gt: cursor}}`.
+
 The planner combines these with the topology_index narrowing automatically
 — see `jaclang.runtimelib.planner` for the strategy chooser.
 """
 impl MongoBackend.capabilities -> set[str] {
-    return {'type_pushdown','field_pushdown','id_in','slice'};
+    return {'type_pushdown','field_pushdown','id_in','slice','root_filter','cursor'};
 }
 
 
@@ -537,8 +574,25 @@ def _plan_to_mongo_filter(plan: QueryPlan) -> tuple[dict, int, (int | None)] {
         filt['arch_type'] = type_name;
         filt['type'] = 'NodeAnchor';
     }
+    if plan.is_root {
+        filt['is_root'] = True;
+        filt['type'] = 'NodeAnchor';
+    }
+    # Cursor filters merge with any caller-supplied `id_in` narrowing.
+    id_clauses: dict = {};
     if plan.id_in is not None {
-        filt['_id'] = {'$in': [str(u) for u in plan.id_in]};
+        id_clauses['$in'] = [str(u) for u in plan.id_in];
+    }
+    if plan.cursor is not None {
+        if plan.cursor.after_id is not None {
+            id_clauses['$gt'] = plan.cursor.after_id;
+        }
+        if plan.cursor.exclude_ids {
+            id_clauses['$nin'] = [str(u) for u in plan.cursor.exclude_ids];
+        }
+    }
+    if id_clauses {
+        filt['_id'] = id_clauses;
     }
     for (k, v) in plan.field_predicates.items() {
         filt[f'data.archetype.{k}'] = v;
@@ -555,6 +609,12 @@ def _plan_to_mongo_filter(plan: QueryPlan) -> tuple[dict, int, (int | None)] {
                 limit_n = max(0, stop - start);
             }
         }
+    }
+    if plan.cursor is not None {
+        # Keyset pagination wins over `slc` when both are set — the cursor is
+        # an explicit caller intent, the slice is typically planner-inferred.
+        limit_n = plan.cursor.limit;
+        skip_n = 0;
     }
     return (filt, skip_n, limit_n);
 }
@@ -577,9 +637,15 @@ impl MongoBackend.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
     if self.client is None {
         return;
     }
+    import from pymongo { ASCENDING }
     (filt, skip_n, limit_n) = _plan_to_mongo_filter(plan);
     try {
         cursor = self.collection.find(filt);
+        # Keyset pagination requires stable ascending order on _id so
+        # `{_id: {$gt: last}}` advances predictably across pages.
+        if plan.cursor is not None {
+            cursor = cursor.sort([('_id', ASCENDING)]);
+        }
         if skip_n {
             cursor = cursor.skip(skip_n);
         }
@@ -724,9 +790,12 @@ impl MongoBackend._put_node_atomic(
         #   data.<k>               — non-arch top-level fields (e.g. access)
         #   data.archetype.<field> — only dirty scalar fields (concurrent-safe)
         #   data.edges             — atomic $setUnion/$setDifference expression
+        # is_root is set unconditionally so the upsert path (first write of a
+        # Root with edge mutations) still indexes correctly.
         set_doc: dict[str, object] = {
             'type': 'NodeAnchor',
-            'updated_at': datetime.now(timezone.utc).isoformat()
+            'updated_at': datetime.now(timezone.utc).isoformat(),
+            'is_root': isinstance(arch, Root) if arch is not None else False
         };
         for (k, v) in non_arch_top.items() {
             set_doc[f"data.{k}"] = v;

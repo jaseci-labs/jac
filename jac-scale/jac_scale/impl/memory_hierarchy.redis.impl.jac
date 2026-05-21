@@ -124,12 +124,6 @@ impl RedisBackend.query(
     yield ;
 }
 
-"""Get all root anchors - not supported for distributed cache."""
-impl RedisBackend.get_roots -> Generator[Root, None, None] {
-    return;
-    yield ;
-}
-
 """Find anchors by IDs with optional filter."""
 impl RedisBackend.find(
     ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None

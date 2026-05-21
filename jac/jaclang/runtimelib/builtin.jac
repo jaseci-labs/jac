@@ -35,6 +35,8 @@ def _get_revoke -> Callable[..., any];
 
 def _get_allroots -> Callable[..., any];
 
+def _get_allroots_page -> Callable[..., any];
+
 def _get_save -> Callable[..., any];
 
 def _get_commit -> Callable[..., any];
@@ -95,6 +97,7 @@ glob __all__ = [
          'grant',
          'revoke',
          'allroots',
+         'allroots_page',
          'save',
          'commit',
          'store',

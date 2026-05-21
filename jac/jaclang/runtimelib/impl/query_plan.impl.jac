@@ -10,6 +10,8 @@ impl QueryPlan.is_trivial -> bool {
         and not self.field_predicates
         and self.id_in is None
         and self.node_type_final is None
+        and not self.is_root
+        and self.cursor is None
     );
 }
 
@@ -36,6 +38,12 @@ impl QueryPlan.needs -> set[str] {
     }
     if self.slc is not None {
         needs.add('slice');
+    }
+    if self.is_root {
+        needs.add('root_filter');
+    }
+    if self.cursor is not None {
+        needs.add('cursor');
     }
     return needs;
 }
@@ -65,6 +73,16 @@ impl QueryPlan.repr -> str {
     }
     if self.slc is not None {
         parts.append(f"slice={self.slc.start}:{self.slc.stop}:{self.slc.step}");
+    }
+    if self.is_root {
+        parts.append("root_filter");
+    }
+    if self.cursor is not None {
+        c = self.cursor;
+        after_str = c.after_id[:8] if c.after_id else "None";
+        parts.append(
+            f"cursor(after={after_str},limit={c.limit},excl=|{len(c.exclude_ids)}|)"
+        );
     }
     return f"QueryPlan({' '.join(parts) or 'trivial'})";
 }

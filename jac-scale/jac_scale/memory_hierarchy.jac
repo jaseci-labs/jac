@@ -66,7 +66,9 @@ obj RedisBackend(CacheMemory) {
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
 
-    def get_roots -> Generator[Root, None, None];
+    # get_roots() is inherited from Memory — caches don't enumerate, and
+    # the inherited default routes through `execute_plan`, which returns
+    # empty for backends (like this one) that declare no capabilities.
     def find(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -117,7 +119,9 @@ obj MongoBackend(PersistentMemory) {
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
 
-    def get_roots -> Generator[Root, None, None];
+    # get_roots() is inherited from Memory (default impl routes through
+    # `execute_plan` with `is_root=True` and cursor pagination, against
+    # the indexed `is_root` field below).
     def find(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];

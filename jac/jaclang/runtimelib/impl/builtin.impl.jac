@@ -82,6 +82,8 @@ impl __getattr__(name: str) -> object {
         return _get_revoke();
     } elif (name == 'allroots') {
         return _get_allroots();
+    } elif (name == 'allroots_page') {
+        return _get_allroots_page();
     } elif (name == 'save') {
         return _get_save();
     } elif (name == 'commit') {
@@ -143,6 +145,11 @@ impl _get_save -> Callable[..., any] {
 """Get allroots lazily."""
 impl _get_allroots -> Callable[..., any] {
     return _get_jac().get_all_root;
+}
+
+"""Get allroots_page lazily."""
+impl _get_allroots_page -> Callable[..., any] {
+    return _get_jac().get_root_page;
 }
 
 """Get revoke lazily."""

@@ -1656,10 +1656,36 @@ impl JacBasics.root -> Root {
     return JacRuntime.get_context().get_root();
 }
 
-"""Get all the roots."""
-impl JacBasics.get_all_root -> list[Root] {
+"""Get all the roots.
+
+Returns the underlying generator directly so callers iterate with bounded
+memory. Existing `for r in allroots()` source keeps working unchanged;
+callers that genuinely need a list opt in via `list(allroots())`.
+"""
+impl JacBasics.get_all_root -> any {
     jmem = JacRuntimeInterface.get_context().mem;
-    return `list(jmem.get_roots());
+    return jmem.get_roots();
+}
+
+
+"""Single-page root fetch backed by the unified QueryPlan cursor.
+
+The opaque continuation token is the last anchor's UUID string. A `None`
+return for the second tuple element signals end-of-stream (the page came
+back with fewer rows than `size`).
+"""
+impl JacBasics.get_root_page(
+    after: (str | None) = None, size: int = 1000
+) -> tuple[list[Root], (str | None)] {
+    import from jaclang.runtimelib.query_plan { RootCursor }
+    jmem = JacRuntimeInterface.get_context().mem;
+    cursor = RootCursor(after_id=after, limit=size);
+    roots: list[Root] = `list(jmem.get_roots(cursor=cursor));
+    next_cursor: (str | None) = None;
+    if len(roots) == size and roots {
+        next_cursor = str(roots[-1].__jac__.id);
+    }
+    return (roots, next_cursor);
 }
 
 """Jac's root getter."""

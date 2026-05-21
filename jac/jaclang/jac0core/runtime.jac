@@ -536,8 +536,27 @@ system,
     """Jac's root getter."""
     static def root -> Root;
 
-    """Get all the roots."""
-    static def get_all_root -> list[Root];
+    """Stream every Root archetype across all memory tiers.
+
+    Returns a generator so iteration is bounded in memory regardless of how
+    many roots exist — under the hood it pages through the memory backend's
+    `execute_plan(QueryPlan(is_root=True, cursor=...))` using keyset
+    pagination. `list(allroots())` keeps materializing if a caller needs
+    that, but ordinary `for r in allroots()` walkers stream.
+    """
+    static def get_all_root -> any;
+
+    """Single-page form of `get_all_root` for HTTP/RPC handoff.
+
+    Returns `(roots, next_cursor)` where `next_cursor` is None when the
+    page is the final one (fewer rows than `size`). Callers persist
+    `next_cursor` in their UI state and pass it back as `after` to fetch
+    subsequent pages — no offset/skip semantics, so deep pages cost the
+    same as shallow ones.
+    """
+    static def get_root_page(
+        after: (str | None) = None, size: int = 1000
+    ) -> tuple[list[Root], (str | None)];
 
     """Jac's root getter."""
     static def build_edge(

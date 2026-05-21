@@ -72,7 +72,8 @@ test "new SqliteMemory creates the expected schema" {
             'fingerprint',
             'data',
             'format_version',
-            'updated_at'
+            'updated_at',
+            'is_root'
         ] {
             assert needed in cols , f"anchors table missing column {needed}";
         }
@@ -81,7 +82,12 @@ test "new SqliteMemory creates the expected schema" {
             "SELECT value FROM schema_meta WHERE key='db_format_version'"
         );
         row = cursor.fetchone();
-        assert row and row[0] == '1' , "db_format_version must be '1'";
+        assert row and row[0] == '2' , "db_format_version must be '2'";
+        # idx_anchors_is_root must exist — backs allroots() pushdown.
+        cursor = mem.__conn__.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_anchors_is_root'"
+        );
+        assert cursor.fetchone() is not None , "is_root index missing";
         mem.close();
     }
 }

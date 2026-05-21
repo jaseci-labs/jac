@@ -15,12 +15,17 @@ import from typing { cast }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, Root }
 import from jaclang.runtimelib.serializer { Serializer }
-import from jaclang.runtimelib.query_plan { QueryPlan }
+import from jaclang.runtimelib.query_plan { QueryPlan, RootCursor }
 
 glob logger = logging.getLogger(__name__),
      # Bumped when the on-disk row layout changes in a way that requires
      # schema migration. Kept in the `schema_meta` table.
-     SQLITE_DB_FORMAT_VERSION: int = 1;
+     #
+     # v1 → v2: added `is_root` BOOLEAN column + index. Populated at write time
+     # by `_anchor_to_row` so root-enumeration queries (the basis for
+     # `allroots()`) push down to an indexed lookup instead of a Python-side
+     # `issubclass` loop over every NodeAnchor.
+     SQLITE_DB_FORMAT_VERSION: int = 2;
 
 # =============================================================================
 # Memory — default async mirrors
@@ -94,7 +99,80 @@ impl Memory.query_by_type(
     }
 }
 
-"""Serialize an anchor to the tuple of columns stored in the anchors table."""
+
+"""Stream every Root archetype this backend knows about.
+
+The default impl pages through `execute_plan(QueryPlan(is_root=True, ...))`
+with bounded memory: at most `_ROOTS_PAGE_SIZE` anchors are deserialized
+per round-trip regardless of how many roots exist. Existing call sites
+that do `for r in allroots(): ...` automatically benefit from streaming
+without source changes; `list(allroots())` keeps working as before but
+materializes the full result by caller choice.
+
+When `cursor` is passed, the call returns one page only — used by
+`allroots_page()` for HTTP/RPC handoff to clients with their own cursor
+state.
+
+When the backend can't push down (no `root_filter`/`cursor` capability),
+the planner refuses to consult `execute_plan` and the result is empty —
+no silent O(N) fallback. Backends are required to opt in.
+"""
+impl Memory.get_roots(
+    cursor: (RootCursor | None) = None
+) -> Generator[Root, None, None] {
+    if cursor is not None {
+        # Caller-driven single page — exact cursor passed through.
+        plan = QueryPlan(is_root=True, cursor=cursor);
+        if not (plan.needs() <= self.capabilities()) {
+            return;
+        }
+        for anchor in self.execute_plan(plan) {
+            arch = anchor.archetype if anchor.is_populated() else None;
+            if arch is not None and isinstance(arch, Root) {
+                yield cast(Root, arch);
+            }
+        }
+        return;
+    }
+    # Streaming mode — paginate internally so the caller can iterate the
+    # full set with bounded memory.
+    PAGE_SIZE = 1000;
+    page_cursor = RootCursor(limit=PAGE_SIZE);
+    while True {
+        page_plan = QueryPlan(is_root=True, cursor=page_cursor);
+        if not (page_plan.needs() <= self.capabilities()) {
+            return;
+        }
+        yielded = 0;
+        last_id: (str | None) = None;
+        for anchor in self.execute_plan(page_plan) {
+            arch = anchor.archetype if anchor.is_populated() else None;
+            if arch is None or not isinstance(arch, Root) {
+                continue;
+            }
+            sid = str(anchor.id);
+            yielded += 1;
+            if last_id is None or sid > last_id {
+                last_id = sid;
+            }
+            yield cast(Root, arch);
+        }
+        if yielded < PAGE_SIZE or last_id is None {
+            return;
+        }
+        page_cursor = RootCursor(after_id=last_id, limit=PAGE_SIZE);
+    }
+}
+
+"""Serialize an anchor to the tuple of columns stored in the anchors table.
+
+The `is_root` column is computed here once at write time rather than at read
+time. Computing it at read time would require resolving `arch_module + arch_type`
+to a Python class and walking its MRO for every row scanned — the exact loop
+the v1 SqliteMemory.get_roots used. Pre-computing on write lets every backend
+share a single indexed query and removes a class of subclass-discovery bugs
+(see Mongo's previous `arch_type='Root'` literal filter).
+"""
 def _anchor_to_row(anchor: Anchor) -> tuple {
     data = Serializer.serialize(anchor, include_type=True);
     data_json = json.dumps(data);
@@ -102,12 +180,14 @@ def _anchor_to_row(anchor: Anchor) -> tuple {
     arch_module: (str | None) = None;
     arch_type: (str | None) = None;
     fingerprint: (str | None) = None;
+    is_root = 0;
     if anchor.is_populated() and anchor.archetype is not None {
         arch = anchor.archetype;
         arch_module = type(arch).__module__;
         arch_type = type(arch).__name__;
         fp = type(arch)?.__jac_fingerprint__;
         fingerprint = fp if isinstance(fp, str) and fp else None;
+        is_root = 1 if isinstance(arch, Root) else 0;
     }
     return (
         anchor_type,
@@ -116,7 +196,8 @@ def _anchor_to_row(anchor: Anchor) -> tuple {
         fingerprint,
         data_json,
         SQLITE_DB_FORMAT_VERSION,
-        datetime.now(timezone.utc).isoformat()
+        datetime.now(timezone.utc).isoformat(),
+        is_root
     );
 }
 
@@ -126,6 +207,74 @@ def _is_new_schema(conn: sqlite3.Connection) -> bool {
     cols = {row[1] for row in cursor.fetchall()};
     # Distinguishing column on the new schema. Legacy has (id, data) only.
     return 'fingerprint' in cols and 'format_version' in cols;
+}
+
+
+"""Return the column set of the anchors table, or empty set if absent."""
+def _anchors_columns(conn: sqlite3.Connection) -> set[str] {
+    cursor = conn.execute("PRAGMA table_info(anchors)");
+    return {row[1] for row in cursor.fetchall()};
+}
+
+
+"""Read the persisted schema format version, defaulting to 1 for pre-meta DBs."""
+def _read_schema_version(conn: sqlite3.Connection) -> int {
+    try {
+        cursor = conn.execute(
+            "SELECT value FROM schema_meta WHERE key = ?", ('db_format_version', )
+        );
+        row = cursor.fetchone();
+        if row is not None {
+            return int(row[0]);
+        }
+    } except Exception { }
+    return 1;
+}
+
+
+"""v1 → v2 migration: add `is_root` column + index, backfill from `arch_module`+`arch_type`.
+
+This runs once per database on first open against a v1 layout. It is
+idempotent against re-runs (the column-add and the meta bump are both
+guarded). Backfill resolves each anchor's stored archetype class via the
+Serializer alias registry and walks its MRO — the slow read-time path the
+new column exists to retire forever after.
+"""
+def _migrate_v1_to_v2(conn: sqlite3.Connection) {
+    cols = _anchors_columns(conn);
+    if 'is_root' not in cols {
+        conn.execute(
+            "ALTER TABLE anchors ADD COLUMN is_root INTEGER NOT NULL DEFAULT 0"
+        );
+    }
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anchors_is_root ON anchors(is_root, id)"
+    );
+    # Backfill: resolve each NodeAnchor's class, mark Root subclasses.
+    cursor = conn.execute(
+        "SELECT id, arch_module, arch_type FROM anchors WHERE type = 'NodeAnchor' AND is_root = 0"
+    );
+    root_ids: list[str] = [];
+    for (rid, arch_module, arch_type) in cursor.fetchall() {
+        if not arch_module or not arch_type {
+            continue;
+        }
+        cls = Serializer._get_class(arch_module, arch_type);
+        if cls is not None and isinstance(cls, `type) and issubclass(cls, Root) {
+            root_ids.append(rid);
+        }
+    }
+    if root_ids {
+        placeholders = ','.join('?' * len(root_ids));
+        conn.execute(
+            f"UPDATE anchors SET is_root = 1 WHERE id IN ({placeholders})", root_ids
+        );
+    }
+    conn.execute(
+        "INSERT OR REPLACE INTO schema_meta (key, value) VALUES (?, ?)",
+        ('db_format_version', str(SQLITE_DB_FORMAT_VERSION))
+    );
+    conn.commit();
 }
 
 """Return True if the connection has the legacy (id TEXT, data BLOB) schema."""
@@ -151,9 +300,15 @@ def _create_new_schema(conn: sqlite3.Connection) {
             fingerprint     TEXT,
             data            TEXT NOT NULL,
             format_version  INTEGER NOT NULL DEFAULT 1,
-            updated_at      TEXT
+            updated_at      TEXT,
+            is_root         INTEGER NOT NULL DEFAULT 0
         )
         """
+    );
+    # Index that backs root-enumeration queries with cursor pagination —
+    # `WHERE is_root=1 AND id > ? ORDER BY id LIMIT n` becomes an index scan.
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_anchors_is_root ON anchors(is_root, id)"
     );
     conn.execute(
         """
@@ -396,8 +551,8 @@ def _migrate_legacy_pickle_db(conn: sqlite3.Connection) {
                 """
                 INSERT OR REPLACE INTO anchors
                     (id, type, arch_module, arch_type, fingerprint, data,
-                     format_version, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                     format_version, updated_at, is_root)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (id_str, ) + row
             );
@@ -499,14 +654,68 @@ impl VolatileMemory.query(
     }
 }
 
-"""Get all root anchors."""
-impl VolatileMemory.get_roots -> Generator[Root, None, None] {
+"""Declare in-memory pushdown capabilities.
+
+Limited to `root_filter` + `cursor` — the capabilities the unified
+`allroots()` path needs. We deliberately do NOT declare `type_pushdown`
+or `id_in`: the planner already has efficient floor paths
+(topology_index → batch_get) for those, and routing them through
+`execute_plan` here would bypass the per-root topology_index that
+existing path expressions like `[r->:EdgeX:->[?:Foo]]` rely on for
+narrowing.
+"""
+impl VolatileMemory.capabilities -> set[str] {
+    return {'root_filter','cursor'};
+}
+
+
+"""Pushdown executor for the in-memory dict.
+
+Mirrors SqliteMemory.execute_plan's filter semantics (so `get_roots`
+behaves identically across backends) but trades the SQL for a Python
+loop. Stable ascending order by `id` is honored when cursor is set so
+keyset pagination advances predictably.
+"""
+impl VolatileMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    type_name = plan.node_type_final;
+    if type_name is None and plan.chain {
+        type_name = plan.chain[-1].node_type;
+    }
+    candidates: list[Anchor] = [];
     for anchor in self.__mem__.values() {
-        if isinstance(anchor.archetype, Root) {
-            yield cast(Root, anchor.archetype);
+        arch = anchor.archetype if anchor.is_populated() else None;
+        if plan.is_root and (arch is None or not isinstance(arch, Root)) {
+            continue;
+        }
+        if type_name and (arch is None or type(arch).__name__ != type_name) {
+            continue;
+        }
+        if plan.id_in is not None and anchor.id not in plan.id_in {
+            continue;
+        }
+        if plan.cursor is not None {
+            sid = str(anchor.id);
+            if plan.cursor.after_id is not None and sid <= plan.cursor.after_id {
+                continue;
+            }
+            if plan.cursor.exclude_ids and sid in plan.cursor.exclude_ids {
+                continue;
+            }
+        }
+        candidates.append(anchor);
+    }
+    if plan.cursor is not None {
+        candidates.sort(key=lambda a : str(a.id));
+        for anchor in candidates[:plan.cursor.limit] {
+            yield anchor;
+        }
+    } else {
+        for anchor in candidates {
+            yield anchor;
         }
     }
 }
+
 
 """Find anchors by IDs with optional filter."""
 impl VolatileMemory.find(
@@ -631,6 +840,13 @@ impl SqliteMemory._ensure_connection -> None {
         _migrate_legacy_pickle_db(self.__conn__);
     } else {
         _create_new_schema(self.__conn__);
+    }
+    # Forward migrations between successive `is_new_schema` versions. Runs
+    # under the same connection so the schema_meta bump and the column-add
+    # commit together — partial state would re-trigger the migration on
+    # next open, which is acceptable but wasteful.
+    if _read_schema_version(self.__conn__) < 2 {
+        _migrate_v1_to_v2(self.__conn__);
     }
     # Merge DB-resident aliases into Serializer._aliases so CLI-managed
     # rescues apply automatically on the next read.
@@ -813,59 +1029,6 @@ impl SqliteMemory.query(
     for anchor in self.__mem__.values() {
         if filter is None or filter(anchor) {
             yield anchor;
-        }
-    }
-}
-
-"""Get all root anchors — the in-process working set plus rows on disk.
-
-Scanning only `__mem__` would make a freshly-opened SqliteMemory (e.g. the L3
-tier of a new server request) report only the roots it had itself loaded,
-silently hiding every root persisted by other requests/users. The disk scan
-reads anchor metadata cheaply, resolves Root (sub)classes without
-deserializing payloads, and only loads the rows that are actually roots.
-"""
-impl SqliteMemory.get_roots -> Generator[Root, None, None] {
-    seen: set[UUID] = set();
-    # In-process working set: includes roots not yet synced to disk.
-    for anchor in list(self.__mem__.values()) {
-        if isinstance(anchor.archetype, Root) {
-            seen.add(anchor.id);
-            yield cast(Root, anchor.archetype);
-        }
-    }
-    # Persisted rows on disk that have not been loaded into this session.
-    candidate_ids: list[UUID] = [];
-    with self.__lock__ {
-        if not self.__conn__ and os.path.exists(self.path) {
-            self._ensure_connection();
-        }
-        if self.__conn__ is not None {
-            cursor = self.__conn__.execute(
-                "SELECT id, arch_module, arch_type FROM anchors WHERE type = ?",
-                ("NodeAnchor", )
-            );
-            for row in cursor.fetchall() {
-                arch_module = row[1];
-                arch_type = row[2];
-                uid = UUID(row[0]);
-                if uid in seen or not arch_module or not arch_type {
-                    continue;
-                }
-                cls = Serializer._get_class(arch_module, arch_type);
-                if cls is not None
-                and isinstance(cls, type)
-                and issubclass(cls, Root) {
-                    candidate_ids.append(uid);
-                }
-            }
-        }
-    }
-    for uid in candidate_ids {
-        anchor = self.get(uid);
-        if anchor is not None and isinstance(anchor.archetype, Root) {
-            seen.add(uid);
-            yield cast(Root, anchor.archetype);
         }
     }
 }
@@ -1123,8 +1286,8 @@ impl SqliteMemory.sync -> None {
                             """
                             INSERT OR REPLACE INTO anchors
                                 (id, type, arch_module, arch_type, fingerprint,
-                                 data, format_version, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                 data, format_version, updated_at, is_root)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (key, ) + merged_row
                         );
@@ -1146,8 +1309,8 @@ impl SqliteMemory.sync -> None {
                             """
                             INSERT OR REPLACE INTO anchors
                                 (id, type, arch_module, arch_type, fingerprint,
-                                 data, format_version, updated_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                 data, format_version, updated_at, is_root)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (key, ) + new_row
                         );
@@ -1194,6 +1357,155 @@ impl SqliteMemory.get_mem -> dict[UUID, Anchor] {
 impl SqliteMemory.commit(anchor: (Anchor | None) = None) -> None {
     self.sync();
 }
+
+
+"""Declare SQLite's native pushdown capabilities.
+
+The `(is_root, id)` index backs root enumeration with cursor pagination.
+`type_pushdown` / `id_in` are intentionally NOT declared: the existing
+topology_index → batch_get floor outperforms a fresh SQL scan for the
+chain-resolution use case (the planner already has the narrowed candidate
+set; sending it back through `execute_plan` just to issue
+`WHERE id IN (...)` would be a wash at best and a regression on warm L1).
+
+`root_filter` is unique to SQLite among floor backends — it advertises the
+`is_root` index for unbounded root enumeration where the topology_index
+would be inappropriate (no single root to walk from).
+"""
+impl SqliteMemory.capabilities -> set[str] {
+    return {'root_filter','cursor'};
+}
+
+
+"""Pushdown executor for SQLite.
+
+Yields anchors that match the plan from BOTH the in-process write-through
+cache (`__mem__`, holds uncommitted in-flight anchors) AND the on-disk
+table, deduplicated by anchor UUID. This mirrors how the legacy
+`get_roots` straddled the same two tiers — the unification reroutes
+through this single executor without changing the visibility semantics.
+
+Cursor handling:
+  - `cursor.after_id`    `AND id > ?` against the disk query; cache-side
+                         entries with id <= after_id are skipped.
+  - `cursor.exclude_ids` `AND id NOT IN (?,...)` plus cache-side skip.
+  - `cursor.limit`       cap total yielded across cache + disk.
+  - stable ascending ORDER BY id when cursor is set so keyset advancement
+                         is predictable.
+"""
+impl SqliteMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    limit = plan.cursor.limit if plan.cursor is not None else None;
+    yielded = 0;
+    seen_ids: set[str] = set();
+    plan_type_name = plan.node_type_final;
+    if plan_type_name is None and plan.chain {
+        plan_type_name = plan.chain[-1].node_type;
+    }
+    # 1. Walk the in-process cache first. These are anchors put through
+    # `self.put` since the last commit, plus anchors loaded from disk by
+    # earlier reads. The legacy get_roots did the same scan so that an
+    # uncommitted Root is still visible to subsequent allroots() calls
+    # within the same request.
+    cache_yielded: list[Anchor] = [];
+    for anchor in list(self.__mem__.values()) {
+        arch = anchor.archetype if anchor.is_populated() else None;
+        if plan.is_root and (arch is None or not isinstance(arch, Root)) {
+            continue;
+        }
+        if plan_type_name and (arch is None or type(arch).__name__ != plan_type_name) {
+            continue;
+        }
+        if plan.id_in is not None and anchor.id not in plan.id_in {
+            continue;
+        }
+        sid = str(anchor.id);
+        if plan.cursor is not None {
+            if plan.cursor.after_id is not None and sid <= plan.cursor.after_id {
+                continue;
+            }
+            if plan.cursor.exclude_ids and sid in plan.cursor.exclude_ids {
+                continue;
+            }
+        }
+        cache_yielded.append(anchor);
+    }
+    if plan.cursor is not None {
+        cache_yielded.sort(key=lambda a : str(a.id));
+    }
+    for anchor in cache_yielded {
+        seen_ids.add(str(anchor.id));
+        yield anchor;
+        yielded += 1;
+        if limit is not None and yielded >= limit {
+            return;
+        }
+    }
+    # 2. Disk query for anything the cache didn't have.
+    with self.__lock__ {
+        if not self.__conn__ and os.path.exists(self.path) {
+            self._ensure_connection();
+        }
+        if self.__conn__ is None {
+            return;
+        }
+        conn = cast(sqlite3.Connection, self.__conn__);
+        type_name = plan.node_type_final;
+        if type_name is None and plan.chain {
+            type_name = plan.chain[-1].node_type;
+        }
+        where: list[str] = ["type = 'NodeAnchor'"];
+        params: list = [];
+        if type_name {
+            where.append("arch_type = ?");
+            params.append(type_name);
+        }
+        if plan.is_root {
+            where.append("is_root = 1");
+        }
+        if plan.id_in is not None {
+            ids = [str(u) for u in plan.id_in];
+            if not ids {
+                return;
+            }
+            where.append(f"id IN ({','.join('?' * len(ids))})");
+            params.extend(ids);
+        }
+        if plan.cursor is not None {
+            if plan.cursor.after_id is not None {
+                where.append("id > ?");
+                params.append(plan.cursor.after_id);
+            }
+            if plan.cursor.exclude_ids {
+                excl = [str(u) for u in plan.cursor.exclude_ids];
+                where.append(f"id NOT IN ({','.join('?' * len(excl))})");
+                params.extend(excl);
+            }
+        }
+        sql = f"SELECT id FROM anchors WHERE {' AND '.join(where)}";
+        if plan.cursor is not None {
+            sql += " ORDER BY id ASC";
+            remaining = (limit - yielded) if limit is not None else 1000;
+            sql += " LIMIT ?";
+            params.append(remaining);
+        }
+        rows = conn.execute(sql, params).fetchall();
+    }
+    for (rid, ) in rows {
+        if rid in seen_ids {
+            continue;
+        }
+        uid = UUID(rid);
+        anchor = self.get(uid);
+        if anchor is not None {
+            yield anchor;
+            yielded += 1;
+            if limit is not None and yielded >= limit {
+                return;
+            }
+        }
+    }
+}
+
 
 # =============================================================================
 # SqliteMemory: Layer 1+2+3 operator surface
@@ -1243,12 +1555,13 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
         if live_arch
         else fingerprint;
     now = datetime.now(timezone.utc).isoformat();
+    rec_is_root = 1 if (live_arch is not None and isinstance(live_arch, Root)) else 0;
     conn.execute(
         """
         INSERT OR REPLACE INTO anchors
             (id, type, arch_module, arch_type, fingerprint, data,
-             format_version, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+             format_version, updated_at, is_root)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             row_id,
@@ -1258,7 +1571,8 @@ def _sqlite_attempt_recover(conn: sqlite3.Connection, row: tuple) -> tuple {
             live_fp,
             re_data_json,
             from_format_version or 1,
-            now
+            now,
+            rec_is_root
         )
     );
     conn.execute("DELETE FROM anchors_quarantine WHERE id = ?", (row_id, ));
@@ -1628,36 +1942,6 @@ impl TieredMemory.put(anchor: Anchor) -> None {
     }
 }
 
-"""Enumerate roots across every tier — the basis for the `allroots()` builtin.
-
-L1 (this request's working set) holds roots created or mutated in-flight; L3
-(the shared persistent store) holds every root ever committed by any
-request/user. Without merging L3 in, `allroots()` would see only the caller's
-own root and every cross-user query would silently degrade to single-user.
-
-L2 is intentionally skipped: it is a partial cache whose entries are always
-also present in L1 or L3. Results are de-duplicated by archetype identity —
-when a root is resident in more than one tier every tier hands back the same
-anchor object, so the L1 copy (with any uncommitted mutations) wins.
-"""
-impl TieredMemory.get_roots -> Generator[Root, None, None] {
-    seen: set[int] = set();
-    for anchor in list(self.__mem__.values()) {
-        if isinstance(anchor.archetype, Root) {
-            seen.add(id(anchor.archetype));
-            yield cast(Root, anchor.archetype);
-        }
-    }
-    if self.l3 is not None {
-        for l3_root in self.l3.get_roots() {
-            if id(l3_root) not in seen {
-                seen.add(id(l3_root));
-                yield l3_root;
-            }
-        }
-    }
-}
-
 """Delete anchor from all tiers."""
 impl TieredMemory.delete(id: UUID) -> None {
     # Delete from L1 (only track persistent anchors for GC)
@@ -1733,22 +2017,91 @@ impl TieredMemory.commit(anchor: (Anchor | None) = None) -> None {
     }
 }
 
-"""TieredMemory capabilities mirror L3 — that's where pushdown lives. L1/L2
-exist for cache hits, not for query planning."""
+"""TieredMemory capabilities mirror L3 (where heavy pushdown lives), unioned
+with the in-memory primitives the L1 dict supports natively.
+
+The unconditionally-declared `root_filter` + `cursor` is what lets a
+TieredMemory wired to a no-L3 (or weak-L3) backend still serve
+`allroots()` from the in-flight L1 overlay — the planner gates on
+capabilities, and without these the unified `get_roots` default would
+return empty even when L1 has roots."""
 impl TieredMemory.capabilities -> set[str] {
+    l1_caps: set[str] = {'root_filter','cursor'};
     if self.l3 is not None {
-        return self.l3.capabilities();
+        return l1_caps | self.l3.capabilities();
     }
-    return set();
+    return l1_caps;
 }
 
-"""Delegate pushdown to L3 and promote loaded anchors into L1 so subsequent
-gets are cache hits (same pattern as `batch_get`)."""
+"""Pushdown executor across L1 (in-flight overlay) and L3 (durable store).
+
+For `is_root` plans on page 1 (no `cursor.after_id`), the L1 dict is walked
+first to surface roots that haven't been committed to L3 yet — the
+`mine`/`other` cross-user case in test_allroots. Their IDs are pushed into
+`plan.cursor.exclude_ids` so the subsequent L3 query doesn't re-emit any
+committed L1 root. On subsequent pages (`cursor.after_id` set), L1 was
+already drained on page 1, so the executor goes straight to L3.
+
+L3 anchors are promoted into L1 on yield (matches `batch_get` semantics)
+so a second call against the same TieredMemory hits the cache.
+"""
 impl TieredMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
+    overlay_active = plan.is_root
+    and (plan.cursor is None or plan.cursor.after_id is None);
+    overlay_ids: set[str] = set();
+    limit = plan.cursor.limit if plan.cursor is not None else None;
+    yielded = 0;
+    if overlay_active {
+        # Sort L1 candidates by id so the overlay walks in the same stable
+        # ascending order the L3 cursor uses — keeps `cursor.after_id` math
+        # consistent and makes per-page counts deterministic.
+        l1_candidates: list[Anchor] = [];
+        for anchor in list(self.__mem__.values()) {
+            arch = anchor.archetype if anchor.is_populated() else None;
+            if arch is None or not isinstance(arch, Root) {
+                continue;
+            }
+            sid = str(anchor.id);
+            if plan.cursor is not None
+            and plan.cursor.exclude_ids
+            and sid in plan.cursor.exclude_ids {
+                continue;
+            }
+            l1_candidates.append(anchor);
+        }
+        l1_candidates.sort(key=lambda a : str(a.id));
+        for anchor in l1_candidates {
+            overlay_ids.add(str(anchor.id));
+            yield anchor;
+            yielded += 1;
+            if limit is not None and yielded >= limit {
+                return;
+            }
+        }
+        if overlay_ids and plan.cursor is not None {
+            # Mutates the caller's plan to carry the exclusion through to L3.
+            # Safe because the streaming default impl creates a fresh cursor
+            # per page; explicit callers passing their own cursor accept this
+            # contract.
+            plan.cursor.exclude_ids = plan.cursor.exclude_ids | overlay_ids;
+        }
+    }
     if self.l3 is None {
         return;
     }
+    # Tighten L3's effective limit by what the overlay already produced.
+    if plan.cursor is not None and limit is not None and yielded > 0 {
+        remaining = limit - yielded;
+        if remaining <= 0 {
+            return;
+        }
+        plan.cursor.limit = remaining;
+    }
     for anchor in self.l3.execute_plan(plan) {
+        sid = str(anchor.id);
+        if sid in overlay_ids {
+            continue;
+        }
         # Promote to L1 unless already there
         existing = self.__mem__.get(anchor.id);
         if existing is None {
@@ -1759,6 +2112,10 @@ impl TieredMemory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None]
             yield anchor;
         } else {
             yield existing;
+        }
+        yielded += 1;
+        if limit is not None and yielded >= limit {
+            return;
         }
     }
 }

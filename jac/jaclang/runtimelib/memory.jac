@@ -55,7 +55,11 @@ obj Memory {
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None] abs;
 
-    def get_roots -> Generator[Root, None, None] abs;
+    # Default impl on Memory base routes through `execute_plan` with a
+    # `QueryPlan(is_root=True, cursor=...)` — every backend that declares
+    # `root_filter` + `cursor` capabilities gets uniform behavior for free.
+    # Backends without those capabilities (the floor) get a Python-side scan.
+    def get_roots(cursor: (any | None) = None) -> Generator[Root, None, None];
     def find(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None] abs;
@@ -211,7 +215,11 @@ obj VolatileMemory(Memory) {
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
 
-    def get_roots -> Generator[Root, None, None];
+    # Pushdown protocol — in-memory scan honors all plan fields trivially.
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
+    # get_roots() is inherited from Memory (default impl routes through
+    # `execute_plan` with `is_root=True` and cursor pagination).
     def find(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -265,7 +273,8 @@ obj SqliteMemory(PersistentMemory) {
         filter: (Callable[[Anchor], bool] | None) = None
     ) -> Generator[Anchor, None, None];
 
-    def get_roots -> Generator[Root, None, None];
+    # get_roots() is inherited from Memory (default impl routes through
+    # `execute_plan` with `is_root=True` and cursor pagination).
     def find(
         ids: (UUID | Iterable[UUID]), filter: (Callable[[Anchor], Anchor] | None) = None
     ) -> Generator[Anchor, None, None];
@@ -275,6 +284,10 @@ obj SqliteMemory(PersistentMemory) {
     ) -> (Anchor | None);
 
     def commit(anchor: (Anchor | None) = None) -> None;
+    # Pushdown protocol — backs the unified allroots() and any other typed/
+    # cursor-paginated query against persisted SQLite anchors.
+    def capabilities -> set[str];
+    def execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None];
     # PersistentMemory interface
     def sync -> None;
     def bulk_put(anchors: Iterable[Anchor]) -> None;
@@ -321,7 +334,9 @@ obj TieredMemory(VolatileMemory) {
     # Override only methods that need tiering logic
     def get(id: UUID) -> (Anchor | None);
     def put(anchor: Anchor) -> None;
-    def get_roots -> Generator[Root, None, None];
+    # get_roots() is inherited from Memory (default impl routes through
+    # `execute_plan` with `is_root=True` and cursor pagination). The L1
+    # in-flight overlay lives in TieredMemory.execute_plan below.
     def delete(id: UUID) -> None;
     def close -> None;
     def `has(id: UUID) -> bool;

@@ -37,7 +37,7 @@ import from collections.abc { Callable }
 import from uuid { UUID }
 import from jaclang.jac0core.archetype { Anchor }
 
-glob __all__ = ['HopSpec', 'QueryPlan'];
+glob __all__ = ['HopSpec', 'RootCursor', 'QueryPlan'];
 
 
 """One hop in a path expression: `[edge_type? -[direction]-> node_type?]`.
@@ -50,6 +50,31 @@ obj HopSpec {
     has edge_type: (str | None) = None,
         node_type: (str | None) = None,
         direction: int = 2;
+}
+
+
+"""Keyset pagination cursor for unbounded enumeration plans.
+
+Why keyset, not offset: skip/OFFSET in both Mongo and SQLite walks the index
+to the offset position on every page, making deep pagination quadratic.
+Comparing against the last seen UUID is O(log N) per page.
+
+  - `after_id`     when set, backends emit only anchors with `id > after_id`
+                   under stable ordering (anchor UUID ascending). None on
+                   page 1.
+  - `limit`        max anchors to return in this page. Backends honor this
+                   as `LIMIT n` (SQLite) / `.limit(n)` (Mongo).
+  - `exclude_ids`  bounded set of IDs to skip — used by the orchestrator to
+                   carry "already yielded from L1" forward so L3 doesn't
+                   double-emit them. Bounded by request scope (typically
+                   single-digit count), so backends translate to a
+                   `NOT IN (...)` / `$nin` clause without worrying about
+                   pathological size.
+"""
+obj RootCursor {
+    has after_id: (str | None) = None,
+        limit: int = 1000,
+        exclude_ids: set[str] = set();
 }
 
 
@@ -87,6 +112,17 @@ Field reference:
                       Distinct from chain hops because it can be checked
                       directly via the `arch_type` index without graph
                       traversal — the cheap path when chain is empty.
+  - `is_root`         when True, restrict the result set to anchors whose
+                      archetype is a `Root` subclass. Backends with the
+                      `'root_filter'` capability honor this via a stored
+                      `is_root` flag (indexed); the planner refuses to push
+                      down to backends that lack the capability. Distinct
+                      from `node_type_final='Root'` — that latter matches
+                      the literal class name and silently misses subclasses.
+  - `cursor`          keyset pagination state. Backends with the `'cursor'`
+                      capability honor `after_id` / `limit` / `exclude_ids`
+                      against the anchor UUID under stable ascending order.
+                      None means "no pagination requested".
   - `post_filter`     opaque callable from the runtime; the planner applies
                       it AFTER any backend execution. Not pushdown-eligible.
 """
@@ -97,6 +133,8 @@ obj QueryPlan {
         id_in: (set[UUID] | None) = None,
         slc: (slice | None) = None,
         node_type_final: (str | None) = None,
+        is_root: bool = False,
+        cursor: (RootCursor | None) = None,
         post_filter: (Callable[[Anchor], bool] | None) = None;
 
     def is_trivial -> bool;
