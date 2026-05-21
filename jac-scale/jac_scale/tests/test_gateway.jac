@@ -3,7 +3,6 @@
 import os;
 import tempfile;
 import from pathlib { Path }
-import from typing { Any }
 import from jac_scale.microservices.service_registry {
     ServiceRegistry,
     ServiceEntry,
@@ -1389,9 +1388,9 @@ test "http_forward_timeout precedence: per-service > global > default" {
     import jac_scale.config_loader as cfg_mod;
 
     obj _StubCfg {
-        has data: dict[str, Any];
+        has data: dict[str, any];
 
-        def get_microservices_config -> dict[str, Any] {
+        def get_microservices_config -> dict[str, any] {
             return self.data;
         }
     }

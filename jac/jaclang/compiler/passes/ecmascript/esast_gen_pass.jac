@@ -267,6 +267,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     def exit_jsx_normal_attribute(nd: uni.JsxNormalAttribute) -> None;
     def exit_jsx_text(nd: uni.JsxText) -> None;
     def exit_jsx_expression(nd: uni.JsxExpression) -> None;
+    def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     def exit_jsx_comment(nd: uni.JsxComment) -> None;
     def exit_if_stmt(nd: uni.IfStmt) -> None;
     def exit_else_if(nd: uni.ElseIf) -> None;
@@ -319,7 +320,7 @@ obj EsastGenPass(BaseAstGenPass[es.Statement]) {
     ) -> es.Expression;
 
     def _extract_return_type(
-        ability_node: uni.Ability, func_name: str, manifest: Any
+        ability_node: uni.Ability, func_name: str, manifest: any
     ) -> str;
 
     def _wrap_return_with_boundary(

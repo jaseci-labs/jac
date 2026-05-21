@@ -8,7 +8,7 @@ description: Tailwind styling patterns in Jac - conditional classes, cn() utilit
 Ternary is Python-style (`A if cond else B`). String concatenation for dynamic classes:
 
 ```jac
-def:pub TabButton(active: bool, children: Any) -> JsxElement {
+def:pub TabButton(active: bool, children: any) -> JsxElement {
     tab_cls = "border-primary text-foreground" if active else "border-transparent text-muted-foreground";
     return <button className={"px-2.5 py-1.5 border-b-2 " + tab_cls}>{children}</button>;
 }
@@ -24,7 +24,7 @@ import from "tailwind-merge" { twMerge }
 
 # Variadic positional args (the clsx / tailwind-merge convention, and how
 # jac-shadcn components call cn) - NOT a single list argument.
-def:pub cn(*inputs: Any) -> Any {
+def:pub cn(*inputs: any) -> any {
     return twMerge(clsx(inputs));
 }
 ```

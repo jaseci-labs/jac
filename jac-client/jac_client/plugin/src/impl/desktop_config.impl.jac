@@ -1,6 +1,5 @@
 """Implementation of Desktop target configuration loader."""
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.project.config { JacConfig, get_config }
 import from jaclang.project.plugin_config { deep_merge }
 import from jaclang.cli.console { console }
@@ -17,7 +16,7 @@ impl DesktopConfig.init(self: DesktopConfig, project_dir: Path | None = None) ->
 }
 
 """Get default configuration structure for desktop target."""
-impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, Any] {
+impl DesktopConfig.get_default_config(self: DesktopConfig) -> dict[str, any] {
     # Try to get project name/version from JacConfig for defaults
     # If config is not available, use fallback defaults
     project_name = "my-jac-app";
@@ -79,7 +78,7 @@ impl DesktopConfig._get_jac_config(self: DesktopConfig) -> JacConfig {
 }
 
 """Load configuration from jac.toml, merging with defaults."""
-impl DesktopConfig.load(self: DesktopConfig) -> dict[str, Any] {
+impl DesktopConfig.load(self: DesktopConfig) -> dict[str, any] {
     if self._config is not None {
         return self._config;
     }
@@ -108,7 +107,7 @@ impl DesktopConfig.load(self: DesktopConfig) -> dict[str, Any] {
 }
 
 """Get desktop configuration (name, identifier, version)."""
-impl DesktopConfig.get_desktop_config(self: DesktopConfig) -> dict[str, Any] {
+impl DesktopConfig.get_desktop_config(self: DesktopConfig) -> dict[str, any] {
     config = self.load();
     return {
         'name': config.get('name', ''),
@@ -118,25 +117,25 @@ impl DesktopConfig.get_desktop_config(self: DesktopConfig) -> dict[str, Any] {
 }
 
 """Get window configuration."""
-impl DesktopConfig.get_window_config(self: DesktopConfig) -> dict[str, Any] {
+impl DesktopConfig.get_window_config(self: DesktopConfig) -> dict[str, any] {
     config = self.load();
     return config.get('window', {});
 }
 
 """Get platforms configuration."""
-impl DesktopConfig.get_platforms_config(self: DesktopConfig) -> dict[str, Any] {
+impl DesktopConfig.get_platforms_config(self: DesktopConfig) -> dict[str, any] {
     config = self.load();
     return config.get('platforms', {});
 }
 
 """Get features configuration."""
-impl DesktopConfig.get_features_config(self: DesktopConfig) -> dict[str, Any] {
+impl DesktopConfig.get_features_config(self: DesktopConfig) -> dict[str, any] {
     config = self.load();
     return config.get('features', {});
 }
 
 """Get plugins configuration (which Jac plugins to bundle)."""
-impl DesktopConfig.get_plugins_config(self: DesktopConfig) -> dict[str, Any] {
+impl DesktopConfig.get_plugins_config(self: DesktopConfig) -> dict[str, any] {
     config = self.load();
     return config.get('plugins', {});
 }

@@ -52,8 +52,8 @@ with entry {
 
 ## Pitfalls
 
-- `llm` is an **ambient builtin** - the model powering it is configured project-wide in `jac.toml`. A module-level `glob llm: Model = Model(...)` (as shown above) is an *optional* per-file override, not a requirement: `by llm()` type-checks and runs with no `glob llm` declared at all.
+- `llm` is an **ambient builtin** - the model powering it is configured project-wide in `jac.toml` under `[plugins.byllm.model]` (e.g. `default_model = "gpt-4o-mini"`). A module-level `glob llm: Model = Model(...)` (as shown above) is an *optional* per-file override, not a requirement: `by llm()` type-checks and runs with no `glob llm` declared at all.
 - `by llm(...)` REPLACES the body - never write both `{ body }` and `by llm(...)` on the same signature.
 - Use `sem`, NOT docstrings, for every LLM-visible description. Triple-quoted strings inside a body fail with W0060.
 - Tools are **function references**, NOT strings: `tools=[word_count]`, never `tools=["word_count"]`. Each tool needs its own `sem` and per-arg `sem` so the LLM knows when to call it.
-- Common `by llm(...)` options: `tools`, `temperature`, `max_tokens`, `max_react_iterations`, `stream`, `incl_info` - and more; see the byLLM reference for the full list. The model is normally selected by `jac.toml` / the `Model` instance, not a per-call argument. Note: `jac check` does **not** validate `by llm` keyword names, so a misspelled option surfaces at runtime, not at check time.
+- Common `by llm(...)` options: `tools`, `temperature`, `max_tokens`, `max_react_iterations`, `conversation` (multi-turn history), `on_iteration` (ReAct loop control), `stream`, `incl_info` - and more; see the byLLM reference for the full list. The model is normally selected by `jac.toml` / the `Model` instance, not a per-call argument. Note: `jac check` does **not** validate `by llm` keyword names, so a misspelled option surfaces at runtime, not at check time.

@@ -3,7 +3,7 @@
 cl {
     def:pub Input(
         value: str,
-        onChange: Any,
+        onChange: any,
         label: str = "",
         type: str = "text",
         placeholder: str = "",
@@ -31,7 +31,7 @@ cl {
 
     def:pub TextArea(
         value: str,
-        onChange: Any,
+        onChange: any,
         label: str = "",
         placeholder: str = "",
         rows: int = 4,

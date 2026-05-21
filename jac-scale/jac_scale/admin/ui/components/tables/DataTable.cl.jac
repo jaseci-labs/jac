@@ -1,7 +1,7 @@
 """Reusable data table component."""
 
 cl {
-    def:pub DataTable(columns: list, children: Any) -> JsxElement {
+    def:pub DataTable(columns: list, children: any) -> JsxElement {
         return
             <table className="w-full">
                 <thead>
@@ -24,7 +24,7 @@ cl {
             </table>;
     }
 
-    def:pub TableRow(children: Any, className: str = "") -> JsxElement {
+    def:pub TableRow(children: any, className: str = "") -> JsxElement {
         return
             <tr
                 className={"border-b border-slate-800/50 hover:bg-slate-800/30 " + className}
@@ -33,7 +33,7 @@ cl {
             </tr>;
     }
 
-    def:pub TableCell(children: Any, align: str = "left") -> JsxElement {
+    def:pub TableCell(children: any, align: str = "left") -> JsxElement {
         alignClass = align == "right" and "text-right" or "text-left";
         return
             <td className={"px-4 py-3 " + alignClass}>{children}</td>;

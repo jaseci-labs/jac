@@ -9,7 +9,6 @@ import sys;
 import time;
 import requests;
 import from pathlib { Path }
-import from typing { Any }
 
 import from jaclang.project.config { find_project_root }
 
@@ -178,7 +177,7 @@ obj JacScaleTestRunner {
     }
 
     """Create a new user and store the token."""
-    def create_user(username: str, password: str) -> dict[str, Any] {
+    def create_user(username: str, password: str) -> dict[str, any] {
         result = self.request(
             "POST", "/user/create", data={"username": username, "password": password}
         );
@@ -188,7 +187,7 @@ obj JacScaleTestRunner {
     }
 
     """Login as an existing user and store the token."""
-    def login(username: str, password: str) -> dict[str, Any] {
+    def login(username: str, password: str) -> dict[str, any] {
         result = self.request(
             "POST", "/user/login", data={"username": username, "password": password}
         );
@@ -201,12 +200,12 @@ obj JacScaleTestRunner {
     def request(
         method: str,
         path: str,
-        data: dict[str, Any] | None = None,
+        data: dict[str, any] | None = None,
         use_token: bool = False,
         timeout: int = 5,
         max_retries: int = 60,
         retry_interval: float = 2.0
-    ) -> Any {
+    ) -> any {
         url = f"{self.base_url}{path}";
         headers = {"Content-Type": "application/json"};
 
@@ -232,7 +231,7 @@ obj JacScaleTestRunner {
         }
 
         assert response is not None , "No response received";
-        json_response: Any = response.json();
+        json_response: any = response.json();
 
         if isinstance(json_response, list) and len(json_response) == 2 {
             json_response = json_response[1];
@@ -247,7 +246,7 @@ obj JacScaleTestRunner {
                 return json_response["data"];
             } elif not json_response.get("ok") and json_response.get("error") {
                 error_info = json_response["error"];
-                result: dict[str, Any] = {
+                result: dict[str, any] = {
                     "error": error_info.get("message", "Unknown error")
                 };
                 if "code" in error_info {
@@ -267,7 +266,7 @@ obj JacScaleTestRunner {
     def request_raw(
         method: str,
         path: str,
-        data: dict[str, Any] | None = None,
+        data: dict[str, any] | None = None,
         use_token: bool = False,
         timeout: int = 120,
         max_retries: int = 60,
@@ -312,7 +311,7 @@ obj JacScaleTestRunner {
     }
 
     """Spawn a walker with the given parameters."""
-    def spawn_walker(walker_name: str, **kwargs: object) -> dict[str, Any] {
+    def spawn_walker(walker_name: str, **kwargs: object) -> dict[str, any] {
         return self.request(
             "POST", f"/walker/{walker_name}", data=kwargs, use_token=True
         );
@@ -325,9 +324,9 @@ obj JacScaleTestRunner {
         filename: str,
         content: bytes,
         content_type: str = "text/plain",
-        extra_data: dict[str, Any] | None = None,
+        extra_data: dict[str, any] | None = None,
         timeout: int = 10
-    ) -> Any {
+    ) -> any {
         url = f"{self.base_url}/walker/{walker_name}";
         headers = {};
 
@@ -342,7 +341,7 @@ obj JacScaleTestRunner {
             url, headers=headers, files=files, data=data, timeout=timeout
         );
 
-        json_response: Any = response.json();
+        json_response: any = response.json();
 
         if isinstance(json_response, list) and len(json_response) == 2 {
             json_response = json_response[1];
@@ -357,7 +356,7 @@ obj JacScaleTestRunner {
                 return json_response["data"];
             } elif not json_response.get("ok") and json_response.get("error") {
                 error_info = json_response["error"];
-                result: dict[str, Any] = {
+                result: dict[str, any] = {
                     "error": error_info.get("message", "Unknown error")
                 };
                 if "code" in error_info {
@@ -374,7 +373,7 @@ obj JacScaleTestRunner {
     }
 
     """Call a function with the given parameters."""
-    def call_function(function_name: str, **kwargs: object) -> dict[str, Any] {
+    def call_function(function_name: str, **kwargs: object) -> dict[str, any] {
         query_params = "&".join(f"{k}={v}" for (k, v) in kwargs.items());
         path = f"/function/{function_name}";
         if query_params {

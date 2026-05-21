@@ -370,7 +370,7 @@ impl JacAPIServerEndpoints.create_webhook_callback(
             body_data = {};
         }
 
-        walker_kwargs: dict[str, Any] = dict(body_data) if body_data else {};
+        walker_kwargs: dict[str, any] = dict(body_data) if body_data else {};
 
         # Execute the walker
         result = await self.execution_manager.spawn_walker(

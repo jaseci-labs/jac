@@ -18,7 +18,7 @@ import subprocess;
 import sys;
 import time;
 import from pathlib { Path }
-import from typing { Any, cast }
+import from typing { cast }
 import from concurrent.futures { ThreadPoolExecutor, as_completed }
 
 import redis;
@@ -37,7 +37,7 @@ def get_free_port -> int {
     }
 }
 
-def extract(json_response: Any) -> Any {
+def extract(json_response: any) -> any {
     if isinstance(json_response, list) and len(json_response) == 2 {
         json_response = json_response[1];
     }
@@ -71,7 +71,7 @@ def register_user(base_url: str, username: str) -> str {
 
 def call_walker(
     base_url: str, walker_name: str, token: str, payload: dict | None = None
-) -> Any {
+) -> any {
     res = requests.post(
         f"{base_url}/walker/{walker_name}",
         json=payload or {},

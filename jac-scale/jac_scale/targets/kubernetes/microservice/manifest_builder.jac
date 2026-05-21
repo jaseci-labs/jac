@@ -2,7 +2,6 @@
 {deployments, services, hpas, pdbs, pod_specs, [pvcs, user_secret,
 ingress]} that KubernetesMicroserviceTarget hands to apply_manifests."""
 
-import from typing { Any }
 import from jac_scale.abstractions.config.app_config { AppConfig }
 import from jac_scale.abstractions.models.deploy_context { DeployContext }
 import from jac_scale.targets.kubernetes.kubernetes_config { KubernetesConfig }
@@ -35,12 +34,12 @@ obj MicroserviceManifestBuilder {
     """Lift pod-specs into full Deployment + Service + HPA + PDB
     bundle. Returns `{deployments, services, hpas, pdbs, pod_specs}`,
     plus optional `pvcs`, `user_secret`, `ingress`."""
-    def generate_manifests(app_config: AppConfig, image: str) -> dict[str, Any] {
+    def generate_manifests(app_config: AppConfig, image: str) -> dict[str, any] {
         pod_specs = self.generate_service_pod_specs(app_config, image);
-        deployments: dict[str, dict[str, Any]] = {};
-        services: dict[str, dict[str, Any]] = {};
-        hpas: dict[str, dict[str, Any]] = {};
-        pdbs: dict[str, dict[str, Any]] = {};
+        deployments: dict[str, dict[str, any]] = {};
+        services: dict[str, dict[str, any]] = {};
+        hpas: dict[str, dict[str, any]] = {};
+        pdbs: dict[str, dict[str, any]] = {};
         # HPA / PDB / PVC / Secret / Ingress builders return None when
         # disabled or unconfigured; bundle only carries non-None entries.
         for (svc_name, pod_spec) in pod_specs.items() {
@@ -56,7 +55,7 @@ obj MicroserviceManifestBuilder {
             }
         }
 
-        bundle: dict[str, Any] = {
+        bundle: dict[str, any] = {
             "deployments": deployments,
             "services": services,
             "hpas": hpas,
@@ -74,7 +73,7 @@ obj MicroserviceManifestBuilder {
         try {
             import from jac_scale.config_loader { get_scale_config }
             ms_cfg = get_scale_config().get_microservices_config();
-            ingress_cfg: dict[str, Any] = ms_cfg.get("ingress", {});
+            ingress_cfg: dict[str, any] = ms_cfg.get("ingress", {});
         } except Exception {
             ingress_cfg = {};
         }
@@ -88,7 +87,7 @@ obj MicroserviceManifestBuilder {
     """Per-service pod-spec stubs keyed by service name (+ GATEWAY_NAME)."""
     def generate_service_pod_specs(
         app_config: AppConfig, image: str
-    ) -> dict[str, dict[str, Any]] {
+    ) -> dict[str, dict[str, any]] {
         app_name = app_config.app_name or self.k8s_config.app_name;
 
         import from jac_scale.config_loader { get_scale_config }
@@ -108,7 +107,7 @@ obj MicroserviceManifestBuilder {
             );
         }
 
-        specs: dict[str, dict[str, Any]] = {};
+        specs: dict[str, dict[str, any]] = {};
         for svc_name in routes.keys() {
             specs[svc_name] = self._build_service_pod_spec(svc_name, image);
         }
@@ -136,7 +135,7 @@ obj MicroserviceManifestBuilder {
     }
 
     """Per-service config from [...services.NAME]; {} on read failure."""
-    def _service_config(svc_name: str) -> dict[str, Any] {
+    def _service_config(svc_name: str) -> dict[str, any] {
         try {
             import from jac_scale.config_loader { get_scale_config }
             ms_cfg = get_scale_config().get_microservices_config();
@@ -148,7 +147,7 @@ obj MicroserviceManifestBuilder {
 
     """[[shared_volumes]] entries. PVC mode for cloud K8s, hostPath mode
     for single-node dev. `services` may include `__gateway__`."""
-    def _shared_volumes_config -> list[dict[str, Any]] {
+    def _shared_volumes_config -> list[dict[str, any]] {
         try {
             import from jac_scale.config_loader { get_scale_config }
             ms_cfg = get_scale_config().get_microservices_config();
@@ -156,7 +155,7 @@ obj MicroserviceManifestBuilder {
             if not isinstance(raw, list) {
                 return [];
             }
-            out: list[dict[str, Any]] = [];
+            out: list[dict[str, any]] = [];
             for entry in raw {
                 if isinstance(entry, dict) {
                     out.append(dict(entry));
@@ -171,9 +170,9 @@ obj MicroserviceManifestBuilder {
     """(volumes, volumeMounts) for svc_name from shared_volumes config."""
     def _shared_volumes_for_service(
         svc_name: str
-    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]] {
-        volumes: list[dict[str, Any]] = [];
-        mounts: list[dict[str, Any]] = [];
+    ) -> tuple[list[dict[str, any]], list[dict[str, any]]] {
+        volumes: list[dict[str, any]] = [];
+        mounts: list[dict[str, any]] = [];
         for vol in self._shared_volumes_config() {
             services = vol.get("services", []);
             if not isinstance(services, list) {
@@ -206,7 +205,7 @@ obj MicroserviceManifestBuilder {
                     {"name": vol_name, "persistentVolumeClaim": {"claimName": vol_name}}
                 );
             }
-            mount_entry: dict[str, Any] = {"name": vol_name, "mountPath": mount_path};
+            mount_entry: dict[str, any] = {"name": vol_name, "mountPath": mount_path};
             sub_path = str(vol.get("sub_path", "")).strip();
             if sub_path {
                 mount_entry["subPath"] = sub_path;
@@ -218,8 +217,8 @@ obj MicroserviceManifestBuilder {
 
     """PVC manifests for PVC-mode shared volumes. Default access_mode
     ReadWriteOnce; multi-node clusters set ReadWriteMany."""
-    def _build_shared_pvc_manifests -> dict[str, dict[str, Any]] {
-        pvcs: dict[str, dict[str, Any]] = {};
+    def _build_shared_pvc_manifests -> dict[str, dict[str, any]] {
+        pvcs: dict[str, dict[str, any]] = {};
         for vol in self._shared_volumes_config() {
             name = str(vol.get("name", "")).strip();
             if not name {
@@ -246,7 +245,7 @@ obj MicroserviceManifestBuilder {
             storage_class = str(vol.get("storage_class", "")).strip();
             pvc_name = k8s_safe_name(name);
 
-            spec: dict[str, Any] = {
+            spec: dict[str, any] = {
                 "accessModes": [access_mode],
                 "resources": {"requests": {"storage": size}}
             };
@@ -273,7 +272,7 @@ obj MicroserviceManifestBuilder {
 
     """Secret manifest for [plugins.scale.secrets] (pre-interpolated).
     Returns None if no secrets."""
-    def _build_user_secret_manifest -> dict[str, Any] | None {
+    def _build_user_secret_manifest -> dict[str, any] | None {
         if not self.secrets {
             return None;
         }
@@ -337,8 +336,8 @@ obj MicroserviceManifestBuilder {
     checks JAC_SV_<PEER>_URL BEFORE invoking ensure_sv_service so sv-to-sv
     dispatch resolves via this fast-path; without it, sv calls silently
     fall back to local module imports inside the image."""
-    def _build_env(svc_name: str, svc_cfg: dict[str, Any]) -> list[dict[str, Any]] {
-        env: list[dict[str, Any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
+    def _build_env(svc_name: str, svc_cfg: dict[str, any]) -> list[dict[str, any]] {
+        env: list[dict[str, any]] = [{"name": "JAC_SV_NAME", "value": svc_name}];
 
         routes: dict[str, str] = self._microservice_routes();
         seen_peer_keys: set = set();
@@ -364,7 +363,7 @@ obj MicroserviceManifestBuilder {
         # JAC_SV_NAME and JAC_SV_*_URL are protected - users can't shadow
         # the sentinel or override peer URLs via the per-service env table
         # (a stale override would silently route sv calls to the wrong place).
-        extra: dict[str, Any] = svc_cfg.get("env", {});
+        extra: dict[str, any] = svc_cfg.get("env", {});
         for (k, v) in extra.items() {
             if k == "JAC_SV_NAME" {
                 continue;
@@ -382,7 +381,7 @@ obj MicroserviceManifestBuilder {
     pressure, so tiny defaults bump QoS without constraining real
     workloads. Priority: per-service > [plugins.scale.kubernetes] >
     defaults. Empty string opts back to BestEffort."""
-    def _build_resources(svc_cfg: dict[str, Any]) -> dict[str, Any] {
+    def _build_resources(svc_cfg: dict[str, any]) -> dict[str, any] {
         cfg = self.k8s_config;
 
         memory_request_val = svc_cfg.get("memory_request");
@@ -425,7 +424,7 @@ obj MicroserviceManifestBuilder {
         if memory_limit_val {
             limits["memory"] = str(memory_limit_val);
         }
-        out: dict[str, Any] = {};
+        out: dict[str, any] = {};
         if requests {
             out["requests"] = requests;
         }
@@ -436,7 +435,7 @@ obj MicroserviceManifestBuilder {
     }
 
     """Apply per-service image_tag override (handles registry-port colons)."""
-    def _resolve_image(image: str, svc_cfg: dict[str, Any]) -> str {
+    def _resolve_image(image: str, svc_cfg: dict[str, any]) -> str {
         tag = svc_cfg.get("image_tag");
         if not tag {
             return image;
@@ -455,7 +454,7 @@ obj MicroserviceManifestBuilder {
 
     """/healthz/ready; gates Endpoints. Tight cadence so pod drops out
     of rotation within ~15s of drain start."""
-    def _build_readiness_probe -> dict[str, Any] {
+    def _build_readiness_probe -> dict[str, any] {
         cfg = self.k8s_config;
         return {
             "httpGet": {"path": "/healthz/ready", "port": cfg.container_port},
@@ -467,7 +466,7 @@ obj MicroserviceManifestBuilder {
     }
 
     """/healthz/live; gates pod restart. More lenient than readiness."""
-    def _build_liveness_probe -> dict[str, Any] {
+    def _build_liveness_probe -> dict[str, any] {
         cfg = self.k8s_config;
         return {
             "httpGet": {"path": "/healthz/live", "port": cfg.container_port},
@@ -480,7 +479,7 @@ obj MicroserviceManifestBuilder {
 
     """PreStop sleep bridges the kube-proxy endpoint-propagation gap so
     the pod doesn't stop accepting work before remote nodes stop sending."""
-    def _build_prestop_hook -> dict[str, Any] {
+    def _build_prestop_hook -> dict[str, any] {
         return {"exec": {"command": ["sh", "-c", "sleep 5"]}};
     }
 
@@ -491,8 +490,8 @@ obj MicroserviceManifestBuilder {
 
     """Deployment manifest. Replicas from [...services.NAME].replicas."""
     def _build_deployment_manifest(
-        svc_name: str, pod_spec: dict[str, Any]
-    ) -> dict[str, Any] {
+        svc_name: str, pod_spec: dict[str, any]
+    ) -> dict[str, any] {
         k8s_name = self._k8s_safe_name(svc_name);
         role: str = "gateway" if svc_name == GATEWAY_NAME else "microservice";
         labels: dict[str, str] = {
@@ -525,10 +524,10 @@ obj MicroserviceManifestBuilder {
     }
 
     """ClusterIP Service. External traffic comes via the optional Ingress."""
-    def _build_service_manifest(svc_name: str) -> dict[str, Any] {
+    def _build_service_manifest(svc_name: str) -> dict[str, any] {
         k8s_name = self._k8s_safe_name(svc_name);
         port: int = self.k8s_config.container_port;
-        spec: dict[str, Any] = {
+        spec: dict[str, any] = {
             "type": "ClusterIP",
             "selector": {"app": k8s_name},
             "ports": [{"protocol": "TCP", "port": port, "targetPort": port}]
@@ -551,8 +550,8 @@ obj MicroserviceManifestBuilder {
     }
 
     """HPA; overrides at [...services.NAME.hpa]. None on hpa.enabled=false."""
-    def _build_hpa_manifest(svc_name: str) -> dict[str, Any] | None {
-        cfg: dict[str, Any] = self._service_config(svc_name).get("hpa", {});
+    def _build_hpa_manifest(svc_name: str) -> dict[str, any] | None {
+        cfg: dict[str, any] = self._service_config(svc_name).get("hpa", {});
         if not cfg.get("enabled", True) {
             return None;
         }
@@ -593,7 +592,7 @@ obj MicroserviceManifestBuilder {
     Returns None if `[...ingress].enabled` is unset. Backend always points
     at gateway-service with path "/" Prefix - the gateway owns /api/{svc}/*
     dispatch internally. `host` is optional (omitted = match any host)."""
-    def _build_ingress_manifest(ingress_cfg: dict[str, Any]) -> dict[str, Any] | None {
+    def _build_ingress_manifest(ingress_cfg: dict[str, any]) -> dict[str, any] | None {
         if not ingress_cfg.get("enabled", False) {
             return None;
         }
@@ -604,24 +603,24 @@ obj MicroserviceManifestBuilder {
             annotations[str(k)] = str(v);
         }
 
-        backend: dict[str, Any] = {
+        backend: dict[str, any] = {
             "service": {
                 "name": "gateway-service",
                 "port": {"number": self.k8s_config.container_port}
             }
         };
-        path_entry: dict[str, Any] = {
+        path_entry: dict[str, any] = {
             "path": "/",
             "pathType": "Prefix",
             "backend": backend
         };
 
-        rule: dict[str, Any] = {"http": {"paths": [path_entry]}};
+        rule: dict[str, any] = {"http": {"paths": [path_entry]}};
         if host {
             rule["host"] = host;
         }
 
-        metadata: dict[str, Any] = {
+        metadata: dict[str, any] = {
             "name": "gateway-ingress",
             "namespace": self.k8s_config.namespace,
             "labels": {
@@ -634,7 +633,7 @@ obj MicroserviceManifestBuilder {
             metadata["annotations"] = annotations;
         }
 
-        spec: dict[str, Any] = {"rules": [rule]};
+        spec: dict[str, any] = {"rules": [rule]};
         if ingress_class {
             spec["ingressClassName"] = ingress_class;
         }
@@ -649,8 +648,8 @@ obj MicroserviceManifestBuilder {
 
     """PDB matching the Deployment; overrides at [...services.NAME.pdb].
     Returns None on `pdb.enabled=false`."""
-    def _build_pdb_manifest(svc_name: str) -> dict[str, Any] | None {
-        cfg: dict[str, Any] = self._service_config(svc_name).get("pdb", {});
+    def _build_pdb_manifest(svc_name: str) -> dict[str, any] | None {
+        cfg: dict[str, any] = self._service_config(svc_name).get("pdb", {});
         if not cfg.get("enabled", True) {
             return None;
         }
@@ -674,7 +673,7 @@ obj MicroserviceManifestBuilder {
     """Pod entrypoint: reads JAC_SV_NAME and runs `jac scale gateway`
     (gateway) or `jac start <name>.jac` (service). JAC_SV_SIBLING=1 is
     exported so the pre-hook skips local-mode orchestration."""
-    def _pod_entrypoint -> dict[str, Any] {
+    def _pod_entrypoint -> dict[str, any] {
         return {
             "command": ["sh", "-c"],
             "args": [
@@ -691,13 +690,13 @@ obj MicroserviceManifestBuilder {
 
     """Pod-spec for a service or the gateway (svc_name=GATEWAY_NAME).
     Includes probes, preStop, grace, SA, init containers, secrets."""
-    def _build_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
+    def _build_pod_spec(svc_name: str, image: str) -> dict[str, any] {
         drain_t: int = self._drain_timeout();
         svc_cfg = self._service_config(svc_name);
         entry = self._pod_entrypoint();
         # Container name must be DNS-1123 (no underscores); JAC_SV_NAME
         # env carries the raw name.
-        container: dict[str, Any] = {
+        container: dict[str, any] = {
             "name": k8s_safe_name(svc_name),
             "image": self._resolve_image(image, svc_cfg),
             "command": entry["command"],
@@ -721,7 +720,7 @@ obj MicroserviceManifestBuilder {
         if self.secrets {
             container["envFrom"] = [{"secretRef": {"name": self._user_secret_name()}}];
         }
-        spec: dict[str, Any] = {
+        spec: dict[str, any] = {
             "containers": [container],
             "terminationGracePeriodSeconds": drain_t + _UVICORN_EXIT_CUSHION_S
         };
@@ -738,11 +737,11 @@ obj MicroserviceManifestBuilder {
         return spec;
     }
 
-    def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, Any] {
+    def _build_service_pod_spec(svc_name: str, image: str) -> dict[str, any] {
         return self._build_pod_spec(svc_name, image);
     }
 
-    def _build_gateway_pod_spec(image: str) -> dict[str, Any] {
+    def _build_gateway_pod_spec(image: str) -> dict[str, any] {
         return self._build_pod_spec(GATEWAY_NAME, image);
     }
 }
