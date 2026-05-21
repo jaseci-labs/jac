@@ -12,8 +12,7 @@ import from jaclang.runtimelib.transport {
 # the loaded module at runtime so the type checker doesn't flag the import.
 glob _transport_mod = sys.modules.get('jaclang.runtimelib.transport'),
      serialize_transport_response = (
-         getattr(_transport_mod, 'serialize_transport_response', None)
-             if _transport_mod else None
+         _transport_mod?.serialize_transport_response if _transport_mod else None
      );
 
 
@@ -33,9 +32,7 @@ test "serialize success response" {
 """Failure envelope: ok=False, error object with code/message/details."""
 test "serialize fail response" {
     resp = TransportResponse.fail(
-        code="BAD_INPUT",
-        message="bad",
-        details={"field": "x"}
+        code="BAD_INPUT", message="bad", details={"field": "x"}
     );
     body = serialize_transport_response(resp);
     assert body["ok"] is False;
