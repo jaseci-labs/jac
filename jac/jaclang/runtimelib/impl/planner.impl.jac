@@ -150,7 +150,11 @@ def _materialize_ids(
     for i in ids {
         anchor = loaded.get(i);
         if isinstance(anchor, NodeAnchor) and anchor.archetype {
-            if post_filter is not None and not post_filter(anchor) {
+            # The post_filter is the destination's `node_filter` lambda from
+            # the user's path expression — it takes an *archetype*, not the
+            # anchor. The lambda body reads attributes like `n.val`, so it
+            # has to see the user-facing archetype object.
+            if post_filter is not None and not post_filter(anchor.archetype) {
                 continue;
             }
             result.append(anchor);
@@ -188,7 +192,12 @@ def _execute_pushdown(mem: any, plan: QueryPlan) -> list[any] {
     _trace('pushdown', plan);
     result: list = [];
     for anchor in mem.execute_plan(plan) {
-        if plan.post_filter is not None and not plan.post_filter(anchor) {
+        # post_filter is the user's `node_filter` lambda — takes archetype.
+        if (
+            plan.post_filter is not None
+            and anchor.archetype is not None
+            and not plan.post_filter(anchor.archetype)
+        ) {
             continue;
         }
         result.append(anchor);

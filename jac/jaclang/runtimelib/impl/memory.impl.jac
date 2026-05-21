@@ -61,10 +61,37 @@ impl Memory.capabilities -> set[str] {
 
 impl Memory.execute_plan(plan: QueryPlan) -> Generator[Anchor, None, None] {
     # Default-implementation backends never get called here: the planner
-    # gates on `capabilities()` first. Returning an empty generator keeps
-    # the type contract honest if someone bypasses the planner.
+    # gates on `capabilities()` first. If we get called anyway, log it —
+    # most likely cause is a backend that declared capabilities but forgot
+    # to override execute_plan, which would silently return zero results.
+    if self.capabilities() {
+        logger.debug(
+            f"{type(self).__name__} declares capabilities "
+            f"{self.capabilities()} but did not override execute_plan; "
+            "falling back to empty result"
+        );
+    }
     return;
     yield ;
+}
+
+"""Convenience wrapper: build a QueryPlan from a type name + optional field
+predicates and delegate to `execute_plan`. Returns empty when the backend
+doesn't declare the needed capabilities. Backends without native pushdown
+should keep using `query()` with a Python-side filter for type-based scans
+— this method exists specifically to make the pushdown path ergonomic."""
+impl Memory.query_by_type(
+    arch_type_name: str, field_filter: (dict | None) = None
+) -> Generator[Anchor, None, None] {
+    plan = QueryPlan(
+        node_type_final=arch_type_name, field_predicates=field_filter or {}
+    );
+    if not (plan.needs() <= self.capabilities()) {
+        return;
+    }
+    for anchor in self.execute_plan(plan) {
+        yield anchor;
+    }
 }
 
 """Serialize an anchor to the tuple of columns stored in the anchors table."""

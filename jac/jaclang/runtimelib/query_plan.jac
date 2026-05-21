@@ -22,9 +22,6 @@ Capability strings backends declare via `Memory.capabilities()`:
                           and we want the backend to materialize that subset.
   - `'slice'`           — backend can apply `(offset, limit)` natively
                           (otherwise the planner slices the result list).
-  - `'order_stable'`    — backend's natural result order is the canonical
-                          adj_list/insertion order. Most aren't; mark only
-                          if explicitly guaranteed.
 
 A backend's `execute_plan(plan)` returns:
   - `Generator[Anchor, ...]`  when it fully handled the plan
