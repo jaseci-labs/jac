@@ -2814,6 +2814,16 @@ impl JacRuntime.get_program(cls: any) -> JacProgram {
     return cls.program;
 }
 
+"""Return the seed base path for new contexts."""
+impl JacRuntime.get_base_path_dir -> (str | None) {
+    return _default_base_path_dir[0];
+}
+
+"""Return the seed target path for new contexts."""
+impl JacRuntime.get_full_target_path -> (str | None) {
+    return _default_full_target_path[0];
+}
+
 """Set the base path for the machine.
 
     When base_path is None, L3 persistence is disabled (faster for tests).
