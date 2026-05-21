@@ -368,9 +368,17 @@ def _build_plan_from_path(
         return None;
     }
     import from jaclang.runtimelib.query_plan { HopSpec }
+    # Imported once; used to detect compiler-emitted FilterSpec on any hop.
+    try {
+        import from jaclang.jac0core.filter_spec { FilterSpec as _FS }
+        _fs_class: any = _FS;
+    } except Exception {
+        _fs_class: any = None;
+    }
     chain: list[HopSpec] = [];
     last_idx = len(destinations) - 1;
     last_post_filter: any = None;
+    last_field_preds: dict = {};
     has_filter = False;
     for (i, dest) in enumerate(destinations) {
         # Edge filter: type-only or bail.
@@ -384,7 +392,12 @@ def _build_plan_from_path(
             return None;
         }
         edge_type = _filter_type_name(dest.`edge);
-        node_type = _filter_type_name(dest.nd);
+        # FilterSpec carries type_name directly; fall back to lambda inspection.
+        if _fs_class is not None and isinstance(dest.nd, _fs_class) {
+            node_type = dest.nd.type_name;
+        } else {
+            node_type = _filter_type_name(dest.nd);
+        }
         chain.append(
             HopSpec(
                 edge_type=edge_type, node_type=node_type, direction=dest.direction.value
@@ -395,6 +408,10 @@ def _build_plan_from_path(
         }
         if i == last_idx and node_has_pred {
             last_post_filter = dest.node_filter;
+            # FilterSpec predicates enable backend-native field pushdown.
+            if _fs_class is not None and isinstance(dest.nd, _fs_class) {
+                last_field_preds = dest.nd.predicates;
+            }
         }
     }
     if not has_filter and last_post_filter is None {
@@ -404,6 +421,7 @@ def _build_plan_from_path(
     return QueryPlan(
         root_id=origin_anchor.root or origin_anchor.id,
         chain=chain,
+        field_predicates=last_field_preds,
         node_type_final=chain[-1].node_type if chain else None,
         slc=slc,
         post_filter=last_post_filter
