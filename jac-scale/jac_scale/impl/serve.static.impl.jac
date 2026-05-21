@@ -22,7 +22,9 @@ impl JacAPIServerStatic.serve_static_file(file_path: str) -> Response {
         # Find project root (where jac.toml is) instead of using base_path_dir
         # base_path_dir might be src/ when serving src/app.jac, but we need project root
         import from jaclang.project.config { find_project_root }
-        base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+        base_path_dir = Path(bp_dir)
+            if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
+            else Path.cwd();
         project_root_result = find_project_root(base_path_dir);
         if project_root_result {
             (base_path, _) = project_root_result;
@@ -285,7 +287,9 @@ impl JacAPIServerStatic.serve_root_asset(file_path: str) -> Response {
     # Find project root (where jac.toml is) instead of using base_path_dir
     # base_path_dir might be src/ when serving src/app.jac, but we need project root
     import from jaclang.project.config { find_project_root }
-    base_path_dir = Path(Jac.base_path_dir) if Jac.base_path_dir else Path.cwd();
+    base_path_dir = Path(bp_dir)
+        if (bp_dir := Jac.get_context().base_path_dir or Jac.get_base_path_dir())
+        else Path.cwd();
     project_root_result = find_project_root(base_path_dir);
     if project_root_result {
         (base_path, _) = project_root_result;

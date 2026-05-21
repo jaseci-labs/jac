@@ -1644,12 +1644,13 @@ impl JacAPIServer.create_handler -> type[BaseHTTPRequestHandler] {
             );
             if (is_static_path or is_asset_file) {
                 try {
-                    # Find project root (where jac.toml is) instead of using base_path_dir
-                    # base_path_dir might be src/ when serving src/app.jac, but we need project root
+                    # Find project root (where jac.toml is) instead of using base_path_dir.
+                    # base_path_dir might be src/ when serving src/app.jac, but we
+                    # need project root. Prefer the live ctx's base_path_dir; fall
+                    # back to the seed for non-request paths.
                     import from jaclang.project.config { find_project_root }
-                    base_path_dir = Path(Jac.base_path_dir)
-                        if Jac.base_path_dir
-                        else Path.cwd();
+                    bp_dir = Jac.get_context().base_path_dir or Jac.get_base_path_dir();
+                    base_path_dir = Path(bp_dir) if bp_dir else Path.cwd();
                     project_root_result = find_project_root(base_path_dir);
                     if project_root_result {
                         (base_path, _) = project_root_result;

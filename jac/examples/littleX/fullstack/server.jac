@@ -10,7 +10,7 @@ hand-rolled loop, and shared fan-out lives in small base walkers.
 import datetime;
 
 def _now -> str {
-    return datetime.datetime.utcnow().isoformat() + "Z";
+    return datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat() + "Z";
 }
 
 # --- View models: the typed contract returned to the client ---
@@ -199,7 +199,11 @@ walker:pub get_all_profiles {
 }
 
 walker get_trending {
+    # `allroots()` can surface the same Tweet through more than one
+    # path (e.g. via the system root and the user's own root), so a
+    # bare per-visit tally would double-count. Dedupe by tweet jid.
     has counts: dict[str, int] = {},
+        seen: dict[str, bool] = {},
         reports: list[list[TrendingTag]] = [];
 
     can run with Root entry {
@@ -209,6 +213,11 @@ walker get_trending {
     }
 
     can tally with Tweet entry {
+        tid = jid(here);
+        if tid in self.seen {
+            return;
+        }
+        self.seen[tid] = True;
         for word in here.content.split() {
             if word.startswith("#") and len(word) > 1 {
                 tag = word.lower().rstrip(".,!?;:");
@@ -320,14 +329,17 @@ walker create_channel {
     }
 }
 
-# --- Lookup base walkers: fan out to every node of a kind so the action
-#     subclasses only have to react to the one whose `jid` matches. ---
+# --- Lookup base walkers: resolve the target node by jid via `& (id)`
+#     and visit it directly. Action subclasses just react on entry. ---
 walker find_profile {
     has target_id: str = "";
 
     can run with Root entry {
-        for r in allroots() {
-            visit [r-->[?:Profile]];
+        if self.target_id {
+            target = jobj(self.target_id);
+            if isinstance(target, Profile) {
+                visit [target];
+            }
         }
     }
 }
@@ -367,9 +379,11 @@ walker find_tweet {
         if mine {
             self.actor = mine[0].username;
         }
-        for r in allroots() {
-            visit [r-->[?:Profile]-->[?:Tweet]];
-            visit [r-->[?:Profile]-->[?:Channel]-->[?:Tweet]];
+        if self.tweet_id {
+            target = jobj(self.tweet_id);
+            if isinstance(target, Tweet) {
+                visit [target];
+            }
         }
     }
 }
@@ -424,8 +438,11 @@ walker find_channel {
     has channel_id: str = "";
 
     can run with Root entry {
-        for r in allroots() {
-            visit [r-->[?:Profile]-->[?:Channel]];
+        if self.channel_id {
+            target = jobj(self.channel_id);
+            if isinstance(target, Channel) {
+                visit [target];
+            }
         }
     }
 }

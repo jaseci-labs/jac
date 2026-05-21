@@ -129,9 +129,65 @@ def int_subscript_suffix(right: uni.IndexSlice) -> str | None {
             and isinstance(start.strings[0], uni.String) {
                 return f'[{start.strings[0].lit_value!r}]';
             }
+            # items[i] - simple name index. The CFG assignment barrier
+            # consults the narrowing target's `deps` set (populated by
+            # `reference_key_deps` from the AST) so reassigning `i`
+            # invalidates the narrowing; `if x[i] is not None: x[i].foo`
+            # narrows under the same loop iteration while still dying
+            # the moment any index is rebound.
+            if isinstance(start, uni.Name) {
+                return f"[{start.value}]";
+            }
         }
     }
     return None;
+}
+
+"""Reference-key dependencies that invalidate narrowing when reassigned.
+
+A narrowing fact on `x[r] is not None` is keyed by the exact spelling
+`"x[r]"`, so the CFG predecessor walk drops the narrowing when the
+same key is rebound. But the key *also* depends on the base name `x`
+and the index name `r` -- reassigning either changes what `x[r]`
+denotes, so the narrowing must die too. Walks the AST to collect
+those identifier names; literal indices like `[0]` / `["host"]`
+contribute nothing because they're stable.
+"""
+def reference_key_deps(expr: uni.Expr) -> set[str] {
+    deps: set[str] = set();
+    cur: uni.UniNode | None = expr;
+    while cur is not None {
+        if isinstance(cur, uni.AtomUnit) and cur.value is not None {
+            cur = cur.value;
+            continue;
+        }
+        if isinstance(cur, uni.Name) {
+            deps.add(cur.value);
+            return deps;
+        }
+        if isinstance(cur, uni.AtomTrailer) {
+            if (
+                not cur.is_attr
+                and isinstance(cur.right, uni.IndexSlice)
+                and not cur.right.is_range
+                and len(cur.right.slices) == 1
+            ) {
+                idx = cur.right.slices[0];
+                if (
+                    idx.start is not None
+                    and idx.stop is None
+                    and idx.step is None
+                    and isinstance(idx.start, uni.Name)
+                ) {
+                    deps.add(idx.start.value);
+                }
+            }
+            cur = cur.target;
+            continue;
+        }
+        break;
+    }
+    return deps;
 }
 
 def get_expr_key(expr: uni.Expr) -> str | None {

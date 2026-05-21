@@ -294,7 +294,7 @@ with entry {
 
 # `obj` is like a Python dataclass -- fields are per-instance,
 # auto-generates __init__, __eq__, __repr__, etc.
-obj Dog {
+obj Pet {
     has name: str = "Unnamed",
         age: int = 0;
 
@@ -303,8 +303,8 @@ obj Dog {
     }
 
     # Static method -- no self or Self; works as a named constructor
-    static def make(name: str) -> Dog {
-        return Dog(name=name);
+    static def make(name: str) -> Pet {
+        return Pet(name=name);
     }
 
     # Static method -- no self or Self
@@ -314,16 +314,16 @@ obj Dog {
 }
 
 # `class` follows standard Python class behavior
-class Cat {
+class Kitten {
     has name: str = "Unnamed";
 
-    def meow(self: Cat) {
+    def meow(self: Kitten) {
         print(f"{self.name} says Meow!");
     }
 }
 
 # Inheritance
-obj Puppy(Dog) {
+obj Puppy(Pet) {
     has parent_name: str = "Unknown";
 
     override def bark() {
@@ -341,7 +341,9 @@ obj Result[T, E = Exception] {
     }
 }
 
-# Forward declaration (define body later or in another file)
+# Decl-only archetype (body lives in a separate `impl` block, possibly
+# in another file). Jac's decl/impl pattern -- two `obj UserProfile`
+# blocks would be a duplicate-declaration error (E0077).
 obj UserProfile;
 
 
@@ -402,7 +404,7 @@ obj Account {
 # Access modifiers work on obj, class, node, edge, walker,
 # def, has -- controlling visibility and API exposure
 
-obj:pub Person {
+obj:pub Profile {
     has:pub name: str;          # Public (default)
     has:priv ssn: str;          # Private
     has:protect age: int;       # Protected

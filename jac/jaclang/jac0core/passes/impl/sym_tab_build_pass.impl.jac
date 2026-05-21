@@ -273,6 +273,27 @@ impl SymTabBuildPass.exit_module_item(
 }
 
 impl SymTabBuildPass.enter_archetype(self: SymTabBuildPass, nd: uni.Archetype) -> None {
+    # Jac supports decl/impl separation, not decl/decl. A second
+    # `obj/node/edge/walker Foo` block when one already exists in the
+    # same scope is a hard error -- inline bodies don't merge, and the
+    # silent collision used to produce empty class scopes that cascaded
+    # into spurious E1030 "no attribute" errors downstream.
+    if self.cur_sym_tab {
+        existing_sym = self.cur_scope.names_in_scope.get(nd.sym_name, None);
+        if existing_sym {
+            for d in existing_sym.defn {
+                if isinstance(d.name_of, uni.Archetype) {
+                    self.emit(
+                        E0077,
+                        node_override=nd,
+                        name=nd.sym_name,
+                        kind=d.name_of.arch_type.value
+                    );
+                    break;
+                }
+            }
+        }
+    }
     self.push_scope_and_link(nd);
     assert (nd.parent_scope is not None);
     nd.parent_scope.def_insert(nd, access_spec=nd, single_decl='archetype');
