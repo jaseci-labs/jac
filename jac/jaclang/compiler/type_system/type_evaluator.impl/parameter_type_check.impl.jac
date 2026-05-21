@@ -672,7 +672,7 @@ with the caller's class type. Returns an OverloadedType when multiple signatures
 exist, otherwise returns the base FunctionType.
 """
 impl TypeEvaluator._get_method_with_overloads(
-    method_member: Any, caller_type: types.ClassType
+    method_member: any, caller_type: types.ClassType
 ) -> TypeBase {
     # Start with the base method as the first (and possibly only) signature.
     method_ty = self.get_type_of_symbol(method_member.symbol);

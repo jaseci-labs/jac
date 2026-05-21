@@ -1668,6 +1668,14 @@ impl FinallyStmt.postinit -> None {
 }
 
 
+impl AwaitingClause.postinit -> None {
+    self.body = `list(self.body);
+    UniNode.postinit(self);
+    UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    CodeBlockStmt.postinit(self);
+}
+
+
 impl IterForStmt.postinit -> None {
     self.body = `list(self.body);
     UniNode.postinit(self);
@@ -1765,6 +1773,11 @@ impl DisengageStmt.postinit -> None {
 
 
 impl AwaitExpr.postinit -> None {
+    UniNode.postinit(self);
+    Expr.postinit(self);
+}
+
+impl CastExpr.postinit -> None {
     UniNode.postinit(self);
     Expr.postinit(self);
 }
@@ -1905,6 +1918,7 @@ impl ListCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -1913,6 +1927,7 @@ impl DictCompr.postinit -> None {
     Expr.postinit(self);
     AstSymbolStubNode._init_stub(self, sym_type=SymbolType.SEQUENCE);
     UniScopeNode._init_scope(self, name=f"{self.__class__.__name__}");
+    UniCFGNode.postinit(self);
 }
 
 
@@ -2144,6 +2159,11 @@ impl JsxText.get_normalized_text -> str {
 }
 
 impl JsxExpression.postinit -> None {
+    JsxChild.postinit(self);
+}
+
+
+impl JsxSlot.postinit -> None {
     JsxChild.postinit(self);
 }
 

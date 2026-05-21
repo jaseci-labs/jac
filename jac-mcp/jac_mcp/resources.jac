@@ -4,7 +4,6 @@ This module provides read-only reference material that AI models can load
 for context: grammar specs, documentation, examples, and curated guides.
 """
 
-import from typing { Any }
 import from pathlib { Path }
 
 """Find the repo root by walking up from jaclang package location."""
@@ -21,6 +20,9 @@ obj ResourceProvider {
 
     """Index bundled content (pitfalls, patterns)."""
     def _index_bundled -> None;
+
+    """Index the curated guides from the jaclang compiler's shared guide store."""
+    def _index_shared_guides -> None;
 
     """Index bundled docs copied at release time."""
     def _index_bundled_docs -> None;

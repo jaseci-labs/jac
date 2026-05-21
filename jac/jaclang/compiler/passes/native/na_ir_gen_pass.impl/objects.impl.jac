@@ -474,6 +474,11 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
+    # Reset per-function borrowed-param promotion state.
+    saved_param_store_instr = self._param_store_instr;
+    saved_param_promoted = self._param_promoted;
+    self._param_store_instr = {};
+    self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
@@ -500,9 +505,10 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
         param_name = p.name.value if p.name else f"arg{i}";
         arg_val = func.args[i + 1];
         alloca = self.builder.alloca(arg_val.type, name=param_name);
-        self.builder.store(arg_val, alloca);
+        _store_instr = self.builder.store(arg_val, alloca);
         self.local_vars[param_name] = alloca;
         self.param_vars.add(param_name);
+        self._param_store_instr[param_name] = _store_instr;  # for entry-block retain on reassign
         # Track type info for struct pointer parameters
         if isinstance(arg_val.type, ir.PointerType) {
             for (sname, stype) in self.struct_types.items() {
@@ -574,6 +580,8 @@ impl NaIRGenPass._codegen_method(arch_name: str, method: uni.Ability) -> None {
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
+    self._param_store_instr = saved_param_store_instr;
+    self._param_promoted = saved_param_promoted;
 }
 
 """Generate method body for methods without FuncSignature (e.g., postinit)."""
@@ -595,6 +603,8 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     saved_dict_type = dict(self.var_dict_type);
     saved_set_elem = dict(self.var_set_elem_type);
     saved_tuple_type = dict(self.var_tuple_type);
+    saved_param_store_instr = self._param_store_instr;
+    saved_param_promoted = self._param_promoted;
     self.builder = ir.IRBuilder(block);
     self.local_vars = {};
     self.param_vars = set();
@@ -603,6 +613,8 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_dict_type = {};
     self.var_set_elem_type = {};
     self.var_tuple_type = {};
+    self._param_store_instr = {};
+    self._param_promoted = set();
     # DWARF debug info (JAC_NATIVE_DEBUG=1)
     self._attach_di_subprogram(
         func, full_name, method.loc.first_line if method.loc else 0
@@ -650,6 +662,8 @@ impl NaIRGenPass._codegen_no_sig_method(arch_name: str, method: uni.Ability) -> 
     self.var_dict_type = saved_dict_type;
     self.var_set_elem_type = saved_set_elem;
     self.var_tuple_type = saved_tuple_type;
+    self._param_store_instr = saved_param_store_instr;
+    self._param_promoted = saved_param_promoted;
 }
 
 """Generate object instantiation: allocate struct, init fields, call postinit."""

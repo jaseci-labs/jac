@@ -30,6 +30,9 @@ impl LocalLLM.postinit -> None {
         );
     }
     self.spec = s;
+    # llama.cpp has no reliable server-side tool calling: byllm renders the
+    # tool protocol into the prompt and recovers tool calls from the reply.
+    self.supports_native_tools = False;
 }
 
 """Build (or return cached) underlying llama.cpp instance."""

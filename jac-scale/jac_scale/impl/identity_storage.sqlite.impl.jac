@@ -56,7 +56,7 @@ impl SqliteIdentityStorage.ensure_indexes -> None {
 }
 
 """Convert a row to a dict (excludes credentials)."""
-def _row_to_dict(row: Any) -> dict[str, Any] {
+def _row_to_dict(row: any) -> dict[str, any] {
     return {
         'user_id': row.user_id,
         'status': row.status,
@@ -71,7 +71,7 @@ def _row_to_dict(row: Any) -> dict[str, Any] {
 }
 
 """Insert a user document and sync lookup tables."""
-impl SqliteIdentityStorage._store_user(user_doc: dict[str, Any]) -> None {
+impl SqliteIdentityStorage._store_user(user_doc: dict[str, any]) -> None {
     user_id = user_doc['user_id'];
     id_rows: list[dict[str, str]] = [];
     sso_rows: list[dict[str, str]] = [];
@@ -104,7 +104,7 @@ impl SqliteIdentityStorage._store_user(user_doc: dict[str, Any]) -> None {
 }
 
 """Find a user by user_id (excludes credentials)."""
-impl SqliteIdentityStorage.get_user_by_id(user_id: str) -> dict[str, Any] | None {
+impl SqliteIdentityStorage.get_user_by_id(user_id: str) -> dict[str, any] | None {
     t = self._table;
     with self._engine.connect() as conn {
         row = conn.execute(select(t).where(t.c.user_id == user_id)).first();
@@ -113,7 +113,7 @@ impl SqliteIdentityStorage.get_user_by_id(user_id: str) -> dict[str, Any] | None
 }
 
 """Find a user by any identity value using indexed lookup."""
-impl SqliteIdentityStorage.find_user_by_identity(value: str) -> dict[str, Any] | None {
+impl SqliteIdentityStorage.find_user_by_identity(value: str) -> dict[str, any] | None {
     normalized = value.lower().strip();
     t = self._table;
     lk = self._identity_lookups;
@@ -162,7 +162,7 @@ impl SqliteIdentityStorage.delete_user(user_id: str) -> bool {
 
 """Update fields on a user row."""
 impl SqliteIdentityStorage._update_fields(
-    user_id: str, fields: dict[str, Any]
+    user_id: str, fields: dict[str, any]
 ) -> bool {
     allowed = {c.name for c in self._table.columns} - {'user_id','created_at','identities','credentials'};
     safe_fields = {
@@ -183,7 +183,7 @@ impl SqliteIdentityStorage._update_fields(
 }
 
 """Get the credentials array for a user."""
-impl SqliteIdentityStorage._get_credentials(user_id: str) -> list[dict[str, Any]] {
+impl SqliteIdentityStorage._get_credentials(user_id: str) -> list[dict[str, any]] {
     t = self._table;
     with self._engine.connect() as conn {
         row = conn.execute(
@@ -195,7 +195,7 @@ impl SqliteIdentityStorage._get_credentials(user_id: str) -> list[dict[str, Any]
 
 """Replace the entire credentials array for a user."""
 impl SqliteIdentityStorage._update_credentials(
-    user_id: str, credentials: list[dict[str, Any]]
+    user_id: str, credentials: list[dict[str, any]]
 ) -> None {
     t = self._table;
     now = datetime.now(UTC).isoformat();
@@ -209,7 +209,7 @@ impl SqliteIdentityStorage._update_credentials(
 }
 
 """Get the identities array for a user."""
-impl SqliteIdentityStorage._get_identities(user_id: str) -> list[dict[str, Any]] {
+impl SqliteIdentityStorage._get_identities(user_id: str) -> list[dict[str, any]] {
     t = self._table;
     with self._engine.connect() as conn {
         row = conn.execute(
@@ -221,7 +221,7 @@ impl SqliteIdentityStorage._get_identities(user_id: str) -> list[dict[str, Any]]
 
 """Append an identity document and sync lookup tables."""
 impl SqliteIdentityStorage._add_identity(
-    user_id: str, identity: dict[str, Any]
+    user_id: str, identity: dict[str, any]
 ) -> bool {
     t = self._table;
     with self._engine.begin() as conn {
@@ -296,7 +296,7 @@ impl SqliteIdentityStorage._remove_sso_identity(user_id: str, platform: str) -> 
 """Find which active user has a specific SSO link using indexed lookup."""
 impl SqliteIdentityStorage._find_sso_link(
     platform: str, external_id: str
-) -> dict[str, Any] | None {
+) -> dict[str, any] | None {
     t = self._table;
     sl = self._sso_lookups;
     with self._engine.connect() as conn {
@@ -314,7 +314,7 @@ impl SqliteIdentityStorage._find_sso_link(
 """Find a user by SSO provider and external_id using indexed lookup."""
 impl SqliteIdentityStorage.get_user_by_sso(
     platform: str, external_id: str
-) -> dict[str, Any] | None {
+) -> dict[str, any] | None {
     t = self._table;
     sl = self._sso_lookups;
     with self._engine.connect() as conn {
@@ -332,7 +332,7 @@ impl SqliteIdentityStorage.get_user_by_sso(
 """List user documents excluding guest users and credentials."""
 impl SqliteIdentityStorage.list_all_users(
     limit: int, offset: int
-) -> list[dict[str, Any]] {
+) -> list[dict[str, any]] {
     t = self._table;
     lk = self._identity_lookups;
     with self._engine.connect() as conn {

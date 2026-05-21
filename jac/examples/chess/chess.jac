@@ -68,9 +68,6 @@ glob PIECE_VALUES: dict[PieceKind, int] = {
 # Simple LCG random state
 glob _rand_state: int = 12345;
 
-# ────────────────────── Forward declarations ──────────────────────
-obj Board;
-obj Piece;
 
 # ────────────────────── Free functions ──────────────────────
 """Return the opposite color."""

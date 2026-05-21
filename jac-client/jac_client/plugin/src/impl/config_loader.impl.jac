@@ -10,7 +10,6 @@ that combines plugin config with npm dependencies.
 import shutil;
 import from jaclang.cli.console { console }
 import from pathlib { Path }
-import from typing { Any }
 import from jaclang.project.plugin_config { deep_merge }
 
 # Core dependency versions — individual packages instead of meta-packages.
@@ -48,7 +47,7 @@ glob CORE_RUNTIME_DEPS: dict[str, str] = {
 Returns updated deps dict and whether node_modules should be cleared.
 """
 def _ensure_dependencies(
-    jac_config: Any,
+    jac_config: any,
     deps: dict,
     required: dict[str, str],
     is_dev: bool,
@@ -81,7 +80,7 @@ Removes the meta-package entry and injects the individual deps it contained.
 Returns updated deps dict and whether migration occurred.
 """
 def _migrate_legacy_meta_packages(
-    jac_config: Any, npm_deps: dict, npm_dev_deps: dict
+    jac_config: any, npm_deps: dict, npm_dev_deps: dict
 ) -> tuple[dict, dict, bool] {
     migrated = False;
 
@@ -148,7 +147,7 @@ impl JacClientConfig.get_plugin_name(self: JacClientConfig) -> str {
 }
 
 """Get default configuration structure for client."""
-impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, any] {
     return {
         'api': {'base_url': ''},
         'base_path': '/',
@@ -179,7 +178,7 @@ impl JacClientConfig.get_default_config(self: JacClientConfig) -> dict[str, Any]
 Overrides base class to also include npm dependencies from [dependencies.npm].
 Ensures core dependencies are present in jac.toml, migrating legacy meta-packages if needed.
 """
-impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.load(self: JacClientConfig) -> dict[str, any] {
     if self._config is not None {
         return self._config;
     }
@@ -228,7 +227,7 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
     }
 
     # Build user config in the expected internal format
-    user_config: dict[str, Any] = {
+    user_config: dict[str, any] = {
         'api': client_config.get('api', {}),
         'base_path': client_config.get('base_path', '/'),
         'vite': client_config.get('vite', {}),
@@ -250,13 +249,13 @@ impl JacClientConfig.load(self: JacClientConfig) -> dict[str, Any] {
 }
 
 """Get package configuration (npm dependencies)."""
-impl JacClientConfig.get_package_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_package_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('package', {});
 }
 
 """Get API configuration (base_url for backend)."""
-impl JacClientConfig.get_api_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_api_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('api', {});
 }
@@ -268,25 +267,25 @@ impl JacClientConfig.get_base_path(self: JacClientConfig) -> str {
 }
 
 """Get Vite-specific configuration."""
-impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_vite_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('vite', {});
 }
 
 """Get TypeScript-specific configuration for tsconfig.json customization."""
-impl JacClientConfig.get_ts_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_ts_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('ts', {});
 }
 
 """Get generic config files to generate (postcss, tailwind, etc.)."""
-impl JacClientConfig.get_configs(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_configs(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('configs', {});
 }
 
 """Get npm registry configuration for .npmrc generation."""
-impl JacClientConfig.get_npm_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_npm_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('npm', {});
 }
@@ -325,7 +324,7 @@ impl JacClientConfig.get_paths_config(self: JacClientConfig) -> dict[str, str] {
 }
 
 """Get PWA configuration from [plugins.client.pwa] in jac.toml."""
-impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, Any] {
+impl JacClientConfig.get_pwa_config(self: JacClientConfig) -> dict[str, any] {
     config = self.load();
     return config.get('pwa', {});
 }

@@ -68,6 +68,15 @@ obj CFGBuildPass(UniPass) {
     def exit_while_stmt(nd: uni.WhileStmt) -> None;
     def exit_in_for_stmt(nd: uni.InForStmt) -> None;
     def exit_iter_for_stmt(nd: uni.IterForStmt) -> None;
+    # Comprehension head: wires `if` filters as CfgExpr predecessors
+    # so filter narrowing flows into the head expression(s).
+    def exit_list_compr(nd: uni.ListCompr) -> None;
+    def exit_set_compr(nd: uni.SetCompr) -> None;
+    def exit_gen_compr(nd: uni.GenCompr) -> None;
+    def exit_dict_compr(nd: uni.DictCompr) -> None;
+    def _wire_compr_filters(
+        target_node: uni.UniCFGNode, comprs: list[uni.InnerCompr]
+    ) -> None;
     # Control flow
     def exit_ctrl_stmt(nd: uni.CtrlStmt) -> None;
     # Exception
@@ -82,6 +91,7 @@ obj CFGBuildPass(UniPass) {
     # Other
     def exit_with_stmt(nd: uni.WithStmt) -> None;
     def exit_typed_ctx_block(nd: uni.TypedCtxBlock) -> None;
+    def exit_jsx_slot(nd: uni.JsxSlot) -> None;
     # Scope boundaries
     def exit_ability(nd: uni.Ability) -> None;
     def exit_archetype(nd: uni.Archetype) -> None;

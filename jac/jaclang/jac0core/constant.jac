@@ -250,6 +250,7 @@ class Tokens(StrEnum) {
         KW_TRY = 'KW_TRY';
         KW_EXCEPT = 'KW_EXCEPT';
         KW_FINALLY = 'KW_FINALLY';
+        KW_AWAITING = 'KW_AWAITING';
         KW_RAISE = 'KW_RAISE';
         ELLIPSIS = 'ELLIPSIS';
         DOT = 'DOT';
@@ -490,6 +491,7 @@ glob TOKEN_MAP: dict[str, str] = {
          'KW_OBJECT': 'obj',
          'KW_OR': '|',
          'KW_OVERRIDE': 'override',
+         'KW_AWAITING': 'awaiting',
          'KW_POST_INIT': 'postinit',
          'KW_PRIV': 'priv',
          'KW_PROPS': 'props',

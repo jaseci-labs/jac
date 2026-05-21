@@ -1,7 +1,7 @@
 """Auth request/response models for the identity-based auth system."""
 import json;
 import re;
-import from typing { Annotated, Any, Literal, Union }
+import from typing { Annotated, Literal, Union }
 import from pydantic { BaseModel, Field, EmailStr, AfterValidator }
 import from jac_scale.enums { CredentialType }
 
@@ -15,7 +15,7 @@ glob PROFILE_MAX_KEYS: int = 20,
 
 """Validate a profile dict. Returns the dict unchanged or raises ValueError.
 Reused by /user/register and PATCH /user/me."""
-def validate_profile(profile: dict[str, Any] | None) -> dict[str, Any] | None {
+def validate_profile(profile: dict[str, any] | None) -> dict[str, any] | None {
     if profile is None {
         return None;
     }
@@ -55,11 +55,11 @@ def validate_profile(profile: dict[str, Any] | None) -> dict[str, Any] | None {
 }
 
 glob ValidatedProfile = Annotated[
-         dict[str, Any] | None,
+         dict[str, any] | None,
          AfterValidator(validate_profile)
      ],
      RequiredValidatedProfile = Annotated[
-         dict[str, Any],
+         dict[str, any],
          AfterValidator(validate_profile)
      ];
 
@@ -120,7 +120,7 @@ class UpdateProfileRequest(BaseModel) {
 
 class UpdateProfileResponse(BaseModel) {
     has message: str = Field(..., description='Result message'),
-        profile: dict[str, Any] = Field(
+        profile: dict[str, any] = Field(
             {}, description='The user\'s profile after the merge'
         );
 }
@@ -144,7 +144,7 @@ class MeResponse(BaseModel) {
         role: str = Field('user', description='User role'),
         status: str = Field('active', description='User status'),
         identities: list[MeIdentity] = Field([], description='User identities'),
-        profile: dict[str, Any] = Field({}, description='User profile fields'),
+        profile: dict[str, any] = Field({}, description='User profile fields'),
         created_at: str | None = Field(None, description='Creation timestamp'),
         updated_at: str | None = Field(None, description='Last update timestamp');
 }

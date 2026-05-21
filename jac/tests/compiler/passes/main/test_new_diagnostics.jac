@@ -173,6 +173,32 @@ test "E0117: mixed tabs and spaces" {
     assert prog is not None and has_diagnostic_code(prog, "E0117", in_warnings=True);
 }
 
+test "W0100: invalid escape sequence warns" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "press \\q now"; }', file_path="test.jac");
+    assert has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: valid escapes do not warn" {
+    prog = JacProgram();
+    prog.compile(
+        use_str='with entry { x = "tab\\there\\nline\\x41"; }', file_path="test.jac"
+    );
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: raw string keeps backslashes and is exempt" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = r"press \\q"; }', file_path="test.jac");
+    assert not has_diagnostic_code(prog, "W0100", in_warnings=True);
+}
+
+test "W0100: each invalid escape warns once" {
+    prog = JacProgram();
+    prog.compile(use_str='with entry { x = "\\q then \\e"; }', file_path="test.jac");
+    assert count_diagnostic_code(prog, "W0100", in_warnings=True) == 2;
+}
+
 
 # ══════════════════════════════════════════════════════════════════
 #  PHASE 2: PARSER / SYNTAX DIAGNOSTICS (E0052-E0078)
@@ -942,6 +968,48 @@ test "valid: function with return on all paths" {
         'def foo(x: int) -> int { if x > 0 { return x; } else { return -x; } }'
     );
     assert not has_err;
+}
+
+
+# ══════════════════════════════════════════════════════════════════
+#  view_body_check — `view` declarator body rules (ViewLowerPass)
+# ══════════════════════════════════════════════════════════════════
+test "view body check flags a value-returning return (E2019)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    assert has_diagnostic_code(program, "E2019") , (
+        "a `return <value>;` in a view body should raise E2019"
+    );
+}
+
+test "view body check flags return inside a template loop (E2020)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `for { return; }` AND nested `for { match { case _: return; } }`
+    # should both fire — verifies `_check_body` recurses through `match`.
+    n = count_diagnostic_code(program, "E2020");
+    assert n >= 2 , (
+        f"E2020 should fire for both shallow and nested `return;` in loops, got {n}"
+    );
+}
+
+test "view body check flags break inside a template loop (E2021)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `for { break; }` AND nested `for { try { break; } except: ... }`
+    # should both fire — verifies `_check_body` recurses through `try`.
+    n = count_diagnostic_code(program, "E2021");
+    assert n >= 2 , (
+        f"E2021 should fire for both shallow and nested `break;` in loops, got {n}"
+    );
+}
+
+test "view body check warns on a keyless while (W2019)" {
+    (program, _) = compile_and_check("view_body_rules.jac");
+    # Shallow `while { <span/> }` AND nested `while { try { <span/> } }` AND
+    # `while { switch { case _: <span/> } }` should all fire — verifies
+    # `_emits_keyless_jsx` recurses through `try` and `switch`.
+    n = count_diagnostic_code(program, "W2019", in_warnings=True);
+    assert n >= 3 , (
+        f"W2019 should fire for shallow, try-wrapped, and switch-wrapped keyless `while`, got {n}"
+    );
 }
 
 

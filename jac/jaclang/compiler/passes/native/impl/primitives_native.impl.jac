@@ -21,7 +21,9 @@ impl NativeIntEmitter.emit_to_bytes(
     byteorder = args[1];  # i8* "big" or "little"
     # Allocate length+1 bytes (null-terminated)
     alloc_sz = b.add(length, one64, name="tb.alloc.sz");
+    p._set_rc_ctx("to_bytes", "");
     buf = b.call(p.rc_alloc_fn, [alloc_sz], name="tb.buf");
+    p._clear_rc_ctx();
     # Null-terminate
     end_ptr = b.gep(buf, [length], name="tb.end");
     b.store(ir.Constant(i8, 0), end_ptr);
@@ -73,7 +75,9 @@ impl NativeIntEmitter.emit_as_integer_ratio(
     null_ptr = ir.Constant(tuple_type.as_pointer(), None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="iair.sizeof.gep");
     size = b.ptrtoint(size_gep, i64, name="iair.sizeof");
+    p._set_rc_ctx("as_integer_ratio", "");
     raw_ptr = b.call(p.rc_alloc_fn, [size], name="iair.alloc");
+    p._clear_rc_ctx();
     tuple_ptr = b.bitcast(raw_ptr, tuple_type.as_pointer(), name="iair.ptr");
     n_ptr = b.gep(
         tuple_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="iair.n.ptr"
@@ -287,7 +291,9 @@ impl NativeFloatEmitter.emit_as_integer_ratio(
     null_ptr = ir.Constant(tuple_type.as_pointer(), None);
     size_gep = b.gep(null_ptr, [ir.Constant(i32, 1)], name="fair.sizeof.gep");
     size = b.ptrtoint(size_gep, i64, name="fair.sizeof");
+    p._set_rc_ctx("as_integer_ratio", "");
     raw_ptr = b.call(p.rc_alloc_fn, [size], name="fair.alloc");
+    p._clear_rc_ctx();
     tuple_ptr = b.bitcast(raw_ptr, tuple_type.as_pointer(), name="fair.ptr");
     n_ptr = b.gep(
         tuple_ptr, [ir.Constant(i32, 0), ir.Constant(i32, 0)], name="fair.n.ptr"
@@ -322,7 +328,9 @@ impl NativeFloatEmitter.emit_hex(
     i64 = ir.IntType(64);
     i32 = ir.IntType(32);
     buf_size = ir.Constant(i64, 64);
+    p._set_rc_ctx("float_hex", "");
     buf = b.call(p.rc_alloc_fn, [buf_size], name="fhex.buf");
+    p._clear_rc_ctx();
     fmt = p._make_global_string("%a");
     snprintf = p._get_or_declare_extern("snprintf", i32, [i8p, i64, i8p], var_arg=True);
     b.call(snprintf, [buf, buf_size, fmt, target], name="fhex.len");
@@ -410,7 +418,9 @@ impl NativeComplexEmitter._make_complex(
     z0 = ir.Constant(i32, 0);
     z1 = ir.Constant(i32, 1);
     ctype = p.complex_struct_type;
+    p._set_rc_ctx("complex_new", "");
     raw = b.call(p.rc_alloc_fn, [ir.Constant(i64, 16)], name="cx.raw");
+    p._clear_rc_ctx();
     ptr = b.bitcast(raw, ctype.as_pointer(), name="cx.ptr");
     b.store(real, b.gep(ptr, [z0, z0], name="cx.srp"));
     b.store(imag, b.gep(ptr, [z0, z1], name="cx.sip"));
@@ -500,7 +510,9 @@ impl NativeStrEmitter.emit_capitalize(
     tolower_fn = p._get_or_declare_extern("tolower", i32, [i32]);
     slen = b.call(strlen_fn, [target], name="cap.len");
     alloc_size = b.add(slen, ir.Constant(i64, 1), name="cap.alloc.sz");
+    p._set_rc_ctx("capitalize", "");
     result = b.call(rc_alloc_fn, [alloc_size], name="cap.buf");
+    p._clear_rc_ctx();
     is_empty = b.icmp_unsigned("==", slen, ir.Constant(i64, 0), name="cap.empty");
     func = b.basic_block.function;
     entry_bb = b.basic_block;
@@ -573,7 +585,9 @@ impl NativeStrEmitter._emit_case_transform(
     rc_alloc_fn = p.rc_alloc_fn;
     assert rc_alloc_fn is not None , "RC alloc function should be set";
     alloc_size = b.add(slen, ir.Constant(i64, 1), name="case.alloc.sz");
+    p._set_rc_ctx("upper_lower", "");
     result = b.call(rc_alloc_fn, [alloc_size], name="case.buf");
+    p._clear_rc_ctx();
     transform_fn = p._get_or_declare_extern(cfunc_name, i32, [i32]);
     func = b.basic_block.function;
     entry_bb = b.basic_block;
@@ -622,7 +636,9 @@ impl NativeStrEmitter.emit_title(
     isalpha_fn = p._get_or_declare_extern("isalpha", i32, [i32]);
     slen = b.call(strlen_fn, [target], name="title.len");
     alloc_size = b.add(slen, ir.Constant(i64, 1), name="title.alloc");
+    p._set_rc_ctx("title", "");
     result = b.call(rc_alloc_fn, [alloc_size], name="title.buf");
+    p._clear_rc_ctx();
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="title.loop");
@@ -689,7 +705,9 @@ impl NativeStrEmitter.emit_swapcase(
     isupper_fn = p._get_or_declare_extern("isupper", i32, [i32]);
     slen = b.call(strlen_fn, [target], name="swap.len");
     alloc_size = b.add(slen, ir.Constant(i64, 1), name="swap.alloc.sz");
+    p._set_rc_ctx("swapcase", "");
     result = b.call(rc_alloc_fn, [alloc_size], name="swap.buf");
+    p._clear_rc_ctx();
     func = b.basic_block.function;
     entry_bb = b.basic_block;
     loop_bb = func.append_basic_block(name="swap.loop");
@@ -962,7 +980,9 @@ impl NativeStrEmitter.emit_replace(
     generous_factor = b.add(new_len, ir.Constant(i64, 1), name="repl.factor");
     generous_size = b.mul(target_len, generous_factor, name="repl.generous");
     alloc_size = b.add(generous_size, ir.Constant(i64, 1), name="repl.alloc");
+    p._set_rc_ctx("replace", "");
     result = b.call(rc_alloc_fn, [alloc_size], name="repl.buf");
+    p._clear_rc_ctx();
     null_ptr = ir.Constant(i8p, None);
     func = b.basic_block.function;
     entry_bb = b.basic_block;
@@ -1063,7 +1083,9 @@ impl NativeStrEmitter.emit_lstrip(
     start.add_incoming(idx, body_bb);
     new_len = b.sub(slen, start, name="lstrip.newlen");
     alloc_size = b.add(new_len, ir.Constant(i64, 1), name="lstrip.alloc");
+    p._set_rc_ctx("lstrip", "");
     result = b.call(rc_alloc_fn, [alloc_size], name="lstrip.buf");
+    p._clear_rc_ctx();
     start_ptr = b.gep(target, [start], name="lstrip.start.ptr");
     b.call(strcpy_fn, [result, start_ptr]);
     return result;
@@ -1109,7 +1131,9 @@ impl NativeStrEmitter.emit_rstrip(
     final_end.add_incoming(end, loop_bb);
     final_end.add_incoming(end, body_bb);
     alloc_size = b.add(final_end, ir.Constant(i64, 1), name="rstrip.alloc");
+    p._set_rc_ctx("rstrip", "");
     result = b.call(rc_alloc_fn, [alloc_size], name="rstrip.buf");
+    p._clear_rc_ctx();
     b.call(memcpy_fn, [result, target, final_end]);
     null_ptr = b.gep(result, [final_end], name="rstrip.null.ptr");
     b.store(ir.Constant(i8, 0), null_ptr);
@@ -1149,14 +1173,18 @@ impl NativeStrEmitter.emit_removeprefix(
     b.position_at_start(match_bb);
     rest_len = b.sub(target_len, prefix_len, name="rmpfx.rest.len");
     alloc_m = b.add(rest_len, ir.Constant(i64, 1), name="rmpfx.alloc.m");
+    p._set_rc_ctx("removeprefix", "");
     result_m = b.call(rc_alloc_fn, [alloc_m], name="rmpfx.buf.m");
+    p._clear_rc_ctx();
     rest_ptr = b.gep(target, [prefix_len], name="rmpfx.rest.ptr");
     b.call(strcpy_fn, [result_m, rest_ptr]);
     b.branch(done_bb);
     # Not matched: return copy of original
     b.position_at_start(nomatch_bb);
     alloc_n = b.add(target_len, ir.Constant(i64, 1), name="rmpfx.alloc.n");
+    p._set_rc_ctx("removeprefix", "");
     result_n = b.call(rc_alloc_fn, [alloc_n], name="rmpfx.buf.n");
+    p._clear_rc_ctx();
     b.call(strcpy_fn, [result_n, target]);
     b.branch(done_bb);
     b.position_at_start(done_bb);
@@ -1201,7 +1229,9 @@ impl NativeStrEmitter.emit_removesuffix(
     b.position_at_start(match_bb);
     new_len = b.sub(target_len, suffix_len, name="rmsfx.newlen");
     alloc_m = b.add(new_len, ir.Constant(i64, 1), name="rmsfx.alloc.m");
+    p._set_rc_ctx("removesuffix", "");
     result_m = b.call(rc_alloc_fn, [alloc_m], name="rmsfx.buf.m");
+    p._clear_rc_ctx();
     b.call(memcpy_fn, [result_m, target, new_len]);
     null_ptr_m = b.gep(result_m, [new_len], name="rmsfx.null.m");
     b.store(ir.Constant(i8, 0), null_ptr_m);
@@ -1209,7 +1239,9 @@ impl NativeStrEmitter.emit_removesuffix(
     # Not matched: copy original
     b.position_at_start(nomatch_bb);
     alloc_n = b.add(target_len, ir.Constant(i64, 1), name="rmsfx.alloc.n");
+    p._set_rc_ctx("removesuffix", "");
     result_n = b.call(rc_alloc_fn, [alloc_n], name="rmsfx.buf.n");
+    p._clear_rc_ctx();
     b.call(memcpy_fn, [result_n, target, target_len]);
     null_ptr_n = b.gep(result_n, [target_len], name="rmsfx.null.n");
     b.store(ir.Constant(i8, 0), null_ptr_n);
@@ -1285,7 +1317,9 @@ impl NativeStrEmitter.emit_join(
     b.cbranch(is_empty, empty_bb, pass1_bb);
     # Empty list: return empty string
     b.position_at_start(empty_bb);
+    p._set_rc_ctx("join", "");
     empty_buf = b.call(rc_alloc_fn, [one], name="jn.empty.buf");
+    p._clear_rc_ctx();
     b.store(ir.Constant(i8, 0), empty_buf);
     b.branch(done_bb);
     # Pass 1: compute total length
@@ -1318,7 +1352,9 @@ impl NativeStrEmitter.emit_join(
     sep_total = b.mul(sep_len, sep_count, name="jn.septotal");
     grand_total = b.add(total_phi, sep_total, name="jn.grand");
     alloc_sz = b.add(grand_total, one, name="jn.alloc");
+    p._set_rc_ctx("join", "");
     buf = b.call(rc_alloc_fn, [alloc_sz], name="jn.buf");
+    p._clear_rc_ctx();
     # Pass 2: copy elements with separator
     entry_p2 = b.basic_block;
     loop2_bb = func.append_basic_block(name="jn.cp.loop");

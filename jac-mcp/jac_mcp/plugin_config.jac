@@ -6,14 +6,13 @@ configuration system, registering:
 - Config schema for [plugins.mcp] section
 """
 
-import from typing { Any }
 import from jaclang.jac0core.runtime { hookimpl }
 
 """Plugin configuration hooks for jac-mcp."""
 class JacMcpPluginConfig {
     """Return plugin metadata."""
     @hookimpl
-    static def get_plugin_metadata -> dict[str, Any] {
+    static def get_plugin_metadata -> dict[str, any] {
         return {
             "name": "mcp",
             "version": "0.1.0",
@@ -23,7 +22,7 @@ class JacMcpPluginConfig {
 
     """Return the plugin's configuration schema for [plugins.mcp]."""
     @hookimpl
-    static def get_config_schema -> dict[str, Any] {
+    static def get_config_schema -> dict[str, any] {
         return {
             "section": "mcp",
             "options": {

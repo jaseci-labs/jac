@@ -370,7 +370,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                 return set_inst;
             }
 
-        # Comprehension handlers (SetCompr/GenCompr before ListCompr since they inherit from it)
+        # Comprehension handlers (SetCompr/GenCompr before ListCompr since
+        # they inherit from it). Filter narrowing flows into the head via
+        # the CFG (each `if` filter is wired as a CfgExpr predecessor of
+        # the comprehension by cfg_build_pass), so this case just walks
+        # the structural children in source order.
         case uni.SetCompr():
             if self.prefetch and self.prefetch.set_class {
                 set_inst = self._convert_to_instance(self.prefetch.set_class);
@@ -400,6 +404,11 @@ impl TypeEvaluator._get_type_of_expression_core(
                     self.get_type_of_expression(compr.collection);
                     if isinstance(compr.target, uni.Name) {
                         self.get_type_of_expression(compr.target);
+                    }
+                    if compr.conditional {
+                        for cond in compr.conditional {
+                            self.get_type_of_expression(cond);
+                        }
                     }
                 }
                 elem_type = self.get_type_of_expression(expr.out_expr);
@@ -1093,7 +1102,7 @@ impl TypeEvaluator._get_type_of_expression_core(
                     }
                     # Constrained TypeVar - check all constraint types
                     if base_type.constraints {
-                        found_member: Any = None;
+                        found_member: any = None;
                         for constraint_type in base_type.constraints {
                             if isinstance(constraint_type, types.ClassType) {
                                 if member := self._lookup_object_member(
@@ -1518,6 +1527,16 @@ impl TypeEvaluator._get_type_of_expression_core(
             }
             # TODO: Proper awaitable unwrapping (Coroutine[T1, T2, T3] -> T3)
             return target_type;
+
+        case uni.CastExpr():
+            # `value as cast_type` -- an unchecked, type-erased cast. Evaluate
+            # the operand so errors inside it still surface, then report the
+            # named type as the expression's type (same resolution used for
+            # annotations).
+            self.get_type_of_expression(expr.value);
+            return self._convert_to_instance(
+                self.get_type_of_expression(expr.cast_type)
+            );
 
         case uni.BinaryExpr():
             return operations.get_type_of_binary_operation(self, expr);
@@ -2005,6 +2024,15 @@ impl TypeEvaluator._get_type_of_symbol(symbol: uni.Symbol) -> TypeBase {
             # FunctionType.specialize can substitute it with concrete type_args.
             # Mark as class type param so it can be distinguished from module-level TypeVars.
             return types.TypeVarType(name=node_.sym_name, is_class_type_param=True);
+
+        case uni.TypeAlias():
+            # Jac `type X = Y;` — resolve the alias to the type its RHS denotes,
+            # so uses of X in annotations (`v: X`) inherit Y's class and its
+            # operator overloads. Mirrors the Python `X: TypeAlias = Y` path.
+            if node_.value is not None {
+                return self._resolve_type_alias_rhs(node_.value);
+            }
+            return types.UnknownType();
 
         case uni.Ability():
             return self.get_type_of_ability(node_);
@@ -2564,6 +2592,25 @@ impl TypeEvaluator._assign_class(
     if src_type.is_builtin("int") and dest_type.is_builtin("float") {
         return True;
     }
+    # Same-kind primitives are mutually assignable. The registry encodes
+    # numeric kind (int / bool / iN / uN are IntKind; float / fN are
+    # FloatKind), so the type checker treats fixed-width variants as
+    # width refinements rather than unrelated subclasses. IntKind ->
+    # FloatKind is also allowed (the existing int -> float rule above
+    # extends here). FloatKind -> IntKind stays banned.
+    if src_type.is_builtin() and dest_type.is_builtin() {
+        import from jaclang.compiler.type_registry { JAC_TYPE_REGISTRY, NumericKind }
+        src_kind = JAC_TYPE_REGISTRY.numeric_kind_of(src_type.shared.class_name);
+        dest_kind = JAC_TYPE_REGISTRY.numeric_kind_of(dest_type.shared.class_name);
+        if src_kind != NumericKind.NotNumeric and dest_kind != NumericKind.NotNumeric {
+            if src_kind == dest_kind {
+                return True;
+            }
+            if src_kind == NumericKind.IntKind and dest_kind == NumericKind.FloatKind {
+                return True;
+            }
+        }
+    }
     # Check if dest_type is a protocol and src_type implements it.
     # Protocol detection: A class is a protocol if:
     # 1. It has the prefetched Protocol class as a base class (exact match)
@@ -2775,6 +2822,23 @@ impl TypeEvaluator.is_explicit_any(ty: TypeBase) -> bool {
     return False;
 }
 
+"""Whether `ty` is `NoneType` — the type of the literal `None`.
+
+Both the class form and the instance form (`None` the value) are
+recognized, since either may surface depending on how the type was
+produced. Matched by shared identity against the prefetched
+`NoneType` class, the same way `is_any_type` matches `Any`.
+"""
+impl TypeEvaluator.is_none_type(ty: TypeBase) -> bool {
+    if not self.prefetch or not self.prefetch.none_type_class {
+        return False;
+    }
+    return (
+        isinstance(ty, types.ClassType)
+        and ty.shared == self.prefetch.none_type_class.shared
+    );
+}
+
 """Single source of truth for "should Layer 2 strict-Any apply at this
 AST site?". Every assignment-like check (annotated assignment, has-var
 initializer, function arg, return, yield, edge-connection assign)
@@ -2797,6 +2861,26 @@ impl TypeEvaluator._is_strict_site(nd: uni.UniNode) -> bool {
     result = not mod.is_raised_from_py;
     self._strict_site_cache[id(mod)] = result;
     return result;
+}
+
+"""True when the pass is currently checking a native (.na.jac) module.
+
+Native code reinterprets `int`, `str`, function refs and `obj` instances
+as 64-bit pointers, so a handful of cross-type assignments are sound there
+but not in regular Jac. Determined from the pass's current node."""
+impl TypeEvaluator._in_native_context -> bool {
+    if self._pass is None {
+        return False;
+    }
+    cur = self._pass?.cur_node;
+    if cur is None or not isinstance(cur, uni.UniNode) {
+        return False;
+    }
+    mod = cur.find_parent_of_type(uni.Module);
+    if mod is None or mod.loc is None {
+        return False;
+    }
+    return mod.loc.mod_path.endswith(".na.jac");
 }
 
 """Match a typing special form loaded from any stdlib typing stub.
@@ -3030,6 +3114,49 @@ impl TypeEvaluator.assign_type(
                 }
             }
         }
+        # Function reference → int: a function value is a 64-bit pointer in
+        # native code, so let it be passed where an int parameter is expected
+        # (e.g. clib callback slots `def cb(...) -> ...; uv_poll_start(..., cb)`).
+        # Restricted to the builtin int class, and only in native code so
+        # regular Jac keeps its function/int distinction.
+        if isinstance(dest_type, types.ClassType)
+        and dest_type.is_builtin("int")
+        and self._in_native_context() {
+            return True;
+        }
+    }
+    # Native pointer-bitcast escape hatches. In Jac native, `int`, `str`,
+    # and user-defined `obj` instances are all 64-bit pointer-sized values,
+    # so the runtime treats assignment between them as a no-op bitcast.
+    # The type checker historically diverges from that — these rules let
+    # ABI-shaped wrappers like `obj UVBuf { has base: str, ... }` continue
+    # to compile where `reader: UVBuf = ptr_int` would otherwise fail.
+    # Gated to native modules so regular Jac keeps strict int/str checking.
+    if isinstance(src_type, types.ClassType)
+    and isinstance(dest_type, types.ClassType)
+    and src_type.is_class_instance()
+    and dest_type.is_class_instance()
+    and self._in_native_context() {
+        src_is_ptr = (
+            src_type.is_builtin("int")
+            or src_type.is_builtin("str")
+            or not src_type.is_builtin()
+        );
+        dest_is_ptr = (
+            dest_type.is_builtin("int")
+            or dest_type.is_builtin("str")
+            or not dest_type.is_builtin()
+        );
+        if src_is_ptr
+        and dest_is_ptr
+        and (
+            src_type.is_builtin("int")
+            or src_type.is_builtin("str")
+            or dest_type.is_builtin("int")
+            or dest_type.is_builtin("str")
+        ) {
+            return True;
+        }
     }
     # Everything is assignable to Any or TypeVar.
     if self.is_any_type(dest_type) or self.is_any_type(src_type) {
@@ -3213,6 +3340,20 @@ impl TypeEvaluator.get_type_of_expression(
         or not isinstance(
             node_, (uni.ListVal, uni.DictVal, uni.SetVal, uni.TupleVal)
         ) {
+            # Whole-expression CFG narrowing: chained subscripts like
+            # `self.squares[r][c]` aren't narrowed by the AtomTrailer
+            # case (which only narrows the immediate target one level
+            # at a time), so a comprehension filter
+            # `if self.squares[r][c] is not None` never reached the
+            # head. The cached `node_.type` is the un-narrowed result;
+            # per-call CFG narrowing yields the in-context view.
+            if isinstance(node_.type, (types.UnionType, types.ClassType)) {
+                if narrowed := self.get_narrowed_type_for_expr(
+                    node_, node_.type, node_
+                ) {
+                    return narrowed;
+                }
+            }
             return node_.type;
         }
     }
@@ -3228,6 +3369,13 @@ impl TypeEvaluator.get_type_of_expression(
         }
     }
     node_.type = result;
+    # Apply whole-expression CFG narrowing on the freshly-computed type
+    # as well, so callers see the in-context narrowed view immediately.
+    if isinstance(result, (types.UnionType, types.ClassType)) {
+        if narrowed := self.get_narrowed_type_for_expr(node_, result, node_) {
+            return narrowed;
+        }
+    }
     return result;
 }
 
@@ -3616,6 +3764,7 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
     expr: uni.Expr, declared_type: TypeBase, at_node: uni.UniNode
 ) -> TypeBase | None {
     import from jaclang.compiler.type_system.type_evaluator { NarrowingTarget }
+    import from jaclang.compiler.symbol_utils { reference_key_deps }
     if not isinstance(declared_type, (types.UnionType, types.ClassType)) {
         return None;
     }
@@ -3628,7 +3777,11 @@ impl TypeEvaluator.get_narrowed_type_for_expr(
     }
     self._flow_pending_keys.add(key);
     try {
-        narrowing_target = NarrowingTarget(key=key, declared_type=declared_type);
+        narrowing_target = NarrowingTarget(
+            key=key,
+            declared_type=declared_type,
+            deps=frozenset(reference_key_deps(expr)),
+        );
         flow_node = _find_cfg_node_for(at_node);
         if flow_node is not None {
             return self._get_type_from_flow_node(narrowing_target, flow_node, set());
@@ -3837,6 +3990,16 @@ impl TypeEvaluator._get_type_from_flow_node(
                     } else {
                         destructure_path = find_destructure_index_path(t, key);
                     }
+                    break;
+                }
+                # Dependency invalidation: assigning to a name the
+                # narrowed key depends on (e.g. `r = ...` for narrowed
+                # key `x[r]`) changes what the key denotes, so the
+                # narrowing must die. We can't re-derive a new type from
+                # the RHS, so this just falls through to `has_unnarrowed_pred`
+                # via the empty flat_target_matched / destructure_path path.
+                if target.deps and (target.deps & written_keys) {
+                    target_key_matched = True;
                     break;
                 }
             }

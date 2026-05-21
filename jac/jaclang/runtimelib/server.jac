@@ -69,8 +69,8 @@ driver (aiosqlite) or per-thread connection pool would obviate this.
 obj UserManager {
     has base_path: str,
         _db_path: str by postinit,
-        _conn: Any by postinit,
-        _lock: Any by postinit;
+        _conn: any by postinit,
+        _lock: any by postinit;
 
     def postinit -> None;
     def _ensure_connection -> None;
@@ -137,7 +137,7 @@ obj ExecutionManager {
 
     async def report_collector(call_state: CallState) -> dict[str, JsonValue];
     async def _finalize_call_response(
-        call_state: CallState, result: Any
+        call_state: CallState, result: any
     ) -> dict[str, JsonValue] | Generator | AsyncGenerator;
 }
 
@@ -145,14 +145,14 @@ obj ExecutionManager {
 obj ModuleIntrospector {
     has module_name: str,
         base_path: (str | None),
-        _module: Any = None,
+        _module: any = None,
         _functions: dict[(str, Callable[(..., Any)])] = {},
         _walkers: dict[(str, type[WalkerArchetype])] = {},
         _client_functions: dict[(str, Callable[(..., Any)])] = {},
         _client_manifest: dict[(str, Any)] = {},
-        _bundle: Any = None,
+        _bundle: any = None,
         _bundle_error: (str | None) = None,
-        _bundle_builder: Any by postinit,
+        _bundle_builder: any by postinit,
         _function_access: dict[(str, bool)] = {},
         _walker_access: dict[(str, bool)] = {};
 
@@ -167,16 +167,16 @@ obj ModuleIntrospector {
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
     def get_client_functions -> dict[str, Callable[(..., Any)]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, Any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, Any];
+    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
+    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def ensure_bundle -> str;
     def render_page(
         function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
     def is_auth_required_for_function(func_name: str) -> bool;
     def is_auth_required_for_walker(walker_name: str) -> bool;
-    def _collect_client_globals -> dict[str, Any];
+    def _collect_client_globals -> dict[str, any];
 }
 
 """Build and send HTTP responses."""
@@ -270,7 +270,7 @@ obj JacAPIServer {
         introspection_handler: IntrospectionHandler by postinit,
         execution_handler: ExecutionHandler by postinit,
         transport: BaseTransport by postinit,
-        server: Any by postinit,
+        server: any by postinit,
         scheduler: Scheduler by postinit;
 
     obj RestSpecs {
@@ -288,11 +288,11 @@ obj JacAPIServer {
 
     def get_functions -> dict[str, Callable[(..., Any)]];
     def get_walkers -> dict[str, type[WalkerArchetype]];
-    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, Any];
-    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, Any];
+    def introspect_callable(func: Callable[(..., Any)]) -> dict[str, any];
+    def introspect_walker(walker_cls: type[WalkerArchetype]) -> dict[str, any];
     def render_client_page(
         function_name: str, args: dict[(str, Any)], username: str
-    ) -> dict[str, Any];
+    ) -> dict[str, any];
 
     def get_client_bundle_code -> str;
     def print_endpoint_docs -> None;

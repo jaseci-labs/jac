@@ -7,7 +7,6 @@
 
 import logging;
 import aiohttp;
-import from typing { Any }
 import from fastapi.responses { Response, StreamingResponse }
 
 glob _logger = logging.getLogger(__name__),
@@ -55,8 +54,8 @@ connection pool slot."""
 obj ForwardResult {
     has status: int,
         headers: dict[str, str],
-        _session: Any,
-        _resp: Any;
+        _session: any,
+        _resp: any;
 
     def to_response -> StreamingResponse;
     async def cleanup -> None;

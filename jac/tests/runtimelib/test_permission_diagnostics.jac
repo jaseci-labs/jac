@@ -56,7 +56,7 @@ def _setup_alice_bob -> tuple[(str, str, str)] {
 
 test "edge write across users emits edge_write diagnostic" {
     _tmp = mkdtemp();
-    _orig = Jac.base_path_dir;
+    _orig = Jac.get_base_path_dir();
     Jac.set_base_path(_tmp);
     try {
         (alice, bob, profile_id) = _setup_alice_bob();
@@ -82,7 +82,7 @@ test "edge write across users emits edge_write diagnostic" {
 
 test "field write across users emits field_write diagnostic and persist drops" {
     _tmp = mkdtemp();
-    _orig = Jac.base_path_dir;
+    _orig = Jac.get_base_path_dir();
     Jac.set_base_path(_tmp);
     try {
         (alice, bob, profile_id) = _setup_alice_bob();
@@ -111,7 +111,7 @@ test "field write across users emits field_write diagnostic and persist drops" {
 
 test "delete across users emits delete diagnostic and node survives" {
     _tmp = mkdtemp();
-    _orig = Jac.base_path_dir;
+    _orig = Jac.get_base_path_dir();
     Jac.set_base_path(_tmp);
     try {
         (alice, bob, profile_id) = _setup_alice_bob();
@@ -139,7 +139,7 @@ test "delete across users emits delete diagnostic and node survives" {
 
 test "owner write does not emit diagnostic" {
     _tmp = mkdtemp();
-    _orig = Jac.base_path_dir;
+    _orig = Jac.get_base_path_dir();
     Jac.set_base_path(_tmp);
     try {
         alice = _run("create_other_root");
@@ -163,7 +163,7 @@ test "owner write does not emit diagnostic" {
 
 test "strict mode raises PermissionError on cross-user edge write" {
     _tmp = mkdtemp();
-    _orig = Jac.base_path_dir;
+    _orig = Jac.get_base_path_dir();
     _orig_strict = Jac.strict_permissions;
     Jac.set_base_path(_tmp);
     Jac.strict_permissions = True;
@@ -185,7 +185,7 @@ test "strict mode raises PermissionError on cross-user edge write" {
 
 test "strict mode raises PermissionError on cross-user delete" {
     _tmp = mkdtemp();
-    _orig = Jac.base_path_dir;
+    _orig = Jac.get_base_path_dir();
     _orig_strict = Jac.strict_permissions;
     Jac.set_base_path(_tmp);
     Jac.strict_permissions = True;

@@ -5,7 +5,6 @@ import os;
 import shutil;
 import asyncio;
 import from tempfile { mkdtemp }
-import from typing { Any }
 import from dataclasses { dataclass }
 import from types { TracebackType }
 import unittest.mock;
@@ -75,8 +74,8 @@ obj MockUserInfo {
         picture: str = "https://example.com/picture.jpg";
 
     """Mirror SSOUserInfo.profile_fields() so production code can call it."""
-    def profile_fields -> dict[str, Any] {
-        fields: dict[str, Any] = {};
+    def profile_fields -> dict[str, any] {
+        fields: dict[str, any] = {};
         for key in ['display_name', 'first_name', 'last_name', 'picture'] {
             val = getattr(self, key, None);
             if val {
@@ -319,6 +318,7 @@ def _setup_user_manager -> tuple[str, JacScaleUserManager] {
         user_manager = JacScaleUserManager(base_path=test_dir);
     }
     user_manager.create_user = unittest.mock.Mock();
+    user_manager.create_user_with_identities = unittest.mock.Mock();
     user_manager.get_user = unittest.mock.Mock();
     return (test_dir, user_manager);
 }
@@ -587,7 +587,7 @@ test "sso callback new user with no profile data" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -615,7 +615,7 @@ test "sso callback new user with no profile data" {
                     asyncio.run(
                         user_manager.sso_callback(mock_request, Platforms.GOOGLE.value)
                     );
-                    user_manager.create_user.assert_called_once_with(
+                    user_manager.create_user_with_identities.assert_called_once_with(
                         identities=[
                             {
                                 'type': 'email',
@@ -641,7 +641,7 @@ test "sso callback auto register new user" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -666,7 +666,7 @@ test "sso callback auto register new user" {
                     assert isinstance(result, (JSONResponse, TransportResponse));
                     # MockUserInfo defaults populate all four optional fields,
                     # so the SSO profile sub-document is fully populated.
-                    user_manager.create_user.assert_called_once_with(
+                    user_manager.create_user_with_identities.assert_called_once_with(
                         identities=[
                             {
                                 'type': 'email',
@@ -1104,7 +1104,7 @@ test "apple sso callback auto register new user" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -1127,7 +1127,7 @@ test "apple sso callback auto register new user" {
                         user_manager.sso_callback(mock_request, Platforms.APPLE.value)
                     );
                     assert isinstance(result, (JSONResponse, TransportResponse));
-                    user_manager.create_user.assert_called_once_with(
+                    user_manager.create_user_with_identities.assert_called_once_with(
                         identities=[
                             {
                                 'type': 'email',
@@ -1342,7 +1342,7 @@ test "github sso callback auto register new user" {
         mock_request = unittest.mock.Mock(spec=Request);
         mock_user_id = str(uuid4());
         user_manager.find_user_by_identity = unittest.mock.Mock(return_value=None);
-        user_manager.create_user.return_value = {
+        user_manager.create_user_with_identities.return_value = {
             "user_id": mock_user_id,
             "message": "User registered successfully"
         };
@@ -1365,7 +1365,7 @@ test "github sso callback auto register new user" {
                         user_manager.sso_callback(mock_request, Platforms.GITHUB.value)
                     );
                     assert isinstance(result, (JSONResponse, TransportResponse));
-                    user_manager.create_user.assert_called_once_with(
+                    user_manager.create_user_with_identities.assert_called_once_with(
                         identities=[
                             {
                                 'type': 'email',

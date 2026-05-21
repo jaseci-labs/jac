@@ -12,7 +12,6 @@ import sys;
 import json;
 import logging;
 import from pathlib { Path }
-import from typing { Any }
 
 glob _logger: logging.Logger = logging.getLogger("byllm.model_cache");
 

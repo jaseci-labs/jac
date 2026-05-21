@@ -3,7 +3,7 @@
 import from contextvars { ContextVar }
 import from dataclasses { MISSING }
 import from queue { Queue }
-import from typing { Any, cast }
+import from typing { cast }
 import from uuid { UUID }
 
 import from jaclang.jac0core.archetype { Anchor, NodeAnchor, PermissionDenied, Root }
@@ -38,17 +38,28 @@ Fields:
 """
 obj ExecutionContext {
     has mem: Memory by postinit,
-        reports: list[Any] = [],
+        reports: list[any] = [],
         # Request-scoped accumulator of permission-denial diagnostics.
         # Drained by the server response builder into `warnings: [...]`
         # on the wire so callers can see why a write silently no-opped.
         # Always per-instance (not shared with `_parent` fork).
         diagnostics: list[PermissionDenied] = [],
-        custom: Any = MISSING,
+        custom: any = MISSING,
         system_root: NodeAnchor by postinit,
         user_root: NodeAnchor by postinit,
         entry_node: NodeAnchor by postinit,
         call_state: ContextVar[CallState] = ContextVar('call_state'),
+        # Per-context app identity. These decide which L3 backing file
+        # ctx.mem points at (via `get_db_path` / `get_name`). Carrying
+        # them on the context isolates multiple in-process clients
+        # (JacTestClient, embedded REPL, MCP host) from each other — a
+        # stale seed from a prior client cannot poison a constructed
+        # ctx. If left at None, postinit snapshots from the bootstrap
+        # seeds (`Jac.get_base_path_dir()` / `Jac.get_full_target_path()`)
+        # so CLI flows that seed app identity before any ctx exists keep
+        # working unchanged.
+        base_path_dir: (str | None) = None,
+        full_target_path: (str | None) = None,
         # Per-request fork support. When `_parent` is set, postinit skips
         # creating fresh Memory/system_root and instead shares them with
         # the parent ctx. This lets the server stamp out lightweight
