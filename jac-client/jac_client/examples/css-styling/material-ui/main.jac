@@ -18,11 +18,11 @@ cl {
             print("Count changed: ", count);
         }
 
-        handleIncrement = lambda e: Any { count = count + 1; };
+        handleIncrement = lambda e: any { count = count + 1; };
 
-        handleDecrement = lambda e: Any { count = count - 1; };
+        handleDecrement = lambda e: any { count = count - 1; };
 
-        handleReset = lambda e: Any { count = 0; };
+        handleReset = lambda e: any { count = 0; };
 
         return
             <Box

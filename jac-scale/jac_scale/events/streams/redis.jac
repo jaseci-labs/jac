@@ -1,7 +1,7 @@
 """Redis Streams implementation of EventStreamBroker.
 Maps publish/subscribe/consume/ack to XADD/XREADGROUP/XACK; routes to <topic><dead_letter_suffix> on retry exhaustion.
 """
-import from typing { Any, Callable }
+import from typing { Callable }
 import from threading { Thread, Event as _ThreadStop }
 import from jac_scale.events.broker {
     EventStreamBroker,
@@ -20,7 +20,7 @@ import uuid;
 
 
 """Decode bytes to str if needed; pass through everything else as str(x)."""
-def _to_str(value: Any) -> str {
+def _to_str(value: any) -> str {
     if isinstance(value, bytes) {
         return value.decode("utf-8");
     }
@@ -31,7 +31,7 @@ glob _logger = logging.getLogger(__name__);
 
 """Redis Streams implementation. subscribe() spawns a daemon thread; stop(drain=True) joins all threads."""
 obj RedisEventStream(EventStreamBroker) {
-    has config: dict[str, Any] = {},
+    has config: dict[str, any] = {},
         _client: Redis | None = None,
         _consumer_name: str = "",
         _default_group: str = "jac-scale",
@@ -91,7 +91,7 @@ obj RedisEventStream(EventStreamBroker) {
         self._get_client().xadd(stream, {"payload": self._serialize_event(event)});
     }
 
-    def _deserialize_event(raw: Any) -> Event {
+    def _deserialize_event(raw: any) -> Event {
         d = json.loads(_to_str(raw));
         return Event(
             event_type=d.get("type", ""),
@@ -136,7 +136,7 @@ obj RedisEventStream(EventStreamBroker) {
         self._ensured_groups.add(key);
     }
 
-    def _decode_message(topic: str, group: str, msg_id: Any, fields: dict) -> Event {
+    def _decode_message(topic: str, group: str, msg_id: any, fields: dict) -> Event {
         # redis-py returns bytes by default unless decode_responses=True
         payload = fields.get(b"payload") or fields.get("payload");
         event = self._deserialize_event(payload);
@@ -261,7 +261,7 @@ obj RedisEventStream(EventStreamBroker) {
         topic: str,
         group: str,
         event: Event,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         retry: RetryPolicy
     ) -> None {
         import inspect;
@@ -303,7 +303,7 @@ obj RedisEventStream(EventStreamBroker) {
     }
 
     def _consumer_loop(
-        topic: str, group: str, handler: Callable[[Event], Any], retry: RetryPolicy
+        topic: str, group: str, handler: Callable[[Event], any], retry: RetryPolicy
     ) -> None {
         while not self._stop_event.is_set() {
             events = self.consume(
@@ -320,7 +320,7 @@ obj RedisEventStream(EventStreamBroker) {
 
     def register_handler(
         topic: str,
-        handler: Callable[[Event], Any],
+        handler: Callable[[Event], any],
         group: str | None = None,
         retry: RetryPolicy | None = None,
         start_from: str = "latest"

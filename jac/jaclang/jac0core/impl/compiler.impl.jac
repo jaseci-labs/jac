@@ -61,7 +61,7 @@ impl JacCompiler.internal_program -> JacProgram {
 }
 
 """Get the jaclang package root path."""
-impl JacCompiler._get_jaclang_root(cls: Any) -> str {
+impl JacCompiler._get_jaclang_root(cls: any) -> str {
     if (cls._jaclang_root is None) {
         cls._jaclang_root = os.path.dirname(os.path.dirname(__file__));
     }
@@ -149,7 +149,7 @@ impl JacCompiler.get_bytecode(
             jir_data = cache_path.read_bytes();
             bc = read_bytecode_only(jir_data);
             if bc is not None {
-                magic_bytes: Any = SECTIONS_MAGIC;
+                magic_bytes: any = SECTIONS_MAGIC;
                 sec_pos = jir_data.find(magic_bytes, HEADER_SIZE);
                 if sec_pos >= 0 {
                     secs = read_sections(jir_data, sec_pos + len(magic_bytes));
@@ -262,7 +262,7 @@ impl JacCompiler._load_native_from_cache(
     full_target: str,
     target_program: JacProgram,
     cached_ir: str,
-    cached_interop: (dict[str, Any] | None)
+    cached_interop: (dict[str, any] | None)
 ) -> None {
     try {
         import llvmlite.binding as llvm;
@@ -334,7 +334,7 @@ impl JacCompiler._load_native_from_bitcode(
     full_target: str,
     target_program: JacProgram,
     section_data: bytes,
-    cached_interop: (dict[str, Any] | None)
+    cached_interop: (dict[str, any] | None)
 ) -> None {
     import struct as _struct;
     import llvmlite.binding as llvm;
@@ -418,7 +418,7 @@ impl JacCompiler._restore_sections(
     if native_obj_bytes is not None {
         try {
             import json;
-            cached_interop: (dict[str, Any] | None) = None;
+            cached_interop: (dict[str, any] | None) = None;
             interop_bytes = secs.get(SEC_INTEROP);
             if interop_bytes is not None {
                 cached_interop = json.loads(interop_bytes.decode('utf-8'));
@@ -438,7 +438,7 @@ impl JacCompiler._restore_sections(
             import zlib;
             import json;
             cached_ir = zlib.decompress(llvm_bytes).decode('utf-8');
-            cached_interop2: (dict[str, Any] | None) = None;
+            cached_interop2: (dict[str, any] | None) = None;
             interop_bytes2 = secs.get(SEC_INTEROP);
             if interop_bytes2 is not None {
                 cached_interop2 = json.loads(interop_bytes2.decode('utf-8'));

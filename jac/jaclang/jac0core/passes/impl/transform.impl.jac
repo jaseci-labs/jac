@@ -137,7 +137,7 @@ impl Transform.emit(
     node_override: (UniNode | None) = None,
     related: (list[tuple[str, UniNode]] | None) = None,
     help_text: (str | None) = None,
-    **kwargs: Any
+    **kwargs: any
 ) -> bool {
     import from jaclang.jac0core.diagnostics { Severity }
     # Determine location early (needed for inline suppression check)

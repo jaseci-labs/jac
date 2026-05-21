@@ -30,7 +30,7 @@ async def handle_register(name: str, email: str, password: str) -> str {
     # Note the per-helper types: jacSignup -> dict, jacLogin -> bool.
     signup_result: dict | None = None;
     login_ok: bool = False;
-    profile_result: Any = None;
+    profile_result: any = None;
 
     signup_result = await jacSignup(email, password);
     if not signup_result["success"] { return "registration failed"; }

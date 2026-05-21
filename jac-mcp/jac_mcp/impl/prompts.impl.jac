@@ -1,7 +1,5 @@
 """Implementation of MCP prompt templates."""
 
-import from typing { Any }
-
 """Load a resource's content, returning empty string if unavailable."""
 impl load_resource_content(uri: str) -> str {
     import from jac_mcp.resources { ResourceProvider }
@@ -39,8 +37,8 @@ impl build_system_prompt(extra_uris: list[str] = []) -> str {
 }
 
 """Return list of available prompts, filtered by active mode."""
-impl PromptProvider.list_prompts -> list[dict[str, Any]] {
-    all_prompts: list[dict[str, Any]] = [
+impl PromptProvider.list_prompts -> list[dict[str, any]] {
+    all_prompts: list[dict[str, any]] = [
         {
             "name": "write_module",
             "description": "Generate a new Jac module with optional .impl.jac file",
@@ -195,7 +193,7 @@ impl PromptProvider.list_prompts -> list[dict[str, Any]] {
 }
 
 """Get a prompt by name with arguments."""
-impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str, Any] {
+impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str, any] {
     if name == "write_module" {
         return _prompt_write_module(arguments);
     } elif name == "write_impl" {
@@ -225,7 +223,7 @@ impl PromptProvider.get_prompt(name: str, arguments: dict[str, str]) -> dict[str
 }
 
 """Helper to build a prompt result with proper system/user role separation."""
-def _make_prompt(description: str, system: str, user_msg: str) -> dict[str, Any] {
+def _make_prompt(description: str, system: str, user_msg: str) -> dict[str, any] {
     return {
         "description": description,
         "messages": [
@@ -235,7 +233,7 @@ def _make_prompt(description: str, system: str, user_msg: str) -> dict[str, Any]
     };
 }
 
-def _prompt_write_module(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_write_module(args: dict[str, str]) -> dict[str, any] {
     mod_name = args.get("name", "module");
     purpose = args.get("purpose", "");
     has_impl = args.get("has_impl", "true").lower() in ("true", "1", "yes");
@@ -252,7 +250,7 @@ def _prompt_write_module(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt(f"Generate Jac module: {mod_name}", system, user_msg);
 }
 
-def _prompt_write_impl(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_write_impl(args: dict[str, str]) -> dict[str, any] {
     declarations = args.get("declarations", "");
     system = build_system_prompt(["jac://guide/patterns"]);
     user_msg = f"Generate the .impl.jac file for these declarations:\n\n```jac\n{declarations}\n```";
@@ -262,7 +260,7 @@ def _prompt_write_impl(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt("Generate .impl.jac implementation", system, user_msg);
 }
 
-def _prompt_write_walker(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_write_walker(args: dict[str, str]) -> dict[str, any] {
     name = args.get("name", "my_walker");
     purpose = args.get("purpose", "");
     node_types = args.get("node_types", "");
@@ -275,7 +273,7 @@ def _prompt_write_walker(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt(f"Generate walker: {name}", system, user_msg);
 }
 
-def _prompt_write_node(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_write_node(args: dict[str, str]) -> dict[str, any] {
     name = args.get("name", "MyNode");
     fields = args.get("fields", "");
 
@@ -287,7 +285,7 @@ def _prompt_write_node(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt(f"Generate node: {name}", system, user_msg);
 }
 
-def _prompt_write_test(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_write_test(args: dict[str, str]) -> dict[str, any] {
     module_name = args.get("module_name", "");
     functions_to_test = args.get("functions_to_test", "");
 
@@ -299,7 +297,7 @@ def _prompt_write_test(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt(f"Generate tests for: {module_name}", system, user_msg);
 }
 
-def _prompt_write_ability(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_write_ability(args: dict[str, str]) -> dict[str, any] {
     name = args.get("name", "");
     signature = args.get("signature", "");
     purpose = args.get("purpose", "");
@@ -311,7 +309,7 @@ def _prompt_write_ability(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt(f"Generate ability: {name}", system, user_msg);
 }
 
-def _prompt_debug_error(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_debug_error(args: dict[str, str]) -> dict[str, any] {
     error_output = args.get("error_output", "");
     code = args.get("code", "");
 
@@ -324,7 +322,7 @@ def _prompt_debug_error(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt("Debug compilation error", system, user_msg);
 }
 
-def _prompt_fix_type_error(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_fix_type_error(args: dict[str, str]) -> dict[str, any] {
     error_output = args.get("error_output", "");
     code = args.get("code", "");
 
@@ -337,7 +335,7 @@ def _prompt_fix_type_error(args: dict[str, str]) -> dict[str, Any] {
     return _make_prompt("Fix type error", system, user_msg);
 }
 
-def _prompt_migrate_python(args: dict[str, str]) -> dict[str, Any] {
+def _prompt_migrate_python(args: dict[str, str]) -> dict[str, any] {
     python_code = args.get("python_code", "");
 
     system = build_system_prompt(

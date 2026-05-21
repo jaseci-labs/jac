@@ -25,7 +25,6 @@ we exercise both branches end-to-end.
 
 import httpx;
 import json;
-import from typing { Any }
 import from jaclang.runtimelib { sv_client }
 import from jaclang.runtimelib.sv_sse { _parse_sse, consume_sse_stream }
 import from jac_scale.plugin { JacScalePlugin }
@@ -36,10 +35,10 @@ import from jac_scale.plugin { JacScalePlugin }
 # duplicated to avoid an import cycle; if a third file needs it, hoist into
 # a shared tests/_mock_httpx.jac).
 # =============================================================================
-def _mock_client_class(handler: Any) -> Any {
+def _mock_client_class(handler: any) -> any {
     transport = httpx.MockTransport(handler);
     real_client_cls = httpx.Client;
-    def factory(*args: Any, **kwargs: Any) -> Any {
+    def factory(*args: any, **kwargs: any) -> any {
         return real_client_cls(transport=transport);
     }
     return factory;
@@ -133,7 +132,7 @@ test "_parse_sse decodes bytes input (httpx iter_lines() under raw mode)" {
 obj _FakeResp {
     has body: str;
 
-    def iter_lines -> Any {
+    def iter_lines -> any {
         for line in self.body.splitlines() {
             yield line;
         }

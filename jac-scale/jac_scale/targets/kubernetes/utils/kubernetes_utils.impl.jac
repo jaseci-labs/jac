@@ -2,6 +2,11 @@ import os;
 import pathlib;
 import from jaclang.cli.console { console }
 import from jac_scale._optdeps.kubernetes { client }
+import from jac_scale.targets.kubernetes.cluster_provider {
+    AWSProvider,
+    ClusterProvider,
+    LocalProvider
+}
 
 impl parse_cpu_quantity(quantity: str) -> float {
     trimmed = quantity.strip();
@@ -444,50 +449,6 @@ impl ensure_pvc_exists(
     core_v1.create_namespaced_persistent_volume_claim(namespace, pvc_body);
 }
 
-"""Check that the requested NodePorts are not already bound by services
-in other namespaces.
-
-NodePorts are cluster-scoped, so two services in different namespaces
-cannot share the same NodePort value.  Services inside current_namespace
-are excluded because they will be replaced by this deployment.
-Raises ValueError listing every conflicting port and the service that owns it.
-"""
-impl check_node_ports_available(node_port: int, current_namespace: str) -> None {
-    """Check that the ingress controller NodePort is not already bound by a
-    service in another namespace.
-
-    NodePorts are cluster-scoped, so two services in different namespaces
-    cannot share the same NodePort value.  Services inside current_namespace
-    are excluded because they will be replaced by this deployment.
-    Raises ValueError if the port is already bound.
-    """;
-    v1 = client.CoreV1Api();
-    all_services = v1.list_service_for_all_namespaces();
-    # Build a map: port_number -> "namespace/service-name"
-    # Only include services from OTHER namespaces.
-    used_ports: dict[int, str] = {};
-    for svc in all_services.items {
-        if svc.metadata.namespace == current_namespace {
-            continue;
-        }
-        svc_id = f"{svc.metadata.namespace}/{svc.metadata.name}";
-        for port_obj in (svc.spec.ports or []) {
-            if port_obj.node_port is not None {
-                used_ports[port_obj.node_port] = svc_id;
-            }
-        }
-    }
-    if node_port in used_ports {
-        raise ValueError(
-            f"NodePort conflict detected on local cluster.\n"
-            f"  ingress_node_port={node_port} is already in use by '{used_ports[
-                node_port
-            ]}'\n"
-            f"Please choose a different ingress_node_port value in your KubernetesConfig and try again."
-        );
-    }
-}
-
 """Detect if the current connected cluster is AWS or local.
 
 Returns:
@@ -529,6 +490,13 @@ impl cluster_type -> str {
     } except Exception {
         return 'local';
     }
+}
+
+impl get_cluster_provider -> ClusterProvider {
+    if cluster_type() == 'aws' {
+        return AWSProvider();
+    }
+    return LocalProvider();
 }
 
 impl check_pods_restarted(namespace: str, app_name: str) -> bool {

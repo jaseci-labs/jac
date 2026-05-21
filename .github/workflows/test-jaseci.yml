@@ -239,6 +239,10 @@ jobs:
       run: |
         pytest -x -vv -s jac-scale/jac_scale/tests/test_memory_hierarchy.jac
 
+    - name: Run scalar-clobber cross-process regression tests
+      run: |
+        pytest -x -vv -s jac-scale/jac_scale/tests/test_scalar_clobber_cross_process.jac
+
     - name: Run MongoDB user manager tests
       run: |
         pytest -x jac-scale/jac_scale/tests/test_mongo_user_manager.jac

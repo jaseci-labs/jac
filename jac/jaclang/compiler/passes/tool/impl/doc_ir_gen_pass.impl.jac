@@ -7,6 +7,19 @@ impl DocIRGenPass.exit_jsx_expression(nd: uni.JsxExpression) -> None {
     nd.gen.doc_ir = self.concat(parts, ast_node=nd);
 }
 
+"""Generate DocIR for JSX statement-form slots.
+
+The slot's body is kept as raw statements (ViewLowerPass doesn't run in
+the formatter pipeline), so concatenating the kid doc_irs reproduces the
+source `{ stmt; stmt; ... }` shape verbatim."""
+impl DocIRGenPass.exit_jsx_slot(nd: uni.JsxSlot) -> None {
+    parts: list[doc.DocType] = [];
+    for i in nd.kid {
+        parts.append(i.gen.doc_ir);
+    }
+    nd.gen.doc_ir = self.concat(parts, ast_node=nd);
+}
+
 """Generate DocIR for JSX text — normalize via single source of truth."""
 impl DocIRGenPass.exit_jsx_text(nd: uni.JsxText) -> None {
     source_tok = nd.kid[0] if nd.kid else None;
@@ -81,6 +94,27 @@ impl DocIRGenPass.exit_jsx_element(nd: uni.JsxElement) -> None {
         parts: list[doc.DocType] = [start_token.gen.doc_ir];
         if name_node {
             parts.append(name_node.gen.doc_ir);
+        } elif not nd.is_fragment {
+            # No JsxElementName and not a fragment — this is a dynamic tag
+            # (`<@expr ...>` / `</@expr>`) where the tag region is built
+            # from the `@` token plus the tag expression (and `{`/`}` for
+            # the brace-wrapped form). Emit every kid that sits between
+            # start_token and end_token in source order, skipping
+            # attributes (emitted separately below) and any child JSX
+            # content (emitted by the children handler below). Fragments
+            # are excluded so their children aren't duplicated here.
+            for k in nd.kid {
+                if k is start_token or k is end_token {
+                    continue;
+                }
+                if (
+                    isinstance(k, uni.JsxNormalAttribute)
+                    or isinstance(k, uni.JsxSpreadAttribute)
+                ) {
+                    continue;
+                }
+                parts.append(k.gen.doc_ir);
+            }
         }
         # Attributes live in their own Group so the opening-tag flat/break
         # decision is independent of the children flat/break decision. This
